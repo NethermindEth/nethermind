@@ -767,8 +767,6 @@ public class PersistenceManagerTests
         toPersist!.Dispose();
     }
 
-    #region PersistSnapshot Tests
-
     [Test]
     public void PersistSnapshot_WithAccountsStorageAndTrieNodes_WritesToBatch()
     {
@@ -840,8 +838,6 @@ public class PersistenceManagerTests
         // Assert
         _persistence.Received(1).CreateWriteBatch(from, to);
     }
-
-    #endregion
 
     [Test]
     public async Task AddToPersistence_WithAvailableSnapshot_PersistsAndUpdatesState()
@@ -1001,8 +997,6 @@ public class PersistenceManagerTests
             Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(to));
         }
     }
-
-    #region FlushToPersistence Tests
 
     [Test]
     public void FlushToPersistence_NoSnapshots_ReturnsCurrentPersistedState()
@@ -1190,8 +1184,6 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
-    #endregion
-
     private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
     {
         // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the
@@ -1211,8 +1203,6 @@ public class PersistenceManagerTests
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         method.Invoke(_persistenceManager, [compacted]);
     }
-
-    #region Helper Classes
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider
     {
@@ -1242,6 +1232,4 @@ public class PersistenceManagerTests
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository) =>
             BarrierAtCapture = readBarrier();
     }
-
-    #endregion
 }

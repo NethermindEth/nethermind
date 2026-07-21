@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -84,6 +85,7 @@ public sealed class HistoryStore
 
         foundAtBlock = BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
         ReadOnlySpan<byte> value = view.CurrentValue;
+        Debug.Assert(value.Length <= outBuffer.Length, "history value exceeds caller buffer; a value encoder outgrew its buffer size constant");
         value.CopyTo(outBuffer);
         return value.Length;
     }

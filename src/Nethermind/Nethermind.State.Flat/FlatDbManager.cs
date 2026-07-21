@@ -458,8 +458,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public bool HasStateForBlock(in StateId stateId)
     {
         if (_snapshotRepository.HasState(stateId)) return true;
-        StateId persisted = _persistenceManager.GetCurrentPersistedStateId();
-        if (persisted == stateId) return true;
+        if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
         return false;
     }
 

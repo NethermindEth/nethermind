@@ -62,18 +62,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     public ulong LastCapturedBlock => _lastCapturedBlock;
 
     /// <summary>
-    /// Captures the changeset of every block on <paramref name="persistedHead"/>'s chain that has not yet been
-    /// captured, up to and including <paramref name="persistedHead"/>. Must run before the per-block snapshots are
-    /// pruned.
+    /// Captures the changeset of every not-yet-captured block on <paramref name="persistedHead"/>'s chain, up to and
+    /// including it. Must run before the per-block snapshots are pruned.
     /// </summary>
     /// <remarks>
-    /// Walks backwards through the per-block base snapshots' <see cref="Snapshot.From"/> links — each base is
-    /// exactly one block's changeset, so the walk follows persistedHead's canonical chain, one lease at a time,
-    /// allocating nothing. A base whose in-memory copy was converted away by long-finality Phase 2 is leased from
-    /// the persisted tier instead — conversion registers each base individually, so per-block granularity survives
-    /// on disk. The first capture runs down to genesis, whose From is the <see cref="StateId.PreGenesis"/> sentinel;
-    /// a resume stops once past the last-captured block. Advancing the watermark past an early stop is safe for
-    /// reads — availability is driven by the per-block <c>AvailableBlocks</c> markers, never the watermark.
+    /// Walks backwards through each base's <see cref="Snapshot.From"/> link (one base == one block's changeset),
+    /// leasing from the persisted tier when long-finality Phase 2 converted the in-memory copy away. The first
+    /// capture runs to genesis (<see cref="StateId.PreGenesis"/>); a resume stops past the last-captured block.
+    /// Availability is driven by the per-block <c>AvailableBlocks</c> markers, not the watermark.
     /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
@@ -134,11 +130,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     }
 
     /// <summary>
-    /// Seeds the genesis (block 0) changeset from the chain's initial allocations. The capture walk can only lease
-    /// snapshots produced since history was enabled, so a node that did not run history capture through genesis can
-    /// never recover block 0 at runtime; its state is fully derivable from the chain spec instead, and it anchors
-    /// the floor every dormant genesis allocation floor-seeks to.
+    /// Seeds the genesis (block 0) changeset from the chain's initial allocations, for a node that enabled history
+    /// after genesis left memory and so cannot capture block 0 via the walk. Anchors the floor that dormant genesis
+    /// allocations floor-seek to.
     /// </summary>
+    /// <remarks>Must run at startup before block processing begins: it writes the history columns without the
+    /// persistence lock that serializes <see cref="CaptureUpTo"/>, so it must not overlap a capture.</remarks>
     [SkipLocalsInit]
     public void SeedGenesis(IReadOnlyCollection<KeyValuePair<Address, Account>> allocations)
     {

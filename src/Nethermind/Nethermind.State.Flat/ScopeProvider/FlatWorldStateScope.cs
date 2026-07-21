@@ -48,8 +48,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
-    // A history-backed scope is trie-less: it performs flat reads/writes (overlay + columns) but ZERO trie node
-    // loads, writes or hashing. Read by FlatStorageTree to skip storage-trie bulk writes/root computation.
+    // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
     internal bool Trieless => _trieless;
 
     public FlatWorldStateScope(
@@ -92,8 +91,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
-
-        // A history-backed scope is trie-less: post-block state-root recomputation must not traverse the state trie.
         _trieless = snapshotBundle.IsHistorical;
     }
 
@@ -531,9 +528,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 OnAccountUpdated = null;
 
-                // The per-account flat writes above (scope._snapshotBundle.SetAccount) already carry intra-block state
-                // for subsequent txs; normal scopes additionally bulk-apply the dirty accounts into the state trie.
-                // Trie-less scopes keep the known root on _stateTree and never touch trie nodes, so they skip this.
+                // The per-account flat writes above already carry intra-block state for subsequent txs; only a
+                // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
                     using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);

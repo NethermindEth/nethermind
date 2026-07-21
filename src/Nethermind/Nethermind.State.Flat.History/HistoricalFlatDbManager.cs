@@ -7,9 +7,8 @@ namespace Nethermind.State.Flat.History;
 
 /// <summary>
 /// Decorates an <see cref="IFlatDbManager"/> to serve reads for blocks below the finalization barrier — whose
-/// per-block tip snapshots have been pruned — from the finalized history index. Every historical read path (the
-/// state reader, the scope provider, and the override scope that layers its overrides on top of the bundle) funnels
-/// through <see cref="GatherReadOnlySnapshotBundle"/> / <see cref="GatherSnapshotBundle"/>
+/// per-block tip snapshots have been pruned — from the finalized history index, via
+/// <see cref="GatherReadOnlySnapshotBundle"/> / <see cref="GatherSnapshotBundle"/>.
 /// </summary>
 public sealed class HistoricalFlatDbManager(
     IFlatDbManager inner,

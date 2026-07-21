@@ -6,17 +6,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
@@ -50,8 +46,6 @@ public class HistoricalTraceReExecutionTests
     private SnapshotableMemColumnsDb<FlatDbColumns> _historyDb = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private HistoryReader _historyReader = null!;
-    private HistoryStore _accountStore = null!;
-    private HistoryStore _storageStore = null!;
 
     [SetUp]
     public void SetUp()
@@ -70,12 +64,6 @@ public class HistoricalTraceReExecutionTests
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _historyReader = new HistoryReader(_historyDb, _historyColumns, LimboLogs.Instance);
-        _accountStore = new HistoryStore(
-            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
-            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
-        _storageStore = new HistoryStore(
-            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory),
-            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
 
         _persistenceManager.GetCurrentPersistedStateId().Returns(new StateId(HistoryBarrier, TestItem.KeccakA));
     }
@@ -94,9 +82,9 @@ public class HistoricalTraceReExecutionTests
     {
         // History as of the traced block: an account with a single non-zero slot, finalized at block 5.
         Account existing = new(nonce: 3, balance: 300);
-        RecordAccount(5, existing);
-        RecordStorage(5, [0xAA]);
-        MarkBlockAvailable(HistoricalBlock);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, ExistingAddr, 5, existing);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, ExistingAddr, ExistingSlot, 5, [0xAA]);
+        HistoryColumnsWriter.MarkBlockAvailable(_historyColumns, HistoricalBlock);
 
         IReleaseSpec spec = MuirGlacier.Instance;
         Address freshAddr = TestItem.AddressB;
@@ -186,50 +174,4 @@ public class HistoricalTraceReExecutionTests
         ResourcePool.Usage.ReadOnlyProcessingEnv,
         LimboLogs.Instance,
         isReadOnly: false);
-
-    private void MarkBlockAvailable(ulong block)
-    {
-        Span<byte> key = stackalloc byte[sizeof(ulong)];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(key, block);
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
-        batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(key, Array.Empty<byte>());
-    }
-
-    private void RecordAccount(ulong block, Account? account)
-    {
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-            stackalloc byte[BaseFlatPersistence.AccountKeyLength], ExistingAddr.ToAccountPath);
-
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
-        IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
-        IWriteBatch changeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
-
-        if (account is null)
-        {
-            _accountStore.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, history, changeMarkers);
-            return;
-        }
-
-        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        _accountStore.RecordChange(block, flatKey, rlp, history, changeMarkers);
-    }
-
-    private void RecordStorage(ulong block, ReadOnlySpan<byte> rawValue)
-    {
-        ValueHash256 slotHash = ValueKeccak.Zero;
-        StorageTree.ComputeKeyWithLookup(ExistingSlot, ref slotHash);
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(
-            stackalloc byte[BaseFlatPersistence.StorageKeyLength], ExistingAddr.ToAccountPath, slotHash);
-
-        Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int written = rawValue.IsEmpty
-            ? 0
-            : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
-
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
-        _storageStore.RecordChange(
-            block, flatKey, value[..written],
-            batch.GetColumnBatch(FlatHistoryColumns.StorageHistory),
-            batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets));
-    }
 }
