@@ -82,7 +82,8 @@ on:
         description: >-
           Tool-specific config as JSON. flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30,"deep_check":false,"label":"","extra_args":""}.
           ethcallchaos: {"ref":"","corpus_db":"","rate":50,"parallel":8,"duration":300,"leaderboard_top":50,"api_port":5000} (empty ref = pinned commit default).
-          jsonbench: {"ref":"","mode":"","benchmark_config":"","compare_config":"config/compare/defaults.yaml","rps":100,"duration":"60s","vus":10,"concurrency":5,"timeout":30,"validate_schema":false,"html_report":true,"fail_on_diff":false,"extra_args":""}.
+          jsonbench: {"ref":"","mode":"","benchmark_config":"","compare_config":"config/compare/defaults.yaml","rps":"","duration":"","vus":"","concurrency":5,"timeout":30,"validate_schema":false,"html_report":true,"fail_on_diff":false,"extra_args":""}.
+          jsonbench benchmark_config: a curated workload — realistic-mix-head | ethcall-contracts-head | new-state-methods-head (bare name or repo-relative path); empty = a generated read mix. Its client list is rewritten to the node(s) here; rps/vus/duration override the workload when set (else the config's own values apply). Benchmarks report from k6's summary.json (no Prometheus).
           Leave empty for defaults.
         required: false
         default: ""
@@ -663,11 +664,19 @@ jobs:
           clean="${RUNNER_TEMP}/node.clean.log"
           sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${node_log}" > "${clean}"
 
+          # Request-level JSON-RPC validation errors are caused by the CALLER's
+          # input (e.g. a malformed hex param in a load-tool corpus), not node
+          # health — the node logs them while correctly rejecting the request.
+          # Exclude them so a tool that replays adversarial/random inputs cannot
+          # trip the gate; genuine node exceptions still match.
+          benign_rpc_exc='Incorrect JSON RPC parameters|JsonRpcService\.DeserializeParameters'
+          exc_matches="${RUNNER_TEMP}/node.exceptions.log"
+          grep -inE "Exception" "${clean}" | grep -vE "${benign_rpc_exc}" > "${exc_matches}" || true
           exception_found="false"
-          if grep -in "Exception" "${clean}" | head -n 40 | grep -q .; then
+          if [[ -s "${exc_matches}" ]]; then
             exception_found="true"
             echo "::warning::Exception lines detected in node log:"
-            grep -in "Exception" "${clean}" | head -n 40 || true
+            head -n 40 "${exc_matches}" || true
           fi
 
           invalid_block_found="false"
