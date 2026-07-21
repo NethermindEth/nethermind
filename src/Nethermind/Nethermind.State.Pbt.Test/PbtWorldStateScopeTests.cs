@@ -77,9 +77,7 @@ public class PbtWorldStateScopeTests
 
     /// <summary>
     /// A read-only scope is read-only with respect to the repository, not to itself: it processes and
-    /// commits locally like any other, and only keeps the result to itself. Before the bundle split
-    /// its write buffer was null and the first write threw, which made the whole resettable world
-    /// state unusable.
+    /// commits locally like any other, and only keeps the result to itself.
     /// </summary>
     [Test]
     public async Task ReadOnlyScope_CommitsLocally_WithoutPublishingToTheRepository()

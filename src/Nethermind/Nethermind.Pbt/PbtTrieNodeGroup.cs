@@ -42,11 +42,9 @@ public enum PbtGroupFormat : byte
 /// cached hash for an internal node, or the 31-byte stem followed by its 32-byte leaf-subtree root
 /// for a stem node (the stem node hash is derived, never stored) — and last a trailer of two
 /// little-endian 32-bit bitmaps over the positions, presence and stem, then the group's
-/// <see cref="PbtSubtreeStats"/>. The bitmaps trail the entries rather than lead them because a
-/// producer only knows them once it has walked the group; see <see cref="Builder"/>. The internal
-/// node at the group root (position 30) is not stored either: it is folded from its children and
-/// already cached in the parent group's boundary slot, so only a stem may occupy the root position.
-/// Entry offsets and the total length follow from the bitmaps, keeping the encoding deterministic.
+/// <see cref="PbtSubtreeStats"/>. The internal node at the group root (position 30) is not stored
+/// either: it is folded from its children and already cached in the parent group's boundary slot,
+/// so only a stem may occupy the root position.
 /// A stem position has no present positions below it in the group and no child groups below it.
 /// An empty group encodes to zero bytes, the store's removal marker.
 /// <para>
@@ -71,21 +69,15 @@ public readonly ref struct PbtTrieNodeGroup
         Stem = 2,
     }
 
-    /// <summary>
-    /// A zero-copy, read-only view of one node — absent, internal, or stem — reading its kind and
-    /// payloads straight from the group's encoding without copying them out.
-    /// </summary>
+    /// <summary>A zero-copy, read-only view of one node — absent, internal, or stem.</summary>
     /// <remarks>
-    /// Wraps the node's entry exactly as the group stores it, so its length alone gives its kind and
-    /// the payloads are slices rather than copies. The view borrows the group's buffer: a node that
-    /// must outlive it is copied out with <see cref="ToValue"/>.
+    /// Wraps the node's entry exactly as the group stores it, so its length alone gives its kind.
+    /// The view borrows the group's buffer: a node that must outlive it is copied out with
+    /// <see cref="ToValue"/>.
     /// </remarks>
     public readonly ref struct Slot
     {
-        /// <summary>An internal node's entry: its cached hash.</summary>
         internal const int InternalLength = HashLength;
-
-        /// <summary>A stem node's entry: its stem followed by its 256-leaf subtree root.</summary>
         internal const int StemLength = Stem.Length + HashLength;
 
         private readonly ReadOnlySpan<byte> _data;
@@ -169,13 +161,11 @@ public readonly ref struct PbtTrieNodeGroup
 
     private const int EntriesOffset = sizeof(byte);
 
-    /// <summary>Offsets within the trailer, the bytes an encoding ends with.</summary>
     private const int PresenceTrailerOffset = 0;
     private const int StemsTrailerOffset = PresenceTrailerOffset + sizeof(uint);
     private const int StatsTrailerOffset = StemsTrailerOffset + sizeof(uint);
     private const int TrailerLength = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
 
-    /// <summary>What an encoding spends on everything but its entries: the format byte and the trailer.</summary>
     private const int OverheadLength = EntriesOffset + TrailerLength;
     private const int HashLength = 32;
 
@@ -264,7 +254,6 @@ public readonly ref struct PbtTrieNodeGroup
         }
     }
 
-    /// <summary>The kind of the node at <paramref name="position"/>.</summary>
     /// <remarks>
     /// This is the kind the <em>encoding</em> holds, which for a <see cref="PbtGroupFormat.Interleaved"/>
     /// group is not quite the kind the trie holds: an internal node at a skipped level has no entry
@@ -285,7 +274,6 @@ public readonly ref struct PbtTrieNodeGroup
     /// The offset of the entry of the node at <paramref name="position"/>, for a consumer that holds
     /// on to a node rather than reading it out; meaningful only where a node is present.
     /// </summary>
-    /// <remarks>Every entry below it contributes its hash, and a stem entry its stem as well.</remarks>
     internal int EntryOffset(int position)
     {
         uint below = (1u << position) - 1;
@@ -295,10 +283,8 @@ public readonly ref struct PbtTrieNodeGroup
     }
 
     /// <summary>The lowest position of the subtree rooted at <paramref name="position"/> covering <paramref name="width"/> boundary slots.</summary>
-    /// <remarks>A subtree's children sit at <c>position - width</c> and <c>position - 1</c>, which leaves it the positions <c>[position - 2 * width + 2, position]</c>.</remarks>
     private static int FirstSubtreePosition(int position, int width) => position - 2 * width + 2;
 
-    /// <summary>The positions of that subtree, as a bitmap.</summary>
     private static uint SubtreeMask(int position, int width) =>
         ((1u << (position + 1)) - 1) & ~((1u << FirstSubtreePosition(position, width)) - 1);
 
@@ -338,16 +324,6 @@ public readonly ref struct PbtTrieNodeGroup
         ? default
         : new Slot(data.Slice(offset, kind == NodeKind.Stem ? Slot.StemLength : Slot.InternalLength));
 
-    /// <summary>
-    /// Writes a stem node's entry into <paramref name="destination"/>, for a producer holding a stem
-    /// node that no group encodes yet.
-    /// </summary>
-    internal static void WriteStem(Span<byte> destination, in Stem stem, in ValueHash256 leafSubtreeRoot)
-    {
-        stem.Bytes.CopyTo(destination);
-        leafSubtreeRoot.Bytes.CopyTo(destination[Stem.Length..]);
-    }
-
     public static ValueSlot InternalSlot(in ValueHash256 hash) => new() { Kind = NodeKind.Internal, Hash = hash };
 
     public static ValueSlot StemSlot(in Stem stem, in ValueHash256 leafSubtreeRoot) =>
@@ -358,7 +334,6 @@ public readonly ref struct PbtTrieNodeGroup
 
     public static bool IsBoundaryPosition(int position) => (BoundaryPositionsMask & (1u << position)) != 0;
 
-    /// <summary>The boundary slot index of boundary <paramref name="position"/>.</summary>
     public static int BoundarySlot(int position) => BitOperations.PopCount(BoundaryPositionsMask & ((1u << position) - 1));
 
     /// <summary>
@@ -423,7 +398,7 @@ public readonly ref struct PbtTrieNodeGroup
         }
 
         // An interleaved group folds its odd levels' internal nodes rather than storing them, so a
-        // present skipped position is a stem — the one node nothing recomputes.
+        // present skipped position is a stem.
         if (format == PbtGroupFormat.Interleaved && (presence & SkippedPositionsMask & ~stems) != 0)
         {
             throw new InvalidDataException("Interleaved trie node group holds an internal node at a skipped level");
@@ -485,7 +460,9 @@ public readonly ref struct PbtTrieNodeGroup
             MarkPresent(position);
             _stems |= 1u << position;
             int offset = _offset;
-            WriteStem(_destination[offset..], stem, leafSubtreeRoot);
+            Span<byte> entry = _destination[offset..];
+            stem.Bytes.CopyTo(entry);
+            leafSubtreeRoot.Bytes.CopyTo(entry[Stem.Length..]);
             _offset = offset + Slot.StemLength;
             return offset;
         }
@@ -520,7 +497,6 @@ public readonly ref struct PbtTrieNodeGroup
             return rootOffset;
         }
 
-        /// <summary>Reads the node of kind <paramref name="kind"/> appended at <paramref name="offset"/> back out of the buffer.</summary>
         public readonly Slot SlotAt(NodeKind kind, int offset) => PbtTrieNodeGroup.SlotAt(_destination, kind, offset);
 
         /// <summary>

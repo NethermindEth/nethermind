@@ -43,17 +43,11 @@ public sealed class RefCountingMemory : MemoryManager<byte>
     /// <summary>Wraps an array whose lifetime is owned elsewhere; the last release does not free it.</summary>
     public static RefCountingMemory Wrapping(byte[] array) => new(array, array.Length, pooled: false);
 
-    /// <summary>As <see cref="Wrapping"/>, returning <c>null</c> when <paramref name="array"/> is <c>null</c>.</summary>
     public static RefCountingMemory? WrappingOrNull(byte[]? array) => array is null ? null : Wrapping(array);
 
     /// <summary>
-    /// Copies the content into a fresh array and releases this memory, the inverse of
-    /// <see cref="WrappingOrNull"/> for a consumer that keeps its values as arrays.
+    /// Copies the content into a fresh array, consuming the caller's lease; the memory must not be used afterwards.
     /// </summary>
-    /// <remarks>
-    /// Consumes the caller's lease, so the memory must not be used afterwards. A consumer holding an
-    /// optional value calls it through <c>?.</c>, which copies <c>null</c> to <c>null</c>.
-    /// </remarks>
     public byte[] ToArrayAndRelease()
     {
         using (this) return GetSpan().ToArray();

@@ -13,10 +13,10 @@ namespace Nethermind.Pbt;
 /// once, so the caller merges all writes to a stem beforehand.
 /// </summary>
 /// <remarks>
-/// A zero value clears the leaf. <see cref="Dispose"/> returns the pooled entry list, the per-stem
-/// change maps and <paramref name="buckets"/>. <see cref="Add"/> does not check for a duplicate stem —
-/// the descent detects one for free, as a range that still holds several entries once it has consumed
-/// the whole stem.
+/// <see cref="Dispose"/> returns the pooled entry list, the per-stem change maps and
+/// <paramref name="buckets"/>. <see cref="Add"/> does not check for a duplicate stem — the descent
+/// detects and throws on one for free, as a range that still holds several entries once it has
+/// consumed the whole stem.
 /// </remarks>
 /// <param name="buckets">
 /// The precalculated bucket table for entries added in ascending stem-first-byte order, whose lease
@@ -59,16 +59,13 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
 
     private readonly ArrayPoolList<StemEntry> _entries = new(estimatedStems);
 
-    /// <summary>Adds <paramref name="stem"/>'s complete writes. The caller must merge duplicate stems itself; <see cref="TrieUpdater.UpdateRoot"/> throws on one.</summary>
     public void Add(in Stem stem, IPbtStemChanges changes) => _entries.Add(new StemEntry(stem, changes));
 
-    /// <summary>The number of stems written; zero means the batch applies no changes.</summary>
     public int Count => _entries.Count;
 
     /// <remarks>Mutable: <see cref="TrieUpdater"/> permutes the entries in place as it partitions them by stem.</remarks>
     internal Span<StemEntry> Entries => _entries.AsSpan();
 
-    /// <summary>The precalculated depth-0 and depth-4 bucket bounds, or empty when the entries are in no particular order.</summary>
     internal ReadOnlySpan<int> Buckets => buckets is null ? default : buckets.AsSpan();
 
     public void Dispose()

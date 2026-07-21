@@ -27,7 +27,6 @@ public static class PbtKeyDerivation
     private const int StorageAddressPrefixBits = 60;
     private const int StorageSuffixBits = 187;
 
-    /// <summary>Number of code chunks embedded in the account header stem.</summary>
     public const int HeaderCodeChunks = StemSubtreeWidth - CodeOffset;
 
     /// <summary>Size of one code chunk, which is one leaf value.</summary>
@@ -114,7 +113,7 @@ public static class PbtKeyDerivation
         subIndex = (byte)(slot.u0 & 0xFF);
         UInt256 treeIndex = slot >> 8;
 
-        // the suffix binds the address to the tree index; its first 32 bytes are the padded address
+        // the suffix binds the address to the tree index
         Span<byte> suffixInput = stackalloc byte[64];
         Address32(address, suffixInput[..32]);
         treeIndex.ToBigEndian(suffixInput[32..]);
@@ -196,7 +195,6 @@ public static class PbtKeyDerivation
         BinaryPrimitives.WriteUInt64BigEndian(dest32[24..], balance.u0);
     }
 
-    /// <summary>Reads the <c>code_size</c> field (offset 4, 4 bytes big-endian) from a packed <c>BASIC_DATA</c> leaf.</summary>
     public static uint ReadBasicDataCodeSize(ReadOnlySpan<byte> basicData) => BinaryPrimitives.ReadUInt32BigEndian(basicData.Slice(4, 4));
 
     /// <summary>Copies the high <paramref name="bitCount"/> MSB-first bits of <paramref name="src"/> into <paramref name="dest"/> at <paramref name="destBitOffset"/> (dest must be zeroed).</summary>

@@ -52,7 +52,6 @@ public class PbtSnapshotCompactorTests
         Assert.That(merged.Content.TrieNodes[nodeKey], Is.EqualTo((byte[])[0x22]));
     }
 
-    /// <summary>The merged layer spans the whole segment: the oldest layer's start to the newest layer's end.</summary>
     [Test]
     public void Compact_SpansTheWholeSegment()
     {
@@ -62,7 +61,6 @@ public class PbtSnapshotCompactorTests
         Assert.That(merged.To, Is.EqualTo(State(3)));
     }
 
-    /// <summary>Disjoint writes from either layer all survive the merge.</summary>
     [Test]
     public void Compact_UnionsDisjointWrites()
     {
@@ -77,10 +75,6 @@ public class PbtSnapshotCompactorTests
         Assert.That(merged.Content.Slots[(TestItem.AddressB, UInt256.Zero)], Is.EqualTo(Word(0x22)));
     }
 
-    /// <summary>
-    /// A self-destruct hides every slot written for that address in an older layer, but not one
-    /// written after it, and never another address's slots.
-    /// </summary>
     [Test]
     public void Compact_SelfDestruct_DropsOlderSlotsOnly()
     {
@@ -102,10 +96,8 @@ public class PbtSnapshotCompactorTests
     }
 
     /// <summary>
-    /// When an address is destroyed more than once, only the newest destruct counts: a slot written
-    /// between the two is wiped by the later one, and only writes at or after it survive. The merge
-    /// filters against that boundary rather than replaying each destruct, so the boundary has to be
-    /// the last one, not the first.
+    /// The merge filters slots against a single self-destruct boundary rather than replaying each
+    /// destruct, so the boundary has to be the last one, not the first.
     /// </summary>
     [Test]
     public void Compact_SelfDestructedTwice_KeepsOnlySlotsFromTheLastDestructOnwards()
@@ -184,7 +176,6 @@ public class PbtSnapshotCompactorTests
         Assert.That(chain[0].From, Is.EqualTo(State(1)));
     }
 
-    /// <summary>The merged layer's content is rented for the width actually merged, and returns there.</summary>
     [Test]
     public void Compact_ReturnsTheMergedContent_ToTheSizeClassOfTheMergedWidth()
     {

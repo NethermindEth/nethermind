@@ -73,11 +73,6 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     }
 
     /// <summary>Stacks the local override layers reachable from <paramref name="stateId"/> above the main state's shared view.</summary>
-    /// <remarks>
-    /// The local layers go into the bundle's own chain rather than behind a nested bundle: they are
-    /// the same kind of layer as the main state's, so the writable bundle stacks them directly over
-    /// the shared read-only view, and one bundle serves the whole override.
-    /// </remarks>
     private PbtSnapshotBundle GatherBundle(in StateId stateId)
     {
         PbtSnapshotPooledList localChain = new(1);

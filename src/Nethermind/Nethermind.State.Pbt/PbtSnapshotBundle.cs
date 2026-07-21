@@ -14,16 +14,11 @@ namespace Nethermind.State.Pbt;
 /// layers this branch has sealed so far, over a shared <see cref="PbtReadOnlySnapshotBundle"/>.
 /// </summary>
 /// <remarks>
-/// Owned by one scope and mutable, which is exactly what the bundle underneath is not: sealed layers
-/// accumulate here rather than there, so the shared view stays immutable and every other scope
-/// reading it keeps a stable chain.
+/// Sealed layers accumulate here rather than in the shared bundle, so that view stays immutable and
+/// every other scope reading it keeps a stable chain.
 /// <para>
 /// The local chain is ordered oldest first and walked backwards, so appending a sealed layer is an
 /// O(1) <see cref="PbtSnapshotPooledList.Add"/> that leaves every existing index alone.
-/// </para>
-/// <para>
-/// Every bundle is writable. Whether a branch's layers reach the repository is the scope's business,
-/// not the bundle's: a read-only scope still commits locally, it just keeps the result to itself.
 /// </para>
 /// </remarks>
 /// <param name="snapshots">Leased layers sealed by this branch, oldest first; the bundle takes ownership of the leases.</param>
@@ -62,7 +57,7 @@ public class PbtSnapshotBundle(
         return readOnlyBundle.GetAccount(address);
     }
 
-    /// <summary>Returns the slot value (zero when absent or self-destructed). The walk stops at a self-destruct marker.</summary>
+    /// <summary>Returns the slot value; zero when absent or self-destructed.</summary>
     public EvmWord GetSlot(Address address, in UInt256 slot)
     {
         AddressAsKey key = address;
@@ -95,8 +90,8 @@ public class PbtSnapshotBundle(
 
         return readOnlyBundle.GetLeafBlob(stem);
 
-        // layers store an empty blob as the "stem deleted" marker, which must stop the walk rather
-        // than fall through and resurrect the stem from a lower tier
+        // an empty blob is the "stem deleted" marker; it must stop the walk rather than fall through
+        // and resurrect the stem from a lower tier
         static RefCountingMemory? AsFound(byte[] blob) => blob.Length == 0 ? null : RefCountingMemory.Wrapping(blob);
     }
 
@@ -138,14 +133,13 @@ public class PbtSnapshotBundle(
     }
 
     /// <summary>
-    /// Seals the write buffer — the block's flat writes plus the root computation's blob and node
-    /// results — into a snapshot, appends it as this branch's newest layer (leased), and starts a
-    /// fresh buffer for the next block.
+    /// Seals the write buffer into a snapshot, appends it as this branch's newest layer (leased),
+    /// and starts a fresh buffer for the next block.
     /// </summary>
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to)
     {
         // ownership of the buffer passes to the snapshot, which returns it to the pool once its last
-        // lease drops; the bundle rents a fresh one and must never touch the old one again
+        // lease drops; the bundle must never touch the old one again
         PbtSnapshot snapshot = new(from, to, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
@@ -165,12 +159,9 @@ public class PbtSnapshotBundle(
 
         try
         {
-            // releases one lease per layer and returns the backing array to the pool; each layer whose
-            // last lease this drops returns its own content
             snapshots.Dispose();
 
-            // the unsealed buffer is the bundle's own to return; null it so a stray write lands in a
-            // NullReferenceException rather than in a buffer another block has already rented
+            // null it so a racing write cannot land in a buffer another block has already rented
             PbtSnapshotContent? buffer = _writeBuffer;
             _writeBuffer = null;
             if (buffer is not null) resourcePool.ReturnSnapshotContent(usage, buffer);

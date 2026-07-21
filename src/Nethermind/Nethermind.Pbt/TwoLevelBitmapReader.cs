@@ -16,9 +16,8 @@ namespace Nethermind.Pbt;
 /// which groups are occupied; each occupied group contributes one 2-byte sub-word — its 16 leaf bits
 /// copied verbatim (MSB-first) from the flat bitmap — in ascending group order. This compacts the
 /// clustered, mostly-sparse leaf occupancy from a flat 32-byte bitmap to <c>2·G + 2</c> bytes. The
-/// trailing format byte versions the entries region that precedes this footer, which is what lets a
-/// legacy blob be read back rather than misparsed; the footer itself has never changed. Tree-structural queries stay in
-/// <see cref="StemLeafBlob"/> and run over the flat bitmap produced by <see cref="ExpandTo"/>.
+/// trailing format byte versions the entries region that precedes this footer. Tree-structural queries
+/// stay in <see cref="StemLeafBlob"/> and run over the flat bitmap produced by <see cref="ExpandTo"/>.
 /// </remarks>
 internal readonly ref struct TwoLevelBitmapReader
 {
@@ -28,7 +27,7 @@ internal readonly ref struct TwoLevelBitmapReader
     internal const int FormatLength = 1;
     internal const byte LegacyFormatByte = 0x01;   // read-only: entries hold every live node
     internal const byte FormatByte = 0x02;         // entries skip single-child internals
-    internal const int BitmapLength = 32;    // flat expansion length
+    internal const int BitmapLength = 32;
 
     private readonly ReadOnlySpan<byte> _subwords;   // 2·G bytes, ascending occupied-group order
     private readonly ushort _top;
@@ -57,7 +56,6 @@ internal readonly ref struct TwoLevelBitmapReader
         return new TwoLevelBitmapReader(blob.Slice(blob.Length - footerLength, SubWordLength * g), top);
     }
 
-    /// <summary>The number of occupied groups (the second-level sub-word count).</summary>
     public int OccupiedGroups => BitOperations.PopCount((uint)_top);
 
     /// <summary>The sub-word slot of group <paramref name="g"/> (its rank among occupied groups).</summary>
@@ -73,7 +71,7 @@ internal readonly ref struct TwoLevelBitmapReader
         if ((_top & (1 << g)) == 0) return false;
 
         int byteInGroup = (subIndex & 0xF) >> 3;   // 0 or 1
-        int bit = 7 - (subIndex & 7);              // MSB-first, matches StemLeafBlob.IsPresent(flat, …)
+        int bit = 7 - (subIndex & 7);
         return (_subwords[SubSlot(g) * SubWordLength + byteInGroup] & (1 << bit)) != 0;
     }
 
@@ -83,7 +81,7 @@ internal readonly ref struct TwoLevelBitmapReader
     /// </summary>
     public void ExpandTo(Span<byte> flat)
     {
-        flat.Clear();   // empty groups must read back zero; do not rely on caller/implicit zeroing
+        flat.Clear();   // do not rely on caller/implicit zeroing
         int slot = 0;
         for (int g = 0; g < GroupCount; g++)
         {

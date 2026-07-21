@@ -135,7 +135,6 @@ public class PbtNodeChainTests
         return encoded;
     }
 
-    /// <summary>The smallest group encoding, to check the format bytes really are disjoint.</summary>
     private static byte[] EncodeGroup()
     {
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];

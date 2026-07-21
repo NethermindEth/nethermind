@@ -105,8 +105,6 @@ public static partial class TrieUpdater
 
         public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
-            // No global sort: each group radix-partitions its own range in place during the descent,
-            // bar the levels the producer already bucketed for it.
             using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
             NodeResult root = default;
             ApplyStored(TrieNodeKey.Root, changes.Entries, rootData, currentRoot, new BucketPlan(changes.Buckets, branchDepth: 0), ref root, out _, out delta);
@@ -149,9 +147,6 @@ public static partial class TrieUpdater
                 ApplyGroup(key, entries, existingData, beforeHash, plan, ref result, out changed, out delta);
         }
 
-        /// <summary>The kind a group's encoding gives a node, as a boundary result.</summary>
-        private static ResultKind ToResultKind(NodeKind kind) => (ResultKind)kind;
-
         /// <summary>
         /// The boundary occupants a group frame descends from, read on demand by slot. The lease stays with
         /// the source — the stored encoding or the seed — so a read transient is never disposed.
@@ -182,7 +177,7 @@ public static partial class TrieUpdater
                 {
                     int position = PbtTrieNodeGroup.BoundaryPosition(slot);
                     NodeKind kind = _existing.KindAt(position);
-                    return kind == NodeKind.Absent ? default : new Occupant(new NodeRef(ToResultKind(kind), _existing.EntryOffset(position)), _existingData);
+                    return kind == NodeKind.Absent ? default : new Occupant(new NodeRef((ResultKind)kind, _existing.EntryOffset(position)), _existingData);
                 }
             }
         }
@@ -198,7 +193,6 @@ public static partial class TrieUpdater
             public Occupant this[int slot] => slot == _seedSlot ? _seed : default;
         }
 
-        /// <summary>The kind a group's encoding stores a node under; a chain has none, living in no group.</summary>
         private static NodeKind ToNodeKind(ResultKind kind)
         {
             Debug.Assert(kind != ResultKind.Chain, "a chain node lives in no group's encoding");
@@ -235,11 +229,8 @@ public static partial class TrieUpdater
 
             PbtTrieNodeGroup existing = existingData is null ? default : PbtTrieNodeGroup.Decode(existingData.GetSpan());
 
-            // The group's boundary shape, gathered straight out of its position bitmaps. The occupants
-            // themselves the descent reads on demand out of `existing`, so no buffer is built here.
             existing.BoundaryShape(out uint occupantsOccupied, out uint occupantsStems);
 
-            // Resolve the touched slots into a shared buffer, then rebuild the group's node from it.
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
@@ -286,9 +277,7 @@ public static partial class TrieUpdater
             Stem stem = entries[0].Stem;
             if (entries.Length == 1 && (pushed.Kind == ResultKind.Absent || pushed.Stem == stem))
             {
-                // a blob left with no leaves deletes its stem, so the node goes absent rather than up.
-                // An absent pushed slot means no stem node stood here, so (a stem node and its leaf blob
-                // being born and dying together) there is no prior blob to merge — skip the read.
+                // a blob left with no leaves deletes its stem, so the node goes absent rather than up
                 bool isEmpty = ComputeBlob(stem, entries[0].Changes, pushed.Kind == ResultKind.Absent, out ValueHash256 subtreeRoot);
                 result = isEmpty ? default : NodeResult.StemNode(stem, subtreeRoot);
                 changed = result.NodeHash() != pushed.NodeHash();
@@ -377,7 +366,6 @@ public static partial class TrieUpdater
                 occupantsOccupied = 1u << seedSlot;
             }
 
-            // Resolve the touched slots into a shared buffer, then rebuild the group's node from it.
             SeededOccupant occupants = new(pushed, seedSlot);
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
@@ -469,12 +457,9 @@ public static partial class TrieUpdater
 
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength];
 
-            // Only the slots below get a bit set, so what comes back describes the descent and nothing else.
             uint occupied = 0;
             uint stems = 0;
 
-            // The non-empty buckets, cached by whoever bucketed the range — the descent visits just these,
-            // and an empty bucket leaves its slot's boundaries where they are.
             uint touchedMask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
             AssertTouchedMaskMatchesBounds(touchedMask, bounds);
 
@@ -511,7 +496,6 @@ public static partial class TrieUpdater
                 }
                 else
                 {
-                    // an empty subtree or a lone stem: push the occupant (stem or absent) on down
                     ApplyPushedStem(childKey, bucket, occupant, childPlan, ref result, out childChanged, out childDelta);
                 }
 
@@ -519,7 +503,6 @@ public static partial class TrieUpdater
                 Debug.Assert(childChanged || childDelta.IsZero, "an unchanged subtree is the same subtree, so it holds the same stems");
                 childDeltas += childDelta;
 
-                // the kind the write left here, over the bits the bulk clear above already dropped
                 uint bit = 1u << slot;
                 ResultKind resultKind = result.Kind;
                 if (resultKind != ResultKind.Absent) occupied |= bit;
@@ -856,7 +839,6 @@ public static partial class TrieUpdater
             return (leftPresence | rightPresence | self, leftStems | rightStems);
         }
 
-        /// <summary>A reference to a node in the encoding holding it: its kind and its entry offset.</summary>
         private readonly record struct NodeRef(ResultKind Kind, int Offset);
 
         /// <summary>
@@ -1148,7 +1130,6 @@ public static partial class TrieUpdater
                 if ((uint)diff < (uint)splitDepth) splitDepth = diff;
             }
 
-            // a constant message: Debug.Assert evaluates its argument on every call
             Debug.Assert(
                 claimed <= (splitDepth & ~(PbtTrieNodeGroup.LevelsPerGroup - 1)),
                 "the inherited branch depth reaches past where the range parts");
@@ -1308,7 +1289,6 @@ public static partial class TrieUpdater
             return splitDepth & ~(PbtTrieNodeGroup.LevelsPerGroup - 1);
         }
 
-        /// <summary>Orders <paramref name="entries"/> <paramref name="i"/> and <paramref name="j"/> by their nibble.</summary>
         private static void CompareAndSwap(Span<PbtWriteBatch.StemEntry> entries, Span<int> nibbles, int i, int j)
         {
             if (nibbles[i] <= nibbles[j]) return;
@@ -1316,8 +1296,7 @@ public static partial class TrieUpdater
             (nibbles[i], nibbles[j]) = (nibbles[j], nibbles[i]);
         }
 
-        private static int NibbleOf(in Stem stem, int depth) => NibbleAt(stem.Bytes[depth >> 3], depth);
-
-        private static int NibbleAt(byte value, int depth) => (depth & 4) == 0 ? value >> 4 : value & 0xF;
+        private static int NibbleOf(in Stem stem, int depth) =>
+            (depth & 4) == 0 ? stem.Bytes[depth >> 3] >> 4 : stem.Bytes[depth >> 3] & 0xF;
     }
 }

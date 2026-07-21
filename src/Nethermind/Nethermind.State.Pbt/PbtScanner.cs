@@ -14,11 +14,6 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt;
 
 /// <summary>The zone subtrees the statistics are grouped by, mirroring the leaf columns' split.</summary>
-/// <remarks>
-/// A stem's zone is its first nibble, so it is also the root group's boundary slot the stem sits
-/// under: everything from depth <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> down belongs to exactly
-/// one zone, and only the root group itself spans them all.
-/// </remarks>
 public enum PbtTreePartition
 {
     /// <summary>The root group, which is above the zone split and so belongs to no one zone.</summary>
@@ -45,10 +40,6 @@ public enum PbtTreePartition
 /// scan needs no parent context and does no random reads. What it therefore cannot see is anything
 /// only a descent establishes: it does not check that a node is reachable from the root, nor refold
 /// any hash, so an orphaned blob is counted rather than reported.
-/// <para>
-/// Only the persisted state is visible. Snapshots the coordinator has not written yet live in
-/// <see cref="PbtSnapshotRepository"/> and are unreachable from the columns.
-/// </para>
 /// </remarks>
 public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILogManager logManager)
 {
@@ -58,7 +49,6 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     /// </summary>
     private const int ProgressPublishInterval = 100_000;
 
-    /// <summary>How often the progress ticker samples the counters the workers publish.</summary>
     private static readonly TimeSpan ProgressLogInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>Ranges per worker, so that work stealing can even out the uneven ones.</summary>
@@ -69,7 +59,6 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
     private readonly ILogger _logger = logManager.GetClassLogger<PbtScanner>();
 
-    /// <summary>Counts one entry of a column into <paramref name="report"/>.</summary>
     private delegate void ScanEntry(PbtScanReport report, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
 
     public async Task<PbtScanReport> Scan(CancellationToken cancellationToken)
@@ -94,11 +83,10 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     /// Sweeps one column in parallel, counting every entry into <paramref name="report"/>.
     /// </summary>
     /// <remarks>
-    /// Every statistic follows from one entry alone, so the column's key space is cut into the ranges
-    /// <paramref name="bounds"/> delimits and the workers claim them in turn — on demand rather than
-    /// assigned up front, because the ranges are wildly uneven. Each worker owns a range, the iterator
-    /// over it and a report of its own, so nothing is shared until the reports are folded together
-    /// here; the counters the progress ticker samples are all that cross threads while it runs.
+    /// The workers claim the ranges <paramref name="bounds"/> delimits on demand rather than by an
+    /// up-front assignment, because the ranges are wildly uneven. Each worker owns a range, the
+    /// iterator over it and a report of its own, so nothing is shared until the reports are folded
+    /// together here; the counters the progress ticker samples are all that cross threads.
     /// </remarks>
     private async Task ScanColumn(
         PbtColumns columnName,
@@ -195,7 +183,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     }
 
     /// <summary>Counts the entries of one zone's trie node column into that zone's statistics.</summary>
-    /// <param name="partition">The zone subtree the column holds; only the depth-0 root, which shares the account column, reports elsewhere.</param>
+    /// <remarks>The depth-0 root shares the account column but spans every zone, so it is counted apart.</remarks>
     private static ScanEntry TrieNodeScanner(PbtTreePartition partition) => (report, key, value) =>
     {
         // the key is the node's position: the zero-padded path, then the depth byte
@@ -380,7 +368,6 @@ public sealed class PbtScanReport
         return partitions;
     }
 
-    /// <summary>The trie node statistics of one zone subtree.</summary>
     public TrieNodeStats this[PbtTreePartition partition] => _byPartition[(int)partition];
 
     /// <summary>The root group, which spans every zone and so is counted apart from all of them.</summary>
@@ -410,13 +397,12 @@ public sealed class PbtScanReport
     public long ChainEntriesAvoided => Sum(static stats => stats.ChainEntriesAvoided);
     public long ChainGroupBlobsAvoided => Sum(static stats => stats.ChainGroupBlobsAvoided);
 
-    /// <summary>Whether the stems counted match the count the root caches for its subtree.</summary>
     public bool StemCountAgrees => RootSubtreeStemCount == StemCount;
 
     /// <summary>Adds everything <paramref name="other"/> counted into this report.</summary>
     /// <remarks>
-    /// How the parallel sweep's per-worker reports are folded into one. Only the worker that scanned
-    /// the root's range ever records a <see cref="RootSubtreeStemCount"/>, so the greatest is it.
+    /// Only the worker that scanned the root's range ever records a
+    /// <see cref="RootSubtreeStemCount"/>, so the greatest is it.
     /// </remarks>
     internal void MergeFrom(PbtScanReport other)
     {

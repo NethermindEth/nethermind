@@ -78,7 +78,6 @@ public class PbtScopeProviderTests
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 70, 0x07);
         Assert.That(root2, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
 
-        // historical reads through the state reader at both heights
         BlockHeader header2 = Build.A.BlockHeader.WithNumber(2).WithStateRoot(root2).TestObject;
         Assert.That(ctx.StateReader.TryGetAccount(header1, TestItem.AddressA, out AccountStruct accountAt1), Is.True);
         Assert.That(accountAt1.Balance, Is.EqualTo((UInt256)100));

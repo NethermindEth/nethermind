@@ -30,12 +30,6 @@ public class PbtDbManagerTests
 
     private static BlockHeader Header(ulong number, Hash256 root) => Build.A.BlockHeader.WithNumber(number).WithStateRoot(root).TestObject;
 
-    /// <summary>
-    /// Every scope at one state assembles the same immutable view, so it is shared rather than
-    /// rebuilt — gathering is on the hot path of every RPC read. A shared view is only safe to hand
-    /// out because it is immutable; what it must not do is outlive the layers it pins, so a sweep at
-    /// the persistence boundary releases it while a scope still reading keeps its own lease.
-    /// </summary>
     [Test]
     public async Task ReadOnlyBundle_IsSharedPerState_UntilTheBoundarySweepReleasesIt()
     {
@@ -52,7 +46,7 @@ public class PbtDbManagerTests
         PbtReadOnlySnapshotBundle second = manager.GatherReadOnlyBundle(state);
         Assert.That(second, Is.SameAs(first), "one state, one shared view");
 
-        // a gather still holding a lease keeps reading after the sweep drops the cache's
+        // a gather still holding a lease keeps reading after the sweep drops the cached view
         ctx.Manager.FlushCache(default);
         Assert.That(first.GetAccount(Address)!.Balance, Is.EqualTo((UInt256)100));
 
@@ -85,7 +79,6 @@ public class PbtDbManagerTests
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(3, root3)));
         }
 
-        // reopen over the same db: the persisted head state is servable, pruned history is not
         await using (PbtTestContext reopened = new(db))
         {
             Assert.That(reopened.Manager.HasStateForBlock(new StateId(3, root3)), Is.True);

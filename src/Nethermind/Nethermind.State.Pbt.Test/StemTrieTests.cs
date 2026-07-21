@@ -47,7 +47,6 @@ public class StemTrieTests(PbtGroupFormat format)
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
 
-        // single stem: one root group holding just the stem
         ValueHash256 root = harness.ApplyBatch([(keyA, valueA)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA)])));
         Assert.That(harness.Nodes, Has.Count.EqualTo(1));
@@ -64,7 +63,6 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyB, valueB)])));
         Assert.That(harness.Nodes, Has.Count.EqualTo(1));
 
-        // delete B: empty tree hashes to zero
         root = harness.ApplyBatch([(keyB, null)]);
         Assert.That(root, Is.EqualTo(default(ValueHash256)));
         Assert.That(harness.Nodes, Is.Empty);
@@ -133,23 +131,19 @@ public class StemTrieTests(PbtGroupFormat format)
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
 
-        // brand-new stem: no node stood here, so no prior blob is read
         int before = harness.LeafReads;
         harness.ApplyBatch([(keyA5, valueA)]);
         Assert.That(harness.LeafReads - before, Is.Zero, "a brand-new stem folds without reading a prior blob");
 
-        // brand-new stem splitting off the existing one: the new stem reads nothing, and the existing
-        // stem is carried by cached hash rather than re-folded
+        // the existing stem is carried by cached hash rather than re-folded
         before = harness.LeafReads;
         harness.ApplyBatch([(keyB, valueB)]);
         Assert.That(harness.LeafReads - before, Is.Zero, "a stem splitting off an existing one reads no prior blob");
 
-        // updating the existing stem in place: its prior blob must be read to merge
         before = harness.LeafReads;
         harness.ApplyBatch([(keyA6, valueB)]);
         Assert.That(harness.LeafReads - before, Is.EqualTo(1), "updating an existing stem reads its prior blob once");
 
-        // deleting the existing stem: still an existing stem, still read once
         before = harness.LeafReads;
         ValueHash256 root = harness.ApplyBatch([(keyA5, null), (keyA6, null)]);
         Assert.That(harness.LeafReads - before, Is.EqualTo(1), "clearing an existing stem reads its prior blob once");
@@ -190,7 +184,6 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(harness.Nodes, Has.Count.EqualTo(2));
         AssertStoreMatchesFreshRebuild(harness, [(keyA, valueA), (keyC, valueC)]);
 
-        // delete C then A: hoist to a single root-group stem, then to an empty tree
         root = harness.ApplyBatch([(keyC, null)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA)])));
         Assert.That(harness.Nodes, Has.Count.EqualTo(1));
@@ -266,8 +259,6 @@ public class StemTrieTests(PbtGroupFormat format)
         ValueHash256 root = harness.ApplyBatch([(keyA1, valueA1), (keyA2, valueA2)]);
         Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the root group, the run from 4 to 40, and the group at 40");
 
-        // Rewriting A1 with the value it already holds folds to the same nodes throughout, so the run and
-        // every group above it stay exactly as they were.
         Dictionary<TrieNodeKey, byte[]> before = new(harness.Nodes);
         Assert.That(harness.ApplyBatch([(keyA1, valueA1)]), Is.EqualTo(root), "a no-op write leaves the root alone");
         Assert.That(harness.Nodes, Is.EquivalentTo(before), "and rewrites nothing under the run");
@@ -925,7 +916,7 @@ public class StemTrieTests(PbtGroupFormat format)
             }
             catch (InvalidOperationException)
             {
-                continue; // refused: fully released, which is what we want to see
+                continue;
             }
 
             ((IDisposable)memory).Dispose();
@@ -966,22 +957,8 @@ public class StemTrieTests(PbtGroupFormat format)
         }
 
         AssertChainsAreMaximal(harness);
-        AssertStatsMatchSubtreeCounts(harness);
-    }
-
-    /// <summary>
-    /// Every stored node's statistics count the stems its subtree actually holds
-    /// (<see cref="PbtSubtreeStats"/>).
-    /// </summary>
-    /// <remarks>
-    /// The rebuild comparison above already pins these, statistics being part of an encoding it
-    /// compares byte for byte — but only as a byte that differs. Counting the stems says which node
-    /// mis-hoisted, and how far out it is. The root's count is checked against the leaf blobs as well:
-    /// a stem has exactly one, so the store says how many stems there are without walking the trie at
-    /// all.
-    /// </remarks>
-    private static void AssertStatsMatchSubtreeCounts(PbtTreeHarness harness) =>
         Assert.That(CountStems(harness, TrieNodeKey.Root), Is.EqualTo(harness.Blobs.Count), "the root subtree is every stem");
+    }
 
     /// <summary>
     /// The stems under <paramref name="key"/>, counted from the store rather than hoisted, asserting

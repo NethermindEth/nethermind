@@ -47,8 +47,7 @@ public interface IPbtPersistence
         /// <summary>Null deletes the account entry.</summary>
         void SetAccount(Address address, Account? account);
 
-        /// <summary>A zero value deletes the on-disk slot entry (absence = zero).</summary>
-        /// <remarks>Grouping an address's slots into consecutive calls lets the batch reuse its key derivations.</remarks>
+        /// <summary>A zero value deletes the on-disk slot entry.</summary>
         void SetSlot(Address address, in UInt256 slot, in EvmWord value);
 
         /// <summary>Null or empty deletes the blob.</summary>

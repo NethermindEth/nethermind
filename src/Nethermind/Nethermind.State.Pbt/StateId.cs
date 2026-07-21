@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>Identity of a world state: the block that produced it and its binary tree root.</summary>
 public readonly record struct StateId(ulong BlockNumber, in ValueHash256 StateRoot)
 {
     public StateId(BlockHeader? header) : this(header is null ? ulong.MaxValue : header.Number, header?.StateRoot ?? default)
