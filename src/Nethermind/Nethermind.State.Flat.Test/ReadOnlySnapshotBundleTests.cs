@@ -128,6 +128,29 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void GetSlots_UsesSnapshotsAndBatchesOnlyPersistenceMisses()
+    {
+        StorageCell snapshotCell = new(TestItem.AddressA, (UInt256)1);
+        StorageCell persistenceCell = new(TestItem.AddressB, (UInt256)2);
+        SlotValue snapshotValue = SlotValue.FromSpanWithoutLeadingZero([0x12]);
+        SlotValue persistenceValue = SlotValue.FromSpanWithoutLeadingZero([0x34]);
+        TrackingSlotReader reader = new(persistenceCell, persistenceValue);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(
+            FlatTestHelpers.SnapshotList(MakeSnapshot(c =>
+                c.Storages[new HashedKey<(Address, UInt256)>((snapshotCell.Address, snapshotCell.Index))] = snapshotValue)),
+            reader);
+        SlotRead[] reads = [new(snapshotCell, -1), new(persistenceCell, -1)];
+        SlotValue?[] values = new SlotValue?[2];
+
+        bundle.GetSlots(reads, values);
+
+        Assert.That(values, Is.EqualTo(new SlotValue?[] { snapshotValue, persistenceValue }));
+        Assert.That(reader.GetSlotsCalls, Is.EqualTo(1));
+        Assert.That(reader.RequestedCells, Is.EqualTo(new[] { persistenceCell }));
+    }
+
+    [Test]
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
@@ -202,5 +225,32 @@ public class ReadOnlySnapshotBundleTests
         bundle.Dispose(); // tears down for real
 
         Assert.That(() => bundle.GetAccount(TestItem.AddressA), Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    private sealed class TrackingSlotReader(StorageCell cell, SlotValue value) : IPersistence.IPersistenceReader
+    {
+        public int GetSlotsCalls { get; private set; }
+        public StorageCell[]? RequestedCells { get; private set; }
+
+        public Account? GetAccount(Address address) => null;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+
+        public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<SlotValue?> values)
+        {
+            GetSlotsCalls++;
+            RequestedCells = cells.ToArray();
+            for (int i = 0; i < cells.Length; i++)
+                values[i] = cells[i].Equals(cell) ? value : null;
+        }
+
+        public StateId CurrentState => default;
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+        public void Dispose() { }
     }
 }
