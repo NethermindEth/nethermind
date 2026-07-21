@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -45,6 +46,16 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector collector = new(addressBytes, storageKeys);
             tree.Accept(collector, tree.RootHash);
             return collector.BuildResult();
+        }
+
+        [Test]
+        public void ShouldVisit_throws_when_cancellation_requested()
+        {
+            using CancellationTokenSource cts = new();
+            cts.Cancel();
+            AccountProofCollector collector = new(TestItem.AddressA, Array.Empty<UInt256>(), cts.Token);
+
+            Assert.That(() => collector.ShouldVisit(default, default), Throws.InstanceOf<OperationCanceledException>());
         }
 
         private static StateTree CreateTwoAccountTree(Account account1, Account account2)

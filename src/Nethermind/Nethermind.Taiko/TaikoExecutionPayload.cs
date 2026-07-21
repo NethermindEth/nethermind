@@ -75,11 +75,9 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     public new byte[][]? Transactions
     {
         get => _encodedTransactions is [] ? null : _encodedTransactions;
-        set
-        {
-            _encodedTransactions = value ?? [];
-            _transactions = null;
-        }
+        // Delegates so the base setter's memo invalidation (decoded transactions, tx-root task)
+        // stays in one place.
+        set => base.Transactions = value ?? [];
     }
 
     // Note: the base GetExecutionPayloadVersion override is intentionally absent.

@@ -145,7 +145,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // Bytes are needed here, so encode the snapshot on demand - paid only on a rare read of a still-pending block.
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            return _blockDecoder.Encode(pendingBlock).Bytes;
+            return _blockDecoder.EncodeAsBytes(pendingBlock);
         }
 
         Span<byte> dbKey = stackalloc byte[40];
