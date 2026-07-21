@@ -38,8 +38,10 @@ public class DebugModuleTests
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
 
     [SetUp]
-    public void Setup() =>
-        new ContainerBuilder().AddModule(new XdcHeaderModule()).Build();
+    public void Setup()
+    {
+        using IContainer container = new ContainerBuilder().AddModule(new XdcHeaderModule()).Build();
+    }
 
     [TearDown]
     public void TearDown() => Rlp.ResetDecoders();

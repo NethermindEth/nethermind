@@ -46,7 +46,7 @@ public class XdcHeaderModuleTests
     [Test]
     public void Load_registers_decoder_globally_so_static_Rlp_calls_use_it()
     {
-        new ContainerBuilder()
+        using IContainer container = new ContainerBuilder()
             .AddModule(new XdcHeaderModule())
             .Build();
 
@@ -58,7 +58,7 @@ public class XdcHeaderModuleTests
     [Test]
     public void Global_decoder_still_encodes_plain_BlockHeader()
     {
-        new ContainerBuilder()
+        using IContainer container = new ContainerBuilder()
             .AddModule(new XdcHeaderModule())
             .Build();
 
