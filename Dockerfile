@@ -30,6 +30,10 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-resolute@sha256:dae546296490fa23d67
 
 WORKDIR /nethermind
 
+# tcmalloc for native/RocksDB allocations; bare soname resolves per-arch (amd64/arm64)
+RUN apt-get update && apt-get install -y --no-install-recommends libtcmalloc-minimal4 && rm -rf /var/lib/apt/lists/*
+ENV LD_PRELOAD=libtcmalloc_minimal.so.4
+
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
