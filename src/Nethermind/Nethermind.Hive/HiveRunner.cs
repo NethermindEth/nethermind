@@ -121,7 +121,6 @@ namespace Nethermind.Hive
             Array.Sort(files, StringComparer.Ordinal);
             if (_logger.IsInfo) _logger.Info($"Loaded {files.Length} files with blocks to process.");
 
-            BlockHeader? parent = null;
             foreach (string file in files)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -132,17 +131,15 @@ namespace Nethermind.Hive
                 try
                 {
                     Block block = DecodeBlock(file);
-
-                    if (parent is null && block.Number is 1)
+                    BlockHeader? parent = FindParent(block);
+                    if (parent is null)
                     {
-                        parent = blockTree.Genesis;
+                        if (_logger.IsInfo) _logger.Info($"HIVE parent block is unavailable for {block}, skipping");
+                        continue;
                     }
 
                     if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                    if (await ProcessBlock(block, parent!))
-                    {
-                        parent = block.Header;
-                    }
+                    await ProcessBlock(block, parent);
                 }
                 catch (RlpException e)
                 {
@@ -160,7 +157,6 @@ namespace Nethermind.Hive
             }
 
             byte[] chainFileContent = fileSystem.File.ReadAllBytes(chainFile);
-            BlockHeader? parent = null;
             int position = 0;
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
@@ -170,17 +166,20 @@ namespace Nethermind.Hive
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
 
-                if (parent is null && block.Number is 1)
+                BlockHeader? parent = FindParent(block);
+                if (parent is null)
                 {
-                    parent = blockTree.Genesis;
+                    if (_logger.IsInfo) _logger.Info($"HIVE parent block is unavailable for {block}, skipping");
+                    continue;
                 }
 
-                if (await ProcessBlock(block, parent!))
-                {
-                    parent = block.Header;
-                }
+                await ProcessBlock(block, parent);
             }
         }
+
+        private BlockHeader? FindParent(Block block) => block.ParentHash is { } parentHash
+            ? blockTree.FindHeader(parentHash, BlockTreeLookupOptions.None, block.Number - 1)
+            : null;
 
         private static Block DecodeNextChainBlock(byte[] chainFileContent, int position, out int nextPosition)
         {
