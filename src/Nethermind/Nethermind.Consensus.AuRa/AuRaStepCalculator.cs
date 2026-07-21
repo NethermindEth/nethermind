@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa
@@ -15,7 +16,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        public AuRaStepCalculator(IDictionary<long, long> stepDurations, ITimestamper timestamper, ILogManager logManager)
+        public AuRaStepCalculator(IDictionary<ulong, long> stepDurations, ITimestamper timestamper, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger<AuRaStepCalculator>() ?? throw new ArgumentNullException(nameof(logManager));
             ValidateStepDurations(stepDurations);
@@ -23,22 +24,22 @@ namespace Nethermind.Consensus.AuRa
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         }
 
-        public long CurrentStep
+        public ulong CurrentStep
         {
             get
             {
-                long timestampSeconds = _timestamper.UnixTime.SecondsLong;
+                ulong timestampSeconds = _timestamper.UnixTime.Seconds;
                 return GetStepInfo(timestampSeconds).GetCurrentStep(timestampSeconds);
             }
         }
 
         public TimeSpan TimeToNextStep => new(TimeToNextStepInTicks);
 
-        public TimeSpan TimeToStep(long step)
+        public TimeSpan TimeToStep(ulong step)
         {
             UnixTime epoch = _timestamper.UnixTime;
-            StepDurationInfo currentStepInfo = GetStepInfo(epoch.SecondsLong);
-            long currentStep = currentStepInfo.GetCurrentStep(epoch.SecondsLong);
+            StepDurationInfo currentStepInfo = GetStepInfo(epoch.Seconds);
+            ulong currentStep = currentStepInfo.GetCurrentStep(epoch.Seconds);
             if (step <= currentStep)
             {
                 return TimeSpan.Zero;
@@ -46,17 +47,16 @@ namespace Nethermind.Consensus.AuRa
             else
             {
                 TimeSpan timeToNextStep = new(GetTimeToNextStepInTicks(epoch, currentStepInfo));
-                return timeToNextStep + TimeSpan.FromSeconds(currentStepInfo.StepDuration * (step - currentStep - 1));
+                return timeToNextStep + TimeSpan.FromSeconds((long)currentStepInfo.StepDuration * (long)(step - currentStep - 1));
             }
-
         }
 
-        public long CurrentStepDuration
+        public ulong CurrentStepDuration
         {
             get
             {
                 UnixTime epoch = _timestamper.UnixTime;
-                return GetStepInfo(epoch.SecondsLong).StepDuration;
+                return GetStepInfo(epoch.Seconds).StepDuration;
             }
         }
 
@@ -65,24 +65,26 @@ namespace Nethermind.Consensus.AuRa
             get
             {
                 UnixTime unixTime = _timestamper.UnixTime;
-                StepDurationInfo currentStepInfo = GetStepInfo(unixTime.SecondsLong);
+                StepDurationInfo currentStepInfo = GetStepInfo(unixTime.Seconds);
                 return GetTimeToNextStepInTicks(unixTime, currentStepInfo);
             }
         }
 
         private static long GetTimeToNextStepInTicks(UnixTime unixTime, StepDurationInfo currentStepInfo)
         {
-            long timeFromTransition = unixTime.MillisecondsLong - currentStepInfo.TransitionTimestampMilliseconds;
-            long timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
-            return (currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
+            ulong milliseconds = unixTime.Milliseconds;
+            ulong transition = currentStepInfo.TransitionTimestampMilliseconds;
+            ulong timeFromTransition = milliseconds.SaturatingSub(transition);
+            ulong timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
+            return (long)(currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
         }
 
-        private StepDurationInfo GetStepInfo(long timestampInSeconds) =>
+        private StepDurationInfo GetStepInfo(ulong timestampInSeconds) =>
             _stepDurations.TryGetForActivation(timestampInSeconds, out StepDurationInfo currentStepInfo)
                 ? currentStepInfo
                 : throw new InvalidOperationException($"Couldn't find state step duration information at timestamp {timestampInSeconds}");
 
-        private void ValidateStepDurations(IDictionary<long, long> stepDurations)
+        private void ValidateStepDurations(IDictionary<ulong, long> stepDurations)
         {
             if (stepDurations?.ContainsKey(0) != true)
             {
@@ -94,7 +96,7 @@ namespace Nethermind.Consensus.AuRa
                 throw new ArgumentException("Authority Round step duration cannot be 0.");
             }
 
-            foreach (long key in stepDurations.Keys.ToArray())
+            foreach (ulong key in stepDurations.Keys.ToArray())
             {
                 const ushort maxValue = UInt16.MaxValue;
 
@@ -106,28 +108,28 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private static IList<StepDurationInfo> CreateStepDurations(IDictionary<long, long> stepDurations)
+        private static IList<StepDurationInfo> CreateStepDurations(IDictionary<ulong, long> stepDurations)
         {
             StepDurationInfo[] result = new StepDurationInfo[stepDurations.Count];
-            KeyValuePair<long, long> firstStep = stepDurations.First();
+            KeyValuePair<ulong, long> firstStep = stepDurations.First();
             int index = 0;
-            StepDurationInfo previousStep = result[index++] = new StepDurationInfo(0, firstStep.Key, firstStep.Value);
-            foreach (KeyValuePair<long, long> currentStep in stepDurations.Skip(1))
+            StepDurationInfo previousStep = result[index++] = new StepDurationInfo(0, firstStep.Key, (ulong)firstStep.Value);
+            foreach (KeyValuePair<ulong, long> currentStep in stepDurations.Skip(1))
             {
-                long previousStepLength = currentStep.Key - previousStep.TransitionTimestamp;
-                long previousStepCount = previousStepLength / previousStep.StepDuration + (previousStepLength % previousStep.StepDuration > 0 ? 1 : 0);
-                long currentTransitionStep = previousStep.TransitionStep + previousStepCount;
-                long currentTransitionTimestamp = previousStep.TransitionTimestamp + previousStepCount * previousStep.StepDuration;
-                previousStep = result[index++] = new StepDurationInfo(currentTransitionStep, currentTransitionTimestamp, currentStep.Value);
+                ulong previousStepLength = currentStep.Key - previousStep.TransitionTimestamp;
+                ulong previousStepCount = previousStepLength / previousStep.StepDuration + (previousStepLength % previousStep.StepDuration > 0 ? 1UL : 0UL);
+                ulong currentTransitionStep = previousStep.TransitionStep + previousStepCount;
+                ulong currentTransitionTimestamp = previousStep.TransitionTimestamp + previousStepCount * previousStep.StepDuration;
+                previousStep = result[index++] = new StepDurationInfo(currentTransitionStep, currentTransitionTimestamp, (ulong)currentStep.Value);
             }
             return result;
         }
 
-        private class StepDurationInfo : IActivatedAt
+        private class StepDurationInfo : IActivatedAt<ulong>
         {
-            public StepDurationInfo(long transitionStep, long transitionTimestamp, long stepDuration)
+            public StepDurationInfo(ulong transitionStep, ulong transitionTimestamp, ulong stepDuration)
             {
-                const long millisecondsInSecond = 1000;
+                const ulong millisecondsInSecond = 1000UL;
 
                 TransitionStep = transitionStep;
                 TransitionTimestamp = transitionTimestamp;
@@ -136,14 +138,14 @@ namespace Nethermind.Consensus.AuRa
                 TransitionTimestampMilliseconds = transitionTimestamp * millisecondsInSecond;
             }
 
-            public long TransitionStep { get; }
-            public long TransitionTimestamp { get; }
-            public long TransitionTimestampMilliseconds { get; }
-            public long StepDuration { get; }
-            public long StepDurationMilliseconds { get; }
-            long IActivatedAt<long>.Activation => TransitionTimestamp;
+            public ulong TransitionStep { get; }
+            public ulong TransitionTimestamp { get; }
+            public ulong TransitionTimestampMilliseconds { get; }
+            public ulong StepDuration { get; }
+            public ulong StepDurationMilliseconds { get; }
+            ulong IActivatedAt<ulong>.Activation => TransitionTimestamp;
 
-            public long GetCurrentStep(in long timestampSeconds) => TransitionStep + (timestampSeconds - TransitionTimestamp) / StepDuration;
+            public ulong GetCurrentStep(in ulong timestampSeconds) => TransitionStep + (timestampSeconds - TransitionTimestamp) / StepDuration;
         }
     }
 }

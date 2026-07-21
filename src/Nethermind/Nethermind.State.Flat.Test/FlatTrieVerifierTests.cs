@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -42,9 +43,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _logManager = LimboLogs.Instance;
 
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        // These tests seed the Storage column with raw (un-wrapped) bytes after the persistence is built,
+        // so slot-presence detection can't kick in — pin the raw encoding up front.
+        BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
         _persistence = layout == FlatLayout.PreimageFlat
-            ? new PreimageRocksdbPersistence(_columnsDb)
-            : new RocksDbPersistence(_columnsDb);
+            ? new PreimageRocksdbPersistence(_columnsDb, _logManager)
+            : new RocksDbPersistence(_columnsDb, _logManager);
     }
 
     [TearDown]
@@ -103,7 +107,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
         addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
 
-        storageDb.Set(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros().ToArray());
+        storageDb.PutSpan(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros());
     }
 
     private void CorruptAccountInFlat(Address address, Account corruptedAccount)
@@ -113,8 +117,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             ? CreatePreimageAddressKey(address)
             : ValueKeccak.Compute(address.Bytes);
 
-        using NettyRlpStream stream = SlimAccountDecoder.EncodeToNewNettyStream(corruptedAccount);
-        accountDb.Set(addrKey.BytesAsSpan[..20], stream.AsSpan().ToArray());
+        using ArrayPoolSpan<byte> stream = SlimAccountDecoder.EncodeToArrayPoolSpan(corruptedAccount);
+        accountDb.PutSpan(addrKey.BytesAsSpan[..20], (ReadOnlySpan<byte>)stream);
     }
 
     private static ValueHash256 CreatePreimageAddressKey(Address address)

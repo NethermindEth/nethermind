@@ -69,8 +69,8 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         await using FileStream fileStream = new(destinationPath, fileMode, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
 
-        long initialProgress = fileMode == FileMode.Append ? existingSize : 0;
-        using ProgressReporter progress = new("Snapshot download", logManager, totalSize ?? 0, ProgressInterval);
+        ulong initialProgress = fileMode == FileMode.Append ? (ulong)existingSize : 0UL;
+        using ProgressReporter progress = new("Snapshot download", logManager, (ulong)(totalSize ?? 0), ProgressInterval);
         progress.Logger.SetFormat(FormatBytes(totalSize));
         progress.Update(initialProgress);
 
@@ -164,12 +164,12 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
-            long downloaded = progress.Logger.CurrentValue;
+            ulong downloaded = progress.Logger.CurrentValue;
             int bytesRead;
             while ((bytesRead = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
             {
                 await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
-                downloaded += bytesRead;
+                downloaded += (ulong)bytesRead;
                 progress.Update(downloaded);
             }
         }
@@ -182,15 +182,14 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
     private static Func<ProgressLogger, string> FormatBytes(long? totalBytes) =>
         totalBytes is null
             ? static logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)}"
-            : logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)} out of {HumanReadableSize(totalBytes.Value)}";
+            : logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)} out of {HumanReadableSize((ulong)totalBytes.Value)}";
 
-    private static string HumanReadableSize(long byteCount) =>
+    private static string HumanReadableSize(ulong byteCount) =>
         byteCount switch
         {
-            < 0 => throw new ArgumentOutOfRangeException(nameof(byteCount), "Cannot be negative"),
-            < 1024 => $"{byteCount:0.##}B",
-            < 1024 * 1024 => $"{(float)byteCount / 1024:0.##}KB",
-            < 1024 * 1024 * 1024 => $"{(float)byteCount / (1024 * 1024):0.##}MB",
-            _ => $"{(float)byteCount / (1024 * 1024 * 1024):0.##}GB",
+            < MemorySizes.KiB => $"{byteCount:0.##}B",
+            < MemorySizes.MiB => $"{(float)byteCount / MemorySizes.KiB:0.##}KB",
+            < MemorySizes.GiB => $"{(float)byteCount / MemorySizes.MiB:0.##}MB",
+            _ => $"{(float)byteCount / MemorySizes.GiB:0.##}GB",
         };
 }

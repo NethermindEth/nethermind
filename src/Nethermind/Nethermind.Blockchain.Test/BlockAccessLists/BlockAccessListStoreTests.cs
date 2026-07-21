@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -22,7 +24,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         BlockAccessListStore store = new(db);
 
-        const long blockNumber = 42;
+        const ulong blockNumber = 42;
         Hash256 blockHash = TestItem.KeccakA;
         byte[] encoded = [0xc1, 0x80];
 
@@ -39,7 +41,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         BlockAccessListStore store = new(db);
 
-        const long blockNumber = 1_000_000;
+        const ulong blockNumber = 1_000_000;
         Hash256 blockHash = TestItem.KeccakB;
         ReadOnlyBlockAccessList bal = new();
 
@@ -58,7 +60,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         BlockAccessListStore store = new(db);
 
-        const long blockNumber = 5;
+        const ulong blockNumber = 5;
         Hash256 blockHash = TestItem.KeccakC;
         byte[] encoded = [0xc1, 0x80];
         store.Insert(blockNumber, blockHash, encoded);
@@ -100,7 +102,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         BlockAccessListStore store = new(db);
 
-        const long blockNumber = 7;
+        const ulong blockNumber = 7;
         Hash256 blockHash = TestItem.KeccakA;
         byte[] encoded = [0xc1, 0x80];
 
@@ -109,5 +111,102 @@ public class BlockAccessListStoreTests
         byte[] expectedKey = Bytes.Concat(blockNumber.ToBigEndianByteArray(), blockHash.BytesToArray());
         Assert.That(db[expectedKey], Is.EqualTo(encoded));
         Assert.That(db[blockHash.Bytes], Is.Null);
+    }
+
+    [Test]
+    public async Task Deferred_insert_is_visible_before_flush_and_frees_the_live_bal()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        BlockAccessListStore store = new(db, null, writer);
+
+        byte[] bal = [0xc1, 0x80];
+        Block block = BlockWithBal(5, bal);
+        store.InsertFromBlockDeferred(block);
+
+        Assert.That(block.EncodedBlockAccessList, Is.Null, "live BAL freed synchronously");
+        Assert.That(store.Exists(block.Number, block.Hash!), Is.True, "served from the overlay before flush");
+        using (MemoryManager<byte>? pending = store.GetRlp(block.Number, block.Hash!))
+        {
+            Assert.That(pending!.Memory.ToArray(), Is.EqualTo(bal));
+        }
+
+        Assert.That(new BlockAccessListStore(db).Exists(block.Number, block.Hash!), Is.False, "not durable until flush");
+
+        writer.Pump();
+
+        Assert.That(ReadDurable(db, block), Is.EqualTo(bal));
+    }
+
+    [Test]
+    public async Task Replacing_pending_bal_coalesces_the_queued_write()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        BlockAccessListStore store = new(db, null, writer);
+
+        Block block = BlockWithBal(5, [0xc1, 0x01]);
+        store.InsertFromBlockDeferred(block);
+
+        byte[] authoritativeBal = [0xc1, 0x02];
+        block.EncodedBlockAccessList = authoritativeBal;
+        store.InsertFromBlockDeferred(block);
+
+        Assert.That(writer.QueuedCount, Is.EqualTo(1), "the replacement should reuse the existing queued operation");
+
+        writer.Pump();
+
+        Assert.That(ReadDurable(db, block), Is.EqualTo(authoritativeBal));
+    }
+
+    [Test]
+    public async Task Barrier_flush_drains_queued_bal_and_fsyncs_before_state_persists()
+    {
+        TestMemDb db = new();
+        StatePersistenceBarrier barrier = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
+        BlockAccessListStore store = new(db, null, writer, persistenceBarrier: barrier);
+
+        byte[] balA = [0xc1, 0x01];
+        byte[] balB = [0xc1, 0x02];
+        Block a = BlockWithBal(5, balA);
+        Block b = BlockWithBal(6, balB);
+        store.InsertFromBlockDeferred(a);
+        store.InsertFromBlockDeferred(b);
+
+        Assert.That(new BlockAccessListStore(db).Exists(a.Number, a.Hash!), Is.False, "not durable until the barrier flushes");
+
+        barrier.FlushDeferred();
+
+        Assert.That(ReadDurable(db, a), Is.EqualTo(balA));
+        Assert.That(ReadDurable(db, b), Is.EqualTo(balB));
+        Assert.That(db.FlushCount, Is.GreaterThan(0), "BAL WAL was fsynced before state persist");
+    }
+
+    [Test]
+    public async Task Disabled_writer_inserts_bal_synchronously()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter disabled = DeferredWriteTestHelpers.DisabledWriter();
+        BlockAccessListStore store = new(db, null, disabled);
+
+        byte[] bal = [0xc1, 0x80];
+        Block block = BlockWithBal(1, bal);
+        store.InsertFromBlockDeferred(block);
+
+        Assert.That(ReadDurable(db, block), Is.EqualTo(bal));
+    }
+
+    private static Block BlockWithBal(ulong number, byte[] encodedBal)
+    {
+        Block block = Build.A.Block.WithNumber(number).TestObject;
+        block.EncodedBlockAccessList = encodedBal;
+        return block;
+    }
+
+    private static byte[]? ReadDurable(TestMemDb db, Block block)
+    {
+        using MemoryManager<byte>? rlp = new BlockAccessListStore(db).GetRlp(block.Number, block.Hash!);
+        return rlp?.Memory.ToArray();
     }
 }

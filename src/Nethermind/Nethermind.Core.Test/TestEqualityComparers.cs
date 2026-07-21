@@ -349,8 +349,6 @@ public static class TestEqualityComparers
                 actual.Nonce == expected.Nonce &&
                 (!compareHash || actual.Hash == expected.Hash) &&
                 actual.TotalDifficulty == expected.TotalDifficulty &&
-                BytesEqual(actual.AuRaSignature, expected.AuRaSignature) &&
-                actual.AuRaStep == expected.AuRaStep &&
                 actual.BaseFeePerGas == expected.BaseFeePerGas &&
                 actual.WithdrawalsRoot == expected.WithdrawalsRoot &&
                 actual.ParentBeaconBlockRoot == expected.ParentBeaconBlockRoot &&

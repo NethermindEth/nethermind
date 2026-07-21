@@ -45,8 +45,8 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
         private Hash256? _terminalBlockHash;
 
-        private long? _terminalBlockNumber;
-        private long? _firstPoSBlockNumber;
+        private ulong? _terminalBlockNumber;
+        private ulong? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
         private Hash256 _finalizedBlockHash = Keccak.Zero;
         private bool _terminalBlockExplicitSpecified;
@@ -172,6 +172,12 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = false;
             }
+            else if (IsPostMergeGenesis(header))
+            {
+                // EIP-3675 chains with chain-spec TTD == 0 are post-merge from genesis.
+                isTerminal = false;
+                isPostMerge = true;
+            }
             else if (header.TotalDifficulty is not null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
             {
                 // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
@@ -212,6 +218,11 @@ namespace Nethermind.Merge.Plugin
         public bool IsPostMerge(BlockHeader header) =>
             GetBlockConsensusInfo(header).IsPostMerge;
 
+        // Use chain-spec TTD, not effective spec-provider TTD, so MergeConfig test overrides
+        // do not change genesis classification.
+        private bool IsPostMergeGenesis(BlockHeader header) =>
+            header.IsGenesis && _chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true;
+
         public bool HasEverReachedTerminalBlock() => _hasEverReachedTerminalDifficulty;
 
         public event EventHandler? TerminalBlockReached;
@@ -222,7 +233,7 @@ namespace Nethermind.Merge.Plugin
 
         public Hash256 ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
 
-        public long? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber;
+        public ulong? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber;
 
         private void LoadTerminalBlock()
         {
@@ -240,15 +251,15 @@ namespace Nethermind.Merge.Plugin
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
         }
 
-        private long? LoadTerminalBlockNumberFromDb()
+        private ulong? LoadTerminalBlockNumberFromDb()
         {
             try
             {
                 if (_metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber))
                 {
                     byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
-                    Rlp.ValueDecoderContext ctx = hashFromDb.AsRlpValueContext();
-                    return ctx.DecodeLong();
+                    RlpReader ctx = new(hashFromDb);
+                    return ctx.DecodeULong();
                 }
             }
             catch (RlpException)
@@ -266,7 +277,7 @@ namespace Nethermind.Merge.Plugin
                 if (_metadataDb.KeyExists(key))
                 {
                     byte[]? hashFromDb = _metadataDb.Get(key);
-                    Rlp.ValueDecoderContext ctx = hashFromDb.AsRlpValueContext();
+                    RlpReader ctx = new(hashFromDb);
                     return ctx.DecodeKeccak();
                 }
             }

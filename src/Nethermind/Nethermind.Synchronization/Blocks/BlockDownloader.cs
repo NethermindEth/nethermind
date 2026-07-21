@@ -114,10 +114,10 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_syncReport.FullSyncBlocksDownloaded.TargetValue, e.Block.Number);
-            _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+            _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0UL);
         }
 
-        public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
+        public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, ulong fastSyncLag, CancellationToken cancellation)
         {
             await _requestLock.WaitAsync(cancellation);
             try
@@ -135,14 +135,14 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
+        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, ulong fastSyncLag, CancellationToken cancellation)
         {
             bool originalDownloadReceiptOpts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            long bestProcessedBlock = 0;
-            long previousStartingHeaderNumber = -1;
+            ulong bestProcessedBlock = 0;
+            ulong? previousStartingHeaderNumber = null;
 
             while (true)
             {
@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.Blocks
                     return null;
                 }
 
-                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, HeaderLookupSize + 1, cancellation);
+                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, (ulong)HeaderLookupSize + 1, cancellation);
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 bool shouldProcess;
                 bool downloadReceipts;
@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Processing {satisfiedEntry.Count} entries from {satisfiedEntry[0]?.Header.Number ?? -1} to {satisfiedEntry[^1]?.Header.Number ?? -1}");
+                    if (_logger.IsDebug) _logger.Debug($"Processing {satisfiedEntry.Count} entries from {satisfiedEntry[0]?.Header.Number ?? ulong.MaxValue} to {satisfiedEntry[^1]?.Header.Number ?? ulong.MaxValue}");
                 }
 
                 for (int blockIndex = 0; blockIndex < satisfiedEntry.Count; blockIndex++)
@@ -247,7 +247,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (blocksSynced > 0)
                 {
-                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
+                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0UL);
                 }
 
                 _syncReport.FullSyncBlocksDownloaded.CurrentQueued = _downloadRequests.Count;
@@ -665,7 +665,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!shouldProcess)
             {
-                _blockTree.UpdateMainChain([currentBlock], false);
+                _blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]);
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);
@@ -674,28 +674,27 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         private (bool shouldProcess, bool shouldDownloadReceipt) ReceiptEdgeCase(
-            long bestProcessedBlock,
-            long firstBlockNumber,
+            ulong bestProcessedBlock,
+            ulong firstBlockNumber,
             bool shouldProcess,
             bool shouldDownloadReceipt)
         {
             if (shouldProcess && !shouldDownloadReceipt)
             {
-                long firstBlock = firstBlockNumber;
-                // TODO: Double check this condition
-                // An edge case where we already have the state but are still downloading preceding blocks.
-                // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
-                // Therefore, we detect this situation and switch from processing to receipts downloading.
+                // Persisted state can sit ahead of the head: a fast-sync to full-sync transition, or a
+                // crash that left it ahead. Blocks at or below it already have their post-state; processing
+                // them finds no parent state, throws, and deletes the branch. Download receipts instead.
+                ulong headNumber = _blockTree.Head?.Number ?? 0;
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                bool toBeProcessedHasNoProcessedParent = firstBlock > (bestProcessedBlock + 1);
-                bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
-                if (isFastSyncTransition)
+                bool isFastSyncTransition = headIsGenesis && firstBlockNumber > (bestProcessedBlock + 1);
+                ulong bestFullState = _fullStateFinder.FindBestFullState();
+                bool persistedStateAheadOfHead = bestFullState > headNumber;
+                if (isFastSyncTransition || persistedStateAheadOfHead)
                 {
-                    long bestFullState = _fullStateFinder.FindBestFullState();
-                    shouldProcess = firstBlock > bestFullState && bestFullState != 0;
+                    shouldProcess = firstBlockNumber > bestFullState && bestFullState != 0;
                     if (!shouldProcess)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlock}, bestFullState: {bestFullState}, trying to load receipts");
+                        if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlockNumber}, bestFullState: {bestFullState}, trying to load receipts");
                         shouldDownloadReceipt = true;
                     }
                 }

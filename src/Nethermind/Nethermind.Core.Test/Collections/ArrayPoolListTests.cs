@@ -221,6 +221,19 @@ public class ArrayPoolListTests
     }
 
     [Test]
+    public void Construct_from_ICollection_copies_all_items()
+    {
+        // HashSet is an ICollection<T> but neither an array nor a list, so it exercises the bulk CopyTo path.
+        HashSet<int> source = Enumerable.Range(0, 50).ToHashSet();
+        using ArrayPoolList<int> list = new(source.Count, source);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EquivalentTo(source));
+            Assert.That(list.Count, Is.EqualTo(50));
+        }
+    }
+
+    [Test]
     public void Should_implement_IList_the_same_as_IListT()
     {
         using ArrayPoolList<int> listT = new(1024);
@@ -375,6 +388,40 @@ public class ArrayPoolListTests
         public override void Return(T[] array, bool clearArray = false)
         {
         }
+    }
+
+    [Test]
+    public void Uninitialized_exposes_requested_count_and_capacity()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 10, 10, clearFirst: false);
+
+        Assert.That(list.Count, Is.EqualTo(10));
+        Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
+        Assert.That(list.AsSpan().Length, Is.EqualTo(10));
+        Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+    }
+
+    [Test]
+    public void Uninitialized_is_fully_writable_through_span()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 8, 8, clearFirst: false);
+
+        Span<int> span = list.AsSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            span[i] = i * 7;
+        }
+
+        Assert.That(list, Is.EqualTo(Enumerable.Range(0, 8).Select(i => i * 7)));
+    }
+
+    [Test]
+    public void Uninitialized_with_zero_count_is_empty()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 0, 0, clearFirst: false);
+
+        Assert.That(list.Count, Is.EqualTo(0));
+        Assert.That(list.AsSpan().Length, Is.EqualTo(0));
     }
 
 #if DEBUG

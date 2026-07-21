@@ -4,7 +4,6 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -48,7 +47,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
 
         block.EncodedBlockAccessList = BlockAccessList;
-        block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes);
+        block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : block.BlockAccessList!.WireHash;
         block.Header.SlotNumber = SlotNumber;
 
         return baseResult;

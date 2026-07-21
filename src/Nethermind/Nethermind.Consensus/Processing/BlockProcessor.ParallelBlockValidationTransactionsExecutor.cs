@@ -12,7 +12,6 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -54,9 +53,16 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            return !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
+
+            // Seed empty/system-only blocks with the base fee, then publish gauges once - after workers
+            // join - from the final aggregates so a stale worker view cannot overwrite them.
+            Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
+            Metrics.PublishBlockGasPriceGauges();
+
+            return receipts;
         }
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
@@ -68,8 +74,8 @@ public partial class BlockProcessor
             // makes the building intent explicit on this hot path.
             bool shouldValidateBal = shouldValidate && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            long totalRegularGas = 0;
-            long totalStateGas = 0;
+            ulong totalRegularGas = 0;
+            ulong totalStateGas = 0;
 
             balManager.NextTransaction();
             if (shouldValidateBal) balManager.ValidateBlockAccessList(block, 0);
@@ -77,13 +83,12 @@ public partial class BlockProcessor
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
                 if (shouldValidate)
                 {
-                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas, in intrinsicGas);
+                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas);
                 }
 
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner, in intrinsicGas);
+                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner);
                 totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
@@ -149,24 +154,15 @@ public partial class BlockProcessor
                             {
                                 if (i == 0)
                                 {
-                                    // ApplyStateChanges mutates the shared stateProvider so runs inside
-                                    // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                                    // workers read from BAL-backed world states, not stateProvider, so
-                                    // neither races with this write.
+                                    state.balManager.WaitForBalWarmup();
                                     BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                     return state;
                                 }
 
                                 int txIndex = state.txExecutionOrder[i - 1];
                                 Transaction tx = state.txs[txIndex];
-                                // Pre-compute intrinsic gas on the worker thread; carry it through the
-                                // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
-                                // check doesn't recalculate dynamic state-byte costs on the validator.
-                                IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
                                 try
                                 {
-                                    intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);
-
                                     // The using block detaches the worker's BAL into _perTxBal[txIndex + 1] and
                                     // recycles the pool slot via Dispose BEFORE we signal the gas result,
                                     // so the validator finds the canonical BAL slot populated when it awaits
@@ -181,10 +177,9 @@ public partial class BlockProcessor
                                             txIndex,
                                             state.receiptsTracers[txIndex],
                                             state.processingOptions,
-                                            state.inner,
-                                            in intrinsicGas);
+                                            state.inner);
                                     }
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                                 }
                                 catch (InvalidBlockException ex)
                                 {
@@ -194,7 +189,7 @@ public partial class BlockProcessor
                                     // rethrows on `ex is not null` before doing any accounting, so the
                                     // tuple values here are observed only as cross-mode telemetry; we
                                     // still report (0, 0) so any future consumer agrees with sequential.
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, intrinsicGas, ex));
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, ex));
                                 }
                                 catch
                                 {
@@ -239,7 +234,7 @@ public partial class BlockProcessor
                 }
 
                 incrementalValidation.GetResult();
-                return CombineReceipts(receiptsTracers, len, block);
+                return CombineReceipts(receiptsTracers, len);
             }
             finally
             {
@@ -340,7 +335,7 @@ public partial class BlockProcessor
             // exactly which tx caused the rejection. Recompute GasUsedTotal across the harvested
             // sequence: each per-tx tracer's _cumulativeReceiptGas only tracks that single tx
             // (resets to 0 per tracer), so the dump would otherwise show GasUsedTotal = GasUsed.
-            long cumulativeGas = 0;
+            ulong cumulativeGas = 0;
             for (int i = 0; i < length; i++)
             {
                 ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
@@ -352,22 +347,17 @@ public partial class BlockProcessor
             }
         }
 
-        private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
+        private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len)
         {
             TxReceipt[] result = new TxReceipt[len];
-            long cumulativeGas = 0;
-            Bloom blockBloom = new();
+            ulong cumulativeGas = 0;
             for (int i = 0; i < len; i++)
             {
                 result[i] = receiptsTracers[i].TxReceipts[0];
                 result[i].Index = i;
                 cumulativeGas += result[i].GasUsed;
                 result[i].GasUsedTotal = cumulativeGas;
-                result[i].CalculateBloom();
-                blockBloom.Accumulate(result[i].Bloom!);
             }
-
-            block.Header.Bloom = blockBloom;
 
             return result;
         }
@@ -380,14 +370,13 @@ public partial class BlockProcessor
             int index,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
-            IBlockProcessor.IBlockTransactionsExecutor inner,
-            in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
+            IBlockProcessor.IBlockTransactionsExecutor inner)
         {
             long txStart = inner.StartTxTimer();
             TransactionResult result;
             try
             {
-                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
+                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
             }
             finally
             {
@@ -402,7 +391,7 @@ public partial class BlockProcessor
         /// schedule is deterministic.</summary>
         private readonly struct TxExecutionSortKey(Transaction tx, int index) : IComparable<TxExecutionSortKey>
         {
-            private readonly long _gasLimit = tx.GasLimit;
+            private readonly ulong _gasLimit = tx.GasLimit;
             private readonly int _dataLength = tx.DataLength;
             private readonly int _authorizationCount = tx.AuthorizationList?.Length ?? 0;
             private readonly int _accessListItems = GetAccessListItemCount(tx.AccessList);

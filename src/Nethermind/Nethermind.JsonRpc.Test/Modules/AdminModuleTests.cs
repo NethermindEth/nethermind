@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -100,7 +101,8 @@ public class AdminModuleTests
             new ChainSpec { Parameters = new ChainParameters() }.Parameters,
             Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingPauseControl>());
         _adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 
         _serializer = new EthereumJsonSerializer();
@@ -610,10 +612,57 @@ public class AdminModuleTests
         Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32).ToArray(), Is.EqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
     }
 
+    [TestCase(true, TestName = "pause delegates to Pause")]
+    [TestCase(false, TestName = "resume delegates to Resume")]
+    public void Admin_blockProcessingVerb_delegatesToControlAndReportsAccepted(bool pause)
+    {
+        IBlockProcessingPauseControl control = Substitute.For<IBlockProcessingPauseControl>();
+        IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: control);
+        control.IsPaused.Returns(pause);
+
+        ResultWrapper<bool> result = pause
+            ? module.admin_pauseBlockProcessing()
+            : module.admin_resumeBlockProcessing();
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (pause)
+            {
+                control.Received(1).Pause();
+                control.DidNotReceive().Resume();
+            }
+            else
+            {
+                control.Received(1).Resume();
+                control.DidNotReceive().Pause();
+            }
+
+            Assert.That(result.Data, Is.True, "the verb returns true once the processor reached the requested state");
+        }
+    }
+
+    [Test]
+    public void Admin_isBlockProcessingPaused_returnsStateWithoutMutating()
+    {
+        IBlockProcessingPauseControl control = Substitute.For<IBlockProcessingPauseControl>();
+        IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: control);
+        control.IsPaused.Returns(true);
+
+        ResultWrapper<bool> result = module.admin_isBlockProcessingPaused();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.True, "the query reflects the paused state");
+            control.DidNotReceive().Pause();
+            control.DidNotReceive().Resume();
+        }
+    }
+
     private IAdminRpcModule BuildAdminRpcModuleWith(
         IStaticNodesManager? staticNodesManager = null,
         ITrustedNodesManager? trustedNodesManager = null,
-        IPeerPool? peerPool = null)
+        IPeerPool? peerPool = null,
+        IBlockProcessingPauseControl? blockProcessingPauseControl = null)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
@@ -627,7 +676,8 @@ public class AdminModuleTests
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            blockProcessingPauseControl ?? Substitute.For<IBlockProcessingPauseControl>());
     }
 
     private JsonRpcResult RaisePeerEventAndCapture(Action raiseEvent, out string subscriptionId, bool disposeSubscription = false, bool shouldReceive = true)
@@ -643,7 +693,9 @@ public class AdminModuleTests
 
         raiseEvent();
 
-        Assert.That(manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)), Is.EqualTo(shouldReceive), "the subscription should fire within the timeout");
+        // Dispatch is async (background channel reader), so a tight deadline yields false timeouts under load.
+        TimeSpan timeout = shouldReceive ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(1);
+        Assert.That(manualResetEvent.WaitOne(timeout), Is.EqualTo(shouldReceive), "the subscription should fire within the timeout");
         subscriptionId = peerEventsSubscription.Id;
         if (disposeSubscription)
         {
@@ -689,7 +741,8 @@ public class AdminModuleTests
             new ChainParameters(),
             Substitute.For<ITrustedNodesManager>(),
             subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingPauseControl>());
     }
 
     private static IPeerPool CreatePeerPool(Peer peer)

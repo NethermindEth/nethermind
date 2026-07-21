@@ -39,7 +39,7 @@ public class FlatRocksDbConfigAdjusterTests
     public void NonFlatDatabase_ReturnsBaseConfig()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
-        _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000L);
+        _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000UL);
 
         FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
 
@@ -52,7 +52,7 @@ public class FlatRocksDbConfigAdjusterTests
     public void FlatDatabase_WithFlatLayout_DoesNotAddPartitionedIndexOptions()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
-        _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000L);
+        _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000UL);
 
         FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
 
@@ -67,7 +67,7 @@ public class FlatRocksDbConfigAdjusterTests
     public void FlatDatabase_WithFlatInTrieLayout_AddsPartitionedIndexOptions()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.FlatInTrie);
-        _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000L);
+        _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000UL);
 
         FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
 
@@ -82,7 +82,7 @@ public class FlatRocksDbConfigAdjusterTests
     public void FlatDatabase_DelegatesToBaseFactoryWithCorrectParameters()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
-        _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000L);
+        _flatDbConfig.BlockCacheSizeBudget.Returns(1_000_000_000UL);
 
         FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
 

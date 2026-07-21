@@ -31,7 +31,7 @@ namespace Nethermind.Facade
         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default);
-        SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken);
+        SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default);
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, CancellationToken cancellationToken = default);
@@ -57,10 +57,10 @@ namespace Nethermind.Facade
         bool HasStateForBlock(BlockHeader? baseBlock);
 
         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
-        Witness GenerateExecutionWitness(BlockHeader header, Transaction tx);
+        SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default);
 
-        ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash);
-        MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash);
-        void DeleteBlockAccessList(long blockNumber, Hash256 blockHash);
+        ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash);
+        MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash);
+        void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash);
     }
 }

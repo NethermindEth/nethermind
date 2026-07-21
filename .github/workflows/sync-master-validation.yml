@@ -34,6 +34,10 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
+concurrency:
+  group: sync-master-validation-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest
@@ -78,8 +82,8 @@ jobs:
               ;;
           esac
 
-          # Filter testnet-matrix.json to master-validation chains only
-          MASTER_CHAINS='["mainnet","gnosis","op-mainnet"]'
+          # master-validation chains; op-mainnet dropped to cut Linode cost (kept in sync-supported-chains)
+          MASTER_CHAINS='["mainnet","gnosis"]'
 
           matrix=$(cat scripts/config/testnet-matrix.json | jq \
             --argjson chains "$MASTER_CHAINS" \

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -36,10 +37,55 @@ public class NodeRecordTests
     }
 
     [Test]
-    public void Cannot_get_enr_string_when_signature_missing()
+    public void Cannot_encode_to_string_when_signature_missing()
     {
         NodeRecord nodeRecord = new();
-        Assert.Throws<Exception>(() => _ = nodeRecord.EnrString);
+        Assert.Throws<Exception>(() => _ = nodeRecord.ToString());
+    }
+
+    [TestCase("192.0.2.1", "", -1, 30304, "192.0.2.1", -1)]
+    [TestCase("192.0.2.1", "2001:db8::1", -1, 30304, "2001:db8::1", 30304)]
+    [TestCase("", "2001:db8::1", 30303, -1, "2001:db8::1", 30303)]
+    public void Ip_is_common_and_discovery_port_uses_matching_family(string ip, string ip6, int udp, int udp6, string expectedIp, int expectedPort)
+    {
+        NodeRecord nodeRecord = new();
+
+        if (!string.IsNullOrEmpty(ip))
+        {
+            nodeRecord.SetEntry(new IpEntry(IPAddress.Parse(ip)));
+        }
+
+        if (!string.IsNullOrEmpty(ip6))
+        {
+            nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse(ip6)));
+        }
+
+        if (udp >= 0)
+        {
+            nodeRecord.SetEntry(new UdpEntry(udp));
+        }
+
+        if (udp6 >= 0)
+        {
+            nodeRecord.SetEntry(new Udp6Entry(udp6));
+        }
+
+        if (expectedPort < 0)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nodeRecord.Ip, Is.EqualTo(IPAddress.Parse(expectedIp)));
+                Assert.That(nodeRecord.DiscoveryPort, Is.Null);
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nodeRecord.Ip, Is.EqualTo(IPAddress.Parse(expectedIp)));
+                Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(expectedPort));
+            }
+        }
     }
 
     [Test]

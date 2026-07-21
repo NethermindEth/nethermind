@@ -13,6 +13,10 @@ using System.Runtime.Intrinsics;
 using Arm = System.Runtime.Intrinsics.Arm;
 using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
+#if ZK_EVM
+// RISC-V lacks CRC32C; route hashing to the guest substitute (see ZkEvmBitOperations).
+using BitOperations = Nethermind.Core.Extensions.ZkEvmBitOperations;
+#endif
 
 namespace Nethermind.Core.Extensions
 {
@@ -594,6 +598,58 @@ namespace Nethermind.Core.Extensions
                 throw new OverflowException($"Value {value} exceeds maximum allowed value");
             }
         }
+
+        /// <summary>
+        /// Decodes a big-endian byte span (up to 8 bytes long) into an unsigned 64-bit integer.
+        /// Inputs longer than 8 bytes are accepted only if all leading bytes are zero.
+        /// </summary>
+        public static ulong ToULong(this ReadOnlySpan<byte> bytes)
+        {
+            return bytes.Length switch
+            {
+                0 => 0UL,
+                < 8 => ReadUInt64BigEndian1To7(bytes),
+                8 => BinaryPrimitives.ReadUInt64BigEndian(bytes),
+                _ => ParseLargeSpan(bytes),
+            };
+
+            static ulong ParseLargeSpan(ReadOnlySpan<byte> bytes)
+            {
+                int prefixLen = bytes.Length - 8;
+                if (bytes.Slice(0, prefixLen).IndexOfAnyExcept((byte)0) >= 0)
+                    ThrowExceedsMaxValue(bytes);
+                return BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(prefixLen));
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static ulong ReadUInt64BigEndian1To7(ReadOnlySpan<byte> s)
+            {
+                Debug.Assert((uint)s.Length - 1u < 7u);
+
+                ref byte r0 = ref MemoryMarshal.GetReference(s);
+
+                return s.Length switch
+                {
+                    1 => r0,
+                    2 => ((ulong)r0 << 8) | Unsafe.Add(ref r0, 1),
+                    3 => ((ulong)r0 << 16) | ((ulong)Unsafe.Add(ref r0, 1) << 8) | Unsafe.Add(ref r0, 2),
+                    4 => BinaryPrimitives.ReadUInt32BigEndian(s),
+                    5 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 8) | Unsafe.Add(ref r0, 4),
+                    6 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 16) | ((ulong)Unsafe.Add(ref r0, 4) << 8) | Unsafe.Add(ref r0, 5),
+                    7 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 24) | ((ulong)Unsafe.Add(ref r0, 4) << 16) | ((ulong)Unsafe.Add(ref r0, 5) << 8) | Unsafe.Add(ref r0, 6),
+                    _ => 0
+                };
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowExceedsMaxValue(ReadOnlySpan<byte> bytes)
+            {
+                BigInteger value = new(bytes, isUnsigned: true, isBigEndian: true);
+                throw new OverflowException($"Value {value} exceeds maximum allowed value");
+            }
+        }
+
+        public static ulong ToULong(this byte[] bytes) => ToULong((ReadOnlySpan<byte>)bytes);
 
         /// <summary>
         /// Computes a very fast, non-cryptographic 64-bit hash of exactly 32 bytes.

@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
@@ -39,7 +40,7 @@ public class FlatSnapServerTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
         _codeDb = new MemDb();
 
         byte[] rootRlp = BuildRootRlp(out _rootHash);
@@ -48,7 +49,7 @@ public class FlatSnapServerTests
 
         _flatDbManager = Substitute.For<IFlatDbManager>();
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
-            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false));
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()));
 
         _stateRootIndex = Substitute.For<IFlatStateRootIndex>();
         _stateRootIndex.TryGetStateId(Arg.Any<Hash256>(), out Arg.Any<StateId>())
@@ -95,7 +96,7 @@ public class FlatSnapServerTests
         _stateId = new StateId(0, _rootHash.ValueHash256);
 
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
-            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false));
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()));
 
         WriteState(stateRootRlp, addressHash, storageRootRlp);
 
@@ -110,6 +111,17 @@ public class FlatSnapServerTests
         using IByteArrayList result = _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
 
         Assert.That(result.Count, Is.LessThan(RequestCount));
+    }
+
+    [Test]
+    public void GetTrieNodes_EmptyPathGroup_ReturnsNull()
+    {
+        // A path group with no paths is a malformed request; the whole response must be null.
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = [] }]);
+
+        IByteArrayList? result = _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None);
+
+        Assert.That(result, Is.Null);
     }
 
     private static byte[] BuildRootRlp(out Hash256 rootHash)

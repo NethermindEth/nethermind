@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
+            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo, new BlockForRpcFactory());
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null, bool shouldReceiveResult = true)
         {
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, options);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, new BlockForRpcFactory(), options);
 
             JsonRpcResult jsonRpcResult = new();
 
@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return jsonRpcResult;
         }
 
-        private SyncingSubscription GetSyncingSubscription(int bestSuggested, int head)
+        private SyncingSubscription GetSyncingSubscription(ulong bestSuggested, ulong head)
         {
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(bestSuggested).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
@@ -345,7 +345,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider, new BlockForRpcFactory());
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
 
             Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
@@ -371,10 +371,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                     manualResetEvent.Set();
             }));
 
-            blockTree.UpdateMainChain(new Block[] { block1, block2, block3 }, true);
+            // Explicit-extent moves (genesis is not canonical in this lightweight tree, and these are sibling
+            // branches off it), so move exactly the supplied blocks rather than walking back to genesis.
+            blockTree.ForceMainChainForTest(new Block[] { block1, block2, block3 });
             manualResetEvent.WaitOne();
             manualResetEvent.Reset();
-            blockTree.UpdateMainChain(new Block[] { block1B, block2B }, true);
+            blockTree.ForceMainChainForTest(new Block[] { block1B, block2B });
             manualResetEvent.WaitOne();
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(5));
@@ -395,7 +397,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider, new BlockForRpcFactory());
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
 
             Block block0 = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
@@ -424,7 +426,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
             }));
 
-            blockTree.UpdateMainChain(blocks, true);
+            // The list includes genesis and the test expects a notification per block (21). The walk stops at
+            // genesis without re-moving it, so move exactly the supplied blocks to fire all 21 events.
+            blockTree.ForceMainChainForTest(blocks);
 
             manualResetEvent.WaitOne();
 
@@ -463,12 +467,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
-        [Test]
-        public async Task LogsSubscription_with_invalid_arguments_creating_result()
+        [TestCase("invalid_param")]
+        [TestCase("{\"fromBlock\":\"-1\"}")]
+        [TestCase("{\"fromBlock\":\"0x10000000000000000\"}")]
+        [TestCase("{\"toBlock\":\"notanumber\"}")]
+        [TestCase("{\"address\":\"0xzz705ae4c6f81b66cdb323c65f4e8133690fc099\"}")]
+        [TestCase("{\"blockHash\":\"0xzz783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"}")]
+        public async Task LogsSubscription_with_malformed_args_returns_invalid_params(string args)
         {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "invalid_param");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
-            Assert.That(expectedResult, Is.EqualTo(serialized));
+            Assert.That(expectedResult, Is.EqualTo(serialized), "malformed eth_subscribe/logs args should map to InvalidParams, not InternalError");
         }
 
         [Test]
@@ -483,7 +492,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -504,7 +513,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_not_matching_block_on_NewHeadBlock_event()
         {
-            int blockNumber = 22222;
+            ulong blockNumber = 22222;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -522,7 +531,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_one_TxReceipt_with_few_logs()
         {
-            int blockNumber = 77777;
+            ulong blockNumber = 77777;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -554,7 +563,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -600,7 +609,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_address_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = new()
             {
                 FromBlock = BlockParameter.Latest,
@@ -647,7 +656,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_topic_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
 
             Filter filter = new()
             {
@@ -694,7 +703,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_few_topics_and_some_address_and_topic_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
 
             Filter filter = new()
             {
@@ -747,7 +756,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_should_not_send_logs_of_new_txs_on_ReceiptsInserted_event_but_on_NewHeadBlock_event()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
@@ -951,7 +960,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                         jsonRpcDuplexClient: client,
                         blockTree: blockTree,
                         specProvider: new TestSpecProvider(new ReleaseSpec()),
-                        logManager: LimboLogs.Instance
+                        logManager: LimboLogs.Instance,
+                        blockForRpcFactory: new BlockForRpcFactory()
                     );
 
                 for (int i = 0; i < messages; i++)
@@ -1191,7 +1201,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_can_send_logs_with_removed_txs_when_inserted()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);

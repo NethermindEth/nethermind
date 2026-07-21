@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -154,7 +153,7 @@ public class TestingRpcModuleTests
     {
         Transaction mempoolTx = BuildSignedTransactions(1)[0];
         ITxSource txSource = Substitute.For<ITxSource>();
-        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns(new[] { mempoolTx });
 
         (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(txSource: txSource);
@@ -167,9 +166,9 @@ public class TestingRpcModuleTests
         Assert.That(((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Length, Is.EqualTo(expectedTxCount));
 
         if (useNull)
-            txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), true);
+            txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), true);
         else
-            txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
+            txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
     }
 
     [Test]
@@ -218,7 +217,7 @@ public class TestingRpcModuleTests
     [Test]
     public async Task Testing_commitBlockV1_commits_block_to_chain_head()
     {
-        (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) =
+        (TestingRpcModule module, RecordingCommitBlockTree blockTree, BlockHeader chainHeadHeader) =
             CreateCommitTestingModule(suggestResult: AddBlockResult.Added);
 
         ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
@@ -228,9 +227,7 @@ public class TestingRpcModuleTests
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
 
-        Block suggested = (Block)blockTree.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlock))
-            .GetArguments()[0]!;
+        Block suggested = blockTree.SuggestedBlock!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(suggested.Header.Number, Is.EqualTo(chainHeadHeader.Number + 1));
@@ -242,7 +239,7 @@ public class TestingRpcModuleTests
     [Test]
     public async Task Testing_commitBlockV1_skips_reprocessing_by_setting_main_chain_directly()
     {
-        (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) =
+        (TestingRpcModule module, RecordingCommitBlockTree blockTree, BlockHeader chainHeadHeader) =
             CreateCommitTestingModule(suggestResult: AddBlockResult.Added);
 
         ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
@@ -250,34 +247,24 @@ public class TestingRpcModuleTests
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
 
-        BlockTreeSuggestOptions suggestOptions = (BlockTreeSuggestOptions)blockTree.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlock))
-            .GetArguments()[1]!;
-        Assert.That(suggestOptions, Is.EqualTo(BlockTreeSuggestOptions.ForceDontSetAsMain),
+        Assert.That(blockTree.SuggestOptions, Is.EqualTo(BlockTreeSuggestOptions.ForceDontSetAsMain),
             "ShouldProcess would force the main BlockchainProcessor to re-execute every tx; " +
-            "ForceDontSetAsMain leaves the main-chain write to UpdateMainChain (single writer).");
+            "ForceDontSetAsMain leaves the main-chain write to TryUpdateMainChain (single writer).");
 
-        object?[] updateMainChainArgs = blockTree.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.UpdateMainChain))
-            .GetArguments();
-        IReadOnlyList<Block> updatedBlocks = (IReadOnlyList<Block>)updateMainChainArgs[0]!;
-        bool wereProcessed = (bool)updateMainChainArgs[1]!;
-        bool forceHeadBlock = (bool)updateMainChainArgs[2]!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(updatedBlocks.Count, Is.EqualTo(1));
-            Assert.That(wereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
-            Assert.That(forceHeadBlock, Is.True,
-                "post-merge chains have TotalDifficulty=0; without forceHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");
+            Assert.That(blockTree.TryUpdatePreloadedBlocks?.Length, Is.EqualTo(1), "the already-executed block is handed over as the preloaded cache, not re-read");
+            Assert.That(blockTree.TryUpdateWereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
+            Assert.That(blockTree.TryUpdateForceUpdateHeadBlock, Is.True,
+                "post-merge chains have TotalDifficulty=0; without forceUpdateHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");
         }
     }
 
     [Test]
     public async Task Testing_commitBlockV1_passes_correct_flags_to_producer()
     {
-        // ReadOnlyChain must NOT be set — empirically, the producer pass under FlatDb
-        // only appends a snapshot bundle when the chain is not read-only; without it the
-        // next testing_commitBlockV1's BeginScope(parent) fails with "Unable to gather snapshots".
+        // Options must mirror BlockProducerBase.GetProcessingOptions for BuildBlocksOnMainState;
+        // state persistence itself is covered end-to-end by TestingRpcModuleBlockchainTests.
         ProcessingOptions? observedOptions = null;
         (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
             CreateCommitTestingModule(suggestResult: AddBlockResult.Added,
@@ -293,8 +280,7 @@ public class TestingRpcModuleTests
             Assert.That(opts.ContainsFlag(ProcessingOptions.NoValidation), Is.True);
             Assert.That(opts.ContainsFlag(ProcessingOptions.ForceProcessing), Is.True);
             Assert.That(opts.ContainsFlag(ProcessingOptions.DoNotUpdateHead), Is.True);
-            Assert.That(opts.ContainsFlag(ProcessingOptions.ReadOnlyChain), Is.False,
-                "ReadOnlyChain blocks FlatDb snapshot append; the producer must write FlatDb here");
+            Assert.That(opts.ContainsFlag(ProcessingOptions.ReadOnlyChain), Is.False);
         }
     }
 
@@ -358,7 +344,8 @@ public class TestingRpcModuleTests
         Action<Block>? onProcess = null,
         Func<Block, Block?>? processOverride = null,
         ITxSource? txSource = null,
-        Action<Block, ProcessingOptions>? onProcessWithOptions = null)
+        Action<Block, ProcessingOptions>? onProcessWithOptions = null,
+        IBlockTree? blockTree = null)
     {
         BlockHeader parentHeader = CreateDefaultParentHeader(slotNumber);
 
@@ -366,7 +353,7 @@ public class TestingRpcModuleTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? Osaka.Instance);
 
         IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
-        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Returns(parentHeader.GasLimit);
 
         IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess, onProcessWithOptions);
 
@@ -379,12 +366,15 @@ public class TestingRpcModuleTests
         blockProducerEnvFactory.CreatePersistent().Returns(blockProducerEnv);
         blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IMainStateBlockProducerEnvFactory mainStateBlockProducerEnvFactory = Substitute.For<IMainStateBlockProducerEnvFactory>();
+        mainStateBlockProducerEnvFactory.CreatePersistent().Returns(blockProducerEnv);
 
-        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, blockTree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IBlockTree tree = blockTree ?? Substitute.For<IBlockTree>();
+
+        TestingRpcModule module = new(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         _disposables.Add(module);
-        return (module, blockTree, blockFinder, parentHeader);
+        return (module, tree, blockFinder, parentHeader);
     }
 
     private (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) CreateBuildTestingModule(
@@ -404,19 +394,20 @@ public class TestingRpcModuleTests
         return (module, parentHash, parentHeader);
     }
 
-    private (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) CreateCommitTestingModule(
+    private (TestingRpcModule module, RecordingCommitBlockTree blockTree, BlockHeader chainHeadHeader) CreateCommitTestingModule(
         AddBlockResult suggestResult = AddBlockResult.Added,
         bool nullChainHead = false,
         Action<Block, ProcessingOptions>? onProcess = null)
     {
-        (TestingRpcModule module, IBlockTree blockTree, _, BlockHeader chainHeadHeader) =
-            CreateModuleWithMocks(onProcessWithOptions: onProcess);
-        Block chainHeadBlock = new(chainHeadHeader, [], [], []);
+        RecordingCommitBlockTree recordingTree = new();
+        (TestingRpcModule module, _, _, BlockHeader chainHeadHeader) =
+            CreateModuleWithMocks(onProcessWithOptions: onProcess, blockTree: recordingTree);
 
-        blockTree.Head.Returns(nullChainHead ? null : chainHeadBlock);
-        blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>()).Returns(suggestResult);
+        if (!nullChainHead)
+            recordingTree.Head = new Block(chainHeadHeader, [], [], []);
+        recordingTree.SuggestResult = suggestResult;
 
-        return (module, blockTree, chainHeadHeader);
+        return (module, recordingTree, chainHeadHeader);
     }
 
     private static BlockHeader CreateDefaultParentHeader(ulong? slotNumber = null) =>
@@ -511,10 +502,10 @@ public class TestingRpcModuleTests
     {
         Transaction[] transactions = new Transaction[count];
 
-        for (int i = 0; i < count; i++)
+        for (uint i = 0; i < count; i++)
         {
             transactions[i] = Core.Test.Builders.Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce(i)
                 .WithTimestamp((UInt256)(1_000 + i))
                 .WithTo(Core.Test.Builders.TestItem.AddressC)
                 .WithValue(i + 1)

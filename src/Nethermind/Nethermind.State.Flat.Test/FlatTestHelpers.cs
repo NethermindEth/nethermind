@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
 
@@ -33,7 +34,8 @@ internal static class FlatTestHelpers
     /// optionally pre-populating the snapshot content via <paramref name="populate"/>.
     /// </summary>
     public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, Action<SnapshotContent>? populate = null) =>
-        new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false);
+        new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
+            recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 }
 
 /// <summary>
@@ -49,12 +51,12 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public List<(Address Addr, UInt256 Slot, SlotValue? Value)> SetStorageCalls { get; } = [];
     public List<(TreePath Path, byte[] Rlp)> SetStateTrieNodeCalls { get; } = [];
     public List<(Hash256 Address, TreePath Path, byte[] Rlp)> SetStorageTrieNodeCalls { get; } = [];
-    public List<(ValueHash256 AddrHash, ValueHash256 SlotHash, SlotValue? Value)> SetStorageRawCalls { get; } = [];
+    public List<(ValueHash256 AddrHash, ValueHash256 SlotHash, byte[] RlpValue)> SetStorageRawEncodedCalls { get; } = [];
     public List<(ValueHash256 AddrHash, Account Account)> SetAccountRawCalls { get; } = [];
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> DeleteAccountRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 FromPath, ValueHash256 ToPath)> DeleteStorageRangeCalls { get; } = [];
-    public List<(TreePath FromPath, TreePath ToPath)> DeleteStateTrieNodeRangeCalls { get; } = [];
-    public List<(ValueHash256 AddressHash, TreePath FromPath, TreePath ToPath)> DeleteStorageTrieNodeRangeCalls { get; } = [];
+    public List<(ValueHash256 From, ValueHash256 To)> DeleteStateTrieNodeRangeCalls { get; } = [];
+    public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> DeleteStorageTrieNodeRangeCalls { get; } = [];
     public int DisposeCount { get; private set; }
 
     public void SelfDestruct(Address addr) => SelfDestructCalls.Add(addr);
@@ -67,8 +69,8 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
         SetStorageTrieNodeCalls.Add((address, path, rlp.ToArray()));
 
-    public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
-        SetStorageRawCalls.Add((addrHash, slotHash, value));
+    public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
+        SetStorageRawEncodedCalls.Add((addrHash, slotHash, rlpValue.ToArray()));
 
     public void SetAccountRaw(in ValueHash256 addrHash, Account account) => SetAccountRawCalls.Add((addrHash, account));
 
@@ -78,11 +80,11 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
         DeleteStorageRangeCalls.Add((addressHash, fromPath, toPath));
 
-    public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
-        DeleteStateTrieNodeRangeCalls.Add((fromPath, toPath));
+    public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
+        DeleteStateTrieNodeRangeCalls.Add((from, to));
 
-    public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
-        DeleteStorageTrieNodeRangeCalls.Add((addressHash, fromPath, toPath));
+    public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
+        DeleteStorageTrieNodeRangeCalls.Add((addressHash, from, to));
 
     public void Dispose() => DisposeCount++;
 }

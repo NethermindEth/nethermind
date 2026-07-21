@@ -163,7 +163,7 @@ public class LogIndexBuilderTests
     [Test]
     [CancelAfter(60_000)]
     public async Task Should_SyncToBarrier(
-        [Values(1, 10)] int minBarrier,
+        [Values(1UL, 10UL)] ulong minBarrier,
         [Values(1, 16, MaxBlock)] int batchSize,
         [Values(
             new[] { -1, -1 }, // -1 is treated as null
@@ -180,7 +180,7 @@ public class LogIndexBuilderTests
         _syncConfig.AncientReceiptsBarrier = minBarrier;
         Assert.That(_syncConfig.AncientReceiptsBarrierCalc, Is.EqualTo(minBarrier));
 
-        int expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier);
+        int expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? (int)minBarrier : Math.Min(synced[0], (int)minBarrier);
         TestLogIndexStorage storage = new()
         {
             MinBlockNumber = synced[0] < 0 ? null : synced[0],
@@ -230,11 +230,11 @@ public class LogIndexBuilderTests
     [Test]
     [Sequential]
     public async Task Should_CompleteImmediately_IfAlreadySynced(
-        [Values(1, 10, 10, 10)] int minBarrier,
+        [Values(1UL, 10UL, 10UL, 10UL)] ulong minBarrier,
         [Values(0, 00, 05, 10)] int minBlock
     )
     {
-        Assert.That(minBlock, Is.LessThanOrEqualTo(minBarrier));
+        Assert.That((ulong)minBlock, Is.LessThanOrEqualTo(minBarrier));
 
         _syncConfig.AncientReceiptsBarrier = minBarrier;
         LogIndexBuilder builder = GetService(new FailingLogIndexStorage(0, new("Should not set new receipts."))
@@ -264,9 +264,9 @@ public class LogIndexBuilderTests
         throwingTree.SyncPivot.Returns(realTree.SyncPivot);
         throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
         throwingTree
-            .FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(ci => Interlocked.Increment(ref findCalls) == 1
-                ? realTree.FindBlock(ci.ArgAt<long>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                ? realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
                 : throw exception);
 
         return throwingTree;

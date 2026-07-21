@@ -7,5 +7,5 @@ namespace Nethermind.Network.Discovery;
 
 public interface INodeRecordProvider
 {
-    public NodeRecord Current { get; }
+    ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default);
 }

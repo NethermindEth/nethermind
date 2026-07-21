@@ -28,7 +28,7 @@ namespace Nethermind.Taiko;
 /// own canonical head during sync. This class restores the same property in the Nethermind
 /// architecture without touching core: it watches for the cached <see cref="IBlockCacheService.HeadBlockHash"/>
 /// to become processed, then enqueues every missing ancestor for processing and drives the
-/// resulting <c>UpdateMainChain</c> sequence to advance <c>Head</c> all the way to that hash.
+/// resulting <c>TryUpdateMainChain</c> sequence to advance <c>Head</c> all the way to that hash.
 /// </remarks>
 public sealed class TaikoBeaconHeadAdvancer : IDisposable
 {
@@ -103,7 +103,7 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
         // Take the higher of cached driver target and BestSuggestedBeaconHeader so
         // Head keeps climbing on headers that arrive between driver FCUs.
         Block? target = null;
-        long bestNumber = -1L;
+        ulong? bestNumber = null;
 
         Hash256? cachedHash = _blockCacheService.HeadBlockHash;
         if (cachedHash is not null && cachedHash != Keccak.Zero)
@@ -117,30 +117,34 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
         }
 
         BlockHeader? beaconHead = _blockTree.BestSuggestedBeaconHeader;
-        if (beaconHead is not null && beaconHead.Hash is not null && beaconHead.Number > bestNumber)
+        if (beaconHead is not null)
         {
-            Block? beaconBlock = _blockTree.FindBlock(beaconHead.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-            if (beaconBlock is not null)
+            Hash256? beaconHash = beaconHead.Hash;
+            if (beaconHash is not null && (bestNumber is null || beaconHead.Number > bestNumber.Value))
             {
-                target = beaconBlock;
-                bestNumber = beaconBlock.Number;
+                Block? beaconBlock = _blockTree.FindBlock(beaconHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+                if (beaconBlock is not null)
+                {
+                    target = beaconBlock;
+                    bestNumber = beaconBlock.Number;
+                }
             }
         }
 
         if (target is null) return;
 
-        long headNumber = _blockTree.Head?.Number ?? 0;
+        ulong headNumber = _blockTree.Head?.Number ?? 0UL;
         if (target.Number <= headNumber) return;
 
         // 2. Enqueue any unprocessed ancestor for processing. The processing queue is FIFO and
         //    BlockchainProcessor walks back to the nearest canonical ancestor automatically, so
         //    enqueuing the highest unprocessed block is enough — but we walk explicitly so that
         //    progress logs show one-by-one advancement.
-        long firstToEnqueue = headNumber + 1;
-        long lastToEnqueue = target.Number;
+        ulong firstToEnqueue = headNumber + 1;
+        ulong lastToEnqueue = target.Number;
         int enqueued = 0;
 
-        for (long n = firstToEnqueue; n <= lastToEnqueue; n++)
+        for (ulong n = firstToEnqueue; n <= lastToEnqueue; n++)
         {
             if (ct.IsCancellationRequested) break;
 

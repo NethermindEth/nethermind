@@ -12,10 +12,17 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 ## Coding guidelines and style
 
 - Follow [CONTRIBUTING.md](./CONTRIBUTING.md) and [.editorconfig](./.editorconfig)
+- An agent's primary concern is correctness. Next after that is reviewer fatigue.
 - Keep changes minimal and focused — don't touch unrelated code. Try to minimise the diff from the base branch, for example, not reordering code or making stylistic changes unless they improve code clarity.
+- On unrelated code, be even more conservative: do not rephrase comments, and do not even fix typos. That is the responsibility of a linter. Keep the code unchanged verbatim.
+- When designing a solution, try to design as a plugin, altering behavior through module registration without modifying existing code (see [di-patterns.md](./.agents/rules/di-patterns.md)). Even if not a plugin, it's generally a good idea to alter behavior without changing current code:
+  - Where possible, do not add additional interfaces or public methods — this tends to break plugins, cause unnecessarily tight coupling, and make implications harder to reason about.
+  - Prefer composition over inheritance — inheritance has caused many extensibility issues in this code base.
+- When multiple solutions are viable, prefer them in this order: one that removes code, then one that adds code without adding surface area (new interfaces or public methods) or touching existing code, and last, one that modifies existing code. Removing code removes failure points; additive changes generally don't regress existing behavior and are the easiest to review. This ranks viable designs — a bug in existing code should still be fixed in place, not wrapped. If a change makes existing code unused, remove it.
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
 - Prefer self-documenting code — clear names and structure should remove the need for most comments. Emit a comment only when it captures context that is not obvious from the code itself: the _why_ behind a non-obvious choice, an invariant, a workaround, an EIP/Yellow-Paper reference, a subtle edge case, etc. Comments that merely restate the code are noise — don't add them, and remove them when you encounter them. Keep comments concise and ensure that they make sense in the context of the master branch, not referencing the specifics of the current session.
+- When in doubt, do not add a comment. An unnecessary comment contributes to reviewer fatigue.
 - For member-level documentation (methods, constructors, properties, types), prefer XML doc comments over in-line comments whenever the explanation applies to the member as a whole:
   - `<summary>` — one or two sentences describing _what_ the member does from the caller's perspective: its contract, purpose, and what it returns/represents. Keep it short enough to be useful in IntelliSense; do not describe implementation details or rationale here.
   - `<remarks>` — the longer-form explanation that does not belong in the summary. Use it for any of: algorithmic approach, design rationale, pre/postconditions and invariants, thread-safety guarantees, performance characteristics, side effects, edge cases, EIP / Yellow-Paper / spec references, and notable caveats for callers.
@@ -150,6 +157,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
 - When `dottrace` input is enabled, passes `--dottrace` to expb. dotTrace snapshots (`.dtp` + chunk files) are zipped and uploaded as artifacts. A downstream Windows job (`generate-dottrace-reports`) runs Reporter.exe to produce XML reports (`*-report.xml`) uploaded as the `dottrace-reports` artifact. Each report contains `<Function>` nodes with `FQN`, `TotalTime`, `OwnTime`, `Calls`, and full call stacks — sort by `OwnTime` for hot spots, use `CallStack` attributes for call tree analysis.
+- Targeted per-block dotTrace: pass `trace_blocks=<n1,n2,...>` (implies `dottrace=true`); the client's BlockProfiler plugin brackets each listed block. The artifact is one `.dtp` workspace with **one snapshot per traced block** (open in the dotTrace UI; `.dtp.NNNN` files are storage segments, not per-block files). The XML report merges all traced windows, so trace a single block per run when isolated XML matters.
 
 ### What to inspect in run output
 
@@ -203,4 +211,5 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - The benchmark config is rendered to a temporary file and removed afterward; no source config revert is required.
 - For `pull_request` and `push` auto-runs, default mode is `flat` layout with both `superblocks` and `realblocks` payload sets.
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
+- Optional low-variance mode: pass `-f expb_env="EXPB_EVM_WARMUP=1"` to enable expb's per-block EVM warmup (`eth_simulateV1` before each measured block). It serves the measured block's reads from warm caches, which lowers both run-to-run CV (~1.8%→~0.55% on flat-realblocks) and AVG. Pair it with a raised RPC gas cap — `-f additional_extra_flags="--JsonRpc.GasCap=1000000000000"` — otherwise the per-request gas budget (default 100M) is exhausted on dense blocks and the warmup `eth_simulateV1` calls fail with `-38013` (intrinsic gas), silently leaving those blocks un-warmed. Caveat: warmup minimizes cold RocksDB/storage interaction, so it is a low-variance *compute* signal, not a substitute for the default cold benchmark — don't use it when measuring storage-layer changes.
 - dotTrace XML reports are 50-70MB. **Never load full XML into context.** Use [`scripts/dottrace-report.sh`](./scripts/dottrace-report.sh): `top <report.xml> [N]` for hot spots, `compare <a.xml> <b.xml> [N]` for regressions/improvements. Runs in <2 seconds via grep+awk.

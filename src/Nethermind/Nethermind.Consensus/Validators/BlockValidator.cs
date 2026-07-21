@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -34,6 +35,7 @@ public class BlockValidator(
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
@@ -314,6 +316,11 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
+            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
+            // makes the intrinsic-gas validation below sender-dependent.
+            if (spec.IsEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
             if (!isWellFormed)
             {
@@ -358,7 +365,7 @@ public class BlockValidator(
 
             if (transaction.MaxFeePerBlobGas < feePerBlobGas)
             {
-                error = BlockErrorMessages.InsufficientMaxFeePerBlobGas;
+                error = BlockErrorMessages.InsufficientMaxFeePerBlobGas(transaction.SenderAddress, transaction.MaxFeePerBlobGas, feePerBlobGas);
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {feePerBlobGas}.");
                 return false;
             }
@@ -458,10 +465,10 @@ public class BlockValidator(
     {
         // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
         // validation reaches this helper after execution with only GeneratedBlockAccessList.
-        int itemCount = block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0;
-        long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+        ulong itemCount = (ulong)(block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0);
+        ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
-        if (itemCount > maxBalItems)
+        if (itemCount > 0 && itemCount > maxBalItems)
         {
             error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");

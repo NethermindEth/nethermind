@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
@@ -26,10 +27,16 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
 
     [JsonRpcMethod(
+        Description = "Verifies the payload according to the execution environment rules and returns the verification status, hash of the last valid block, and the execution witness when the payload is valid.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
+
+    [JsonRpcMethod(
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
+    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
@@ -41,5 +48,11 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns an array of execution payload bodies for the provided number range",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count);
+    Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(ulong start, ulong count);
+
+    [JsonRpcMethod(
+        Description = "Returns requested blob cells and proofs.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray);
 }

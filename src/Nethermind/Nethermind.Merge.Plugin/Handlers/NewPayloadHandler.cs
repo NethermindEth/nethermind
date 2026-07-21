@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -49,6 +50,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly ISpecProvider _specProvider;
+    private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
@@ -56,8 +59,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
-    private long _lastBlockNumber;
-    private long _lastBlockGasLimit;
+    private ulong _lastBlockNumber;
+    private ulong _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
 
     public NewPayloadHandler(
@@ -74,6 +77,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
+        IEthereumEcdsa ecdsa,
+        ISpecProvider specProvider,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -87,6 +92,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _specProvider = specProvider;
+        _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -96,7 +103,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
-    private string GetGasChange(long blockGasLimit) => (blockGasLimit - _lastBlockGasLimit) switch
+    private string GetGasChange(ulong blockGasLimit) => blockGasLimit.CompareTo(_lastBlockGasLimit) switch
     {
         > 0 => "👆",
         < 0 => "👇",
@@ -111,6 +118,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
+        // Overlap ecrecover with root computation, hash validation and block tree insertion;
+        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
+        Task senderRecoveryTask = StartSenderRecovery(request);
+
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
         {
@@ -130,7 +141,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
-            RecordBadBlock(block);
+            Nethermind.Blockchain.Metrics.BadBlocks++;
+            if (block.IsByNethermindNode()) Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
+            // Skip recording bad blocks: unverified hashes can poison tracking,
+            // while computed hashes could incorrectly blacklist a valid block.
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
 
@@ -242,7 +256,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, senderRecoveryTask);
 
         if (result == ValidationResult.Invalid)
         {
@@ -267,8 +281,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// when it catches an <c>InvalidBlockException</c>: bumps the bad-block metrics, marks the chain
     /// as invalid in <see cref="IInvalidChainTracker"/>, and forwards the block to the
     /// <c>BadBlockStore</c> so it surfaces in <c>debug_getBadBlocks</c>.
-    /// Pre-process rejection sites (hash mismatch, failed orphan validation, failed suggested-block
-    /// validation) previously skipped all three.
+    /// Pre-process rejection sites (failed orphan validation, failed suggested-block
+    /// validation) previously skipped these two.
     /// </remarks>
     private void RecordBadBlock(Block block)
     {
@@ -335,7 +349,40 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return parentProcessed || processTerminalBlock;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
+    /// <summary>Slack above head within which early recovery is worthwhile, mirroring the
+    /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
+    private const ulong NearHeadRecoveryDistance = 8;
+
+    private Task StartSenderRecovery(ExecutionPayload request)
+    {
+        // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
+        // the senders; they recover in the processing queue as before. On rejected payloads the
+        // task is deliberately fire-and-forget — see the catch below.
+        if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
+            return Task.CompletedTask;
+
+        Result<Transaction[]> transactions = request.TryGetTransactions();
+        if (transactions.IsError || transactions.Data.Length == 0)
+            // TryGetBlock reports the decoding error; nothing to recover otherwise.
+            return Task.CompletedTask;
+
+        Transaction[] txs = transactions.Data;
+        IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
+        return Task.Run(() =>
+        {
+            try
+            {
+                _senderRecovery.RecoverData(txs, spec);
+            }
+            catch (Exception e)
+            {
+                // Best-effort: the processing-queue preprocessor recovers anything still missing.
+                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
+            }
+        });
+    }
+
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
     {
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
         {
@@ -376,9 +423,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
-            AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
-                .AsTask().TimeoutOn(timeoutTask);
+            // the tree insert reads only the raw payload bytes, never the recovered senders,
+            // so it can safely overlap the remainder of sender recovery
+            Task<AddBlockResult> suggestTask = senderRecoveryTask.IsCompleted
+                ? _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask()
+                : Task.Run(() => _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask());
+
+            // recovery must complete before Enqueue — the prewarmer needs all senders up front
+            await senderRecoveryTask;
+
+            AddBlockResult addResult = await suggestTask.TimeoutOn(timeoutTask);
 
             result = addResult switch
             {

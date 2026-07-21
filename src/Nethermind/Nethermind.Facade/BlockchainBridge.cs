@@ -181,7 +181,7 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = ConstructError(result, tracer.Error),
+                Error = result.GetErrorMessage(tracer.Error),
                 GasSpent = tracer.GasSpent,
                 OutputData = tracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
@@ -193,7 +193,7 @@ namespace Nethermind.Facade
         private static bool HasOverrides(Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride) =>
             stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null || blockOverride is not null;
 
-        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken)
         {
             using SimulateReadOnlyBlocksProcessingScope env = lazySimulateProcessingEnv.Value.Begin(header);
             env.SimulateRequestState.Validate = payload.Validation;
@@ -228,12 +228,12 @@ namespace Nethermind.Facade
             IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
             UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress ?? Address.Zero);
             UInt256 feeCap = tx.CalculateFeeCap();
-            if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 availableForGas))
+            if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.ValueRef, out UInt256 availableForGas))
             {
                 if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref availableForGas))
                     availableForGas = UInt256.Zero;
 
-                long allowance = (long)UInt256.Min(availableForGas / feeCap, (UInt256)long.MaxValue);
+                ulong allowance = GasEstimator.AllowanceFromFunds(in availableForGas, in feeCap);
                 if (tx.GasLimit > allowance)
                     tx.GasLimit = allowance;
             }
@@ -244,9 +244,12 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(txProcessor, worldState, specProvider, blocksConfig);
 
-            string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
+            string? error = tryCallResult.GetErrorMessage(estimateGasTracer.Error);
+            string? probeError = error;
 
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
+            ulong estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, (ulong)errorMargin, cancellationToken);
+            // Allowance errors take precedence over any earlier revert: the revert was an artifact
+            // of the gas cap, so surfacing it instead of the affordability error would be misleading.
             error = err switch
             {
                 // Probe failed only because gas hint was below standard intrinsic: if estimation succeeds, clear the probe error.
@@ -270,7 +273,7 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !executionReverted && error is not null && (!tryCallResult.TransactionExecuted || err is not null),
+                InputError = !executionReverted && error is not null && (error != probeError),
                 ExecutionReverted = executionReverted
             };
         }
@@ -341,13 +344,21 @@ namespace Nethermind.Facade
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
+            bool executionReverted = result.EvmExceptionType == EvmExceptionType.Revert;
+            // Geth always surfaces plain "execution reverted" for eth_createAccessList,
+            // regardless of whether the revert payload carries a decoded reason.
+            string? error = executionReverted
+                ? "execution reverted"
+                : result.GetErrorMessage(outputTracer.Error);
+
             return new CallOutput
             {
-                Error = ConstructError(result, outputTracer.Error),
+                Error = error,
                 GasSpent = outputTracer.GasSpent,
                 OperationGas = outputTracer.OperationGas,
                 OutputData = outputTracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
+                ExecutionReverted = executionReverted,
                 AccessList = accessTracer.AccessList,
             };
         }
@@ -559,28 +570,15 @@ namespace Nethermind.Facade
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, cancellationToken);
 
-        public ReadOnlyBlockAccessList? GetBlockAccessList(long blockNumber, Hash256 blockHash)
+        public ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash)
             => balStore.Get(blockNumber, blockHash);
 
-        public MemoryManager<byte>? GetBlockAccessListRlp(long blockNumber, Hash256 blockHash)
+        public MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash)
             => balStore.GetRlp(blockNumber, blockHash);
 
         // for testing
-        public void DeleteBlockAccessList(long blockNumber, Hash256 blockHash)
+        public void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash)
             => balStore.Delete(blockNumber, blockHash);
-
-        private static string? ConstructError(TransactionResult txResult, string? tracerError)
-        {
-            string error = txResult switch
-            {
-                { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.ErrorDescription is { Length: > 0 } d ? d : txResult.EvmExceptionType.GetEvmExceptionDescription(),
-                { TransactionExecuted: true } when tracerError is not null => tracerError,
-                { TransactionExecuted: false, Error: not TransactionResult.ErrorType.None } => txResult.ErrorDescription,
-                _ => null
-            };
-
-            return error;
-        }
 
         public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
         {
@@ -590,11 +588,11 @@ namespace Nethermind.Facade
             return witnessCollector.GetWitnessForExistingBlock(parent, block);
         }
 
-        public Witness GenerateExecutionWitness(BlockHeader header, Transaction tx)
+        public SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default)
         {
             using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
             ISingleCallWitnessCollector collector = scope.Env.CreateSingleCallWitnessCollector();
-            return collector.ExecuteCallAndCollectWitness(header, tx);
+            return collector.ExecuteCallAndCollectWitness(header, tx, cancellationToken);
         }
 
         public record BlockProcessingComponents(
