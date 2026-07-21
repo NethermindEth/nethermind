@@ -17,6 +17,6 @@
   <ItemGroup>
     <PackageReference Include="ConcurrentHashSet" />
     <PackageReference Include="NonBlocking" />
-    <PackageReference Include="RocksDB" />
+    <PackageReference Include="Nethermind.RocksDB.Runtimes" />
   </ItemGroup>
 </Project>

@@ -84,7 +84,7 @@
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
     <PackageVersion Include="Pyroscope" Version="1.4.0" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="[10.10.1.1747]" />
+    <PackageVersion Include="Nethermind.RocksDB.Runtimes" Version="10.10.1-preview.1" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="SlackNet" Version="0.17.9" />
     <PackageVersion Include="SmartFormat" Version="3.6.1" />
