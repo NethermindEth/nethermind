@@ -22,17 +22,17 @@ public class PbtTrieNodeGroupTests
     public void PositionMath_EncodeDecodeRoundTrip_AndValidation(PbtGroupFormat format)
     {
         int boundaryCount = 0;
-        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
-            if (PbtTrieNodeGroup.IsBoundaryPosition(position)) boundaryCount++;
+            if (PbtLayout.TrieNodeGroupIsBoundaryPosition(position)) boundaryCount++;
         }
 
-        Assert.That(boundaryCount, Is.EqualTo(PbtTrieNodeGroup.BoundarySlots));
-        for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+        Assert.That(boundaryCount, Is.EqualTo(PbtLayout.TrieNodeGroupBoundarySlots));
+        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
         {
-            int position = PbtTrieNodeGroup.BoundaryPosition(slot);
-            Assert.That(PbtTrieNodeGroup.IsBoundaryPosition(position), $"slot {slot} at position {position}");
-            Assert.That(PbtTrieNodeGroup.BoundarySlot(position), Is.EqualTo(slot));
+            int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
+            Assert.That(PbtLayout.TrieNodeGroupIsBoundaryPosition(position), $"slot {slot} at position {position}");
+            Assert.That(PbtLayout.TrieNodeGroupBoundarySlot(position), Is.EqualTo(slot));
         }
 
         // a representative mix: an inner internal at a kept level, an inner stem at a skipped one (stems
@@ -46,11 +46,11 @@ public class PbtTrieNodeGroupTests
         ValueHash256 rootA = new(Bytes.FromHexString("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"));
         ValueHash256 rootB = new(Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
 
-        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
+        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
         slots[13] = PbtTrieNodeGroup.InternalSlot(hashB);
         slots[29] = PbtTrieNodeGroup.StemSlot(stemA, rootA);
-        slots[PbtTrieNodeGroup.BoundaryPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
-        slots[PbtTrieNodeGroup.BoundaryPosition(1)] = PbtTrieNodeGroup.StemSlot(stemB, rootB);
+        slots[PbtLayout.TrieNodeGroupBoundarySlotPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
+        slots[PbtLayout.TrieNodeGroupBoundarySlotPosition(1)] = PbtTrieNodeGroup.StemSlot(stemB, rootB);
 
         // the subtree holds more stems than this group's two stem nodes: the boundary internal at slot 0
         // points at a child group holding the rest
@@ -63,8 +63,8 @@ public class PbtTrieNodeGroupTests
         PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
         Assert.That(decoded.Stats, Is.EqualTo(stats));
         Assert.That(decoded.Format, Is.EqualTo(format));
-        PbtTrieNodeGroup.ValueSlot[] roundTripped = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
-        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        PbtTrieNodeGroup.ValueSlot[] roundTripped = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
+        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
             PbtTrieNodeGroup.ValueSlot slot = decoded[position].ToValue();
             Assert.That(slot.Kind, Is.EqualTo(slots[position].Kind), $"kind at {position}");
@@ -113,31 +113,31 @@ public class PbtTrieNodeGroupTests
     {
         uint skipped = 0;
         uint kept = 0;
-        Walk(PbtTrieNodeGroup.RootPosition, PbtTrieNodeGroup.BoundarySlots, 0);
+        Walk(PbtLayout.TrieNodeGroupRootPosition, PbtLayout.TrieNodeGroupBoundarySlots, 0);
 
         Assert.That(BitOperations.PopCount(skipped), Is.EqualTo(10), "levels 1 and 3 hold two and eight positions");
-        Assert.That(BitOperations.PopCount(kept), Is.EqualTo(PbtTrieNodeGroup.PositionCount - 10));
+        Assert.That(BitOperations.PopCount(kept), Is.EqualTo(PbtLayout.TrieNodeGroupPositionCount - 10));
         Assert.That(skipped & kept, Is.Zero, "a position is either stored or folded, never both");
-        Assert.That(kept | skipped, Is.EqualTo((1u << PbtTrieNodeGroup.PositionCount) - 1), "every position is accounted for");
+        Assert.That(kept | skipped, Is.EqualTo((1u << PbtLayout.TrieNodeGroupPositionCount) - 1), "every position is accounted for");
 
         // a boundary slot is a level of its own and is always stored
-        for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
         {
             Assert.That(
-                PbtTrieNodeGroup.IsSkippedPosition(PbtGroupFormat.Interleaved, PbtTrieNodeGroup.BoundaryPosition(slot)),
+                PbtLayout.TrieNodeGroupIsSkippedPosition(PbtGroupFormat.Interleaved, PbtLayout.TrieNodeGroupBoundarySlotPosition(slot)),
                 Is.False, $"boundary slot {slot}");
         }
 
-        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
-            Assert.That(PbtTrieNodeGroup.IsSkippedPosition(PbtGroupFormat.EveryLevel, position), Is.False, $"position {position}");
+            Assert.That(PbtLayout.TrieNodeGroupIsSkippedPosition(PbtGroupFormat.EveryLevel, position), Is.False, $"position {position}");
         }
 
         void Walk(int position, int width, int level)
         {
-            bool storesInternal = PbtTrieNodeGroup.StoresInternalAtWidth(PbtGroupFormat.Interleaved, width);
+            bool storesInternal = PbtLayout.TrieNodeGroupStoresInternalAtWidth(PbtGroupFormat.Interleaved, width);
             Assert.That(
-                PbtTrieNodeGroup.IsSkippedPosition(PbtGroupFormat.Interleaved, position), Is.EqualTo(!storesInternal),
+                PbtLayout.TrieNodeGroupIsSkippedPosition(PbtGroupFormat.Interleaved, position), Is.EqualTo(!storesInternal),
                 $"position {position} at level {level} (width {width}): the by-position and by-width answers must agree");
             Assert.That(storesInternal, Is.EqualTo(level % 2 == 0), $"level {level} is {(level % 2 == 0 ? "kept" : "skipped")}");
 
@@ -160,7 +160,7 @@ public class PbtTrieNodeGroupTests
         Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
         PbtSubtreeStats stats = new(2);
 
-        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
+        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
         slots[14] = PbtTrieNodeGroup.InternalSlot(hash); // level 1: skipped
 
         // the every-level format is what such an encoding can only be, and it still decodes
@@ -196,10 +196,10 @@ public class PbtTrieNodeGroupTests
         Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
         PbtSubtreeStats stats = new(1);
 
-        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
+        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
 
-        slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.InternalSlot(hash);
+        slots[PbtLayout.TrieNodeGroupRootPosition] = PbtTrieNodeGroup.InternalSlot(hash);
         foreach (PbtGroupFormat format in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved])
         {
             int length = Encode(slots, stats, encoded, format);
@@ -207,13 +207,13 @@ public class PbtTrieNodeGroupTests
         }
 
         // a stem at the root position is legal in both and round-trips: nothing recomputes a stem
-        slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.StemSlot(stem, hash);
+        slots[PbtLayout.TrieNodeGroupRootPosition] = PbtTrieNodeGroup.StemSlot(stem, hash);
         foreach (PbtGroupFormat format in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved])
         {
             int length = Encode(slots, stats, encoded, format);
             PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
-            Assert.That(decoded.KindAt(PbtTrieNodeGroup.RootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{format}");
-            Assert.That(decoded[PbtTrieNodeGroup.RootPosition].Stem, Is.EqualTo(stem), $"{format}");
+            Assert.That(decoded.KindAt(PbtLayout.TrieNodeGroupRootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{format}");
+            Assert.That(decoded[PbtLayout.TrieNodeGroupRootPosition].Stem, Is.EqualTo(stem), $"{format}");
         }
     }
 
@@ -235,12 +235,12 @@ public class PbtTrieNodeGroupTests
         uint expected = 0;
         for (int position = 0; position < 32; position++)
         {
-            if ((positions >> position & 1) == 0 || !PbtTrieNodeGroup.IsBoundaryPosition(position)) continue;
-            expected |= 1u << PbtTrieNodeGroup.BoundarySlot(position);
+            if ((positions >> position & 1) == 0 || !PbtLayout.TrieNodeGroupIsBoundaryPosition(position)) continue;
+            expected |= 1u << PbtLayout.TrieNodeGroupBoundarySlot(position);
         }
 
-        Assert.That(PbtTrieNodeGroup.BoundaryBits(positions), Is.EqualTo(expected), $"0x{positions:x8}");
-        Assert.That(expected >> PbtTrieNodeGroup.BoundarySlots, Is.Zero, "only the sixteen slot bits are set");
+        Assert.That(PbtLayout.TrieNodeGroupBoundaryBitmask(positions), Is.EqualTo(expected), $"0x{positions:x8}");
+        Assert.That(expected >> PbtLayout.TrieNodeGroupBoundarySlots, Is.Zero, "only the sixteen slot bits are set");
     }
 
     [Test]
@@ -272,24 +272,24 @@ public class PbtTrieNodeGroupTests
         // and leaves the one before it where it was
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         PbtTrieNodeGroup.Builder builder = new(encoded, format);
-        builder.AppendStem(PbtTrieNodeGroup.BoundaryPosition(0), stem, stemRoot);
-        builder.AppendChain(PbtTrieNodeGroup.BoundaryPosition(chainSlot), chain);
-        builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(2), childRoot);
+        builder.AppendStem(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), stem, stemRoot);
+        builder.AppendChain(PbtLayout.TrieNodeGroupBoundarySlotPosition(chainSlot), chain);
+        builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(2), childRoot);
         int length = builder.Finish(stats);
 
         PbtTrieNodeGroup group = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
         Assert.That(length, Is.EqualTo(TrailerLength + 2 * 32 + Stem.Length + PbtNodeChain.EncodedLength));
 
-        int chainPosition = PbtTrieNodeGroup.BoundaryPosition(chainSlot);
+        int chainPosition = PbtLayout.TrieNodeGroupBoundarySlotPosition(chainSlot);
         Assert.That(group.KindAt(chainPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Chain));
         Assert.That(group[chainPosition].ChainData.SequenceEqual(chain));
         Assert.That(group[chainPosition].Hash, Is.EqualTo(PbtNodeChain.NodeHashOf(chain)), "a run contributes its cached node hash");
         Assert.That(group[chainPosition].NodeHash(), Is.EqualTo(PbtNodeChain.NodeHashOf(chain)));
 
         // the slots around it are unmoved and unconfused
-        Assert.That(group[PbtTrieNodeGroup.BoundaryPosition(0)].Stem, Is.EqualTo(stem));
-        Assert.That(group.KindAt(PbtTrieNodeGroup.BoundaryPosition(2)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Internal));
-        Assert.That(group[PbtTrieNodeGroup.BoundaryPosition(2)].Hash, Is.EqualTo(childRoot));
+        Assert.That(group[PbtLayout.TrieNodeGroupBoundarySlotPosition(0)].Stem, Is.EqualTo(stem));
+        Assert.That(group.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(2)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Internal));
+        Assert.That(group[PbtLayout.TrieNodeGroupBoundarySlotPosition(2)].Hash, Is.EqualTo(childRoot));
 
         NodeGroupBitmasks boundary = group.BoundaryShape();
         Assert.That(boundary, Is.EqualTo(new NodeGroupBitmasks(0b111u, 0b001u, 1u << chainSlot)));
@@ -313,7 +313,7 @@ public class PbtTrieNodeGroupTests
         ReadOnlySpan<PbtTrieNodeGroup.ValueSlot> slots, in PbtSubtreeStats stats, Span<byte> destination, PbtGroupFormat format)
     {
         PbtTrieNodeGroup.Builder builder = new(destination, format);
-        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
             PbtTrieNodeGroup.ValueSlot slot = slots[position];
             switch (slot.Kind)

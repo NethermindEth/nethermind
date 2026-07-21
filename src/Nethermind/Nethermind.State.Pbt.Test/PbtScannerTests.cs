@@ -146,7 +146,7 @@ public class PbtScannerTests
             Assert.That(storage.ChainSkippedNodes, Is.EqualTo(35));
 
             // nine every-level groups would have stored four hashes each; the chain stores two
-            Assert.That(storage.ChainEntriesAvoided, Is.EqualTo(9 * PbtTrieNodeGroup.LevelsPerGroup - 2));
+            Assert.That(storage.ChainEntriesAvoided, Is.EqualTo(9 * PbtLayout.TrieNodeGroupLevelsPerGroup - 2));
             Assert.That(storage.ChainGroupBlobsAvoided, Is.EqualTo(9), "and the chain itself takes no blob to hold");
         });
     }

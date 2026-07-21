@@ -145,7 +145,7 @@ public class PbtNodeChainTests
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.EveryLevel);
         // a lone boundary internal — the root's internal node is folded, never stored
-        builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(0), TargetHash);
+        builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), TargetHash);
         return encoded[..builder.Finish(Stats)];
     }
 

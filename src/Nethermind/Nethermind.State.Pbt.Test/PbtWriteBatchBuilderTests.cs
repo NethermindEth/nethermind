@@ -111,7 +111,7 @@ public class PbtWriteBatchBuilderTests
 
         ReadOnlySpan<int> nibbles = table[PbtWriteBatch.ByteLevelLength..];
         Assert.That(nibbles[0], Is.Zero);
-        for (int nibble = 0; nibble < PbtTrieNodeGroup.BoundarySlots; nibble++)
+        for (int nibble = 0; nibble < PbtLayout.TrieNodeGroupBoundarySlots; nibble++)
         {
             int expected = 0;
             foreach (byte first in firstBytes)
@@ -126,11 +126,11 @@ public class PbtWriteBatchBuilderTests
         Assert.That(
             nibbles[PbtWriteBatch.TouchedMaskIndex], Is.EqualTo(TouchedMaskOf(nibbles)), "nibble level touched mask");
 
-        for (int nibble = 0; nibble < PbtTrieNodeGroup.BoundarySlots; nibble++)
+        for (int nibble = 0; nibble < PbtLayout.TrieNodeGroupBoundarySlots; nibble++)
         {
             ReadOnlySpan<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride, PbtWriteBatch.LevelStride);
             Assert.That(group[0], Is.Zero, $"byte group {nibble} counts from its own nibble");
-            for (int low = 0; low < PbtTrieNodeGroup.BoundarySlots; low++)
+            for (int low = 0; low < PbtLayout.TrieNodeGroupBoundarySlots; low++)
             {
                 int expected = 0;
                 foreach (byte first in firstBytes)
@@ -152,7 +152,7 @@ public class PbtWriteBatchBuilderTests
     private static int TouchedMaskOf(ReadOnlySpan<int> level)
     {
         int touched = 0;
-        for (int bucket = 0; bucket < PbtTrieNodeGroup.BoundarySlots; bucket++)
+        for (int bucket = 0; bucket < PbtLayout.TrieNodeGroupBoundarySlots; bucket++)
         {
             if (level[bucket] != level[bucket + 1]) touched |= 1 << bucket;
         }

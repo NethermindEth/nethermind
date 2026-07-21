@@ -25,7 +25,7 @@ namespace Nethermind.Pbt;
 /// A chain has no key of its own: at a hundred-odd bytes it is far too little to be worth one, so
 /// the boundary slot it hangs from holds its encoding outright (see
 /// <see cref="PbtTrieNodeGroup.NodeKind.Chain"/>). Its start depth is therefore that slot's depth —
-/// its parent group's plus <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> — and is not stored, so the
+/// its parent group's plus <see cref="PbtLayout.TrieNodeGroupLevelsPerGroup"/> — and is not stored, so the
 /// encoding is fixed at <see cref="EncodedLength"/> bytes.
 /// </para>
 /// <para>
@@ -179,7 +179,7 @@ public readonly ref struct PbtNodeChain
     /// </summary>
     /// <remarks>
     /// A chain spans at least one group and lands on a group key, so both depths are multiples of
-    /// <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> and the target is a group depth. The start is past
+    /// <see cref="PbtLayout.TrieNodeGroupLevelsPerGroup"/> and the target is a group depth. The start is past
     /// the root, which keeps its own spine (invariant 4). The target path is a group's, so it is
     /// zero-padded past the target, and its group is stored, so its root hash is never the empty
     /// subtree's. That group is past the root and stored, so it branches (invariant 1) — two occupied
@@ -189,9 +189,9 @@ public readonly ref struct PbtNodeChain
         int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats) =>
         startDepth > 0
         && startDepth < targetDepth
-        && targetDepth <= PbtTrieNodeGroup.MaxGroupDepth
-        && startDepth % PbtTrieNodeGroup.LevelsPerGroup == 0
-        && targetDepth % PbtTrieNodeGroup.LevelsPerGroup == 0
+        && targetDepth <= PbtLayout.TrieNodeGroupMaxGroupDepth
+        && startDepth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0
+        && targetDepth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0
         && targetHash != default
         && stats.StemCount >= 2
         && TrieNodeKey.For(targetDepth, targetPath).Path == targetPath;

@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
+using System.Threading;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.Core.Buffers;
@@ -23,7 +25,7 @@ namespace Nethermind.Core.Buffers;
 public sealed class RefCountingMemory : MemoryManager<byte>
 {
     private readonly byte[] _buffer;
-    private readonly int _length;
+    private int _length;
     private readonly bool _pooled;
     private long _leases = RefCountingLease.Single;
 
@@ -51,6 +53,22 @@ public sealed class RefCountingMemory : MemoryManager<byte>
     public byte[] ToArrayAndRelease()
     {
         using (this) return GetSpan().ToArray();
+    }
+
+    /// <summary>
+    /// Narrows the value to its first <paramref name="length"/> bytes, for a producer that rented more
+    /// room than it turned out to need.
+    /// </summary>
+    /// <remarks>
+    /// Only the producer may call this, before the memory is shared: it changes what every reader sees,
+    /// so a second lease being out already means someone is reading the bytes it would cut away. The
+    /// backing buffer is unaffected — a pooled one is still returned whole.
+    /// </remarks>
+    public void Shrink(int length)
+    {
+        Debug.Assert((uint)length <= (uint)_length, "a shrink only ever narrows the value");
+        Debug.Assert(Volatile.Read(ref _leases) == RefCountingLease.Single, "the value is already shared, so its readers would see it change");
+        _length = length;
     }
 
     /// <summary>Acquires one additional reference; the matching <see cref="IDisposable.Dispose"/> releases it.</summary>

@@ -12,7 +12,7 @@ namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
 /// Where the updater puts each blob, as against what the trie holds: a group at a
-/// <see cref="PbtTrieNodeWrapper.WrapsChildren"/> depth holds its children's blobs, so their keys hold
+/// <see cref="PbtLayout.IsWrappingDepth"/> depth holds its children's blobs, so their keys hold
 /// nothing, and a node moving across that boundary has to move its bytes with it.
 /// </summary>
 /// <remarks>
@@ -23,6 +23,7 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtNodeWrappingTests
 {
     private static readonly byte[] Value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+    private static readonly byte[] Other = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
     /// <summary>
     /// Every other group level is reached without a lookup of its own. A spine of stems parting one
@@ -49,15 +50,15 @@ public class PbtNodeWrappingTests
         harness.ApplyBatch(writes);
 
         int[] nodeDepths = [.. harness.FlattenedNodes().Keys.Select(key => (int)key.Depth).Order()];
-        Assert.That(nodeDepths, Is.EqualTo(Enumerable.Range(0, Levels).Select(level => level * PbtTrieNodeGroup.LevelsPerGroup)));
+        Assert.That(nodeDepths, Is.EqualTo(Enumerable.Range(0, Levels).Select(level => level * PbtLayout.TrieNodeGroupLevelsPerGroup)));
         Assert.That(
             harness.Nodes.Keys.Select(key => (int)key.Depth).Order(),
-            Is.EqualTo(nodeDepths.Where(depth => depth == 0 || !PbtTrieNodeWrapper.WrapsChildren(depth - PbtTrieNodeGroup.LevelsPerGroup))),
+            Is.EqualTo(nodeDepths.Where(depth => depth == 0 || !PbtLayout.IsWrappingDepth(depth - PbtLayout.TrieNodeGroupLevelsPerGroup))),
             "a group whose parent wraps has no key of its own; the root has no parent");
 
         // and the bytes at the key that does hold it are the child's own encoding, verbatim
-        TrieNodeKey wrapped = new TrieNodeKey(PbtTrieNodeGroup.LevelsPerGroup, default).ChildGroup(0);
-        byte[] blob = harness.Nodes[new TrieNodeKey(PbtTrieNodeGroup.LevelsPerGroup, default)];
+        TrieNodeKey wrapped = new TrieNodeKey(PbtLayout.TrieNodeGroupLevelsPerGroup, default).ChildGroup(0);
+        byte[] blob = harness.Nodes[new TrieNodeKey(PbtLayout.TrieNodeGroupLevelsPerGroup, default)];
         PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
         Assert.That(blob[wrapper.Child(0, group)], Is.EqualTo(harness.FlattenedNodes()[wrapped]));
     }
@@ -124,7 +125,7 @@ public class PbtNodeWrappingTests
     /// none of, being no blob of the store's at all.
     /// </summary>
     [TestCase(0, TestName = "ARunUnderTheRoot_IsHeldByIt")]
-    [TestCase(PbtTrieNodeGroup.LevelsPerGroup, TestName = "ARunUnderAWrappingGroup_IsHeldBesideTheChildrenItWraps")]
+    [TestCase(PbtLayout.TrieNodeGroupLevelsPerGroup, TestName = "ARunUnderAWrappingGroup_IsHeldBesideTheChildrenItWraps")]
     public void ARunHasNoKeyOfItsOwn(int parentDepth)
     {
         List<(byte[], byte[]?)> writes = RunUnder(parentDepth);
@@ -140,14 +141,68 @@ public class PbtNodeWrappingTests
 
         Assert.That(harness.Nodes.ContainsKey(runKey), Is.False, "a run is no blob of the store's");
         Assert.That(PbtNodeChain.IsChain(harness.FlattenedNodes()[runKey]), "yet the trie holds it, one group below its parent");
-        Assert.That(group.KindAt(PbtTrieNodeGroup.BoundaryPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Chain));
+        Assert.That(group.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Chain));
         Assert.That(parentBlob[wrapper.Child(0, group)], Is.Empty, "a run is the group's own entry, never one of the children it wraps");
         Assert.That(
-            PbtTrieNodeWrapper.IsWrapper(parentBlob), Is.EqualTo(PbtTrieNodeWrapper.WrapsChildren(parentDepth)),
+            PbtTrieNodeWrapper.IsWrapper(parentBlob), Is.EqualTo(PbtLayout.IsWrappingDepth(parentDepth)),
             "the group beside it is wrapped or keyed by depth, as it would be with no run there");
         Assert.That(harness.Nodes.Keys, Does.Contain(TrieNodeKey.For(RunTargetDepth, default)), "the run's target keeps a key of its own");
 
         AssertMatchesFreshRebuild(harness, writes);
+    }
+
+    /// <summary>
+    /// A wrapping group collapses into a run once one boundary is left, and the survivor's bytes go
+    /// with it: they move out into a blob of their own under the survivor's key. The bytes are in the
+    /// group's own blob either way, but which copy is live depends on whether the same batch rebuilt
+    /// them — here it did, the other survivor being covered by
+    /// <see cref="ARunSplittingOntoItsTarget_AdoptsItAndGivesItBack"/>.
+    /// </summary>
+    [Test]
+    public void AWrapperCollapsing_HandsOverTheSurvivorItJustRebuilt()
+    {
+        // two stems apiece under the depth-4 group's slots 0 and 1, each pair parting at depth 8 so the
+        // slot roots a group there; one more stem parts at depth 0, so the group at depth 4 is real
+        (byte[] Key, byte[]? Value) leftLow = (TwoBytePrefixed(0x00, 0x00), Value);
+        (byte[] Key, byte[]? Value) leftHigh = (TwoBytePrefixed(0x00, 0x10), Value);
+        (byte[] Key, byte[]? Value) rightLow = (TwoBytePrefixed(0x01, 0x00), Value);
+        List<(byte[], byte[]?)> writes =
+        [
+            leftLow, leftHigh, rightLow,
+            (TwoBytePrefixed(0x01, 0x10), Value),
+            (TwoBytePrefixed(0x10, 0x00), Value),
+        ];
+
+        TrackingMemoryProvider provider = new();
+        PbtTreeHarness harness = new(provider, PbtGroupFormat.Interleaved);
+        harness.ApplyBatch(writes);
+
+        TrieNodeKey wrapping = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, default);
+        Assert.That(PbtTrieNodeWrapper.IsWrapper(harness.Nodes[wrapping]), "the depth-4 group holds both its children");
+
+        // empty slot 0 and rewrite under slot 1 in one batch: the group is left with the one boundary,
+        // and its bytes are the ones this very batch folded rather than the ones it read
+        List<(byte[], byte[]?)> survivors = [rightLow with { Value = Other }, .. writes[3..]];
+        harness.ApplyBatch([(leftLow.Key, null), (leftHigh.Key, null), .. survivors[..1]]);
+
+        Assert.That(harness.Nodes.ContainsKey(wrapping), Is.False, "the collapsed group leaves no blob behind");
+        Assert.That(
+            harness.Nodes.Keys, Does.Contain(wrapping.ChildGroup(1)),
+            "the survivor takes back the key the wrapper was holding its bytes instead of");
+        AssertMatchesFreshRebuild(harness, survivors);
+
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero, "every rented buffer must end up fully released");
+        Assert.That(TrackingMemoryProvider.CountUnreleased(harness.HandedOut), Is.Zero, "and every buffer a read was handed");
+    }
+
+    /// <summary>A tree key whose stem is zero but for its first two bytes, which is what puts it in a given depth-4 and depth-8 slot.</summary>
+    private static byte[] TwoBytePrefixed(byte first, byte second)
+    {
+        byte[] key = new byte[Stem.Length + 1];
+        key[0] = first;
+        key[1] = second;
+        key[^1] = 5;
+        return key;
     }
 
     /// <summary>The bit two stems part at, which is where every run these build lands.</summary>
@@ -165,13 +220,13 @@ public class PbtNodeWrappingTests
         SetBit(parted, RunTargetDepth);
 
         List<(byte[], byte[]?)> writes = [([.. corridor, 5], Value), ([.. parted, 5], Value)];
-        for (int depth = 0; depth <= parentDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
+        for (int depth = 0; depth <= parentDepth; depth += PbtLayout.TrieNodeGroupLevelsPerGroup)
         {
             // a pair parting one group below the branch, so the slot beside the run roots a group
             byte[] sibling = new byte[Stem.Length];
-            SetBit(sibling, depth + PbtTrieNodeGroup.LevelsPerGroup - 1);
+            SetBit(sibling, depth + PbtLayout.TrieNodeGroupLevelsPerGroup - 1);
             byte[] partner = (byte[])sibling.Clone();
-            SetBit(partner, depth + 2 * PbtTrieNodeGroup.LevelsPerGroup - 1);
+            SetBit(partner, depth + 2 * PbtLayout.TrieNodeGroupLevelsPerGroup - 1);
             writes.Add(([.. sibling, 5], Value));
             writes.Add(([.. partner, 5], Value));
         }
@@ -190,10 +245,10 @@ public class PbtNodeWrappingTests
         SetBit(apart, branchDepth);
 
         byte[] left = new byte[Stem.Length];
-        SetBit(left, branchDepth + PbtTrieNodeGroup.LevelsPerGroup);
+        SetBit(left, branchDepth + PbtLayout.TrieNodeGroupLevelsPerGroup);
 
         byte[] right = new byte[Stem.Length];
-        SetBit(right, branchDepth + PbtTrieNodeGroup.LevelsPerGroup + 1);
+        SetBit(right, branchDepth + PbtLayout.TrieNodeGroupLevelsPerGroup + 1);
 
         return [([.. apart, 5], Value), ([.. left, 5], Value), ([.. right, 5], Value)];
     }

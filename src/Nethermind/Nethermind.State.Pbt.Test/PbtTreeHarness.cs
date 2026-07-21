@@ -41,6 +41,9 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// <summary>Count of <see cref="GetLeafBlob"/> calls, to pin that the updater skips the read for brand-new stems.</summary>
     public int LeafReads { get; private set; }
 
+    /// <summary>Count of <see cref="SetTrieNode"/> calls, to pin which groups a batch really rebuilds.</summary>
+    public int NodeWrites { get; private set; }
+
     /// <summary>
     /// Every node the store holds, keyed by where it sits in the trie — the children inside a wrapper
     /// and the runs inside a group flattened back out to the keys they would have had of their own.
@@ -63,9 +66,9 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         flattened.Add(key, blob);
 
         PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
-        for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
         {
-            int position = PbtTrieNodeGroup.BoundaryPosition(slot);
+            int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
             if (group.KindAt(position) == PbtTrieNodeGroup.NodeKind.Chain)
             {
                 flattened.Add(key.ChildGroup(slot), group[position].ChainData.ToArray());
@@ -82,6 +85,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
 
     public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
     {
+        NodeWrites++;
         byte[]? value = node?.ToArrayAndRelease();
         if (value is null) _nodes.Remove(key);
         else _nodes[key] = value;

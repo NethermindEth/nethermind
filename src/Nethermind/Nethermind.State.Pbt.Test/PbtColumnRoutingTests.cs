@@ -48,9 +48,9 @@ public class PbtColumnRoutingTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
 
-        TrieNodeKey accountKey = TrieNodeKey.For(PbtTrieNodeGroup.LevelsPerGroup, AccountStem);
-        TrieNodeKey codeKey = TrieNodeKey.For(PbtTrieNodeGroup.LevelsPerGroup, CodeStem);
-        TrieNodeKey storageKey = TrieNodeKey.For(PbtTrieNodeGroup.LevelsPerGroup, StorageStem);
+        TrieNodeKey accountKey = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, AccountStem);
+        TrieNodeKey codeKey = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, CodeStem);
+        TrieNodeKey storageKey = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, StorageStem);
 
         byte[] rootNode = Bytes.FromHexString("0x11");
         byte[] accountNode = Bytes.FromHexString("0x22");

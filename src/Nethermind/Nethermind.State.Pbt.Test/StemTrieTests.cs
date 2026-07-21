@@ -330,7 +330,7 @@ public class StemTrieTests(PbtGroupFormat format)
 
         PbtNodeChain chain = PbtNodeChain.Decode(nodes[chains[0]], chains[0].Depth);
         int levels = chain.TargetDepth - chains[0].Depth;
-        for (int depth = chains[0].Depth; depth < chain.TargetDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
+        for (int depth = chains[0].Depth; depth < chain.TargetDepth; depth += PbtLayout.TrieNodeGroupLevelsPerGroup)
         {
             Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"nothing is keyed at depth {depth}, inside the run");
         }
@@ -339,9 +339,9 @@ public class StemTrieTests(PbtGroupFormat format)
         // the root group down to the depth-60 group where the suffix starts branching. That is fourteen
         // groups — 14 * (11 + 4 * 32) = 1946 bytes of single-child levels, each group's root folded away —
         // held in 97, inside the root group's own blob.
-        Assert.That(chains[0].Depth, Is.EqualTo(PbtTrieNodeGroup.LevelsPerGroup));
+        Assert.That(chains[0].Depth, Is.EqualTo(PbtLayout.TrieNodeGroupLevelsPerGroup));
         Assert.That(chain.TargetDepth, Is.EqualTo(60));
-        Assert.That(levels / PbtTrieNodeGroup.LevelsPerGroup, Is.EqualTo(14));
+        Assert.That(levels / PbtLayout.TrieNodeGroupLevelsPerGroup, Is.EqualTo(14));
         Assert.That(nodes[chains[0]], Has.Length.EqualTo(PbtNodeChain.EncodedLength));
     }
 
@@ -724,7 +724,7 @@ public class StemTrieTests(PbtGroupFormat format)
         // one stem per boundary slot of the depth-4 group: they share the depth-0 nibble and differ in
         // the depth-4 one, so that group branches sixteen ways rather than collapsing or nesting
         List<(byte[] Key, byte[]? Value)> writes = [];
-        for (byte slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++) writes.Add(([.. MakeStem(slot, 0), 5], value));
+        for (byte slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++) writes.Add(([.. MakeStem(slot, 0), 5], value));
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         harness.ApplyBatch(writes);
@@ -733,10 +733,10 @@ public class StemTrieTests(PbtGroupFormat format)
         // format keeps, bar the folded root — all thirty below it, or the twenty an interleaved group
         // does not fold away
         int storedPositions = 0;
-        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
-            if (position == PbtTrieNodeGroup.RootPosition) continue;
-            if (!PbtTrieNodeGroup.IsSkippedPosition(format, position)) storedPositions++;
+            if (position == PbtLayout.TrieNodeGroupRootPosition) continue;
+            if (!PbtLayout.TrieNodeGroupIsSkippedPosition(format, position)) storedPositions++;
         }
 
         PbtTrieNodeGroup dense = PbtTrieNodeGroup.Decode(harness.Nodes[TrieNodeKey.Root.ChildGroup(0)]);
@@ -805,8 +805,8 @@ public class StemTrieTests(PbtGroupFormat format)
         PbtTreeHarness one = new(PooledRefCountingMemoryProvider.Instance, format);
         Assert.That(one.ApplyBatch(single), Is.EqualTo(ReferenceRoot(single)));
         PbtTrieNodeGroup rootGroup = PbtTrieNodeGroup.Decode(one.Nodes[TrieNodeKey.Root]);
-        Assert.That(rootGroup.KindAt(PbtTrieNodeGroup.RootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Absent), "the root position is never stored");
-        Assert.That(rootGroup.KindAt(PbtTrieNodeGroup.BoundaryPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), "the lone stem sits at its boundary slot");
+        Assert.That(rootGroup.KindAt(PbtLayout.TrieNodeGroupRootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Absent), "the root position is never stored");
+        Assert.That(rootGroup.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), "the lone stem sits at its boundary slot");
 
         // two stems parting in the top four bits branch the root group, so its internal root is folded
         // away and never stored — yet the tree still folds to the reference root
@@ -814,14 +814,14 @@ public class StemTrieTests(PbtGroupFormat format)
         PbtTreeHarness two = new(PooledRefCountingMemoryProvider.Instance, format);
         Assert.That(two.ApplyBatch(branch), Is.EqualTo(ReferenceRoot(branch)));
         Assert.That(
-            PbtTrieNodeGroup.Decode(two.Nodes[TrieNodeKey.Root]).KindAt(PbtTrieNodeGroup.RootPosition),
+            PbtTrieNodeGroup.Decode(two.Nodes[TrieNodeKey.Root]).KindAt(PbtLayout.TrieNodeGroupRootPosition),
             Is.EqualTo(PbtTrieNodeGroup.NodeKind.Absent), "a branching group's internal root is folded, not stored");
     }
 
     private static int CountPresentPositions(PbtTrieNodeGroup group)
     {
         int present = 0;
-        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
             if (group.KindAt(position) != PbtTrieNodeGroup.NodeKind.Absent) present++;
         }
@@ -858,23 +858,24 @@ public class StemTrieTests(PbtGroupFormat format)
     /// <summary>
     /// A rewrite that changes no value leaves every group above it exactly as stored, and none of them
     /// is folded to discover that. The stored bytes and the root are the same either way, so what the
-    /// nesting must not move is the rents: one per group is what folding a fresh encoding costs.
+    /// nesting must not move is what the batch persists: a group that was folded would be written back.
     /// </summary>
     [Test]
     public void NoOpRewrite_FoldsNoGroupAboveTheStem()
     {
-        (int shallowRents, int shallowGroups) = NoOpRewrite(deeplyNested: false);
-        (int deepRents, int deepGroups) = NoOpRewrite(deeplyNested: true);
+        (int shallowWrites, int shallowGroups) = NoOpRewrite(deeplyNested: false);
+        (int deepWrites, int deepGroups) = NoOpRewrite(deeplyNested: true);
 
         Assert.That(deepGroups, Is.GreaterThan(shallowGroups), "the deep case must really nest the stem under more groups");
-        Assert.That(deepRents, Is.EqualTo(shallowRents), "a group above the rewrite must not be folded only to find it unchanged");
+        Assert.That(shallowWrites, Is.Zero, "a group above the rewrite must not be folded only to find it unchanged");
+        Assert.That(deepWrites, Is.Zero, "nesting the stem deeper must not start rewriting the groups above it");
     }
 
     /// <summary>
     /// Nests a stem under two groups — or three, when <paramref name="deeplyNested"/> — rewrites it with
-    /// the value it already holds, and reports what that batch rented and how many groups are stored.
+    /// the value it already holds, and reports what that batch persisted and how many groups are stored.
     /// </summary>
-    private (int Rents, int Groups) NoOpRewrite(bool deeplyNested)
+    private (int NodeWrites, int Groups) NoOpRewrite(bool deeplyNested)
     {
         byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] target = TwoByteStem(0x00, 0x00);
@@ -889,11 +890,11 @@ public class StemTrieTests(PbtGroupFormat format)
         PbtTreeHarness harness = new(provider, format);
         ValueHash256 before = harness.ApplyBatch(writes);
 
-        int rentsBefore = provider.Rented.Count;
+        int writesBefore = harness.NodeWrites;
         // the root group's own root is folded, not stored, so its unchanged hash reaches the caller by
         // value — a no-op rewrite must still return the true root, not the zero one an absent entry reads as
         Assert.That(harness.ApplyBatch([([.. target, 5], value)]), Is.EqualTo(before), "a no-op rewrite returns the same root");
-        return (provider.Rented.Count - rentsBefore, NodeCount(harness));
+        return (harness.NodeWrites - writesBefore, NodeCount(harness));
     }
 
     /// <summary>A stem told apart from its fellows only by <paramref name="b0"/> and <paramref name="b1"/>, so it parts from them above depth 16.</summary>
@@ -963,7 +964,7 @@ public class StemTrieTests(PbtGroupFormat format)
 
     /// <summary>
     /// The nodes the store holds, counted as nodes rather than as blobs: one blob holds a group, the
-    /// runs hanging off it and — where it wraps them (see <see cref="PbtTrieNodeWrapper.WrapsChildren"/>)
+    /// runs hanging off it and — where it wraps them (see <see cref="PbtLayout.IsWrappingDepth"/>)
     /// — its child groups, and it is the shape of the trie these tests are about.
     /// </summary>
     private static int NodeCount(PbtTreeHarness harness) => harness.FlattenedNodes().Count;
@@ -988,7 +989,7 @@ public class StemTrieTests(PbtGroupFormat format)
         // position is visited; a boundary internal roots a subtree to descend into, and so does a run.
         PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
         long counted = 0;
-        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
             switch (group.KindAt(position))
             {
@@ -996,8 +997,8 @@ public class StemTrieTests(PbtGroupFormat format)
                     counted++;
                     break;
                 case PbtTrieNodeGroup.NodeKind.Chain:
-                case PbtTrieNodeGroup.NodeKind.Internal when PbtTrieNodeGroup.IsBoundaryPosition(position):
-                    counted += CountStems(nodes, key.ChildGroup(PbtTrieNodeGroup.BoundarySlot(position)));
+                case PbtTrieNodeGroup.NodeKind.Internal when PbtLayout.TrieNodeGroupIsBoundaryPosition(position):
+                    counted += CountStems(nodes, key.ChildGroup(PbtLayout.TrieNodeGroupBoundarySlot(position)));
                     break;
             }
         }
@@ -1023,7 +1024,7 @@ public class StemTrieTests(PbtGroupFormat format)
             if (!PbtNodeChain.IsChain(blob)) continue;
 
             PbtNodeChain chain = PbtNodeChain.Decode(blob, key.Depth);
-            for (int depth = key.Depth + PbtTrieNodeGroup.LevelsPerGroup; depth < chain.TargetDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
+            for (int depth = key.Depth + PbtLayout.TrieNodeGroupLevelsPerGroup; depth < chain.TargetDepth; depth += PbtLayout.TrieNodeGroupLevelsPerGroup)
             {
                 Assert.That(nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"{key} spans depth {depth}, which must hold no node");
             }

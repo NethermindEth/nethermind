@@ -26,7 +26,7 @@ namespace Nethermind.Pbt;
 public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? buckets) : IDisposable
 {
     /// <summary>The bounds array of one level, so bucket <c>i</c> is <c>entries[level[i]..level[i + 1]]</c>.</summary>
-    public const int BoundsLength = PbtTrieNodeGroup.BoundarySlots + 1;
+    public const int BoundsLength = PbtLayout.TrieNodeGroupBoundarySlots + 1;
 
     /// <summary>
     /// Where a level caches its touched mask: bit <c>i</c> set where bucket <c>i</c> is non-empty, which is
@@ -48,7 +48,7 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
     /// is the same thing at depth 0. The coarse level sits last so a descent finds its own level at the
     /// table's end whatever the level count, and slot <c>h</c>'s child level at <c>h * LevelStride</c>.
     /// </remarks>
-    public const int ByteLevelLength = PbtTrieNodeGroup.BoundarySlots * LevelStride;
+    public const int ByteLevelLength = PbtLayout.TrieNodeGroupBoundarySlots * LevelStride;
 
     /// <summary>The whole bucket table: the byte level, then the nibble level.</summary>
     public const int BucketTableLength = ByteLevelLength + LevelStride;

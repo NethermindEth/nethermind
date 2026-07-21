@@ -128,12 +128,12 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
             nibbles[0] = 0;
             int nibbleStart = 0;
             uint nibblesTouched = 0;
-            for (int nibble = 0; nibble < PbtTrieNodeGroup.BoundarySlots; nibble++)
+            for (int nibble = 0; nibble < PbtLayout.TrieNodeGroupBoundarySlots; nibble++)
             {
                 Span<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride, PbtWriteBatch.LevelStride);
                 group[0] = 0;
                 uint groupTouched = 0;
-                for (int low = 0; low < PbtTrieNodeGroup.BoundarySlots; low++)
+                for (int low = 0; low < PbtLayout.TrieNodeGroupBoundarySlots; low++)
                 {
                     int lowStart = batch.Count;
                     foreach ((Stem stem, IPbtStemChanges leaves) in _shards[(nibble << 4) | low].Stems)

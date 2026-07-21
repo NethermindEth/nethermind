@@ -51,7 +51,7 @@ public class PbtFormatInteropTests
         // sixteen stems on the boundary slots of one depth-4 group: it branches sixteen ways, so a
         // single-slot rewrite leaves whole clean subtrees for the copy-verbatim path to take
         List<(byte[], byte[]?)> writes = [];
-        for (byte slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++) writes.Add((BoundaryKey(0, slot), Value));
+        for (byte slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++) writes.Add((BoundaryKey(0, slot), Value));
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, initial);
         harness.ApplyBatch(writes);
@@ -79,7 +79,7 @@ public class PbtFormatInteropTests
         // two disjoint dense groups under the root, so a later write can touch one and leave the other
         List<(byte[], byte[]?)> groupA = [];
         List<(byte[], byte[]?)> groupB = [];
-        for (byte slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+        for (byte slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
         {
             groupA.Add((BoundaryKey(0, slot), Value));
             groupB.Add((BoundaryKey(1, slot), Value));

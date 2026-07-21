@@ -48,7 +48,7 @@ public readonly ref partial struct PbtTrieNodeGroup
         public int AppendInternal(int position, in ValueHash256 hash)
         {
             Debug.Assert(hash != default, "internal nodes never cache a zero hash");
-            Debug.Assert(!IsSkippedPosition(_format, position), "an interleaved group stores no internal node at a skipped level");
+            Debug.Assert(!PbtLayout.TrieNodeGroupIsSkippedPosition(_format, position), "an interleaved group stores no internal node at a skipped level");
             MarkPresent(position);
             return Write(hash.Bytes);
         }
@@ -69,10 +69,10 @@ public readonly ref partial struct PbtTrieNodeGroup
         /// <summary>Appends the run at <paramref name="position"/>, a boundary slot's, whose whole encoding <paramref name="chain"/> is, returning its entry offset.</summary>
         public int AppendChain(int position, ReadOnlySpan<byte> chain)
         {
-            Debug.Assert(IsBoundaryPosition(position), "a run hangs from a boundary slot and nowhere else");
+            Debug.Assert(PbtLayout.TrieNodeGroupIsBoundaryPosition(position), "a run hangs from a boundary slot and nowhere else");
             Debug.Assert(chain.Length == Slot.ChainLength);
             MarkPresent(position);
-            _chains |= 1u << BoundarySlot(position);
+            _chains |= 1u << PbtLayout.TrieNodeGroupBoundarySlot(position);
             return Write(chain);
         }
 
@@ -93,7 +93,7 @@ public readonly ref partial struct PbtTrieNodeGroup
             Debug.Assert((stems & ~presence) == 0, "only a present position holds a stem");
             Debug.Assert(_presence >> BitOperations.TrailingZeroCount(presence) == 0, "nodes must be appended in ascending position order");
             Debug.Assert(
-                _format == PbtGroupFormat.EveryLevel || (presence & SkippedPositionsMask & ~stems) == 0,
+                !PbtLayout.TrieNodeGroupHoldsSkippedInternal(_format, presence, stems),
                 "a verbatim run must be in this group's own format");
 
             _presence |= presence;
@@ -108,7 +108,7 @@ public readonly ref partial struct PbtTrieNodeGroup
         /// <summary>The length of the entry at <paramref name="rootPosition"/>, the last of an appended subtree's.</summary>
         private static int RootEntryLength(int rootPosition, NodeGroupBitmasks masks) =>
             (masks.Stems >> rootPosition & 1) != 0 ? Slot.StemLength
-            : IsBoundaryPosition(rootPosition) && (masks.Chains >> BoundarySlot(rootPosition) & 1) != 0 ? Slot.ChainLength
+            : PbtLayout.TrieNodeGroupIsBoundaryPosition(rootPosition) && (masks.Chains >> PbtLayout.TrieNodeGroupBoundarySlot(rootPosition) & 1) != 0 ? Slot.ChainLength
             : Slot.InternalLength;
 
         public readonly Slot SlotAt(NodeKind kind, int offset) => PbtTrieNodeGroup.SlotAt(_destination, kind, offset);
@@ -137,7 +137,7 @@ public readonly ref partial struct PbtTrieNodeGroup
 
         private void MarkPresent(int position)
         {
-            Debug.Assert((uint)position < PositionCount);
+            Debug.Assert((uint)position < PbtLayout.TrieNodeGroupPositionCount);
             Debug.Assert(_presence >> position == 0, "nodes must be appended in ascending position order");
             _presence |= 1u << position;
         }
