@@ -72,6 +72,11 @@ public partial class EngineRpcModule : IEngineRpcModule
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
 
+        // The transactions-trie root needs only the encoded transaction bytes, so its computation
+        // can hide under parameter validation (which decodes the transactions on V3+), the lock
+        // wait, and the no-GC-region start that precede TryGetBlock, which consumes the started task.
+        _ = executionPayload.StartTxRootComputation();
+
         if (!executionPayload.ValidateFork(_specProvider))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
