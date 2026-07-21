@@ -26,10 +26,10 @@ public class PbtRocksDbPersistence : IPbtPersistence
     private static ReadOnlySpan<byte> LayoutVersionKey => "layoutVersion"u8;
 
     /// <summary>
-    /// On-disk layout of the keys this class encodes. Bump it whenever a key encoding changes, so a
-    /// database written by an older build is refused rather than silently misread.
+    /// On-disk layout of the columns this class writes. Bump it whenever a key or value encoding
+    /// changes, so a database written by an older build is refused rather than silently misread.
     /// </summary>
-    private const int LayoutVersion = 2;
+    private const int LayoutVersion = 3;
 
     private readonly IColumnsDb<PbtColumns> _db;
 
