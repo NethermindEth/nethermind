@@ -157,4 +157,22 @@ public class KeyedNonceManagerTests
     [Test]
     public void IsNonceSetValid_false_at_max_nonce_seq() =>
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
+
+    [Test]
+    public void AreNonceKeysWellFormed_accepts_max_keys() =>
+        Assert.That(KeyedNonceManager.AreNonceKeysWellFormed(StrictlyIncreasing(Eip8250Constants.MaxNonceKeys)), Is.True);
+
+    [Test]
+    public void AreNonceKeysWellFormed_rejects_over_max_keys() =>
+        Assert.That(KeyedNonceManager.AreNonceKeysWellFormed(StrictlyIncreasing(Eip8250Constants.MaxNonceKeys + 1)), Is.False);
+
+    private static UInt256[] StrictlyIncreasing(int count)
+    {
+        UInt256[] keys = new UInt256[count];
+        for (int i = 0; i < count; i++)
+        {
+            keys[i] = (UInt256)(i + 1);
+        }
+        return keys;
+    }
 }
