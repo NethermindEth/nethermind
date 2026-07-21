@@ -446,9 +446,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
-            AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
-                .AsTask().TimeoutOn(timeoutTask);
+            // the tree insert reads only the raw payload bytes, never the recovered senders,
+            // so it can safely overlap the remainder of sender recovery
+            Task<AddBlockResult> suggestTask = senderRecoveryTask.IsCompleted
+                ? _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask()
+                : Task.Run(() => _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask());
+
+            // recovery must complete before Enqueue — the prewarmer needs all senders up front
+            await senderRecoveryTask;
+
+            AddBlockResult addResult = await suggestTask.TimeoutOn(timeoutTask);
 
             result = addResult switch
             {
@@ -478,9 +485,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                // Invariant: recovery completes before the queue sees the block — the prewarmer
-                // groups txs by sender at ProcessBranch start, so it needs every sender up front.
-                await senderRecoveryTask;
                 await _processingQueue.Enqueue(block, processingOptions);
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }

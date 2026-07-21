@@ -364,9 +364,10 @@ public static partial class EvmInstructions
         if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
         ReadOnlySpan<byte> bytes = bytesSpan;
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        // Detect an all-zero value and strip leading zeros from a single scan.
+        int leadingZeros = bytes.LeadingZerosCount();
+        bool newIsZero = leadingZeros == bytes.Length;
+        bytes = newIsZero ? BytesZero : bytes[leadingZeros..];
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
@@ -477,9 +478,10 @@ public static partial class EvmInstructions
         if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
         ReadOnlySpan<byte> bytes = bytesSpan;
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        // Detect an all-zero value and strip leading zeros from a single scan.
+        int leadingZeros = bytes.LeadingZerosCount();
+        bool newIsZero = leadingZeros == bytes.Length;
+        bytes = newIsZero ? BytesZero : bytes[leadingZeros..];
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
@@ -654,9 +656,12 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
-        // Retrieve the persistent storage value and push it onto the stack.
+        // Retrieve the persistent storage value and push it onto the stack. Zero slots come back
+        // as a single zero byte; PushZero writes the word directly instead of packing the byte.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
-        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
+        EvmExceptionType pushResult = value.Length == 1 && value[0] == 0
+            ? stack.PushZero<TTracingInst>()
+            : stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
         if (vm.TxTracer.IsTracingOpLevelStorage)
