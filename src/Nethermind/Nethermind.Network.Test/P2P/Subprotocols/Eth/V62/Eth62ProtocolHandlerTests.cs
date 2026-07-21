@@ -765,17 +765,32 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.SubprotocolRequested -= HandlerOnSubprotocolRequested;
         }
 
+        private static Transaction[] BuildTransactionsWithEqualSerializedLength(int txCount, int dataSize)
+        {
+            byte[] r = new byte[32];
+            r.AsSpan().Fill(0x11);
+            Transaction[] txs = new Transaction[txCount];
+            for (int i = 0; i < txCount; i++)
+            {
+                byte[] s = new byte[32];
+                s.AsSpan().Fill(0x22);
+                s[30] = (byte)(i >> 8);
+                s[31] = (byte)i;
+                txs[i] = Build.A.Transaction
+                    .WithData(new byte[dataSize])
+                    .WithSignature(new Signature(r, s, TestBlockchainIds.ChainId * 2 + 35))
+                    .TestObject;
+            }
+
+            return txs;
+        }
+
         [TestCase(1, true)]
         [TestCase(1055, true)]
         [TestCase(1056, false)]
         public void should_send_txs_with_size_up_to_MaxPacketSize_in_one_TransactionsMessage(int txCount, bool shouldBeSentInJustOneMessage)
         {
-            Transaction[] txs = new Transaction[txCount];
-
-            for (int i = 0; i < txCount; i++)
-            {
-                txs[i] = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
-            }
+            Transaction[] txs = BuildTransactionsWithEqualSerializedLength(txCount, dataSize: 0);
 
             _handler.SendNewTransactions(txs);
 
@@ -797,17 +812,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(10000)]
         public void should_send_txs_with_size_exceeding_MaxPacketSize_in_more_than_one_TransactionsMessage(int txCount)
         {
-            int sizeOfOneTestTransaction = Build.A.Transaction.SignedAndResolved().TestObject.GetLength();
+            Transaction[] txs = BuildTransactionsWithEqualSerializedLength(txCount, dataSize: 0);
+
+            int sizeOfOneTestTransaction = txs[0].GetLength();
             int maxNumberOfTxsInOneMsg = TransactionsMessage.MaxPacketSize / sizeOfOneTestTransaction; // it's 1055
             int nonFullMsgTxsCount = txCount % maxNumberOfTxsInOneMsg;
             int messagesCount = txCount / maxNumberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
-
-            Transaction[] txs = new Transaction[txCount];
-
-            for (int i = 0; i < txCount; i++)
-            {
-                txs[i] = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
-            }
 
             _handler.SendNewTransactions(txs);
 
@@ -824,34 +834,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             const int txCount = 512;
 
-            Transaction[] txs = new Transaction[txCount];
-            for (int i = 0; i < txCount; i++)
-            {
-                txs[i] = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
-            }
+            Transaction[] txs = BuildTransactionsWithEqualSerializedLength(txCount, dataSize);
 
             int sizeOfOneTx = txs[0].GetLength();
             int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
             int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
             int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
 
-            CountdownEvent delivered = new(messagesCount);
-            int matchingDeliveries = 0;
-            _session.When(s => s.DeliverMessage(Arg.Any<TransactionsMessage>()))
-                .Do(call =>
-                {
-                    TransactionsMessage msg = (TransactionsMessage)call[0];
-                    if (msg.Transactions.Count == numberOfTxsInOneMsg || msg.Transactions.Count == nonFullMsgTxsCount)
-                    {
-                        Interlocked.Increment(ref matchingDeliveries);
-                        if (!delivered.IsSet) delivered.Signal();
-                    }
-                });
-
             _handler.SendNewTransactions(txs);
 
-            Assert.That(delivered.Wait(TimeSpan.FromSeconds(30)), Is.True, "Not all expected messages were delivered within 30s");
-            Assert.That(matchingDeliveries, Is.EqualTo(messagesCount));
+            _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
