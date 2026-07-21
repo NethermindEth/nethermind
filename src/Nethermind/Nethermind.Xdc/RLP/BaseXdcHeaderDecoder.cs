@@ -17,13 +17,6 @@ namespace Nethermind.Xdc.RLP;
 /// RLP content" at that point, so no reliable byte-shape check exists. This is safe because XDC nodes
 /// only ever decode XDC-shaped chain data through the global registry; it is not safe to decode
 /// arbitrary foreign headers once this decoder is registered as the process-wide default.
-/// <para>
-/// The encode fallback is deliberately restricted to a genuine base <see cref="BlockHeader"/>. Any
-/// other <see cref="XdcBlockHeader"/> subtype that is not <typeparamref name="TH"/> (e.g. a plain
-/// <see cref="XdcBlockHeader"/> routed through <c>XdcSubnetHeaderDecoder</c>) would silently drop its
-/// XDC-specific fields and produce a wrong block hash, so it throws instead — surfacing the wiring bug
-/// loudly rather than corrupting output.
-/// </para>
 /// </remarks>
 public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeaderDecoder where TH : XdcBlockHeader
 {
