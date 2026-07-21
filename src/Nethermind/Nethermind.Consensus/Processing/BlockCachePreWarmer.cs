@@ -142,10 +142,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
+        int addressWarmingConcurrency = GetAddressWarmingConcurrency(block, maxDegreeOfParallelism);
+        ParallelOptions addressWarmingOptions = addressWarmingConcurrency == maxDegreeOfParallelism
+            ? parallelOptions
+            : new ParallelOptions { MaxDegreeOfParallelism = addressWarmingConcurrency, CancellationToken = token };
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
         ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
-        AddressWarmer addressWarmer = new(parallelOptions, block, parent, spec, systemAccessLists, this, bal);
+        AddressWarmer addressWarmer = new(addressWarmingOptions, block, parent, spec, systemAccessLists, this, bal);
         return (blockState, parallelOptions, addressWarmer);
     }
 
@@ -505,6 +509,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Total gas limit above which a multi-tx sender group is warmed per-tx in parallel instead of sequentially.</summary>
     private const ulong SplitSenderGroupGasThreshold = 4_000_000;
+
+    internal static int GetAddressWarmingConcurrency(Block block, int maxDegreeOfParallelism)
+    {
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.GasLimit > SplitSenderGroupGasThreshold)
+            {
+                // Hoisted transaction warmers are time-critical and already load their sender and recipient.
+                return Math.Max(1, maxDegreeOfParallelism / 4);
+            }
+        }
+
+        return maxDegreeOfParallelism;
+    }
 
     private static ulong TotalGasLimit(ArrayPoolList<(int Index, Transaction Tx)> group)
     {

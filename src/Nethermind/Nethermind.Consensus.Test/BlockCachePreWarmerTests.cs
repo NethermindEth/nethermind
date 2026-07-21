@@ -627,6 +627,22 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    [TestCase(4_000_000ul, 8, 8)]
+    [TestCase(4_000_001ul, 8, 2)]
+    [TestCase(5_000_000ul, 7, 1)]
+    public void AddressWarmingConcurrency_ReservesWorkersForHeavyTransactions(
+        ulong gasLimit,
+        int maxDegreeOfParallelism,
+        int expectedConcurrency)
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: gasLimit)).TestObject;
+
+        Assert.That(
+            BlockCachePreWarmer.GetAddressWarmingConcurrency(block, maxDegreeOfParallelism),
+            Is.EqualTo(expectedConcurrency));
+    }
+
     // Below two workers a split cannot add parallelism; it only discards same-sender state
     // propagation. Negative means unlimited, matching ParallelOptions.MaxDegreeOfParallelism.
     [TestCase(1, 1)]
