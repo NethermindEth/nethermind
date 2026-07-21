@@ -24,6 +24,30 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
+    private static IEnumerable<TestCaseData> ZeroExtendedCopyCases()
+    {
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, UInt256.Zero, 4, new byte[] { 1, 2, 3, 4 })
+            .SetName("CopyFromZeroExtendedAfterGas_exact_range");
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, (UInt256)1, 5, new byte[] { 2, 3, 4, 0, 0 })
+            .SetName("CopyFromZeroExtendedAfterGas_partial_range");
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, (UInt256)4, 3, new byte[] { 0, 0, 0 })
+            .SetName("CopyFromZeroExtendedAfterGas_offset_at_end");
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, (UInt256)100, 3, new byte[] { 0, 0, 0 })
+            .SetName("CopyFromZeroExtendedAfterGas_offset_beyond_end");
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, new UInt256(0, 1, 0, 0), 3, new byte[] { 0, 0, 0 })
+            .SetName("CopyFromZeroExtendedAfterGas_256_bit_offset");
+
+        byte[] longSource = Enumerable.Range(1, 35).Select(static value => (byte)value).ToArray();
+        yield return new TestCaseData(
+            longSource, UInt256.Zero, 40, longSource.Concat(new byte[5]).ToArray())
+            .SetName("CopyFromZeroExtendedAfterGas_multiword_range");
+    }
+
     [TestCase(32UL, 1UL)]
     [TestCase(0UL, 0UL)]
     [TestCase(33UL, 2UL)]
@@ -321,6 +345,41 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         Assert.That(memory.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> first), Is.True);
         Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
+    }
+
+    [TestCaseSource(nameof(ZeroExtendedCopyCases))]
+    public void CopyFromZeroExtendedAfterGas_copies_and_zeroes_only_the_destination(
+        byte[] source,
+        UInt256 sourceOffset,
+        int length,
+        byte[] expected)
+    {
+        const int destinationOffset = 3;
+        const int inspectedLength = 64;
+        EvmPooledMemory memory = new();
+        UInt256 memoryStart = UInt256.Zero;
+        UInt256 destination = destinationOffset;
+
+        try
+        {
+            memory.CalculateMemoryCost(in memoryStart, inspectedLength, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+            memory.LoadSpanAfterGas(in memoryStart, inspectedLength).Fill(0xff);
+
+            memory.CopyFromZeroExtendedAfterGas(in destination, source, in sourceOffset, length);
+
+            ReadOnlySpan<byte> actual = memory.Inspect(memoryStart, inspectedLength).Span;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[..destinationOffset].ToArray(), Is.EqualTo(new byte[] { 0xff, 0xff, 0xff }));
+                Assert.That(actual.Slice(destinationOffset, length).ToArray(), Is.EqualTo(expected));
+                Assert.That(actual[destinationOffset + length], Is.EqualTo(0xff));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
     }
 
     [Test]
