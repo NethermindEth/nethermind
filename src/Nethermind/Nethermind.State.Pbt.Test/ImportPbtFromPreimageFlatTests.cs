@@ -175,6 +175,33 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     [Test]
+    public async Task Consecutive_storage_slots_share_one_stem()
+    {
+        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        {
+            batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
+            // two storage-zone slots in the same 256-block: 100>>8 == 101>>8 == 0, so they share a stem
+            batch.SetStorage(TestItem.AddressA, 100, SlotValue.FromSpanWithoutLeadingZero([0xAA]));
+            batch.SetStorage(TestItem.AddressA, 101, SlotValue.FromSpanWithoutLeadingZero([0xBB]));
+        }
+
+        SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
+        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+        RecordingExitSource exitSource = new();
+        // FlushEntryInterval 1 forces the two slots into separate windows, so a same-stem cross-window merge is exercised too
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = 1 }, pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+
+        await step.Execute(CancellationToken.None);
+        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
+
+        PbtScanReport report = await new PbtScanner(pbtDb, new PbtConfig(), LimboLogs.Instance).Scan(CancellationToken.None);
+        Assert.That(report.StorageLeaves.BlobCount, Is.EqualTo(1), "two slots in one 256-block must share a single storage stem");
+        Assert.That(report.StorageLeaves.LeafCount, Is.EqualTo(2), "the shared stem's blob must hold both slots' leaves");
+    }
+
+    [Test]
     public async Task Skips_when_pbt_already_populated()
     {
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
