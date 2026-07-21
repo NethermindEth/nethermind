@@ -23,7 +23,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
@@ -35,7 +34,6 @@ using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
-using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -46,6 +44,7 @@ public class XdcModule : Module
         base.Load(builder);
 
         builder
+            .AddModule(new XdcHeaderModule())
             .AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>() // Register custom RocksDb config factory that handles XdcSnapshots without validation
             .AddProtocolHandler<P2P.XdcProtocolHandler>() // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
             .AddStep(typeof(InitializeBlockchainXdc))
@@ -120,8 +119,6 @@ public class XdcModule : Module
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
-            .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
-            .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
