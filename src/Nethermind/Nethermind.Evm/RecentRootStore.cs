@@ -75,6 +75,24 @@ public static class RecentRootStore
         state.Set(cell, entryHash.Bytes.WithoutLeadingZeros().ToArray());
     }
 
+    public static bool AreReferencesValid(IWorldState state, ReadOnlySpan<(ValueHash256 SourceId, ulong Slot, ValueHash256 Root)> references, ulong currentSlot)
+    {
+        if (references.Length > Eip8272Constants.MaxRecentRootReferences)
+        {
+            return false;
+        }
+
+        foreach ((ValueHash256 sourceId, ulong slot, ValueHash256 root) in references)
+        {
+            if (!IsReferenceValid(state, sourceId, slot, root, currentSlot))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static StorageCell RingBufferCell(in ValueHash256 sourceId, ulong ringIndex) =>
         new(Eip8272Constants.RecentRootAddress, StorageKey(sourceId, ringIndex).ToUInt256());
 }
