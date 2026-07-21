@@ -26,13 +26,16 @@ public class BlockValidator(
     IHeaderValidator? headerValidator,
     IUnclesValidator? unclesValidator,
     ISpecProvider? specProvider,
-    ILogManager? logManager)
+    ILogManager? logManager,
+    ILeanProofVerifier? leanProofVerifier = null)
     : IBlockValidator
 {
     private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    // EIP-8288: defaults to the stub until a real Lean Ethereum verifier module is registered.
+    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? StubLeanProofVerifier.Instance;
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
@@ -87,8 +90,6 @@ public class BlockValidator(
     /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
     /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
     /// STARK must verify against the aggregated verification key.
-    /// EIP8288-DEVIATION: proof verification is delegated to <see cref="StubLeanProofVerifier"/>; a
-    /// real Lean Ethereum verifier would be injected here.
     /// </summary>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
@@ -110,7 +111,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (!StubLeanProofVerifier.Instance.VerifyRecursiveStark(in computed.ValueHash256, Eip8288Constants.AggregatedVk, recursiveStark.StarkProof))
+        if (!_leanProofVerifier.VerifyRecursiveStark(in computed.ValueHash256, Eip8288Constants.AggregatedVk, recursiveStark.StarkProof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");

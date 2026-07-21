@@ -194,11 +194,9 @@ public static class FrameTxValidation
     /// <summary>
     /// EIP-8288 dependency-verification frame constraints: null target, zero value/flags, data a
     /// non-empty multiple of 96 bytes with each triple 31-byte zero-padded, a known scheme, at most
-    /// <see cref="Eip8288Constants.MaxDependenciesPerFrame"/> triples, and a gas limit exactly equal
-    /// to the sum of per-scheme verification gas. Accumulates the per-scheme counts for the caller's
-    /// per-transaction limits.
-    /// EIP8288-ISSUE: the spec pins the target to "None (address 0x00...00)"; None is modelled as a
-    /// null target here (empty RLP), matching how EIP-8141 represents an unset target.
+    /// 256 triples, and a gas limit equal to the sum of per-scheme verification gas. Accumulates the
+    /// per-scheme counts for the caller's per-transaction limits.
+    /// EIP8288-ISSUE: "None" target is modelled as null (empty RLP), matching EIP-8141.
     /// </summary>
     private static bool IsWellFormedDependencyFrame(TxFrame frame, ref int sphincsDeps, ref int starkDeps, out string? error)
     {

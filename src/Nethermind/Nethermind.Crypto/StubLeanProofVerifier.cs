@@ -7,15 +7,10 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Crypto;
 
 /// <summary>
-/// Placeholder <see cref="ILeanProofVerifier"/> for the EIP-8288 prototype. Accepts any non-empty
-/// witness / proof structurally.
+/// Placeholder <see cref="ILeanProofVerifier"/> for the EIP-8288 prototype: accepts any non-empty
+/// witness / proof structurally, performing no cryptographic verification (the Lean Ethereum backend
+/// is TBD). Lets the surrounding aggregation, gas, and validity logic run until a real verifier lands.
 /// </summary>
-/// <remarks>
-/// EIP8288-DEVIATION: no cryptographic verification is performed. The Lean Ethereum leanSPHINCS /
-/// leanSTARK / recursive-STARK backend has no C# implementation and the spec's <c>AGGREGATED_VK</c>
-/// and proof formats are <c>TBD</c>; this stub lets the surrounding aggregation, gas, and validity
-/// logic run and be tested end-to-end until a real verifier is wired in through the interface.
-/// </remarks>
 public sealed class StubLeanProofVerifier : ILeanProofVerifier
 {
     public static readonly StubLeanProofVerifier Instance = new();

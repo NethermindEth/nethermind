@@ -20,11 +20,9 @@ public readonly struct WrapperTransaction
 }
 
 /// <summary>
-/// EIP-8288 mempool wrapper object <c>[transactions, mode, content]</c>. Bundles frame transactions
-/// with either their direct dependency proofs (mode 0) or a single recursive STARK proving all of
-/// them (mode 1). It is not itself a valid transaction; mempool nodes, FOCIL creators, and builders
-/// all use it to move pre-aggregated proofs around.
-/// https://eips.ethereum.org/EIPS/eip-8288
+/// EIP-8288 mempool wrapper <c>[transactions, mode, content]</c>: bundles frame transactions with
+/// either their direct dependency proofs (mode 0) or a single recursive STARK over all of them
+/// (mode 1). Not a valid transaction; used to move pre-aggregated proofs between mempool actors.
 /// </summary>
 public sealed class MempoolWrapper
 {

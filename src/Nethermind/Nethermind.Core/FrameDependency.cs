@@ -8,12 +8,9 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Core;
 
 /// <summary>
-/// A single EIP-8288 dependency triple declared by a dependency-verification frame:
-/// <c>(scheme, data_hash, verification_key)</c>. For <see cref="Eip8288Constants.LeanSphincsScheme"/>,
-/// <see cref="DataHash"/> is the message hash and <see cref="VerificationKey"/> the public key; for
-/// <see cref="Eip8288Constants.LeanStarkScheme"/>, they are the public-inputs hash and the STARK
-/// verification key.
-/// https://eips.ethereum.org/EIPS/eip-8288
+/// A single EIP-8288 dependency triple <c>(scheme, data_hash, verification_key)</c> declared by a
+/// dependency-verification frame. <c>data_hash</c>/<c>verification_key</c> are the message hash and
+/// public key (leanSPHINCS) or the public-inputs hash and STARK verification key (leanSTARK).
 /// </summary>
 public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, ValueHash256 verificationKey)
     : IEquatable<FrameDependency>
@@ -138,8 +135,4 @@ public static class Eip8288Dependencies
     }
 
     public static ValueHash256 ComputeBlockDepsHash(Block block) => ComputeDepsHash(ForBlock(block));
-
-    /// <summary>Spec block-level <c>recursive_stark_gas = LEANSTARK_VERIFICATION_GAS * total_deps_in_block</c>.</summary>
-    public static ulong CalculateRecursiveStarkGas(Block block) =>
-        (ulong)ForBlock(block).Count * Eip8288Constants.LeanStarkVerificationGas;
 }

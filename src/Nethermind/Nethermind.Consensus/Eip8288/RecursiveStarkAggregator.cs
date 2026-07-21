@@ -27,12 +27,10 @@ public sealed class AggregationInput
 public static class RecursiveStarkAggregator
 {
     /// <summary>
-    /// Runs the EIP-8288 recursive STARK statement: verify all direct dependencies against their
-    /// witnesses, verify each nested recursive proof against its claimed inner dependencies, then
-    /// union everything and remove discards and duplicates. Returns the filtered dependency set and
-    /// its commitment.
-    /// EIP8288-ISSUE: the spec's discard step compares a dependency against a set of hashes; it is
-    /// read here as "drop any dependency whose single-triple hash is in the discard set".
+    /// Runs the EIP-8288 recursive STARK statement: verify direct dependencies against their witnesses
+    /// and each nested proof against its claimed deps, then union and remove discards/duplicates,
+    /// returning the filtered set and its commitment.
+    /// EIP8288-ISSUE: discards are matched by triple equality rather than the spec's per-dep hash.
     /// </summary>
     public static bool TryAggregate(AggregationInput input, ILeanProofVerifier verifier, out IReadOnlyList<FrameDependency> filteredDeps, out ValueHash256 depsHash)
     {
@@ -63,18 +61,14 @@ public static class RecursiveStarkAggregator
             allDeps.AddRange(recursiveProof.InnerDeps);
         }
 
-        HashSet<ValueHash256> discardHashes = [];
-        foreach (FrameDependency discard in input.Discards)
-        {
-            discardHashes.Add(Eip8288Dependencies.ComputeDepsHash([discard]));
-        }
+        HashSet<FrameDependency> discards = input.Discards.Count == 0 ? [] : [.. input.Discards];
 
         List<FrameDependency> filtered = [];
         HashSet<FrameDependency> seen = [];
         foreach (FrameDependency dep in allDeps)
         {
             if (!seen.Add(dep)) continue;
-            if (discardHashes.Contains(Eip8288Dependencies.ComputeDepsHash([dep]))) continue;
+            if (discards.Contains(dep)) continue;
             filtered.Add(dep);
         }
 

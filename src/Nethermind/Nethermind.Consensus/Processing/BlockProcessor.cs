@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -156,19 +157,17 @@ public partial class BlockProcessor(
 
         if (spec.IsEip8288Enabled)
         {
-            // Block-level recursive-STARK gas is charged as part of the block base fee, derived from
-            // every transaction dependency (spec Gas Accounting). Deterministic, so applied on both
-            // production and validation; the resulting GasUsed is checked against GasLimit and the
-            // suggested header like any other block gas.
-            header.GasUsed += Eip8288Dependencies.CalculateRecursiveStarkGas(block);
+            // Spec Gas Accounting charges dependencies twice: each dep frame already paid per-scheme
+            // verification gas in the tx; the block additionally pays recursive_stark_gas =
+            // LEANSTARK_VERIFICATION_GAS × total deps for the aggregated proof.
+            List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
+            header.GasUsed += (ulong)deps.Count * Eip8288Constants.LeanStarkVerificationGas;
 
             if (options.ContainsFlag(ProcessingOptions.ProducingBlock))
             {
-                // The builder produces the aggregated proof off-chain; the prototype attaches a stub
-                // proof over the recomputed block_deps_hash. EIP8288-DEVIATION: no real STARK is
-                // generated (Lean Ethereum tooling / AGGREGATED_VK are TBD).
-                Hash256 depsHash = new(Eip8288Dependencies.ComputeBlockDepsHash(block));
-                header.RecursiveStark = new RecursiveStark([1], depsHash);
+                // EIP8288-DEVIATION: the builder produces the proof off-chain; a stub stands in until
+                // Lean Ethereum tooling / AGGREGATED_VK are defined.
+                header.RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)));
             }
         }
 

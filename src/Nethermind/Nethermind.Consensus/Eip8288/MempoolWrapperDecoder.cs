@@ -27,6 +27,8 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         List<WrapperTransaction> transactions = [];
         while (decoderContext.Position < txCheck)
         {
+            // A 32-byte entry is an already-broadcast tx hash; anything else is a full tx (a real
+            // transaction encoding is never exactly 32 bytes).
             byte[] entry = decoderContext.DecodeByteArray();
             transactions.Add(entry.Length == Hash256.Size
                 ? new WrapperTransaction(new Hash256(entry))

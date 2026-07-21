@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -110,14 +109,6 @@ public class FrameDependencyTests
 
         Assert.That(deps.Count, Is.EqualTo(2));
         Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
-    }
-
-    [Test]
-    public void CalculateRecursiveStarkGas_is_per_dependency()
-    {
-        Block block = Build.A.Block.WithTransactions(DepTx(Eip8288Constants.LeanSphincsScheme), DepTx(Eip8288Constants.LeanStarkScheme)).TestObject;
-
-        Assert.That(Eip8288Dependencies.CalculateRecursiveStarkGas(block), Is.EqualTo(2 * Eip8288Constants.LeanStarkVerificationGas));
     }
 
     private static Transaction DepTx(byte scheme)
