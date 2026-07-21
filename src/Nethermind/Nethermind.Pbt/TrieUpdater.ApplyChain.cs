@@ -5,6 +5,7 @@ using System.Diagnostics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
 
 namespace Nethermind.Pbt;
 
@@ -15,26 +16,26 @@ public static partial class TrieUpdater
         /// <summary>
         /// Builds the run of single-child levels from <paramref name="startDepth"/> down to the group at
         /// <paramref name="targetDepth"/>, whose subtree amounts to <paramref name="stats"/>, in memory of
-        /// its own: a run is part of no group's encoding, and no blob holds its bytes until an ancestor
-        /// plants them.
+        /// its own: until an ancestor writes it into its own encoding, no group's holds it.
         /// </summary>
         private Occupant NewChainNode(
             int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats)
         {
             RefCountingMemory memory = memoryProvider.Rent(PbtNodeChain.EncodedLength);
             PbtNodeChain.Write(memory.GetSpan(), startDepth, targetDepth, targetPath, targetHash, stats);
-            return new Occupant(new NodeRef(ResultKind.Chain, 0), memory);
+            return new Occupant(new NodeRef(NodeKind.Chain, 0), memory);
         }
 
         /// <summary>
-        /// Copies an unchanged run's own encoding into memory of its own, for an ancestor to plant.
+        /// Copies an unchanged run's encoding out of the group holding it into memory of its own, for the
+        /// group that replaces it — or an enclosing one absorbing it — to take over.
         /// </summary>
-        private Occupant CopyChainNode(ReadOnlySpan<byte> chainData)
+        private NodeResult CopyChainNode(ReadOnlySpan<byte> chainData)
         {
             Debug.Assert(chainData.Length == PbtNodeChain.EncodedLength);
             RefCountingMemory memory = memoryProvider.Rent(PbtNodeChain.EncodedLength);
             chainData.CopyTo(memory.GetSpan());
-            return new Occupant(new NodeRef(ResultKind.Chain, 0), memory);
+            return NodeResult.Chain(memory);
         }
 
         /// <summary>
@@ -45,13 +46,13 @@ public static partial class TrieUpdater
         {
             RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.Slot.InternalLength);
             hash.Bytes.CopyTo(memory.GetSpan());
-            return new Occupant(new NodeRef(ResultKind.Internal, 0), memory);
+            return new Occupant(new NodeRef(NodeKind.Internal, 0), memory);
         }
 
         /// <summary>
         /// Applies <paramref name="entries"/> to the run of single-child levels at <paramref name="key"/>,
-        /// whose content is <paramref name="chainData"/> — a stored <see cref="PbtNodeChain"/> blob, or the
-        /// rest of one an enclosing frame is descending.
+        /// whose content is <paramref name="chainData"/> — the <see cref="PbtNodeChain"/> encoding the
+        /// parent group holds at this slot, or the rest of a run an enclosing frame is descending.
         /// </summary>
         /// <remarks>
         /// The run holds no node between its start and its target, so nothing here walks it level by
@@ -63,7 +64,7 @@ public static partial class TrieUpdater
         /// property of the entries rather than of a depth, so that much does carry over the jump.
         /// </remarks>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
-        /// <param name="result"><inheritdoc cref="ApplyStored" path="/param[@name='result']"/></param>
+        /// <param name="result"><inheritdoc cref="ApplyGroup" path="/param[@name='result']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyChain(
@@ -106,7 +107,7 @@ public static partial class TrieUpdater
             {
                 using RefCountingMemory? targetData = store.GetTrieNode(chain.TargetKey);
                 NodeResult inner = default;
-                ApplyStored(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref inner, out bool targetChanged, out delta);
+                ApplyGroup(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref inner, out bool targetChanged, out delta);
 
                 // The run points at one group and one only (invariant 2). When the writes leave that group
                 // byte-identical, the run above it is unchanged too — its node hash folds from the target's,
@@ -172,7 +173,9 @@ public static partial class TrieUpdater
             using Occupant seed = directChild
                 ? NewInternalNode(targetHash)
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
+            // a seeded run is the one occupant a frame can start with that is not a pointer to a blob
             uint occupantsOccupied = 1u << targetSlot;
+            NodeGroupBitmasks occupantsShape = new(occupantsOccupied, Stems: 0, directChild ? 0 : occupantsOccupied);
 
             // The group this split makes real wraps its children where its depth says so, and the target
             // is one of them: its blob moves out of the key the run left it under and into the wrapper
@@ -190,9 +193,9 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results)
-                .MergeUntouched(occupantsOccupied, untouchedStems: 0);
-            // The seeded run is held by no key and no encoding, so nothing can read it back later: it
-            // rides on in `results` unless the descent already refreshed its slot.
+                .MergeUntouched(occupantsShape);
+            // The seeded run is held by no encoding, so nothing can read it back later: it rides on in
+            // `results` unless the descent already refreshed its slot.
             if ((shape.TouchedMask >> targetSlot & 1) == 0)
             {
                 NodeResult seeded = seed;
@@ -221,8 +224,9 @@ public static partial class TrieUpdater
         /// An internal node roots a run reaching down to it. A run of its own extends this one instead,
         /// which is what keeps runs maximal (invariant 2) and what leaves <paramref name="innerKey"/> a key
         /// nothing may hold any more — removed here when <paramref name="innerBlobStored"/> says a blob was
-        /// read there. A stem or an empty subtree dissolves the run: a stem's node hash does not depend on
-        /// where it sits, so it hoists on up untouched.
+        /// read there, which is a group that has since collapsed into the run. A stem or an empty subtree
+        /// dissolves the run: a stem's node hash does not depend on where it sits, so it hoists on up
+        /// untouched.
         /// </remarks>
         /// <param name="stats">
         /// What <paramref name="inner"/>'s subtree amounts to, which the run it becomes reaches and
@@ -233,11 +237,11 @@ public static partial class TrieUpdater
         {
             switch (inner.Kind)
             {
-                case ResultKind.Absent:
-                case ResultKind.Stem:
+                case NodeKind.Absent:
+                case NodeKind.Stem:
                     if (innerBlobStored) store.SetTrieNode(innerKey, null);
                     return inner;
-                case ResultKind.Internal:
+                case NodeKind.Internal:
                     // plant the rebuilt encoding when the descent produced one, else the stored blob stands
                     using (inner)
                     {

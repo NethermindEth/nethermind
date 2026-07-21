@@ -124,7 +124,7 @@ public class PbtScannerTests
     /// <summary>
     /// The single-child run below the root's storage slot collapses into one chain, and both the
     /// levels it elides and the entries it saves follow from its span. It is a storage-zone spine, so
-    /// none of it lands on any other partition.
+    /// none of it lands on any other partition — though the root group, which is in none, holds it.
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
@@ -147,7 +147,7 @@ public class PbtScannerTests
 
             // nine every-level groups would have stored four hashes each; the chain stores two
             Assert.That(storage.ChainEntriesAvoided, Is.EqualTo(9 * PbtTrieNodeGroup.LevelsPerGroup - 2));
-            Assert.That(storage.ChainGroupBlobsAvoided, Is.EqualTo(8));
+            Assert.That(storage.ChainGroupBlobsAvoided, Is.EqualTo(9), "and the chain itself takes no blob to hold");
         });
     }
 

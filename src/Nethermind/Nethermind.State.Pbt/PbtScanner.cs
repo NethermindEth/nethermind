@@ -36,7 +36,7 @@ public enum PbtTreePartition
 /// <remarks>
 /// A flat sweep of the columns rather than a descent from the root. Every statistic here follows from
 /// one entry's key and value alone — a trie node key <em>is</em> its path and depth, its column names
-/// its zone, a group's bitmaps pin its whole shape, and a chain's start depth is its key's — so the
+/// its zone, and a group's bitmaps pin its whole shape, the runs it holds included — so the
 /// scan needs no parent context and does no random reads. What it therefore cannot see is anything
 /// only a descent establishes: it does not check that a node is reachable from the root, nor refold
 /// any hash, so an orphaned blob is counted rather than reported.
@@ -188,23 +188,18 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     {
         // the key is the node's position: the zero-padded path, then the depth byte
         int depth = key[Stem.Length];
-        PbtScanReport.TrieNodeStats stats = report[depth == 0 ? PbtTreePartition.Root : partition];
 
-        ScanTrieNode(value, depth, stats, report);
+        ScanTrieNode(value, depth, partition, report);
     };
 
     /// <summary>
-    /// Counts one trie node blob as what it holds, which for a wrapper is the group at the key's depth
-    /// and the children one group below it — so every histogram here reads as it did before the two
-    /// shared a blob.
+    /// Counts one trie node blob as the nodes it holds — the group at the key's depth, the runs hanging
+    /// off it, and for a wrapper the children one group below it, with their own runs — so every
+    /// histogram here reads as it did before they shared a blob.
     /// </summary>
-    private static void ScanTrieNode(ReadOnlySpan<byte> value, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
+    private static void ScanTrieNode(ReadOnlySpan<byte> value, int depth, PbtTreePartition partition, PbtScanReport report)
     {
-        if (PbtNodeChain.IsChain(value))
-        {
-            ScanChain(value, depth, stats);
-            return;
-        }
+        PbtScanReport.TrieNodeStats stats = report[depth == 0 ? PbtTreePartition.Root : partition];
 
         PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(value, out PbtTrieNodeGroup group);
         ReadOnlySpan<byte> groupBytes = value[wrapper.Group];
@@ -224,10 +219,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             stats.WrappedChildrenByDepth[depth]++;
             childBytes += child.Length;
 
-            // a wrapped child is never itself a wrapper: the level a wrapper holds is the level that
-            // does not itself wrap (see PbtTrieNodeWrapper.WrapsChildren)
-            if (PbtNodeChain.IsChain(child)) ScanChain(child, childDepth, stats);
-            else ScanGroup(PbtTrieNodeGroup.Decode(child), child.Length, childDepth, stats, report);
+            // a wrapped child is a bare group, never a wrapper of its own: the level a wrapper holds is
+            // the level that does not itself wrap (see PbtTrieNodeWrapper.WrapsChildren)
+            ScanGroup(PbtTrieNodeGroup.Decode(child), child.Length, childDepth, stats, report);
         }
 
         stats.WrapperBytes += value.Length - groupBytes.Length - childBytes;
@@ -269,13 +263,13 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         return max;
     }
 
-    private static void ScanChain(ReadOnlySpan<byte> value, int startDepth, PbtScanReport.TrieNodeStats stats)
+    private static void ScanChain(ReadOnlySpan<byte> entry, int startDepth, PbtScanReport.TrieNodeStats stats)
     {
-        PbtNodeChain chain = PbtNodeChain.Decode(value, startDepth);
+        PbtNodeChain chain = PbtNodeChain.Decode(entry, startDepth);
         int span = chain.TargetDepth - startDepth;
 
         stats.ChainCount++;
-        stats.ChainBytes += value.Length;
+        stats.ChainBytes += entry.Length;
         stats.ChainsByStartDepth[startDepth]++;
         stats.ChainsBySpan[span]++;
 
@@ -287,20 +281,51 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         // every level of the path but its root — which the parent caches — so LevelsPerGroup entries
         int groupsSpanned = span / PbtTrieNodeGroup.LevelsPerGroup;
         stats.ChainEntriesAvoided += groupsSpanned * PbtTrieNodeGroup.LevelsPerGroup - PbtScanReport.ChainStoredHashes;
-        stats.ChainGroupBlobsAvoided += groupsSpanned - 1;
+        stats.ChainGroupBlobsAvoided += groupsSpanned;
     }
 
-    private static void ScanGroup(in PbtTrieNodeGroup group, int bytes, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
+    /// <summary>
+    /// Counts one group and the runs its boundary slots hold, each at the depth it starts at — one
+    /// group below the group holding it.
+    /// </summary>
+    /// <remarks>
+    /// The root group belongs to no one zone, but each of its boundary slots does — a slot of the root
+    /// <em>is</em> the zone nibble — so a run it holds is counted where a key of its own would have put
+    /// it, rather than beside the root.
+    /// </remarks>
+    private static void ScanGroup(
+        in PbtTrieNodeGroup group, int bytes, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
     {
+        // A run's entry is the run's, not the group's, as a wrapped child's blob is the child's: the two
+        // share an encoding, and the byte totals still say what each of them costs.
+        int chainBytes = 0;
+        for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+        {
+            int position = PbtTrieNodeGroup.BoundaryPosition(slot);
+            if (group.KindAt(position) != PbtTrieNodeGroup.NodeKind.Chain) continue;
+
+            ReadOnlySpan<byte> chain = group[position].ChainData;
+            chainBytes += chain.Length;
+            ScanChain(chain, depth + PbtTrieNodeGroup.LevelsPerGroup, depth == 0 ? report[ZonePartition(slot)] : stats);
+        }
+
         stats.GroupCount++;
-        stats.GroupBytes += bytes;
+        stats.GroupBytes += bytes - chainBytes;
         stats.GroupsByDepth[depth]++;
-        stats.GroupBytesByDepth[depth] += bytes;
+        stats.GroupBytesByDepth[depth] += bytes - chainBytes;
         if (group.Format == PbtGroupFormat.Interleaved) stats.InterleavedGroupCount++;
         if (depth == 0) report.RootSubtreeStemCount = group.Stats.StemCount;
 
         WalkPosition(group, PbtTrieNodeGroup.RootPosition, PbtTrieNodeGroup.BoundarySlots, depth, stats);
     }
+
+    /// <summary>The partition of <paramref name="zone"/>, the leading nibble of a stem, as the leaf columns split them.</summary>
+    private static PbtTreePartition ZonePartition(int zone) => zone switch
+    {
+        0x0 => PbtTreePartition.Account,
+        0x1 => PbtTreePartition.Code,
+        _ => PbtTreePartition.Storage,
+    };
 
     /// <summary>
     /// Walks the tile in post-order from <paramref name="position"/>, counting the stems it holds and
@@ -327,8 +352,8 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             return true;
         }
 
-        // a boundary slot roots no position of this tile; an internal one is the cached root of the
-        // blob below it, and nothing at all means an absent subtree
+        // a boundary slot roots no position of this tile; it holds the cached root of the blob below it,
+        // or the run hanging from it, and nothing at all means an absent subtree
         if (width == 1) return kind != PbtTrieNodeGroup.NodeKind.Absent;
 
         int childWidth = width / 2;
@@ -510,7 +535,7 @@ public sealed class PbtScanReport
         /// <summary>Hash entries the chains saved against an every-level spine of groups.</summary>
         public long ChainEntriesAvoided { get; internal set; }
 
-        /// <summary>Group blobs the chains replaced, over and above the chain blobs themselves.</summary>
+        /// <summary>Group blobs the chains replaced, holding no blob of their own to set against them.</summary>
         public long ChainGroupBlobsAvoided { get; internal set; }
 
         public bool IsEmpty => GroupCount == 0 && ChainCount == 0;
@@ -579,7 +604,7 @@ public sealed class PbtScanReport
         report.AppendLine();
 
         report.AppendLine($"Totals: {GroupCount + ChainCount:N0} trie nodes ({TrieNodeBytes:N0} bytes), {GroupCount:N0} groups, {ChainCount:N0} chains, {StemCount:N0} stems");
-        report.AppendLine($"Stored in {GroupCount + ChainCount - WrappedChildCount:N0} blobs: {WrapperCount:N0} of them wrap {WrappedChildCount:N0} children, each a lookup and a key saved");
+        report.AppendLine($"Stored in {GroupCount - WrappedChildCount:N0} blobs: every chain rides in the group above it, and {WrapperCount:N0} groups wrap {WrappedChildCount:N0} more");
         report.AppendLine($"Root records {RootSubtreeStemCount:N0} stems for its subtree ({(StemCountAgrees ? "agrees" : "MISMATCH")})");
         report.AppendLine();
 

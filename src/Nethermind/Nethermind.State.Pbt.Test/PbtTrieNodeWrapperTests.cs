@@ -16,6 +16,9 @@ public class PbtTrieNodeWrapperTests
     /// <summary>The slots the wrapped group points its children at — the first and the last, so the offsets are exercised at both ends.</summary>
     private static readonly int[] ChildSlots = [0, 15];
 
+    /// <summary>A slot between them holding a run, which the group keeps to itself.</summary>
+    private const int ChainSlot = 3;
+
     private static readonly Stem StemPath = new(Bytes.FromHexString("0x0dead000000000000000000000000000000000000000000000000000000000"));
     private static readonly ValueHash256 ChildHash = new(Bytes.FromHexString("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"));
     private static readonly ValueHash256 StemHash = new(Bytes.FromHexString("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
@@ -36,36 +39,35 @@ public class PbtTrieNodeWrapperTests
     [Test]
     public void EncodeDecodeRoundTrip_AndDiscriminatesFromWhatItHolds()
     {
-        byte[] childGroup = EncodeGroup();
-        byte[] childChain = EncodeChain();
-        byte[] encoded = Encode(childGroup, childChain);
+        byte[] firstChild = EncodeGroup();
+        byte[] secondChild = EncodeSmallerGroup();
+        byte[] encoded = Encode(firstChild, secondChild);
 
-        // the wrapper is told from a bare group or a run by its trailing byte alone, as they are from
-        // one another, so a store column holds all three under the same kind of key
+        // the wrapper is told from a bare group by its trailing byte alone, so a store column holds
+        // both under the same kind of key
         Assert.That(PbtTrieNodeWrapper.IsWrapper(encoded));
-        Assert.That(PbtTrieNodeWrapper.IsWrapper(childGroup), Is.False);
-        Assert.That(PbtTrieNodeWrapper.IsWrapper(childChain), Is.False);
-        Assert.That(PbtTrieNodeWrapper.IsWrapper([]), Is.False, "an absent blob is none of them");
-        Assert.That(PbtNodeChain.IsChain(encoded), Is.False);
+        Assert.That(PbtTrieNodeWrapper.IsWrapper(firstChild), Is.False);
+        Assert.That(PbtTrieNodeWrapper.IsWrapper([]), Is.False, "an absent blob is neither");
         Assert.That(() => PbtTrieNodeGroup.Decode(encoded), Throws.TypeOf<InvalidDataException>());
 
         PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(encoded, out PbtTrieNodeGroup group);
         Assert.That(wrapper.IsEmpty, Is.False);
         Assert.That(group.Stats, Is.EqualTo(Stats));
-        Assert.That(encoded[wrapper.Child(ChildSlots[0], group)], Is.EqualTo(childGroup));
-        Assert.That(encoded[wrapper.Child(ChildSlots[1], group)], Is.EqualTo(childChain));
+        Assert.That(encoded[wrapper.Child(ChildSlots[0], group)], Is.EqualTo(firstChild));
+        Assert.That(encoded[wrapper.Child(ChildSlots[1], group)], Is.EqualTo(secondChild));
 
         // The group is found from the trailing length alone, and everything else from the group: its
         // bitmaps say how many children there are, which puts the offsets right before it and the
         // children right before those. Nothing inside the group had to be rewritten to hold it here.
         byte[] bare = EncodeGroupOnly();
         Assert.That(encoded[wrapper.Group], Is.EqualTo(bare));
-        Assert.That(wrapper.GroupOffset, Is.EqualTo(childGroup.Length + childChain.Length + ChildSlots.Length * sizeof(ushort)));
+        Assert.That(wrapper.GroupOffset, Is.EqualTo(firstChild.Length + secondChild.Length + ChildSlots.Length * sizeof(ushort)));
         Assert.That(encoded, Has.Length.EqualTo(wrapper.GroupOffset + bare.Length + TrailerLength));
 
-        // an unoccupied slot and a stem slot root no blob of their own
+        // an unoccupied slot, a stem slot and a run slot root no blob of their own
         Assert.That(encoded[wrapper.Child(1, group)], Is.Empty);
         Assert.That(encoded[wrapper.Child(2, group)], Is.Empty, "a boundary stem's subtree lives in its leaf blob, not a child group");
+        Assert.That(encoded[wrapper.Child(ChainSlot, group)], Is.Empty, "and a run's lives in the group's own encoding");
     }
 
     /// <summary>A bare group blob wraps nothing: every child of it is stored under a key of its own.</summary>
@@ -150,13 +152,17 @@ public class PbtTrieNodeWrapperTests
         return encoded;
     }
 
-    /// <summary>The wrapping group: a boundary internal per <see cref="ChildSlots"/> entry, and a stem that roots no blob.</summary>
+    /// <summary>
+    /// The wrapping group: a boundary internal per <see cref="ChildSlots"/> entry, and a stem and a run
+    /// that root no blob.
+    /// </summary>
     private static byte[] EncodeGroupOnly()
     {
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.Interleaved);
         builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(ChildSlots[0]), ChildHash);
         builder.AppendStem(PbtTrieNodeGroup.BoundaryPosition(2), StemPath, StemHash);
+        builder.AppendChain(PbtTrieNodeGroup.BoundaryPosition(ChainSlot), EncodeChain());
         builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(ChildSlots[1]), ChildHash);
         return encoded[..builder.Finish(Stats)];
     }
@@ -167,6 +173,15 @@ public class PbtTrieNodeWrapperTests
         PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.EveryLevel);
         builder.AppendStem(PbtTrieNodeGroup.BoundaryPosition(0), StemPath, StemHash);
         builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(1), ChildHash);
+        return encoded[..builder.Finish(Stats)];
+    }
+
+    /// <summary>A second child, shorter than <see cref="EncodeGroup"/>'s, so that the offsets must be read rather than guessed.</summary>
+    private static byte[] EncodeSmallerGroup()
+    {
+        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
+        PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.EveryLevel);
+        builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(0), ChildHash);
         return encoded[..builder.Finish(Stats)];
     }
 

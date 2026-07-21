@@ -324,24 +324,25 @@ public class StemTrieTests(PbtGroupFormat format)
         AssertStoreMatchesFreshRebuild(harness, writes);
 
         // one run carries the whole shared prefix, and nothing is stored anywhere along it (invariant 3)
-        TrieNodeKey[] chains = [.. harness.Nodes.Keys.Where(key => PbtNodeChain.IsChain(harness.Nodes[key]))];
+        Dictionary<TrieNodeKey, byte[]> nodes = harness.FlattenedNodes();
+        TrieNodeKey[] chains = [.. nodes.Keys.Where(key => PbtNodeChain.IsChain(nodes[key]))];
         Assert.That(chains, Has.Length.EqualTo(1));
 
-        PbtNodeChain chain = PbtNodeChain.Decode(harness.Nodes[chains[0]], chains[0].Depth);
+        PbtNodeChain chain = PbtNodeChain.Decode(nodes[chains[0]], chains[0].Depth);
         int levels = chain.TargetDepth - chains[0].Depth;
-        for (int depth = chains[0].Depth + PbtTrieNodeGroup.LevelsPerGroup; depth < chain.TargetDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
+        for (int depth = chains[0].Depth; depth < chain.TargetDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
         {
-            Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"nothing is stored at depth {depth}, inside the run");
+            Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"nothing is keyed at depth {depth}, inside the run");
         }
 
         // The prefix runs to bit 60, so every contract's storage produces this same shape: one run from
         // the root group down to the depth-60 group where the suffix starts branching. That is fourteen
-        // groups — 14 * (9 + 4 * 32) = 1918 bytes of single-child levels, each group's root folded away —
-        // held in 97.
+        // groups — 14 * (11 + 4 * 32) = 1946 bytes of single-child levels, each group's root folded away —
+        // held in 97, inside the root group's own blob.
         Assert.That(chains[0].Depth, Is.EqualTo(PbtTrieNodeGroup.LevelsPerGroup));
         Assert.That(chain.TargetDepth, Is.EqualTo(60));
         Assert.That(levels / PbtTrieNodeGroup.LevelsPerGroup, Is.EqualTo(14));
-        Assert.That(harness.Nodes[chains[0]], Has.Length.EqualTo(PbtNodeChain.EncodedLength));
+        Assert.That(nodes[chains[0]], Has.Length.EqualTo(PbtNodeChain.EncodedLength));
     }
 
     // Three stems sharing bits [0, 100): the batch skips from its shallow frame straight to the group at
@@ -432,11 +433,12 @@ public class StemTrieTests(PbtGroupFormat format)
         AssertStoreMatchesFreshRebuild(harness, writes);
 
         // one run per contract, each reaching the depth-60 group where its own suffix starts branching
-        TrieNodeKey[] chains = [.. harness.Nodes.Keys.Where(key => PbtNodeChain.IsChain(harness.Nodes[key]))];
+        Dictionary<TrieNodeKey, byte[]> nodes = harness.FlattenedNodes();
+        TrieNodeKey[] chains = [.. nodes.Keys.Where(key => PbtNodeChain.IsChain(nodes[key]))];
         Assert.That(chains, Has.Length.EqualTo(2));
         foreach (TrieNodeKey key in chains)
         {
-            Assert.That(PbtNodeChain.Decode(harness.Nodes[key], key.Depth).TargetDepth, Is.EqualTo(60));
+            Assert.That(PbtNodeChain.Decode(nodes[key], key.Depth).TargetDepth, Is.EqualTo(60));
         }
     }
 
@@ -749,6 +751,45 @@ public class StemTrieTests(PbtGroupFormat format)
     }
 
     /// <summary>
+    /// A rewrite beside a run, in a subtree the writes never reach: the fold copies its entries verbatim
+    /// out of the stored encoding rather than rebuilding them, and a run's entry is its whole encoding
+    /// rather than the hash a pointer would be — which the copy has to size, place and account for.
+    /// </summary>
+    [Test]
+    public void RewriteBesideARun_CopiesTheSubtreeHoldingItVerbatim()
+    {
+        byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] rewritten = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+
+        // Every stem shares the root's first slot, so the group under test is the one at depth 4: a run
+        // from depth 8 down to the group at bit 24 in its slot 0, a stem beside it in slot 1, and a third
+        // stem in slot 4 — the other half of the tile, so rewriting it leaves the run's half untouched.
+        byte[] corridor = new byte[Stem.Length];
+        byte[] parted = new byte[Stem.Length];
+        parted[3] = 0x80; // bit 24
+        byte[] beside = new byte[Stem.Length];
+        beside[0] = 0x01;
+        byte[] far = new byte[Stem.Length];
+        far[0] = 0x04;
+
+        List<(byte[] Key, byte[]? Value)> writes =
+        [
+            ([.. corridor, 5], value), ([.. parted, 5], value), ([.. beside, 5], value), ([.. far, 5], value),
+        ];
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        harness.ApplyBatch(writes);
+        Assert.That(
+            PbtNodeChain.IsChain(harness.FlattenedNodes()[TrieNodeKey.For(8, default)]),
+            "the setup must really leave a run in the copied half");
+
+        writes[3] = (writes[3].Key, rewritten);
+        harness.ApplyBatch([writes[3]]);
+
+        AssertStoreMatchesFreshRebuild(harness, writes);
+    }
+
+    /// <summary>
     /// No group stores its own internal root: it is folded and cached in the parent's boundary slot, so a
     /// branching root group reads as rootless while the tree still folds to the reference root. A lone
     /// stem is the root group's exception — with no parent to hoist into, it is kept, at its boundary slot.
@@ -921,9 +962,9 @@ public class StemTrieTests(PbtGroupFormat format)
     }
 
     /// <summary>
-    /// The nodes the store holds, counted as nodes rather than as blobs: a wrapper is one blob and
-    /// several nodes (see <see cref="PbtTrieNodeWrapper.WrapsChildren"/>), and it is the shape of the
-    /// trie these tests are about.
+    /// The nodes the store holds, counted as nodes rather than as blobs: one blob holds a group, the
+    /// runs hanging off it and — where it wraps them (see <see cref="PbtTrieNodeWrapper.WrapsChildren"/>)
+    /// — its child groups, and it is the shape of the trie these tests are about.
     /// </summary>
     private static int NodeCount(PbtTreeHarness harness) => harness.FlattenedNodes().Count;
 
@@ -944,7 +985,7 @@ public class StemTrieTests(PbtGroupFormat format)
         }
 
         // A stem sits at whichever position is its shortest unique prefix, boundary or inner, so every
-        // position is visited; only a boundary internal roots a blob of its own to descend into.
+        // position is visited; a boundary internal roots a subtree to descend into, and so does a run.
         PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
         long counted = 0;
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
@@ -954,6 +995,7 @@ public class StemTrieTests(PbtGroupFormat format)
                 case PbtTrieNodeGroup.NodeKind.Stem:
                     counted++;
                     break;
+                case PbtTrieNodeGroup.NodeKind.Chain:
                 case PbtTrieNodeGroup.NodeKind.Internal when PbtTrieNodeGroup.IsBoundaryPosition(position):
                     counted += CountStems(nodes, key.ChildGroup(PbtTrieNodeGroup.BoundarySlot(position)));
                     break;
@@ -983,7 +1025,7 @@ public class StemTrieTests(PbtGroupFormat format)
             PbtNodeChain chain = PbtNodeChain.Decode(blob, key.Depth);
             for (int depth = key.Depth + PbtTrieNodeGroup.LevelsPerGroup; depth < chain.TargetDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
             {
-                Assert.That(nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"{key} spans depth {depth}, which must hold nothing");
+                Assert.That(nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"{key} spans depth {depth}, which must hold no node");
             }
 
             Assert.That(nodes.TryGetValue(chain.TargetKey, out byte[]? target), $"{key} targets {chain.TargetKey}, which holds nothing");

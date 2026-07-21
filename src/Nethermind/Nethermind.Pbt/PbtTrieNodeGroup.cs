@@ -12,8 +12,8 @@ namespace Nethermind.Pbt;
 /// <remarks>
 /// Both encodings describe the same trie and fold to the same root — they differ only in how much of
 /// the fold they write down — so a store may hold either at any key, and a group converts only when a
-/// change rewrites it. The values are disjoint from <see cref="PbtNodeChain"/>'s, which is what
-/// discriminates a group from a run in the store.
+/// change rewrites it. The values are disjoint from <see cref="PbtNodeChain"/>'s, so an encoding of
+/// either kind says which it is.
 /// </remarks>
 public enum PbtGroupFormat : byte
 {
@@ -32,59 +32,48 @@ public enum PbtGroupFormat : byte
 /// <summary>
 /// One 4-level tile of the stem trie: 31 post-order positions (16 boundary slots and 15 inner
 /// positions), each absent, an internal node holding its cached hash (for a boundary slot, the
-/// child group's root hash), or a stem node holding its stem and 256-leaf subtree root.
+/// child group's root hash), a stem node holding its stem and 256-leaf subtree root, or — a boundary
+/// slot only — the whole <see cref="PbtNodeChain"/> hanging from it.
 /// </summary>
 /// <remarks>
-/// Positions follow the <see cref="StemLeafBlob"/> post-order numbering: boundary slot <c>i</c>
-/// sits at <c>2i - popcount(i)</c>, the group root at 30, and a subtree covering <c>w</c> boundary
-/// slots at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>. The encoding is one
-/// entry per present position in ascending position order — a 32-byte
-/// cached hash for an internal node, or the 31-byte stem followed by its 32-byte leaf-subtree root
-/// for a stem node (the stem node hash is derived, never stored) — and last a trailer of two
-/// little-endian 32-bit bitmaps over the positions, presence and stem, then the group's
-/// <see cref="PbtSubtreeStats"/> and the format byte. The internal node at the group root (position 30) is not stored
-/// either: it is folded from its children and already cached in the parent group's boundary slot,
-/// so only a stem may occupy the root position.
-/// A stem position has no present positions below it in the group and no child groups below it.
-/// An empty group encodes to zero bytes, the store's removal marker.
+/// Positions follow the <see cref="StemLeafBlob"/> post-order numbering: boundary slot <c>i</c> sits
+/// at <c>2i - popcount(i)</c>, the group root at 30, and a subtree covering <c>w</c> boundary slots
+/// at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>.
 /// <para>
-/// The trailer counts stems twice over, and means a different thing by each: the stem bitmap says
-/// which of <em>this tile's</em> positions hold a stem node, while <see cref="Stats"/> counts the
-/// stems of the <em>whole subtree</em>, the ones below this group's child groups included.
-/// </para>
-/// <para>
-/// A <see cref="PbtGroupFormat.Interleaved"/> group stores no internal node at an odd group-relative level,
-/// folding those hashes on demand instead; see <see cref="PbtGroupFormat"/>. Only the fold reads them, so a
-/// node there reads as <see cref="NodeKind.Absent"/> from the outside though the trie holds one —
-/// see <see cref="KindAt"/>. A stem is stored wherever its shortest unique prefix falls, skipped
-/// level or not, so the bitmaps still pin the entries exactly.
+/// The encoding is one entry per present position in ascending position order — a 32-byte cached
+/// hash for an internal node, the 31-byte stem followed by its 32-byte leaf-subtree root for a stem
+/// node (the stem node hash is derived, never stored), or a run's whole encoding — then a trailer of
+/// the <see cref="NodeGroupBitmasks"/> that pin them, the <see cref="Stats"/> of the subtree this
+/// group roots, and the format byte.
 /// </para>
 /// </remarks>
-public readonly ref struct PbtTrieNodeGroup
+public readonly ref partial struct PbtTrieNodeGroup
 {
     public enum NodeKind : byte
     {
         Absent = 0,
         Internal = 1,
         Stem = 2,
+        Chain = 3,
     }
 
-    /// <summary>A zero-copy, read-only view of one node — absent, internal, or stem.</summary>
+    /// <summary>A zero-copy, read-only view of one node — absent, internal, stem, or run.</summary>
     /// <remarks>
     /// Wraps the node's entry exactly as the group stores it, so its length alone gives its kind.
     /// The view borrows the group's buffer: a node that must outlive it is copied out with
-    /// <see cref="ToValue"/>.
+    /// <see cref="ToValue"/>, bar a run, whose bytes are copied instead.
     /// </remarks>
     public readonly ref struct Slot
     {
         internal const int InternalLength = HashLength;
         internal const int StemLength = Stem.Length + HashLength;
+        internal const int ChainLength = PbtNodeChain.EncodedLength;
 
         private readonly ReadOnlySpan<byte> _data;
 
         internal Slot(ReadOnlySpan<byte> data)
         {
-            Debug.Assert(data.Length is 0 or InternalLength or StemLength);
+            Debug.Assert(data.Length is 0 or InternalLength or StemLength or ChainLength);
             _data = data;
         }
 
@@ -92,7 +81,8 @@ public readonly ref struct PbtTrieNodeGroup
         {
             0 => NodeKind.Absent,
             InternalLength => NodeKind.Internal,
-            _ => NodeKind.Stem,
+            StemLength => NodeKind.Stem,
+            _ => NodeKind.Chain,
         };
 
         /// <summary>This node's 31-byte stem, sliced from the entry; valid only when <see cref="Kind"/> is <see cref="NodeKind.Stem"/>.</summary>
@@ -105,26 +95,40 @@ public readonly ref struct PbtTrieNodeGroup
             }
         }
 
-        /// <summary>The cached node hash of an internal node, or the 256-leaf subtree root of a stem node.</summary>
-        public ValueHash256 Hash => new(_data[^HashLength..]);
+        /// <summary>This node's run, exactly as <see cref="PbtNodeChain"/> encodes one; valid only when <see cref="Kind"/> is <see cref="NodeKind.Chain"/>.</summary>
+        public ReadOnlySpan<byte> ChainData
+        {
+            get
+            {
+                Debug.Assert(Kind == NodeKind.Chain, "only a run carries a chain encoding");
+                return _data;
+            }
+        }
+
+        /// <summary>
+        /// The cached node hash of an internal node or of a run, or the 256-leaf subtree root of a
+        /// stem node.
+        /// </summary>
+        public ValueHash256 Hash => Kind == NodeKind.Chain ? PbtNodeChain.NodeHashOf(_data) : new(_data[^HashLength..]);
 
         /// <summary>
         /// The hash this node contributes to its parent: zero when absent, the cached hash when
-        /// internal, or the derived stem node hash.
+        /// internal or a run, or the derived stem node hash.
         /// </summary>
         public ValueHash256 NodeHash() => Kind switch
         {
             NodeKind.Absent => default,
-            NodeKind.Internal => Hash,
-            _ => StemLeafBlob.ComputeStemNodeHash(Stem, Hash),
+            NodeKind.Stem => StemLeafBlob.ComputeStemNodeHash(Stem, Hash),
+            _ => Hash,
         };
 
         /// <summary>Copies this node out of the buffer it borrows.</summary>
+        /// <remarks>A run has no value form: it copies out as what it contributes to its parent, a boundary internal caching its node hash.</remarks>
         public ValueSlot ToValue() => Kind switch
         {
             NodeKind.Absent => default,
-            NodeKind.Internal => InternalSlot(Hash),
-            _ => StemSlot(Stem, Hash),
+            NodeKind.Stem => StemSlot(Stem, Hash),
+            _ => InternalSlot(Hash),
         };
     }
 
@@ -163,27 +167,35 @@ public readonly ref struct PbtTrieNodeGroup
 
     private const int PresenceTrailerOffset = 0;
     private const int StemsTrailerOffset = PresenceTrailerOffset + sizeof(uint);
-    private const int StatsTrailerOffset = StemsTrailerOffset + sizeof(uint);
+    private const int ChainsTrailerOffset = StemsTrailerOffset + sizeof(uint);
+    private const int StatsTrailerOffset = ChainsTrailerOffset + sizeof(ushort);
     private const int FormatTrailerOffset = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
     private const int TrailerLength = FormatTrailerOffset + sizeof(byte);
 
     private const int OverheadLength = EntriesOffset + TrailerLength;
     private const int HashLength = 32;
 
-    /// <summary>
-    /// An upper bound on an encoding's length: all 31 positions present, 16 of them stems (each stem
-    /// terminates a disjoint boundary range). An over-estimate now that the root position holds no
-    /// stored internal node; buffers are sized by the exact <see cref="EncodedLength"/>.
-    /// </summary>
-    public const int MaxEncodedLength = OverheadLength + PositionCount * HashLength + BoundarySlots * Stem.Length;
+    /// <summary>What a run's entry takes beyond the cached node hash every present position contributes.</summary>
+    private const int ChainExtraLength = Slot.ChainLength - HashLength;
 
     /// <summary>
-    /// The encoded length of the group described by the bitmaps <paramref name="presence"/> and
-    /// <paramref name="stems"/>, which pin it exactly: every node contributes a hash and a stem node
-    /// its stem as well.
+    /// An upper bound on an encoding's length: all 31 positions present, and the 16 disjoint boundary
+    /// ranges a stem or a run can terminate all terminated by the longer of the two. An over-estimate
+    /// now that the root position holds no stored internal node; buffers are sized by the exact
+    /// <see cref="EncodedLength"/>.
     /// </summary>
-    public static int EncodedLength(uint presence, uint stems) =>
-        OverheadLength + BitOperations.PopCount(presence) * HashLength + BitOperations.PopCount(stems) * Stem.Length;
+    public const int MaxEncodedLength = OverheadLength + PositionCount * HashLength + BoundarySlots * ChainExtraLength;
+
+    /// <summary>
+    /// The encoded length of the group <paramref name="masks"/> describes, which they pin exactly:
+    /// every node contributes a hash, and a stem node its stem or a run the rest of its encoding as
+    /// well.
+    /// </summary>
+    public static int EncodedLength(NodeGroupBitmasks masks) =>
+        OverheadLength
+        + BitOperations.PopCount(masks.Presence) * HashLength
+        + BitOperations.PopCount(masks.Stems) * Stem.Length
+        + BitOperations.PopCount(masks.Chains) * ChainExtraLength;
 
     /// <summary>Bit set at <see cref="BoundaryPosition"/>(i) for each boundary slot i.</summary>
     private const uint BoundaryPositionsMask = 0x06CD8D9Bu;
@@ -216,15 +228,13 @@ public readonly ref struct PbtTrieNodeGroup
         format == PbtGroupFormat.EveryLevel || (width & KeptWidths) != 0;
 
     private readonly ReadOnlySpan<byte> _data;
-    private readonly uint _presence;
-    private readonly uint _stems;
+    private readonly NodeGroupBitmasks _masks;
 
-    private PbtTrieNodeGroup(ReadOnlySpan<byte> data, PbtGroupFormat format, uint presence, uint stems)
+    private PbtTrieNodeGroup(ReadOnlySpan<byte> data, PbtGroupFormat format, NodeGroupBitmasks masks)
     {
         _data = data;
         Format = format;
-        _presence = presence;
-        _stems = stems;
+        _masks = masks;
     }
 
     /// <summary>True for the default group, the absence sentinel; a stored group is never empty.</summary>
@@ -266,8 +276,9 @@ public readonly ref struct PbtTrieNodeGroup
     public NodeKind KindAt(int position)
     {
         uint bit = 1u << position;
-        return (_presence & bit) == 0 ? NodeKind.Absent
-            : (_stems & bit) != 0 ? NodeKind.Stem
+        return (_masks.Presence & bit) == 0 ? NodeKind.Absent
+            : (_masks.Stems & bit) != 0 ? NodeKind.Stem
+            : IsBoundaryPosition(position) && (_masks.Chains >> BoundarySlot(position) & 1) != 0 ? NodeKind.Chain
             : NodeKind.Internal;
     }
 
@@ -275,12 +286,18 @@ public readonly ref struct PbtTrieNodeGroup
     /// The offset of the entry of the node at <paramref name="position"/>, for a consumer that holds
     /// on to a node rather than reading it out; meaningful only where a node is present.
     /// </summary>
+    /// <remarks>
+    /// <see cref="BoundarySlot"/> counts the boundary positions below <paramref name="position"/>, so
+    /// it doubles as the slot bound on the runs below it — whether or not the position is a boundary
+    /// one itself.
+    /// </remarks>
     internal int EntryOffset(int position)
     {
         uint below = (1u << position) - 1;
         return EntriesOffset
-            + BitOperations.PopCount(_presence & below) * HashLength
-            + BitOperations.PopCount(_stems & below) * Stem.Length;
+            + BitOperations.PopCount(_masks.Presence & below) * HashLength
+            + BitOperations.PopCount(_masks.Stems & below) * Stem.Length
+            + BitOperations.PopCount(_masks.Chains & ((1u << BoundarySlot(position)) - 1)) * ChainExtraLength;
     }
 
     /// <summary>The lowest position of the subtree rooted at <paramref name="position"/> covering <paramref name="width"/> boundary slots.</summary>
@@ -290,14 +307,13 @@ public readonly ref struct PbtTrieNodeGroup
         ((1u << (position + 1)) - 1) & ~((1u << FirstSubtreePosition(position, width)) - 1);
 
     /// <summary>
-    /// The presence and stem bitmaps of the subtree rooted at <paramref name="position"/> and covering
-    /// <paramref name="width"/> boundary slots — the shape this group gives it.
+    /// The bitmaps of the subtree rooted at <paramref name="position"/> and covering
+    /// <paramref name="width"/> boundary slots — the shape this group gives it, by position.
     /// </summary>
-    internal void SubtreeBitmaps(int position, int width, out uint presence, out uint stems)
+    internal NodeGroupBitmasks SubtreeBitmaps(int position, int width)
     {
         uint mask = SubtreeMask(position, width);
-        presence = _presence & mask;
-        stems = _stems & mask;
+        return new NodeGroupBitmasks(_masks.Presence & mask, _masks.Stems & mask, _masks.Chains & BoundaryBits(mask));
     }
 
     /// <summary>
@@ -308,22 +324,26 @@ public readonly ref struct PbtTrieNodeGroup
     /// A subtree's positions are contiguous and entries are stored in ascending position order, so its
     /// entries are one unbroken run — ending at its root, the highest position it holds. The run starts
     /// where the entries below it end, which <see cref="EntryOffset"/> gives whether or not
-    /// <see cref="FirstSubtreePosition"/> itself holds a node, and <paramref name="presence"/> and
-    /// <paramref name="stems"/> (from <see cref="SubtreeBitmaps"/>) pin its length — so neither needs a
-    /// walk to find. <see cref="EncodedLength"/> counts a whole encoding's overhead, which a run of
-    /// entries carries none of.
+    /// <see cref="FirstSubtreePosition"/> itself holds a node, and <paramref name="masks"/> (from
+    /// <see cref="SubtreeBitmaps"/>) pins its length — so neither needs a walk to find.
+    /// <see cref="EncodedLength"/> counts a whole encoding's overhead, which a run of entries carries
+    /// none of.
     /// </remarks>
-    internal ReadOnlySpan<byte> SubtreeEntries(int position, int width, uint presence, uint stems) =>
-        _data.Slice(EntryOffset(FirstSubtreePosition(position, width)), EncodedLength(presence, stems) - OverheadLength);
+    internal ReadOnlySpan<byte> SubtreeEntries(int position, int width, NodeGroupBitmasks masks) =>
+        _data.Slice(EntryOffset(FirstSubtreePosition(position, width)), EncodedLength(masks) - OverheadLength);
 
     /// <summary>
     /// Reads the node of kind <paramref name="kind"/> whose entry starts at <paramref name="offset"/>
     /// out of the encoding <paramref name="data"/>, for a producer holding an entry offset rather than
     /// a position.
     /// </summary>
-    internal static Slot SlotAt(ReadOnlySpan<byte> data, NodeKind kind, int offset) => kind == NodeKind.Absent
-        ? default
-        : new Slot(data.Slice(offset, kind == NodeKind.Stem ? Slot.StemLength : Slot.InternalLength));
+    internal static Slot SlotAt(ReadOnlySpan<byte> data, NodeKind kind, int offset) => kind switch
+    {
+        NodeKind.Absent => default,
+        NodeKind.Stem => new Slot(data.Slice(offset, Slot.StemLength)),
+        NodeKind.Chain => new Slot(data.Slice(offset, Slot.ChainLength)),
+        _ => new Slot(data.Slice(offset, Slot.InternalLength)),
+    };
 
     public static ValueSlot InternalSlot(in ValueHash256 hash) => new() { Kind = NodeKind.Internal, Hash = hash };
 
@@ -338,20 +358,17 @@ public readonly ref struct PbtTrieNodeGroup
     public static int BoundarySlot(int position) => BitOperations.PopCount(BoundaryPositionsMask & ((1u << position) - 1));
 
     /// <summary>
-    /// The group's boundary shape as slot-indexed bitmaps: bit <c>i</c> of <paramref name="occupied"/> is
-    /// set where boundary slot <c>i</c> holds a node, and of <paramref name="stems"/> where that node is a
-    /// stem. Both are zero for the empty group.
+    /// The group's shape at its boundary, gathered down into slot order: bit <c>i</c> of
+    /// <see cref="NodeGroupBitmasks.Presence"/> is set where boundary slot <c>i</c> holds a node, of
+    /// <see cref="NodeGroupBitmasks.Stems"/> where that node is a stem and of
+    /// <see cref="NodeGroupBitmasks.Chains"/> where it is a run. All are zero for the empty group.
     /// </summary>
     /// <remarks>
-    /// A boundary slot is never a skipped level, so these read the same under either
-    /// <see cref="PbtGroupFormat"/>; <see cref="Decode"/> keeps the stems bitmap a subset of the presence
-    /// one, so <paramref name="stems"/> needs no masking against <paramref name="occupied"/>.
+    /// A boundary slot is never a skipped level, so this reads the same under either
+    /// <see cref="PbtGroupFormat"/>; <see cref="Decode"/> keeps the stems and runs bitmaps disjoint
+    /// subsets of the presence one, so neither needs masking against it.
     /// </remarks>
-    internal void BoundaryShape(out uint occupied, out uint stems)
-    {
-        occupied = BoundaryBits(_presence);
-        stems = BoundaryBits(_stems);
-    }
+    internal NodeGroupBitmasks BoundaryShape() => new(BoundaryBits(_masks.Presence), BoundaryBits(_masks.Stems), _masks.Chains);
 
     /// <summary>Gathers the sixteen <see cref="BoundaryPositionsMask"/> bits of <paramref name="positions"/> down into slot order.</summary>
     /// <remarks>
@@ -383,11 +400,20 @@ public readonly ref struct PbtTrieNodeGroup
             throw new InvalidDataException($"Trie node group: unexpected format byte 0x{(byte)format:x2}");
         }
 
-        uint presence = BinaryPrimitives.ReadUInt32LittleEndian(trailer[PresenceTrailerOffset..]);
-        uint stems = BinaryPrimitives.ReadUInt32LittleEndian(trailer[StemsTrailerOffset..]);
+        NodeGroupBitmasks masks = new(
+            BinaryPrimitives.ReadUInt32LittleEndian(trailer[PresenceTrailerOffset..]),
+            BinaryPrimitives.ReadUInt32LittleEndian(trailer[StemsTrailerOffset..]),
+            BinaryPrimitives.ReadUInt16LittleEndian(trailer[ChainsTrailerOffset..]));
+        (uint presence, uint stems, uint chains) = masks;
         if (presence >> PositionCount != 0 || (stems & ~presence) != 0)
         {
             throw new InvalidDataException("Invalid trie node group bitmaps");
+        }
+
+        // a run hangs from a boundary slot, and holds it: the slot roots neither a stem nor a child group
+        if ((chains & ~(BoundaryBits(presence) & ~BoundaryBits(stems))) != 0)
+        {
+            throw new InvalidDataException("Invalid trie node group run bitmap");
         }
 
         // The root's internal node is folded from its children and already cached in the parent group's
@@ -405,136 +431,12 @@ public readonly ref struct PbtTrieNodeGroup
             throw new InvalidDataException("Interleaved trie node group holds an internal node at a skipped level");
         }
 
-        int expectedLength = EncodedLength(presence, stems);
+        int expectedLength = EncodedLength(masks);
         if (data.Length != expectedLength)
         {
             throw new InvalidDataException($"Trie node group length {data.Length} does not match its bitmaps (expected {expectedLength})");
         }
 
-        return new PbtTrieNodeGroup(data, format, presence, stems);
-    }
-
-    /// <summary>
-    /// Encodes a group into a caller-supplied buffer one node at a time, as the producer walks the
-    /// group, rather than from a materialized set of slots.
-    /// </summary>
-    /// <remarks>
-    /// Nodes must be appended in ascending position order — the order a post-order walk of the group
-    /// visits them, and the order the encoding stores them in — which makes each entry's offset
-    /// implicit in the append cursor: no offset math is needed while building. An appended entry keeps
-    /// a stable offset, so a producer can read a node back through <see cref="SlotAt"/> instead of
-    /// carrying hashes up its walk by value.
-    /// <para>
-    /// The bitmaps are only known once the walk is done, which is why they sit in the trailer rather
-    /// than at the front: <see cref="Finish"/> appends them where the entries ended, leaving the whole
-    /// encoding a single forward pass. Backfilling a leading header instead would write back over
-    /// bytes the write has already streamed past, which no prefetcher helps with. The format byte
-    /// rides along with them so that an encoding ends with its own identifier and its entries start
-    /// at offset zero, which is what lets a container hold one verbatim.
-    /// </para>
-    /// </remarks>
-    public ref struct Builder
-    {
-        private readonly Span<byte> _destination;
-        private readonly PbtGroupFormat _format;
-        private uint _presence;
-        private uint _stems;
-        private int _offset = EntriesOffset;
-
-        public Builder(Span<byte> destination, PbtGroupFormat format)
-        {
-            _destination = destination;
-            _format = format;
-        }
-
-        /// <summary>Appends the internal node at <paramref name="position"/>, returning its entry offset.</summary>
-        public int AppendInternal(int position, in ValueHash256 hash)
-        {
-            Debug.Assert(hash != default, "internal nodes never cache a zero hash");
-            Debug.Assert(!IsSkippedPosition(_format, position), "an interleaved group stores no internal node at a skipped level");
-            MarkPresent(position);
-            return Write(hash.Bytes);
-        }
-
-        /// <summary>Appends the stem node at <paramref name="position"/>, returning its entry offset.</summary>
-        public int AppendStem(int position, in Stem stem, in ValueHash256 leafSubtreeRoot)
-        {
-            MarkPresent(position);
-            _stems |= 1u << position;
-            int offset = _offset;
-            Span<byte> entry = _destination[offset..];
-            stem.Bytes.CopyTo(entry);
-            leafSubtreeRoot.Bytes.CopyTo(entry[Stem.Length..]);
-            _offset = offset + Slot.StemLength;
-            return offset;
-        }
-
-        /// <summary>
-        /// Appends a whole subtree at once — <paramref name="entries"/>, holding the positions
-        /// <paramref name="presence"/> of which <paramref name="stems"/> are stem nodes — returning its
-        /// root's entry offset.
-        /// </summary>
-        /// <remarks>
-        /// The run is another group's encoding of that same subtree (<see cref="SubtreeEntries"/>), which
-        /// is byte-for-byte what appending its nodes one at a time would produce, so a producer that finds
-        /// a subtree unchanged copies it rather than folding it. Its root is its highest position, hence
-        /// the last entry of the run.
-        /// </remarks>
-        public int AppendSubtree(uint presence, uint stems, ReadOnlySpan<byte> entries)
-        {
-            Debug.Assert(presence != 0, "an absent subtree has no entries to append");
-            Debug.Assert((stems & ~presence) == 0, "only a present position holds a stem");
-            Debug.Assert(_presence >> BitOperations.TrailingZeroCount(presence) == 0, "nodes must be appended in ascending position order");
-            Debug.Assert(
-                _format == PbtGroupFormat.EveryLevel || (presence & SkippedPositionsMask & ~stems) == 0,
-                "a verbatim run must be in this group's own format");
-
-            _presence |= presence;
-            _stems |= stems;
-
-            int rootPosition = BitOperations.Log2(presence);
-            int rootLength = (stems >> rootPosition & 1) != 0 ? Slot.StemLength : Slot.InternalLength;
-            int rootOffset = _offset + entries.Length - rootLength;
-            Write(entries);
-            return rootOffset;
-        }
-
-        public readonly Slot SlotAt(NodeKind kind, int offset) => PbtTrieNodeGroup.SlotAt(_destination, kind, offset);
-
-        /// <summary>
-        /// Appends the trailer — the bitmaps, and the <paramref name="stats"/> of the subtree the group
-        /// roots — and returns the encoded length; 0 when nothing was appended, which the caller stores
-        /// as a removal.
-        /// </summary>
-        /// <param name="stats">
-        /// The whole subtree's, which the walk that appended the nodes cannot know: the stems below a
-        /// boundary slot the walk left alone are never read. The producer hoists it instead.
-        /// </param>
-        public readonly int Finish(in PbtSubtreeStats stats)
-        {
-            if (_presence == 0) return 0;
-
-            Span<byte> trailer = _destination.Slice(_offset, TrailerLength);
-            BinaryPrimitives.WriteUInt32LittleEndian(trailer[PresenceTrailerOffset..], _presence);
-            BinaryPrimitives.WriteUInt32LittleEndian(trailer[StemsTrailerOffset..], _stems);
-            stats.Write(trailer[StatsTrailerOffset..]);
-            trailer[FormatTrailerOffset] = (byte)_format;
-            return _offset + TrailerLength;
-        }
-
-        private void MarkPresent(int position)
-        {
-            Debug.Assert((uint)position < PositionCount);
-            Debug.Assert(_presence >> position == 0, "nodes must be appended in ascending position order");
-            _presence |= 1u << position;
-        }
-
-        private int Write(ReadOnlySpan<byte> bytes)
-        {
-            int offset = _offset;
-            bytes.CopyTo(_destination[offset..]);
-            _offset = offset + bytes.Length;
-            return offset;
-        }
+        return new PbtTrieNodeGroup(data, format, masks);
     }
 }

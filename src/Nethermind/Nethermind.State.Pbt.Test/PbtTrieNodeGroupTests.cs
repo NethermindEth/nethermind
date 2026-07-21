@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
@@ -13,6 +14,9 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtTrieNodeGroupTests
 {
+    /// <summary>The whole header: the presence and stem bitmaps, the run one, the stats and the format byte.</summary>
+    private const int TrailerLength = 4 + 4 + 2 + PbtSubtreeStats.EncodedLength + 1;
+
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
     public void PositionMath_EncodeDecodeRoundTrip_AndValidation(PbtGroupFormat format)
@@ -54,7 +58,7 @@ public class PbtTrieNodeGroupTests
 
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         int length = Encode(slots, stats, encoded, format);
-        Assert.That(length, Is.EqualTo(15 + 4 * 32 + 2 * 31));
+        Assert.That(length, Is.EqualTo(TrailerLength + 4 * 32 + 2 * 31));
 
         PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
         Assert.That(decoded.Stats, Is.EqualTo(stats));
@@ -84,8 +88,9 @@ public class PbtTrieNodeGroupTests
         badFormat[^1] = 0xFF;
         Assert.That(() => PbtTrieNodeGroup.Decode(badFormat), Throws.TypeOf<InvalidDataException>());
 
-        // the whole header sits in the trailer: presence, then stems, then the six-byte stats, then the format byte
-        int trailer = length - (4 + 4 + PbtSubtreeStats.EncodedLength + 1);
+        // the whole header sits in the trailer: presence, then stems, then the runs, then the six-byte
+        // stats, then the format byte
+        int trailer = length - TrailerLength;
 
         byte[] highBit = (byte[])valid.Clone();
         highBit[trailer + 3] |= 0x80;
@@ -239,11 +244,65 @@ public class PbtTrieNodeGroupTests
     }
 
     [Test]
-    public void BoundaryShape_EmptyGroup_IsUnoccupied()
+    public void BoundaryShape_EmptyGroup_IsUnoccupied() =>
+        Assert.That(default(PbtTrieNodeGroup).BoundaryShape(), Is.EqualTo(default(NodeGroupBitmasks)));
+
+    /// <summary>
+    /// A run is held whole by the boundary slot it hangs from, so its entry is longer than the hash a
+    /// pointer to a child group is — which the entries after it must be found past, and which the
+    /// bitmaps alone have to say. Its cached node hash still ends it, so the slot reads as a boundary
+    /// internal wherever only the hash is wanted.
+    /// </summary>
+    [TestCase(PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.Interleaved)]
+    public void ABoundaryRun_IsHeldWholeAndShiftsWhatFollowsIt(PbtGroupFormat format)
     {
-        default(PbtTrieNodeGroup).BoundaryShape(out uint occupied, out uint stems);
-        Assert.That(occupied, Is.Zero);
-        Assert.That(stems, Is.Zero);
+        const int chainSlot = 1;
+        Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
+        ValueHash256 stemRoot = new(Bytes.FromHexString("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"));
+        ValueHash256 childRoot = new(Bytes.FromHexString("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"));
+        PbtSubtreeStats stats = new(9);
+
+        // zero past its target depth, as a group's path is
+        Stem targetPath = new(Bytes.FromHexString("0x0dead000000000000000000000000000000000000000000000000000000000"));
+        byte[] chain = new byte[PbtNodeChain.EncodedLength];
+        PbtNodeChain.Write(chain, startDepth: 8, targetDepth: 20, targetPath, childRoot, new PbtSubtreeStats(3));
+
+        // a stem below the run and a boundary internal above it, so the run shifts the one that follows
+        // and leaves the one before it where it was
+        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
+        PbtTrieNodeGroup.Builder builder = new(encoded, format);
+        builder.AppendStem(PbtTrieNodeGroup.BoundaryPosition(0), stem, stemRoot);
+        builder.AppendChain(PbtTrieNodeGroup.BoundaryPosition(chainSlot), chain);
+        builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(2), childRoot);
+        int length = builder.Finish(stats);
+
+        PbtTrieNodeGroup group = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
+        Assert.That(length, Is.EqualTo(TrailerLength + 2 * 32 + Stem.Length + PbtNodeChain.EncodedLength));
+
+        int chainPosition = PbtTrieNodeGroup.BoundaryPosition(chainSlot);
+        Assert.That(group.KindAt(chainPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Chain));
+        Assert.That(group[chainPosition].ChainData.SequenceEqual(chain));
+        Assert.That(group[chainPosition].Hash, Is.EqualTo(PbtNodeChain.NodeHashOf(chain)), "a run contributes its cached node hash");
+        Assert.That(group[chainPosition].NodeHash(), Is.EqualTo(PbtNodeChain.NodeHashOf(chain)));
+
+        // the slots around it are unmoved and unconfused
+        Assert.That(group[PbtTrieNodeGroup.BoundaryPosition(0)].Stem, Is.EqualTo(stem));
+        Assert.That(group.KindAt(PbtTrieNodeGroup.BoundaryPosition(2)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Internal));
+        Assert.That(group[PbtTrieNodeGroup.BoundaryPosition(2)].Hash, Is.EqualTo(childRoot));
+
+        NodeGroupBitmasks boundary = group.BoundaryShape();
+        Assert.That(boundary, Is.EqualTo(new NodeGroupBitmasks(0b111u, 0b001u, 1u << chainSlot)));
+        Assert.That(boundary.ChildSlots, Is.EqualTo(1u << 2), "a run roots no child blob, and neither does a stem");
+
+        // the run bitmap must name an occupied boundary slot that holds no stem
+        byte[] valid = encoded[..length];
+        foreach (int slot in (int[])[0, 3])
+        {
+            byte[] misplaced = (byte[])valid.Clone();
+            BinaryPrimitives.WriteUInt16LittleEndian(misplaced.AsSpan(length - TrailerLength + 8), (ushort)(1 << slot));
+            Assert.That(() => PbtTrieNodeGroup.Decode(misplaced), Throws.TypeOf<InvalidDataException>(), $"a run claimed at slot {slot}");
+        }
     }
 
     /// <summary>

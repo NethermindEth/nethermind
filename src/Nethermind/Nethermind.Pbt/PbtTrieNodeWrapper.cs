@@ -22,11 +22,10 @@ namespace Nethermind.Pbt;
 /// <para>
 /// The encoding is the child blobs in ascending boundary-slot order, one little-endian 16-bit end
 /// offset per child, then the group's own encoding, its length, and the format byte. Each child is a
-/// complete standalone encoding — a group or a <see cref="PbtNodeChain"/> — so its own trailing
-/// identifier tells which, and child <c>i</c> runs from the previous end offset (0 for the first) to
+/// complete group encoding, and child <c>i</c> runs from the previous end offset (0 for the first) to
 /// its own, the last of them ending where the offsets begin. Children lead because the fold produces
-/// them first: a rebuild settles every child before the hashes reach the group above them. At most
-/// 11,170 bytes, and in the sparse subtrees that dominate a few hundred.
+/// them first: a rebuild settles every child before the hashes reach the group above them. In the
+/// sparse subtrees that dominate, a few hundred bytes.
 /// </para>
 /// <para>
 /// The trailing group length is what makes the whole layout readable backwards from the blob alone:
@@ -38,7 +37,7 @@ namespace Nethermind.Pbt;
 /// Which groups wrap is fixed by <see cref="WrapsChildren"/> — absolute depth, so that a run
 /// appearing or splitting somewhere above never re-parities the subtree below it, and so that the
 /// wrapped level is always the level that does not itself wrap: a child pulled into a wrapper or
-/// pushed back out of one is a bare group or a run, never another wrapper.
+/// pushed back out of one is a bare group, never another wrapper.
 /// </para>
 /// </remarks>
 public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
@@ -65,7 +64,7 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
     /// </remarks>
     public static bool WrapsChildren(int depth) => (depth & PbtTrieNodeGroup.LevelsPerGroup) != 0;
 
-    /// <summary>True for an encoding ending in this type's format byte rather than a group's or a run's.</summary>
+    /// <summary>True for an encoding ending in this type's format byte rather than a group's.</summary>
     public static bool IsWrapper(ReadOnlySpan<byte> data) => data.Length > 0 && data[^1] == FormatByte;
 
     /// <summary>The length of a wrapper of <paramref name="childCount"/> children totalling <paramref name="childBytes"/> over a group of <paramref name="groupLength"/> bytes.</summary>
@@ -154,12 +153,11 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
         return wrapper;
     }
 
-    /// <summary>The boundary slots rooting a blob of their own: a group's boundary internals, exactly.</summary>
-    private static uint ChildSlots(in PbtTrieNodeGroup group)
-    {
-        group.BoundaryShape(out uint occupied, out uint stems);
-        return occupied & ~stems;
-    }
+    /// <summary>
+    /// The boundary slots rooting a blob of their own: a group's boundary internals, exactly. A slot
+    /// holding a stem or a run roots none — both live in the group's own encoding.
+    /// </summary>
+    private static uint ChildSlots(in PbtTrieNodeGroup group) => group.BoundaryShape().ChildSlots;
 
     private static int GroupLength(ReadOnlySpan<byte> data) => BinaryPrimitives.ReadUInt16LittleEndian(data[^TrailerLength..]);
 

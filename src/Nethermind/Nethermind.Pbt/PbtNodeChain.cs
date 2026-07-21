@@ -22,13 +22,19 @@ namespace Nethermind.Pbt;
 /// <see cref="PbtKeyDerivation.StorageStem"/>): every stem of a contract shares 61 bits, so each
 /// contract grows a spine of these from wherever it parts from other contracts down to bit 61.
 /// <para>
+/// A chain has no key of its own: at a hundred-odd bytes it is far too little to be worth one, so
+/// the boundary slot it hangs from holds its encoding outright (see
+/// <see cref="PbtTrieNodeGroup.NodeKind.Chain"/>). Its start depth is therefore that slot's depth —
+/// its parent group's plus <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> — and is not stored, so the
+/// encoding is fixed at <see cref="EncodedLength"/> bytes.
+/// </para>
+/// <para>
 /// The encoding is the target's depth, its 31-byte path, its root hash,
 /// this chain's own node hash — a cache, as an internal node's hash is, which is what lets a parent
-/// group treat a chain child as an ordinary boundary internal — the subtree's
+/// group treat a chain slot as an ordinary boundary internal — the subtree's
 /// <see cref="PbtSubtreeStats"/>, a cache in the same way and for the same reason, and a trailing
-/// format byte, as <see cref="PbtTrieNodeGroup"/>'s encoding ends with. The chain's own
-/// start depth is its key's depth (see <see cref="TrieNodeKey"/>) and is not stored, so the encoding
-/// is fixed at <see cref="EncodedLength"/> bytes.
+/// format byte, as <see cref="PbtTrieNodeGroup"/>'s encoding ends with, so that an entry says what it
+/// is wherever it is read.
 /// </para>
 /// <para>
 /// The canonical form <see cref="TrieUpdater"/> maintains, on which its descent relies:
@@ -36,14 +42,14 @@ namespace Nethermind.Pbt;
 /// <item>a stored group has two or more occupied boundary slots, bar the root group, which holds
 /// whatever it cannot hoist — a lone stem, or a spine;</item>
 /// <item>a chain's target is always a stored group, never another chain: chains are maximal;</item>
-/// <item>no blob exists at any key strictly between a chain's start and its target;</item>
+/// <item>no blob exists at any key from a chain's start down to its target, that target excepted;</item>
 /// <item>a chain's start depth is greater than zero.</item>
 /// </list>
 /// </para>
 /// </remarks>
 public readonly ref struct PbtNodeChain
 {
-    /// <summary>Version sentinel ending every encoding, validated on decode; distinct from <see cref="PbtTrieNodeGroup"/>'s, which is what discriminates the two in the store.</summary>
+    /// <summary>Version sentinel ending every encoding, validated on decode; distinct from <see cref="PbtTrieNodeGroup"/>'s, which is what tells a run's encoding from a group's wherever the two meet.</summary>
     private const byte FormatByte = 0x02;
 
     private const int TargetDepthOffset = 0;
@@ -65,7 +71,7 @@ public readonly ref struct PbtNodeChain
         _startDepth = startDepth;
     }
 
-    /// <summary>The depth this chain starts at — its key's depth, not part of the encoding.</summary>
+    /// <summary>The depth this chain starts at — its slot's depth, not part of the encoding.</summary>
     public int StartDepth => _startDepth;
 
     /// <summary>The depth of the group this chain lands on.</summary>
@@ -90,8 +96,10 @@ public readonly ref struct PbtNodeChain
 
     /// <summary>True for an encoding ending in this type's format byte rather than <see cref="PbtTrieNodeGroup"/>'s.</summary>
     /// <remarks>
-    /// A stored blob is never empty — an empty group encodes to zero bytes, which the store takes as a
-    /// removal — so the last byte is always there to discriminate on.
+    /// An encoding is never empty — an empty group encodes to zero bytes, which the store takes as a
+    /// removal — so the last byte is always there to discriminate on. Nothing in the store needs this:
+    /// a run lives in its parent group's encoding, whose bitmaps say where. It is for a reader holding
+    /// a node's bytes and nothing else.
     /// </remarks>
     public static bool IsChain(ReadOnlySpan<byte> data) => data.Length > 0 && data[^1] == FormatByte;
 
@@ -147,7 +155,7 @@ public readonly ref struct PbtNodeChain
     /// Validates a chain encoding and wraps it as a read-only view; the returned chain borrows
     /// <paramref name="data"/>.
     /// </summary>
-    /// <param name="startDepth">The depth of the key <paramref name="data"/> was stored under.</param>
+    /// <param name="startDepth">The depth of the boundary slot <paramref name="data"/> was read from.</param>
     public static PbtNodeChain Decode(ReadOnlySpan<byte> data, int startDepth)
     {
         if (data.Length != EncodedLength) throw new InvalidDataException($"Trie node chain length {data.Length} is not {EncodedLength}");
