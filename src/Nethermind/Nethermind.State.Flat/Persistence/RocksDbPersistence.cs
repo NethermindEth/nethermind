@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -9,9 +11,26 @@ namespace Nethermind.State.Flat.Persistence;
 
 public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null) : IPersistence
 {
+    // TEST-ONLY (benchmark branch): synchronously rewrite the Storage column SSTs with the current
+    // column options before any benchmarking, so option changes (compression/block size) apply to
+    // the premade fixture data. Gated by env var; blocks startup for the duration of the compaction.
+    private readonly bool _storageCompacted = MaybeCompactStorageForTest(db, logManager);
+
     private readonly WriteBufferAdjuster _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
     private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<RocksDbPersistence>());
+
+    private static bool MaybeCompactStorageForTest(IColumnsDb<FlatDbColumns> db, ILogManager logManager)
+    {
+        if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_COMPACT_FLAT_STORAGE") != "1") return false;
+
+        ILogger logger = logManager.GetClassLogger<RocksDbPersistence>();
+        long start = Stopwatch.GetTimestamp();
+        if (logger.IsWarn) logger.Warn("TEST: compacting flat Storage column (blocking startup)...");
+        db.GetColumnDb(FlatDbColumns.Storage).Compact();
+        if (logger.IsWarn) logger.Warn($"TEST: flat Storage column compaction completed in {Stopwatch.GetElapsedTime(start).TotalSeconds:F0}s");
+        return true;
+    }
 
     public void Flush() => db.Flush();
 

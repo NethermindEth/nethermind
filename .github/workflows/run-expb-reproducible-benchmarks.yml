@@ -720,6 +720,11 @@ jobs:
             done
           fi
 
+          # TEST branch: startup compaction of the flat Storage column blocks node readiness;
+          # give expb a long startup budget so the JSON-RPC wait survives it.
+          SK="${scenario_key}" "${YQ}" -i '.scenarios.[strenv(SK)].startup_wait = 5400' "${RENDERED_CONFIG_FILE}"
+          echo "Set startup_wait=5400 for compaction test branch."
+
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
