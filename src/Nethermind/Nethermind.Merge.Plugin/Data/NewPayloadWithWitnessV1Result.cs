@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>
-/// Result of <c>engine_newPayloadWithWitness</c>.
+/// Result of <c>engine_newPayloadWithWitnessV*</c>.
 /// Combines the standard <see cref="PayloadStatusV1"/> fields with an optional
 /// <see cref="Witness"/> that is populated when <see cref="Status"/> is
 /// <see cref="PayloadStatus.Valid"/>.

@@ -33,13 +33,14 @@ public class EraImporter(
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
     private readonly ulong _maxEra1Size = eraConfig.MaxEra1Size;
+    private BlockTreeSuggestPacer? _currentPacer;
 
     /// <summary>
     /// Snapshot of the pacer used by the current import run. <see cref="BlockTreeSuggestPacer.WaitForPausedAsync"/>
     /// lets callers (notably tests) wait deterministically for the importer to back off when its suggest queue
     /// outruns the chain head, instead of relying on real-time delays.
     /// </summary>
-    public BlockTreeSuggestPacer? CurrentPacer { get; private set; }
+    public BlockTreeSuggestPacer? CurrentPacer => Volatile.Read(ref _currentPacer);
 
     public async Task Import(string src, ulong from, ulong to, string? accumulatorFile, CancellationToken cancellation = default)
     {
@@ -116,7 +117,7 @@ public class EraImporter(
             ? eraConfig.ImportBlocksBufferSize - 1024UL
             : eraConfig.ImportBlocksBufferSize / 2;
         using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, resumeBatchSize);
-        CurrentPacer = pacer;
+        Volatile.Write(ref _currentPacer, pacer);
         ulong blockNumber = from;
 
         ulong suggestFromBlock = (blockTree.Head?.Number ?? 0UL) + 1UL;
