@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -112,6 +113,20 @@ public class LogFinderTests
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
         int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         Assert.That(indexes, Is.EqualTo([0, 1, 0, 1, 2]));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Unenumerated_parallel_getLogs_does_not_leak_parallel_slot()
+    {
+        SetUp(allowReceiptIterator: true, chainLength: Environment.ProcessorCount + 2);
+
+        FieldInfo lockField = typeof(LogFinder).GetField("ParallelLock", BindingFlags.NonPublic | BindingFlags.Static)!;
+        int before = (int)lockField.GetValue(null)!;
+
+        _ = _logFinder.FindLogs(AllBlockFilter().Build());
+
+        Assert.That((int)lockField.GetValue(null)!, Is.EqualTo(before), "building an unenumerated parallel getLogs result must not acquire the process-wide parallel slot");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
