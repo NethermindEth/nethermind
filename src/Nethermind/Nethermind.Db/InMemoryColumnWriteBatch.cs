@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Db
@@ -15,17 +16,17 @@ namespace Nethermind.Db
 
         public void Clear()
         {
-            foreach (IWriteBatch batch in _writeBatches.Values)
+            foreach (KeyValuePair<TKey, IWriteBatch> kvp in _writeBatches)
             {
-                batch.Clear();
+                kvp.Value.Clear();
             }
         }
 
         public void Dispose()
         {
-            foreach (IWriteBatch batch in _writeBatches.Values)
+            foreach (KeyValuePair<TKey, IWriteBatch> kvp in _writeBatches)
             {
-                batch.Dispose();
+                kvp.Value.Dispose();
             }
         }
     }

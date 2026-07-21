@@ -9,9 +9,9 @@ namespace Ethereum.Test.Base
     public class LegacyTransactionJson
     {
         public byte[] Data { get; set; }
-        public long GasLimit { get; set; }
+        public ulong GasLimit { get; set; }
         public UInt256 GasPrice { get; set; }
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public Address To { get; set; }
         public UInt256 Value { get; set; }
         public string Sender { get; set; }

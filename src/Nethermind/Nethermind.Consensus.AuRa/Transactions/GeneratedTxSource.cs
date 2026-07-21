@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -20,27 +19,30 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ITxSealer _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
         private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         private readonly ILogger _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
+        private readonly IDictionary<Address, ulong> _nonces = new Dictionary<Address, ulong>(1);
 
         public bool SupportsBlobs => _innerSource.SupportsBlobs;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             _nonces.Clear();
 
             try
             {
-                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource).Select(tx =>
+                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource).Where(tx =>
                 {
-                    if (tx is GeneratedTransaction)
+                    if (tx is not GeneratedTransaction) return true;
+
+                    tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
+                    if (!_txSealer.TrySeal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature))
                     {
-                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
-                        _txSealer.Seal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
-                        Metrics.SealedTransactions++;
-                        if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.ToShortString()}");
+                        if (_logger.IsWarn) _logger.Warn($"AuRa sealer could not sign generated transaction from {tx.SenderAddress} — skipping.");
+                        return false;
                     }
 
-                    return tx;
+                    Metrics.SealedTransactions++;
+                    if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.ToShortString()}");
+                    return true;
                 });
             }
             finally
@@ -49,9 +51,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
 
-        private UInt256 CalculateNonce(Address address, BlockHeader baseBlock, IDictionary<Address, UInt256> nonces)
+        private ulong CalculateNonce(Address address, BlockHeader baseBlock, IDictionary<Address, ulong> nonces)
         {
-            if (!nonces.TryGetValue(address, out UInt256 nonce))
+            if (!nonces.TryGetValue(address, out ulong nonce))
             {
                 nonce = _stateReader.GetNonce(baseBlock, address);
             }

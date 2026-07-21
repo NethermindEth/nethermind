@@ -16,7 +16,6 @@ internal static class DBSizeGenerator
         "state",
         "receipts",
         "blocks",
-        "bloom",
         "headers",
         "code",
         "blobTransactions"
@@ -36,7 +35,7 @@ internal static class DBSizeGenerator
 
         dbSizeSourcePath ??= AppDomain.CurrentDomain.BaseDirectory;
 
-        var chains = Directory
+        List<string?> chains = Directory
             .GetFiles(dbSizeSourcePath)
             .Select(Path.GetFileNameWithoutExtension)
             .OrderBy(c =>
@@ -59,8 +58,8 @@ internal static class DBSizeGenerator
         // Delete the temp file if it exists
         File.Delete(tempFileName);
 
-        using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
+        using StreamReader readStream = new(File.OpenRead(fileName));
+        using StreamWriter writeStream = new(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
@@ -117,7 +116,7 @@ internal static class DBSizeGenerator
     private static void WriteChainSize(StreamWriter file, string dbSizeSourcePath, string chain)
     {
         string path = Path.Join(dbSizeSourcePath, $"{chain}.json");
-        using var json = JsonDocument.Parse(File.ReadAllText(path));
+        using JsonDocument json = JsonDocument.Parse(File.ReadAllText(path));
 
         if (json.RootElement.ValueKind != JsonValueKind.Object)
             return;
@@ -129,7 +128,7 @@ internal static class DBSizeGenerator
 
             """);
 
-        var items = json.RootElement.EnumerateObject();
+        JsonElement.ObjectEnumerator items = json.RootElement.EnumerateObject();
 
         foreach (string db in _dbList)
         {
@@ -159,7 +158,7 @@ internal static class DBSizeGenerator
 
     private static string GetLatestVersion(string path)
     {
-        using var versionsJson = File.OpenRead(Path.Join(path, "versions.json"));
+        using FileStream versionsJson = File.OpenRead(Path.Join(path, "versions.json"));
         string[] versions = JsonSerializer.Deserialize<string[]>(versionsJson)!;
 
         return versions[0];

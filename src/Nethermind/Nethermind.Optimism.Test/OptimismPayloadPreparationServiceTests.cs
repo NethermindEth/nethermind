@@ -21,11 +21,9 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus;
 using Nethermind.Config;
 using Nethermind.Blockchain;
-using FluentAssertions;
 using Nethermind.Crypto;
 using System.Threading;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Test;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism.Test;
@@ -55,10 +53,10 @@ public class OptimismPayloadPreparationServiceTests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
-        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        IOptimismReleaseSpec releaseSpec = OptimismReleaseSpecSubstitute.Create();
         releaseSpec.IsOpHoloceneEnabled.Returns(true);
         releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
-        releaseSpec.ElasticityMultiplier.Returns(6);
+        releaseSpec.ElasticityMultiplier.Returns(6UL);
         ISpecProvider? specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(parent).Returns(releaseSpec);
 
@@ -102,9 +100,9 @@ public class OptimismPayloadPreparationServiceTests
         IBlockProductionContext context = (await service.GetPayload(payloadId))!;
         Block currentBestBlock = context.CurrentBestBlock!;
 
-        currentBestBlock.Should().Be(block);
-        currentBestBlock.Header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out _).Should().BeTrue();
-        parameters.Should().BeEquivalentTo(testCase.ExpectedEIP1559Parameters);
-        currentBestBlock.Header.Hash.Should().BeEquivalentTo(currentBestBlock.Header.CalculateHash());
+        Assert.That(currentBestBlock, Is.EqualTo(block));
+        Assert.That(currentBestBlock.Header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out _), Is.True);
+        Assert.That(parameters, Is.EqualTo(testCase.ExpectedEIP1559Parameters));
+        Assert.That(currentBestBlock.Header.Hash, Is.EqualTo(currentBestBlock.Header.CalculateHash()));
     }
 }

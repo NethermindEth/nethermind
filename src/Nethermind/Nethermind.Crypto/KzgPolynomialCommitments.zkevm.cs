@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Crypto;
 
@@ -16,7 +17,7 @@ public static partial class KzgPolynomialCommitments
 
         ArgumentOutOfRangeException.ThrowIfNotEqual(hashBuffer.Length, Eip4844Constants.BytesPerBlobVersionedHash, nameof(hashBuffer));
 
-        ZiskBindings.Crypto.sha256_c(commitment, (nuint)commitment.Length, hashBuffer);
+        Accelerators.Sha256(commitment, hashBuffer);
 
         hashBuffer[0] = KzgBlobHashVersionV1;
 
@@ -27,5 +28,5 @@ public static partial class KzgPolynomialCommitments
         ReadOnlySpan<byte> commitment,
         ReadOnlySpan<byte> z,
         ReadOnlySpan<byte> y,
-        ReadOnlySpan<byte> proof) => ZiskBindings.Crypto.verify_kzg_proof_c(z, y, commitment, proof);
+        ReadOnlySpan<byte> proof) => Accelerators.KzgPointEval(commitment, z, y, proof);
 }

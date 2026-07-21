@@ -15,7 +15,7 @@ namespace Nethermind.Evm
     /// </summary>
     public class Prepare
     {
-        private readonly List<byte> _byteCode = new();
+        private readonly List<byte> _byteCode = [];
         public static Prepare EvmCode => new();
         public byte[] Done => _byteCode.ToArray();
 
@@ -245,7 +245,9 @@ namespace Nethermind.Evm
 
         public Prepare PushData(Address address)
         {
-            PushData(address.Bytes);
+            ReadOnlySpan<byte> bytes = address.Bytes;
+            _byteCode.Add((byte)(Instruction.PUSH1 + (byte)bytes.Length - 1));
+            _byteCode.AddRange(bytes);
             return this;
         }
 

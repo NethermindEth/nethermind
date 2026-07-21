@@ -214,7 +214,7 @@ namespace Nethermind.Core.Extensions
         public static bool TryDecodeFromUtf8(ReadOnlySpan<byte> hexString, Span<byte> result)
         {
             int oddMod = hexString.Length % 2;
-            if (oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+            if (oddMod == 0 && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
                 hexString.Length >= Vector128<byte>.Count)
             {
                 if (Avx512BW.IsSupported && hexString.Length >= Vector512<byte>.Count)
@@ -667,28 +667,8 @@ namespace Nethermind.Core.Extensions
                 // single UTF8 ASCII vector - the implementation can be shared with UTF8 paths.
                 Vector128<ushort> vec1 = Vector128.LoadUnsafe(ref srcRef, offset);
                 Vector128<ushort> vec2 = Vector128.LoadUnsafe(ref srcRef, offset + (nuint)Vector128<ushort>.Count);
-                Vector128<byte> vec = Vector128.Narrow(vec1, vec2);
 
-                // Based on "Algorithm #3" https://github.com/WojciechMula/toys/blob/master/simd-parse-hex/geoff_algorithm.cpp
-                // by Geoff Langdale and Wojciech Mula
-                // Move digits '0'..'9' into range 0xf6..0xff.
-                Vector128<byte> t1 = vec + Vector128.Create((byte)(0xFF - '9'));
-                // And then correct the range to 0xf0..0xf9.
-                // All other bytes become less than 0xf0.
-                Vector128<byte> t2 = SubtractSaturate(t1, Vector128.Create((byte)6));
-                // Convert into uppercase 'a'..'f' => 'A'..'F' and
-                // move hex letter 'A'..'F' into range 0..5.
-                Vector128<byte> t3 = (vec & Vector128.Create((byte)0xDF)) - Vector128.Create((byte)'A');
-                // And correct the range into 10..15.
-                // The non-hex letters bytes become greater than 0x0f.
-                Vector128<byte> t4 = AddSaturate(t3, Vector128.Create((byte)10));
-                // Convert '0'..'9' into nibbles 0..9. Non-digit bytes become
-                // greater than 0x0f. Finally choose the result: either valid nibble (0..9/10..15)
-                // or some byte greater than 0x0f.
-                Vector128<byte> nibbles = Vector128.Min(t2 - Vector128.Create((byte)0xF0), t4);
-                // Any high bit is a sign that input is not a valid hex data
-                if (!AllCharsInVectorAreAscii(vec1 | vec2) ||
-                    AddSaturate(nibbles, Vector128.Create((byte)(127 - 15))).ExtractMostSignificantBits() != 0)
+                if (!TryParseUtf16HexVector(vec1, vec2, out _, out Vector128<byte> nibbles))
                 {
                     // Input is either non-ASCII or invalid hex data
                     break;
@@ -729,6 +709,227 @@ namespace Nethermind.Core.Extensions
             return TryDecodeFromUtf16(chars[(int)offset..], bytes[(int)(offset / 2)..], isOdd: false);
         }
 
+        public static bool TryDecodeFromUtf16_Vector256(ReadOnlySpan<char> chars, Span<byte> bytes)
+        {
+            Debug.Assert(Avx2.IsSupported);
+            Debug.Assert(chars.Length <= bytes.Length * 2);
+            Debug.Assert(chars.Length % 2 == 0);
+            Debug.Assert(chars.Length >= Vector256<ushort>.Count * 2);
+
+            nuint offset = 0;
+            nuint lengthSubTwoVector256 = (nuint)chars.Length - ((nuint)Vector256<ushort>.Count * 2);
+
+            ref ushort srcRef = ref Unsafe.As<char, ushort>(ref MemoryMarshal.GetReference(chars));
+            ref byte destRef = ref MemoryMarshal.GetReference(bytes);
+            Vector256<byte> shuf = Vector256.Create(
+                (byte)0, 2, 4, 6, 8, 10, 12, 14,
+                16, 18, 20, 22, 24, 26, 28, 30,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+            do
+            {
+                Vector256<ushort> vec1 = Vector256.LoadUnsafe(ref srcRef, offset);
+                Vector256<ushort> vec2 = Vector256.LoadUnsafe(ref srcRef, offset + (nuint)Vector256<ushort>.Count);
+
+                if (!TryParseUtf16HexVector(vec1, vec2, out _, out Vector256<byte> nibbles))
+                {
+                    break;
+                }
+
+                Vector256<byte> output = Avx2.MultiplyAddAdjacent(nibbles, Vector256.Create((short)0x0110).AsSByte()).AsByte();
+                output = Vector256.Shuffle(output, shuf);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destRef, offset / 2), output.AsUInt64().GetLower());
+
+                offset += (nuint)Vector256<ushort>.Count * 2;
+                if (offset == (nuint)chars.Length)
+                {
+                    return true;
+                }
+
+                if (offset > lengthSubTwoVector256)
+                {
+                    offset = lengthSubTwoVector256;
+                }
+            }
+            while (true);
+
+            return TryDecodeFromUtf16(chars[(int)offset..], bytes[(int)(offset / 2)..], isOdd: false);
+        }
+
+        public static bool TryDecodeFromUtf16_Vector512(ReadOnlySpan<char> chars, Span<byte> bytes)
+        {
+            Debug.Assert(Avx512BW.IsSupported);
+            Debug.Assert(chars.Length <= bytes.Length * 2);
+            Debug.Assert(chars.Length % 2 == 0);
+            Debug.Assert(chars.Length >= Vector512<ushort>.Count * 2);
+
+            nuint offset = 0;
+            nuint lengthSubTwoVector512 = (nuint)chars.Length - ((nuint)Vector512<ushort>.Count * 2);
+
+            ref ushort srcRef = ref Unsafe.As<char, ushort>(ref MemoryMarshal.GetReference(chars));
+            ref byte destRef = ref MemoryMarshal.GetReference(bytes);
+            Vector512<byte> shuf = Vector512.Create(
+                (byte)0, 2, 4, 6, 8, 10, 12, 14,
+                16, 18, 20, 22, 24, 26, 28, 30,
+                32, 34, 36, 38, 40, 42, 44, 46,
+                48, 50, 52, 54, 56, 58, 60, 62,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+            do
+            {
+                Vector512<ushort> vec1 = Vector512.LoadUnsafe(ref srcRef, offset);
+                Vector512<ushort> vec2 = Vector512.LoadUnsafe(ref srcRef, offset + (nuint)Vector512<ushort>.Count);
+
+                if (!TryParseUtf16HexVector(vec1, vec2, out _, out Vector512<byte> nibbles))
+                {
+                    break;
+                }
+
+                Vector512<byte> output = Avx512BW.MultiplyAddAdjacent(nibbles, Vector512.Create((short)0x0110).AsSByte()).AsByte();
+                output = Vector512.Shuffle(output, shuf);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destRef, offset / 2), output.AsUInt64().GetLower());
+
+                offset += (nuint)Vector512<ushort>.Count * 2;
+                if (offset == (nuint)chars.Length)
+                {
+                    return true;
+                }
+
+                if (offset > lengthSubTwoVector512)
+                {
+                    offset = lengthSubTwoVector512;
+                }
+            }
+            while (true);
+
+            return TryDecodeFromUtf16(chars[(int)offset..], bytes[(int)(offset / 2)..], isOdd: false);
+        }
+
+        /// <summary>
+        /// Validates that <paramref name="chars"/> contains only hexadecimal characters and copies
+        /// those ASCII characters to <paramref name="utf8"/>.
+        /// </summary>
+        /// <remarks>
+        /// The destination may be partially written when the method returns <see langword="false"/>.
+        /// Callers that need all-or-nothing output should only publish the written bytes after a
+        /// successful return.
+        /// </remarks>
+        public static bool TryCopyHexToUtf8(ReadOnlySpan<char> chars, Span<byte> utf8)
+        {
+            Debug.Assert(utf8.Length >= chars.Length, "Target buffer not right-sized for provided characters");
+
+            if ((Sse2.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                chars.Length >= Vector128<ushort>.Count * 2)
+            {
+                return TryCopyHexToUtf8_Vector128(chars, utf8);
+            }
+
+            return TryCopyHexToUtf8Scalar(chars, utf8);
+        }
+
+        private static bool TryCopyHexToUtf8_Vector128(ReadOnlySpan<char> chars, Span<byte> utf8)
+        {
+            Debug.Assert(Sse2.IsSupported || AdvSimd.Arm64.IsSupported);
+            Debug.Assert(utf8.Length >= chars.Length);
+
+            nuint offset = 0;
+            nuint length = (nuint)chars.Length;
+            nuint vectorCharCount = (nuint)Vector128<ushort>.Count * 2;
+
+            ref ushort srcRef = ref Unsafe.As<char, ushort>(ref MemoryMarshal.GetReference(chars));
+            ref byte destRef = ref MemoryMarshal.GetReference(utf8);
+
+            while (offset + vectorCharCount <= length)
+            {
+                Vector128<ushort> vec1 = Vector128.LoadUnsafe(ref srcRef, offset);
+                Vector128<ushort> vec2 = Vector128.LoadUnsafe(ref srcRef, offset + (nuint)Vector128<ushort>.Count);
+                if (!TryParseUtf16HexVector(vec1, vec2, out Vector128<byte> vec, out _))
+                {
+                    return false;
+                }
+
+                vec.StoreUnsafe(ref destRef, offset);
+                offset += vectorCharCount;
+            }
+
+            return TryCopyHexToUtf8Scalar(chars[(int)offset..], utf8[(int)offset..]);
+        }
+
+        private static bool TryCopyHexToUtf8Scalar(ReadOnlySpan<char> chars, Span<byte> utf8)
+        {
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                if (!IsHexChar(c))
+                {
+                    return false;
+                }
+
+                utf8[i] = (byte)c;
+            }
+
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryParseUtf16HexVector(
+            Vector128<ushort> vec1,
+            Vector128<ushort> vec2,
+            out Vector128<byte> ascii,
+            out Vector128<byte> nibbles)
+        {
+            ascii = Vector128.Narrow(vec1, vec2);
+
+            // Based on "Algorithm #3" https://github.com/WojciechMula/toys/blob/master/simd-parse-hex/geoff_algorithm.cpp
+            // by Geoff Langdale and Wojciech Mula.
+            Vector128<byte> t1 = ascii + Vector128.Create((byte)(0xFF - '9'));
+            Vector128<byte> t2 = SubtractSaturate(t1, Vector128.Create((byte)6));
+            Vector128<byte> t3 = (ascii & Vector128.Create((byte)0xDF)) - Vector128.Create((byte)'A');
+            Vector128<byte> t4 = AddSaturate(t3, Vector128.Create((byte)10));
+            nibbles = Vector128.Min(t2 - Vector128.Create((byte)0xF0), t4);
+
+            return AllCharsInVectorAreAscii(vec1 | vec2) &&
+                AddSaturate(nibbles, Vector128.Create((byte)(127 - 15))).ExtractMostSignificantBits() == 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryParseUtf16HexVector(
+            Vector256<ushort> vec1,
+            Vector256<ushort> vec2,
+            out Vector256<byte> ascii,
+            out Vector256<byte> nibbles)
+        {
+            ascii = Vector256.Narrow(vec1, vec2);
+
+            Vector256<byte> t1 = ascii + Vector256.Create((byte)(0xFF - '9'));
+            Vector256<byte> t2 = Avx2.SubtractSaturate(t1, Vector256.Create((byte)6));
+            Vector256<byte> t3 = (ascii & Vector256.Create((byte)0xDF)) - Vector256.Create((byte)'A');
+            Vector256<byte> t4 = Avx2.AddSaturate(t3, Vector256.Create((byte)10));
+            nibbles = Vector256.Min(t2 - Vector256.Create((byte)0xF0), t4);
+
+            return AllCharsInVectorAreAscii(vec1 | vec2) &&
+                Avx2.AddSaturate(nibbles, Vector256.Create((byte)(127 - 15))).ExtractMostSignificantBits() == 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryParseUtf16HexVector(
+            Vector512<ushort> vec1,
+            Vector512<ushort> vec2,
+            out Vector512<byte> ascii,
+            out Vector512<byte> nibbles)
+        {
+            ascii = Vector512.Narrow(vec1, vec2);
+
+            Vector512<byte> t1 = ascii + Vector512.Create((byte)(0xFF - '9'));
+            Vector512<byte> t2 = Avx512BW.SubtractSaturate(t1, Vector512.Create((byte)6));
+            Vector512<byte> t3 = (ascii & Vector512.Create((byte)0xDF)) - Vector512.Create((byte)'A');
+            Vector512<byte> t4 = Avx512BW.AddSaturate(t3, Vector512.Create((byte)10));
+            nibbles = Vector512.Min(t2 - Vector512.Create((byte)0xF0), t4);
+
+            return AllCharsInVectorAreAscii(vec1 | vec2) &&
+                Avx512BW.AddSaturate(nibbles, Vector512.Create((byte)(127 - 15))).ExtractMostSignificantBits() == 0;
+        }
+
         /// <summary>
         /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
         /// </summary>
@@ -736,19 +937,31 @@ namespace Nethermind.Core.Extensions
         private static bool AllCharsInVectorAreAscii(Vector128<ushort> vec) => (vec & Vector128.Create(unchecked((ushort)~0x007F))) == Vector128<ushort>.Zero;
 
         /// <summary>
-        /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
+        /// Returns true iff the Vector256 represents 32 ASCII UTF-16 characters in machine endianness.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool AllCharsInVectorAreAscii(Vector256<ushort> vec) => (vec & Vector256.Create(unchecked((ushort)~0x007F))) == Vector256<ushort>.Zero;
+
+        /// <summary>
+        /// Returns true iff the Vector512 represents 64 ASCII UTF-16 characters in machine endianness.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool AllCharsInVectorAreAscii(Vector512<ushort> vec) => (vec & Vector512.Create(unchecked((ushort)~0x007F))) == Vector512<ushort>.Zero;
+
+        /// <summary>
+        /// Returns true iff the Vector128 represents 16 ASCII bytes.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool AllCharsInVectorAreAscii(Vector128<byte> vec) => (vec & Vector128.Create(unchecked((byte)~0x7F))) == Vector128<byte>.Zero;
 
         /// <summary>
-        /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
+        /// Returns true iff the Vector256 represents 32 ASCII bytes.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool AllCharsInVectorAreAscii(Vector256<byte> vec) => (vec & Vector256.Create(unchecked((byte)~0x7F))) == Vector256<byte>.Zero;
 
         /// <summary>
-        /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
+        /// Returns true iff the Vector512 represents 64 ASCII bytes.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool AllCharsInVectorAreAscii(Vector512<byte> vec) => (vec & Vector512.Create(unchecked((byte)~0x7F))) == Vector512<byte>.Zero;

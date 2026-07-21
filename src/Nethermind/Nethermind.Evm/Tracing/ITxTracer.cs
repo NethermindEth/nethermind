@@ -84,6 +84,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingRefunds { get; }
 
     /// <summary>
+    /// Per-opcode return-data buffer (the output of the most recent inner call/create).
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="SetOperationReturnData"/>
+    /// </remarks>
+    bool IsTracingReturnData { get; }
+
+    /// <summary>
     /// Code deployment
     /// </summary>
     /// <remarks>
@@ -143,6 +152,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingMemory
                       || IsTracingInstructions
                       || IsTracingRefunds
+                      || IsTracingReturnData
                       || IsTracingCode
                       || IsTracingStack
                       || IsTracingBlockHash
@@ -180,7 +190,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gas"></param>
     /// <param name="env"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env);
+    void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env);
 
     /// <summary>
     ///
@@ -194,7 +204,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="gas"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportOperationRemainingGas(long gas);
+    void ReportOperationRemainingGas(ulong gas);
 
 
     /// <summary>
@@ -227,13 +237,6 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>
     ///
     /// </summary>
-    /// <param name="stackItem"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportStackPush(in ZeroPaddedSpan stackItem) => ReportStackPush(stackItem.ToArray().AsSpan());
-
-    /// <summary>
-    ///
-    /// </summary>
     /// <param name="memoryTrace"></param>
     /// <remarks>Depends on <see cref="IsTracingMemory"/></remarks>
     void SetOperationMemory(TraceMemory memoryTrace);
@@ -244,6 +247,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="newSize"></param>
     /// <remarks>Depends on <see cref="IsTracingMemory"/></remarks>
     void SetOperationMemorySize(ulong newSize);
+
+    /// <summary>
+    /// Reports the return-data buffer visible to the current opcode (the output of the most
+    /// recent inner call or create).
+    /// </summary>
+    /// <param name="returnData">The current return-data buffer.</param>
+    /// <remarks>Depends on <see cref="IsTracingReturnData"/></remarks>
+    void SetOperationReturnData(ReadOnlyMemory<byte> returnData);
 
     /// <summary>
     ///
@@ -274,14 +285,6 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new[] { data });
-
-    /// <summary>
-    ///
-    /// </summary>
-    /// <param name="offset"></param>
-    /// <param name="data"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data) => ReportMemoryChange(offset, data.ToArray());
 
     /// <summary>
     ///
@@ -341,7 +344,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="callType"></param>
     /// <param name="isPrecompileCall"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
+    void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
 
     /// <summary>
     ///
@@ -349,7 +352,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gas"></param>
     /// <param name="output"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionEnd(long gas, ReadOnlyMemory<byte> output);
+    void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output);
 
     /// <summary>
     ///
@@ -357,7 +360,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gasLeft"></param>
     /// <param name="output"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output);
+    void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output);
 
     /// <summary>
     ///
@@ -373,7 +376,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="deploymentAddress"></param>
     /// <param name="deployedCode"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);
+    void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);
 
     /// <summary>
     ///
@@ -395,7 +398,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="refund"></param>
     /// <param name="gasAvailable"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportGasUpdateForVmTrace(long refund, long gasAvailable);
+    void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable);
 
     /// <summary>
     ///
@@ -409,7 +412,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="extraGasPressure"></param>
     /// <remarks>Depends on <see cref="IsTracingRefunds"/></remarks>
-    void ReportExtraGasPressure(long extraGasPressure);
+    void ReportExtraGasPressure(ulong extraGasPressure);
 
     /// <summary>
     /// Reports access to storage cell

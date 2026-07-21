@@ -29,7 +29,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     public const string FourByteTracer = "4byteTracer";
 
     private readonly Transaction _transaction;
-    private readonly Dictionary<string, int> _4ByteIds = new();
+    private readonly Dictionary<string, int> _4ByteIds = [];
     private Instruction _op;
 
     public Native4ByteTracer(Transaction transaction, GethTraceOptions options) : base(options)
@@ -50,7 +50,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         return result;
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
@@ -64,7 +64,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
         _op = opcode;
 
     private void CaptureStart(ReadOnlyMemory<byte> input)

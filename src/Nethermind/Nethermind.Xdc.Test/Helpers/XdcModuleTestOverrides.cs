@@ -20,11 +20,9 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
-using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Threading.Tasks;
 using Module = Autofac.Module;
 
 namespace Nethermind.Xdc.Test.Helpers;
@@ -52,9 +50,9 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
             // add missing components
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
-            .AddSingleton<IForensicsProcessor, TrustyForensics>()
 
             // Environments
+            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
                 blockProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
@@ -85,8 +83,8 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
     internal class RandomPenaltyHandler(ISpecProvider specProvider) : IPenaltyHandler
     {
-        readonly Dictionary<Hash256, Address[]> _penaltiesCache = new();
-        public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)
+        readonly Dictionary<Hash256, Address[]> _penaltiesCache = [];
+        public Address[] Penalize(ulong number, Hash256 currentHash, Address[] candidates, int count = 2)
         {
             IXdcReleaseSpec spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
             if (number == spec.SwitchBlock)
@@ -98,7 +96,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
                 return _penaltiesCache[currentHash];
             }
             int nodesCount = candidates.Length;
-            List<Address> penalized = new();
+            List<Address> penalized = [];
 
             Random rand = new();
             while (penalized.Count < count && penalized.Count < nodesCount)
@@ -110,34 +108,8 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             _penaltiesCache[currentHash] = penalized.ToArray();
             return _penaltiesCache[currentHash];
         }
-        public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
+        public Address[] HandlePenalties(ulong number, Hash256 currentHash, Address[] candidates)
             => Penalize(number, currentHash, candidates, 7);
     }
 
-    internal class TrustyForensics : IForensicsProcessor
-    {
-        public Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool) =>
-            Task.CompletedTask;
-
-        public (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath) FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo) =>
-            (Hash256.Zero, new List<string>(), new List<string>());
-
-        public Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC) =>
-            Task.CompletedTask;
-
-        public Task ProcessForensics(QuorumCertificate incomingQC) =>
-            Task.CompletedTask;
-
-        public Task ProcessVoteEquivocation(Vote incomingVote) =>
-            Task.CompletedTask;
-
-        public Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc) =>
-            Task.CompletedTask;
-
-        public Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer) =>
-            Task.CompletedTask;
-
-        public Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC) =>
-            Task.CompletedTask;
-    }
 }

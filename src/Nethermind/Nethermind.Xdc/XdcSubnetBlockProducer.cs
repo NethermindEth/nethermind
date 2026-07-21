@@ -48,20 +48,20 @@ internal class XdcSubnetBlockProducer(
             headerCandidate.NextValidators = new byte[nextEpochCandidates.Length * Address.Size];
             for (int i = 0; i < nextEpochCandidates.Length; i++)
             {
-                Array.Copy(nextEpochCandidates[i].Bytes, 0, headerCandidate.NextValidators, i * Address.Size, Address.Size);
+                nextEpochCandidates[i].Bytes.CopyTo(headerCandidate.NextValidators.AsSpan(i * Address.Size, Address.Size));
             }
 
             headerCandidate.Penalties = new byte[nextPenalties.Length * Address.Size];
             for (int i = 0; i < nextPenalties.Length; i++)
             {
-                Array.Copy(nextPenalties[i].Bytes, 0, headerCandidate.Penalties, i * Address.Size, Address.Size);
+                nextPenalties[i].Bytes.CopyTo(headerCandidate.Penalties.AsSpan(i * Address.Size, Address.Size));
             }
         }
 
         return headerCandidate;
     }
 
-    protected override XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, long gasLimit) => new XdcSubnetBlockHeader(
+    protected override XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, ulong gasLimit) => new XdcSubnetBlockHeader(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
                 blockAuthor,

@@ -9,6 +9,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Generic;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -17,17 +19,20 @@ internal static partial class XdcExtensions
     //TODO can we wire up this so we can use Rlp.Encode()?
     private static readonly XdcHeaderDecoder _headerDecoder = new();
     private static readonly VoteDecoder _voteDecoder = new();
+
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
-        ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
+        KeccakRlpWriter writer = new();
+        _headerDecoder.Encode(ref writer, header, RlpBehaviors.ForSealing);
+        ValueHash256 hash = writer.GetValueHash();
         return ecdsa.Sign(privateKey, in hash);
     }
+
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
-        KeccakRlpStream stream = new();
-        //TODO this could be optimized to encoding directly to KeccakRlpStream to avoid several allocation
-        _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        ValueHash256 hash = stream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
+        ValueHash256 hash = writer.GetValueHash();
         return ecdsa.RecoverAddress(vote.Signature, in hash);
     }
 
@@ -40,7 +45,7 @@ internal static partial class XdcExtensions
         return specProvider.GetXdcSpec(xdcBlockHeader.Number, round);
     }
 
-    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
+    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, ulong blockNumber, ulong round = 0)
     {
         if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
             return xdcProvider.GetXdcSpec(blockNumber, round);
@@ -80,7 +85,7 @@ internal static partial class XdcExtensions
         && (blockInfo.Hash == blockHeader.Hash)
         && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
 
-    public static Signature DecodeSignature(this ref Rlp.ValueDecoderContext decoderContext)
+    public static Signature DecodeSignature(this ref RlpReader decoderContext)
     {
         //includes the list prefix, which is 2 bytes for a 65 byte signature
         ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
@@ -91,19 +96,22 @@ internal static partial class XdcExtensions
         return signature;
     }
 
-    public static Signature DecodeSignature(this RlpStream stream)
-    {
-        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
-        ctx.Position = stream.Position;
-        Signature signature = DecodeSignature(ref ctx);
-        stream.Position = ctx.Position;
-        return signature;
-    }
-
     public static bool IsGapPlusOne(this XdcSubnetBlockHeader header, IXdcReleaseSpec spec)
     {
         if (header.Number == 1)
             return true;
+        // Guard against underflow: Gap should always be < EpochLength by configuration,
+        // but we check explicitly rather than relying on that invariant holding at runtime.
+        if (spec.Gap == 0 || spec.EpochLength <= spec.Gap)
+            return false;
         return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
     }
+
+    /// <summary>
+    /// Compares two lists of addresses for equality, ignoring order since the order of masternodes in XDC header validation does not matter.
+    /// </summary>
+    /// <param name="a"></param>
+    /// <param name="b"></param>
+    /// <returns>Returns <see cref="true"/> if the lists contain the same addresses, ignoring order; otherwise, <see cref="false"/>.</returns>
+    public static bool ListsAreEqual(this IList<Address> a, IList<Address> b) => a.Count == b.Count && new HashSet<Address>(a).SetEquals(b);
 }

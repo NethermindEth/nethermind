@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
@@ -16,9 +16,9 @@ public static class LegacyTransactionForRpcTests
     [
         BuildALegacyTransaction.TestObject,
 
-        BuildALegacyTransaction.WithNonce(UInt256.Zero).TestObject,
-        BuildALegacyTransaction.WithNonce((UInt256)123).TestObject,
-        BuildALegacyTransaction.WithNonce(UInt256.MaxValue).TestObject,
+        BuildALegacyTransaction.WithNonce(0UL).TestObject,
+        BuildALegacyTransaction.WithNonce(123UL).TestObject,
+        BuildALegacyTransaction.WithNonce(ulong.MaxValue).TestObject,
 
         BuildALegacyTransaction.WithTo(null).TestObject,
         BuildALegacyTransaction.WithTo(TestItem.AddressA).TestObject,
@@ -57,21 +57,24 @@ public static class LegacyTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        json.GetProperty("type").GetString().Should().MatchRegex("^0x0$");
-        json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-        json.GetProperty("from").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-        json.GetProperty("gas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
-        json.GetProperty("gasPrice").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        bool hasChainId = json.TryGetProperty("chainId", out JsonElement chainId);
-        if (hasChainId)
+        using (Assert.EnterMultipleScope())
         {
-            chainId.GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+            Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x0$"));
+            Assert.That(json.GetProperty("nonce").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("to").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
+            Assert.That(json.GetProperty("from").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
+            Assert.That(json.GetProperty("gas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("value").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("input").GetString(), Does.Match("^0x[0-9a-f]*$"));
+            Assert.That(json.GetProperty("gasPrice").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            bool hasChainId = json.TryGetProperty("chainId", out JsonElement chainId);
+            if (hasChainId)
+            {
+                Assert.That(chainId.GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            }
+            Assert.That(json.GetProperty("v").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("r").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("s").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         }
-        json.GetProperty("v").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
     }
 }

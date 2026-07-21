@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -68,7 +67,7 @@ public class SnapProviderTests
         accountsAndProofs.PathAndAccounts = new List<PathWithAccount>().ToPooledList();
         accountsAndProofs.Proofs = new ByteArrayListAdapter(new List<byte[]> { new byte[] { 0x0 } }.ToPooledList());
 
-        snapProvider.AddAccountRange(accountRange, accountsAndProofs).Should().Be(AddRangeResult.ExpiredRootHash);
+        Assert.That(snapProvider.AddAccountRange(accountRange, accountsAndProofs), Is.EqualTo(AddRangeResult.ExpiredRootHash));
     }
 
     [Test]
@@ -91,13 +90,13 @@ public class SnapProviderTests
             new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000001"), []),
         ];
 
-        snapProvider.AddStorageRangeForAccount(
+        Assert.That(snapProvider.AddStorageRangeForAccount(
             storage,
             0,
             slots,
-            null).Should().Be(AddRangeResult.InvalidOrder);
+            null), Is.EqualTo(AddRangeResult.InvalidOrder));
 
-        progressTracker.IsSnapGetRangesFinished().Should().BeFalse();
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
     }
 
     [Test]
@@ -116,13 +115,13 @@ public class SnapProviderTests
         // Test with empty slots list
         List<PathWithStorageSlot> emptySlots = [];
 
-        snapProvider.AddStorageRangeForAccount(
+        Assert.That(snapProvider.AddStorageRangeForAccount(
             storage,
             0,
             emptySlots,
-            null).Should().Be(AddRangeResult.EmptyRange);
+            null), Is.EqualTo(AddRangeResult.EmptyRange));
 
-        progressTracker.IsSnapGetRangesFinished().Should().BeFalse();
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
     }
 
     [Test]
@@ -169,10 +168,9 @@ public class SnapProviderTests
             },
         };
 
-        snapProvider.AddStorageRangeForAccount(
+        Assert.That(snapProvider.AddStorageRangeForAccount(
             storageRange, 0, slots,
-            new ByteArrayListAdapter(proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray().ToPooledList()))
-            .Should().Be(AddRangeResult.OK);
+            new ByteArrayListAdapter(proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray().ToPooledList())), Is.EqualTo(AddRangeResult.OK));
     }
 
     [Test]
@@ -204,16 +202,17 @@ public class SnapProviderTests
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, entries[3].Item1, 1.MB, default);
 
-        progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? batch), Is.EqualTo(false));
 
         using AccountsAndProofs accountsAndProofs = new();
         accountsAndProofs.PathAndAccounts = accounts;
         accountsAndProofs.Proofs = proofs;
 
-        snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
-        progressTracker.IsFinished(out batch).Should().Be(false);
-        batch?.AccountRangeRequest?.StartingHash.Should().BeGreaterThan(entries[3].Item1);
-        batch?.AccountRangeRequest?.StartingHash.Should().BeLessThan(entries[4].Item1);
+        Assert.That(snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
+        Assert.That(progressTracker.IsFinished(out batch), Is.EqualTo(false));
+        ValueHash256 startingHash = batch!.AccountRangeRequest!.StartingHash;
+        Assert.That(startingHash.CompareTo(entries[3].Item1), Is.GreaterThan(0));
+        Assert.That(startingHash.CompareTo(entries[4].Item1), Is.LessThan(0));
     }
 
     [Test]
@@ -248,15 +247,15 @@ public class SnapProviderTests
             root, Keccak.Zero, Keccak.MaxValue, 1.MB, default);
 
         // The range given out here should be half.
-        progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? batch), Is.EqualTo(false));
 
         using AccountsAndProofs accountsAndProofs = new();
         accountsAndProofs.PathAndAccounts = accounts;
         accountsAndProofs.Proofs = proofs;
 
-        snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
+        Assert.That(snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
 
-        container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count().Should().Be(3); // 3 child. Root branch node not saved due to state sync compatibility
+        Assert.That(container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count(), Is.EqualTo(3)); // 3 child. Root branch node not saved due to state sync compatibility
     }
 
     [TestCase("badreq-roothash.zip")]
@@ -272,7 +271,13 @@ public class SnapProviderTests
                 CompressionMode.Decompress);
         BadReq asReq = JsonSerializer.Deserialize<BadReq>(decompressor)!;
         AccountDecoder acd = new();
-        Account[] accounts = asReq.Accounts.Select((bt) => acd.Decode((ReadOnlySpan<byte>)Bytes.FromHexString(bt))!).ToArray();
+        Account[] accounts = new Account[asReq.Accounts.Count];
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            RlpReader context = new(Bytes.FromHexString(asReq.Accounts[i]));
+            accounts[i] = acd.Decode(ref context)!;
+        }
+
         ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
@@ -282,14 +287,14 @@ public class SnapProviderTests
         SnapUpperBoundAdapter adapter = new(new RawScopedTrieStore(nodeStorage));
         StateTree stree = new(adapter, LimboLogs.Instance);
         TestSnapTrieFactory factory = new(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
-        SnapProviderHelper.AddAccountRange(
+        Assert.That(SnapProviderHelper.AddAccountRange(
                 factory,
                 0,
                 new ValueHash256(asReq.Root),
                 new ValueHash256(asReq.StartingHash),
                 new ValueHash256(asReq.LimitHash),
                 pathWithAccounts,
-                new ByteArrayListAdapter(proofs.ToPooledList())).result.Should().Be(AddRangeResult.OK);
+                new ByteArrayListAdapter(proofs.ToPooledList())).result, Is.EqualTo(AddRangeResult.OK));
     }
 
     private record BadReq(

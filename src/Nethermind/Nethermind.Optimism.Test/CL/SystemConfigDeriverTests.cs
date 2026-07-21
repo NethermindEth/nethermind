@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -56,7 +55,7 @@ public class SystemConfigDeriverTests
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
         SystemConfig expectedConfig = new() { BatcherAddress = address };
 
-        actualConfig.Should().Be(expectedConfig);
+        Assert.That(actualConfig, Is.EqualTo(expectedConfig));
     }
 
     [Test]
@@ -77,7 +76,7 @@ public class SystemConfigDeriverTests
             Scalar = [.. new byte[31], 0xAA]
         };
 
-        actualConfig.Should().Be(expectedConfig);
+        Assert.That(actualConfig, Is.EqualTo(expectedConfig));
     }
 
     [Test]
@@ -103,7 +102,7 @@ public class SystemConfigDeriverTests
             Overhead = new byte[32]
         };
 
-        actualConfig.Should().Be(expectedConfig);
+        Assert.That(actualConfig, Is.EqualTo(expectedConfig));
     }
 
     [TestCase(1)]
@@ -129,7 +128,7 @@ public class SystemConfigDeriverTests
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(initialConfig, receipts);
 
         // Invalid scalars should be ignored and we should keep the initial config.
-        actualConfig.Should().Be(initialConfig);
+        Assert.That(actualConfig, Is.EqualTo(initialConfig));
     }
 
     [Test]
@@ -151,7 +150,7 @@ public class SystemConfigDeriverTests
 
         // The log data is ignored by consensus and no modifications to the
         // system config occur.
-        actualConfig.Should().Be(expectedConfig);
+        Assert.That(actualConfig, Is.EqualTo(expectedConfig));
     }
 
     [Test]
@@ -172,7 +171,7 @@ public class SystemConfigDeriverTests
             GasLimit = 0xBB
         };
 
-        actualConfig.Should().Be(expectedConfig);
+        Assert.That(actualConfig, Is.EqualTo(expectedConfig));
     }
 
     [Test]
@@ -194,7 +193,7 @@ public class SystemConfigDeriverTests
             EIP1559Params = [.. new byte[24], 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]
         };
 
-        actualConfig.Should().Be(expectedConfig);
+        Assert.That(actualConfig, Is.EqualTo(expectedConfig));
     }
 
     [Test]
@@ -219,7 +218,7 @@ public class SystemConfigDeriverTests
         SystemConfigDeriver deriver = new(SystemConfigProxy);
         Func<SystemConfig> update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        update.Should().Throw<ArgumentException>();
+        Assert.That(update, Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -236,6 +235,6 @@ public class SystemConfigDeriverTests
         SystemConfigDeriver deriver = new(SystemConfigProxy);
         Func<SystemConfig> update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        update.Should().Throw<AbiException>();
+        Assert.That(update, Throws.TypeOf<AbiException>());
     }
 }

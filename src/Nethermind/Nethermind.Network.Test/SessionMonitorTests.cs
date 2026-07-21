@@ -5,13 +5,11 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -36,12 +34,14 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_unregister_on_disconnect()
+        public void Can_remove_session()
         {
             ISession session = CreateSession();
             SessionMonitor sessionMonitor = new(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
-            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+            sessionMonitor.RemoveSession(session);
+
+            Assert.That(sessionMonitor.Sessions, Is.Empty);
         }
 
         [Test]
@@ -93,11 +93,11 @@ namespace Nethermind.Network.Test
             // Sessions should have different LastPingUtc values due to jitter
             DateTime[] pingTimes = sessions.Select(s => s.LastPingUtc).ToArray();
             int distinctCount = pingTimes.Distinct().Count();
-            distinctCount.Should().BeGreaterThan(1, "Sessions added at the same time should have staggered ping times");
+            Assert.That(distinctCount, Is.GreaterThan(1), "Sessions added at the same time should have staggered ping times");
 
             // The spread should cover a meaningful portion of the interval
             TimeSpan spread = pingTimes.Max() - pingTimes.Min();
-            spread.Should().BeGreaterThan(TimeSpan.FromMilliseconds(100), "Ping time spread should be non-trivial");
+            Assert.That(spread, Is.GreaterThan(TimeSpan.FromMilliseconds(100)), "Ping time spread should be non-trivial");
         }
 
         private ISession CreateUnresponsiveSession()

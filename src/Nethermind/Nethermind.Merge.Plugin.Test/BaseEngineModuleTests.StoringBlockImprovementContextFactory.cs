@@ -19,7 +19,7 @@ public partial class BaseEngineModuleTests
     {
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory = blockImprovementContextFactory;
         private readonly bool _skipDuplicatedContext = skipDuplicatedContext;
-        public List<IBlockImprovementContext> CreatedContexts { get; } = new List<IBlockImprovementContext>();
+        public List<IBlockImprovementContext> CreatedContexts { get; } = [];
 
         public event EventHandler<ImprovementStartedEventArgs>? ImprovementStarted;
 

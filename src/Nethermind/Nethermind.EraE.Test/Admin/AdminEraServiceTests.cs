@@ -34,7 +34,7 @@ public class AdminEraServiceTests
     public void ImportHistory_WhenImportAlreadyRunning_ReturnsFailure()
     {
         IEraImporter importer = Substitute.For<IEraImporter>();
-        TaskCompletionSource tcs = new();
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         importer.Import("somewhere", 99, 999, null, Arg.Any<CancellationToken>()).Returns(tcs.Task);
 
         AdminEraService sut = new(
@@ -72,7 +72,7 @@ public class AdminEraServiceTests
     public void ExportHistory_WhenExportAlreadyRunning_ReturnsFailure()
     {
         IEraExporter exporter = Substitute.For<IEraExporter>();
-        TaskCompletionSource tcs = new();
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         exporter.Export("somewhere", 99, 999, Arg.Any<CancellationToken>()).Returns(tcs.Task);
 
         AdminEraService sut = new(

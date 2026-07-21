@@ -30,7 +30,7 @@ public class ShutterTxSource(
 
     public bool SupportsBlobs => false;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (!shutterConfig.Validator)
         {
@@ -72,7 +72,7 @@ public class ShutterTxSource(
             }
 
             ulong taskId = _keyWaitTaskId++;
-            tcs = new();
+            tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
             CancellationTokenRegistration ctr = cancellationToken.Register(() => CancelWaitForTransactions(slot, taskId));
 
             if (!_keyWaitTasks.ContainsKey(slot))

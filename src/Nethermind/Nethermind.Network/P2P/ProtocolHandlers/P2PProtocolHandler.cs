@@ -4,11 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -26,7 +27,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers;
 
 public class P2PProtocolHandler(
     ISession session,
-    PublicKey localNodeId,
+    IEnode enode,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
@@ -42,8 +43,8 @@ public class P2PProtocolHandler(
     private TaskCompletionSource<Packet> _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
-    private readonly List<Capability> _agreedCapabilities = new();
-    private List<Capability> _availableCapabilities = new();
+    private readonly List<Capability> _agreedCapabilities = [];
+    private List<Capability> _availableCapabilities = [];
 
     private byte _protocolVersion = 5;
 
@@ -57,15 +58,11 @@ public class P2PProtocolHandler(
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> _supportedCapabilities = new();
+    private readonly List<Capability> _supportedCapabilities = [];
 
     public int ListenPort { get; } = session.LocalPort;
-    public PublicKey LocalNodeId { get; } = localNodeId;
+    private readonly PublicKey _localNodeId = enode.PublicKey;
     private string RemoteClientId { get; set; }
-
-    public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-
-    public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested;
 
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
     public bool HasAgreedCapability(Capability capability) => _agreedCapabilities.Contains(capability);
@@ -79,7 +76,11 @@ public class P2PProtocolHandler(
         _supportedCapabilities.Add(capability);
     }
 
-    public override void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
+    public override void RegisterWith(ISession session, IProtocolRegistrar registrar)
+    {
+        SetProtocolRegistrar(registrar);
+        registrar.Register(session, this);
+    }
 
     public override void Init()
     {
@@ -112,11 +113,12 @@ public class P2PProtocolHandler(
                     // which should be constant for the whole session. Some protocols (like Eth) are sending messages
                     // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
                     // which are alphabetically before already initialized ones.
-                    foreach (Capability capability in
-                        _agreedCapabilities.GroupBy(static c => c.ProtocolCode).Select(static c => c.OrderBy(static v => v.Version).Last()).OrderBy(static c => c.ProtocolCode))
+                    string? previousProtocolCode = null;
+                    while (TryGetNextAgreedCapability(previousProtocolCode, out Capability? capability))
                     {
+                        previousProtocolCode = capability.ProtocolCode;
                         if (Logger.IsTrace) TraceStartingProtocolHandler(capability);
-                        SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
+                        NotifySubprotocolRequested(capability.ProtocolCode, capability.Version);
                     }
 
                     break;
@@ -175,11 +177,11 @@ public class P2PProtocolHandler(
 
                     _agreedCapabilities.Add(capability);
                     if (Logger.IsTrace) TraceStartingHandler(capability);
-                    SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
+                    NotifySubprotocolRequested(capability.ProtocolCode, capability.Version);
                     break;
                 }
             default:
-                if (Logger.IsTrace) TraceUnhandledPacket(msg.PacketType);
+                DisconnectUnhandledPacket(msg.PacketType);
                 break;
         }
 
@@ -222,8 +224,40 @@ public class P2PProtocolHandler(
             => Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceUnhandledPacket(int packetType)
-            => Logger.Trace($"{Session.RemoteNodeId} Unhandled packet type: {packetType}");
+        void DisconnectUnhandledPacket(int packetType)
+        {
+            string details = $"Unknown P2P message type {packetType}";
+            if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId} {details}");
+            Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
+        }
+    }
+
+    private bool TryGetNextAgreedCapability(string? previousProtocolCode, [NotNullWhen(true)] out Capability? nextCapability)
+    {
+        nextCapability = null;
+        for (int i = 0; i < _agreedCapabilities.Count; i++)
+        {
+            Capability candidate = _agreedCapabilities[i];
+            string candidateProtocolCode = candidate.ProtocolCode;
+            if (previousProtocolCode is not null && string.CompareOrdinal(candidateProtocolCode, previousProtocolCode) <= 0)
+            {
+                continue;
+            }
+
+            if (nextCapability is null)
+            {
+                nextCapability = candidate;
+                continue;
+            }
+
+            int protocolComparison = string.CompareOrdinal(candidateProtocolCode, nextCapability.ProtocolCode);
+            if (protocolComparison < 0 || (protocolComparison == 0 && candidate.Version > nextCapability.Version))
+            {
+                nextCapability = candidate;
+            }
+        }
+
+        return nextCapability is not null;
     }
 
     private void HandleHello(HelloMessage hello)
@@ -255,9 +289,11 @@ public class P2PProtocolHandler(
         _protocolVersion = hello.P2PVersion;
 
         IOwnedReadOnlyList<Capability>? capabilities = hello.Capabilities;
-        _availableCapabilities = new List<Capability>(capabilities);
-        foreach (Capability theirCapability in capabilities)
+        ReadOnlySpan<Capability> capabilitiesSpan = capabilities.AsSpan();
+        _availableCapabilities = new List<Capability>(capabilitiesSpan.Length);
+        foreach (Capability theirCapability in capabilitiesSpan)
         {
+            _availableCapabilities.Add(theirCapability);
             if (_supportedCapabilities.Contains(theirCapability))
             {
                 if (Logger.IsTrace) TraceAgreedCapability(theirCapability);
@@ -285,7 +321,7 @@ public class P2PProtocolHandler(
             ListenPort = hello.ListenPort
         };
 
-        ProtocolInitialized?.Invoke(this, eventArgs);
+        NotifyProtocolInitialized(eventArgs);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceReceivedHello()
@@ -318,7 +354,7 @@ public class P2PProtocolHandler(
 
     public async Task<bool> SendPing()
     {
-        TaskCompletionSource<Packet> newSource = new();
+        TaskCompletionSource<Packet> newSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<Packet> previousSource =
             Interlocked.CompareExchange(ref _pongCompletionSource, newSource, null);
 
@@ -395,7 +431,7 @@ public class P2PProtocolHandler(
         {
             Capabilities = _supportedCapabilities.ToPooledList(),
             ClientId = ProductInfo.PublicClientId,
-            NodeId = LocalNodeId,
+            NodeId = _localNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion
         };
@@ -457,12 +493,7 @@ public class P2PProtocolHandler(
             => Logger.Trace($"{Session} sending P2P pong");
     }
 
-    public override void Dispose()
-    {
-        // Clear Events if set
-        ProtocolInitialized = null;
-        SubprotocolRequested = null;
-    }
+    public override void Dispose() => ClearProtocolEvents();
 
     public IReadOnlyList<Capability> GetCapabilities() =>
         _agreedCapabilities.Count > 0 ? _agreedCapabilities : _supportedCapabilities;

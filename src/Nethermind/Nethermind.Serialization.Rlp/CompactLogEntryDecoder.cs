@@ -10,12 +10,13 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Serialization.Rlp
 {
     [Rlp.SkipGlobalRegistration]
-    public class CompactLogEntryDecoder : IRlpDecoder<LogEntry>
+    public class CompactLogEntryDecoder : RlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
+        private static readonly RlpLimit LogEntryDataRlpLimit = RlpLimit.For<LogEntry>(RlpLimit.DefaultLimit.Limit, nameof(LogEntry.Data));
         public static CompactLogEntryDecoder Instance { get; } = new();
 
-        public static LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -44,7 +45,7 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics.ToArray());
         }
 
-        public static void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
+        public static void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -68,46 +69,46 @@ namespace Nethermind.Serialization.Rlp
             item = new LogEntryStructRef(address, data, topics);
         }
 
-        public static Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public static Hash256[] DecodeTopics(RlpReader reader)
         {
-            int sequenceLength = valueDecoderContext.ReadSequenceLength();
-            int untilPosition = valueDecoderContext.Position + sequenceLength;
+            int sequenceLength = reader.ReadSequenceLength();
+            int untilPosition = reader.Position + sequenceLength;
             using ArrayPoolListRef<Hash256> topics = new(sequenceLength * 2 / Rlp.LengthOfKeccakRlp);
-            while (valueDecoderContext.Position < untilPosition)
+            while (reader.Position < untilPosition)
             {
-                topics.Add(valueDecoderContext.DecodeZeroPrefixKeccak());
+                topics.Add(reader.DecodeZeroPrefixKeccak());
             }
-            valueDecoderContext.Check(untilPosition);
+            reader.Check(untilPosition);
 
             return topics.ToArray();
         }
 
-        public static void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
             (int total, int topics) = GetContentLength(item);
-            rlpStream.StartSequence(total);
+            writer.StartSequence(total);
 
-            rlpStream.Encode(item.Address);
-            rlpStream.StartSequence(topics);
+            writer.Encode(item.Address);
+            writer.StartSequence(topics);
 
             for (int i = 0; i < item.Topics.Length; i++)
             {
-                rlpStream.Encode(item.Topics[i].Bytes.WithoutLeadingZerosOrEmpty());
+                writer.Encode(item.Topics[i].Bytes.WithoutLeadingZerosOrEmpty());
             }
 
             ReadOnlySpan<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
             int dataZeroPrefix = item.Data.Length - withoutLeadingZero.Length;
-            rlpStream.Encode(dataZeroPrefix);
-            rlpStream.Encode(withoutLeadingZero);
+            writer.Encode(dataZeroPrefix);
+            writer.Encode(withoutLeadingZero);
         }
 
-        public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -117,17 +118,12 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
 
-        private static byte[] DecodeCompactData(scoped ref Rlp.ValueDecoderContext decoderContext)
+        private static byte[] DecodeCompactData(scoped ref RlpReader decoderContext)
         {
-            int zeroPrefix = decoderContext.DecodeInt();
+            int zeroPrefix = decoderContext.DecodePositiveInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
 
-            if (zeroPrefix < 0)
-            {
-                throw new RlpLimitException($"Expanded {nameof(LogEntry)} data with zero prefix {zeroPrefix} and content length {rlpData.Length} exceeds limit {RlpLimit.Limit}.");
-            }
-
-            Rlp.GuardLimit(zeroPrefix, RlpLimit.Limit - rlpData.Length, RlpLimit);
+            Rlp.GuardLimit(zeroPrefix, LogEntryDataRlpLimit.Limit - rlpData.Length, LogEntryDataRlpLimit);
 
             byte[] data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));

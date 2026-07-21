@@ -82,22 +82,27 @@ namespace Nethermind.Blockchain.Contracts.Json
     [JsonDerivedType(typeof(AbiUFixed))]
     public class AbiTypeConverter : JsonConverter<AbiType>
     {
+        private const int MaxArrayDepth = 1024;
+
         public override AbiType? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             string? type = reader.GetString()!;
-            return ParseAbiType(type);
+            return ParseAbiType(type, 0);
 
-            static AbiType ParseAbiType(string type)
+            static AbiType ParseAbiType(string type, int arrayDepth)
             {
-                if (type == "tuple" || type.StartsWith("tuple["))
-                {
+                // Handle plain "tuple" without array suffix
+                // Note: "tuple[]" and "tuple[N]" fall through to array handling below
+                if (type == "tuple")
                     return new AbiTuple();
-                }
 
                 // Check for array suffix: [N] for fixed-size or [] for dynamic
                 int lastBracket = type.LastIndexOf('[');
                 if (lastBracket >= 0 && type.EndsWith(']'))
                 {
+                    if (arrayDepth >= MaxArrayDepth)
+                        throw new AbiException($"ABI array nesting exceeds maximum depth of {MaxArrayDepth}.");
+
                     string bracketContent = type[(lastBracket + 1)..^1];
                     string elementTypeStr = type[..lastBracket];
 
@@ -106,13 +111,13 @@ namespace Nethermind.Blockchain.Contracts.Json
                         case > 0 when int.TryParse(bracketContent, out int length):
                             {
                                 // Fixed-size array: type[N]
-                                AbiType elementType = ParseAbiType(elementTypeStr);
+                                AbiType elementType = ParseAbiType(elementTypeStr, arrayDepth + 1);
                                 return new AbiFixedLengthArray(elementType, length);
                             }
                         case 0:
                             {
                                 // Dynamic array: type[]
-                                AbiType elementType = ParseAbiType(elementTypeStr);
+                                AbiType elementType = ParseAbiType(elementTypeStr, arrayDepth + 1);
                                 return new AbiArray(elementType);
                             }
                         default:
@@ -139,7 +144,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                 AbiType[] abiTypes = new AbiType[types.Length];
                 for (int i = 0; i < types.Length; i++)
                 {
-                    abiTypes[i] = ParseAbiType(types[i].Trim());
+                    abiTypes[i] = ParseAbiType(types[i].Trim(), 0);
                 }
 
                 return new AbiTuple(abiTypes);

@@ -16,15 +16,10 @@ public class NoopSyncFeed<T> : ISyncFeed<T>
     public event EventHandler<SyncFeedStateEventArgs>? StateChanged;
 #pragma warning disable
 
-    public Task<T> PrepareRequest(CancellationToken token = default)
-    {
-        return Task.FromResult<T>(default);
-    }
+    public Task<T> PrepareRequest(CancellationToken token = default) => Task.FromResult<T>(default);
 
-    public SyncResponseHandlingResult HandleResponse(T response, PeerInfo? peer = null)
-    {
-        return SyncResponseHandlingResult.NotAssigned;
-    }
+    public SyncResponseHandlingResult HandleResponse(T response, PeerInfo? peer = null) =>
+        SyncResponseHandlingResult.NotAssigned;
 
     public bool IsMultiFeed { get; }
     public AllocationContexts Contexts { get; }

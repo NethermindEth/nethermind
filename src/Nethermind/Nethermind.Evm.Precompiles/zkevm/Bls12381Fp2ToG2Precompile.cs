@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -21,9 +22,9 @@ public partial class Bls12381Fp2ToG2Precompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG2Trimmed];
 
-        byte status = ZiskBindings.Crypto.bls12_381_fp2_to_g2_c(output, decoded);
+        Accelerators.Status status = Accelerators.Bls12381MapFp2ToG2(decoded, output);
 
-        if (status == 0)
+        if (status == Accelerators.Status.OK)
         {
             byte[] encoded = new byte[Eip2537.LenG2];
 

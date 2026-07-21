@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -12,25 +11,19 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     public TxPoolInfoProvider(IChainHeadInfoProvider chainHeadInfoProvider, ITxPool txPool)
         : this(chainHeadInfoProvider.ReadOnlyStateProvider, txPool) { }
 
+    // Blob txs are intentionally not exposed via txpool_content / txpool_contentFrom; matches
+    // Geth's BlobPool.Content() returning empty stubs (see core/txpool/blobpool/blobpool.go).
+    // GetCounts() still includes blobs for txpool_status parity.
     public TxPoolInfo GetInfo()
     {
         IDictionary<AddressAsKey, Transaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
-        IDictionary<AddressAsKey, Transaction[]> blobBySender = txPool.GetPendingLightBlobTransactionsBySender();
 
-        int senderEstimate = standardBySender.Count + blobBySender.Count;
-        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new(senderEstimate);
-        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new(senderEstimate);
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new(standardBySender.Count);
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new(standardBySender.Count);
 
         foreach (KeyValuePair<AddressAsKey, Transaction[]> group in standardBySender)
         {
-            blobBySender.TryGetValue(group.Key, out Transaction[]? blobTransactions);
-            AddSenderToInfo(group.Key, group.Value, blobTransactions, pendingTransactions, queuedTransactions);
-        }
-
-        foreach (KeyValuePair<AddressAsKey, Transaction[]> group in blobBySender)
-        {
-            if (standardBySender.ContainsKey(group.Key)) continue;
-            AddSenderToInfo(group.Key, standardTransactions: null, group.Value, pendingTransactions, queuedTransactions);
+            AddSenderToInfo(group.Key, group.Value, blobTransactions: null, pendingTransactions, queuedTransactions);
         }
 
         return new TxPoolInfo(pendingTransactions, queuedTransactions);
@@ -39,11 +32,10 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     public TxPoolSenderInfo GetSenderInfo(Address address)
     {
         Transaction[] standard = txPool.GetPendingTransactionsBySender(address);
-        Transaction[] blobs = txPool.GetPendingLightBlobTransactionsBySender(address);
-        if (standard.Length == 0 && blobs.Length == 0) return TxPoolSenderInfo.Empty;
+        if (standard.Length == 0) return TxPoolSenderInfo.Empty;
 
         (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued) =
-            SplitByNonce(standard, blobs, accountStateProvider.GetNonce(address));
+            SplitByNonce(standard, blobs: null, accountStateProvider.GetNonce(address));
         return new TxPoolSenderInfo(pending, queued);
     }
 
@@ -107,11 +99,11 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     // Note: TxTypeTxFilter prevents a sender from holding both types simultaneously, so
     // the merge case is rare in practice but the API handles it correctly anyway.
     private static (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued)
-        SplitByNonce(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
+        SplitByNonce(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
     {
-        Dictionary<ulong, Transaction> pending = new();
-        Dictionary<ulong, Transaction> queued = new();
-        UInt256 expectedNonce = accountNonce;
+        Dictionary<ulong, Transaction> pending = [];
+        Dictionary<ulong, Transaction> queued = [];
+        ulong expectedNonce = accountNonce;
 
         int i = 0;
         int j = 0;
@@ -123,7 +115,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
                 ? standard![i++]
                 : blobs![j++];
 
-            ulong nonce = (ulong)next.Nonce;
+            ulong nonce = next.Nonce;
             if (next.Nonce == expectedNonce)
             {
                 pending[nonce] = next;
@@ -140,10 +132,10 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         return (pending, queued);
     }
 
-    private static int CountPending(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
+    private static int CountPending(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
     {
         int pending = 0;
-        UInt256 expectedNonce = accountNonce;
+        ulong expectedNonce = accountNonce;
 
         int i = 0;
         int j = 0;
@@ -158,7 +150,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
             if (next.Nonce == expectedNonce)
             {
                 pending++;
-                expectedNonce += UInt256.One;
+                expectedNonce++;
             }
         }
 

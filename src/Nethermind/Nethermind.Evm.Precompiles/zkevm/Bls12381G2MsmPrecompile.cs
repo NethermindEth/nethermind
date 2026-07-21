@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -23,7 +24,6 @@ public partial class Bls12381G2MsmPrecompile
         return pairCount == 1 ? Mul(inputData.Span) : Msm(inputData.Span, pairCount);
     }
 
-    [SkipLocalsInit]
     private static Result<byte[]> Msm(ReadOnlySpan<byte> input, int pairCount)
     {
         int decodedLen = pairCount * (Eip2537.LenG2Trimmed + Eip2537.LenFr);
@@ -57,12 +57,11 @@ public partial class Bls12381G2MsmPrecompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG2Trimmed];
 
-        byte status = ZiskBindings.Crypto.bls12_381_g2_msm_c(output, decoded, (nuint)pairCount);
+        Accelerators.Status status = Accelerators.Bls12381G2Msm(decoded, (nuint)pairCount, output);
 
         return HandleResult(output, status);
     }
 
-    [SkipLocalsInit]
     private static Result<byte[]> Mul(ReadOnlySpan<byte> input)
     {
         Span<byte> decoded = stackalloc byte[Eip2537.LenG2Trimmed + Eip2537.LenFr];
@@ -74,7 +73,7 @@ public partial class Bls12381G2MsmPrecompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG2Trimmed];
 
-        byte status = ZiskBindings.Crypto.bls12_381_g2_msm_c(output, decoded, 1);
+        Accelerators.Status status = Accelerators.Bls12381G2Msm(decoded, 1, output);
 
         return HandleResult(output, status);
     }
@@ -103,20 +102,16 @@ public partial class Bls12381G2MsmPrecompile
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static Result<byte[]> HandleResult(Span<byte> output, byte status)
+    private static Result<byte[]> HandleResult(Span<byte> output, Accelerators.Status status)
     {
-        if (status <= 1)
+        if (status == Accelerators.Status.OK)
         {
             byte[] encoded = new byte[Eip2537.LenG2];
 
-            if (status == 0)
-                Eip2537.EncodeG2(output, encoded);
+            Eip2537.EncodeG2(output, encoded);
 
             return encoded;
         }
-
-        if (status == 3 && !Eip2537.DisableSubgroupChecks)
-            return Errors.G2PointSubgroup;
 
         return Errors.Failed;
     }

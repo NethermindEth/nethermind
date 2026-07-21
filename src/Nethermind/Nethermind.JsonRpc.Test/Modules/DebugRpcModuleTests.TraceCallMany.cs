@@ -1,22 +1,25 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Test.Modules.Eth;
 using Nethermind.State;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -26,11 +29,31 @@ public partial class DebugRpcModuleTests
 {
     private static TransactionBundle CreateBundle(params TransactionForRpc[] transactions) => new() { Transactions = transactions };
 
+    private static TransactionBundle CreateGasProbeBundle(ulong? gas = null) => new()
+    {
+        Transactions = [new LegacyTransactionForRpc { To = EthRpcSimulateTestsBase.GasProbeContractAddress, Gas = gas }],
+        StateOverrides = new Dictionary<Address, AccountOverride>
+        {
+            [EthRpcSimulateTestsBase.GasProbeContractAddress] = new()
+            {
+                Code = Bytes.FromHexString("0x5a60005260206000f3")
+            }
+        }
+    };
+
+    private static IEnumerable<TestCaseData> DebugTraceCallManyMissingGasCases()
+    {
+        yield return new TestCaseData((ulong?)null, (ulong?)null, false).SetName("omitted_gas_defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData((ulong?)0UL, (ulong?)null, false).SetName("zero_gas_defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData((ulong?)null, (ulong?)0UL, true).SetName("omitted_gas_with_zero_gas_cap_uncapped");
+        yield return new TestCaseData((ulong?)0UL, (ulong?)0UL, true).SetName("zero_gas_with_zero_gas_cap_uncapped");
+    }
+
     private static LegacyTransactionForRpc CreateTransaction(
         Address? from = null,
         Address? to = null,
         UInt256? value = null,
-        long gas = GasCostOf.Transaction) =>
+        ulong gas = GasCostOf.Transaction) =>
         new()
         {
             From = from ?? TestItem.AddressD,
@@ -61,9 +84,10 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction());
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        result.Data.First().First().Should().NotBeNull();
+        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That((JArray)result[0], Has.Count.EqualTo(1));
     }
 
     [Test]
@@ -71,9 +95,9 @@ public partial class DebugRpcModuleTests
     {
         using Context ctx = await CreateContext();
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))]);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([1, 1]));
     }
 
     [Test]
@@ -82,9 +106,9 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(), CreateTransaction(to: TestItem.AddressD));
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([2]);
+        Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([2]));
     }
 
     [Test]
@@ -93,11 +117,15 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(value: 200.Ether));
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        GethLikeTxTrace trace = result.Data.First().First();
-        trace.Gas.Should().BeGreaterThan(0);
+        Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([1]));
+
+        JToken trace = result[0][0]!;
+        Assert.That((bool)trace["failed"]!, Is.True, "insufficient balance must surface as failed:true");
+        Assert.That((long)trace["gas"]!, Is.GreaterThan(0), "failed trace gas reflects the tx gas limit");
+        Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
+        Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
     }
 
     [Test]
@@ -106,9 +134,9 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(gas: long.MaxValue));
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        result.Data.Should().HaveCount(1);
+        Assert.That(result, Has.Count.EqualTo(1));
     }
 
     [Test]
@@ -119,9 +147,37 @@ public partial class DebugRpcModuleTests
 
         GethTraceOptions options = new() { DisableStorage = true, DisableStack = true };
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest, options);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle], options);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([1]));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_to_async_stream()
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        // Multiple bundles so FlushBetweenBundles runs more than once.
+        TransactionBundle[] bundles = [CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))];
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(bundles, BlockParameter.Latest);
+        Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
+        IStreamableResult streaming = (IStreamableResult)result.Data;
+
+        await using AsyncCompletingStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+
+        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+
+        await writer.CompleteAsync();
+    }
+
+    private static async Task<JArray> RunTraceCallManyAsJson(Context ctx, TransactionBundle[] bundles, GethTraceOptions? options = null)
+    {
+        string response = options is null
+            ? await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", bundles, "latest")
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", bundles, "latest", options);
+        return (JArray)JToken.Parse(response)["result"]!;
     }
 
     [Test]
@@ -135,8 +191,8 @@ public partial class DebugRpcModuleTests
         };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
-        result.Data.First().First().Should().NotBeNull();
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+        Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
     [Test]
@@ -153,8 +209,29 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
-        result.Data.First().First().Should().NotBeNull();
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+        Assert.That(result.Data.First().First(), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_with_invalid_simulation_override_returns_original_error_message()
+    {
+        using Context ctx = await CreateContext();
+        Address ecrecoverAddress = new("0x0000000000000000000000000000000000000001");
+        TransactionBundle bundle = CreateBundle(CreateTransaction());
+        bundle.StateOverrides = new Dictionary<Address, AccountOverride>
+        {
+            [ecrecoverAddress] = new() { MovePrecompileToAddress = ecrecoverAddress }
+        };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.MovePrecompileSelfReference));
+            Assert.That(result.Result.Error, Is.EqualTo("MovePrecompileToAddress referenced itself in replacement"));
+        }
     }
 
     [Test]
@@ -165,7 +242,7 @@ public partial class DebugRpcModuleTests
         bundle.BlockOverride = new BlockOverride { GasLimit = 50_000_000 };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.First().First().Failed.Should().BeFalse();
+        Assert.That(result.Data.First().First().Failed, Is.False);
     }
 
     [Test]
@@ -177,7 +254,7 @@ public partial class DebugRpcModuleTests
         withOverride.BlockOverride = new BlockOverride { GasLimit = 30_000_000 };
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
     }
 
     [TestCase(3, TestName = "Debug_traceCallMany_with_minimum_block_number_gap_returns_one_entry_per_bundle")]
@@ -185,26 +262,26 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle(int secondBundleOffset)
     {
         using Context ctx = await CreateContext();
-        long headNumber = ctx.Blockchain.BlockTree.Head!.Number;
+        ulong headNumber = ctx.Blockchain.BlockTree.Head!.Number;
 
         TransactionBundle first = CreateBundle(CreateTransaction());
-        first.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + 1) };
+        first.BlockOverride = new BlockOverride { Number = headNumber + 1 };
 
         TransactionBundle second = CreateBundle(CreateTransaction(to: TestItem.AddressD));
-        second.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + secondBundleOffset) };
+        second.BlockOverride = new BlockOverride { Number = headNumber + (ulong)secondBundleOffset };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
 
-        result.Data.Should().HaveCount(2);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(2));
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
     }
 
     [Test]
     public async Task Debug_traceCallMany_caps_gas_to_gas_cap()
     {
         using Context ctx = await CreateContext();
-        long gasCap = 50_000;
+        ulong gasCap = 50_000;
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
@@ -213,7 +290,7 @@ public partial class DebugRpcModuleTests
         byte[] runtimeCode = Bytes.FromHexString("5a60005260206000f3");
         byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
 
-        UInt256 nonce = ctx.Blockchain.StateReader.GetNonce(ctx.Blockchain.BlockTree.Head!.Header, TestItem.AddressD);
+        ulong nonce = ctx.Blockchain.StateReader.GetNonce(ctx.Blockchain.BlockTree.Head!.Header, TestItem.AddressD);
         Address contractAddress = ContractAddress.From(TestItem.AddressD, nonce);
 
         Transaction deployTx = Build.A.Transaction
@@ -226,45 +303,37 @@ public partial class DebugRpcModuleTests
 
         TransactionBundle bundle = CreateBundle(CreateTransaction(to: contractAddress, value: 0, gas: 100_000));
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        GethLikeTxTrace trace = result.Data.First().First();
-        long gasAvailable = (long)trace.ReturnValue.ToUInt256();
-        gasAvailable.Should().BeLessThan(gasCap);
-        gasAvailable.Should().BeGreaterThan(0);
+        byte[] returnValue = Bytes.FromHexString((string)result[0][0]!["returnValue"]!);
+        ulong gasAvailable = (ulong)returnValue.ToUInt256();
+        Assert.That(gasAvailable, Is.LessThan(gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(0UL));
     }
 
-    [Test]
-    public async Task Debug_traceCallMany_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]
+    public async Task Debug_traceCallMany_missing_or_zero_gas_respects_gas_cap(ulong? requestGas, ulong? configuredGasCap, bool uncapped)
     {
         using Context ctx = await CreateContext();
 
-        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
-        long gasCap = blockGasLimit * 10;
-        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
-        config.GasCap = gasCap;
+        ulong blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        ulong gasCap = configuredGasCap ?? blockGasLimit * 10;
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a uint256
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-
-        // No Gas set — should default to gasCap via EnsureDefaults, not blockGasLimit
-        LegacyTransactionForRpc tx = new() { To = contractAddress };
-
-        TransactionBundle bundle = new()
-        {
-            Transactions = [tx],
-            StateOverrides = new Dictionary<Address, AccountOverride>
-            {
-                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
-            }
-        };
-
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(
+            [CreateGasProbeBundle(requestGas)],
+            BlockParameter.Latest);
 
         GethLikeTxTrace trace = result.Data.First().First();
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
-        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
-            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
+        if (uncapped)
+        {
+            Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
+            Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+        }
+        else
+        {
+            Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+        }
     }
 }

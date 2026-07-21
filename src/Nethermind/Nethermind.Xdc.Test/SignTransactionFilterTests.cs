@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -33,18 +32,18 @@ internal class SignTransactionFilterTests
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
         xdcSpec.BlockSignerContract.Returns(BlockSignerContract);
         xdcSpec.RandomizeSMCBinary.Returns(RandomizeSMC);
-        xdcSpec.EpochLength.Returns(900);
+        xdcSpec.EpochLength.Returns(900UL);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>()).Returns(snapshot);
+        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<ulong>(), Arg.Any<IXdcReleaseSpec>()).Returns(snapshot);
 
         return new SignTransactionFilter(snapshotManager, blockTree, specProvider);
     }
 
-    private static Block HeadBlock(long number = 100) =>
+    private static Block HeadBlock(ulong number = 100) =>
         Build.A.Block.WithHeader(Build.A.XdcBlockHeader().WithNumber(number).TestObject).TestObject;
 
     [Test]
@@ -54,7 +53,7 @@ internal class SignTransactionFilterTests
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressC).TestObject;
         TxFilteringState state = default;
 
-        filter.Accept(tx, ref state, TxHandlingOptions.None).Should().Be(AcceptTxResult.Syncing);
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Syncing));
     }
 
     [Test]
@@ -64,8 +63,8 @@ internal class SignTransactionFilterTests
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressC).TestObject;
         TxFilteringState state = default;
 
-        filter.Accept(tx, ref state, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-        tx.IsServiceTransaction.Should().BeFalse();
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(tx.IsServiceTransaction, Is.False);
     }
 
     [Test]
@@ -78,8 +77,8 @@ internal class SignTransactionFilterTests
         Transaction tx = SignTransactionManager.CreateTxSign(99, Hash256.Zero, 0, BlockSignerContract, candidate);
         TxFilteringState state = default;
 
-        filter.Accept(tx, ref state, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-        tx.IsServiceTransaction.Should().BeTrue();
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(tx.IsServiceTransaction, Is.True);
     }
 
     [Test]
@@ -91,7 +90,7 @@ internal class SignTransactionFilterTests
         Transaction tx = SignTransactionManager.CreateTxSign(99, Hash256.Zero, 0, BlockSignerContract, TestItem.AddressE);
         TxFilteringState state = default;
 
-        filter.Accept(tx, ref state, TxHandlingOptions.None).Should().Be(AcceptTxResult.Invalid);
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Invalid));
     }
 
     [Test]
@@ -102,7 +101,7 @@ internal class SignTransactionFilterTests
         Transaction tx = SignTransactionManager.CreateTxSign(99, Hash256.Zero, 0, BlockSignerContract, TestItem.AddressD);
         TxFilteringState state = default;
 
-        filter.Accept(tx, ref state, TxHandlingOptions.None).Should().Be(AcceptTxResult.Invalid);
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Invalid));
     }
 
     [Test]
@@ -113,10 +112,10 @@ internal class SignTransactionFilterTests
         Hash256 hashBeforeSigning = tx.CalculateHash();
 
         Signer signer = new(0, TestItem.PrivateKeyB, NullLogManager.Instance);
-        signer.Sign(tx).GetAwaiter().GetResult();
+        signer.TrySign(tx);
 
         Hash256 hashAfterSigning = tx.CalculateHash();
 
-        hashAfterSigning.Should().NotBe(hashBeforeSigning, "hash must cover the signature");
+        Assert.That(hashAfterSigning, Is.Not.EqualTo(hashBeforeSigning), "hash must cover the signature");
     }
 }

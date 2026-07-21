@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Specs;
@@ -17,14 +16,14 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class GasPriceExtractorTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
 
         [Test]
         public void Block_header_rlp_size_assumption_is_correct()
         {
             Rlp rlp = BuildHeader();
 
-            rlp.Bytes.Length.Should().BeLessThan(600);
+            Assert.That(rlp.Bytes.Length, Is.LessThan(600));
         }
 
         [Test]
@@ -34,8 +33,8 @@ namespace Nethermind.Evm.Test
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
             EthereumIntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
-            gasCost.FloorGas.Should().Be(0);
-            gasCost.Standard.Should().BeLessThan(21000 + 9600);
+            Assert.That(gasCost.FloorGas, Is.EqualTo(0));
+            Assert.That(gasCost.Standard, Is.LessThan(21000 + 9600));
         }
 
         [Test]
@@ -45,8 +44,8 @@ namespace Nethermind.Evm.Test
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
             EthereumIntrinsicGas gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
-            gasCost.FloorGas.Should().Be(0);
-            gasCost.Standard.Should().BeLessThan(21000 + 9600);
+            Assert.That(gasCost.FloorGas, Is.EqualTo(0));
+            Assert.That(gasCost.Standard, Is.LessThan(21000 + 9600));
 
             byte[] bytecode =
                 Prepare.EvmCode
@@ -66,7 +65,7 @@ namespace Nethermind.Evm.Test
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
             long minorCostsEstimate = 100;
             long keccakCostEstimate = 30 + 512 / 6;
-            callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + minorCostsEstimate + keccakCostEstimate);
+            Assert.That(callOutputTracer.GasSpent, Is.LessThan(21000 + 9600 + minorCostsEstimate + keccakCostEstimate));
         }
 
         [Test]
@@ -96,7 +95,7 @@ namespace Nethermind.Evm.Test
 
             CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
-            callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + 20000);
+            Assert.That(callOutputTracer.GasSpent, Is.LessThan(21000 + 9600 + 20000));
         }
 
         [Test]
@@ -121,7 +120,7 @@ namespace Nethermind.Evm.Test
 
             CallOutputTracer callOutputTracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), callOutputTracer);
-            callOutputTracer.GasSpent.Should().BeLessThan(21000 + 9600 + 20000);
+            Assert.That(callOutputTracer.GasSpent, Is.LessThan(21000 + 9600 + 20000));
         }
 
         private static Rlp BuildHeader()

@@ -5,13 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using CkzgLib;
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,7 +18,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -36,13 +32,16 @@ public partial class EngineModuleTests
         (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Osaka.Instance, blobTxCount, oneBlobPerTx: oneBlobPerTx);
         ResultWrapper<GetPayloadV5Result?> result = await rpcModule.engine_getPayloadV5(Bytes.FromHexString(payloadId!));
         BlobsBundleV2 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
-        Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
-        Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
-        Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
-        Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount * Ckzg.CellsPerExtBlob));
         ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
             getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
-        Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
+            Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
+            Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
+            Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount * Ckzg.CellsPerExtBlob));
+            Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
+        }
     }
 
     [Test]
@@ -67,14 +66,17 @@ public partial class EngineModuleTests
             [],
             []);
 
-        buildResult.Result.Should().Be(Result.Success);
-        buildResult.Data.Should().NotBeNull();
-        buildResult.Data.Should().BeOfType<GetPayloadV5Result>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buildResult.Result, Is.EqualTo(Result.Success));
+            Assert.That(buildResult.Data, Is.Not.Null);
+            Assert.That(buildResult.Data, Is.AssignableTo<GetPayloadV5Result>());
+        }
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)buildResult.Data!;
 
         ExecutionPayloadV3 executionPayload = payloadResult.ExecutionPayload;
         executionPayload.ExecutionRequests = payloadResult.ExecutionRequests;
-        executionPayload.TryGetBlock().Block!.CalculateHash().Should().Be(executionPayload.BlockHash);
+        Assert.That(executionPayload.TryGetBlock().Data!.CalculateHash(), Is.EqualTo(executionPayload.BlockHash));
 
         ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV4(
             executionPayload,
@@ -82,8 +84,8 @@ public partial class EngineModuleTests
             payloadAttributes.ParentBeaconBlockRoot,
             payloadResult.ExecutionRequests);
 
-        newPayloadResult.Result.Should().Be(Result.Success);
-        newPayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(newPayloadResult.Result, Is.EqualTo(Result.Success));
+        Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     [Test]
@@ -93,7 +95,7 @@ public partial class EngineModuleTests
         ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
 
         Block head = chain.BlockTree.Head!;
-        long initialHeadNumber = head.Number;
+        ulong initialHeadNumber = head.Number;
 
         PayloadAttributes payloadAttributes = new()
         {
@@ -106,19 +108,19 @@ public partial class EngineModuleTests
 
         ResultWrapper<Hash256> result = await testingRpcModule.testing_commitBlockV1(payloadAttributes, [], []);
 
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().NotBeNull();
-        chain.BlockTree.Head!.Number.Should().Be(initialHeadNumber + 1);
-        chain.BlockTree.Head.Hash.Should().Be(result.Data);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+            Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(initialHeadNumber + 1));
+            Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(result.Data));
+        }
     }
 
     [Test]
     public async Task GetBlobsV2_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         List<byte[]> request = new(requestSize);
@@ -127,42 +129,36 @@ public partial class EngineModuleTests
             request.Add(Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
 
         if (requestSize > 128)
         {
-            result.Result.Should().BeEquivalentTo(Result.Fail($"The number of requested blobs must not exceed 128"));
-            result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+            Assert.That(result.Result, Is.EqualTo(Result.Fail($"The number of requested blobs must not exceed 128")));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest));
         }
         else
         {
-            result.Result.Should().Be(Result.Success);
-            result.Data.Should().BeNull();
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Null);
         }
     }
 
     [Test]
     public async Task GetBlobsV2_should_handle_empty_request()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2([]);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2([]);
 
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.EqualTo(ArraySegment<BlobAndProofV2>.Empty));
     }
 
     [Test]
     public async Task GetBlobsV2_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -172,25 +168,25 @@ public partial class EngineModuleTests
             .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
-        result.Data.Should().NotBeNull();
-        result.Data!.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data!.Select(static b => b!.Proofs.Length).Should().HaveCount(numberOfBlobs);
-        result.Data!.Select(static b => b!.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.Not.Null);
+            Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
+            Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
+            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+        }
     }
 
     [Test]
     public async Task GetBlobsV2_should_return_empty_array_when_blobs_not_found([Values(1, 2, 3, 4, 5, 6)] int numberOfRequestedBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         // we are not adding this tx
@@ -202,10 +198,10 @@ public partial class EngineModuleTests
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().BeNull();
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Null);
     }
 
     [Test]
@@ -213,10 +209,7 @@ public partial class EngineModuleTests
     {
         int requestSize = multiplier * numberOfBlobs;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -226,7 +219,7 @@ public partial class EngineModuleTests
             .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         List<byte[]> blobVersionedHashesRequest = new(requestSize);
 
@@ -237,20 +230,23 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
         if (multiplier > 1)
         {
-            result.Result.Should().Be(Result.Success);
-            result.Data.Should().BeNull();
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Null);
         }
         else
         {
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
-            result.Data.Should().NotBeNull();
-            result.Data!.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-            result.Data!.Select(static b => b!.Proofs.Length).Should().HaveCount(numberOfBlobs);
-            result.Data!.Select(static b => b!.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Data, Is.Not.Null);
+                Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
+                Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
+                Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+            }
         }
     }
 
@@ -259,10 +255,7 @@ public partial class EngineModuleTests
     {
         int requestSize = multiplier * numberOfBlobs;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -272,7 +265,7 @@ public partial class EngineModuleTests
             .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         List<byte[]> blobVersionedHashesRequest = new(requestSize);
 
@@ -283,11 +276,14 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV3(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV3(blobVersionedHashesRequest.ToArray());
 
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().NotBeNull();
-        result.Data!.Should().HaveCount(requestSize);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+            Assert.That(result.Data!, Has.Count.EqualTo(requestSize));
+        }
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
@@ -298,14 +294,17 @@ public partial class EngineModuleTests
             bool shouldBeFound = i % multiplier == 0;
             if (shouldBeFound)
             {
-                result.Data!.ElementAt(i).Should().NotBeNull();
-                result.Data!.ElementAt(i)!.Blob.Should().BeEquivalentTo(wrapper.Blobs[foundIndex]);
-                result.Data!.ElementAt(i)!.Proofs.Should().BeEquivalentTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result.Data!.ElementAt(i), Is.Not.Null);
+                    Assert.That(result.Data!.ElementAt(i)!.Blob, Is.EqualTo(wrapper.Blobs[foundIndex]));
+                    Assert.That(result.Data!.ElementAt(i)!.Proofs, Is.EqualTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128)));
+                }
                 foundIndex++;
             }
             else
             {
-                result.Data!.ElementAt(i).Should().BeNull();
+                Assert.That(result.Data!.ElementAt(i), Is.Null);
             }
         }
     }
@@ -316,41 +315,20 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
 
-        result.Result.Should().BeEquivalentTo(Result.Fail(MergeErrorMessages.UnsupportedFork));
-        result.ErrorCode.Should().Be(MergeErrorCodes.UnsupportedFork);
+        Assert.That(result.Result, Is.EqualTo(Result.Fail(MergeErrorMessages.UnsupportedFork)));
+        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
     [Test]
     public async Task BlobsV2DirectResponse_WriteToAsync_produces_valid_json()
     {
-        // Build a small list with one real entry and one null
-        byte[] blob = new byte[16];
-        Random.Shared.NextBytes(blob);
-        byte[] proof1 = new byte[48];
-        Random.Shared.NextBytes(proof1);
-        byte[] proof2 = new byte[48];
-        Random.Shared.NextBytes(proof2);
-
-        byte[]?[] blobs = [blob, null];
-        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([proof1, proof2]), default];
+        byte[]?[] blobs = [RandomBytes(16), null];
+        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([RandomBytes(48), RandomBytes(48)]), default];
 
         BlobsV2DirectResponse response = new(blobs, proofs, 2);
-
-        // Write via streaming path
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        // Write via STJ for comparison
-        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
-
-        streamedJson.Should().Be(stjJson);
+        await AssertStreamedJsonMatchesSerializer(response);
     }
 
     [Test]
@@ -358,15 +336,8 @@ public partial class EngineModuleTests
     {
         BlobsV2DirectResponse response = new([], [], 0);
 
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string json = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        json.Should().Be("[]");
+        string json = await AssertStreamedJsonMatchesSerializer(response);
+        Assert.That(json, Is.EqualTo("[]"));
     }
 
     [Test]
@@ -382,6 +353,6 @@ public partial class EngineModuleTests
 
         Pipe pipe = new();
         Func<Task> act = async () => await response.WriteToAsync(pipe.Writer, cts.Token);
-        act.Should().ThrowAsync<OperationCanceledException>();
+        Assert.That(async () => await act(), Throws.TypeOf<OperationCanceledException>());
     }
 }

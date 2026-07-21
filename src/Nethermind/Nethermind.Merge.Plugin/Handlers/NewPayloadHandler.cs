@@ -12,8 +12,10 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -48,6 +50,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly ISpecProvider _specProvider;
+    private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
@@ -55,8 +59,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
-    private long _lastBlockNumber;
-    private long _lastBlockGasLimit;
+    private ulong _lastBlockNumber;
+    private ulong _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
 
     public NewPayloadHandler(
@@ -73,6 +77,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
+        IEthereumEcdsa ecdsa,
+        ISpecProvider specProvider,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -86,6 +92,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _specProvider = specProvider;
+        _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -95,7 +103,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
-    private string GetGasChange(long blockGasLimit) => (blockGasLimit - _lastBlockGasLimit) switch
+    private string GetGasChange(ulong blockGasLimit) => blockGasLimit.CompareTo(_lastBlockGasLimit) switch
     {
         > 0 => "👆",
         < 0 => "👇",
@@ -110,13 +118,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        BlockDecodingResult decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-        Block? block = decodingResult.Block;
-        if (block is null)
+        // Overlap ecrecover with root computation, hash validation and block tree insertion;
+        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
+        Task senderRecoveryTask = StartSenderRecovery(request);
+
+        Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        if (decodingResult.IsError)
         {
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
+        Block block = decodingResult.Data;
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -129,6 +141,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
+            Nethermind.Blockchain.Metrics.BadBlocks++;
+            if (block.IsByNethermindNode()) Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
+            // Skip recording bad blocks: unverified hashes can poison tracking,
+            // while computed hashes could incorrectly blacklist a valid block.
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
 
@@ -159,6 +175,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
+                RecordBadBlock(block);
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
@@ -171,7 +188,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             }
 
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
-            _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+            _blockCacheService.TryAddBlock(block);
             return NewPayloadV1Result.Syncing;
         }
 
@@ -193,6 +210,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
+                RecordBadBlock(block);
                 return NewPayloadV1Result.Invalid(error);
             }
 
@@ -238,7 +256,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, senderRecoveryTask);
 
         if (result == ValidationResult.Invalid)
         {
@@ -255,6 +273,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
         return NewPayloadV1Result.Valid(block.Hash);
+    }
+
+    /// <summary>Records a block rejected before <c>BranchProcessor</c> ever runs.</summary>
+    /// <remarks>
+    /// Mirrors the bookkeeping <see cref="Nethermind.Consensus.Processing.BlockchainProcessor"/> does
+    /// when it catches an <c>InvalidBlockException</c>: bumps the bad-block metrics, marks the chain
+    /// as invalid in <see cref="IInvalidChainTracker"/>, and forwards the block to the
+    /// <c>BadBlockStore</c> so it surfaces in <c>debug_getBadBlocks</c>.
+    /// Pre-process rejection sites (failed orphan validation, failed suggested-block
+    /// validation) previously skipped these two.
+    /// </remarks>
+    private void RecordBadBlock(Block block)
+    {
+        if (block.Hash is null) return;
+
+        Nethermind.Blockchain.Metrics.BadBlocks++;
+        if (block.IsByNethermindNode())
+        {
+            Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
+        }
+
+        _invalidChainTracker.OnInvalidBlock(block.Hash, block.ParentHash);
+        _blockTree.ReportBadBlock(block);
     }
 
     /// <summary>
@@ -308,7 +349,40 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return parentProcessed || processTerminalBlock;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
+    /// <summary>Slack above head within which early recovery is worthwhile, mirroring the
+    /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
+    private const ulong NearHeadRecoveryDistance = 8;
+
+    private Task StartSenderRecovery(ExecutionPayload request)
+    {
+        // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
+        // the senders; they recover in the processing queue as before. On rejected payloads the
+        // task is deliberately fire-and-forget — see the catch below.
+        if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
+            return Task.CompletedTask;
+
+        Result<Transaction[]> transactions = request.TryGetTransactions();
+        if (transactions.IsError || transactions.Data.Length == 0)
+            // TryGetBlock reports the decoding error; nothing to recover otherwise.
+            return Task.CompletedTask;
+
+        Transaction[] txs = transactions.Data;
+        IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
+        return Task.Run(() =>
+        {
+            try
+            {
+                _senderRecovery.RecoverData(txs, spec);
+            }
+            catch (Exception e)
+            {
+                // Best-effort: the processing-queue preprocessor recovers anything still missing.
+                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
+            }
+        });
+    }
+
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
     {
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
         {
@@ -349,9 +423,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
-            AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
-                .AsTask().TimeoutOn(timeoutTask);
+            // the tree insert reads only the raw payload bytes, never the recovered senders,
+            // so it can safely overlap the remainder of sender recovery
+            Task<AddBlockResult> suggestTask = senderRecoveryTask.IsCompleted
+                ? _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask()
+                : Task.Run(() => _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask());
+
+            // recovery must complete before Enqueue — the prewarmer needs all senders up front
+            await senderRecoveryTask;
+
+            AddBlockResult addResult = await suggestTask.TimeoutOn(timeoutTask);
 
             result = addResult switch
             {
@@ -393,6 +474,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             // we timed out while processing the block, result will be null and we will return SYNCING below, no need to do anything
             if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.FullHashAndNumber)} timed out when processing. Assume Syncing.");
+        }
+        finally
+        {
+            // Blocks that exit before the processing queue publishes BlockRemoved would otherwise
+            // leave their completion source pinned in _blockValidationTasks forever.
+            _blockValidationTasks.TryRemove(block.Hash!, out _);
         }
 
         return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
@@ -478,13 +565,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (current is null)
             {
                 // block not part of beacon pivot chain, save in cache
-                _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+                _blockCacheService.TryAddBlock(block);
                 return false;
             }
 
             while (stack.TryPop(out Block? child))
             {
                 _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
+                _blockCacheService.TryRemoveBlock(child.Hash!);
             }
 
             _beaconPivot.ProcessDestination = block.Header;

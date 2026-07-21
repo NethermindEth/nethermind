@@ -19,11 +19,18 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "82125")]
     uint RetentionEpochs { get; set; }
 
+    // Default matches the mainnet weak-subjectivity period — BALs older than that are not useful for state reconstruction during weak-subjectivity sync
+    [ConfigItem(
+        Description = "The number of epochs to retain block access lists (BALs).",
+        DefaultValue = "3533",
+        HiddenFromDocs = true)]
+    uint BalRetentionEpochs { get; set; }
+
     // Set to 0 to prune every slot
     [ConfigItem(
         Description = "Number of epochs to wait between each history pruning.",
         DefaultValue = "8")]
-    uint PruningInterval { get; set; }
+    ulong PruningInterval { get; set; }
 
     [ConfigItem(
         Description = "Maximum time in seconds allowed for a single history pruning pass. Set to 0 to disable the timeout.",

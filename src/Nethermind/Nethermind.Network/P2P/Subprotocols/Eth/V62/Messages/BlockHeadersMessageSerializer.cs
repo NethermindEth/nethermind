@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using System;
+using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -16,12 +18,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
-            rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.BlockHeaders.Count; i++)
+            writer.StartSequence(contentLength);
+            ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
+            for (int i = 0; i < blockHeaders.Length; i++)
             {
-                _headerDecoder.Encode(rlpStream, message.BlockHeaders[i]);
+                _headerDecoder.Encode(ref writer, blockHeaders[i]);
             }
         }
 
@@ -31,15 +34,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public int GetLength(BlockHeadersMessage message, out int contentLength)
         {
             contentLength = 0;
-            for (int i = 0; i < message.BlockHeaders.Count; i++)
+            ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
+            for (int i = 0; i < blockHeaders.Length; i++)
             {
-                contentLength += _headerDecoder.GetLength(message.BlockHeaders[i], RlpBehaviors.None);
+                contentLength += _headerDecoder.GetLength(blockHeaders[i], RlpBehaviors.None);
             }
 
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public BlockHeadersMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public BlockHeadersMessage Deserialize(ref RlpReader ctx)
         {
             BlockHeadersMessage message = new();
             message.BlockHeaders = Rlp.DecodeArrayPool(ref ctx, _headerDecoder, limit: RlpLimit);

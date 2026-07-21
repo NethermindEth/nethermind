@@ -47,7 +47,7 @@ public class L1SloadPrecompileTests
     [Test]
     public void DataGasCost_With_Valid_Input_Should_Calculate_Correctly()
     {
-        byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1000, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(123), storageKey: (UInt256)1, blockNumber: (UInt256)1000);
         Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(L1PrecompileConstants.L1SloadPerLoadGasCost));
     }
 
@@ -75,7 +75,7 @@ public class L1SloadPrecompileTests
         UInt256 expectedValue = (UInt256)0x123456789abcdef;
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning(expectedValue);
 
-        byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1000, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(123), storageKey: (UInt256)1, blockNumber: (UInt256)1000);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -90,7 +90,7 @@ public class L1SloadPrecompileTests
     public void Run_With_No_Provider_Should_Fail()
     {
         L1SloadPrecompile.L1StorageProvider = null;
-        byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1000, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(123), storageKey: (UInt256)1, blockNumber: (UInt256)1000);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -103,7 +103,7 @@ public class L1SloadPrecompileTests
     {
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.ReturningNull();
 
-        byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1000, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(123), storageKey: (UInt256)1, blockNumber: (UInt256)1000);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -126,11 +126,40 @@ public class L1SloadPrecompileTests
             "L1SloadPrecompile address should not be identified as precompile when RIP-7728 is disabled");
     }
 
+    // --- Block-range validation (l1Origin passed as argument) ---
+
+    [TestCase(1000ul, 700ul, false, Description = "Block 700 is 300 away from l1Origin 1000 — exceeds 256 lookback")]
+    [TestCase(1000ul, 744ul, true, Description = "Block 744 is exactly 256 from l1Origin 1000 — should be accepted")]
+    [TestCase(1000ul, 743ul, false, Description = "Block 743 is 257 from l1Origin 1000 — one past the inclusive boundary")]
+    [TestCase(1000ul, 1000ul, true, Description = "Block 1000 == l1Origin 1000 — upper inclusive edge")]
+    [TestCase(1000ul, 1001ul, false, Description = "Block 1001 > l1Origin 1000 — must be rejected")]
+    public void Run_BlockRangeValidation(ulong l1Origin, ulong blockNumber, bool expectedSuccess)
+    {
+        L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
+        byte[] input = CreateValidInput(Address.FromNumber(1), storageKey: (UInt256)1, blockNumber: (UInt256)blockNumber);
+
+        PrecompileExtras extras = new(l1Origin: (UInt256)l1Origin);
+        Result<(byte[] returnValue, ulong gasConsumed)> result = _precompile.Run(input, _spec, in extras);
+
+        Assert.That(result.IsSuccess, Is.EqualTo(expectedSuccess));
+    }
+
+    [Test]
+    public void Run_NullOrigin_AcceptsAnyBlock()
+    {
+        L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
+        byte[] input = CreateValidInput(Address.FromNumber(1), storageKey: (UInt256)1, blockNumber: (UInt256)12_345);
+
+        Result<(byte[] returnValue, ulong gasConsumed)> result = _precompile.Run(input, _spec, in PrecompileExtras.None);
+
+        Assert.That(result.IsSuccess, Is.True, "Permissive when no origin is available (eth_call / debug_traceCall / preconf)");
+    }
+
     /// <summary>
-    /// Input byte order matches spec: [address|storageKey|blockNumber].
-    /// Interface order is (address, blockNumber, storageKey) for consistency with L1STATICCALL.
+    /// Parameter order matches the wire layout [address | storageKey | blockNumber] so callers
+    /// constructing test bytes don't have to mentally invert anything.
     /// </summary>
-    private static byte[] CreateValidInput(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)
+    private static byte[] CreateValidInput(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
         byte[] input = new byte[L1PrecompileConstants.L1SloadExpectedInputLength];
 

@@ -100,18 +100,12 @@ namespace Nethermind.Crypto
 
         public readonly bool Equals(Keccak512 other) => Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
 
-        public override readonly bool Equals(object obj) => obj?.GetType() == typeof(Keccak512) && Equals((Keccak512)obj);
+        public readonly override bool Equals(object obj) => obj?.GetType() == typeof(Keccak512) && Equals((Keccak512)obj);
 
-        public override readonly int GetHashCode() => BinaryPrimitives.ReadInt32LittleEndian(Bytes);
+        public readonly override int GetHashCode() => BinaryPrimitives.ReadInt32LittleEndian(Bytes);
 
-        public static bool operator ==(Keccak512 a, Keccak512 b)
-        {
-            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
-        }
+        public static bool operator ==(Keccak512 a, Keccak512 b) => Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
 
-        public static bool operator !=(Keccak512 a, Keccak512 b)
-        {
-            return !(a == b);
-        }
+        public static bool operator !=(Keccak512 a, Keccak512 b) => !(a == b);
     }
 }

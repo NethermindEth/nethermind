@@ -110,14 +110,14 @@ public class Context
     }
 
     public string type { get; set; } = null!;
-    public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToTypedScriptArray();
-    public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToArray().ToTypedScriptArray();
+    public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToArray().ToTypedScriptArray();
     public ITypedArray<byte>? input => _inputConverted ??= Input.ToArray().ToTypedScriptArray();
-    public long gas { get; set; }
-    public long gasUsed { get; set; }
+    public ulong gas { get; set; }
+    public ulong gasUsed { get; set; }
     public IJavaScriptObject gasPrice => _gasPriceConverted ??= GasPrice.ToBigInteger();
     public IJavaScriptObject value => _valueConverted ??= Value.ToBigInteger();
-    public long block { get; set; }
+    public ulong block { get; set; }
     public ITypedArray<byte>? output => _outputConverted ??= Output?.ToTypedScriptArray();
     public ITypedArray<byte>? blockHash => _blockHashConverted ??= BlockHash?.BytesToArray().ToTypedScriptArray();
     public int? txIndex { get; set; }

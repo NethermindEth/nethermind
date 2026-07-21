@@ -16,9 +16,14 @@ public sealed class CumulativeTotalDifficultyStrategy : ITotalDifficultyStrategy
     public UInt256 ParentTotalDifficulty(BlockHeader header) => (header.TotalDifficulty ?? 0) - header.Difficulty;
 }
 
+public sealed class ZeroTotalDifficultyStrategy : ITotalDifficultyStrategy
+{
+    public UInt256 ParentTotalDifficulty(BlockHeader header) => UInt256.Zero;
+}
+
 public sealed class FixedTotalDifficultyStrategy(
     ITotalDifficultyStrategy strategy,
-    long fixesBlockNumber,
+    ulong fixesBlockNumber,
     UInt256 toTotalDifficulty
 ) : ITotalDifficultyStrategy
 {

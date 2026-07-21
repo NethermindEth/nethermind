@@ -49,26 +49,30 @@ namespace Nethermind.Consensus.AuRa
                 return null;
             }
 
-            Hash256 headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
-            Signature signature = _signer.Sign(headerHash);
-            block.Header.AuRaSignature = signature.BytesWithRecovery;
+            ValueHash256 headerHash = block.Header.CalculateValueHash(RlpBehaviors.ForSealing);
+            if (!_signer.TrySign(in headerHash, out Signature signature))
+            {
+                if (_logger.IsWarn) _logger.Warn($"AuRa signer {_signer.Address} could not sign block {block.Number} — skipping seal.");
+                return null;
+            }
+            block.Header.RequireAuRa().AuRaSignature = signature.BytesWithRecovery;
 
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash)
+        public bool CanSeal(ulong blockNumber, Hash256 parentHash)
         {
-            bool StepNotYetProduced(long step) => !_blockTree.Head.Header.AuRaStep.HasValue
-                ? throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'")
-                : _blockTree.Head.Header.AuRaStep.Value < step;
+            bool StepNotYetProduced(ulong step) => _blockTree.Head.Header.GetAuRaStep() is { } headStep
+                ? headStep < step
+                : throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'");
 
-            bool IsThisNodeTurn(long step)
+            bool IsThisNodeTurn(ulong step)
             {
                 Address[] validators = _validatorStore.GetValidators();
                 return _validSealerStrategy.IsValidSealer(validators, _signer.Address, step, out _);
             }
 
-            long currentStep = _auRaStepCalculator.CurrentStep;
+            ulong currentStep = _auRaStepCalculator.CurrentStep;
             bool stepNotYetProduced = StepNotYetProduced(currentStep);
             bool isThisNodeTurn = IsThisNodeTurn(currentStep);
             if (isThisNodeTurn)

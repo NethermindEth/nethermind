@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -32,6 +32,8 @@ public class ShutterTxLoader(
     IAbiEncoder abiEncoder,
     ILogManager logManager)
 {
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
+
     private readonly ShutterLogScanner _logScanner = new(
                 new(new Address(cfg.SequencerContractAddress!)),
                 logFinder,
@@ -115,7 +117,7 @@ public class ShutterTxLoader(
         }
 
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
-        sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+        sortedIndexes.Sort<SequencedTransactionByIdentityPreimageComparer>(default);
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
@@ -190,12 +192,12 @@ public class ShutterTxLoader(
 
     private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
     {
-        Transaction tx = TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping);
+        Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
         tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
         return tx;
     }
 
-    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
+    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, ulong headBlockNumber)
     {
         lock (_events)
         {
@@ -240,7 +242,7 @@ public class ShutterTxLoader(
         };
     }
 
-    private void LoadFromScanningLogs(ulong eon, ulong txPointer, long headBlockNumber)
+    private void LoadFromScanningLogs(ulong eon, ulong txPointer, ulong headBlockNumber)
     {
         _txPointer = txPointer;
 
@@ -265,6 +267,13 @@ public class ShutterTxLoader(
         public UInt256 GasLimit;
         public byte[] Identity;
         public byte[] IdentityPreimage;
+    }
+
+    private readonly struct SequencedTransactionByIdentityPreimageComparer : IComparer<SequencedTransaction>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(SequencedTransaction a, SequencedTransaction b) =>
+            Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage);
     }
 
     private readonly struct DecryptedTransactions : IDisposable

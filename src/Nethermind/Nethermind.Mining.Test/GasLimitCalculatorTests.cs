@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -14,12 +13,12 @@ namespace Nethermind.Mining.Test
     [TestFixture]
     public class GasLimitCalculatorTests
     {
-        [TestCase(1000000, 2000000, 1000975)]
-        [TestCase(1999999, 2000000, 2000000)]
-        [TestCase(2000000, 2000000, 2000000)]
-        [TestCase(2000001, 2000000, 2000000)]
-        [TestCase(3000000, 2000000, 2997072)]
-        public void Test(long current, long target, long expected)
+        [TestCase(1000000UL, 2000000UL, 1000975UL)]
+        [TestCase(1999999UL, 2000000UL, 2000000UL)]
+        [TestCase(2000000UL, 2000000UL, 2000000UL)]
+        [TestCase(2000001UL, 2000000UL, 2000000UL)]
+        [TestCase(3000000UL, 2000000UL, 2997072UL)]
+        public void Test(ulong current, ulong target, ulong expected)
         {
             BlocksConfig blocksConfig = new();
             blocksConfig.TargetBlockGasLimit = target;
@@ -28,7 +27,7 @@ namespace Nethermind.Mining.Test
                 MainnetSpecProvider.Instance, blocksConfig);
 
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
-            targetAdjustedGasLimitCalculator.GetGasLimit(header).Should().Be(expected);
+            Assert.That(targetAdjustedGasLimitCalculator.GetGasLimit(header), Is.EqualTo(expected));
         }
     }
 }

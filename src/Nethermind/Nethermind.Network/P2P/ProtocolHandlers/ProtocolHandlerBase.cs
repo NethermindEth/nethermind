@@ -27,8 +27,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private readonly IMessageSerializationService _serializer;
         protected internal ISession Session { get; }
         protected long Counter;
+        private IProtocolRegistrar? _protocolRegistrar;
+        private EventHandler<ProtocolInitializedEventArgs>? _protocolInitialized;
+        private EventHandler<ProtocolEventArgs>? _subprotocolRequested;
 
-        private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new();
+        private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected ProtocolHandlerBase(ISession session,
             INodeStatsManager nodeStats,
@@ -184,6 +187,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, Task<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
             BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
+        protected void HandleInBackground<THandler, TReq, TRes, TRequestHandler>(ZeroPacket message)
+            where THandler : ProtocolHandlerBase
+            where TReq : P2PMessage
+            where TRes : P2PMessage
+            where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes> =>
+            BackgroundTaskScheduler.TryScheduleSyncServe<THandler, TReq, TRes, TRequestHandler>((THandler)this, DeserializeAndReport<TReq>(message));
+
         /// <inheritdoc cref="HandleInBackground{TReq, TRes}(ZeroPacket, Func{TReq, CancellationToken, Task{TRes}})"/>
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
             BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
@@ -199,7 +209,32 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return messageObject;
         }
 
-        public virtual void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
+        public virtual void RegisterWith(ISession session, IProtocolRegistrar registrar)
+        {
+            SetProtocolRegistrar(registrar);
+            registrar.Register(session, this);
+        }
+
+        protected void SetProtocolRegistrar(IProtocolRegistrar registrar) =>
+            _protocolRegistrar = registrar ?? throw new ArgumentNullException(nameof(registrar));
+
+        protected void NotifyProtocolInitialized(ProtocolInitializedEventArgs args)
+        {
+            _protocolInitialized?.Invoke(this, args);
+            _protocolRegistrar?.OnProtocolInitialized(Session, this, args);
+        }
+
+        protected void NotifySubprotocolRequested(string protocolCode, int version)
+        {
+            _subprotocolRequested?.Invoke(this, new ProtocolEventArgs(protocolCode, version));
+            _protocolRegistrar?.OnSubprotocolRequested(Session, this, protocolCode, version);
+        }
+
+        protected void ClearProtocolEvents()
+        {
+            _protocolInitialized = null;
+            _subprotocolRequested = null;
+        }
 
         public abstract void Dispose();
 
@@ -215,9 +250,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void DisconnectProtocol(DisconnectReason disconnectReason, string details);
 
-        public abstract event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        public virtual event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized
+        {
+            add => _protocolInitialized += value;
+            remove => _protocolInitialized -= value;
+        }
 
-        public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;
+        public virtual event EventHandler<ProtocolEventArgs> SubprotocolRequested
+        {
+            add => _subprotocolRequested += value;
+            remove => _subprotocolRequested -= value;
+        }
     }
 
     public class IncompleteDeserializationException(string msg) : Exception(msg);

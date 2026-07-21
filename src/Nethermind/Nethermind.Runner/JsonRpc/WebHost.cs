@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
@@ -105,6 +106,13 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
 
             Action<IApplicationBuilder> configure = _startup!.Configure;
 
+            IEnumerable<IStartupFilter>? startupFilters =
+                _applicationServices.GetService<IEnumerable<IStartupFilter>>();
+            if (startupFilters is not null)
+            {
+                foreach (IStartupFilter filter in startupFilters.Reverse())
+                    configure = filter.Configure(configure);
+            }
             configure(builder);
 
             return builder.Build();

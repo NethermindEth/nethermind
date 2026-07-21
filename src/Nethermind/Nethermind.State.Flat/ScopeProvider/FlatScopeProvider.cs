@@ -17,13 +17,20 @@ public class FlatScopeProvider(
     ResourcePool.Usage usage,
     ILogManager logManager,
     bool isReadOnly)
-    : IWorldStateScopeProvider
+    : IWorldStateScopeProvider, IDisposable
 {
-    private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
+    private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+
+    private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
+    {
+        int configured = configuration.WarmReadConcurrency;
+        int concurrency = configured < 0 ? Math.Min(4 * Environment.ProcessorCount, 64) : Math.Max(1, configured);
+        return new WarmReadPool(concurrency);
+    });
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         StateId currentState = new(baseBlock);
         SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
@@ -36,6 +43,12 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             logManager,
+            warmReadPool: _warmReadPool,
             isReadOnly: isReadOnly);
+    }
+
+    public void Dispose()
+    {
+        if (_warmReadPool is { IsValueCreated: true }) _warmReadPool.Value.Dispose();
     }
 }

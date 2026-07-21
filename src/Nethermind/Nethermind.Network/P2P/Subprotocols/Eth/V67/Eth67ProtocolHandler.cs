@@ -36,17 +36,16 @@ public class Eth67ProtocolHandler(
     public new static byte Version => EthVersions.Eth67;
     public override byte ProtocolVersion => Version;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         switch (message.PacketType)
         {
             case Eth66MessageCode.GetNodeData:
-                break;
             case Eth66MessageCode.NodeData:
-                break;
+                // eth/67 removed these codes — peers emitting them are breaching the protocol
+                return false;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 }

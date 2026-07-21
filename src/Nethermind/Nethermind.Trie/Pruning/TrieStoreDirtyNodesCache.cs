@@ -81,7 +81,7 @@ internal class TrieStoreDirtyNodesCache
         NodeRecord nodeRecord = GetOrAdd(in key, this);
         if (nodeRecord.Node.NodeType != NodeType.Unknown)
         {
-            Metrics.LoadedFromCacheNodesCount++;
+            Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else
         {
@@ -101,7 +101,7 @@ internal class TrieStoreDirtyNodesCache
         {
             trieNode = _trieStore.CloneForReadOnly(key, trieNode);
 
-            Metrics.LoadedFromCacheNodesCount++;
+            Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else
         {
@@ -121,10 +121,13 @@ internal class TrieStoreDirtyNodesCache
         return _byKeyObjectCache.ContainsKey(key);
     }
 
-    public readonly struct NodeRecord(TrieNode node, long lastCommit) : IEquatable<NodeRecord>
+    // We use a ulong sentinel (ulong.MaxValue) instead of ulong? (Nullable<ulong>)
+    // to keep NodeRecord at 16 bytes, avoiding the 8-byte padding overhead of Nullable<ulong>,
+    // which significantly reduces heap memory usage when holding millions of cached dirty nodes.
+    public readonly struct NodeRecord(TrieNode node, ulong lastCommit) : IEquatable<NodeRecord>
     {
         public readonly TrieNode Node = node;
-        public readonly long LastCommit = lastCommit;
+        public readonly ulong LastCommit = lastCommit;
 
         public bool Equals(NodeRecord other) => other.Node == Node && other.LastCommit == LastCommit;
     }
@@ -161,18 +164,23 @@ internal class TrieStoreDirtyNodesCache
             ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
             : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
 
+    // Sentinel for "no real block number assigned yet" (node discovered/created without a
+    // numbered commit). IsNoLongerNeeded treats this as always-live since the sentinel is
+    // always above any real chain height.
+    private const ulong NoCommitSentinel = ulong.MaxValue;
+
     private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
         ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
         {
             TrieNode trieNode = new(NodeType.Unknown, keccak);
             cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, -1);
+            return new NodeRecord(trieNode, NoCommitSentinel);
         }, cache)
         : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
         {
             TrieNode trieNode = new(NodeType.Unknown, key.Keccak);
             cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, -1);
+            return new NodeRecord(trieNode, NoCommitSentinel);
         }, cache);
 
     public NodeRecord GetOrAdd(in Key key, NodeRecord record) => _storeByHash
@@ -207,8 +215,13 @@ internal class TrieStoreDirtyNodesCache
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static NodeRecord MergeRecords(NodeRecord current, NodeRecord candidate)
     {
-        long lastCommit = current.LastCommit;
-        if (candidate.LastCommit > lastCommit)
+        // Keep the higher real block number; a real block number always beats NoCommitSentinel.
+        ulong lastCommit = current.LastCommit;
+        if (lastCommit == NoCommitSentinel)
+        {
+            lastCommit = candidate.LastCommit;
+        }
+        else if (candidate.LastCommit != NoCommitSentinel && candidate.LastCommit > lastCommit)
         {
             lastCommit = candidate.LastCommit;
         }
@@ -312,7 +325,7 @@ internal class TrieStoreDirtyNodesCache
         foreach ((Key key, NodeRecord nodeRecord) in AllNodes)
         {
             TrieNode node = nodeRecord.Node;
-            long lastCommit = nodeRecord.LastCommit;
+            ulong lastCommit = nodeRecord.LastCommit;
             if (node.IsPersisted)
             {
                 // Remove persisted node based on `persistedHashes` if available.
@@ -331,9 +344,11 @@ internal class TrieStoreDirtyNodesCache
 
                 if (prunePersisted)
                 {
-                    // If its persisted and has last seen meaning it was recommitted,
-                    // we keep it to prevent key removal from removing it from DB.
-                    if (lastCommit == -1 || forceRemovePersistedNodes)
+                    // NoCommitSentinel means the node was added to the buffer without a real block
+                    // number. It has no real commit boundary, so treat it as purgeable when
+                    // forceRemovePersistedNodes is requested; otherwise keep it (same semantics as
+                    // the previous lastCommit == -1 guard).
+                    if (lastCommit == NoCommitSentinel || forceRemovePersistedNodes)
                     {
                         if (_logger.IsTrace) LogPersistedNodeRemoval(node);
 
@@ -416,7 +431,9 @@ internal class TrieStoreDirtyNodesCache
         writeBatch?.Set(key.Address, key.Path, key.Keccak, default, WriteFlags.DisableWAL);
     }
 
-    bool CanDelete(in Key key, long lastCommit, Hash256? currentlyPersistingKeccak)
+    // NoCommitSentinel (ulong.MaxValue) is never < LastPersistedBlockNumber, so sentinel nodes
+    // are always treated as live here — correct, since they were never committed to a numbered block.
+    bool CanDelete(in Key key, ulong lastCommit, Hash256? currentlyPersistingKeccak)
     {
         // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
         if (currentlyPersistingKeccak is null) return false;
@@ -491,7 +508,7 @@ internal class TrieStoreDirtyNodesCache
         [SkipLocalsInit]
         public override int GetHashCode()
         {
-            ulong chainedHash = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address?.GetHashCode() ?? 1);
+            ulong chainedHash = (ulong)Path.GetHashCode() << 32 | (uint)(Address?.GetHashCode() ?? 1);
             return Keccak.ValueHash256.GetChainedHashCode(chainedHash);
         }
 

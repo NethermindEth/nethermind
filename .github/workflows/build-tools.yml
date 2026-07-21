@@ -12,6 +12,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build
@@ -30,7 +33,9 @@ jobs:
           # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx
           - StatelessInputGen/StatelessInputGen.slnx
+          - StatsAnalyzer/StatsAnalyzer.slnx
           - TxParser/TxParser.slnx
+          - RpcTests/RpcTests.slnx
     steps:
       - name: Check out repository
         uses: actions/checkout@v6

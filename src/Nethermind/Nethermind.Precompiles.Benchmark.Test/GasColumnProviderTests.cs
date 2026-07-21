@@ -11,7 +11,7 @@ public class GasColumnProviderTests
     [Test]
     public void Lower_throughput_bound_is_less_than_upper_throughput_bound()
     {
-        long gas = 100_000;
+        ulong gas = 100_000;
         double[] samples = [900, 920, 950, 970, 980, 1000, 1000, 1010, 1020, 1050, 1080, 1100];
         Statistics stats = new(samples);
 

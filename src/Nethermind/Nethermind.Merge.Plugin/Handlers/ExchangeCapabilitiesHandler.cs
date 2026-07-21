@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumerable<string>>
+public class ExchangeCapabilitiesHandler : IHandler<HashSet<string>, IReadOnlyList<string>>
 {
     private readonly ILogger _logger;
     private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
+    private IReadOnlyList<string>? _cachedEnabled;
 
     public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ILogManager logManager)
     {
@@ -22,37 +23,31 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
         _engineRpcCapabilitiesProvider = engineRpcCapabilitiesProvider;
     }
 
-    public ResultWrapper<IEnumerable<string>> Handle(IEnumerable<string> methods)
+    public ResultWrapper<IReadOnlyList<string>> Handle(HashSet<string> methods)
     {
-        IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
-        CheckCapabilities(methods, capabilities);
+        FrozenDictionary<string, RpcCapabilityOptions> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
 
-        return ResultWrapper<IEnumerable<string>>.Success(capabilities.Where(static x => x.Value.Enabled).Select(static x => x.Key));
-    }
+        List<string>? enabled = _cachedEnabled is null ? new List<string>(capabilities.Count) : null;
+        List<string>? missing = null;
 
-    private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)
-    {
-        List<string> missing = new();
-
-        foreach (KeyValuePair<string, (bool Enabled, bool WarnIfMissing)> capability in capabilities)
+        foreach ((string key, RpcCapabilityOptions flags) in capabilities)
         {
-            bool found = false;
-
-            foreach (string method in methods)
-                if (method.Equals(capability.Key, StringComparison.Ordinal))
+            if (flags.IsEnabled())
+            {
+                enabled?.Add(key);
+                if (flags.ShouldWarnIfMissing() && !methods.Contains(key))
                 {
-                    found = true;
-                    break;
+                    missing ??= [];
+                    missing.Add(key);
                 }
-
-            // Warn if not found and capability activated
-            if (!found && capability.Value is { Enabled: true, WarnIfMissing: true })
-                missing.Add(capability.Key);
+            }
         }
 
-        if (missing.Count > 0)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Consensus client missing capabilities: {string.Join(", ", missing)}");
-        }
+        if (enabled is not null) _cachedEnabled = enabled;
+
+        if (missing is { Count: > 0 } && _logger.IsWarn)
+            _logger.Warn($"Consensus client missing capabilities: {string.Join(", ", missing)}");
+
+        return ResultWrapper<IReadOnlyList<string>>.Success(_cachedEnabled!);
     }
 }

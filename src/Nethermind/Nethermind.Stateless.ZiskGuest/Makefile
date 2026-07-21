@@ -11,10 +11,12 @@ BFLAT_REFS := \
   -r {std}/System.Diagnostics.Tracing.dll \
   -r {std}/System.Memory.dll \
   -r {std}/System.Runtime.dll \
+  -r {std}/System.Runtime.InteropServices.dll \
   -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
   -r $(BIN_DIR)/Microsoft.Extensions.ObjectPool.dll \
   -r $(BIN_DIR)/Nethermind.Abi.dll \
   -r $(BIN_DIR)/Nethermind.Blockchain.dll \
+  -r $(BIN_DIR)/Nethermind.Config.dll \
   -r $(BIN_DIR)/Nethermind.Consensus.dll \
   -r $(BIN_DIR)/Nethermind.Core.dll \
   -r $(BIN_DIR)/Nethermind.Crypto.dll \
@@ -24,11 +26,13 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/Nethermind.Int256.dll \
   -r $(BIN_DIR)/Nethermind.Logging.dll \
   -r $(BIN_DIR)/Nethermind.Serialization.Rlp.dll \
+  -r $(BIN_DIR)/Nethermind.Serialization.Ssz.dll \
   -r $(BIN_DIR)/Nethermind.Specs.dll \
   -r $(BIN_DIR)/Nethermind.State.dll \
   -r $(BIN_DIR)/Nethermind.Stateless.Executor.dll \
   -r $(BIN_DIR)/Nethermind.Trie.dll \
-  -r $(BIN_DIR)/Nethermind.TxPool.dll
+  -r $(BIN_DIR)/Nethermind.TxPool.dll \
+  -r $(BIN_DIR)/Nethermind.Zkvm.Abstractions.dll
 
 dotnet-build:
 	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj
@@ -40,14 +44,14 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		nethermindeth/bflat-riscv64:308933fe808eaab52f965e0c7c6f1b767fe12988 \
+		nethermindeth/bflat-riscv64:b2958814fb0cdde50eaed280043706467f6d6a4a \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		--no-pie \
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
 		$(BFLAT_REFS) \
-		--extlib $(BIN_DIR)/libziskos.bflat.manifest \
+		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.bflat.manifest \
 		$(SRC_DIR)/Program.cs
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program.patched $(GUEST_DIR)/bin/nethermind && \
@@ -56,7 +60,7 @@ build: dotnet-build
 run:
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
-		nethermindeth/zisk:0.16.1 \
+		nethermindeth/zisk:1.0.0-alpha \
 		ziskemu -e /n/nethermind -i /n/$(INPUT)
 
 build-run: build run

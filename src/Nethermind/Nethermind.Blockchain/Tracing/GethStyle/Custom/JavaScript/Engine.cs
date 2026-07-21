@@ -41,7 +41,7 @@ public class Engine : IDisposable
 
     private static readonly V8Runtime _runtime = new(new V8RuntimeConstraints { MaxOldSpaceSize = V8MaxOldSpaceMb });
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
-    private static readonly LruCache<int, V8Script> _runtimeScripts = new(10, "runtime scripts");
+    private static readonly LruCache<string, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
     public static Engine? CurrentEngine
     {
@@ -121,7 +121,7 @@ public class Engine : IDisposable
     /// <summary>
     /// Converts input to 20 byte Address byte representation
     /// </summary>
-    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToTypedScriptArray();
+    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToArray().ToTypedScriptArray();
 
     /// <summary>
     /// Checks if contract at given address is a precompile
@@ -144,13 +144,13 @@ public class Engine : IDisposable
     /// <summary>
     /// Creates a contract address from sender and nonce (used for CREATE instruction)
     /// </summary>
-    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToTypedScriptArray();
+    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToArray().ToTypedScriptArray();
 
     /// <summary>
     /// Creates a contract address from sender, salt and initcode (used for CREATE2 instruction)
     /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
-        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToTypedScriptArray();
+        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
 
     public void Interrupt() => V8Engine.Interrupt();
 
@@ -184,20 +184,10 @@ public class Engine : IDisposable
             }
             else if (tracer.StartsWith('{') && tracer.EndsWith('}'))
             {
-                int hashCode = tracer.GetHashCode();
-                if (_runtimeScripts.TryGet(hashCode, out V8Script script))
-                {
-                    return script;
-                }
-
-                script = _runtime.Compile(PackTracerCode(tracer));
-                if (_runtimeScripts.Set(hashCode, script))
-                {
-                    return script;
-                }
-
-                script.Dispose();
-                return _runtimeScripts.Get(hashCode);
+                return _runtimeScripts.SetOrGet(
+                    tracer,
+                    tracer,
+                    static (_, tracerCode) => _runtime.Compile(PackTracerCode(tracerCode)));
             }
             else
             {

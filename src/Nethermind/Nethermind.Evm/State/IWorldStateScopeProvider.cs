@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -15,13 +17,27 @@ namespace Nethermind.Evm.State;
 public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
-    IScope BeginScope(BlockHeader? baseBlock);
+
+    /// <param name="metrics">
+    /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
+    /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.
+    /// </param>
+    IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }
 
         void UpdateRootHash();
+
+        /// <summary>
+        /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
+        /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
+        /// </summary>
+        void HintWarmAccount(in ValueAddress address) { }
+
+        /// <inheritdoc cref="HintWarmAccount"/>
+        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.
@@ -65,7 +81,64 @@ public interface IWorldStateScopeProvider
         /// That said, <see cref="WorldState"/> will always call <see cref="IStateTree.UpdateRootHash"/>
         /// first.
         /// </summary>
-        void Commit(long blockNumber);
+        void Commit(ulong blockNumber);
+
+        /// <summary>
+        /// Hint that the given Block Access List will be accessed during block execution.
+        /// Walks the BAL in parallel and, per account, enqueues trie-warmer jobs for the
+        /// addresses + changed storage slots. When <paramref name="sink"/> is supplied, the
+        /// same pass also reads each account and slot value (changed + read-only) and forwards
+        /// them to the sink — letting the prewarmer populate its caches without paying a
+        /// second <c>GetAccount</c> per entry.
+        /// Non-prewarmer scopes may ignore the hint or treat it as a no-op.
+        /// </summary>
+        /// <param name="bal">The Block Access List describing addresses and storage slots to prefetch.</param>
+        /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
+        /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
+        Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null);
+    }
+
+    /// <summary>
+    /// Sink that receives account and storage values read from the underlying
+    /// trie/db during a BAL (Block Access List) scan.
+    /// </summary>
+    public interface IAsyncBalReaderSink
+    {
+        /// <summary>
+        /// Called when an account has been read for the given address.
+        /// </summary>
+        /// <param name="address">The account address from the BAL.</param>
+        /// <param name="account">The account data, or null if the account does not exist.</param>
+        void OnAccountRead(Address address, Account? account);
+
+        /// <summary>
+        /// Called when a storage slot has been read for the given cell.
+        /// </summary>
+        /// <param name="storageCell">The storage cell (address + slot index).</param>
+        /// <param name="value">The storage value bytes.</param>
+        void OnStorageRead(in StorageCell storageCell, byte[] value);
+
+        /// <summary>
+        /// Returns whether the BAL reader should still fetch the given account.
+        /// Implementations backed by a cache can return <c>false</c> and hand back the
+        /// cached <paramref name="account"/> to let the reader skip the fetch.
+        /// </summary>
+        /// <param name="address">The account address from the BAL.</param>
+        /// <param name="account">The cached account, or null when not cached.</param>
+        /// <returns><c>true</c> if the reader should fetch; <c>false</c> if it should skip.</returns>
+        bool StillNeeded(Address address, out Account? account)
+        {
+            account = null;
+            return true;
+        }
+
+        /// <summary>
+        /// Returns whether the BAL reader should still fetch the given storage cell.
+        /// Implementations backed by a cache can return <c>false</c> to let the reader skip the fetch.
+        /// </summary>
+        /// <param name="storageCell">The storage cell from the BAL.</param>
+        /// <returns><c>true</c> if the reader should fetch; <c>false</c> if it should skip.</returns>
+        bool StillNeeded(in StorageCell storageCell) => true;
     }
 
     public interface ICodeDb
@@ -73,6 +146,21 @@ public interface IWorldStateScopeProvider
         byte[]? GetCode(in ValueHash256 codeHash);
 
         ICodeSetter BeginCodeWrite();
+
+        /// <summary>
+        /// Hint: returns true only if this code is durably persisted in this codeDb.
+        /// Used by callers to avoid redundant inserts. Implementations must never produce
+        /// false positives — a true return means the code is retrievable via <see cref="GetCode"/>.
+        /// Default returns false (safe overlay behaviour: never claim something is persisted).
+        /// </summary>
+        bool ContainsCode(in ValueHash256 codeHash) => false;
+
+        /// <summary>
+        /// Hint: the code with the given hash was just persisted to this codeDb. Permits
+        /// the implementation to update an internal cache used by <see cref="ContainsCode"/>.
+        /// Default is a no-op (safe overlay behaviour).
+        /// </summary>
+        void MarkCodePersisted(in ValueHash256 codeHash) { }
     }
 
     public interface IStorageTree
@@ -81,14 +169,11 @@ public interface IWorldStateScopeProvider
 
         byte[] Get(in UInt256 index);
 
-        void HintGet(in UInt256 index, byte[]? value);
-
         /// <summary>
-        /// Used by JS tracer. May not work on some database layout.
+        /// Hint that a slot is being written. Backends may use this to start asynchronous
+        /// trie warm-up for the slot path.
         /// </summary>
-        /// <param name="hash"></param>
-        /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
+        void HintSet(in UInt256 index, byte[]? value);
     }
 
     public interface IWorldStateWriteBatch : IDisposable

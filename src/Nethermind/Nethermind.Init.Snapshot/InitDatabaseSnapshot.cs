@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.IO.Abstractions;
 using System.Net;
 using System.Security.Cryptography;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Core.Extensions;
@@ -20,7 +22,9 @@ namespace Nethermind.Init.Snapshot;
 [RunnerStepDependencies(
     dependencies: [],
     dependents: [typeof(InitializeBlockTree), typeof(DatabaseMigrations), typeof(StartLogIndex)])]
-public class InitDatabaseSnapshot(INethermindApi api) : IStep
+public class InitDatabaseSnapshot(
+    INethermindApi api,
+    [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives) : IStep
 {
     private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
@@ -74,7 +78,7 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
 
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        using SnapshotDownloader downloader = new(api.LogManager, api.TimerFactory);
+        using SnapshotDownloader downloader = new(api.LogManager);
         await DownloadWithRetryAsync(downloader, snapshotUrl, snapshotPath, checkpoint, cancellationToken).ConfigureAwait(false);
 
         bool checksumPassed = await VerifyChecksumAsync(snapshotPath, snapshotConfig, checkpoint, cancellationToken).ConfigureAwait(false);
@@ -106,6 +110,7 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
             return;
 
         TimeSpan retryDelay = TimeSpan.FromSeconds(InitialRetryDelaySeconds);
+        long lastSize = GetFileSize(destinationPath);
 
         while (true)
         {
@@ -125,6 +130,11 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
             }
             catch (Exception e) when (e is IOException or HttpRequestException)
             {
+                long currentSize = GetFileSize(destinationPath);
+                if (currentSize > lastSize)
+                    retryDelay = TimeSpan.FromSeconds(InitialRetryDelaySeconds);
+                lastSize = currentSize;
+
                 if (_logger.IsError)
                     _logger.Error($"Snapshot download failed. Retrying in {retryDelay.TotalSeconds}s. Error: {e}");
                 await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
@@ -133,6 +143,12 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
         }
 
         checkpoint.Advance(SnapshotStage.Downloaded);
+    }
+
+    private long GetFileSize(string path)
+    {
+        IFileInfo file = api.FileSystem.FileInfo.New(path);
+        return file.Exists ? file.Length : 0;
     }
 
     private async Task<bool> VerifyChecksumAsync(
@@ -175,22 +191,28 @@ public class InitDatabaseSnapshot(INethermindApi api) : IStep
         if (checkpoint.Read() >= SnapshotStage.Extracted)
             return;
 
-        CheckDiskSpace(dbPath, snapshotPath);
+        CheckDiskSpace(snapshotPath);
 
         SnapshotExtractor extractor = new(api.LogManager);
         await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
         checkpoint.Advance(SnapshotStage.Extracted);
     }
 
-    private static void CheckDiskSpace(string dbPath, string snapshotPath)
+    private void CheckDiskSpace(string snapshotPath)
     {
-        long snapshotSize = new FileInfo(snapshotPath).Length;
-        string root = Path.GetPathRoot(dbPath) ?? "/";
-        DriveInfo drive = new(root);
+        if (drives.Length == 0)
+            return;
 
-        // May still underestimate for highly compressed archives.
-        if (drive.AvailableFreeSpace < snapshotSize * 2)
-            throw new IOException($"Insufficient disk space to extract snapshot: need at least {snapshotSize * 2} bytes, {drive.AvailableFreeSpace} available on '{root}'.");
+        long snapshotSize = api.FileSystem.FileInfo.New(snapshotPath).Length;
+        long required = (long)(snapshotSize * 2.5);
+
+        foreach (IDriveInfo drive in drives)
+        {
+            if (drive.AvailableFreeSpace < required)
+                throw new IOException(
+                    $"Insufficient disk space on '{drive.RootDirectory.FullName}' to extract snapshot: " +
+                    $"need at least {required} bytes, {drive.AvailableFreeSpace} available.");
+        }
     }
 
     private async Task<byte[]> ComputeChecksumAsync(string filePath, CancellationToken cancellationToken)

@@ -5,6 +5,7 @@ namespace Nethermind.Synchronization;
 
 public interface ISyncPointers
 {
-    long? LowestInsertedBodyNumber { get; set; }
-    long? LowestInsertedReceiptBlockNumber { get; set; }
+    ulong? LowestInsertedBodyNumber { get; set; }
+    ulong? LowestInsertedReceiptBlockNumber { get; set; }
+    ulong? LowestInsertedBlockAccessListBlockNumber { get; set; }
 }

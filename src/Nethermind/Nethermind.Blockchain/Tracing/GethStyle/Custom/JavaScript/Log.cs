@@ -22,15 +22,15 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public Contract contract { get; set; }
         public long pc { get; set; }
 
-        public long gas { get; set; }
-        public long? gasCost { get; set; }
+        public ulong gas { get; set; }
+        public ulong? gasCost { get; set; }
         public int depth { get; set; }
         public long refund { get; set; }
         public string? error { get; set; }
 
         public ulong getPC() => (ulong)pc;
-        public ulong getGas() => (ulong)gas;
-        public ulong getCost() => (ulong)(gasCost ?? 0);
+        public ulong getGas() => gas;
+        public ulong getCost() => gasCost ?? 0;
         public int getDepth() => depth;
         public ulong getRefund() => (ulong)refund;
         public dynamic getError() => !string.IsNullOrEmpty(error) ? error : Undefined.Value;
@@ -85,8 +85,8 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             private IJavaScriptObject? _valueConverted;
             public Address Caller { get; } = caller;
 
-            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToTypedScriptArray();
-            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToTypedScriptArray();
+            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToArray().ToTypedScriptArray();
+            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToArray().ToTypedScriptArray();
             public object getInput() => (_inputConverted ??= _input?.ToArray().ToTypedScriptArray()) ?? (object)Undefined.Value;
 
             public IJavaScriptObject getValue() => _valueConverted ??= _value.ToBigInteger();

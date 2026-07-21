@@ -9,9 +9,11 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -36,9 +38,9 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
         private readonly INetworkConfig _networkConfig;
         private readonly IRlpxHost _rlpxHost;
+        private readonly IEnode _enode;
         private readonly INodeStatsManager _stats;
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
-        private readonly PeerComparer _peerComparer = new();
         private Task? _peerUpdateLoopTask;
         private readonly IPeerPool _peerPool;
         private readonly Lock _sessionLock = new();
@@ -63,27 +65,23 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly int _outgoingConnectParallelism;
         private readonly EventHandler<EventArgs> _onHandshakeComplete;
-        private readonly EventHandler<DisconnectEventArgs> _onDisconnected;
+        private readonly SessionDisconnectedEventHandler _onSessionDisconnected;
 
         public PeerManager(
             IRlpxHost rlpxHost,
             IPeerPool peerPool,
             INodeStatsManager stats,
             INetworkConfig networkConfig,
+            IEnode enode,
             ILogManager logManager)
         {
-            ArgumentNullException.ThrowIfNull(rlpxHost);
-            ArgumentNullException.ThrowIfNull(peerPool);
-            ArgumentNullException.ThrowIfNull(stats);
-            ArgumentNullException.ThrowIfNull(networkConfig);
-            ArgumentNullException.ThrowIfNull(logManager);
-
             _logger = logManager.GetClassLogger<PeerManager>();
             _rlpxHost = rlpxHost;
+            _enode = enode;
             _stats = stats;
             _networkConfig = networkConfig;
             _onHandshakeComplete = OnHandshakeComplete;
-            _onDisconnected = OnDisconnected;
+            _onSessionDisconnected = OnDisconnected;
             _outgoingConnectParallelism = networkConfig.NumConcurrentOutgoingConnects;
             if (_outgoingConnectParallelism == 0)
             {
@@ -95,13 +93,13 @@ namespace Nethermind.Network
             _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);
         }
 
-        public IReadOnlyCollection<Peer> ActivePeers => _peerPool.ActivePeers.Values.ToList();
-        public IReadOnlyCollection<Peer> CandidatePeers => _peerPool.Peers.Values.ToList();
-        public IReadOnlyCollection<Peer> ConnectedPeers => _peerPool.ActivePeers.Values.Where(IsConnected).ToList();
+        public IReadOnlyCollection<Peer> ActivePeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).ToList();
+        public IReadOnlyCollection<Peer> CandidatePeers => _peerPool.Peers.Select(static kvp => kvp.Value).ToList();
+        public IReadOnlyCollection<Peer> ConnectedPeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).Where(IsConnected).ToList();
 
-        public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount;
+        public int MaxActivePeers => _networkConfig.MaxActivePeers;
         public int ActivePeersCount => _peerPool.ActivePeerCount;
-        public int ConnectedPeersCount => _peerPool.ActivePeers.Values.Count(IsConnected);
+        public int ConnectedPeersCount => _peerPool.ActivePeers.Count(static kvp => IsConnected(kvp.Value));
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
 
         /// <summary>
@@ -125,6 +123,7 @@ namespace Nethermind.Network
         {
             Peer peer = nodeEventArgs.Peer;
             int newPeerPoolLength = _peerPool.PeerCount;
+            Metrics.PeerCandidateCount = newPeerPoolLength;
             int currentMaxPeerPoolLength = Volatile.Read(ref _maxPeerPoolLength);
             while (newPeerPoolLength > currentMaxPeerPoolLength + 100)
             {
@@ -181,6 +180,7 @@ namespace Nethermind.Network
                 _peerPool.PeerAdded += PeerPoolOnPeerAdded;
                 _peerPool.PeerRemoved += PeerPoolOnPeerRemoved;
                 _rlpxHost.SessionCreated += RlpxHostOnSessionCreated;
+                _rlpxHost.SessionDisconnected += _onSessionDisconnected;
             }
 
             StartPeerUpdateLoop();
@@ -218,9 +218,10 @@ namespace Nethermind.Network
                 _peerPool.PeerAdded -= PeerPoolOnPeerAdded;
                 _peerPool.PeerRemoved -= PeerPoolOnPeerRemoved;
                 _rlpxHost.SessionCreated -= RlpxHostOnSessionCreated;
-                foreach (ISession session in _sessions.Values)
+                _rlpxHost.SessionDisconnected -= _onSessionDisconnected;
+                foreach (KeyValuePair<Guid, ISession> kvp in _sessions)
                 {
-                    ToggleSessionEventListeners(session, false);
+                    ToggleSessionEventListeners(kvp.Value, false);
                 }
 
                 _sessions.Clear();
@@ -249,10 +250,10 @@ namespace Nethermind.Network
 
         private class CandidateSelection
         {
-            public List<Peer> PreCandidates { get; } = new();
-            public List<Peer> Candidates { get; } = new();
-            public List<Peer> Incompatible { get; } = new();
-            public Dictionary<string, int> Counters { get; } = new();
+            public List<Peer> PreCandidates { get; } = [];
+            public List<Peer> Candidates { get; } = [];
+            public List<Peer> Incompatible { get; } = [];
+            public Dictionary<string, int> Counters { get; } = [];
         }
 
         private readonly CandidateSelection _currentSelection = new();
@@ -397,7 +398,7 @@ namespace Nethermind.Network
             void TraceActivePeers()
             {
                 string nl = Environment.NewLine;
-                _logger.Trace($"{nl}{nl}All active peers: {nl} {string.Join(nl, _peerPool.ActivePeers.Values.Select(x => $"{x.Node:s} | P2P: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.Eth62Initialized)} | {_stats.GetOrAdd(x.Node).P2PNodeDetails?.ClientId} | {_stats.GetOrAdd(x.Node)}"))} {nl}{nl}");
+                _logger.Trace($"{nl}{nl}All active peers: {nl} {string.Join(nl, _peerPool.ActivePeers.Select(static kvp => kvp.Value).Select(x => $"{x.Node:s} | P2P: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.Eth62Initialized)} | {_stats.GetOrAdd(x.Node).P2PNodeDetails?.ClientId} | {_stats.GetOrAdd(x.Node)}"))} {nl}{nl}");
             }
         }
 
@@ -605,7 +606,7 @@ namespace Nethermind.Network
                 node.CurrentReputation = peer.Stats.CurrentNodeReputation(nowUTC);
             }
 
-            _currentSelection.Candidates.Sort(_peerComparer);
+            CollectionsMarshal.AsSpan(_currentSelection.Candidates).Sort(default(PeerComparer));
 
             foreach (KeyValuePair<string, int> currentSelectionCounter in _currentSelection.Counters)
             {
@@ -694,7 +695,7 @@ namespace Nethermind.Network
                 int failedValidationCandidatesCount = 0;
                 foreach ((PublicKey key, Peer peer) in _peerPool.Peers)
                 {
-                    if (!peer.Node.IsStatic)
+                    if (!peer.Node.IsStatic && !peer.Node.IsTrusted)
                     {
                         bool hasFailedValidation = _stats.HasFailedValidation(peer.Node);
                         if (hasFailedValidation)
@@ -713,7 +714,7 @@ namespace Nethermind.Network
                     }
                 }
 
-                _candidates.Sort(static (x, y) => PeerStatsComparer.Instance.Compare(x, y));
+                CollectionsMarshal.AsSpan(_candidates).Sort(default(PeerStatsComparer));
 
                 int countToRemove = _candidates.Count - _networkConfig.MaxCandidatePeerCount;
                 if (countToRemove > 0)
@@ -755,10 +756,9 @@ namespace Nethermind.Network
             public long CurrentReputation { get; } = currentReputation;
         }
 
-        private class PeerStatsComparer : IComparer<PeerStats>
+        private readonly struct PeerStatsComparer : IComparer<PeerStats>
         {
-            public static readonly PeerStatsComparer Instance = new();
-
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public int Compare(PeerStats x, PeerStats y)
             {
                 int failedValidationCompare = y.FailedValidation.CompareTo(x.FailedValidation);
@@ -881,12 +881,23 @@ namespace Nethermind.Network
                 => _logger.Trace($"PROCESS OUTGOING {id}");
         }
 
+        public void OnP2PProtocolInitialized(ISession session)
+        {
+            // The margin-admitted overflow is shed here, now that the P2P protocol can carry a proper
+            // disconnect message. Static and trusted peers are must-keep and exempt from the capacity cap.
+            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount > MaxActivePeers)
+            {
+                session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{ActivePeersCount}");
+            }
+        }
+
         private void ProcessIncomingConnection(ISession session)
         {
             if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
             {
                 // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
                 session.Node.IsStatic = existingPeer.Node.IsStatic;
+                session.Node.IsTrusted = existingPeer.Node.IsTrusted;
             }
 
             if (_logger.IsTrace) TraceProcessingIncoming();
@@ -898,7 +909,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            if (!session.Node.IsStatic && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
+            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
             {
                 if (_logger.IsTrace) TraceHardLimitDisconnect();
                 session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");
@@ -1026,7 +1037,7 @@ namespace Nethermind.Network
         private ConnectionDirection ChooseDirectionToKeep(PublicKey remoteNode)
         {
             if (_logger.IsTrace) TraceChoosingDirection();
-            byte[] localKey = _rlpxHost.LocalNodeId.Bytes;
+            byte[] localKey = _enode.PublicKey.Bytes;
             byte[] remoteKey = remoteNode.Bytes;
             for (int i = 0; i < remoteNode.Bytes.Length; i++)
             {
@@ -1075,14 +1086,17 @@ namespace Nethermind.Network
 
         private void AttachSession(Peer peer, ISession session, ConnectionDirection sessionDirection, bool disconnectOpposite)
         {
-            if (sessionDirection == ConnectionDirection.In)
+            lock (peer.SessionLock)
             {
-                peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
-                peer.InSession = session;
-            }
-            else
-            {
-                peer.OutSession = session;
+                if (sessionDirection == ConnectionDirection.In)
+                {
+                    peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
+                    peer.InSession = session;
+                }
+                else
+                {
+                    peer.OutSession = session;
+                }
             }
 
             if (disconnectOpposite)
@@ -1110,7 +1124,9 @@ namespace Nethermind.Network
         }
 
         private static bool HasOpenSession(ISession? session)
-            => !(session?.IsClosing ?? true);
+            => session is not null
+               && !session.IsClosing
+               && !session.IsChannelClosed;
 
         private void ResolveOppositeDirectionSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
         {
@@ -1136,9 +1152,8 @@ namespace Nethermind.Network
         private static bool IsConnected(Peer peer)
             => HasOpenSession(peer.InSession) || HasOpenSession(peer.OutSession);
 
-        private void OnDisconnected(object sender, DisconnectEventArgs e)
+        private void OnDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
-            ISession session = (ISession)sender;
             lock (_sessionLock)
             {
                 ToggleSessionEventListeners(session, false);
@@ -1203,12 +1218,10 @@ namespace Nethermind.Network
             if (shouldListen)
             {
                 session.HandshakeComplete += _onHandshakeComplete;
-                session.Disconnected += _onDisconnected;
             }
             else
             {
                 session.HandshakeComplete -= _onHandshakeComplete;
-                session.Disconnected -= _onDisconnected;
             }
         }
 

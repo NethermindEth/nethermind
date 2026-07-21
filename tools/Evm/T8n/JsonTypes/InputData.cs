@@ -19,21 +19,22 @@ public class InputData
     public TransactionMetaData[]? TransactionMetaDataList { get; set; }
     public string? TxRlp { get; set; }
 
-    public Transaction[] GetTransactions(TxDecoder decoder, ulong chainId)
+    public Transaction[] GetTransactions(IRlpDecoder<Transaction> decoder, ulong chainId)
     {
-        List<Transaction> transactions = [];
         if (TxRlp is not null)
         {
-            Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(TxRlp));
-            transactions = decoder.DecodeArray(ref ctx).ToList();
+            RlpReader ctx = new(Bytes.FromHexString(TxRlp));
+            return decoder.DecodeArray(ref ctx);
         }
-        else if (Txs is not null && TransactionMetaDataList is not null)
+
+        List<Transaction> transactions = [];
+        if (Txs is not null && TransactionMetaDataList is not null)
         {
-            var ecdsa = new EthereumEcdsa(chainId);
+            EthereumEcdsa ecdsa = new(chainId);
 
             for (int i = 0; i < Txs.Length; i++)
             {
-                var transaction = (Transaction)Txs[i].ToTransaction();
+                Transaction transaction = (Transaction)Txs[i].ToTransaction();
                 transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
 
                 SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc)Txs[i]);
@@ -53,7 +54,7 @@ public class InputData
     {
         if (transactionMetaData.SecretKey is not null)
         {
-            var privateKey = new PrivateKey(transactionMetaData.SecretKey);
+            PrivateKey privateKey = new(transactionMetaData.SecretKey);
             transaction.SenderAddress = privateKey.Address;
 
             EthereumEcdsa ecdsa = new(transaction.ChainId ?? TestBlockchainIds.ChainId);

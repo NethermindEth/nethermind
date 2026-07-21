@@ -24,15 +24,14 @@ public class Witness : IDisposable
         State.Dispose();
         Keys.Dispose();
         Headers.Dispose();
-
-        GC.SuppressFinalize(this);
     }
 }
 
 public static class WitnessExtensions
 {
-    private static readonly IRlpValueDecoder<BlockHeader> _decoder =
-        Rlp.GetValueDecoder<BlockHeader>() ?? new HeaderDecoder();
+    // Resolved per use, not cached at static-init: a consensus plugin (e.g. AuRa) may register its
+    // header decoder after this type is first touched, and caching would pin the base decoder.
+    private static IRlpDecoder<BlockHeader> Decoder => Rlp.GetDecoderOrThrow<BlockHeader>();
 
     extension(Witness witness)
     {
@@ -63,17 +62,40 @@ public static class WitnessExtensions
         public ArrayPoolList<BlockHeader> DecodeHeaders()
         {
             IOwnedReadOnlyList<byte[]> headers = witness.Headers;
-            ArrayPoolList<BlockHeader> decodedHeaders = new(headers.Count, headers.Count);
+            ReadOnlySpan<byte[]> headersSpan = headers.AsSpan();
+            ArrayPoolList<BlockHeader> decodedHeaders = new(headersSpan.Length, headersSpan.Length);
 
-            for (int i = 0; i < headers.Count; i++)
+            // Witness headers must form a contiguous chain: each header's parent hash must equal the
+            // hash (keccak of the RLP) of the preceding header. Linkage is by parent hash, not a
+            // block-number comparison (that check lives in the header validator), though a well-formed
+            // chain is thereby ordered by ascending block number. This mirrors the stateless verifier's
+            // rule in EELS (validate_headers) and rejects witnesses whose headers were reordered or are
+            // otherwise non-contiguous. The previous header's hash is carried across iterations so each
+            // keccak is computed once.
+            try
             {
-                Rlp.ValueDecoderContext stream = new(headers[i]);
+                ValueHash256 previousHeaderHash = default;
 
-                decodedHeaders[i] = _decoder.Decode(ref stream)
-                    ?? throw new InvalidOperationException($"No header decoded at index {i}");
+                for (int i = 0; i < headersSpan.Length; i++)
+                {
+                    RlpReader reader = new(headersSpan[i]);
+
+                    decodedHeaders[i] = Decoder.Decode(ref reader)
+                        ?? throw new InvalidOperationException($"No header decoded at index {i}");
+
+                    if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
+                        throw new InvalidOperationException("Witness headers are not contiguous");
+
+                    previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                }
+
+                return decodedHeaders;
             }
-
-            return decodedHeaders;
+            catch
+            {
+                decodedHeaders.Dispose();
+                throw;
+            }
         }
     }
 }

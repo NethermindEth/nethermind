@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -13,7 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
     [RpcModule(ModuleType.Proof)]
     public interface IProofRpcModule : IRpcModule
     {
-        [JsonRpcMethod(IsImplemented = false, Description = "Executes a call against the state at the given block (analogous to `eth_call`) and returns the call output, Merkle-Patricia proofs for every account and storage slot accessed during execution, and RLP-encoded block headers — always including the header at `blockParameter` plus headers for any additional blocks whose hashes were read via the `BLOCKHASH` opcode during the call.", IsSharable = false)]
+        [JsonRpcMethod(IsImplemented = true, Description = "Executes a call against the state at the given block (analogous to `eth_call`) and returns the call output together with the execution witness — flat lists of state-trie node RLP, loaded contract bytecode, accessed keys, and RLP-encoded block headers emitted in ascending block-number order (any block whose hash was read via the `BLOCKHASH` opcode comes first, and the executed-against header is always the last entry). The witness is sufficient for a stateless verifier to independently re-execute the call.", IsSharable = true)]
         ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true,
@@ -28,5 +30,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ExampleResponse = "{\"receipt\":{\"transactionHash\":\"0xfff473e0d10e9dcc18bb4585fb2ba17f682949996f5dfda41c20c425a53b4e71\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x539822db4041dac07f02819b1337f5f9d7291a996f80d9c05ada334c7a97264c\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x0\",\"gasUsed\":\"0x0\",\"to\":null,\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a073ff16e6f3a3ca20ba99ad5bacc973e800ba7ec7092266fcd2520703613e3d9580808080808080a0a70de17dcf5a91c1b986463b4e8419665333b2a66e66f7127baae3d4d58d052d8080808080808080\",\"0xf86530b862f86080018252089400000000000000000000000000000000000000000181801ca0b4e030f395ed357d206b58d9a0ded408589a9e26f1a5b41010772cd0d84b8d16a04d9797a972bc308ea635f22455881c41c7c9fb946c93db6f99d2bd529675af13\"],\"receiptProof\":[\"0xf851a08e4cd3def722e9727e505d3798454165d832e1aabd5c56e5d0e4e9f0796a783280808080808080a05380738598f169c9e407a0f61558e53ea59a4c5e643aabc57679c7c0a3b761428080808080808080\",\"0xf9012f30b9012bf90128a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421825208b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"],\"blockHeader\":\"0xf901f9a0b3157bcccab04639f6393042690a6c9862deebe88c781f911e8dfd265531e9ffa01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a0541c8844bd420f79a5f7f8db723e2106160d350043de7cf76d78ea13ed0ff6c9a0e1b1585a222beceb3887dc6701802facccf186c2d0f6aa69e26ae0c431fc2b5db9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000830f424001833d090080830f424183010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e28800000000000003e8\"}")]
 
         ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt([JsonRpcParameter(ExampleValue = "[\"0xfff473e0d10e9dcc18bb4585fb2ba17f682949996f5dfda41c20c425a53b4e71\", \"true\"]")] Hash256 txHash, bool includeHeader);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns the same payload as `eth_getProof` plus per-call diagnostics: `nodeLookups` (total trie-node fetches), `cacheHits` (of those, served from the in-process trie store cache), and `maxDepth` (deepest level reached in the account or any storage trie, in nibbles). Useful as a client-agnostic proxy for the work an EL does to serve a proof. The `proof` field has the same shape and content as `eth_getProof`'s result; duplicate `storageKeys` are deduplicated, matching the existing `eth_getProof` behaviour.",
+            IsSharable = false,
+            ExampleResponse = "{\"proof\":{\"address\":\"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\",\"balance\":\"0x18232098799834c9a9e2b\",\"codeHash\":\"0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23\",\"nonce\":\"0x1\",\"storageHash\":\"0x...\",\"accountProof\":[\"0x...\"],\"storageProof\":[]},\"meta\":{\"nodeLookups\":\"0x6e\",\"cacheHits\":\"0x6e\",\"maxDepth\":8}}")]
+        ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(
+            [JsonRpcParameter(ExampleValue = "\"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2\"")] Address accountAddress,
+            [JsonRpcParameter(ExampleValue = "[]", Description = "Storage keys to include in the proof; duplicates are deduplicated.")] StorageKeys storageKeys,
+            [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter? blockParameter);
     }
 }

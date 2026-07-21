@@ -7,7 +7,6 @@ using System.Linq;
 using System.Numerics;
 using CkzgLib;
 using FastEnumUtility;
-using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,8 +39,8 @@ public class TxValidatorTests
         SecP256k1Curve.N.Convert(out BigInteger n);
         SecP256k1Curve.HalfN.Convert(out BigInteger halfN);
 
-        (N == n).Should().BeTrue();
-        (HalfN == halfN).Should().BeTrue();
+        Assert.That((N == n), Is.True);
+        Assert.That((HalfN == halfN), Is.True);
     }
 
     private static IEnumerable<TestCaseData> ZeroSignatureComponentCases()
@@ -63,7 +62,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
+        Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.False);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -93,7 +92,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
+        Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -107,7 +106,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
+        Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -121,7 +120,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
+        Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.True);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -141,7 +140,7 @@ public class TxValidatorTests
         releaseSpec.ValidateChainId.Returns(validateChainId);
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, releaseSpec).AsBool().Should().Be(!validateChainId);
+        Assert.That(txValidator.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(!validateChainId));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -281,7 +280,7 @@ public class TxValidatorTests
             .WithData(initCode).TestObject;
 
         TxValidator txValidator = new(1);
-        txValidator.IsWellFormed(tx, releaseSpec).AsBool().Should().Be(expectedResult);
+        Assert.That(txValidator.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedResult));
     }
 
     //leading zeros in AccessList - expected to pass (real mainnet tx)
@@ -580,6 +579,29 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip7825Constants.DefaultTxGasLimitCap)));
+            Assert.That(result.IsIntrinsicGasError, Is.False);
+        }
+    }
+
+    [Test]
+    public void IsWellFormed_Eip8037FloorGasExceedingRegularCap_ReturnsFalse()
+    {
+        byte[] data = new byte[262_000];
+        Array.Fill(data, (byte)0xff);
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(20_000_000)
+            .WithData(data)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+            Assert.That(result.IsIntrinsicGasError, Is.True);
         }
     }
 
@@ -635,37 +657,37 @@ public class TxValidatorTests
             yield return new TestCaseData(MakeArray(0)) { TestName = "Empty hash", ExpectedResult = false };
             yield return new TestCaseData(MakeArray(1, 1))
             {
-                TestName = "Correct version, incorrect length",
+                TestName = "Correct version, one byte",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(31, 1))
             {
-                TestName = "Correct version, incorrect length",
+                TestName = "Correct version, short length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(33, 1))
             {
-                TestName = "Correct version, incorrect length",
+                TestName = "Correct version, long length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, 0))
             {
-                TestName = "Incorrect version, correct length",
+                TestName = "Zero version, correct length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 - 1))
             {
-                TestName = "Incorrect version, correct length",
+                TestName = "Lower version, correct length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 + 1))
             {
-                TestName = "Incorrect version, correct length",
+                TestName = "Higher version, correct length",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1))
             {
-                TestName = "Correct version, correct length",
+                TestName = "Correct version, correct length with zero payload",
                 ExpectedResult = true
             };
         }
@@ -677,7 +699,7 @@ public class TxValidatorTests
         {
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1, 0))
             {
-                TestName = "Correct version, correct length",
+                TestName = "Correct version, correct length with explicit zero",
                 ExpectedResult = true
             };
         }
@@ -727,38 +749,38 @@ public class TxValidatorTests
             yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount - 1)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Less than maximum BlobVersionedHashes",
+                TestName = "Cancun less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
             yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Maximum BlobVersionedHashes",
+                TestName = "Cancun maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
             yield return new TestCaseData(Cancun.Instance, MakeTestObject((int)Cancun.Instance.MaxBlobCount + 1)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Too many BlobVersionedHashes",
+                TestName = "Cancun too many BlobVersionedHashes",
                 ExpectedResult = false
             };
 
             yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount - 1)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Less than maximum BlobVersionedHashes",
+                TestName = "Prague less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
             yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Maximum BlobVersionedHashes",
+                TestName = "Prague maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
             yield return new TestCaseData(Prague.Instance, MakeTestObject((int)Prague.Instance.MaxBlobCount + 1)
                 .SignedAndResolved().TestObject)
             {
-                TestName = "Too many BlobVersionedHashes",
+                TestName = "Prague too many BlobVersionedHashes",
                 ExpectedResult = false
             };
 

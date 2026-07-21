@@ -47,19 +47,13 @@ public class Bytes32 : IEquatable<Bytes32>
 
     public ReadOnlySpan<byte> AsSpan() => new(_bytes);
 
-    public static bool operator ==(Bytes32 left, Bytes32 right)
-    {
-        return left.Equals(right);
-    }
+    public static bool operator ==(Bytes32 left, Bytes32 right) => left.Equals(right);
 
     public static explicit operator Bytes32(ReadOnlySpan<byte> span) => new(span);
 
     public static explicit operator ReadOnlySpan<byte>(Bytes32 value) => value.AsSpan();
 
-    public static bool operator !=(Bytes32 left, Bytes32 right)
-    {
-        return !(left == right);
-    }
+    public static bool operator !=(Bytes32 left, Bytes32 right) => !(left == right);
 
     public override string ToString() => _bytes.ToHexString(true);
 

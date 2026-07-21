@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade;
-using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using Nethermind.JsonRpc.Modules.Eth;
 
@@ -25,15 +24,15 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         if (GetBlockNumber(logFilter.ToBlock) is not { } to)
             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
 
-        return ResultWrapper<IEnumerable<long>>.Success(storage.EnumerateBlockNumbersFor(logFilter, from, to));
+        return ResultWrapper<IEnumerable<long>>.Success(storage.EnumerateBlockNumbersFor(logFilter, (ulong)from, (ulong)to));
     }
 
     public ResultWrapper<LogIndexStatus> logIndex_status() => ResultWrapper<LogIndexStatus>.Success(new()
     {
         Current = new()
         {
-            FromBlock = storage.MinBlockNumber,
-            ToBlock = storage.MaxBlockNumber
+            FromBlock = (ulong?)storage.MinBlockNumber,
+            ToBlock = (ulong?)storage.MaxBlockNumber
         },
         Target = new()
         {
@@ -47,5 +46,5 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
     });
 
     private long? GetBlockNumber(BlockParameter parameter) =>
-        parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number;
+        (long?)(parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number);
 }

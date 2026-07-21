@@ -22,10 +22,10 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             if (newState == SyncFeedState.Active)
             {
-                _taskCompletionSource ??= new TaskCompletionSource();
+                _taskCompletionSource ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             }
 
-            if (CurrentState == SyncFeedState.Finished && newState == SyncFeedState.Finished)
+            if (CurrentState == newState)
             {
                 return;
             }

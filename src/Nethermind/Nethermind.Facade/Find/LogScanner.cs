@@ -3,11 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Facade.Filters;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Facade.Find
@@ -18,19 +18,14 @@ namespace Nethermind.Facade.Find
         private const int LogScanCutoffChunks = 128;
         private readonly ILogger _logger = logManager.GetClassLogger(typeof(LogScanner<>));
 
-        public IEnumerable<T> ScanLogs(long headBlockNumber, Predicate<T> shouldStopScanning)
+        public IEnumerable<T> ScanLogs(ulong headBlockNumber, Predicate<T> shouldStopScanning)
         {
             BlockParameter end = new(headBlockNumber);
 
             for (int i = 0; i < LogScanCutoffChunks; i++)
             {
-                bool atGenesis = false;
-                long startBlockNumber = end.BlockNumber!.Value - LogScanChunkSize;
-                if (startBlockNumber < 0)
-                {
-                    atGenesis = true;
-                    startBlockNumber = 0;
-                }
+                ulong startBlockNumber = end.BlockNumber!.Value.SaturatingSub((ulong)LogScanChunkSize);
+                bool atGenesis = end.BlockNumber!.Value <= LogScanChunkSize;
 
                 BlockParameter start = new(startBlockNumber);
                 LogFilter logFilter = new(0, start, end, addressFilter, topicsFilter);
@@ -61,7 +56,7 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        public IEnumerable<T> ScanReceipts(long blockNumber, TxReceipt[] receipts)
+        public IEnumerable<T> ScanReceipts(ulong blockNumber, TxReceipt[] receipts)
         {
             int count = 0;
 

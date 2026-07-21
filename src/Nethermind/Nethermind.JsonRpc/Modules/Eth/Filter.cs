@@ -31,9 +31,9 @@ public class Filter : IJsonRpcParam
             if (filter.ValueKind == JsonValueKind.String)
             {
                 string filterString = filter.GetString()!;
-                if (filterString.Length > 1_000_000)
+                if (filterString.Length > JsonRpcLimits.MaxJsonStringArgLength)
                 {
-                    throw new ArgumentException($"filter string length {filterString.Length} exceeds maximum allowed length of 1000000");
+                    throw new ArgumentException($"filter string length {filterString.Length} exceeds maximum allowed length of {JsonRpcLimits.MaxJsonStringArgLength}");
                 }
 
                 doc = JsonDocument.Parse(filterString);
@@ -120,22 +120,25 @@ public class Filter : IJsonRpcParam
         }
     }
 
-    private static IEnumerable<Hash256[]?>? GetTopics(JsonElement? array, JsonSerializerOptions options)
+    private static Hash256[]?[]? GetTopics(JsonElement? array, JsonSerializerOptions options)
     {
         if (array is null)
         {
-            yield break;
+            return null;
         }
 
+        int topicSlotCount = array.Value.GetArrayLength();
+        Hash256[]?[] topics = new Hash256[]?[topicSlotCount];
+        int slotIndex = 0;
         foreach (JsonElement token in array.Value.EnumerateArray())
         {
             switch (token.ValueKind)
             {
                 case JsonValueKind.Undefined or JsonValueKind.Null:
-                    yield return null;
+                    topics[slotIndex++] = null;
                     break;
                 case JsonValueKind.String:
-                    yield return [new Hash256(token.GetString()!)];
+                    topics[slotIndex++] = [new Hash256(token.GetString()!)];
                     break;
                 case JsonValueKind.Array:
                     int topicCount = token.GetArrayLength();
@@ -151,11 +154,13 @@ public class Filter : IJsonRpcParam
                         result[i++] = new Hash256(element.ToString());
                     }
 
-                    yield return result;
+                    topics[slotIndex++] = result;
                     break;
                 default:
                     throw new ArgumentException("invalid topics field");
             }
         }
+
+        return topics;
     }
 }

@@ -7,14 +7,15 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Logging;
@@ -27,11 +28,11 @@ namespace Nethermind.Runner.Test.Module;
 public class NetworkModuleTest
 {
     /// <summary>
-    /// Protocol handlers are IDisposable transients resolved via Autofac Func factories — one
+    /// Protocol handlers are IDisposable transients created by protocol handler factories — one
     /// per peer connection. Their lifetime is owned by Session.Dispose(), not the container.
-    /// If the container tracks them (missing ExternallyOwned), they accumulate on Autofac's
-    /// internal dispose stack for the application lifetime, leaking memory proportional to
-    /// peer churn.
+    /// If handler creation routes through a tracked container registration, they accumulate
+    /// on Autofac's internal dispose stack for the application lifetime, leaking memory
+    /// proportional to peer churn.
     ///
     /// This test resolves every registered handler factory, creates a handler, disposes it,
     /// and verifies the GC can collect it — proving the container does not retain a reference.
@@ -46,7 +47,7 @@ public class NetworkModuleTest
             .Build();
 
         IReadOnlyList<IProtocolHandlerFactory> factories = container.Resolve<IReadOnlyList<IProtocolHandlerFactory>>();
-        factories.Should().NotBeEmpty("at least one protocol handler factory should be registered");
+        Assert.That(factories, Is.Not.Empty, "at least one protocol handler factory should be registered");
 
         foreach (IProtocolHandlerFactory handlerFactory in factories)
         {
@@ -56,7 +57,9 @@ public class NetworkModuleTest
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            weakRef.IsAlive.Should().BeFalse(
+            Assert.That(
+                weakRef.IsAlive,
+                Is.False,
                 $"{handlerFactory.ProtocolCode} handler must not be retained by the container after Dispose");
         }
     }
@@ -102,9 +105,30 @@ public class NetworkModuleTest
                 Console.Out.WriteLine($".AddMessageSerializer<{MessageType}, {SerializerTypeInAssembly}>()");
                 continue;
             }
-            // serializersInContainer.TryGetValue(MessageType, out var serializer).Should().BeTrue();
-            serializer.Should().BeOfType(SerializerTypeInAssembly);
+            Assert.That(serializer, Is.TypeOf(SerializerTypeInAssembly));
         }
+    }
+
+    [Test]
+    public void Registers_eth71_protocol_handler_factory()
+    {
+        using IContainer cont = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .Build();
+
+        ISession session = Substitute.For<ISession>();
+
+        IProtocolHandler handler = cont.Resolve<IProtocolHandlerFactory[]>()
+            .Where(static factory => factory.ProtocolCode == Protocol.Eth)
+            .Select(factory =>
+            {
+                factory.TryCreate(session, EthVersions.Eth71, out IProtocolHandler createdHandler);
+                return createdHandler;
+            })
+            .FirstOrDefault(static handler => handler is Eth71ProtocolHandler);
+
+        Assert.That(handler, Is.TypeOf<Eth71ProtocolHandler>());
+        handler?.Dispose();
     }
 
     private IEnumerable<(Type MessageType, Type SerializerType)> FindSerializersInAssembly(Assembly assembly)
@@ -139,4 +163,5 @@ public class NetworkModuleTest
             }
         }
     }
+
 }

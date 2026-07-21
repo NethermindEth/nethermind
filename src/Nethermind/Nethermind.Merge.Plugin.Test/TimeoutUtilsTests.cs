@@ -26,7 +26,7 @@ public class TimeoutUtilsTests
     public void TimeoutOn_already_completed_timeout_throws_TimeoutException()
     {
         using CancellationTokenSource cts = new();
-        TaskCompletionSource<int> neverCompletes = new();
+        TaskCompletionSource<int> neverCompletes = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Assert.ThrowsAsync<TimeoutException>(async () =>
             await neverCompletes.Task.TimeoutOn(Task.CompletedTask, cts));

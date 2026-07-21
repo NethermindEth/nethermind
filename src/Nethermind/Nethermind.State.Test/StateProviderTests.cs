@@ -5,14 +5,16 @@
 
 using System;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
+using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
@@ -92,7 +94,7 @@ public class StateProviderTests(bool useFlat)
         provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
         provider.Commit(releaseSpec);
 
-        provider.AccountExists(systemUser).Should().BeTrue();
+        Assert.That(provider.AccountExists(systemUser), Is.True);
     }
 
     [Test]
@@ -123,7 +125,7 @@ public class StateProviderTests(bool useFlat)
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         bool isEmpty = !provider.TryGetAccount(_address1, out AccountStruct account) || account.IsEmpty;
-        isEmpty.Should().BeTrue();
+        Assert.That(isEmpty, Is.True);
     }
 
     [Test]
@@ -133,7 +135,7 @@ public class StateProviderTests(bool useFlat)
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA)!;
-        code.Should().BeEmpty();
+        Assert.That(code, Is.Empty);
     }
 
     [Test]
@@ -195,23 +197,23 @@ public class StateProviderTests(bool useFlat)
         provider.IncrementNonce(_address1);
         provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance, false);
 
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 3));
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 2));
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 1));
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 0));
-        Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, -1));
@@ -250,9 +252,86 @@ public class StateProviderTests(bool useFlat)
             provider.CreateAccount(TestItem.AddressA, 5);
             provider.CommitTree(0);
 
-            action.Should().NotThrow<InvalidOperationException>();
+            Assert.That(action, Throws.Nothing);
         }
 
-        action.Should().Throw<InvalidOperationException>();
+        Assert.That(action, Throws.TypeOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void Same_code_can_be_redeployed_across_overlay_resets()
+    {
+        IContainer? containerToDispose = null;
+        IWorldStateManager manager;
+        if (useFlat)
+        {
+            (_, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider();
+            containerToDispose = container;
+            manager = container.Resolve<IWorldStateManager>();
+        }
+        else
+        {
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        }
+
+        try
+        {
+            using IOverridableWorldScope overridableScope = manager.CreateOverridableWorldScope();
+            IWorldState worldState = new WorldState(overridableScope.WorldState, LimboLogs.Instance);
+
+            byte[] code = [0x60, 0x60, 0x60, 0x40, 0x52, 0x00];
+            Address addr = TestItem.AddressA;
+            IReleaseSpec spec = Prague.Instance;
+
+            // First scope — deploy + commit. Commit triggers CommitCodeAsync which, before
+            // the fix, marked the shared filter on StateProvider as "persisted".
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(addr, 0);
+                worldState.InsertCode(addr, code, spec);
+                worldState.Commit(spec);
+
+                Assert.That(worldState.GetCode(addr), Is.EqualTo(code));
+            }
+
+            // End of scope #1 — overlay's temp KV is discarded.
+            overridableScope.ResetOverrides();
+
+            // Second scope — same hash, fresh overlay. Before the fix, InsertCode consulted
+            // the stale "persisted" filter, skipped the _codeBatch write, and the next
+            // GetCode threw "Code 0x… is missing from the database".
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(addr, 0);
+                worldState.InsertCode(addr, code, spec);
+
+                Action getCode = () => worldState.GetCode(addr);
+                Assert.That(getCode, Throws.Nothing);
+                Assert.That(worldState.GetCode(addr), Is.EqualTo(code));
+            }
+        }
+        finally
+        {
+            containerToDispose?.Dispose();
+        }
+    }
+}
+
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class CodeDbTests
+{
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    public void KeyValueWithBatchingBackedCodeDb_ContainsCode_respects_isPersistent_flag(bool isPersistent, bool expectedContains)
+    {
+        IKeyValueStoreWithBatching backing = new MemDb();
+        TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb codeDb = new(backing, isPersistent);
+        ValueHash256 hash = Keccak.Compute("any code").ValueHash256;
+
+        codeDb.MarkCodePersisted(hash);
+
+        Assert.That(codeDb.ContainsCode(hash), Is.EqualTo(expectedContains));
     }
 }

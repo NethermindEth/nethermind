@@ -1,13 +1,12 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -18,7 +17,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
     public async Task Dispatch(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (request.BodiesRequests.Count == 0 && request.ReceiptsRequests.Count == 0)
+        if (request.AllCounts == 0)
         {
             request.DownloadTask = Task.CompletedTask;
             return;
@@ -32,17 +31,33 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
     {
         if (request.BodiesRequests.Count > 0)
         {
-            using IOwnedReadOnlyList<Hash256> bodiesHash = request.BodiesRequests.Select(b => b.Hash)
-                .ToPooledList(request.BodiesRequests.Count);
+            using ArrayPoolList<Hash256> bodiesHash = BuildHashList(request.BodiesRequests);
             request.OwnedBodies = await peerInfo.SyncPeer.GetBlockBodies(bodiesHash, cancellationToken);
+        }
+
+        if (request.BlockAccessListsRequests.Count > 0 && peerInfo.SyncPeer.SupportsBlockAccessLists())
+        {
+            using ArrayPoolList<Hash256> blockAccessListsHash = BuildHashList(request.BlockAccessListsRequests);
+            request.BlockAccessLists = await peerInfo.SyncPeer.GetBlockAccessLists(blockAccessListsHash, cancellationToken);
         }
 
         if (request.ReceiptsRequests.Count > 0)
         {
-            using IOwnedReadOnlyList<Hash256> receiptsHash = request.ReceiptsRequests.Select(b => b.Hash)
-                .ToPooledList(request.ReceiptsRequests.Count);
+            using ArrayPoolList<Hash256> receiptsHash = BuildHashList(request.ReceiptsRequests);
             IOwnedReadOnlyList<TxReceipt[]?> ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, cancellationToken);
             request.Receipts = ownedReceipts;
         }
+    }
+
+    private static ArrayPoolList<Hash256> BuildHashList(IOwnedReadOnlyList<BlockHeader> headers)
+    {
+        ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+        ArrayPoolList<Hash256> hashes = new(headersSpan.Length);
+        for (int i = 0; i < headersSpan.Length; i++)
+        {
+            hashes.Add(headersSpan[i].Hash!);
+        }
+
+        return hashes;
     }
 }

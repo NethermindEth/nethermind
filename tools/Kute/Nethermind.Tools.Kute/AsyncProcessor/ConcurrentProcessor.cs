@@ -3,20 +3,15 @@
 
 namespace Nethermind.Tools.Kute.AsyncProcessor;
 
-public sealed class ConcurrentProcessor : IAsyncProcessor
+public sealed class ConcurrentProcessor(int maxDegreeOfParallelism) : IAsyncProcessor
 {
-    private readonly int _maxDegreeOfParallelism;
-
-    public ConcurrentProcessor(int maxDegreeOfParallelism)
-    {
-        _maxDegreeOfParallelism = maxDegreeOfParallelism;
-    }
+    private readonly int _maxDegreeOfParallelism = maxDegreeOfParallelism;
 
     public async Task Process<T>(IAsyncEnumerable<T> source, Func<T, Task> process, CancellationToken token = default)
     {
-        var tasks = new List<Task>();
-        var semaphore = new SemaphoreSlim(_maxDegreeOfParallelism);
-        await foreach (var t in source)
+        List<Task> tasks = [];
+        SemaphoreSlim semaphore = new(_maxDegreeOfParallelism);
+        await foreach (T? t in source)
         {
             await semaphore.WaitAsync(token);
             tasks.Add(Task.Run(async () =>

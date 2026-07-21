@@ -56,5 +56,35 @@ namespace Nethermind.Merge.Plugin
         [GaugeMetric]
         [Description("Time taken to return the blobs from engine_getBlobsV2 request")]
         public static long GetBlobsRequestDurationSeconds { get; set; }
+
+        [CounterMetric]
+        [Description("Total number of SSZ-REST engine API requests received")]
+        [DataMember(Name = "execution_engine_ssz_rest_requests_total")]
+        public static long SszRestRequestsTotal { get; set; }
+
+        [CounterMetric]
+        [Description("Total number of SSZ-REST engine API requests that returned a 2xx response")]
+        [DataMember(Name = "execution_engine_ssz_rest_requests_success_total")]
+        public static long SszRestRequestsSuccessTotal { get; set; }
+
+        [CounterMetric]
+        [Description("Total number of SSZ-REST engine API requests that returned a 4xx response (bad request, auth failure, not found, payload too large)")]
+        [DataMember(Name = "execution_engine_ssz_rest_requests_client_error_total")]
+        public static long SszRestRequestsClientErrorTotal { get; set; }
+
+        [CounterMetric]
+        [Description("Total number of SSZ-REST engine API requests that returned a 5xx response")]
+        [DataMember(Name = "execution_engine_ssz_rest_requests_server_error_total")]
+        public static long SszRestRequestsServerErrorTotal { get; set; }
+
+        [CounterMetric]
+        [Description("Total number of SSZ-REST engine API requests whose body could not be decoded (malformed SSZ, truncated data, etc.)")]
+        [DataMember(Name = "execution_engine_ssz_rest_decode_failures_total")]
+        public static long SszRestDecodeFailuresTotal { get; set; }
+
+        [CounterMetric]
+        [Description("Total bytes received in SSZ-REST engine API request bodies")]
+        [DataMember(Name = "execution_engine_ssz_rest_request_bytes_total")]
+        public static long SszRestRequestBytesTotal { get; set; }
     }
 }

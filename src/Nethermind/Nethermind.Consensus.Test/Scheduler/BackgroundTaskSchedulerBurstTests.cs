@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
@@ -47,7 +46,7 @@ public class BackgroundTaskSchedulerBurstTests
         for (int cycle = 0; cycle < cycles; cycle++)
         {
             // Start block processing — tasks should be paused, not executed
-            _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+            BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
             for (int i = 0; i < tasksPerCycle; i++)
             {
@@ -64,23 +63,23 @@ public class BackgroundTaskSchedulerBurstTests
             }
 
             // End block processing — paused tasks should now resume and execute
-            _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+            RaiseBranchProcessingCompleted(branchProcessing);
             await Task.Delay(200);
         }
 
-        totalDropped.Should().Be(0, $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
-        totalScheduled.Should().Be(cycles * tasksPerCycle);
+        Assert.That(totalDropped, Is.EqualTo(0), $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
+        Assert.That(totalScheduled, Is.EqualTo(cycles * tasksPerCycle));
 
         // After all block processing cycles, new tasks should execute normally
         int postCycleExecuted = 0;
         int postCycleCount = Math.Min(capacity, 100);
         for (int i = 0; i < postCycleCount; i++)
         {
-            scheduler.TryScheduleTask(i, (_, _) =>
+            Assert.That(scheduler.TryScheduleTask(i, (_, _) =>
             {
                 Interlocked.Increment(ref postCycleExecuted);
                 return Task.CompletedTask;
-            }).Should().BeTrue($"post-cycle task {i} should be accepted");
+            }), Is.True, $"post-cycle task {i} should be accepted");
         }
 
         Assert.That(
@@ -88,4 +87,14 @@ public class BackgroundTaskSchedulerBurstTests
             Is.EqualTo(postCycleCount).After(5000, 10),
             "all post-cycle tasks should execute after block processing ends");
     }
+
+    private BlocksProcessingEventArgs RaiseBlocksProcessing()
+    {
+        BlocksProcessingEventArgs args = new([]);
+        _branchProcessor.BlocksProcessing += Raise.EventWith(args);
+        return args;
+    }
+
+    private void RaiseBranchProcessingCompleted(BlocksProcessingEventArgs args) =>
+        _branchProcessor.BranchProcessingCompleted += Raise.EventWith(new BranchProcessingCompletedEventArgs(args.Blocks, 0));
 }

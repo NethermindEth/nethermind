@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.ExceptionServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -35,7 +34,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
     {
-        int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
+        int threads = GetWorkerCount(fromInclusive, toExclusive, parallelOptions);
+        if (threads == 0) return;
 
         Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
@@ -124,6 +124,20 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         Func<int, TLocal, TLocal> action)
         => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, null, state, action);
 
+    private static int GetWorkerCount(int fromInclusive, int toExclusive, ParallelOptions parallelOptions)
+    {
+        parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+
+        long rangeLength = (long)toExclusive - fromInclusive;
+        if (rangeLength <= 0) return 0;
+
+        int maxWorkers = parallelOptions.MaxDegreeOfParallelism > 0
+            ? parallelOptions.MaxDegreeOfParallelism
+            : Environment.ProcessorCount;
+
+        return (int)Math.Min(rangeLength, maxWorkers);
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ParallelUnbalancedWork"/> class.
     /// </summary>
@@ -167,20 +181,13 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// </summary>
     private class SharedCounter(int fromInclusive)
     {
-        private PaddedValue _index = new(fromInclusive);
+        private CacheLinePaddedLong _index = new(fromInclusive);
 
         /// <summary>
         /// Gets the next index in a thread-safe manner.
         /// </summary>
         /// <returns>The next index.</returns>
-        public int GetNext() => Interlocked.Increment(ref _index.Value) - 1;
-
-        [StructLayout(LayoutKind.Explicit, Size = 128)]
-        private struct PaddedValue(int value)
-        {
-            [FieldOffset(64)]
-            public int Value = value;
-        }
+        public int GetNext() => (int)(Interlocked.Increment(ref _index.Value) - 1);
     }
 
     /// <summary>
@@ -192,8 +199,10 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Gets the shared counter for indices.
         /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
-        public SemaphoreSlim Event { get; } = new(initialCount: 0);
+
+        public ManualResetEventSlim Event { get; } = new(initialState: false);
         private int _activeThreads = threads;
+        private int _faulted;
         private ExceptionDispatchInfo? _exception;
         public CancellationToken CancellationToken { get; } = token;
 
@@ -211,7 +220,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Whether any worker has captured an exception. Used by workers to short-circuit
         /// fetching new indices once the operation is already faulted.
         /// </summary>
-        public bool IsFaulted => Volatile.Read(ref _exception) is not null;
+        public bool IsFaulted => Volatile.Read(ref _faulted) != 0;
 
         /// <summary>
         /// Captures the first exception observed by any worker so it can be rethrown on the
@@ -219,11 +228,10 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public void CaptureException(Exception exception)
         {
-            // Skip the (non-trivial) ExceptionDispatchInfo.Capture call once we already have one.
-            if (IsFaulted) return;
-
-            // Only the first exception wins; any later ones are discarded.
-            Interlocked.CompareExchange(ref _exception, ExceptionDispatchInfo.Capture(exception), null);
+            // Publish the fault flag before the (non-trivial) ExceptionDispatchInfo.Capture so
+            // other workers can short-circuit during the capture window.
+            if (Interlocked.CompareExchange(ref _faulted, 1, 0) != 0) return;
+            Volatile.Write(ref _exception, ExceptionDispatchInfo.Capture(exception));
         }
 
         /// <summary>
@@ -241,7 +249,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
             if (remaining == 0)
             {
-                Event.Release();
+                Event.Set();
             }
 
             return remaining;
@@ -287,10 +295,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             Func<int, TLocal, TLocal> action,
             Action<TLocal>? @finally = null)
         {
-            // Determine the number of threads to use
-            int threads = parallelOptions.MaxDegreeOfParallelism > 0
-                ? parallelOptions.MaxDegreeOfParallelism
-                : Environment.ProcessorCount;
+            int threads = GetWorkerCount(fromInclusive, toExclusive, parallelOptions);
+            if (threads == 0) return;
 
             // Create shared data with thread-local initializers and finalizers
             Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
@@ -333,9 +339,14 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             bool initSucceeded = false;
             try
             {
+                int i = _data.Index.GetNext();
+                if (i >= _data.ToExclusive || _data.CancellationToken.IsCancellationRequested || _data.IsFaulted)
+                {
+                    return;
+                }
+
                 value = _data.Init();
                 initSucceeded = true;
-                int i = _data.Index.GetNext();
                 while (i < _data.ToExclusive)
                 {
                     // Stop pulling work once cancelled or another worker has faulted.

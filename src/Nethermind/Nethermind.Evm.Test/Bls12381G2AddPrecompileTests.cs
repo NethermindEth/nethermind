@@ -11,9 +11,9 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
-public class Bls12381G2AddPrecompileTests : PrecompileTests<Bls12381G2AddPrecompile, Bls12381G2AddPrecompileTests>
+public class Bls12381G2AddPrecompileTests : PrecompileTests<Bls12381G2AddPrecompile, Bls12381G2AddPrecompileTests>, IPrecompileTests
 {
-    public static IEnumerable<string> TestFiles()
+    static IEnumerable<string> IPrecompileTests.TestFiles()
     {
         yield return "Bls/add_G2_bls.json";
         yield return "Bls/fail-add_G2_bls.json";

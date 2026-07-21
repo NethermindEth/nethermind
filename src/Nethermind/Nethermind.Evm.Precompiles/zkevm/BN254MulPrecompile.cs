@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -10,9 +11,9 @@ public partial class BN254MulPrecompile
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool Mul(ReadOnlySpan<byte> input, byte[] output) =>
-        ZiskBindings.Crypto.bn254_g1_mul_c(
+        Accelerators.BN254G1Mul(
             input[..(InputLength - 32)],
             input[(InputLength - 32)..],
             output
-        ) == 0;
+        ) == Accelerators.Status.OK;
 }

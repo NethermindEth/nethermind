@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -23,6 +24,7 @@ internal class EpochSwitchManager(
         snapshotManager)
 {
     private LruCache<ulong, BlockRoundInfo> Round2EpochBlockInfo { get; } = new(XdcConstants.InMemoryRound2Epochs, nameof(Round2EpochBlockInfo));
+
     /// <summary>
     /// Determine if the given block is an epoch switch block.
     /// </summary>
@@ -48,7 +50,7 @@ internal class EpochSwitchManager(
         ulong round = header.ExtraConsensusData.BlockRound;
         QuorumCertificate qc = header.ExtraConsensusData.QuorumCert;
         ulong parentRound = qc.ProposedBlockInfo.Round;
-        ulong epochStartRound = round - (round % (ulong)xdcSpec.EpochLength);
+        ulong epochStartRound = round - (round % xdcSpec.EpochLength);
 
         if (qc.ProposedBlockInfo.BlockNumber == xdcSpec.SwitchBlock)
         {
@@ -87,24 +89,24 @@ internal class EpochSwitchManager(
             return false;
         }
 
-        ulong epochStartRound = currentRound - (currentRound % (ulong)xdcSpec.EpochLength);
+        ulong epochStartRound = currentRound - (currentRound % xdcSpec.EpochLength);
         return parentRound < epochStartRound;
     }
 
     protected override ulong GetCurrentEpochNumber(EpochSwitchInfo epochSwitchInfo, IXdcReleaseSpec xdcSpec) =>
-        (ulong)xdcSpec.SwitchEpoch + epochSwitchInfo.EpochSwitchBlockInfo.Round / (ulong)xdcSpec.EpochLength;
+        xdcSpec.SwitchEpoch + epochSwitchInfo.EpochSwitchBlockInfo.Round / xdcSpec.EpochLength;
 
     protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot _) =>
         header.PenaltiesAddress is null
             ? throw new InvalidOperationException($"PenaltiesAddress is null on epoch-switch block {header.Number}")
             : [.. header.PenaltiesAddress.Value];
 
-    private EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end)
+    public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
-        List<EpochSwitchInfo> epochSwitchInfos = new();
+        List<EpochSwitchInfo> epochSwitchInfos = [];
 
         Hash256 iteratorHash = end.Hash;
-        long iteratorBlockNumber = end.Number;
+        ulong iteratorBlockNumber = end.Number;
 
         while (iteratorBlockNumber > start.Number)
         {
@@ -135,9 +137,9 @@ internal class EpochSwitchManager(
 
     private BlockRoundInfo? GetBlockInfoInCache(ulong estRound, ulong epoch)
     {
-        List<BlockRoundInfo> epochSwitchInCache = new();
+        List<BlockRoundInfo> epochSwitchInCache = [];
 
-        for (ulong r = estRound; r < estRound + (ulong)epoch; r++)
+        for (ulong r = estRound; r < estRound + epoch; r++)
         {
             if (Round2EpochBlockInfo.TryGet(r, out BlockRoundInfo blockInfo))
             {
@@ -171,11 +173,14 @@ internal class EpochSwitchManager(
         return null;
     }
 
-    private bool TryBinarySearchBlockByEpochNumber(ulong targetEpochNumber, long start, long end, ulong switchBlock, ulong epoch, IXdcReleaseSpec xdcSpec, out BlockRoundInfo epochBlockInfo)
+    private bool TryBinarySearchBlockByEpochNumber(ulong targetEpochNumber, ulong start, ulong end, ulong switchBlock, ulong epoch, IXdcReleaseSpec xdcSpec, out BlockRoundInfo epochBlockInfo)
     {
         while (start < end)
         {
-            XdcBlockHeader? header = (XdcBlockHeader?)Tree.FindHeader((start + end) / 2);
+            // Use start + (end - start) / 2 instead of (start + end) / 2 to avoid
+            // ulong overflow when both start and end are large block numbers.
+            ulong mid = start + (end - start) / 2;
+            XdcBlockHeader? header = (XdcBlockHeader?)Tree.FindHeader(mid);
             if (header is null)
             {
                 epochBlockInfo = null;
@@ -189,7 +194,7 @@ internal class EpochSwitchManager(
             }
 
             bool isEpochSwitch = IsEpochSwitchAtBlock(header);
-            ulong epochNum = (ulong)xdcSpec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / (ulong)xdcSpec.EpochLength;
+            ulong epochNum = xdcSpec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / xdcSpec.EpochLength;
 
             if (epochNum == targetEpochNumber)
             {
@@ -203,8 +208,9 @@ internal class EpochSwitchManager(
                 else
                 {
                     end = header.Number;
-                    // trick to shorten the search
-                    start = Math.Max(start, end - (int)(round % epoch));
+                    // Shorten the search range by stepping back at most (round % epoch) blocks.
+                    ulong roundOffset = round % epoch;
+                    start = end >= roundOffset ? Math.Max(start, end - roundOffset) : start;
                 }
             }
             else if (epochNum > targetEpochNumber)
@@ -213,7 +219,7 @@ internal class EpochSwitchManager(
             }
             else
             {
-                long nextStart = header.Number;
+                ulong nextStart = header.Number;
                 if (nextStart == start)
                 {
                     break;
@@ -241,7 +247,7 @@ internal class EpochSwitchManager(
             return null;
         }
 
-        ulong epochNumber = (ulong)xdcSpec.SwitchEpoch + epochSwitchInfo.EpochSwitchBlockInfo.Round / (ulong)xdcSpec.EpochLength;
+        ulong epochNumber = xdcSpec.SwitchEpoch + epochSwitchInfo.EpochSwitchBlockInfo.Round / xdcSpec.EpochLength;
 
         if (targetEpoch == epochNumber)
         {
@@ -253,22 +259,24 @@ internal class EpochSwitchManager(
             return null;
         }
 
-        if (targetEpoch < (ulong)xdcSpec.SwitchEpoch)
+        if (targetEpoch < xdcSpec.SwitchEpoch)
         {
             return null;
         }
 
-        ulong estRound = (targetEpoch - (ulong)xdcSpec.SwitchEpoch) * (ulong)xdcSpec.EpochLength;
+        ulong estRound = (targetEpoch - xdcSpec.SwitchEpoch) * xdcSpec.EpochLength;
 
-        BlockRoundInfo epochBlockInfo = GetBlockInfoInCache(estRound, (ulong)xdcSpec.EpochLength);
+        BlockRoundInfo epochBlockInfo = GetBlockInfoInCache(estRound, xdcSpec.EpochLength);
         if (epochBlockInfo is not null)
         {
             return epochBlockInfo;
         }
 
-        ulong epoch = (ulong)xdcSpec.EpochLength;
+        ulong epoch = xdcSpec.EpochLength;
         ulong estBlockNumDiff = epoch * (epochNumber - targetEpoch);
-        long estBlockNum = Math.Max((long)xdcSpec.SwitchBlock, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber - (long)estBlockNumDiff);
+        ulong estBlockNum = Math.Max(
+            xdcSpec.SwitchBlock,
+            epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber.SaturatingSub(estBlockNumDiff));
 
         ulong closeEpochNum = 2ul;
 
@@ -279,14 +287,14 @@ internal class EpochSwitchManager(
             {
                 return null;
             }
-            EpochSwitchInfo[] epochSwitchInfos = GetEpochSwitchBetween(estBlockHeader, headHeader);
+            EpochSwitchInfo[] epochSwitchInfos = GetEpochSwitchInfoBetween(estBlockHeader, headHeader);
             if (epochSwitchInfos is null)
             {
                 return null;
             }
             foreach (EpochSwitchInfo info in epochSwitchInfos)
             {
-                ulong epochNum = (ulong)xdcSpec.SwitchEpoch + info.EpochSwitchBlockInfo.Round / (ulong)xdcSpec.EpochLength;
+                ulong epochNum = xdcSpec.SwitchEpoch + info.EpochSwitchBlockInfo.Round / xdcSpec.EpochLength;
                 if (epochNum == targetEpoch)
                 {
                     return info.EpochSwitchBlockInfo;
@@ -294,7 +302,7 @@ internal class EpochSwitchManager(
             }
         }
 
-        if (!TryBinarySearchBlockByEpochNumber(targetEpoch, estBlockNum, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber, (ulong)xdcSpec.SwitchBlock, (ulong)xdcSpec.EpochLength, xdcSpec, out epochBlockInfo))
+        if (!TryBinarySearchBlockByEpochNumber(targetEpoch, estBlockNum, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber, xdcSpec.SwitchBlock, xdcSpec.EpochLength, xdcSpec, out epochBlockInfo))
         {
             return null;
         }

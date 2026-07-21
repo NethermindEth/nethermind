@@ -176,7 +176,7 @@ internal class HeaderVerificationTests
     public void NonEpochBlock_With_Penalties_Fails()
     {
         XdcBlockHeader invalidPenaltiesExistBlock = GetLastHeader(false);
-        invalidPenaltiesExistBlock.Penalties = TestItem.AddressF.Bytes;
+        invalidPenaltiesExistBlock.Penalties = TestItem.AddressF.Bytes.ToArray();
         BlockHeader? invalidPenaltiesExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidPenaltiesExistBlock.ParentHash!);
         bool result = xdcHeaderValidator.Validate(invalidPenaltiesExistBlock, invalidPenaltiesExistBlockParent!);
         Assert.That(result, Is.False);
@@ -226,7 +226,7 @@ internal class HeaderVerificationTests
     public void NonEpochSwitch_Block_With_ValidatorsSet()
     {
         XdcBlockHeader nonEpochSwitchWithValidators = GetLastHeader(false);
-        nonEpochSwitchWithValidators.Validators = xdcTestBlockchain.MasterNodeCandidates.SelectMany(addr => addr.Address.Bytes).ToArray(); // implement helper to return acc1 addr bytes
+        nonEpochSwitchWithValidators.Validators = xdcTestBlockchain.MasterNodeCandidates.SelectMany(addr => addr.Address.Bytes.ToArray()).ToArray(); // implement helper to return acc1 addr bytes
         BlockHeader? nonEpochSwitchWithValidatorsParent = xdcTestBlockchain.BlockTree.FindHeader(nonEpochSwitchWithValidators.ParentHash!);
         bool result = xdcHeaderValidator.Validate(nonEpochSwitchWithValidators, nonEpochSwitchWithValidatorsParent);
         Assert.That(result, Is.False);
@@ -284,9 +284,11 @@ internal class HeaderVerificationTests
     private void Sign(Vote vote, Consensus.ISigner signer)
     {
         VoteDecoder voteEncoder = new();
-        KeccakRlpStream stream = new();
-        voteEncoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        vote.Signature = signer.Sign(stream.GetValueHash());
+        KeccakRlpWriter writer = new();
+        voteEncoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
+        ValueHash256 hash = writer.GetValueHash();
+        signer.TrySign(in hash, out Signature signature);
+        vote.Signature = signature;
         vote.Signer = signer.Address;
     }
 
@@ -320,12 +322,7 @@ internal class HeaderVerificationTests
     private Block GetLastBlock(bool isEpochSwitch)
     {
         XdcBlockHeader header = GetLastHeader(isEpochSwitch);
-        Block? block = xdcTestBlockchain.BlockTree.FindBlock(header.Hash!);
-        if (block is null)
-        {
-            throw new InvalidOperationException("Block not found in the chain.");
-        }
-
-        return block;
+        return xdcTestBlockchain.BlockTree.FindBlock(header.Hash!)
+            ?? throw new InvalidOperationException("Block not found in the chain.");
     }
 }

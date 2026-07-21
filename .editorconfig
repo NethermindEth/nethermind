@@ -63,7 +63,7 @@ dotnet_naming_style.pascal_case.required_suffix =
 dotnet_naming_style.pascal_case.word_separator =
 dotnet_naming_style.pascal_case.capitalization = pascal_case
 dotnet_style_operator_placement_when_wrapping = beginning_of_line
-dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_coalesce_expression = true:error
 dotnet_style_null_propagation = true:suggestion
 dotnet_style_prefer_is_null_check_over_reference_equality_method = true:suggestion
 dotnet_style_prefer_auto_properties = true:silent
@@ -71,10 +71,11 @@ dotnet_style_object_initializer = true:suggestion
 dotnet_style_prefer_collection_expression = true:suggestion
 dotnet_style_collection_initializer = true:suggestion
 dotnet_style_prefer_simplified_boolean_expressions = true:suggestion
+dotnet_style_namespace_match_folder = true:warning
 
 csharp_indent_labels = one_less_than_current
 csharp_using_directive_placement = outside_namespace:silent
-csharp_prefer_simple_using_statement = true:suggestion
+csharp_prefer_simple_using_statement = true:warning
 csharp_prefer_braces = when_multiline:suggestion
 csharp_style_namespace_declarations = file_scoped:suggestion
 csharp_style_prefer_method_group_conversion = true:silent
@@ -82,7 +83,7 @@ csharp_style_prefer_top_level_statements = true:silent
 csharp_style_prefer_primary_constructors = true:error
 csharp_style_expression_bodied_methods = true:error
 csharp_style_expression_bodied_constructors = true:error
-csharp_style_expression_bodied_operators = false:silent
+csharp_style_expression_bodied_operators = true:error
 csharp_style_expression_bodied_properties = true:silent
 csharp_style_expression_bodied_indexers = true:silent
 csharp_style_expression_bodied_accessors = true:silent
@@ -94,6 +95,7 @@ csharp_style_var_elsewhere = false:error
 
 # Coding convention
 dotnet_diagnostic.IDE0005.severity = warning
+dotnet_diagnostic.IDE0130.severity = warning
 dotnet_diagnostic.IDE0041.severity = error
 dotnet_diagnostic.IDE0100.severity = warning
 dotnet_diagnostic.CA1825.severity = warning
@@ -107,6 +109,7 @@ dotnet_diagnostic.CA1507.severity = warning
 dotnet_diagnostic.CA1510.severity = warning
 dotnet_diagnostic.CA2208.severity = suggestion
 dotnet_diagnostic.NETH002.severity = error
+dotnet_diagnostic.NETH006.severity = error
 dotnet_diagnostic.IDE0320.severity = warning
 dotnet_diagnostic.IDE0018.severity = warning
 dotnet_diagnostic.IDE0019.severity = warning
@@ -118,4 +121,69 @@ dotnet_diagnostic.IDE0074.severity = warning
 dotnet_diagnostic.IDE0150.severity = warning
 dotnet_diagnostic.IDE0270.severity = warning
 dotnet_diagnostic.IDE1005.severity = warning
+dotnet_diagnostic.IDE0028.severity = warning
 
+# IDE0130: JSON converters intentionally exposed under Nethermind.Serialization.Json
+# despite living in Nethermind.Core to avoid a circular project reference.
+[src/Nethermind/Nethermind.Core/{BloomConverter,Crypto/PublicKeyConverter,Crypto/PublicKeyHashedConverter,JsonConverters/*}.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: ABI JSON converters exposed under Nethermind.Blockchain.Contracts.Json.
+[src/Nethermind/Nethermind.Abi/Abi{DefinitionConverter,ParameterConverter,Type}.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Rlp-side helpers intentionally exposed under Nethermind.Core* namespaces;
+# Eip7702 subfolder follows the project's flat-namespace convention.
+[src/Nethermind/Nethermind.Serialization.Rlp/{NettyBufferMemoryOwner,OwnedBlockBodies,Eip7702/AuthorizationTupleDecoder}.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Network.Contract config interfaces are exposed under Nethermind.Network.Config
+# so consumers can find them alongside concrete config types.
+[src/Nethermind/Nethermind.Network.Contract/Config/*.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Trie helpers intentionally exposed under Nethermind.Core* namespaces.
+[src/Nethermind/Nethermind.Trie/Utils/ConcurrentNodeWriteBatcher.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Evm/Instructions is purely organizational; all files use the flat Nethermind.Evm namespace.
+[src/Nethermind/Nethermind.Evm/Instructions/*.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: BlockParameter declares a nested JSON converter under Nethermind.JsonRpc.Data.
+[src/Nethermind/Nethermind.Blockchain/Find/BlockParameter.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Merge engine capabilities provider intentionally exposed under Nethermind.HealthChecks.
+[src/Nethermind/Nethermind.Merge.Plugin/Handlers/EngineRpcCapabilitiesProvider.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Global FluentAssertions setup fixture intentionally placed in the top-level Nethermind namespace.
+[src/Nethermind/Nethermind.Core.Test/AssertionsSetup.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Test helper exposed under the Synchronization.Test namespace to live next to its consumers.
+[src/Nethermind/Nethermind.Core.Test/MockSnapSyncPeer.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: AuRa-specific finalization manager shares the Merge.Plugin namespace with its base class.
+[src/Nethermind/Nethermind.Merge.AuRa/AuRaMergeFinalizationManager.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Cross-project tests living next to their dependencies but namespaced under the unit under test.
+[src/Nethermind/Nethermind.Blockchain.Test/{TransactionProcessorEip7702Tests,TransactionProcessorTests,TxPoolSourceTests}.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: InvalidChainTracker folder name matches a type name; keeping the flat test namespace avoids resolution ambiguity.
+[src/Nethermind/Nethermind.Merge.Plugin.Test/InvalidChainTracker/*.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0130: Xdc test builders intentionally exposed under Nethermind.Core.Test.Builders for discoverability.
+[src/Nethermind/Nethermind.Xdc.Test/{BuildExtensions,Helpers/XdcBlockHeaderBuilder,Helpers/XdcSubnetBlockHeaderBuilder}.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0005: These Merge.Plugin source files are also linked into Nethermind.Stateless.Executor
+# (which has ImplicitUsings enabled), where their explicit usings are flagged as redundant. The
+# usings are required in Merge.Plugin (ImplicitUsings disabled), so suppress the false positive.
+[src/Nethermind/Nethermind.Merge.Plugin/{Data/ExecutionPayload,Data/IExecutionPayloadParams,SszRest/SszBlobCell,SszRest/SszBlobCellVectorTypeConverter,SszRest/SszKzgCommitment,SszRest/SszKzgCommitmentVectorTypeConverter}.cs]
+dotnet_diagnostic.IDE0005.severity = none

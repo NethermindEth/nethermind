@@ -42,10 +42,7 @@ public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : 
                 return;
             }
 
-            List<IAbiTypeFactory> abiTypeFactories = new(_abiTypeFactories)
-                {
-                    factory
-                };
+            List<IAbiTypeFactory> abiTypeFactories = [.. _abiTypeFactories, factory];
 
             _abiTypeFactories = abiTypeFactories;
         }

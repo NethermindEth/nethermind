@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -12,12 +13,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync;
 public class SyncedTxGossipPolicyTests
 {
     [TestCase(SyncMode.FastSync, ExpectedResult = false)]
-    [TestCase(SyncMode.SnapSync, ExpectedResult = false)]
     [TestCase(SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.FastSync | SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.FastHeaders, ExpectedResult = false)]
     [TestCase(SyncMode.BeaconHeaders, ExpectedResult = false)]
-    [TestCase(SyncMode.FastHeaders | SyncMode.BeaconHeaders | SyncMode.SnapSync, ExpectedResult = false)]
+    [TestCase(SyncMode.FastHeaders | SyncMode.BeaconHeaders | SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.WaitingForBlock, ExpectedResult = true)]
     [TestCase(SyncMode.FastBodies | SyncMode.WaitingForBlock, ExpectedResult = true)]
     [TestCase(SyncMode.FastReceipts | SyncMode.WaitingForBlock, ExpectedResult = true)]
@@ -29,12 +29,33 @@ public class SyncedTxGossipPolicyTests
     public bool can_gossip(SyncMode mode) =>
         ((ITxGossipPolicy)new SyncedTxGossipPolicy(new StaticSelector(mode))).ShouldListenToGossipedTransactions;
 
+    [TestCase(SyncMode.FastHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies, ExpectedResult = true)]
+    [TestCase(SyncMode.FastReceipts, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBlockAccessLists, ExpectedResult = false)]
+    public bool receipts_unsynced_ignores_block_access_lists_only_mode(SyncMode mode) =>
+        mode.HaveNotSyncedReceiptsYet();
+
+    [TestCase(SyncMode.FastHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies, ExpectedResult = false)]
+    [TestCase(SyncMode.FastReceipts, ExpectedResult = false)]
+    [TestCase(SyncMode.FastBlockAccessLists, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies | SyncMode.FastBlockAccessLists, ExpectedResult = true)]
+    [TestCase(SyncMode.FastSync, ExpectedResult = true)]
+    [TestCase(SyncMode.StateNodes, ExpectedResult = true)]
+    [TestCase(SyncMode.BeaconHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.UpdatingPivot, ExpectedResult = true)]
+    [TestCase(SyncMode.Full, ExpectedResult = false)]
+    [TestCase(SyncMode.WaitingForBlock, ExpectedResult = false)]
+    public bool block_access_lists_unsynced_tracks_headers_state_and_bal_phases(SyncMode mode) =>
+        mode.HaveNotSyncedBlockAccessListsYet();
+
     [Test]
     public void Composite_reflects_sync_mode_transitions()
     {
         MutableSelector selector = new(SyncMode.FastSync);
         SyncedTxGossipPolicy syncPolicy = new(selector);
-        CompositeTxGossipPolicy composite = new(new Lazy<ITxGossipPolicy[]>([syncPolicy]));
+        CompositeTxGossipPolicy composite = new(new FixedTxGossipPolicySource([syncPolicy]));
 
         // During sync: gossip disabled
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
@@ -45,13 +66,25 @@ public class SyncedTxGossipPolicyTests
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
 
         // Transition back to sync: gossip must become disabled again
-        selector.Current = SyncMode.SnapSync;
+        selector.Current = SyncMode.StateNodes;
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
     }
 
-    private class MutableSelector(SyncMode initial) : ISyncModeSelector
+    [Test]
+    public async Task WaitUntilMode_WillNotMissTransitionBeforeSubscription()
+    {
+        MutableSelector selector = new(SyncMode.FastSync, static selector => selector.Current = SyncMode.Full);
+        using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(1));
+
+        await ((ISyncModeSelector)selector).WaitUntilMode(mode => mode == SyncMode.Full, cancellationTokenSource.Token);
+
+        Assert.That(selector.Current, Is.EqualTo(SyncMode.Full));
+    }
+
+    private class MutableSelector(SyncMode initial, Action<MutableSelector>? beforeChangedSubscription = null) : ISyncModeSelector
     {
         private SyncMode _current = initial;
+        private EventHandler<SyncModeChangedEventArgs>? _changed;
 
         public SyncMode Current
         {
@@ -60,15 +93,30 @@ public class SyncedTxGossipPolicyTests
             {
                 SyncMode previous = _current;
                 _current = value;
-                Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, value));
+                _changed?.Invoke(this, new SyncModeChangedEventArgs(previous, value));
             }
         }
 
         public event EventHandler<SyncModeChangedEventArgs> Preparing { add { } remove { } }
         public event EventHandler<SyncModeChangedEventArgs> Changing { add { } remove { } }
-        public event EventHandler<SyncModeChangedEventArgs>? Changed;
+        public event EventHandler<SyncModeChangedEventArgs>? Changed
+        {
+            add
+            {
+                beforeChangedSubscription?.Invoke(this);
+                _changed += value;
+            }
+            remove => _changed -= value;
+        }
+
         public Task StopAsync() => Task.CompletedTask;
+        public Task StartAsync() => Task.CompletedTask;
         public void Update() { }
         public void Dispose() { }
+    }
+
+    private class FixedTxGossipPolicySource(ITxGossipPolicy[] policies) : ITxGossipPolicySource
+    {
+        public ITxGossipPolicy[] Policies => policies;
     }
 }

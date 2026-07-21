@@ -63,12 +63,12 @@ internal class XdcBlockProducer(
         byte[] extra = [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(new ExtraFieldsV2(currentRound, highestCert)).Bytes];
 
         Address blockAuthor = sealer.Address;
-        long gasLimit = GasLimitCalculator.GetGasLimit(parent);
+        ulong gasLimit = GasLimitCalculator.GetGasLimit(parent);
         XdcBlockHeader xdcBlockHeader = CreateHeader(parent, extra, blockAuthor, gasLimit);
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 
-        xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + (ulong)spec.MinePeriod;
+        xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + spec.MinePeriod;
 
         xdcBlockHeader.Difficulty = 1;
 
@@ -85,14 +85,14 @@ internal class XdcBlockProducer(
 
             for (int i = 0; i < masternodes.Length; i++)
             {
-                Array.Copy(masternodes[i].Bytes, 0, xdcBlockHeader.Validators, i * Address.Size, Address.Size);
+                masternodes[i].Bytes.CopyTo(xdcBlockHeader.Validators.AsSpan(i * Address.Size, Address.Size));
             }
 
             xdcBlockHeader.Penalties = new byte[penalties.Length * Address.Size];
 
             for (int i = 0; i < penalties.Length; i++)
             {
-                Array.Copy(penalties[i].Bytes, 0, xdcBlockHeader.Penalties, i * Address.Size, Address.Size);
+                penalties[i].Bytes.CopyTo(xdcBlockHeader.Penalties.AsSpan(i * Address.Size, Address.Size));
             }
         }
         return xdcBlockHeader;
@@ -109,7 +109,7 @@ internal class XdcBlockProducer(
         return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
     }
 
-    protected virtual XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, long gasLimit) => new(
+    protected virtual XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, ulong gasLimit) => new(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
                 blockAuthor,

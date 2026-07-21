@@ -88,8 +88,8 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
-            List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = new();
+            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = [];
+            List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = [];
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
             {
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.StateSync
                 {
                     if (!itemsGroupedByAccount.TryGetValue(item.Address, out List<(TreePath path, StateSyncItem syncItem)> storagePaths))
                     {
-                        storagePaths = new List<(TreePath, StateSyncItem)>();
+                        storagePaths = [];
                         itemsGroupedByAccount[item.Address] = storagePaths;
                     }
 

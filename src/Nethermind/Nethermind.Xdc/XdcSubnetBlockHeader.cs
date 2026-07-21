@@ -3,9 +3,10 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using System.Collections.Immutable;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -14,8 +15,8 @@ public class XdcSubnetBlockHeader(
     Hash256 unclesHash,
     Address beneficiary,
     in UInt256 difficulty,
-    long number,
-    long gasLimit,
+    ulong number,
+    ulong gasLimit,
     ulong timestamp,
     byte[] extraData,
     bool isSelfMined = false) : XdcBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData, isSelfMined)
@@ -37,10 +38,94 @@ public class XdcSubnetBlockHeader(
         set { _nextValidatorsAddress = value; }
     }
 
-    public override ValueHash256 CalculateHash()
+    public override ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
-        KeccakRlpStream rlpStream = new();
-        _headerDecoder.Encode(rlpStream, this);
-        return rlpStream.GetHash();
+        KeccakRlpWriter writer = new();
+        _headerDecoder.Encode(ref writer, this, behaviors);
+        return writer.GetHash();
+    }
+
+    /// <inheritdoc />
+    public override BlockHeader CreateSimulatedChild(ulong timestamp)
+    {
+        Hash256? requestsHash = RequestsHash;
+        return new XdcSubnetBlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            IsSelfMined)
+        {
+            MixHash = Hash256.Zero,
+            RequestsHash = requestsHash,
+        };
+    }
+
+    public static new XdcSubnetBlockHeader FromBlockHeader(BlockHeader src)
+    {
+        XdcSubnetBlockHeader x = new(
+            src.ParentHash,
+            src.UnclesHash,
+            src.Beneficiary,
+            src.Difficulty,
+            src.Number,
+            src.GasLimit,
+            src.Timestamp,
+            src.ExtraData)
+        {
+            Bloom = src.Bloom ?? Bloom.Empty,
+            Hash = src.Hash,
+            MixHash = src.MixHash,
+            Nonce = src.Nonce,
+            TxRoot = src.TxRoot,
+            TotalDifficulty = src.TotalDifficulty,
+            ReceiptsRoot = src.ReceiptsRoot,
+            BaseFeePerGas = src.BaseFeePerGas,
+            WithdrawalsRoot = src.WithdrawalsRoot,
+            RequestsHash = src.RequestsHash,
+            IsPostMerge = src.IsPostMerge,
+            ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
+            ExcessBlobGas = src.ExcessBlobGas,
+            BlobGasUsed = src.BlobGasUsed,
+        };
+
+        if (src is XdcBlockHeader xdc)
+        {
+            x.Validator = xdc.Validator;
+            x.Validators = xdc.Validators;
+            x.Penalties = xdc.Penalties;
+        }
+
+        if (src is XdcSubnetBlockHeader subnet)
+        {
+            x.NextValidators = subnet.NextValidators;
+        }
+
+        return x;
+    }
+
+    internal override XdcBlockHeader CreateHeaderForProcessing()
+    {
+        XdcSubnetBlockHeader header = new(
+            ParentHash,
+            UnclesHash,
+            Beneficiary,
+            Difficulty,
+            Number,
+            GasLimit,
+            Timestamp,
+            ExtraData,
+            IsSelfMined)
+        {
+            NextValidators = NextValidators,
+        };
+
+        CopyFieldsForProcessing(header);
+
+        return header;
     }
 }

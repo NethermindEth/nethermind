@@ -3,40 +3,46 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncoder<SlotChanges>
+public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
 {
-    private static SlotChangesDecoder? _instance = null;
-    public static SlotChangesDecoder Instance => _instance ??= new();
+    public static readonly SlotChangesDecoder Instance = new();
 
-    private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
+    private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
-    public SlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlySlotChanges DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
         UInt256 slot = ctx.DecodeUInt256();
-        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
+        StorageChange[] changes = StorageChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
 
-        int? lastIndex = null;
-        SortedList<int, StorageChange> changesList = new(changes.Length, GenericComparer.GetOptimized<int>());
+        // EIP-7928: a slot in storage_changes must have at least one change.
+        // A slot with zero changes belongs in storage_reads instead.
+        if (changes.Length == 0)
+        {
+            ThrowEmptyStorageChanges();
+        }
+
+        uint? lastIndex = null;
         foreach (StorageChange s in changes)
         {
-            int index = s.Index;
+            uint index = s.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
-                throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
+                ThrowStorageChangesOutOfOrder(index, lastIndex.Value);
             }
             lastIndex = index;
-            changesList.Add(index, s);
         }
-        SlotChanges slotChanges = new(slot, changesList);
+        ReadOnlySlotChanges slotChanges = new(slot, changes);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -46,26 +52,57 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         return slotChanges;
     }
 
-    public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int GetLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.Key);
-        stream.EncodeArray([.. item.Changes.Values], rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.Encode(item.Key);
+        EncodeStorageChanges(ref writer, item.Changes, rlpBehaviors);
     }
 
-    public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
+    public void Encode<TWriter>(ref TWriter writer, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int storageChangesLen = 0;
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.Encode(item.Key);
+        EncodeStorageChanges(ref writer, item.Changes, rlpBehaviors);
+    }
 
-        foreach (StorageChange slotChange in item.Changes.Values)
+    public static int GetContentLength(ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOf(item.Key) + StorageChangesSequenceLength(item.Changes, rlpBehaviors);
+
+    public static int GetContentLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOf(item.Key) + StorageChangesSequenceLength(item.Changes, rlpBehaviors);
+
+    private static int StorageChangesSequenceLength(IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    {
+        int len = 0;
+        foreach (StorageChange c in changes)
         {
-            storageChangesLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
+            len += StorageChangeDecoder.Instance.GetLength(c, rlpBehaviors);
         }
-        storageChangesLen = Rlp.LengthOfSequence(storageChangesLen);
-
-        return storageChangesLen + Rlp.LengthOf(item.Key);
+        return Rlp.LengthOfSequence(len);
     }
+
+    private static void EncodeStorageChanges<TWriter>(ref TWriter writer, IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        int len = 0;
+        foreach (StorageChange c in changes) len += StorageChangeDecoder.Instance.GetLength(c, rlpBehaviors);
+        writer.StartSequence(len);
+        foreach (StorageChange c in changes) StorageChangeDecoder.Instance.Encode(ref writer, c, rlpBehaviors);
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptyStorageChanges() =>
+        throw new RlpException("Empty storage_changes for slot; slot with no changes belongs in storage_reads.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageChangesOutOfOrder(uint index, uint lastIndex) =>
+        throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
 }

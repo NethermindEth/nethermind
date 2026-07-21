@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -149,7 +149,7 @@ namespace Nethermind.Db
             public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
                 byte[]? data = Decompress(Get(key, flags));
-                return data is null or { Length: 0 } ? null : new ArrayMemoryManager(data);
+                return data is null or { Length: 0 } ? null : ArrayMemoryManager.From(data);
             }
 
             public bool PreferWriteByArray => wrapped.PreferWriteByArray;

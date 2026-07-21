@@ -11,8 +11,8 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
-using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using BenchmarkDotNet.Columns;
+using Nethermind.Merge.Plugin.Benchmark;
 using Nethermind.Precompiles.Benchmark;
 
 namespace Nethermind.Benchmark.Runner
@@ -34,6 +34,7 @@ namespace Nethermind.Benchmark.Runner
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
             WithSummaryStyle(SummaryStyle.Default.WithMaxParameterColumnWidth(100));
+            BuildTimeout = TimeSpan.FromMinutes(10);
         }
     }
 
@@ -56,6 +57,7 @@ namespace Nethermind.Benchmark.Runner
                 typeof(Benchmarks.Core.Keccak256Benchmarks).Assembly,
                 typeof(Evm.Benchmark.EvmStackBenchmarks).Assembly,
                 typeof(Network.Benchmarks.DiscoveryBenchmarks).Assembly,
+                typeof(NewPayloadSerializationBenchmarks).Assembly,
             ];
 
             List<Assembly> simpleJobAssemblies = [

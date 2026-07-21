@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -46,8 +45,8 @@ namespace Nethermind.Synchronization.Test
         private static void RaiseWeaknessUntilSleeping(PeerInfo peer, AllocationContexts contexts)
         {
             for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
-                peer.IncreaseWeakness(contexts).Should().Be(AllocationContexts.None);
-            peer.IncreaseWeakness(contexts).Should().Be(contexts);
+                Assert.That(peer.IncreaseWeakness(contexts), Is.EqualTo(AllocationContexts.None));
+            Assert.That(peer.IncreaseWeakness(contexts), Is.EqualTo(contexts));
         }
 
         [TestCaseSource(nameof(ContextCases))]
@@ -56,11 +55,11 @@ namespace Nethermind.Synchronization.Test
             PeerInfo peer = NewPeer();
             RaiseWeaknessUntilSleeping(peer, contexts);
             peer.PutToSleep(contexts, DateTime.MinValue);
-            peer.IsAsleep(contexts).Should().BeTrue();
+            Assert.That(peer.IsAsleep(contexts), Is.True);
 
             peer.TryToWakeUp(DateTime.MinValue, TimeSpan.Zero);
 
-            peer.IsAsleep(contexts).Should().BeFalse();
+            Assert.That(peer.IsAsleep(contexts), Is.False);
         }
 
         [TestCaseSource(nameof(ContextCases))]
@@ -72,8 +71,8 @@ namespace Nethermind.Synchronization.Test
 
             peer.TryToWakeUp(DateTime.MinValue.AddSeconds(2), TimeSpan.FromSeconds(3));
 
-            peer.IsAsleep(contexts).Should().BeTrue();
-            peer.CanBeAllocated(contexts).Should().BeFalse();
+            Assert.That(peer.IsAsleep(contexts), Is.True);
+            Assert.That(peer.CanBeAllocated(contexts), Is.False);
         }
 
         [Test]
@@ -90,8 +89,49 @@ namespace Nethermind.Synchronization.Test
             peer.TryToWakeUp(t0, TimeSpan.FromSeconds(5));
             peer.TryToWakeUp(t0 + TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
 
-            peer.IsAsleep(AllocationContexts.Bodies).Should().BeFalse();
-            peer.IsAsleep(AllocationContexts.Receipts).Should().BeFalse();
+            Assert.That(peer.IsAsleep(AllocationContexts.Bodies), Is.False);
+            Assert.That(peer.IsAsleep(AllocationContexts.Receipts), Is.False);
+        }
+
+        [Test]
+        public void WakeUp_clears_the_composite_Blocks_weakness_nibble()
+        {
+            // Regression: waking must reset the Blocks composite weakness nibble, not just its member bits,
+            // so re-sleeping still takes SleepThreshold reports rather than one.
+            DateTime t0 = DateTime.UtcNow;
+            PeerInfo peer = NewPeer();
+
+            RaiseWeaknessUntilSleeping(peer, AllocationContexts.Blocks);
+            peer.PutToSleep(AllocationContexts.Blocks, t0);
+
+            peer.TryToWakeUp(t0 + TimeSpan.FromHours(1), TimeSpan.Zero);
+            Assert.That(peer.IsAsleep(AllocationContexts.Blocks), Is.False);
+
+            // With the nibble reset, a single fresh weak report must not immediately re-sleep.
+            Assert.That(peer.IncreaseWeakness(AllocationContexts.Blocks), Is.EqualTo(AllocationContexts.None));
+        }
+
+        [Test]
+        public void Context_slot_mapping_round_trips_for_every_tracked_context()
+        {
+            (AllocationContexts Context, int Index)[] expected =
+            [
+                (AllocationContexts.Headers, 0),
+                (AllocationContexts.Bodies, 1),
+                (AllocationContexts.Receipts, 2),
+                (AllocationContexts.State, 3),
+                (AllocationContexts.Snap, 4),
+                (AllocationContexts.ForwardHeader, 5),
+                (AllocationContexts.BlockAccessLists, 6),
+                (AllocationContexts.Blocks, 7),
+            ];
+
+            Assert.That(expected, Has.Length.EqualTo(WeaknessTracking.TrackedContextCount));
+            foreach ((AllocationContexts context, int index) in expected)
+            {
+                Assert.That(WeaknessTracking.IndexOf(context), Is.EqualTo(index));
+                Assert.That(WeaknessTracking.ContextAt(index), Is.EqualTo(context));
+            }
         }
 
         [TestCaseSource(nameof(ContextCases))]
@@ -101,14 +141,14 @@ namespace Nethermind.Synchronization.Test
             // one free clears.
             PeerInfo peer = NewPeer(AllocationAllowances.Single);
 
-            peer.IsAllocated(contexts).Should().BeFalse();
-            peer.TryAllocate(contexts).Should().BeTrue();
-            peer.IsAllocated(contexts).Should().BeTrue();
-            peer.CanBeAllocated(contexts).Should().BeFalse();
+            Assert.That(peer.IsAllocated(contexts), Is.False);
+            Assert.That(peer.TryAllocate(contexts), Is.True);
+            Assert.That(peer.IsAllocated(contexts), Is.True);
+            Assert.That(peer.CanBeAllocated(contexts), Is.False);
 
             peer.Free(contexts);
-            peer.IsAllocated(contexts).Should().BeFalse();
-            peer.CanBeAllocated(contexts).Should().BeTrue();
+            Assert.That(peer.IsAllocated(contexts), Is.False);
+            Assert.That(peer.CanBeAllocated(contexts), Is.True);
         }
 
         [TestCaseSource(nameof(SingleBitContextCases))]
@@ -121,16 +161,16 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < slots; i++)
             {
-                peer.IsAllocationFull(ctx).Should().BeFalse();
-                peer.TryAllocate(ctx).Should().BeTrue();
+                Assert.That(peer.IsAllocationFull(ctx), Is.False);
+                Assert.That(peer.TryAllocate(ctx), Is.True);
             }
-            peer.IsAllocationFull(ctx).Should().BeTrue();
-            peer.CanBeAllocated(ctx).Should().BeFalse();
+            Assert.That(peer.IsAllocationFull(ctx), Is.True);
+            Assert.That(peer.CanBeAllocated(ctx), Is.False);
 
             peer.Free(ctx);
-            peer.IsAllocationFull(ctx).Should().BeFalse();
-            peer.TryAllocate(ctx).Should().BeTrue();
-            peer.IsAllocationFull(ctx).Should().BeTrue();
+            Assert.That(peer.IsAllocationFull(ctx), Is.False);
+            Assert.That(peer.TryAllocate(ctx), Is.True);
+            Assert.That(peer.IsAllocationFull(ctx), Is.True);
         }
 
         [Test]
@@ -139,16 +179,16 @@ namespace Nethermind.Synchronization.Test
             // Blocks = Bodies | Receipts (Headers excluded), so allocating Blocks must leave Headers free
             // while marking Bodies and Receipts as taken; freeing one member re-opens only that slot.
             PeerInfo peer = NewPeer();
-            peer.TryAllocate(AllocationContexts.Blocks).Should().BeTrue();
+            Assert.That(peer.TryAllocate(AllocationContexts.Blocks), Is.True);
 
-            peer.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
-            peer.IsAllocated(AllocationContexts.Receipts).Should().BeTrue();
-            peer.IsAllocated(AllocationContexts.Headers).Should().BeFalse();
-            peer.CanBeAllocated(AllocationContexts.Headers).Should().BeTrue();
+            Assert.That(peer.IsAllocated(AllocationContexts.Bodies), Is.True);
+            Assert.That(peer.IsAllocated(AllocationContexts.Receipts), Is.True);
+            Assert.That(peer.IsAllocated(AllocationContexts.Headers), Is.False);
+            Assert.That(peer.CanBeAllocated(AllocationContexts.Headers), Is.True);
 
             peer.Free(AllocationContexts.Receipts);
-            peer.IsAllocated(AllocationContexts.Receipts).Should().BeFalse();
-            peer.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
+            Assert.That(peer.IsAllocated(AllocationContexts.Receipts), Is.False);
+            Assert.That(peer.IsAllocated(AllocationContexts.Bodies), Is.True);
         }
 
         [Test]
@@ -156,7 +196,7 @@ namespace Nethermind.Synchronization.Test
         {
             PeerInfo peer = NewPeer();
             peer.PutToSleep(AllocationContexts.Blocks, DateTime.MinValue);
-            peer.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
+            Assert.That(peer.CanBeAllocated(AllocationContexts.Bodies), Is.False);
         }
 
         [Test]
@@ -167,26 +207,26 @@ namespace Nethermind.Synchronization.Test
             PeerInfo peer = NewPeer(allowances);
 
             peer.Free(AllocationContexts.Headers);
-            peer.AvailableAllocationSlots.Headers.Should().Be(2, "free with no prior allocate must not exceed the cap");
+            Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(2), "free with no prior allocate must not exceed the cap");
 
-            peer.TryAllocate(AllocationContexts.Headers).Should().BeTrue();
-            peer.AvailableAllocationSlots.Headers.Should().Be(1);
+            Assert.That(peer.TryAllocate(AllocationContexts.Headers), Is.True);
+            Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(1));
             peer.Free(AllocationContexts.Headers);
-            peer.AvailableAllocationSlots.Headers.Should().Be(2);
+            Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(2));
             peer.Free(AllocationContexts.Headers);
-            peer.AvailableAllocationSlots.Headers.Should().Be(2, "second free must clamp at the cap");
+            Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(2), "second free must clamp at the cap");
         }
 
         [Test]
         public void Free_of_unallocated_context_leaves_other_contexts_intact()
         {
             PeerInfo peer = NewPeer();
-            peer.TryAllocate(AllocationContexts.Headers).Should().BeTrue();
+            Assert.That(peer.TryAllocate(AllocationContexts.Headers), Is.True);
 
             peer.Free(AllocationContexts.Bodies);
 
-            peer.IsAllocated(AllocationContexts.Headers).Should().BeTrue();
-            peer.IsAllocated(AllocationContexts.Bodies).Should().BeFalse();
+            Assert.That(peer.IsAllocated(AllocationContexts.Headers), Is.True);
+            Assert.That(peer.IsAllocated(AllocationContexts.Bodies), Is.False);
         }
 
         [Test]
@@ -195,12 +235,71 @@ namespace Nethermind.Synchronization.Test
             // Take Bodies first; then Blocks (= Bodies | Receipts) must fail without leaking the Receipts slot.
             // Single-slot allowances make the rollback observable: Bodies sits at 0, Receipts must end at 1.
             PeerInfo peer = NewPeer(AllocationAllowances.Single);
-            peer.TryAllocate(AllocationContexts.Bodies).Should().BeTrue();
+            Assert.That(peer.TryAllocate(AllocationContexts.Bodies), Is.True);
 
-            peer.TryAllocate(AllocationContexts.Blocks).Should().BeFalse();
+            Assert.That(peer.TryAllocate(AllocationContexts.Blocks), Is.False);
 
-            peer.AvailableAllocationSlots.Bodies.Should().Be(0);
-            peer.AvailableAllocationSlots.Receipts.Should().Be(1, "rollback must restore the partially-claimed slot");
+            Assert.That(peer.AvailableAllocationSlots.Bodies, Is.EqualTo(0));
+            Assert.That(peer.AvailableAllocationSlots.Receipts, Is.EqualTo(1), "rollback must restore the partially-claimed slot");
+        }
+
+        [Test]
+        public void Concurrent_resleep_and_wake_never_leave_peer_permanently_asleep()
+        {
+            PeerInfo peer = NewPeer();
+            DateTime sleptAt = DateTime.UtcNow;
+            DateTime wakeAt = sleptAt + TimeSpan.FromSeconds(10);
+
+            const int iterations = 25_000;
+            using Barrier barrier = new(3);
+            using CancellationTokenSource cts = new();
+
+            void RunRounds(Action action)
+            {
+                try
+                {
+                    for (int i = 0; i < iterations; i++)
+                    {
+                        barrier.SignalAndWait(cts.Token);
+                        action();
+                        barrier.SignalAndWait(cts.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            Thread sleeper = new(() => RunRounds(() => peer.PutToSleep(AllocationContexts.Receipts, sleptAt)));
+            Thread waker = new(() => RunRounds(() => peer.TryToWakeUp(wakeAt, TimeSpan.Zero)));
+            sleeper.Start();
+            waker.Start();
+
+            int stuckAt = -1;
+            try
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    peer.PutToSleep(AllocationContexts.Receipts, sleptAt);
+                    barrier.SignalAndWait(cts.Token);
+                    barrier.SignalAndWait(cts.Token);
+
+                    peer.TryToWakeUp(wakeAt, TimeSpan.Zero);
+                    if (peer.IsAsleep(AllocationContexts.Receipts))
+                    {
+                        stuckAt = i;
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                cts.Cancel();
+                sleeper.Join();
+                waker.Join();
+            }
+
+            Assert.That(stuckAt, Is.EqualTo(-1), $"Peer left permanently asleep for Receipts at iteration {stuckAt}.");
         }
 
         [Test]
@@ -227,9 +326,9 @@ namespace Nethermind.Synchronization.Test
             }
             Task.WaitAll(tasks);
 
-            succeeded.Should().Be(slots);
-            peer.AvailableAllocationSlots.Headers.Should().Be(0);
-            peer.IsAllocationFull(AllocationContexts.Headers).Should().BeTrue();
+            Assert.That(succeeded, Is.EqualTo(slots));
+            Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(0));
+            Assert.That(peer.IsAllocationFull(AllocationContexts.Headers), Is.True);
         }
 
     }

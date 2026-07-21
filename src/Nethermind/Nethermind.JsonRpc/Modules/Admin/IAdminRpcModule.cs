@@ -9,28 +9,48 @@ namespace Nethermind.JsonRpc.Modules.Admin;
 [RpcModule(ModuleType.Admin)]
 public interface IAdminRpcModule : IContextAwareRpcModule
 {
-    [JsonRpcMethod(Description = "Adds given node.",
-        EdgeCaseHint = "",
-        ResponseDescription = "Added node",
-        ExampleResponse = "\"enode://deed356ddcaa1eb33a859b818a134765fff2a3dd5cd5b3d6cbe08c9424dca53b947bdc1c64e6f1257e29bb2960ac0a4fb56e307f360b7f8d4ddf48024cdb9d68@85.221.141.144:30303\"",
+    [JsonRpcMethod(Description = "Pauses local block processing. Blocks received from the network or consensus client are still queued but not processed; call `admin_resumeBlockProcessing` to process the accumulated backlog. Use `admin_isBlockProcessingPaused` to query the state. Intended for testing and diagnostics.",
+        EdgeCaseHint = "Idempotent: pausing an already-paused processor is a no-op. While paused the node is reported as healthy (a deliberate pause is not treated as a processing stall).",
+        ResponseDescription = "`true` if block processing is paused after the call (the request succeeded); `false` if it did not take effect.",
+        ExampleResponse = "true",
         IsImplemented = true)]
-    Task<ResultWrapper<string>> admin_addPeer(
-        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://deed356ddcaa1eb33a859b818a134765fff2a3dd5cd5b3d6cbe08c9424dca53b947bdc1c64e6f1257e29bb2960ac0a4fb56e307f360b7f8d4ddf48024cdb9d68@85.221.141.144:30303\"")]
+    ResultWrapper<bool> admin_pauseBlockProcessing();
+
+    [JsonRpcMethod(Description = "Resumes local block processing previously paused via `admin_pauseBlockProcessing`, processing any blocks accumulated in the queue. Intended for testing and diagnostics.",
+        EdgeCaseHint = "Idempotent: resuming a processor that is not paused is a no-op.",
+        ResponseDescription = "`true` when the resume request was accepted.",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    ResultWrapper<bool> admin_resumeBlockProcessing();
+
+    [JsonRpcMethod(Description = "Returns whether local block processing is currently paused.",
+        ResponseDescription = "`true` if block processing is paused, `false` if running.",
+        ExampleResponse = "false",
+        IsImplemented = true)]
+    ResultWrapper<bool> admin_isBlockProcessingPaused();
+
+    [JsonRpcMethod(Description = "Adds the given node as a static peer. The connection is maintained for the lifetime of the process. Set `persistent` to also write the peer to static-nodes.json so it is restored on restart.",
+        EdgeCaseHint = "Returns `true` even if the peer was already in the static set.",
+        ResponseDescription = "`true` if the peer is in the static set after the call.",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    Task<ResultWrapper<bool>> admin_addPeer(
+        [JsonRpcParameter(Description = "Enode URL of the peer to add", ExampleValue = "\"enode://deed356ddcaa1eb33a859b818a134765fff2a3dd5cd5b3d6cbe08c9424dca53b947bdc1c64e6f1257e29bb2960ac0a4fb56e307f360b7f8d4ddf48024cdb9d68@85.221.141.144:30303\"")]
         string enode,
-        [JsonRpcParameter(Description = "Adding to static nodes if `true` (optional)", ExampleValue = "true")]
-        bool addToStaticNodes = false);
+        [JsonRpcParameter(Description = "If `true`, also persist the peer to static-nodes.json so it is reloaded on the next start (optional, defaults to `false`).", ExampleValue = "true")]
+        bool persistent = false);
 
 
-    [JsonRpcMethod(Description = "Removes given node.",
-        EdgeCaseHint = "",
-        ResponseDescription = "Removed node",
-        ExampleResponse = "\"enode://deed356ddcaa1eb33a859b818a134765fff2a3dd5cd5b3d6cbe08c9424dca53b947bdc1c64e6f1257e29bb2960ac0a4fb56e307f360b7f8d4ddf48024cdb9d68@85.221.141.144:30303\"",
+    [JsonRpcMethod(Description = "Removes the given node from the static peer set and disconnects any active session. Set `persistent` to also remove the peer from static-nodes.json so it is not restored on restart.",
+        EdgeCaseHint = "Returns `true` even if the peer was not present (idempotent).",
+        ResponseDescription = "`true` if the input enode was valid and the removal was attempted.",
+        ExampleResponse = "true",
         IsImplemented = true)]
-    Task<ResultWrapper<string>> admin_removePeer(
-        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://deed356ddcaa1eb33a859b818a134765fff2a3dd5cd5b3d6cbe08c9424dca53b947bdc1c64e6f1257e29bb2960ac0a4fb56e307f360b7f8d4ddf48024cdb9d68@85.221.141.144:30303\"")]
+    Task<ResultWrapper<bool>> admin_removePeer(
+        [JsonRpcParameter(Description = "Enode URL of the peer to remove", ExampleValue = "\"enode://deed356ddcaa1eb33a859b818a134765fff2a3dd5cd5b3d6cbe08c9424dca53b947bdc1c64e6f1257e29bb2960ac0a4fb56e307f360b7f8d4ddf48024cdb9d68@85.221.141.144:30303\"")]
         string enode,
-        [JsonRpcParameter(Description = "Removing from static nodes if `true` (optional)", ExampleValue = "true")]
-        bool removeFromStaticNodes = false);
+        [JsonRpcParameter(Description = "If `true`, also remove the peer from static-nodes.json so it is not reloaded on the next start (optional, defaults to `false`).", ExampleValue = "true")]
+        bool persistent = false);
 
 
     [JsonRpcMethod(Description = "Displays a list of connected peers including information about them (`clientId`, `host`, `port`, `address`, `isBootnode`, `isStatic`, `enode`).",
@@ -67,25 +87,27 @@ public interface IAdminRpcModule : IContextAwareRpcModule
         IsImplemented = true)]
     ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block);
 
-    [JsonRpcMethod(Description = "Adds given node as a trusted peer, allowing the node to always connect even if slots are full.",
-        EdgeCaseHint = "",
-        ResponseDescription = "Boolean indicating success",
+    [JsonRpcMethod(Description = "Adds the given node to the trusted peer set so it can always connect even when slots are full. Set `persistent` to also write the peer to trusted-nodes.json so it is restored on restart.",
+        EdgeCaseHint = "Returns `true` even if the peer was already trusted (idempotent).",
+        ResponseDescription = "`true` if the peer is in the trusted set after the call.",
         ExampleResponse = "true",
         IsImplemented = true)]
     Task<ResultWrapper<bool>> admin_addTrustedPeer(
-        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://...\"")]
-        string enode
-);
+        [JsonRpcParameter(Description = "Enode URL of the peer to trust", ExampleValue = "\"enode://...\"")]
+        string enode,
+        [JsonRpcParameter(Description = "If `true`, also persist the peer to trusted-nodes.json so it is reloaded on the next start (optional, defaults to `false`).", ExampleValue = "true")]
+        bool persistent = false);
 
-    [JsonRpcMethod(Description = "Removes the given node from the trusted peers list.",
-        EdgeCaseHint = "",
-        ResponseDescription = "Boolean indicating success",
+    [JsonRpcMethod(Description = "Removes the given node from the trusted peer set. Set `persistent` to also remove the peer from trusted-nodes.json so it is not re-trusted on restart.",
+        EdgeCaseHint = "Returns `true` even if the peer was not trusted (idempotent).",
+        ResponseDescription = "`true` if the input enode was valid and the removal was attempted.",
         ExampleResponse = "true",
         IsImplemented = true)]
     Task<ResultWrapper<bool>> admin_removeTrustedPeer(
-        [JsonRpcParameter(Description = "Given node", ExampleValue = "\"enode://...\"")]
-        string enode
-);
+        [JsonRpcParameter(Description = "Enode URL of the peer to untrust", ExampleValue = "\"enode://...\"")]
+        string enode,
+        [JsonRpcParameter(Description = "If `true`, also remove the peer from trusted-nodes.json so it is not reloaded on the next start (optional, defaults to `false`).", ExampleValue = "true")]
+        bool persistent = false);
 
     [JsonRpcMethod(Description = "Subscribes to a particular event over WebSocket. For every event that matches the subscription, a notification with event details and subscription id is sent to a client.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
     ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null);

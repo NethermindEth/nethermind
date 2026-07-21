@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
-internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
+internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
 {
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
     private readonly TimeoutCertificateDecoder _timeoutCertificateDecoder = new();
 
-    protected override SyncInfo DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override SyncInfo DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -34,28 +33,29 @@ internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
         return new SyncInfo(highestQuorumCert, highestTimeoutCert);
     }
 
-    public Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
 
-        return new Rlp(rlpStream.Data.ToArray());
+        return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        _quorumCertificateDecoder.Encode(stream, item.HighestQuorumCert, rlpBehaviors);
-        _timeoutCertificateDecoder.Encode(stream, item.HighestTimeoutCert, rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        _quorumCertificateDecoder.Encode(ref writer, item.HighestQuorumCert, rlpBehaviors);
+        _timeoutCertificateDecoder.Encode(ref writer, item.HighestTimeoutCert, rlpBehaviors);
     }
 
     public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

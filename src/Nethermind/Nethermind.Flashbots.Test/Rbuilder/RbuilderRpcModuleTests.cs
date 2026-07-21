@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -71,7 +70,7 @@ public class RbuilderRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_getCodeByHash", theHash);
 
-        response.Should().Contain(theCode);
+        Assert.That(response, Does.Contain(theCode));
     }
 
     [Test]
@@ -81,25 +80,27 @@ public class RbuilderRpcModuleTests
         byte[] theCodeBytes = Bytes.FromHexString(theCode);
         Hash256 theHash = Keccak.Compute(theCodeBytes);
         string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_getCodeByHash", theHash);
-        response.Should().Contain("null");
+        Assert.That(response, Does.Contain("null"));
     }
 
     [Test]
     public async Task Test_calculateStateRoot()
     {
-        Dictionary<Address, AccountChange> accountDiff = new();
-        accountDiff[TestItem.AddressA] = new AccountChange()
+        Dictionary<Address, AccountChange> accountDiff = new()
         {
-            Nonce = 10,
-            Balance = 20,
-            SelfDestructed = true,
-            ChangedSlots = new Dictionary<UInt256, UInt256>()
+            [TestItem.AddressA] = new AccountChange()
+            {
+                Nonce = 10,
+                Balance = 20,
+                SelfDestructed = true,
+                ChangedSlots = new Dictionary<UInt256, UInt256>()
             {
                 {0,0}
+            }
             }
         };
 
         string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_calculateStateRoot", "LATEST", accountDiff);
-        response.Should().Contain("0x1df26ab740de451d16a6a902ccd0510943e6e70fae9739e65cf1aa16d8862a34");
+        Assert.That(response, Does.Contain("0x1df26ab740de451d16a6a902ccd0510943e6e70fae9739e65cf1aa16d8862a34"));
     }
 }

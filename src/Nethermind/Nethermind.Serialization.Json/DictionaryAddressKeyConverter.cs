@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Json
                     throw new JsonException($"JsonTokenType was of type {reader.TokenType}, only objects are supported");
                 }
 
-                Dictionary<TKey, TValue> dictionary = new();
+                Dictionary<TKey, TValue> dictionary = [];
                 while (reader.Read())
                 {
                     if (reader.TokenType == JsonTokenType.EndObject)

@@ -48,8 +48,8 @@ public readonly struct BlockExecutionContext
     {
         Header = blockHeader;
         Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
-        Number = (ulong)blockHeader.Number;
-        GasLimit = (ulong)blockHeader.GasLimit;
+        Number = blockHeader.Number;
+        GasLimit = blockHeader.GasLimit;
         BlobBaseFee = blobBaseFee.ToValueHash();
         Spec = spec;
         PrevRandao = prevRandao;

@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
     public class AddressFilter(HashSet<AddressAsKey> addresses)
     {

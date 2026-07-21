@@ -15,19 +15,20 @@ namespace Nethermind.Serialization.Json;
 /// Shared helpers for numeric JSON converters to avoid duplicating hex parsing and
 /// <see cref="NumberConversion"/> write logic across int/long/ulong converters.
 /// </summary>
-internal static class NumericConverterHelper
+public static class NumericConverterHelper
 {
     /// <summary>
     /// Parse a UTF-8 span that may be hex ("0x...") or decimal into <typeparamref name="T"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static T Parse<T>(ReadOnlySpan<byte> s) where T : struct, INumberBase<T>
+    public static T Parse<T>(ReadOnlySpan<byte> s) where T : struct, INumberBase<T>
     {
         if (s.Length == 0)
         {
             ThrowNullAssignment(typeof(T).Name);
         }
 
+        // Fast path for the canonical zero — skips TryParse for the most common JSON-RPC value.
         if (s.SequenceEqual("0x0"u8))
         {
             return T.Zero;
@@ -56,7 +57,7 @@ internal static class NumericConverterHelper
     [SkipLocalsInit]
     internal static void Write<T>(Utf8JsonWriter writer, T value) where T : struct, INumberBase<T>
     {
-        switch (ForcedNumberConversion.GetFinalConversion())
+        switch (ForcedNumberConversion.Value)
         {
             case NumberConversion.Hex:
                 if (value == T.Zero)

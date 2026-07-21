@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -15,40 +14,14 @@ namespace Nethermind.Xdc.Test;
 [TestFixture]
 public class SnapshotDecoderTests
 {
-    private static IEnumerable<Snapshot> Snapshots => [
-        new Snapshot(1, Keccak.EmptyTreeHash, []),
-        new Snapshot(3, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)]),
+    private static readonly IRlpDecoder<Snapshot> Decoder = new SnapshotDecoder();
+
+    private static IEnumerable<TestCaseData> Snapshots => [
+        new TestCaseData(new Snapshot(1, Keccak.EmptyTreeHash, [])).SetName("EmptySigners"),
+        new TestCaseData(new Snapshot(3, Keccak.EmptyTreeHash, [Address.FromNumber(1), Address.FromNumber(2)])).SetName("WithSigners"),
     ];
 
     [Test, TestCaseSource(nameof(Snapshots))]
-    public void RoundTrip_ValueDecoder(Snapshot original)
-    {
-        SnapshotDecoder encoder = new();
-        RlpStream rlpStream = new(encoder.GetLength(original, RlpBehaviors.None));
-        encoder.Encode(rlpStream, original);
-        rlpStream.Position = 0;
-
-        Rlp.ValueDecoderContext ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
-        Snapshot decoded = encoder.Decode(ref ctx)!;
-        if (original is null)
-        {
-            decoded.Should().BeNull();
-        }
-        else
-        {
-            decoded.Should().BeEquivalentTo(original);
-        }
-    }
-
-    [Test, TestCaseSource(nameof(Snapshots))]
-    public void RoundTrip_stream(Snapshot original)
-    {
-        SnapshotDecoder encoder = new();
-        RlpStream stream = new(encoder.GetLength(original, RlpBehaviors.None));
-        encoder.Encode(stream, original);
-
-        SnapshotDecoder decoder = new();
-        Snapshot decoded = decoder.Decode(stream.Data.AsSpan());
-        decoded.Should().BeEquivalentTo(original);
-    }
+    public void RoundTrip(Snapshot original) =>
+        Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingXdcComparer());
 }

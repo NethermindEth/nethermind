@@ -10,8 +10,6 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         public static StaticSelector Full { get; } = new(SyncMode.Full);
 
-        public static StaticSelector SnapSync { get; } = new(SyncMode.SnapSync);
-
         public static StaticSelector FastSync { get; } = new(SyncMode.FastSync);
 
         public static StaticSelector FastBlocks { get; } = new(SyncMode.FastBlocks);
@@ -37,6 +35,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public Task StopAsync() => Task.CompletedTask;
+        public Task StartAsync() => Task.CompletedTask;
         public void Update() { }
 
         public event EventHandler<SyncModeChangedEventArgs> Changing

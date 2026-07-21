@@ -14,18 +14,23 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// <summary>
 /// ISnapTrieFactory implementation for flat state storage.
 /// Uses IPersistence to create reader/writeBatch per tree for proper resource management.
+/// EnsureInitialize/FinalizeSync are driven by the snap-sync runner at start/end of the run,
+/// so they don't need internal locking — they're never called concurrently with CreateXxxTree.
 /// </summary>
 public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
-    private readonly Lock _lock = new();
 
-    private bool _initialized = false;
+    public void EnsureInitialize()
+    {
+        if (_logger.IsInfo) _logger.Info("Clearing database");
+        persistence.Clear();
+    }
+
+    public void FinalizeSync() => persistence.Flush();
 
     public ISnapTree<PathWithAccount> CreateStateTree()
     {
-        EnsureDatabaseCleared();
-
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager);
@@ -33,24 +38,8 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
     {
-        EnsureDatabaseCleared();
-
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager);
-    }
-
-    private void EnsureDatabaseCleared()
-    {
-        if (_initialized) return;
-
-        using (_lock.EnterScope())
-        {
-            if (_initialized) return;
-            _initialized = true;
-
-            _logger.Info("Clearing database");
-            persistence.Clear();
-        }
     }
 }

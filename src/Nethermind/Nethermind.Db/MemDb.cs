@@ -92,8 +92,8 @@ namespace Nethermind.Db
 
         public virtual IWriteBatch StartWriteBatch() => this.LikeABatch();
 
-        public ICollection<byte[]> Keys => _db.Keys;
-        public ICollection<byte[]> Values => _db.Values;
+        public ICollection<byte[]> Keys => _db.Select(static kvp => kvp.Key).ToArray();
+        public ICollection<byte[]> Values => _db.Select(static kvp => kvp.Value).ToArray()!;
 
         public int Count => _db.Count;
 
@@ -134,6 +134,8 @@ namespace Nethermind.Db
         }
 
         public virtual IDbMeta.DbMetric GatherMetric() => new() { Size = Count };
+
+        public long EstimatedCount => Count;
 
         private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }

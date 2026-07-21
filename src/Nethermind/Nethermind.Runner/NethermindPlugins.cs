@@ -10,6 +10,9 @@ public static class NethermindPlugins
 {
     public static readonly IReadOnlyList<Type> EmbeddedPlugins =
     [
+        typeof(Nethermind.BalRecorder.BalRecorderPlugin),
+        typeof(Nethermind.BlockProfiler.BlockProfilerPlugin),
+        typeof(Nethermind.CensorshipDetector.Plugin.CensorshipDetectorPlugin),
         typeof(Nethermind.Consensus.AuRa.AuRaPlugin),
         typeof(Nethermind.Consensus.Clique.CliquePlugin),
         typeof(Nethermind.Consensus.Ethash.EthashPlugin),
@@ -27,6 +30,6 @@ public static class NethermindPlugins
         typeof(Nethermind.UPnP.Plugin.UPnPPlugin),
         typeof(Nethermind.Xdc.XdcPlugin),
         typeof(Nethermind.Xdc.XdcSubnetPlugin),
-        typeof(Nethermind.StateComposition.StateCompositionPlugin),
+        typeof(Nethermind.StateDiffsWriter.StateDiffsWriterPlugin),
     ];
 }

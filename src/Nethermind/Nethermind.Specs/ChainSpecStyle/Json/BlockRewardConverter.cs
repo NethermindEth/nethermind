@@ -11,15 +11,15 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256>>
+public class BlockRewardConverter : JsonConverter<SortedDictionary<ulong, UInt256>>
 {
-    public override void Write(Utf8JsonWriter writer, SortedDictionary<long, UInt256> value,
+    public override void Write(Utf8JsonWriter writer, SortedDictionary<ulong, UInt256> value,
         JsonSerializerOptions options) => throw new NotSupportedException();
 
-    public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
+    public override SortedDictionary<ulong, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)
     {
-        SortedDictionary<long, UInt256> value = new();
+        SortedDictionary<ulong, UInt256> value = [];
         if (reader.TokenType == JsonTokenType.String)
         {
             UInt256 blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
@@ -39,9 +39,7 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256
                     throw new ArgumentException("Cannot deserialize dictionary.");
                 }
 
-                UInt256 property =
-                    UInt256Converter.ReadHex(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
-                long key = (long)property;
+                ulong key = ULongConverter.FromString(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
                 reader.Read();
                 if (reader.TokenType != JsonTokenType.String)
                 {

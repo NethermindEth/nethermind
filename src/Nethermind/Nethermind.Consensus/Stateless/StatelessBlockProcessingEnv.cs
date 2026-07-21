@@ -5,7 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -29,30 +29,58 @@ public class StatelessBlockProcessingEnv(
     ILogManager logManager)
 {
     private IBlockProcessor? _blockProcessor;
-    public IBlockProcessor BlockProcessor
-    {
-        get => _blockProcessor ??= GetProcessor();
-    }
-
     private IWorldState? _worldState;
-    public IWorldState WorldState
-    {
-        get => _worldState ??= new WorldState(new TrieStoreScopeProvider(new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager), logManager);
-    }
 
-    private IBlockProcessor GetProcessor()
+    public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
+
+    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
+        new WorldState(
+            new TrieStoreScopeProvider(
+                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager
+            ),
+            logManager
+        )
+    );
+
+    private BlockProcessor GetProcessor()
     {
         using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
         StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
-        ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
-        IBlockProcessor.IBlockTransactionsExecutor txExecutor =
+        BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
+        EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
+        BlockAccessListManager blockAccessListManager = new(
+            WorldState,
+            specProvider,
+            blockhashProvider,
+            logManager,
+            new BlocksConfig()
+            {
+                ParallelExecution = false,
+                ParallelExecutionBatchRead = false
+            },
+            new WithdrawalProcessorFactory(logManager),
+            codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance),
+            executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
+        );
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor),
-                WorldState);
+                WorldState
+            ),
+            WorldState,
+            specProvider,
+            blockAccessListManager,
+            logManager
+        );
 
-        IHeaderValidator headerValidator = new HeaderValidator(statelessBlockTree, sealValidator, specProvider, logManager);
-        IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,
-            new UnclesValidator(statelessBlockTree, headerValidator, logManager), specProvider, logManager);
+        HeaderValidator headerValidator = new(statelessBlockTree, sealValidator, specProvider, logManager);
+        BlockValidator blockValidator = new(
+            new TxValidator(specProvider.ChainId),
+            headerValidator,
+            new UnclesValidator(statelessBlockTree, headerValidator, logManager),
+            specProvider,
+            logManager
+        );
 
         return new BlockProcessor(
             specProvider,
@@ -65,16 +93,18 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new ExecutionRequestsProcessor(txProcessor),
-            NullBlockAccessListManager.Instance
+            new StatelessExecutionRequestsProcessor(txProcessor),
+            blockAccessListManager
         );
     }
 
-
-    private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockhashCache)
-    {
-        BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
-        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
-    }
+    private EthereumTransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashProvider blockhashProvider)
+        => new(
+            BlobBaseFeeCalculator.Instance,
+            specProvider,
+            state,
+            new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
+            logManager
+        );
 }

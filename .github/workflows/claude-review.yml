@@ -2,11 +2,11 @@
 #
 # This workflow has two modes:
 #
-#   1. Review path — triggered automatically on PR open / ready-for-review, and manually when
-#      someone comments a variant of "@claude review". Runs Claude with a fixed review prompt,
-#      captures a structured `mergeable` verdict via --json-schema, and posts a
-#      `claude-review/reviewed` commit status (success/failure) that branch protection uses
-#      to gate merging.
+#   1. Review path — triggered automatically on same-repository PR open / ready-for-review,
+#      and manually when a trusted maintainer comments a variant of "@claude review". Runs
+#      Claude with a fixed review prompt, captures a structured `mergeable` verdict via
+#      --json-schema, and posts a `claude-review/reviewed` commit status (success/failure)
+#      that branch protection uses to gate merging.
 #
 #   2. Mention path — triggered by any other `@claude ...` comment/mention (e.g.
 #      `@claude explain X`, `@claude fix Y`). Runs Claude with the comment body as its prompt,
@@ -34,7 +34,7 @@ on:
 jobs:
   claude:
     # Gate the job on either:
-    #  - a pull_request event that is NOT a WIP PR (label/title filter), OR
+    #  - a same-repository pull_request event that is NOT a WIP PR (label/title filter), OR
     #  - an unlabeled event where the removed label was specifically `wip`, OR
     #  - an `@claude` mention on comments/reviews/issues from a trusted author.
     #
@@ -42,17 +42,22 @@ jobs:
     # and related events always run in the base-repo context with full secret access, even
     # for comments on fork PRs, so without this guard an external contributor could trigger
     # a Claude run (consuming the OAuth token) by commenting `@claude ...` on their own PR.
-    # The `pull_request` auto-trigger path doesn't need this guard because GitHub strips
-    # secrets from fork-PR `pull_request` events, so the action would fail without auth anyway.
+    # Auto-triggered reviews are limited to same-repository PRs. Fork PRs run with a
+    # read-only token and no secrets, so the Claude action cannot mint an OIDC token or
+    # post the required `claude-review/reviewed` status. Maintainers can still trigger a
+    # review manually with `@claude review`, which runs in the base-repo context.
     if: |
       (github.event_name == 'pull_request' && (
-        (github.event.action == 'unlabeled' && github.event.label.name == 'wip') ||
+        github.event.pull_request.head.repo.full_name == github.repository &&
         (
-          (github.event.action == 'opened' || github.event.action == 'ready_for_review') &&
-          !contains(github.event.pull_request.labels.*.name, 'wip') &&
-          !startsWith(github.event.pull_request.title, 'WIP') &&
-          !contains(github.event.pull_request.title, '[WIP]') &&
-          !contains(github.event.pull_request.title, '[wip]')
+          (github.event.action == 'unlabeled' && github.event.label.name == 'wip') ||
+          (
+            (github.event.action == 'opened' || github.event.action == 'ready_for_review') &&
+            !contains(github.event.pull_request.labels.*.name, 'wip') &&
+            !startsWith(github.event.pull_request.title, 'WIP') &&
+            !contains(github.event.pull_request.title, '[WIP]') &&
+            !contains(github.event.pull_request.title, '[wip]')
+          )
         )
       )) ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') &&
@@ -141,6 +146,7 @@ jobs:
 
             Set `mergeable: false` in the structured output if any Critical, High, or Medium findings exist that have not been explicitly acknowledged with rationale in prior PR comments. Otherwise `mergeable: true`.
           claude_args: |
+            --model opus
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh:*),WebFetch"
             --json-schema '{"type":"object","properties":{"mergeable":{"type":"boolean","description":"False if any Critical, High, or Medium findings remain unresolved and unexplained"},"critical_count":{"type":"integer"},"high_count":{"type":"integer"},"medium_count":{"type":"integer"},"summary":{"type":"string"}},"required":["mergeable","critical_count","high_count","medium_count","summary"]}'
 
@@ -156,6 +162,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
+            --model opus
             --allowedTools "Bash(gh:*),WebFetch"
 
       # After a successful review, read the structured verdict from the previous step and

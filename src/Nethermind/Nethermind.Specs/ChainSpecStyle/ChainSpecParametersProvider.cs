@@ -15,7 +15,7 @@ using Nethermind.Core;
 public class ChainSpecParametersProvider : IChainSpecParametersProvider
 {
     private readonly Dictionary<string, JsonElement> _chainSpecParameters;
-    private readonly Dictionary<Type, IChainSpecEngineParameters> _instances = new();
+    private readonly Dictionary<Type, IChainSpecEngineParameters> _instances = [];
     private readonly IJsonSerializer _jsonSerializer;
 
     public string SealEngineType { get; }

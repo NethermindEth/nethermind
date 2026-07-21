@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -34,6 +33,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Test.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
@@ -110,10 +110,12 @@ public abstract class StateSyncFeedTestsBase(
     protected ContainerBuilder BuildTestContainerBuilder(RemoteDbContext remote, int syncDispatcherAllocateTimeoutMs = 10)
     {
         ContainerBuilder containerBuilder = new ContainerBuilder()
+            // These tests exercise the patricia state-sync feed (trie-node download) directly and verify via
+            // PatriciaSnapTrieFactory/LocalDbContext, so they pin the patricia backend.
             .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
             {
                 FastSync = true
-            })))
+            }, new FlatDbConfig { Enabled = false })))
             .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
             {
                 syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
@@ -135,7 +137,34 @@ public abstract class StateSyncFeedTestsBase(
             .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)))
 
             .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
-            .AddSingleton<IStateSyncTestOperation, LocalDbContext>();
+            .AddSingleton<IStateSyncTestOperation, LocalDbContext>()
+
+            // Substitute the sync mode selector so StateSyncRunner.RunStateSyncRounds'
+            // WaitUntilMode(StateNodes) returns immediately in tests rather than
+            // blocking on real MultiSyncModeSelector state transitions.
+            .AddSingleton<ISyncModeSelector>(static _ =>
+            {
+                ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+                selector.Current.Returns(SyncMode.StateNodes);
+                return selector;
+            })
+
+            // Substitute progress resolver + beacon strategy so StateSyncPrecursorWait's
+            // close-to-head poll returns immediately (default test peers have HeadNumber=0
+            // so the real predicate would never be satisfied).
+            .AddSingleton<ISyncProgressResolver>(static _ =>
+            {
+                ISyncProgressResolver resolver = Substitute.For<ISyncProgressResolver>();
+                resolver.FindBestHeader().Returns(0UL);
+                resolver.FindBestFullState().Returns(0UL);
+                return resolver;
+            })
+            .AddSingleton<IBeaconSyncStrategy>(static _ =>
+            {
+                IBeaconSyncStrategy strategy = Substitute.For<IBeaconSyncStrategy>();
+                strategy.GetTargetBlockHeight().Returns((ulong?)0UL);
+                return strategy;
+            });
 
         containerBuilder.RegisterBuildCallback((ctx) =>
         {
@@ -147,27 +176,15 @@ public abstract class StateSyncFeedTestsBase(
 
     protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength, bool failOnTimeout = true)
     {
-        // Note: The `RunContinuationsAsynchronously` is very important, or the thread might continue synchronously
-        // which causes unexpected hang.
-        TaskCompletionSource dormantAgainSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        safeContext.Feed.StateChanged += (_, e) =>
-        {
-            if (e.NewState == SyncFeedState.Dormant)
-            {
-                dormantAgainSource.TrySetResult();
-            }
-        };
-
-        safeContext.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
-        safeContext.StartDispatcher(safeContext.CancellationToken);
+        Task feedTask = safeContext.RunFeed(safeContext.CancellationToken);
 
         Task completed = await Task.WhenAny(
-            dormantAgainSource.Task,
+            feedTask,
             Task.Delay(timeout));
 
-        if (failOnTimeout && completed != dormantAgainSource.Task)
+        if (failOnTimeout && completed != feedTask)
         {
-            Assert.Fail($"State sync did not reach Dormant within {timeout}ms.");
+            Assert.Fail($"State sync did not complete within {timeout}ms.");
         }
     }
 
@@ -175,20 +192,17 @@ public abstract class StateSyncFeedTestsBase(
         Lazy<SyncPeerMock[]> syncPeerMocks,
         Lazy<ISyncPeerPool> syncPeerPool,
         Lazy<TreeSync> treeSync,
-        Lazy<StateSyncFeed> stateSyncFeed,
-        Lazy<ISyncDownloader<StateSyncBatch>> downloader,
-        Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
+        Lazy<IStateSyncRunner> stateSyncRunner,
         Lazy<IBlockProcessingQueue> blockProcessingQueue,
-        IBlockTree blockTree
+        IBlockTree blockTree,
+        Lazy<ISimpleSyncFeed<StateSyncBatch>> feed
     ) : IDisposable
     {
         public SyncPeerMock[] SyncPeerMocks => syncPeerMocks.Value;
         public ISyncPeerPool Pool => syncPeerPool.Value;
         public TreeSync TreeFeed => treeSync.Value;
-        public StateSyncFeed Feed => stateSyncFeed.Value;
         public IBlockProcessingQueue BlockProcessingQueue => blockProcessingQueue.Value;
-
-        public ISyncDownloader<StateSyncBatch> Downloader => downloader.Value;
+        public ISimpleSyncFeed<StateSyncBatch> Feed => feed.Value;
 
         private readonly AutoCancelTokenSource _autoCancelTokenSource = new();
         public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
@@ -202,14 +216,17 @@ public abstract class StateSyncFeedTestsBase(
                 .WithStateRoot(newRootHash)
                 .TestObject;
 
-            (await blockTree.SuggestBlockAsync(newBlock)).Should().Be(AddBlockResult.Added);
-            blockTree.UpdateMainChain([newBlock], false, true);
+            Assert.That((await blockTree.SuggestBlockAsync(newBlock)), Is.EqualTo(AddBlockResult.Added));
+            blockTree.TryUpdateMainChain(newBlock.Header, false, true, preloadedBlocks: new[] { newBlock });
         }
 
-        public void StartDispatcher(CancellationToken cancellationToken)
+        public void ResetFeed()
         {
-            Task _ = syncDispatcher.Value.Start(cancellationToken);
+            treeSync.Value.ResetStateRoot();
+            treeSync.Value.ResetStateRootToBestSuggested();
         }
+
+        public Task RunFeed(CancellationToken cancellationToken) => stateSyncRunner.Value.RunStateSyncRounds(cancellationToken);
 
         public void Dispose()
         {
@@ -342,5 +359,3 @@ public class RemoteDbContext
     public ITrieStore TrieStore { get; }
     public StateTree StateTree { get; }
 }
-
-

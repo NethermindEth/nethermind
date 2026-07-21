@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,8 +10,8 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
+using Nethermind.Core.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,12 +21,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public delegate T DecodeRlpValue<T>(ref Rlp.ValueDecoderContext ctx);
+    public delegate T DecodeRlpValue<T>(ref RlpReader ctx);
 
     /// <summary>
     ///     https://github.com/ethereum/wiki/wiki/RLP
     ///
-    ///     Note: Prefer RlpStream to encode instead, which does not create a new byte array on each call.
+    ///     Note: Prefer RlpWriter to encode into caller-owned buffers.
     /// </summary>
     public partial class Rlp
     {
@@ -71,14 +71,15 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
-        private static Lock _decoderLock = new();
+        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
+        private static readonly Lock _decoderLock = new();
+        private static readonly CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
 
         public static void ResetDecoders()
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
-            _decodersSnapshot = null;
+            Volatile.Write(ref _decodersSnapshot, null);
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
@@ -87,7 +88,7 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
-            _decodersSnapshot = null;
+            Volatile.Write(ref _decodersSnapshot, null);
         }
 
         public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false);
@@ -100,135 +101,141 @@ namespace Nethermind.Serialization.Rlp
 
         public static T Decode<T>(Span<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            ValueDecoderContext valueContext = bytes.AsRlpValueContext();
-            return Decode<T>(ref valueContext, rlpBehaviors);
+            RlpReader reader = new(bytes);
+            return Decode<T>(ref reader, rlpBehaviors);
         }
 
-        internal static byte[] ByteSpanToArray(ReadOnlySpan<byte> span)
+        public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
+
+        public static IRlpDecoder<T> GetDecoderOrThrow<T>(string key = RlpDecoderKey.Default) =>
+            GetDecoder<T>(key) ?? throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+
+        public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
-            if (span.Length == 0)
-            {
-                return [];
-            }
-
-            if (span.Length == 1)
-            {
-                int value = span[0];
-                byte[][] arrays = RlpStream.SingleByteArrays;
-                if ((uint)value < (uint)arrays.Length)
-                {
-                    return arrays[value];
-                }
-            }
-
-            return span.ToArray();
-        }
-
-        internal static ArrayPoolList<byte> ByteSpanToArrayPool(ReadOnlySpan<byte> span)
-        {
-            if (span.Length == 0)
-            {
-                return ArrayPoolList<byte>.Empty();
-            }
-
-            if (span.Length == 1)
-            {
-                int value = span[0];
-                byte[][] arrays = RlpStream.SingleByteArrays;
-                if ((uint)value < (uint)arrays.Length)
-                {
-                    return arrays[value].ToPooledList();
-                }
-            }
-
-            return span.ToPooledList();
-        }
-
-        public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
-        public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
-        public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.GetValueOrDefault(new(typeof(T), key)) as IRlpObjectDecoder<T> ?? throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
-
-        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
-        {
-            IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
+            IRlpDecoder<T>? rlpDecoder = GetDecoder<T>();
             return rlpDecoder is not null
                 ? DecodeArrayPool(ref decoderContext, rlpDecoder, rlpBehaviors, limit)
                 : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpValueDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
-            int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
-            decoderContext.GuardLimit(length, limit);
-            ArrayPoolList<T> result = new(length);
-            for (int i = 0; i < length; i++)
+            ArrayPoolList<T>? result = null;
+            try
             {
-                result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
-            }
+                int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
+                int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
+                decoderContext.GuardLimit(length, limit);
+                result = new(length);
+                for (int i = 0; i < length; i++)
+                {
+                    result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
+                }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                {
+                    decoderContext.Check(checkPosition);
+                }
+
+                return result;
+            }
+            catch (RlpException)
             {
-                decoderContext.Check(checkPosition);
+                DisposeDecodedItemsAndList(result, result?.Count ?? 0);
+                throw;
             }
-
-            return result;
+            catch (Exception e)
+            {
+                DisposeDecodedItemsAndList(result, result?.Count ?? 0);
+                throw new RlpException($"Error decoding array of {typeof(T).Name}.", e);
+            }
         }
 
-        public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        internal static void DisposeDecodedItemsAndList<T>(ArrayPoolList<T>? list, int count)
         {
-            IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
+            if (list is null)
+            {
+                return;
+            }
+
+            try
+            {
+                DisposeDecodedItems(list, count);
+            }
+            finally
+            {
+                list.Dispose();
+            }
+        }
+
+        private static void DisposeDecodedItems<T>(ArrayPoolList<T> list, int count)
+        {
+            if (typeof(IDisposable).IsAssignableFrom(typeof(T)))
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    ((IDisposable?)list[i])?.Dispose();
+                }
+
+                return;
+            }
+
+            if (typeof(T).IsValueType || typeof(T).IsSealed)
+            {
+                return;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (list[i] is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
+            }
+        }
+
+        public static T Decode<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            IRlpDecoder<T> rlpDecoder = GetDecoder<T>() ??
+                throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+
             bool shouldCheckStream = decoderContext.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
-            int length = decoderContext.Length;
-            T? result = rlpDecoder is not null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
-            if (shouldCheckStream)
-                decoderContext.Check(length);
+            T? result;
+            try
+            {
+                result = shouldCheckStream
+                    ? rlpDecoder.DecodeComplete(ref decoderContext, rlpBehaviors)
+                    : rlpDecoder.Decode(ref decoderContext, rlpBehaviors);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                throw new RlpException($"Truncated or out-of-bounds RLP while decoding {typeof(T).Name}.", e);
+            }
+            catch (RlpException)
+            {
+                throw;
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                throw new RlpException($"Error decoding {typeof(T).Name}.", e);
+            }
+
             return result;
         }
-
-        public static Rlp Encode(Account item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => AccountDecoder.Instance.Encode(item, behaviors);
-
-        public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => LogEntryDecoder.Instance.Encode(item, behaviors);
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (item is Rlp rlp)
-            {
-                return rlp;
-            }
-
-            IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
-            if (rlpStreamEncoder is not null)
-            {
-                int totalLength = rlpStreamEncoder.GetLength(item, behaviors);
-                RlpStream stream = new(totalLength);
-                rlpStreamEncoder.Encode(stream, item, behaviors);
-                return new Rlp(stream.Data.ToArray());
-            }
-
-            return GetObjectDecoder<T>().Encode(item, behaviors);
-        }
+            => item is Rlp rlp
+                ? rlp
+                : GetDecoder<T>() is { } rlpDecoder
+                    ? rlpDecoder.Encode(item, behaviors)
+                    : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (items is [])
-            {
-                return OfEmptyList;
-            }
-
-            IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
-            if (rlpStreamEncoder is not null)
-            {
-                int totalLength = rlpStreamEncoder.GetLength(items, behaviors);
-                RlpStream stream = new(totalLength);
-                rlpStreamEncoder.Encode(stream, items, behaviors);
-                return new Rlp(stream.Data.ToArray());
-            }
-
-            return GetObjectDecoder<T>().Encode(items, behaviors);
-        }
+            => items is []
+                ? OfEmptyList
+                : GetDecoder<T>() is { } rlpDecoder
+                    ? rlpDecoder.Encode(items, behaviors)
+                    : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode(int[] integers)
         {
@@ -239,6 +246,20 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return Encode(rlpSequence);
+        }
+
+        public static CappedArray<byte> EncodeToCappedArray(int item, ICappedArrayPool? bufferPool = null)
+        {
+            CappedArray<byte>[] cache = s_intPreEncodes;
+            if ((uint)item < (uint)cache.Length)
+            {
+                return cache[item];
+            }
+
+            CappedArray<byte> buffer = bufferPool.SafeRent(LengthOf(item));
+            RlpWriter writer = new(buffer);
+            writer.Encode(item);
+            return buffer;
         }
 
         public static Rlp Encode(Transaction transaction) => Encode(transaction, false);
@@ -261,14 +282,28 @@ namespace Nethermind.Serialization.Rlp
             < 0 => Encode(new BigInteger(value), 8),
             0L => OfZero,
             < 0x80 => new((byte)value),
-            < 0x100 => new(new byte[] { 129, (byte)value }),
-            < 0x1_0000 => new(new byte[] { 130, (byte)(value >> 8), (byte)value }),
-            < 0x100_0000 => new(new byte[] { 131, (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x1_0000_0000 => new(new byte[] { 132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x100_0000_0000 => new(new byte[] { 133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x1_0000_0000_0000 => new(new byte[] { 134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x100_0000_0000_0000 => new(new byte[] { 135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            _ => new(new byte[] { 136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+            < 0x100 => new([129, (byte)value]),
+            < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
+            < 0x100_0000 => new([131, (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000 => new([132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000 => new([133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000_0000 => new([134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000_0000 => new([135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+        };
+
+        public static Rlp Encode(ulong value) => value switch
+        {
+            0UL => OfZero,
+            < 0x80 => new((byte)value),
+            < 0x100 => new([129, (byte)value]),
+            < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
+            < 0x100_0000 => new([131, (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000 => new([132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000 => new([133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000_0000 => new([134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000_0000 => new([135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
         };
 
         // caller is responsible for allocating buffer large enough (max 9 bytes)
@@ -382,7 +417,7 @@ namespace Nethermind.Serialization.Rlp
         [SkipLocalsInit]
         public static Rlp Encode(ReadOnlySpan<byte> input)
         {
-            // Handle special cases first
+            // Special cases return compact/shared instances rather than a freshly allocated array.
             int length = input.Length;
             if (length == 0)
             {
@@ -395,33 +430,52 @@ namespace Nethermind.Serialization.Rlp
                 return new Rlp(input[0]);
             }
 
-            // For lengths < 56, the encoding is one byte of prefix + the data
-            if (length < RlpHelpers.SmallPrefixBarrier)
-            {
-                // Allocate exactly what we need: 1 prefix byte + input length
-                byte[] rlpResult = GC.AllocateUninitializedArray<byte>(1 + length);
-                // First byte is 0x80 + length
-                rlpResult[0] = (byte)(0x80 + length);
-                // Copy input after the prefix
-                input.CopyTo(rlpResult.AsSpan(1));
-                return new Rlp(rlpResult);
-            }
-            else
-            {
-                int lengthOfLength = LengthOfLength(length);
-                // Total size = 1 prefix byte + lengthOfLength + data length
-                int totalSize = 1 + lengthOfLength + length;
-                byte[] rlpResult = GC.AllocateUninitializedArray<byte>(totalSize);
-                // Prefix: 0xb7 (183) + number of bytes in length
-                rlpResult[0] = (byte)(0xb7 + lengthOfLength);
-                SerializeLength(length, rlpResult.AsSpan(1, lengthOfLength));
-                // Finally copy the actual input
-                input.CopyTo(rlpResult.AsSpan(1 + lengthOfLength));
-                return new Rlp(rlpResult);
-            }
+            // Everything else shares the single serialization code path in Encode(input, output).
+            byte[] rlpResult = GC.AllocateUninitializedArray<byte>(LengthOf(input));
+            Encode(input, rlpResult);
+            return new Rlp(rlpResult);
         }
 
         public static Rlp Encode(byte[]? input) => input is null or [] ? OfEmptyByteArray : Encode(input.AsSpan());
+
+        /// <summary>
+        /// Allocation-free byte-string RLP encoding: writes the encoding of <paramref name="input"/> into
+        /// <paramref name="output"/> and returns the number of bytes written.
+        /// </summary>
+        /// <remarks>
+        /// Mirrors <see cref="Encode(ReadOnlySpan{byte})"/> but targets a caller-provided buffer instead of
+        /// allocating a new array. The caller must size <paramref name="output"/> to at least
+        /// <see cref="LengthOf(ReadOnlySpan{byte})"/> bytes.
+        /// </remarks>
+        [SkipLocalsInit]
+        public static int Encode(ReadOnlySpan<byte> input, Span<byte> output)
+        {
+            int length = input.Length;
+            if (length == 0)
+            {
+                output[0] = EmptyByteArrayByte;
+                return 1;
+            }
+
+            if (length == 1 && input[0] < 128)
+            {
+                output[0] = input[0];
+                return 1;
+            }
+
+            if (length < RlpHelpers.SmallPrefixBarrier)
+            {
+                output[0] = (byte)(0x80 + length);
+                input.CopyTo(output[1..]);
+                return 1 + length;
+            }
+
+            int lengthOfLength = LengthOfLength(length);
+            output[0] = (byte)(0xb7 + lengthOfLength);
+            SerializeLength(length, output.Slice(1, lengthOfLength));
+            input.CopyTo(output[(1 + lengthOfLength)..]);
+            return 1 + lengthOfLength + length;
+        }
 
         private static int SerializeLength(int value, Span<byte> destination)
         {
@@ -456,7 +510,6 @@ namespace Nethermind.Serialization.Rlp
             int bits = 32 - BitOperations.LeadingZeroCount((uint)value | 1);
             return (bits + 7) / 8;
         }
-
 
         public static Rlp Encode(Hash256? keccak)
         {
@@ -548,965 +601,6 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(allBytes);
         }
 
-        public ref struct ValueDecoderContext
-        {
-            public ValueDecoderContext(scoped in ReadOnlySpan<byte> data)
-            {
-                Data = data;
-                Position = 0;
-            }
-
-            public ValueDecoderContext(Memory<byte> memory, bool sliceMemory = false)
-            {
-                Memory = memory;
-                Data = memory.Span;
-                Position = 0;
-
-                // Slice memory is turned off by default. Because if you are not careful and being explicit about it,
-                // you can end up with a memory leak.
-                _sliceMemory = sliceMemory;
-            }
-
-            public Memory<byte>? Memory { get; }
-
-            private bool _sliceMemory = false;
-
-            public ReadOnlySpan<byte> Data { get; }
-
-            public readonly bool IsEmpty => Data.IsEmpty;
-
-            public int Position { get; set; }
-
-            public readonly int Length => Data.Length;
-
-            public readonly bool ShouldSliceMemory => _sliceMemory;
-
-            public readonly bool IsSequenceNext() => Data[Position] >= 192;
-
-            public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
-                => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
-
-            public void SkipLength() => Position += PeekPrefixLength();
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public readonly int PeekPrefixLength() => RlpHelpers.GetPrefixLength(Data[Position]);
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int PeekNextRlpLength() => RlpHelpers.PeekNextRlpLength(Data, Position);
-
-            public ReadOnlySpan<byte> Peek(int length)
-            {
-                ReadOnlySpan<byte> item = Read(length);
-                Position -= item.Length;
-                return item;
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
-            {
-                (int prefixLength, int contentLength) = RlpHelpers.PeekPrefixAndContentLength(Data, Position);
-                Position += Math.Max(prefixLength, 1);
-                return (prefixLength, contentLength);
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
-                => RlpHelpers.PeekPrefixAndContentLength(Data, Position);
-
-            public int ReadSequenceLength()
-            {
-                int prefix = ReadByte();
-                if (prefix < 192)
-                {
-                    RlpHelpers.ThrowUnexpectedPrefix(prefix);
-                }
-
-                if (prefix <= 247)
-                {
-                    return prefix - 192;
-                }
-
-                int lengthOfContentLength = prefix - 247;
-                int contentLength = DeserializeLength(lengthOfContentLength);
-                if (contentLength < RlpHelpers.SmallPrefixBarrier)
-                {
-                    RlpHelpers.ThrowUnexpectedLength(contentLength);
-                }
-
-                return contentLength;
-            }
-
-            private int DeserializeLength(int lengthOfLength)
-            {
-                if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
-                {
-                    RlpHelpers.ThrowInvalidLength(lengthOfLength);
-                }
-
-                int result = RlpHelpers.DeserializeLengthRef(ref MemoryMarshal.GetReference(Data.Slice(Position, lengthOfLength)), lengthOfLength);
-                Position += lengthOfLength;
-                return result;
-            }
-
-            public byte ReadByte() => Data[Position++];
-
-            public ReadOnlySpan<byte> Read(int length)
-            {
-                ReadOnlySpan<byte> data = Data.Slice(Position, length);
-                Position += length;
-                return data;
-            }
-
-            public Memory<byte> ReadMemory(int length)
-            {
-                if (_sliceMemory && Memory.HasValue) return ReadSlicedMemory(length);
-                return Read(length).ToArray();
-            }
-
-            private Memory<byte> ReadSlicedMemory(int length)
-            {
-                Memory<byte> data = Memory.Value.Slice(Position, length);
-                Position += length;
-                return data;
-            }
-
-            public readonly void Check(int nextCheck)
-            {
-                if (Position != nextCheck)
-                {
-                    throw new RlpException($"Data checkpoint failed. Expected {nextCheck} and is {Position}");
-                }
-            }
-
-            // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
-            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings.
-            private class DecodeKeccakRlpException : RlpException
-            {
-                private readonly int _prefix;
-                private readonly int _position;
-                private readonly int _dataLength;
-                private string? _message;
-
-                public DecodeKeccakRlpException(string message, Exception inner) : base(message, inner)
-                {
-                }
-
-                public DecodeKeccakRlpException(string message) : base(message)
-                {
-                }
-
-                public DecodeKeccakRlpException(in int prefix, in int position, in int dataLength) : this(string.Empty)
-                {
-                    _prefix = prefix;
-                    _position = position;
-                    _dataLength = dataLength;
-                }
-
-                public override string Message => _message ??= ConstructMessage();
-
-                private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {_dataLength}.";
-            }
-
-            public Hash256? DecodeKeccak()
-            {
-                int prefix = ReadByte();
-                if (prefix == 128)
-                {
-                    return null;
-                }
-
-                if (prefix != 128 + 32)
-                {
-                    ThrowKeccakDecodeException(prefix);
-                }
-
-                ReadOnlySpan<byte> keccakSpan = Read(32);
-                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-                {
-                    return Keccak.OfAnEmptyString;
-                }
-
-                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-                {
-                    return Keccak.EmptyTreeHash;
-                }
-
-                return new Hash256(keccakSpan);
-            }
-
-            public ValueHash256? DecodeValueKeccak()
-            {
-                int prefix = ReadByte();
-                if (prefix == 128)
-                {
-                    return null;
-                }
-
-                if (prefix != 128 + 32)
-                {
-                    ThrowKeccakDecodeException(prefix);
-                }
-
-                ReadOnlySpan<byte> keccakSpan = Read(32);
-                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-                {
-                    return Keccak.OfAnEmptyString.ValueHash256;
-                }
-
-                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-                {
-                    return Keccak.EmptyTreeHash.ValueHash256;
-                }
-
-                return new ValueHash256(keccakSpan);
-            }
-
-            public Hash256? DecodeZeroPrefixKeccak()
-            {
-                int prefix = PeekByte();
-                if (prefix == 128)
-                {
-                    ReadByte();
-                    return null;
-                }
-
-                ReadOnlySpan<byte> theSpan = DecodeByteArraySpan(RlpLimit.L32);
-                byte[] keccakByte = new byte[32];
-                theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
-                return new Hash256(keccakByte);
-            }
-
-            public void DecodeKeccakStructRef(out Hash256StructRef keccak)
-            {
-                int prefix = ReadByte();
-                if (prefix == 128)
-                {
-                    keccak = new Hash256StructRef(Keccak.Zero.Bytes);
-                }
-                else if (prefix != 128 + 32)
-                {
-                    ThrowKeccakDecodeException(prefix);
-                    keccak = default;
-                }
-                else
-                {
-                    ReadOnlySpan<byte> keccakSpan = Read(32);
-                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-                    {
-                        keccak = new Hash256StructRef(Keccak.OfAnEmptyString.Bytes);
-                    }
-                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-                    {
-                        keccak = new Hash256StructRef(Keccak.EmptyTreeHash.Bytes);
-                    }
-                    else
-                    {
-                        keccak = new Hash256StructRef(keccakSpan);
-                    }
-                }
-            }
-
-            public void DecodeZeroPrefixedKeccakStructRef(out Hash256StructRef keccak, Span<byte> buffer)
-            {
-                int prefix = PeekByte();
-                if (prefix == 128)
-                {
-                    ReadByte();
-                    keccak = new Hash256StructRef(Keccak.Zero.Bytes);
-                }
-                else if (prefix > 128 + 32)
-                {
-                    ReadByte();
-                    ThrowKeccakDecodeException(prefix);
-                    keccak = default;
-                }
-                else if (prefix == 128 + 32)
-                {
-                    ReadByte();
-                    ReadOnlySpan<byte> keccakSpan = Read(32);
-                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-                    {
-                        keccak = new Hash256StructRef(Keccak.OfAnEmptyString.Bytes);
-                    }
-                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-                    {
-                        keccak = new Hash256StructRef(Keccak.EmptyTreeHash.Bytes);
-                    }
-                    else
-                    {
-                        keccak = new Hash256StructRef(keccakSpan);
-                    }
-                }
-                else
-                {
-                    ReadOnlySpan<byte> theSpan = DecodeByteArraySpan(RlpLimit.L32);
-                    if (theSpan.Length < 32)
-                    {
-                        buffer[..(32 - theSpan.Length)].Clear();
-                    }
-                    theSpan.CopyTo(buffer[(32 - theSpan.Length)..]);
-                    keccak = new Hash256StructRef(buffer);
-                }
-            }
-
-            public Address? DecodeAddress()
-            {
-                int prefix = ReadByte();
-                if (prefix == 128)
-                {
-                    return null;
-                }
-
-                if (prefix != 128 + 20)
-                {
-                    RlpHelpers.ThrowUnexpectedPrefix(prefix);
-                }
-
-                byte[] buffer = Read(20).ToArray();
-                return new Address(buffer);
-            }
-
-            public void DecodeAddressStructRef(out AddressStructRef address)
-            {
-                int prefix = ReadByte();
-                if (prefix == 128)
-                {
-                    address = new AddressStructRef(Address.Zero.Bytes);
-                    return;
-                }
-                else if (prefix != 128 + 20)
-                {
-                    RlpHelpers.ThrowUnexpectedPrefix(prefix);
-                }
-
-                address = new AddressStructRef(Read(20));
-            }
-
-            public UInt256 DecodeUInt256(int length = -1)
-            {
-                if (PeekByte() == 0)
-                {
-                    RlpHelpers.ThrowNonCanonicalInteger(Position);
-                }
-
-                ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
-                if (byteSpan.Length > 32)
-                {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(byteSpan.Length);
-                }
-
-                if (length == -1)
-                {
-                    if (byteSpan.Length > 1 && byteSpan[0] == 0)
-                    {
-                        RlpHelpers.ThrowNonCanonicalInteger(Position);
-                    }
-                }
-                else if (byteSpan.Length != length)
-                {
-                    RlpHelpers.ThrowInvalidLength(byteSpan.Length, length);
-                }
-
-
-                return new UInt256(byteSpan, true);
-            }
-
-            public BigInteger DecodeUBigInt()
-            {
-                ReadOnlySpan<byte> bytes = DecodeByteArraySpan(RlpLimit.L32);
-                if (bytes.Length > 1 && bytes[0] == 0)
-                {
-                    RlpHelpers.ThrowNonCanonicalInteger(Position);
-                }
-                return bytes.ToUnsignedBigInteger();
-            }
-
-            public Bloom? DecodeBloom()
-            {
-                ReadOnlySpan<byte> bloomBytes;
-
-                // tks: not sure why but some nodes send us Blooms in a sequence form
-                // https://github.com/NethermindEth/nethermind/issues/113
-                if (Data[Position] == 249)
-                {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
-                    bloomBytes = Read(Bloom.ByteLength);
-                }
-                else
-                {
-                    bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
-                    if (bloomBytes.Length == 0)
-                    {
-                        return null;
-                    }
-                }
-
-                if (bloomBytes.Length != Bloom.ByteLength)
-                {
-                    throw new InvalidOperationException("Incorrect bloom RLP");
-                }
-
-                return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
-            }
-
-            public void DecodeBloomStructRef(out BloomStructRef bloom)
-            {
-                ReadOnlySpan<byte> bloomBytes;
-
-                // tks: not sure why but some nodes send us Blooms in a sequence form
-                // https://github.com/NethermindEth/nethermind/issues/113
-                if (Data[Position] == 249)
-                {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
-                    bloomBytes = Read(Bloom.ByteLength);
-                }
-                else
-                {
-                    bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
-                    if (bloomBytes.Length == 0)
-                    {
-                        bloom = new BloomStructRef(Bloom.Empty.Bytes);
-                        return;
-                    }
-                }
-
-                if (bloomBytes.Length != Bloom.ByteLength)
-                {
-                    throw new InvalidOperationException("Incorrect bloom RLP");
-                }
-
-                bloom = bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? new BloomStructRef(Bloom.Empty.Bytes) : new BloomStructRef(bloomBytes);
-            }
-
-            public ReadOnlySpan<byte> PeekNextItem()
-            {
-                int length = PeekNextRlpLength();
-                return Peek(length);
-            }
-
-            public int DecodeInt()
-            {
-                int prefix = ReadByte();
-
-                switch (prefix)
-                {
-                    case 0:
-                        return (int)RlpHelpers.ThrowNonCanonicalInteger(Position);
-                    case < 128:
-                        return prefix;
-                    case 128:
-                        return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 4)
-                {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
-                }
-
-                int result = 0;
-                for (int i = 4; i > 0; i--)
-                {
-                    result <<= 8;
-                    if (i <= length)
-                    {
-                        result |= Data[Position + length - i];
-                        if (result == 0)
-                        {
-                            RlpHelpers.ThrowNonCanonicalInteger(Position);
-                        }
-                    }
-                }
-
-                Position += length;
-
-                return result;
-            }
-
-            public byte[] DecodeByteArray(RlpLimit? limit = null) => ByteSpanToArray(DecodeByteArraySpan(limit));
-
-            public ReadOnlySpan<byte> DecodeByteArraySpan(RlpLimit? limit = null)
-            {
-                int prefix = ReadByte();
-                ReadOnlySpan<byte> span = RlpStream.SingleBytes;
-                if ((uint)prefix < (uint)span.Length)
-                {
-                    return span.Slice(prefix, 1);
-                }
-
-                if (prefix is EmptyByteArrayByte)
-                {
-                    return default;
-                }
-
-                if (prefix <= 183)
-                {
-                    int length = prefix - 128;
-                    GuardLimit(length, limit);
-                    ReadOnlySpan<byte> buffer = Read(length);
-                    if (length == 1 && buffer[0] < 128)
-                    {
-                        RlpHelpers.ThrowUnexpectedByteValue(buffer[0]);
-                    }
-
-                    return buffer;
-                }
-
-                return DecodeLargerByteArraySpan(prefix, limit);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            private ReadOnlySpan<byte> DecodeLargerByteArraySpan(int prefix, RlpLimit? limit = null)
-            {
-                if (prefix < 192)
-                {
-                    int lengthOfLength = prefix - 183;
-                    if (lengthOfLength > 4)
-                    {
-                        RlpHelpers.ThrowSequenceLengthTooLong();
-                    }
-
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < RlpHelpers.SmallPrefixBarrier)
-                    {
-                        RlpHelpers.ThrowUnexpectedLength(length);
-                    }
-                    GuardLimit(length, limit);
-
-                    return Read(length);
-                }
-
-                RlpHelpers.ThrowUnexpectedPrefix(prefix);
-                return default;
-            }
-
-            public Memory<byte> DecodeByteArrayMemory(RlpLimit? limit = null)
-            {
-                if (!_sliceMemory)
-                {
-                    return DecodeByteArraySpan(limit).ToArray();
-                }
-
-                if (Memory is null)
-                {
-                    ThrowNotMemoryBacked();
-                }
-
-                int prefix = ReadByte();
-
-                switch (prefix)
-                {
-                    case < EmptyByteArrayByte:
-                        return Memory.Value.Slice(Position - 1, 1);
-                    case EmptyByteArrayByte:
-                        return Array.Empty<byte>();
-                    case <= 183:
-                        {
-                            int length = prefix - 128;
-                            Memory<byte> buffer = ReadSlicedMemory(length);
-                            Span<byte> asSpan = buffer.Span;
-                            if (length == 1 && asSpan[0] < 128)
-                            {
-                                RlpHelpers.ThrowUnexpectedByteValue(asSpan[0]);
-                            }
-
-                            return buffer;
-                        }
-                    case < 192:
-                        {
-                            int lengthOfLength = prefix - 183;
-                            if (lengthOfLength > 4)
-                            {
-                                RlpHelpers.ThrowSequenceLengthTooLong();
-                            }
-
-                            int length = DeserializeLength(lengthOfLength);
-                            if (length < RlpHelpers.SmallPrefixBarrier)
-                            {
-                                RlpHelpers.ThrowUnexpectedLength(length);
-                            }
-                            GuardLimit(length, limit);
-
-                            return ReadSlicedMemory(length);
-                        }
-                }
-
-                RlpHelpers.ThrowUnexpectedPrefix(prefix);
-                return default;
-
-                [DoesNotReturn, StackTraceHidden]
-                static void ThrowNotMemoryBacked() => throw new RlpException("Rlp not backed by a Memory<byte>");
-
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void SkipItem() => Position += PeekNextRlpLength();
-
-            public void Reset() => Position = 0;
-
-            public bool DecodeBool()
-            {
-                int prefix = ReadByte();
-                if (prefix <= 128)
-                {
-                    return prefix == 1;
-                }
-
-                if (prefix <= 183)
-                {
-                    int length = prefix - 128;
-                    int byteValue = PeekByte();
-                    if (length == 1 && byteValue < 128)
-                    {
-                        RlpHelpers.ThrowUnexpectedByteValue(byteValue);
-                    }
-
-                    bool result = byteValue == 1;
-                    SkipBytes(length);
-                    return result;
-                }
-
-                if (prefix < 192)
-                {
-                    int lengthOfLength = prefix - 183;
-                    if (lengthOfLength > 4)
-                    {
-                        RlpHelpers.ThrowSequenceLengthTooLong();
-                    }
-
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < RlpHelpers.SmallPrefixBarrier)
-                    {
-                        RlpHelpers.ThrowUnexpectedLength(length);
-                    }
-
-                    bool result = PeekByte() == 1;
-                    SkipBytes(length);
-                    return result;
-                }
-
-                RlpHelpers.ThrowUnexpectedPrefix(prefix);
-                return default;
-            }
-
-            public readonly byte PeekByte() => Data[Position];
-
-            private readonly byte PeekByte(int offset) => Data[Position + offset];
-
-            private void SkipBytes(int length) => Position += length;
-
-            public string DecodeString(RlpLimit? limit = null)
-            {
-                ReadOnlySpan<byte> bytes = DecodeByteArraySpan(limit);
-                return Encoding.UTF8.GetString(bytes);
-            }
-
-            public long DecodeLong()
-            {
-                int prefix = ReadByte();
-
-                switch (prefix)
-                {
-                    case 0:
-                        return RlpHelpers.ThrowNonCanonicalInteger(Position);
-                    case < 128:
-                        return prefix;
-                    case 128:
-                        return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 8)
-                {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
-                }
-
-                long result = 0;
-                for (int i = 8; i > 0; i--)
-                {
-                    result <<= 8;
-                    if (i <= length)
-                    {
-                        result |= PeekByte(length - i);
-                        if (result == 0)
-                        {
-                            RlpHelpers.ThrowNonCanonicalInteger(Position);
-                        }
-                    }
-                }
-
-                SkipBytes(length);
-
-                return result;
-            }
-
-            /// <summary>
-            /// Decodes a non-negative long value. Throws if the decoded value is negative.
-            /// Use this for fields that should never be negative (e.g., gas values).
-            /// </summary>
-            public long DecodePositiveLong()
-            {
-                long value = DecodeLong();
-                if (value < 0)
-                    RlpHelpers.ThrowNotPositiveLong();
-                return value;
-            }
-
-            public ulong DecodeULong()
-            {
-                int prefix = ReadByte();
-
-                switch (prefix)
-                {
-                    case 0:
-                        return RlpHelpers.ThrowNonCanonicalInteger(Position);
-                    case < 128:
-                        return (ulong)prefix;
-                    case 128:
-                        return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 8)
-                {
-                    RlpHelpers.ThrowUnexpectedIntegerLength(length);
-                }
-
-                ulong result = 0ul;
-                for (int i = 8; i > 0; i--)
-                {
-                    result <<= 8;
-                    if (i <= length)
-                    {
-                        result |= PeekByte(length - i);
-                        if (result == 0)
-                        {
-                            RlpHelpers.ThrowNonCanonicalInteger(Position);
-                        }
-                    }
-                }
-
-                SkipBytes(length);
-
-                return result;
-            }
-
-            public byte[][] DecodeByteArrays()
-            {
-                int length = ReadSequenceLength();
-                if (length is 0)
-                {
-                    return [];
-                }
-
-                int checkPosition = Position + length;
-                int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
-                byte[][] result = new byte[itemsCount][];
-
-                for (int i = 0; i < itemsCount; i++)
-                {
-                    result[i] = DecodeByteArray();
-                }
-
-                Check(checkPosition);
-
-                return result;
-            }
-
-            public ushort DecodeUShort()
-            {
-                int prefix = ReadByte();
-
-                switch (prefix)
-                {
-                    case 0:
-                        throw new RlpException($"Non-canonical ushort (leading zero bytes) at position {Position}");
-                    case < 128:
-                        return (ushort)prefix;
-                    case 128:
-                        return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 8)
-                {
-                    throw new RlpException($"Unexpected length of ushort value: {length}");
-                }
-
-                ushort result = 0;
-                for (int i = 2; i > 0; i--)
-                {
-                    result <<= 8;
-                    if (i <= length)
-                    {
-                        result |= PeekByte(length - i);
-                        if (result == 0)
-                        {
-                            throw new RlpException($"Non-canonical ushort (leading zero bytes) at position {Position}");
-                        }
-                    }
-                }
-
-                SkipBytes(length);
-
-                return result;
-            }
-
-            public byte DecodeByte()
-            {
-                byte byteValue = PeekByte();
-                if (byteValue < 128)
-                {
-                    SkipBytes(1);
-                    return byteValue;
-                }
-
-                if (byteValue == 128)
-                {
-                    SkipBytes(1);
-                    return 0;
-                }
-
-                if (byteValue == 129)
-                {
-                    SkipBytes(1);
-                    return ReadByte();
-                }
-
-                RlpHelpers.ThrowUnexpectedByteValue(byteValue);
-                return default;
-            }
-
-            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
-            {
-                if (decoder is null)
-                {
-                    decoder = GetValueDecoder<T>();
-                    if (decoder is null)
-                    {
-                        throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
-                    }
-                }
-                int positionCheck = ReadSequenceLength() + Position;
-                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
-                GuardLimit(count, limit);
-                T[] result = new T[count];
-                for (int i = 0; i < result.Length; i++)
-                {
-                    if (PeekByte() == OfEmptyList[0])
-                    {
-                        result[i] = defaultElement;
-                        Position++;
-                    }
-                    else
-                    {
-                        result[i] = decoder.Decode(ref this);
-                    }
-                }
-
-                if (checkPositions)
-                {
-                    Check(positionCheck);
-                }
-
-                return result;
-            }
-
-            public T[] DecodeArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
-            {
-                int positionCheck = ReadSequenceLength() + Position;
-                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
-                GuardLimit(count, limit);
-                T[] result = new T[count];
-                for (int i = 0; i < result.Length; i++)
-                {
-                    if (PeekByte() == OfEmptyList[0])
-                    {
-                        result[i] = defaultElement;
-                        Position++;
-                    }
-                    else
-                    {
-                        result[i] = decodeItem(ref this);
-                    }
-                }
-
-                if (checkPositions)
-                {
-                    Check(positionCheck);
-                }
-
-                return result;
-            }
-
-            public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
-            {
-                int positionCheck = ReadSequenceLength() + Position;
-                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
-                GuardLimit(count, limit);
-                ArrayPoolList<T> result = new(count, count);
-                int i = 0;
-                try
-                {
-                    for (; i < result.Count; i++)
-                    {
-                        if (PeekByte() == OfEmptyList[0])
-                        {
-                            result[i] = defaultElement;
-                            Position++;
-                        }
-                        else
-                        {
-                            result[i] = decodeItem(ref this);
-                        }
-                    }
-
-                    if (checkPositions)
-                    {
-                        Check(positionCheck);
-                    }
-
-                    return result;
-                }
-                catch
-                {
-                    try
-                    {
-                        DisposeDecodedItems(result, i);
-                    }
-                    finally
-                    {
-                        result.Dispose();
-                    }
-
-                    throw;
-                }
-
-                static void DisposeDecodedItems(ArrayPoolList<T> list, int count)
-                {
-                    for (int j = 0; j < count; j++)
-                    {
-                        if (list[j] is IDisposable disposable)
-                        {
-                            disposable.Dispose();
-                        }
-                    }
-                }
-            }
-
-            public readonly bool IsNextItemEmptyByteArray() => PeekByte() is EmptyByteArrayByte;
-
-            public readonly bool IsNextItemEmptyList() => PeekByte() is EmptyListByte;
-
-            [DoesNotReturn, StackTraceHidden]
-            private readonly void ThrowKeccakDecodeException(int prefix)
-                => throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
-
-            [StackTraceHidden]
-            public void GuardLimit(int count, RlpLimit? limit = null) =>
-                Rlp.GuardLimit(count, Length - Position, limit);
-        }
-
         public override bool Equals(object? other) => Equals(other as Rlp);
 
         public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
@@ -1518,6 +612,17 @@ namespace Nethermind.Serialization.Rlp
         public string ToString(bool withZeroX) => Bytes.ToHexString(withZeroX);
 
         public static int LengthOf(UInt256? item) => item is null ? LengthOfNull : LengthOf(item.Value);
+
+        public static int LengthOf(in EvmWord value)
+        {
+            ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in value)), 32);
+            int nonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (nonZero < 0) return 1;
+            int len = 32 - nonZero;
+            if (len == 1 && bytes[nonZero] < 128) return 1;
+            return 1 + len;
+        }
 
         public static int LengthOf(in UInt256 item)
         {
@@ -1600,6 +705,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static int LengthOf(int value) => LengthOf((long)value);
+
+        public static int LengthOf(uint value) => LengthOf((ulong)value);
 
         public static int LengthOf(ushort value) => LengthOf((long)value);
 
@@ -1754,29 +861,72 @@ namespace Nethermind.Serialization.Rlp
         private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
 
         [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
             RlpLimit l = limit ?? RlpLimit.DefaultLimit;
-            if (count > bytesLeft || count > l.Limit)
+            // First test rejects either bound being negative.
+            if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
-                ThrowCountOverLimit(count, bytesLeft, l);
+                ThrowCountOverLimit((uint)count, bytesLeft, l);
+            }
+        }
+
+        [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GuardSize(int actual, int expected)
+        {
+            // expected == -1 is the sentinel for "no constraint".
+            if (expected >= 0 && actual != expected)
+            {
+                ThrowUnexpectedCount(actual, expected);
             }
         }
 
         [DoesNotReturn]
         [StackTraceHidden]
-        private static void ThrowCountOverLimit(int count, int bytesLeft, RlpLimit limit)
+        private static void ThrowCountOverLimit(uint count, int bytesLeft, RlpLimit limit)
         {
-            string message = string.IsNullOrEmpty(limit.CollectionExpression)
-                ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
-                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
-            _logger.DebugError($"{message}; {new StackTrace()}");
-            throw new RlpLimitException(message);
+            if (_logger.IsTrace)
+            {
+                string message = string.IsNullOrEmpty(limit.CollectionExpression)
+                    ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
+                    : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
+                _logger.Error($"{message}; {new StackTrace()}");
+
+                throw new RlpLimitException(message);
+            }
+
+            throw new RlpLimitException("An RLP limit exceeded");
         }
 
         [DoesNotReturn]
         [StackTraceHidden]
-        private static void ThrowBufferTooSmall(Span<byte> buffer, int minLength) => throw new ArgumentException($"Buffer is too small. Minimal length: {minLength}, actual length: {buffer.Length}");
+        private static void ThrowUnexpectedCount(int count, int expected) =>
+            throw new RlpException($"Expected collection count of {expected}, got {count}");
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowBufferTooSmall(Span<byte> buffer, int minLength) =>
+            throw new ArgumentException($"Buffer is too small. Minimal length: {minLength}, actual length: {buffer.Length}");
+
+        private static CappedArray<byte>[] CreatePreEncodes()
+        {
+            const int maxCache = 1024;
+
+            CappedArray<byte>[] cache = new CappedArray<byte>[maxCache];
+
+            for (int i = 0; i < cache.Length; i++)
+            {
+                int size = LengthOf(i);
+                byte[] buffer = new byte[size];
+                RlpWriter writer = new(buffer);
+                writer.Encode(i);
+                cache[i] = new CappedArray<byte>(buffer);
+            }
+
+            return cache;
+        }
     }
 
     public readonly partial struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>

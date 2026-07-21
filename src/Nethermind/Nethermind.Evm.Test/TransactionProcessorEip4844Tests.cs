@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -54,7 +54,7 @@ internal class TransactionProcessorEip4844Tests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        long gasLimit = GasCostOf.Transaction;
+        ulong gasLimit = GasCostOf.Transaction;
         Transaction blobTx = Build.A.Transaction
             .WithValue(value)
             .WithGasPrice(1)
@@ -82,6 +82,44 @@ internal class TransactionProcessorEip4844Tests
         deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
 
         return deltaBalance;
+    }
+
+    [Test]
+    public void Rejects_blob_tx_when_max_fee_per_blob_gas_is_below_current_blob_fee()
+    {
+        UInt256 balance = 1.Ether;
+        _stateProvider.CreateAccount(TestItem.AddressA, balance);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+
+        ulong gasLimit = GasCostOf.Transaction;
+        Transaction blobTx = Build.A.Transaction
+            .WithGasPrice(1)
+            .WithMaxFeePerGas(1)
+            .WithMaxFeePerBlobGas(1)
+            .WithGasLimit(gasLimit)
+            .WithShardBlobTxTypeAndFields(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(blobTx)
+            .WithGasLimit(gasLimit)
+            .WithExcessBlobGas((ulong)Cancun.Instance.BlobBaseFeeUpdateFraction)
+            .WithBaseFeePerGas(1)
+            .TestObject;
+
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+        TransactionResult result = _transactionProcessor.Execute(blobTx, blkCtx, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("max fee per blob gas less than block blob gas fee"));
+            Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(balance));
+            Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(0UL));
+        }
     }
 
     public static IEnumerable<TestCaseData> BalanceIsAffectedByBlobGasTestCaseSource()

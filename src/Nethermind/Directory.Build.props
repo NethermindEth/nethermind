@@ -10,7 +10,7 @@
   <PropertyGroup Label="ProductInfo">
     <SourceDateEpoch>$(SOURCE_DATE_EPOCH)</SourceDateEpoch>
     <SourceDateEpoch Condition="'$(SourceDateEpoch)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</SourceDateEpoch>
-    <VersionPrefix>1.38.0</VersionPrefix>
+    <VersionPrefix>1.40.0</VersionPrefix>
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 
@@ -21,9 +21,16 @@
     </AssemblyAttribute>
   </ItemGroup>
 
-  <!-- Exclude the analyzer itself and the source generator (netstandard2.0, can't reference analyzers) -->
-  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Nethermind.Analyzers' AND '$(MSBuildProjectName)' != 'Nethermind.Serialization.SszGenerator'">
+  <!-- Exclude the analyzer itself and the source generator (netstandard2.0, can't reference analyzers).
+       Also skipped on the ZisK guest build (EnableZkEvm), where the analyzers/generators are not wired and
+       the generated members are stubbed (e.g. ChainSpecStyle/HardforkLabels.cs). Mainline MUST keep this:
+       removing it left HardforkLabels.All empty and broke ChainSpec/BlobSchedule transitions. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Nethermind.Analyzers' AND '$(MSBuildProjectName)' != 'Nethermind.Serialization.SszGenerator' AND '$(EnableZkEvm)' != 'true'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.Analyzers/Nethermind.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="!$(TargetFramework.StartsWith('netstandard'))">
+    <Using Include="System.Runtime.Intrinsics.Vector256&lt;byte&gt;" Alias="EvmWord" />
   </ItemGroup>
 
 </Project>

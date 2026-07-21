@@ -33,7 +33,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly ITxGossipPolicy _txGossipPolicy;
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
-        private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
+        private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handleSlow;
+
+        protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex);
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -65,14 +67,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
         protected bool CanReceiveTransactions => _txGossipPolicy.ShouldListenToGossipedTransactions;
 
-        public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-
-        public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested
-        {
-            add { }
-            remove { }
-        }
-
         protected virtual void EnrichStatusMessage(StatusMessage statusMessage) { }
 
         public override void Init()
@@ -98,7 +92,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected sealed override void BeforeHandleMessage(ZeroPacket message) => ThrowIfStatusWasNotReceived(message.PacketType);
 
-        protected override void HandleMessageCore(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -129,7 +123,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         using StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
                         ReportIn(statusMsg, size);
                         Handle(statusMsg);
-                        break;
+                        return true;
                     }
                 case Eth62MessageCode.NewBlockHashes:
                     if (CanAcceptBlockGossip())
@@ -138,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(newBlockHashesMessage, size);
                         Handle(newBlockHashesMessage);
                     }
-                    break;
+                    return true;
                 case Eth62MessageCode.Transactions:
                     if (CanReceiveTransactions)
                     {
@@ -160,29 +154,31 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(ignored, size);
                     }
 
-                    break;
+                    return true;
                 case Eth62MessageCode.GetBlockHeaders:
                     HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth62MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
-                    break;
+                    return true;
                 case Eth62MessageCode.GetBlockBodies:
                     HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
-                    break;
+                    return true;
                 case Eth62MessageCode.NewBlock:
                     if (CanAcceptBlockGossip())
                     {
                         HandleInBackground<NewBlockMessage>(message, Handle);
                     }
-                    break;
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -221,7 +217,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                NetworkId = (ulong)status.NetworkId,
+                NetworkId = status.NetworkId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -230,61 +226,70 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
-            Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+            Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
-            ProtocolInitialized?.Invoke(this, eventArgs);
+            NotifyProtocolInitialized(eventArgs);
         }
 
         protected void Handle(TransactionsMessage msg)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow, "Transactions"))
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), _handleSlow, "Transactions"))
             {
+                foreach (Transaction tx in iList)
+                {
+                    tx.ClearPreHash();
+                }
                 iList.Dispose();
             }
         }
 
-        protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        protected virtual ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
         {
-            IOwnedReadOnlyList<Transaction> transactions = request.txs;
+            IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
             ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
+
+            int currentIdx = request.StartIndex;
+            bool isTrace = Logger.IsTrace;
+            bool isTransferred = false;
+
             try
             {
-                int startIdx = request.startIndex;
-                bool isTrace = Logger.IsTrace;
-
-                for (int i = startIdx; i < transactionsSpan.Length; i++)
+                while (currentIdx < transactionsSpan.Length)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
-                        if (i == startIdx)
+                        if (currentIdx == request.StartIndex)
                         {
-                            // Cancelled before processing any transaction — dispose and bail out.
-                            // Rescheduling would just loop (cancelled again immediately).
-                            transactions.Dispose();
+                            // Cancelled before processing any transaction; rescheduling would just loop. Disposal handled in finally.
                             return ValueTask.CompletedTask;
                         }
 
-                        // Reschedule remaining transactions with a different start index
-                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), _handleSlow, "Transactions"))
+                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow, "Transactions"))
                         {
-                            transactions.Dispose();
+                            isTransferred = true;
                         }
+
                         return ValueTask.CompletedTask;
                     }
 
-                    PrepareAndSubmitTransaction(transactionsSpan[i], isTrace);
+                    PrepareAndSubmitTransaction(transactionsSpan[currentIdx], isTrace);
+                    currentIdx++;
                 }
-
-                transactions.Dispose();
             }
-            catch
+            finally
             {
-                transactions.Dispose();
-                throw;
+                if (!isTransferred)
+                {
+                    while (currentIdx < transactionsSpan.Length)
+                    {
+                        transactionsSpan[currentIdx].ClearPreHash();
+                        currentIdx++;
+                    }
+                    transactions.Dispose();
+                }
             }
-
 
             return ValueTask.CompletedTask;
         }
@@ -306,10 +311,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            (Hash256, long)[] blockHashes = newBlockHashes.BlockHashes;
+            (Hash256, ulong)[] blockHashes = newBlockHashes.BlockHashes;
             for (int i = 0; i < blockHashes.Length; i++)
             {
-                (Hash256 hash, long number) = blockHashes[i];
+                (Hash256 hash, ulong number) = blockHashes[i];
                 SyncServer.HintBlock(hash, number, this);
             }
         }
@@ -385,7 +390,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        private void HintNewBlock(Hash256 blockHash, long number)
+        private void HintNewBlock(Hash256 blockHash, ulong number)
         {
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
 
@@ -393,8 +398,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        protected override void OnDisposed() =>
-            // Clear Events
-            ProtocolInitialized = null;
+        protected override void OnDisposed() => ClearProtocolEvents();
     }
 }

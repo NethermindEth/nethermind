@@ -38,7 +38,7 @@ public class JsonRpcUrlCollectionTests
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) }
-        }, Is.EquivalentTo(urlCollection));
+        }, Is.EqualTo(urlCollection));
     }
 
     [Test]
@@ -56,7 +56,7 @@ public class JsonRpcUrlCollectionTests
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
             { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Ws, false, _enabledModules) }
-        }, Is.EquivalentTo(urlCollection));
+        }, Is.EqualTo(urlCollection));
     }
 
     [Test]
@@ -73,7 +73,7 @@ public class JsonRpcUrlCollectionTests
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false,_enabledModules) },
-        }, Is.EquivalentTo(urlCollection));
+        }, Is.EqualTo(urlCollection));
     }
 
     [Test]
@@ -91,7 +91,7 @@ public class JsonRpcUrlCollectionTests
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
             { 1234, new JsonRpcUrl("https", "localhost", 1234, RpcEndpoint.Https | RpcEndpoint.Wss, false, ["admin", "debug"]) }
-        }, Is.EquivalentTo(urlCollection));
+        }, Is.EqualTo(urlCollection));
     }
 
     [Test]
@@ -108,7 +108,7 @@ public class JsonRpcUrlCollectionTests
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545,  RpcEndpoint.Http, false, _enabledModules) }
-        }, Is.EquivalentTo(urlCollection));
+        }, Is.EqualTo(urlCollection));
     }
 
     [Test]
@@ -126,7 +126,7 @@ public class JsonRpcUrlCollectionTests
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
             { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http,  false, ["admin", "debug"]) }
-        }, Is.EquivalentTo(urlCollection));
+        }, Is.EqualTo(urlCollection));
     }
 
     [Test]
@@ -152,7 +152,7 @@ public class JsonRpcUrlCollectionTests
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
             { 9876, new JsonRpcUrl("http", "127.0.0.1", 9876, RpcEndpoint.Ws,false, _enabledModules) },
             { 1234, new JsonRpcUrl("https", "127.0.0.1", 1234, RpcEndpoint.Https | RpcEndpoint.Wss, false, ["eth", "web3"]) }
-        }, Is.EquivalentTo(urlCollection));
+        }, Is.EqualTo(urlCollection));
     }
 
     [Test]
@@ -175,7 +175,7 @@ public class JsonRpcUrlCollectionTests
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
             { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http, false, ["db", "erc20", "web3"]) }
-        }, Is.EquivalentTo(urlCollection)); ;
+        }, Is.EqualTo(urlCollection)); ;
     }
 
     [Test]
@@ -199,7 +199,7 @@ public class JsonRpcUrlCollectionTests
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
             { 8551, new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, true, [ModuleType.Eth, ModuleType.Engine]) },
-        }, Is.EquivalentTo(urlCollection)); ;
+        }, Is.EqualTo(urlCollection)); ;
     }
 
     [Test]
@@ -253,6 +253,6 @@ public class JsonRpcUrlCollectionTests
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
             { 8552, new JsonRpcUrl("http", "127.0.0.1", 8552, RpcEndpoint.Http, true, [ModuleType.Eth, ModuleType.Engine]) },
             { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Http, false, [ModuleType.Eth, ModuleType.Web3])}
-        }, Is.EquivalentTo(urlCollection));
+        }, Is.EqualTo(urlCollection));
     }
 }

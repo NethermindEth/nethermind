@@ -6,7 +6,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
 using System.IO.Abstractions;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Era1.Exceptions;
@@ -80,7 +79,7 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = toCtx.Resolve<IEraImporter>();
-        await sut.Import(destinationPath, 0, long.MaxValue, Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
+        await sut.Import(destinationPath, 0, ulong.MaxValue, Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
     }
 
     [Test]
@@ -104,7 +103,7 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
-        Func<Task> importTask = () => sut.Import(destinationPath, 0, long.MaxValue,
+        Func<Task> importTask = () => sut.Import(destinationPath, 0, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
@@ -130,14 +129,13 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
-        Func<Task> importTask = () => sut.Import(destinationPath, 0, long.MaxValue,
+        Func<Task> importTask = () => sut.Import(destinationPath, 0, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
     }
 
-    [CancelAfter(4000)]
-    [Retry(3)]
+    [CancelAfter(30_000)]
     [Test]
     public async Task ImportAsArchiveSync_WillPaceSuggestBlock(CancellationToken token)
     {
@@ -158,27 +156,37 @@ public class EraImporterTest
             })
             .Build();
 
-        ManualResetEventSlim reachedBlock11 = new();
-        bool shouldUpdateMainChain = false;
-        long maxSuggestedBlocks = 0;
-        long expectedStopBlock = 10;
+        bool shouldAdvanceMainChain = false;
+        ulong maxSuggestedBlocks = 0;
+        ulong expectedStopBlock = 10;
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
-            if (shouldUpdateMainChain) inTree.UpdateMainChain([args.Block], true);
+            if (shouldAdvanceMainChain) inTree.TryUpdateMainChain(args.Block.Header, true, preloadedBlocks: new[] { args.Block });
             maxSuggestedBlocks = args.Block.Number;
-            if (args.Block.Number == expectedStopBlock) reachedBlock11.Set();
         };
 
-        IEraImporter sut = inCtx.Resolve<IEraImporter>();
-        Task importTask = sut.Import(destinationPath, 0, long.MaxValue,
+        EraImporter sut = (EraImporter)inCtx.Resolve<IEraImporter>();
+        Task importTask = sut.Import(destinationPath, 0, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
-        reachedBlock11.Wait(token);
-        await Task.Delay(100);
+        BlockTreeSuggestPacer? pacer = null;
+        while (pacer is null)
+        {
+            token.ThrowIfCancellationRequested();
+            pacer = sut.CurrentPacer;
+            if (pacer is null) await Task.Yield();
+        }
+        await pacer.WaitForPausedAsync(token);
 
-        maxSuggestedBlocks.Should().Be(expectedStopBlock);
-        shouldUpdateMainChain = true;
-        inTree.UpdateMainChain([inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!], true);
+        Block expectedFinalizedBlock = outputCtx.Resolve<IBlockTree>().FindBlock(expectedStopBlock)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(maxSuggestedBlocks, Is.EqualTo(expectedStopBlock));
+            Assert.That(inTree.FinalizedHash, Is.EqualTo(expectedFinalizedBlock.Hash));
+            Assert.That(inTree.LastFinalizedBlockLevel, Is.EqualTo(expectedStopBlock));
+        }
+        shouldAdvanceMainChain = true;
+        inTree.TryUpdateMainChain(inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!.Header, true, preloadedBlocks: new[] { inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)! });
 
         await importTask;
     }
@@ -205,9 +213,9 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
-        Func<Task> act = () => sut.Import(destinationPath, 30, long.MaxValue,
+        Func<Task> act = () => sut.Import(destinationPath, 30, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
-        await act.Should().ThrowAsync<ArgumentException>();
+        Assert.That(async () => await act(), Throws.TypeOf<ArgumentException>());
     }
 }

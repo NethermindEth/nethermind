@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -15,16 +14,17 @@ namespace Nethermind.Specs.Test
     /// </summary>
     public class OverridableReleaseSpec(IReleaseSpec spec) : IReleaseSpec
     {
-        public string Name => "OverridableReleaseSpec";
+        public string Name => spec.Name;
         public long MaximumExtraDataSize { get; set; } = spec.MaximumExtraDataSize;
         public long MaxCodeSize { get; set; } = spec.MaxCodeSize;
-        public long MinGasLimit { get; set; } = spec.MinGasLimit;
-        public long MinHistoryRetentionEpochs { get; set; } = spec.MinHistoryRetentionEpochs;
-        public long GasLimitBoundDivisor { get; set; } = spec.GasLimitBoundDivisor;
+        public ulong MinGasLimit { get; set; } = spec.MinGasLimit;
+        public ulong MinHistoryRetentionEpochs { get; set; } = spec.MinHistoryRetentionEpochs;
+        public ulong MinBalRetentionEpochs { get; set; } = spec.MinBalRetentionEpochs;
+        public ulong GasLimitBoundDivisor { get; set; } = spec.GasLimitBoundDivisor;
         public UInt256 BlockReward { get; set; } = spec.BlockReward;
-        public long DifficultyBombDelay { get; set; } = spec.DifficultyBombDelay;
-        public long DifficultyBoundDivisor { get; set; } = spec.DifficultyBoundDivisor;
-        public long? FixedDifficulty { get; set; } = spec.FixedDifficulty;
+        public ulong DifficultyBombDelay { get; set; } = spec.DifficultyBombDelay;
+        public ulong DifficultyBoundDivisor { get; set; } = spec.DifficultyBoundDivisor;
+        public ulong? FixedDifficulty { get; set; } = spec.FixedDifficulty;
         public int MaximumUncleCount { get; set; } = spec.MaximumUncleCount;
         public bool IsTimeAdjustmentPostOlympic { get; set; } = spec.IsTimeAdjustmentPostOlympic;
         public bool IsEip2Enabled { get; set; } = spec.IsEip2Enabled;
@@ -65,10 +65,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip4844Enabled { get; set; } = spec.IsEip4844Enabled;
         public bool IsEip7951Enabled { get; set; } = spec.IsEip7951Enabled;
         public bool IsRip7212Enabled { get; set; } = spec.IsRip7212Enabled;
-        public bool IsOpGraniteEnabled { get; set; } = spec.IsOpGraniteEnabled;
-        public bool IsOpHoloceneEnabled { get; set; } = spec.IsOpHoloceneEnabled;
-        public bool IsOpIsthmusEnabled { get; set; } = spec.IsOpIsthmusEnabled;
-        public bool IsOpJovianEnabled { get; set; } = spec.IsOpJovianEnabled;
         public bool IsEip7623Enabled { get; set; } = spec.IsEip7623Enabled;
         public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;
@@ -81,13 +77,13 @@ namespace Nethermind.Specs.Test
         public UInt256? Eip1559BaseFeeMinValue { get; set; } = spec.Eip1559BaseFeeMinValue;
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
         public Address? Eip158IgnoredAccount { get; set; } = spec.Eip158IgnoredAccount;
-        public long Eip1559TransitionBlock { get; set; } = spec.Eip1559TransitionBlock;
+        public ulong Eip1559TransitionBlock { get; set; } = spec.Eip1559TransitionBlock;
         public Address? FeeCollector { get; set; } = spec.FeeCollector;
         public ulong Eip4844TransitionTimestamp { get; set; } = spec.Eip4844TransitionTimestamp;
         public ulong TargetBlobCount { get; set; } = spec.TargetBlobCount;
         public ulong MaxBlobCount { get; set; } = spec.MaxBlobCount;
         public ulong MaxBlobsPerTx { get; set; } = spec.MaxBlobsPerTx;
-        public UInt256 BlobBaseFeeUpdateFraction { get; set; } = spec.BlobBaseFeeUpdateFraction;
+        public ulong BlobBaseFeeUpdateFraction { get; set; } = spec.BlobBaseFeeUpdateFraction;
         public bool IsEip1153Enabled { get; set; } = spec.IsEip1153Enabled;
         public bool IsEip3651Enabled { get; set; } = spec.IsEip3651Enabled;
         public bool IsEip3855Enabled { get; set; } = spec.IsEip3855Enabled;
@@ -95,8 +91,10 @@ namespace Nethermind.Specs.Test
         public bool IsEip4895Enabled { get; set; } = spec.IsEip4895Enabled;
         public ulong WithdrawalTimestamp { get; set; } = spec.WithdrawalTimestamp;
         public bool IsEip5656Enabled { get; set; } = spec.IsEip5656Enabled;
-        public long Eip2935RingBufferSize { get; set; } = spec.Eip2935RingBufferSize;
+        public ulong Eip2935RingBufferSize { get; set; } = spec.Eip2935RingBufferSize;
         public bool IsEip6780Enabled { get; set; } = spec.IsEip6780Enabled;
+        public bool IsEip8038Enabled { get; set; } = spec.IsEip8038Enabled;
+        public bool IsEip8282Enabled { get; set; } = spec.IsEip8282Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress { get; set; } = spec.Eip4788ContractAddress;
@@ -112,14 +110,12 @@ namespace Nethermind.Specs.Test
         public bool IsEip7825Enabled { get; set; } = spec.IsEip7825Enabled;
         public UInt256 ForkBaseFee { get; set; } = spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator { get; set; } = spec.BaseFeeMaxChangeDenominator;
-        public long ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
+        public ulong ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; set; } = spec.BaseFeeCalculator;
         public bool IsEip8024Enabled { get; set; } = spec.IsEip8024Enabled;
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;
         public Address? DepositContractAddress { get; set; } = spec.DepositContractAddress;
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
-        Array? IReleaseSpec.EvmInstructionsNoTrace { get => field ?? spec.EvmInstructionsNoTrace; set; }
-        Array? IReleaseSpec.EvmInstructionsTraced { get => field ?? spec.EvmInstructionsTraced; set; }
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7928Enabled { get; set; } = spec.IsEip7928Enabled;
         public bool IsEip8037Enabled { get; set; } = spec.IsEip8037Enabled;
@@ -127,6 +123,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
+        public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
+        public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
         public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }

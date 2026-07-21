@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -19,13 +18,13 @@ public static class ContainerBuilderExtensions
     /// <summary>
     /// Registers a protocol handler type and its corresponding <see cref="IProtocolHandlerFactory"/>.
     /// Handler lifetime is owned by <see cref="ISession"/>: the session disposes its handlers
-    /// on disconnect, so the DI container must not track them.
+    /// on disconnect, so the DI container must not track them. The factory uses a cached
+    /// constructor activator to avoid Autofac reflection binding on every session.
     /// </summary>
     public static ContainerBuilder AddProtocolHandler<THandler>(
         this ContainerBuilder builder) where THandler : class, IProtocolHandler, IStaticProtocolInfo => builder
-            .Add<THandler>(externallyOwned: true)
             .AddLast<IProtocolHandlerFactory>(ctx =>
-                new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), THandler.Code, THandler.Version));
+                new AutofacProtocolHandlerFactory<THandler>(ctx.Resolve<ILifetimeScope>(), THandler.Code, THandler.Version));
 
     /// <summary>
     /// Registers a protocol handler that accepts any version (version validation happens
@@ -34,7 +33,6 @@ public static class ContainerBuilderExtensions
     /// </summary>
     public static ContainerBuilder AddProtocolHandler<THandler>(
         this ContainerBuilder builder, string protocolCode) where THandler : class, IProtocolHandler => builder
-            .Add<THandler>(externallyOwned: true)
             .AddLast<IProtocolHandlerFactory>(ctx =>
-                new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), protocolCode));
+                new AutofacProtocolHandlerFactory<THandler>(ctx.Resolve<ILifetimeScope>(), protocolCode));
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -27,14 +26,14 @@ public class RlpDecoderTests
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
 
-        RlpStream rlpStream = new(_decoder.GetLength(tx, RlpBehaviors.None));
-        _decoder.Encode(rlpStream, tx);
-        rlpStream.Reset();
+        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(rlp);
+        _decoder.Encode(ref writer, tx);
 
-        Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+        RlpReader ctx = new(rlp);
         Transaction? decodedTx = _decoder.Decode(ref ctx);
 
-        decodedTx.Should().NotBeNull();
+        Assert.That(decodedTx, Is.Not.Null);
     }
 
     [Test]
@@ -44,12 +43,13 @@ public class RlpDecoderTests
 
         Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
 
-        RlpStream rlpStream = new(_decoder.GetLength(tx, RlpBehaviors.None));
-        _decoder.Encode(rlpStream, tx);
+        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(rlp);
+        _decoder.Encode(ref writer, tx);
 
-        Transaction? decodedTx = Rlp.Decode<Transaction?>(rlpStream.Data.AsSpan());
+        Transaction? decodedTx = Rlp.Decode<Transaction?>(rlp);
 
-        decodedTx.Should().NotBeNull();
+        Assert.That(decodedTx, Is.Not.Null);
     }
 
     [Test]
@@ -61,10 +61,10 @@ public class RlpDecoderTests
         string hexBytes =
             "f901c9830571188083030d4094420000000000000000000000000000000000000780b901a4cbd4ece9000000000000000000000000420000000000000000000000000000000000001000000000000000000000000099c9fc46f92e8a1c0dec1b1747d010903e884be10000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000005711800000000000000000000000000000000000000000000000000000000000000e4662a633a000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec700000000000000000000000094b008aa00579c1307b0ef2c499ad98a8ce58e58000000000000000000000000117274dde02bc94006185af87d78beab28ceae06000000000000000000000000117274dde02bc94006185af87d78beab28ceae06000000000000000000000000000000000000000000000000000000000c3d8b8000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000808080";
         byte[] bytes = Bytes.FromHexString(hexBytes);
-        Rlp.ValueDecoderContext context = bytes.AsRlpValueContext();
+        RlpReader context = new(bytes);
 
         Transaction transaction = _decoder.Decode(ref context);
 
-        transaction.Should().NotBeNull();
+        Assert.That(transaction, Is.Not.Null);
     }
 }

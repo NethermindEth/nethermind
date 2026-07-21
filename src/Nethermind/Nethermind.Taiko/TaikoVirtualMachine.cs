@@ -8,68 +8,61 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Taiko.Precompiles;
 
 namespace Nethermind.Taiko;
 
 /// <summary>
-/// Taiko-specific <see cref="VirtualMachine{TGasPolicy}"/> that extends precompile dispatch with
-/// support for <see cref="IPrecompileGasAware"/>. Gas-aware precompiles (currently only L1STATICCALL)
-/// compute their actual gas consumption during <c>Run</c> — this is deducted in addition to the
-/// standard base + data gas costs already handled by the base class.
+/// Taiko-specific <see cref="VirtualMachine{TGasPolicy}"/> that extends precompile dispatch with a
+/// single <see cref="IContextAwarePrecompile"/> branch. Context extras (remaining gas, L1 origin)
+/// are bundled in <see cref="PrecompileExtras"/>; the L1 origin is read once per block from
+/// <see cref="IL1OriginStore"/> in <see cref="SetBlockExecutionContext"/> and reused for every
+/// precompile call in that block. <c>null</c> origin signals "no origin available" (preconf blocks
+/// where <c>L1BlockHeight</c> is 0/null, or <c>eth_call</c> at a block with no stored origin) and
+/// the precompile must treat that as permissive.
 /// </summary>
-public class TaikoVirtualMachine<TGasPolicy>(
+public class TaikoVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
+    IL1OriginStore l1OriginStore,
     ILogManager? logManager
-) : VirtualMachine<TGasPolicy>(blockHashProvider, specProvider, logManager)
-    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager)
 {
+    private readonly IL1OriginStore _l1OriginStore = l1OriginStore ?? throw new ArgumentNullException(nameof(l1OriginStore));
+    private UInt256? _blockL1Origin;
+
+    public override void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+    {
+        base.SetBlockExecutionContext(in blockExecutionContext);
+        // Cache once per block — every precompile call in this block reuses the same value
+        // instead of hitting the store. null when origin is missing (preconf / eth_call / pre-genesis).
+        _blockL1Origin = _l1OriginStore.ReadL1Origin((UInt256)blockExecutionContext.Number)?.L1BlockHeight is long h && h > 0
+            ? (UInt256)h
+            : null;
+    }
+
+    protected override bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
+        base.CanExecutePrecompileCallDirectly(precompile, codeSource) && precompile is not IContextAwarePrecompile;
+
     protected override CallResult ExecutePrecompileCall(
-        VmState<TGasPolicy> state,
+        VmState<EthereumGasPolicy> state,
         IPrecompile precompile,
         ReadOnlyMemory<byte> callData,
         IReleaseSpec spec)
     {
-        if (precompile is IPrecompileGasAware gasAwarePrecompile)
+        if (precompile is IContextAwarePrecompile contextAwarePrecompile)
         {
-            TGasPolicy gas = state.Gas;
-            long remainingGas = TGasPolicy.GetRemainingGas(in gas);
+            EthereumGasPolicy gas = state.Gas;
+            PrecompileExtras extras = new(
+                remainingGas: EthereumGasPolicy.GetRemainingGas(in gas),
+                l1Origin: _blockL1Origin);
 
+            Result<(byte[] returnValue, ulong gasConsumed)> output;
             try
             {
-                Result<(byte[] returnValue, long gasConsumed)> output = gasAwarePrecompile.Run(callData, spec, remainingGas);
-
-                // Deduct dynamic gas (actual L1 consumption) regardless of success/failure.
-                // On L1 OOG the user loses the full gas limit — matching standard EVM sub-call semantics.
-                long gasConsumed = output.Data.gasConsumed;
-                if (gasConsumed > 0 && !TGasPolicy.UpdateGas(ref gas, gasConsumed))
-                {
-                    return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
-                }
-
-                state.Gas = gas;
-
-                if (!output)
-                {
-                    return new(
-                        output.Data.returnValue ?? [],
-                        precompileSuccess: false,
-                        shouldRevert: true,
-                        exceptionType: EvmExceptionType.PrecompileFailure
-                    )
-                    {
-                        SubstateError = GetErrorString(precompile, output.Error)
-                    };
-                }
-
-                return new(
-                    output.Data.returnValue,
-                    precompileSuccess: true,
-                    shouldRevert: false,
-                    exceptionType: EvmExceptionType.None
-                );
+                output = contextAwarePrecompile.Run(callData, spec, in extras);
             }
             catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
             {
@@ -82,6 +75,36 @@ public class TaikoVirtualMachine<TGasPolicy>(
                 if (_logger.IsError) LogExecutionException(precompile, exception);
                 return new(default, precompileSuccess: false, shouldRevert: true);
             }
+
+            // Deduct dynamic gas (e.g. actual L1 consumption) regardless of success/failure.
+            // On L1 OOG the user loses the full gas limit — matching standard EVM sub-call semantics.
+            ulong gasConsumed = output.Data.gasConsumed;
+            if (gasConsumed > 0 && !EthereumGasPolicy.UpdateGas(ref gas, gasConsumed))
+            {
+                return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
+            }
+
+            state.Gas = gas;
+
+            if (!output)
+            {
+                return new(
+                    output.Data.returnValue ?? [],
+                    precompileSuccess: false,
+                    shouldRevert: true,
+                    exceptionType: EvmExceptionType.PrecompileFailure
+                )
+                {
+                    SubstateError = GetErrorString(precompile, output.Error)
+                };
+            }
+
+            return new(
+                output.Data.returnValue,
+                precompileSuccess: true,
+                shouldRevert: false,
+                exceptionType: EvmExceptionType.None
+            );
         }
 
         return base.ExecutePrecompileCall(state, precompile, callData, spec);
@@ -91,7 +114,8 @@ public class TaikoVirtualMachine<TGasPolicy>(
 public sealed class TaikoEthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
+    IL1OriginStore l1OriginStore,
     ILogManager? logManager
-) : TaikoVirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
+) : TaikoVirtualMachine(blockHashProvider, specProvider, l1OriginStore, logManager), IVirtualMachine
 {
 }

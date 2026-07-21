@@ -8,10 +8,12 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
@@ -22,6 +24,7 @@ namespace Nethermind.Init.Steps;
 public class ImportFlatDb(
     IBlockTree blockTree,
     IPersistence persistence,
+    INodeStorage nodeStorage,
     Importer importer,
     IProcessExitSource exitSource,
     IFlatDbConfig flatDbConfig,
@@ -47,11 +50,19 @@ public class ImportFlatDb(
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
             if (_logger.IsWarn) _logger.Warn($"Current state is {reader.CurrentState}");
-            if (reader.CurrentState.BlockNumber > 0)
+            if (reader.CurrentState != StateId.PreGenesis)
             {
                 if (_logger.IsInfo) _logger.Info("Flat db already exist");
                 return;
             }
+        }
+
+        if (head.StateRoot is null ||
+            !nodeStorage.KeyExists(null, TreePath.Empty, new ValueHash256(head.StateRoot.Bytes)))
+        {
+            if (_logger.IsInfo) _logger.Info(
+                $"Pruning trie state does not contain head state root {head.StateRoot}; skipping flat DB import.");
+            return;
         }
 
         if (_logger.IsInfo) _logger.Info($"Copying state {head.ToString(BlockHeader.Format.Short)} with state root {head.StateRoot}");

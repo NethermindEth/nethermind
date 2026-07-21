@@ -46,7 +46,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         blockInfo.BaseFee.ToBigEndian().CopyTo(data, 36);
         blockInfo.BlobBaseFee.ToBigEndian().CopyTo(data, 68);
         blockInfo.BlockHash.Bytes.CopyTo(data.AsSpan(100));
-        blockInfo.BatcherAddress.Bytes.CopyTo(data, 144);
+        blockInfo.BatcherAddress.Bytes.CopyTo(data.AsSpan(144));
 
         Span<byte> source = stackalloc byte[64];
         blockInfo.BlockHash.Bytes.CopyTo(source);
@@ -67,7 +67,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
             To = engineParameters.SystemTransactionTo,
             GasLimit = 1000000,
             IsOPSystemTransaction = false,
-            Value = UInt256.Zero,
+            Value = 0UL,
             SourceHash = sourceHash
         };
     }
@@ -150,7 +150,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
                 To = depositLogEventV0.IsCreation ? null : to,
                 Mint = depositLogEventV0.Mint,
                 Value = depositLogEventV0.Value,
-                GasLimit = (long)depositLogEventV0.Gas, // WARNING: dangerous cast
+                GasLimit = depositLogEventV0.Gas,
                 Data = depositLogEventV0.Data.ToArray(),
                 SourceHash = sourceHash,
                 IsOPSystemTransaction = false,

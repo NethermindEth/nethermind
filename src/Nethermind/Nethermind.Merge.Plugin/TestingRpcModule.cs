@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -30,6 +31,7 @@ namespace Nethermind.Merge.Plugin;
 
 public class TestingRpcModule(
     IBlockProducerEnvFactory blockProducerEnvFactory,
+    IMainStateBlockProducerEnvFactory mainStateBlockProducerEnvFactory,
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
@@ -38,10 +40,13 @@ public class TestingRpcModule(
     ILogManager logManager)
     : ITestingRpcModule, IDisposable
 {
-    private static readonly TimeSpan CommitHeadTimeout = TimeSpan.FromSeconds(30);
-
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
     private readonly SemaphoreSlim _commitLock = new(1, 1);
+
+    // The commit pass updates the head without re-processing, so it must run on the main
+    // world state to persist the produced post-state. Reuse across calls is safe because
+    // BranchProcessor.Process opens a fresh world-state scope on entry.
+    private readonly IBlockProducerEnv _commitEnv = mainStateBlockProducerEnvFactory.CreatePersistent();
 
     public void Dispose() => _commitLock.Dispose();
 
@@ -51,16 +56,21 @@ public class TestingRpcModule(
         if (parentBlock is null)
             return ResultWrapper<object>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
 
-        ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(parentBlock.Header, payloadAttributes, txRlps, extraData, nameof(testing_buildBlockV1), processExitSource.Token);
+        FeesTracer feesTracer = new();
+        await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
+        ResultWrapper<ProducedBlock> produced = ProduceBlock(
+            env, parentBlock.Header, payloadAttributes, txRlps, extraData,
+            nameof(testing_buildBlockV1), processExitSource.Token,
+            feesTracer, ProcessingOptions.ProducingBlock);
         if (produced.Result.ResultType == ResultType.Failure)
             return ResultWrapper<object>.Fail(produced.Result.Error!, produced.ErrorCode);
 
         if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {produced.Data.Block.Header.ToString(BlockHeader.Format.Short)}.");
-        return ResultWrapper<object>.Success(CreateGetPayloadResult(produced.Data.Block, produced.Data.Fees, produced.Data.Spec));
+        return ResultWrapper<object>.Success(CreateGetPayloadResult(produced.Data.Block, feesTracer.Fees, produced.Data.Spec));
     }
 
     public async Task<ResultWrapper<Hash256>> testing_commitBlockV1(
-        PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null)
+        PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
     {
         CancellationToken exitToken = processExitSource.Token;
         try
@@ -77,11 +87,22 @@ public class TestingRpcModule(
             if (blockTree.Head?.Header is not BlockHeader chainHead)
                 return ResultWrapper<Hash256>.Fail("chain head not found", ErrorCodes.InternalError);
 
-            ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(chainHead, payloadAttributes, txRlps, extraData, nameof(testing_commitBlockV1), exitToken);
+            // ForceProcessing: the produced block is not yet better than the current head.
+            // Persistence is decided by the env's (main) world state, not by these options.
+            const ProcessingOptions ProducerOptions =
+                ProcessingOptions.NoValidation
+                | ProcessingOptions.ForceProcessing
+                | ProcessingOptions.DoNotUpdateHead
+                | ProcessingOptions.StoreReceipts;
+
+            ResultWrapper<ProducedBlock> produced = ProduceBlock(
+                _commitEnv, chainHead, payloadAttributes, txRlps, extraData,
+                nameof(testing_commitBlockV1), exitToken,
+                NullBlockTracer.Instance, ProducerOptions);
             if (produced.Result.ResultType == ResultType.Failure)
                 return ResultWrapper<Hash256>.Fail(produced.Result.Error!, produced.ErrorCode);
 
-            return await SuggestAndWaitForHeadAsync(produced.Data.Block, exitToken);
+            return CommitAsMainChain(produced.Data.Block);
         }
         finally
         {
@@ -89,20 +110,21 @@ public class TestingRpcModule(
         }
     }
 
-    private readonly record struct ProducedBlock(Block Block, UInt256 Fees, IReleaseSpec Spec);
+    private readonly record struct ProducedBlock(Block Block, IReleaseSpec Spec);
 
-    private async Task<ResultWrapper<ProducedBlock>> ProduceBlockAsync(
+    private ResultWrapper<ProducedBlock> ProduceBlock(
+        IBlockProducerEnv env,
         BlockHeader parent,
         PayloadAttributes payloadAttributes,
         IEnumerable<byte[]>? txRlps,
         byte[]? extraData,
         string operationName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IBlockTracer tracer,
+        ProcessingOptions options)
     {
         IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parent.Number + 1, payloadAttributes.Timestamp));
         BlockHeader header = PrepareBlockHeader(parent, payloadAttributes, spec, extraData);
-
-        await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
 
         Transaction[] transactions;
         try
@@ -121,8 +143,7 @@ public class TestingRpcModule(
         header.TxRoot = TxTrie.CalculateRoot(transactions);
         BlockToProduce block = new(header, transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null);
 
-        FeesTracer feesTracer = new();
-        Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer, cancellationToken);
+        Block? processedBlock = env.ChainProcessor.Process(block, options, tracer, cancellationToken);
 
         if (processedBlock is null)
             return cancellationToken.IsCancellationRequested
@@ -136,58 +157,32 @@ public class TestingRpcModule(
             return ResultWrapper<ProducedBlock>.Fail(error, ErrorCodes.InvalidInput);
         }
 
-        return ResultWrapper<ProducedBlock>.Success(new ProducedBlock(processedBlock, feesTracer.Fees, spec));
+        return ResultWrapper<ProducedBlock>.Success(new ProducedBlock(processedBlock, spec));
     }
 
-    private async Task<ResultWrapper<Hash256>> SuggestAndWaitForHeadAsync(Block processedBlock, CancellationToken exitToken)
+    /// <summary>
+    /// Advance the canonical head to an already-processed block via
+    /// <see cref="IBlockTree.TryUpdateMainChain"/>, bypassing the main BlockchainProcessor.
+    /// </summary>
+    private ResultWrapper<Hash256> CommitAsMainChain(Block processedBlock)
     {
         if (processedBlock.Hash is null)
             return ResultWrapper<Hash256>.Fail("processed block has no hash", ErrorCodes.InternalError);
 
-        Hash256 expectedHash = processedBlock.Hash;
-        TaskCompletionSource<bool> headAdvanced = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void OnNewHead(object? _, BlockEventArgs args)
+        AddBlockResult addBlockResult = blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        if (addBlockResult != AddBlockResult.Added)
         {
-            if (args.Block.Hash == expectedHash)
-                headAdvanced.TrySetResult(true);
+            if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
+            return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
         }
 
-        blockTree.NewHeadBlock += OnNewHead;
+        // forceUpdateHeadBlock: true is required for post-merge chains where TotalDifficulty=0
+        // and TTD != 0; without it MoveToMain skips UpdateHeadBlock and the next commit
+        // reads a stale head.
+        blockTree.TryUpdateMainChain(processedBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [processedBlock]);
 
-        try
-        {
-            if (blockTree.Head?.Hash == expectedHash)
-                headAdvanced.TrySetResult(true);
-
-            AddBlockResult addBlockResult = await blockTree.SuggestBlockAsync(processedBlock, BlockTreeSuggestOptions.ShouldProcess);
-            if (addBlockResult != AddBlockResult.Added)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
-                return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
-            }
-
-            using CancellationTokenSource timeoutCts = new(CommitHeadTimeout);
-            using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, exitToken);
-            try
-            {
-                await headAdvanced.Task.WaitAsync(linkedCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                string message = exitToken.IsCancellationRequested
-                    ? "node is shutting down"
-                    : $"block was suggested but did not become head within {CommitHeadTimeout.TotalSeconds:0}s";
-                return ResultWrapper<Hash256>.Fail(message, ErrorCodes.InternalError);
-            }
-        }
-        finally
-        {
-            blockTree.NewHeadBlock -= OnNewHead;
-        }
-
-        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {expectedHash}");
-        return ResultWrapper<Hash256>.Success(expectedHash);
+        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
+        return ResultWrapper<Hash256>.Success(processedBlock.Hash);
     }
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)
@@ -199,7 +194,7 @@ public class TestingRpcModule(
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            payloadAttributes.GetGasLimit() ?? gasLimitCalculator.GetGasLimit(parent),
+            payloadAttributes.GetGasLimit(parent, gasLimitCalculator),
             payloadAttributes.Timestamp,
             extraData ?? [])
         {
@@ -244,7 +239,7 @@ public class TestingRpcModule(
         processedBlock.Header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
 
         return spec.IsEip7928Enabled
-            ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false)
-            : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false);
+            ? new GetPayloadV6DirectResponse(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false)
+            : new GetPayloadV5DirectResponse(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false);
     }
 }

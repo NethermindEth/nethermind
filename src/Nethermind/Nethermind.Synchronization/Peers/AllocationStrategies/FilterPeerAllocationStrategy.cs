@@ -13,8 +13,11 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
     {
         private readonly IPeerAllocationStrategy _nextStrategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
 
-        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree) => _nextStrategy.Allocate(currentPeer, peers.Where(Filter), nodeStatsManager, blockTree);
+        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree) =>
+            _nextStrategy.Allocate(IsEligible(currentPeer) ? currentPeer : null, peers.Where(Filter), nodeStatsManager, blockTree);
 
         protected abstract bool Filter(PeerInfo peerInfo);
+
+        private bool IsEligible(PeerInfo? peerInfo) => peerInfo is not null && Filter(peerInfo);
     }
 }

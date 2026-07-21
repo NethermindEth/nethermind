@@ -10,7 +10,7 @@ namespace Nethermind.Evm;
 
 public class AccountOverride
 {
-    public UInt256? Nonce { get; set; }
+    public ulong? Nonce { get; set; }
     public UInt256? Balance { get; set; }
     public byte[]? Code { get; set; }
     public Address? MovePrecompileToAddress { get; set; }
@@ -24,4 +24,9 @@ public class AccountOverride
     ///     Storage difference for AccountOverrideStateDiff
     /// </summary>
     public Dictionary<UInt256, Hash256>? StateDiff { get; set; }
+
+    /// <summary>
+    /// Returns <see langword="true"/> if any account-state field is set (balance, nonce, code, state, or stateDiff).
+    /// </summary>
+    public bool HasStateChanges => Balance is not null || Nonce is not null || Code is not null || State is not null || StateDiff is not null;
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Tools.Kute.MessageProvider;
 using NSubstitute;
 using NUnit.Framework;
@@ -19,16 +18,16 @@ public class MessageProviderTests
         [{"jsonrpc":"2.0","id":3,"result":"0x456"},{"jsonrpc":"2.0","id":4,"error":{"code":-32602,"message":"Invalid params"}}]
         """;
 
-        var stringProvider = Substitute.For<IMessageProvider<string>>();
+        IMessageProvider<string> stringProvider = Substitute.For<IMessageProvider<string>>();
         stringProvider.Messages().Returns(lines.Split('\n').ToAsyncEnumerable());
 
-        var provider = new JsonRpcMessageProvider(stringProvider);
-        var jsonRpcs = await provider.Messages().ToListAsync();
+        JsonRpcMessageProvider provider = new(stringProvider);
+        List<JsonRpc> jsonRpcs = await provider.Messages().ToListAsync();
 
-        jsonRpcs.Should().HaveCount(3);
-        jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();
-        jsonRpcs[1].Should().BeOfType<JsonRpc.Request.Single>();
-        jsonRpcs[2].Should().BeOfType<JsonRpc.Request.Batch>();
+        Assert.That(jsonRpcs, Has.Count.EqualTo(3));
+        Assert.That(jsonRpcs[0], Is.TypeOf<JsonRpc.Request.Single>());
+        Assert.That(jsonRpcs[1], Is.TypeOf<JsonRpc.Request.Single>());
+        Assert.That(jsonRpcs[2], Is.TypeOf<JsonRpc.Request.Batch>());
     }
 
     [Test]
@@ -39,15 +38,15 @@ public class MessageProviderTests
         [{"jsonrpc":"2.0","id":1,"result":"0x123"},{"jsonrpc":"2.0","id":2,"result":"0x456"}]
         """;
 
-        var stringProvider = Substitute.For<IMessageProvider<string>>();
+        IMessageProvider<string> stringProvider = Substitute.For<IMessageProvider<string>>();
         stringProvider.Messages().Returns(lines.Split('\n').ToAsyncEnumerable());
 
-        var provider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(stringProvider));
-        var jsonRpcs = await provider.Messages().ToListAsync();
+        UnwrapBatchJsonRpcMessageProvider provider = new(new JsonRpcMessageProvider(stringProvider));
+        List<JsonRpc> jsonRpcs = await provider.Messages().ToListAsync();
 
-        jsonRpcs.Should().HaveCount(3);
-        jsonRpcs[0].Should().BeOfType<JsonRpc.Request.Single>();
-        jsonRpcs[1].Should().BeOfType<JsonRpc.Request.Single>();
-        jsonRpcs[2].Should().BeOfType<JsonRpc.Request.Single>();
+        Assert.That(jsonRpcs, Has.Count.EqualTo(3));
+        Assert.That(jsonRpcs[0], Is.TypeOf<JsonRpc.Request.Single>());
+        Assert.That(jsonRpcs[1], Is.TypeOf<JsonRpc.Request.Single>());
+        Assert.That(jsonRpcs[2], Is.TypeOf<JsonRpc.Request.Single>());
     }
 }

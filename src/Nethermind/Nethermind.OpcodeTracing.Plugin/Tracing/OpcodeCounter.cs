@@ -20,9 +20,9 @@ public sealed class OpcodeCounter
         get
         {
             long total = 0;
-            foreach (long count in _counters.Values)
+            foreach (KeyValuePair<byte, long> kvp in _counters)
             {
-                total += count;
+                total += kvp.Value;
             }
             return total;
         }

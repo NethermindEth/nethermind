@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Snap;
@@ -71,8 +70,9 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
                         if (_reader.TryGetStorageRaw(_addressHash, slot.Path, ref existing))
                             throw new Exception($"Double storage flat write. address:{_addressHash} slot:{slot.Path} firstEntry:{_pendingEntries[0].Path} lastEntry:{_pendingEntries[_pendingEntries.Count - 1].Path} upperBound:{upperBound}");
                     }
-                    Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)slot.SlotRlpValue).AsRlpValueContext();
-                    _writeBatch.SetStorageRaw(_addressHash, slot.Path, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+                    // slot.SlotRlpValue is already RLP(stripped) — the on-disk format when wrapping is on,
+                    // so this avoids a decode + re-encode round-trip.
+                    _writeBatch.SetStorageRawEncoded(_addressHash, slot.Path, slot.SlotRlpValue);
                 }
             }
         }
@@ -112,7 +112,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
                 {
                     throw new Exception($"Double storage rlp write. {address} {path}");
                 }
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 return node;
             }
 

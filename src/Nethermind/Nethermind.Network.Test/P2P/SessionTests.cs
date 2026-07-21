@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -350,20 +349,31 @@ public class SessionTests
         Assert.That(session.IsClosing, Is.True);
     }
 
-    [Test]
-    public void Do_not_disconnects_after_initiating_disconnect_on_static_node()
+    // Privileged (static or trusted) nodes are kept connected through capacity/transient reasons, but
+    // chain-identity and protocol mismatches must still disconnect them.
+    [TestCase(false, DisconnectReason.TooManyPeers, false)]
+    [TestCase(true, DisconnectReason.TooManyPeers, false)]
+    [TestCase(false, DisconnectReason.UselessPeer, false)]
+    [TestCase(true, DisconnectReason.UselessPeer, false)]
+    [TestCase(false, DisconnectReason.InvalidNetworkId, true)]
+    [TestCase(true, DisconnectReason.InvalidNetworkId, true)]
+    [TestCase(false, DisconnectReason.InvalidForkId, true)]
+    [TestCase(true, DisconnectReason.InvalidForkId, true)]
+    [TestCase(false, DisconnectReason.IncompatibleP2PVersion, true)]
+    [TestCase(true, DisconnectReason.IncompatibleP2PVersion, true)]
+    public void Privileged_node_disconnect_depends_on_reason(bool useStatic, DisconnectReason reason, bool shouldDisconnect)
     {
         bool wasCalled = false;
         Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545);
-        node.IsStatic = true;
+        if (useStatic) node.IsStatic = true; else node.IsTrusted = true;
         Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalled = true;
 
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
-        session.InitiateDisconnect(DisconnectReason.TooManyPeers);
-        Assert.That(wasCalled, Is.False);
-        Assert.That(session.IsClosing, Is.False);
+        session.InitiateDisconnect(reason);
+        Assert.That(wasCalled, Is.EqualTo(shouldDisconnect));
+        Assert.That(session.IsClosing, Is.EqualTo(shouldDisconnect));
     }
 
     [Test]
@@ -522,9 +532,9 @@ public class SessionTests
         _packetSender.Enqueue(message).Returns(10);
         session.DeliverMessage(message);
         _packetSender.Received().Enqueue(message);
-        message.WasDisposed.Should().BeTrue();
+        Assert.That(message.WasDisposed, Is.True);
 
-        Metrics.P2PBytesSent.Should().Be(10);
+        Assert.That(Metrics.P2PBytesSent, Is.EqualTo(10));
     }
 
     [Test]
@@ -535,7 +545,7 @@ public class SessionTests
         Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
         session.Handshake(TestItem.PublicKeyA);
         Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
-        message.WasDisposed.Should().BeTrue();
+        Assert.That(message.WasDisposed, Is.True);
         session.Init(5, _channelHandlerContext, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
@@ -567,7 +577,7 @@ public class SessionTests
         TestMessage message = new();
         session.DeliverMessage(message);
         _packetSender.DidNotReceive().Enqueue(Arg.Any<TestMessage>());
-        message.WasDisposed.Should().BeTrue();
+        Assert.That(message.WasDisposed, Is.True);
     }
 
     [Test]
@@ -624,15 +634,12 @@ public class SessionTests
             .Received()
             .Enqueue(message);
 
-        message.WasDisposed.Should().BeTrue();
+        Assert.That(message.WasDisposed, Is.True);
     }
 
-    [Test, Retry(3)]
-    [Parallelizable(ParallelScope.None)] // It touches global metrics
+    [Test]
     public void Can_receive_messages()
     {
-        Metrics.P2PBytesReceived = 0;
-
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
@@ -660,7 +667,7 @@ public class SessionTests
 
         session.ReceiveMessage(new Packet("---", 100, data));
 
-        Metrics.P2PBytesReceived.Should().Be(data.Length * 5);
+        Assert.That(session.BytesReceived, Is.EqualTo(data.Length * 5));
     }
 
     [Test]

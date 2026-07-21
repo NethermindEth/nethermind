@@ -175,7 +175,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     private Task RunConsumeSignal()
     {
-        TaskCompletionSource tcs = new();
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Thread thread = new(() =>
         {
@@ -421,14 +421,14 @@ public class CliqueBlockProducer : IBlockProducer
             []);
 
         // If the block isn't a checkpoint, cast a random vote (good enough for now)
-        long number = header.Number;
+        ulong number = header.Number;
         // Assemble the voting snapshot to check which votes make sense
         Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, parentHeader.Hash);
-        bool isEpochBlock = (ulong)number % 30000 == 0;
+        bool isEpochBlock = number % 30000 == 0;
         if (!isEpochBlock && !_proposals.IsEmpty)
         {
             // Gather all the proposals that make sense voting on
-            List<Address> addresses = new();
+            List<Address> addresses = [];
             foreach ((Address address, bool authorize) in _proposals)
             {
                 if (_snapshotManager.IsValidVote(snapshot, address, authorize))
@@ -476,7 +476,7 @@ public class CliqueBlockProducer : IBlockProducer
             {
                 Address signer = snapshot.Signers.Keys[i];
                 int index = Clique.ExtraVanityLength + 20 * i;
-                Array.Copy(signer.Bytes, 0, header.ExtraData, index, signer.Bytes.Length);
+                signer.Bytes.CopyTo(header.ExtraData.AsSpan(index, signer.Bytes.Length));
             }
         }
 

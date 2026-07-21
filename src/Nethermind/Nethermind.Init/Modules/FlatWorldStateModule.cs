@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -17,16 +17,14 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
-using Nethermind.State;
+using Nethermind.Api;
 using Nethermind.State.Flat;
-using Nethermind.State.SnapServer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -37,20 +35,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         builder
 
             // Implementation of nethermind interfaces
-            .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
-            .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
-            {
-                new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
-            })
-            .AddSingleton<IStateReader, FlatStateReader>()
-            .AddSingleton<ISnapServer, IWorldStateManager>(wsm => wsm.SnapServer)
+            .AddSingleton<FlatStateReader>()
+            .AddSingleton<FlatWorldStateManager>()
+            .AddSingleton<FlatStateBoundary>()
 
-            // Disable some pruning trie store specific  components
-            .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
-            .AddSingleton<MainPruningTrieStoreFactory>(_ => throw new NotSupportedException($"{nameof(MainPruningTrieStoreFactory)} disabled."))
-            .AddSingleton<PruningTrieStateFactory>(_ => throw new NotSupportedException($"{nameof(PruningTrieStateFactory)} disabled."))
-            .AddSingleton<CompositePruningTrigger>(_ => throw new NotSupportedException($"{nameof(CompositePruningTrigger)} disabled."))
-            .AddSingleton<IFullPrunerFactory>(_ => throw new NotSupportedException($"{nameof(IFullPrunerFactory)} disabled."))
+            // Stub out the pruning trie store admin RPC with a disabled response.
+            .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
 
             // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
@@ -60,15 +50,31 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
+                ctx.Resolve<IPersistedSnapshotLoader>(),
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
+            .AddSingleton<IArenaManager, IFlatDbConfig, IInitConfig, ILogManager>((cfg, initConfig, logManager) =>
+            {
+                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
+                return new ArenaManager(Path.Combine(basePath, "arena"), cfg, logManager);
+            })
+            .AddSingleton<BlobArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
+            {
+                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
+                return new BlobArenaManager(
+                    Path.Combine(basePath, "blob"),
+                    cfg.ArenaFileSizeBytes);
+            })
+            .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
+            .AddSingleton<IPersistedSnapshotLoader, PersistedSnapshotLoader>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())
@@ -76,19 +82,22 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .Add<FlatOverridableWorldScope>()
 
             // Sync components
-            .AddSingleton<ISnapTrieFactory, FlatSnapTrieFactory>()
+            .AddSingleton<FlatSnapTrieFactory>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
-            .AddSingleton<ITreeSyncStore, FlatTreeSyncStore>()
-            .Intercept<ISyncConfig>((syncConfig) =>
-            {
-                syncConfig.SnapServingEnabled ??= true;
-            })
-            .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
+            .AddSingleton<FlatTreeSyncStore>()
+            .AddSingleton<FlatFullStateFinder>()
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx => ctx
+                .Resolve<IDbFactory>()
+                .CreateDb(new DbSettings(
+                    nameof(DbNames.PersistedSnapshotCatalog),
+                    Path.Combine("persistedSnapshot", "catalog"))))
+            .AddSingleton<SnapshotCatalog>()
+            .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
@@ -112,9 +121,18 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     persistence = new PreimageRecordingPersistence(persistence, preimageDb);
                 }
 
-                return new CachedReaderPersistence(persistence, exitSource, logManager);
+                IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
+                return new CarryForwardCachingPersistence(cachedReader);
             })
             ;
+
+        if (!flatDbConfig.EnableLongFinality)
+        {
+            builder
+                .AddSingleton<ISnapshotCatalog>(NullSnapshotCatalog.Instance)
+                .AddSingleton<IPersistedSnapshotLoader>(NullPersistedSnapshotLoader.Instance)
+                .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
+        }
 
         if (flatDbConfig.ImportFromPruningTrieState)
         {
@@ -124,13 +142,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         }
     }
 
-    /// <summary>
-    /// Need to stub out, or it will register trie store specific module
-    /// </summary>
-    private class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
+    internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
-
-        public ResultWrapper<string> admin_verifyTrie(BlockParameter block) => ResultWrapper<string>.Success("disable");
     }
 }

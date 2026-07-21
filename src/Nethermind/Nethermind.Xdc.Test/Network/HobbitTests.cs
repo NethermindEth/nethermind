@@ -11,6 +11,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
+using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Xdc.Test.Network
 {

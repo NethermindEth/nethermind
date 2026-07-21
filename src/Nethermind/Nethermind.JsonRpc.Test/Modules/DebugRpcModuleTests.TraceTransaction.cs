@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -13,9 +12,9 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Core.Crypto;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -32,7 +31,7 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -44,10 +43,10 @@ public partial class DebugRpcModuleTests
         Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        long blockNumber = context.Blockchain.BlockTree.Head!.Number;
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, 0, options);
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, "0x0", options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -60,9 +59,9 @@ public partial class DebugRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         Hash256? blockHash = context.Blockchain.BlockTree.Head!.Hash;
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, 0, options);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, "0x0", options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -77,7 +76,7 @@ public partial class DebugRpcModuleTests
         string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, transaction.Hash, options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -90,9 +89,9 @@ public partial class DebugRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, 0, options);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, "0x0", options);
 
-        JToken.Parse(response).Should().BeEquivalentTo(JToken.Parse(expected));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     private static IEnumerable<TestCaseData> TraceTransactionTransferSource()
@@ -203,9 +202,7 @@ public partial class DebugRpcModuleTests
                             "gas": 46928,
                             "gasCost": 3,
                             "depth": 1,
-                            "error": null,
-                            "stack": [],
-                            "storage": {}
+                            "stack": []
                         },
                         {
                             "pc": 2,
@@ -213,11 +210,9 @@ public partial class DebugRpcModuleTests
                             "gas": 46925,
                             "gasCost": 3,
                             "depth": 1,
-                            "error": null,
                             "stack": [
                                 "0x0"
-                            ],
-                            "storage": {}
+                            ]
                         },
                         {
                             "pc": 4,
@@ -225,12 +220,13 @@ public partial class DebugRpcModuleTests
                             "gas": 46922,
                             "gasCost": 2200,
                             "depth": 1,
-                            "error": null,
                             "stack": [
                                 "0x0",
                                 "0x20"
                             ],
-                            "storage": {}
+                            "storage": {
+                                "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                            }
                         },
                         {
                             "pc": 5,
@@ -238,9 +234,7 @@ public partial class DebugRpcModuleTests
                             "gas": 44722,
                             "gasCost": 0,
                             "depth": 1,
-                            "error": null,
-                            "stack": [],
-                            "storage": {}
+                            "stack": []
                         }
                     ]
                 },

@@ -16,11 +16,21 @@ namespace Nethermind.Core.Caching;
 /// </typeparam>
 public static class StaticPool<T> where T : class, IResettable, new()
 {
+    private const int DefaultMaxPooledCount = 4096;
+
     /// <summary>
     /// Hard cap for the total number of items that can be stored in the shared pool.
-    /// Prevents unbounded growth under bursty workloads while still allowing reuse.
+    /// Defaults to <see cref="DefaultMaxPooledCount"/>; override per-T at startup via
+    /// <see cref="SetMaxPooledCount"/>.
     /// </summary>
-    private const int MaxPooledCount = 4096;
+    private static int _maxPooledCount = DefaultMaxPooledCount;
+
+    /// <summary>
+    /// Override the pool's hard cap for this <typeparamref name="T"/>. Intended to be called
+    /// once at startup before any Rent/Return; there is no synchronization against in-flight
+    /// callers, so reservations may briefly exceed a smaller new cap.
+    /// </summary>
+    public static void SetMaxPooledCount(int maxPooledCount) => _maxPooledCount = maxPooledCount;
 
     /// <summary>
     /// Global pool shared between threads.
@@ -78,7 +88,7 @@ public static class StaticPool<T> where T : class, IResettable, new()
     {
         // We use Interlocked.Increment to reserve a slot up front.
         // This guarantees a bounded queue length without relying on slow Count().
-        if (Interlocked.Increment(ref _poolCount) > MaxPooledCount)
+        if (Interlocked.Increment(ref _poolCount) > _maxPooledCount)
         {
             // Roll back reservation if we'd exceed the cap.
             Interlocked.Decrement(ref _poolCount);

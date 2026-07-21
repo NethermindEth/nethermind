@@ -30,7 +30,7 @@ internal class SubnetEpochSwitchManager(
     }
 
     protected override ulong GetCurrentEpochNumber(EpochSwitchInfo epochSwitchInfo, IXdcReleaseSpec xdcSpec) =>
-        (ulong)(epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber / xdcSpec.EpochLength);
+        epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber / xdcSpec.EpochLength;
 
     protected override Address[] ResolvePenalties(XdcBlockHeader _, Snapshot snapshot)
     {
@@ -47,8 +47,8 @@ internal class SubnetEpochSwitchManager(
 
         IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(headHeader);
 
-        if (targetEpoch > (ulong)(long.MaxValue / xdcSpec.EpochLength)) return null;
-        long targetNumber = (long)targetEpoch * xdcSpec.EpochLength;
+        if (targetEpoch > long.MaxValue / xdcSpec.EpochLength) return null;
+        ulong targetNumber = targetEpoch * xdcSpec.EpochLength;
 
         XdcBlockHeader? targetHeader = (XdcBlockHeader?)Tree.FindHeader(targetNumber);
         if (targetHeader is null) return null;
@@ -58,4 +58,7 @@ internal class SubnetEpochSwitchManager(
 
         return epochSwitchInfo.EpochSwitchBlockInfo;
     }
+
+    public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end) =>
+        throw new NotImplementedException("GetEpochSwitchInfoBetween is not implemented for subnet epoch switch manager.");
 }

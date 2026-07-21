@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
@@ -9,8 +9,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -24,14 +26,14 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
-namespace Nethermind.Xdc.Test.P2P;
+namespace Nethermind.Xdc.Test;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcProtocolHandlerTests
 {
     private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll()
+        CreateAll(bool syncing = false)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
@@ -48,7 +50,8 @@ public class XdcProtocolHandlerTests
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
         Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
         blockTree.Head.Returns(headBlock);
-        blockTree.FindBestSuggestedHeader().Returns(headHeader);
+        BlockHeader bestSuggested = syncing ? Build.A.BlockHeader.WithNumber(1000).TestObject : headHeader;
+        blockTree.FindBestSuggestedHeader().Returns(bestSuggested);
 
         XdcProtocolHandler handler = new(
             timeoutManager,
@@ -62,7 +65,6 @@ public class XdcProtocolHandlerTests
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<ITxPool>(),
             Substitute.For<IGossipPolicy>(),
-            Substitute.For<IForkInfo>(),
             LimboLogs.Instance,
             Substitute.For<ITxGossipPolicy>());
 
@@ -294,6 +296,45 @@ public class XdcProtocolHandlerTests
             handler.SendSyncInfo(syncInfo);
 
             session.Received(2).DeliverMessage(Arg.Any<SyncInfoMsg>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_XdcMessageWhileSyncing_IsIgnoredWithoutDisconnect()
+    {
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
+            = CreateAll(syncing: true);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            handler.HandleMessage(CreatePacket(XdcMessageCode.VoteMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.TimeoutMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.SyncInfoMsg));
+
+            votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
+            timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
+            syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());
+            session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes(bool sendFullTx)
+    {
+        // In XdcProtocolHandler tx gossip must go via TransactionsMessage (0x02),
+        // never via NewPooledTransactionHashesMessage (0x08 from Eth65) which conflicts with XDC OrderTxMsg.
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        using (handler)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+
+            handler.SendNewTransactions([tx], sendFullTx: sendFullTx);
+
+            session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(m => m.PacketType == Eth62MessageCode.Transactions));
+            session.DidNotReceive().DeliverMessage(Arg.Is<P2PMessage>(m => m.PacketType == Eth65MessageCode.NewPooledTransactionHashes));
         }
     }
 }

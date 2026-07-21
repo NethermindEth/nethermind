@@ -3,14 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
-using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 
 namespace Nethermind.Facade.Find;
@@ -24,13 +23,11 @@ public class IndexedLogFinder(
     IBlockFinder blockFinder,
     IReceiptFinder receiptFinder,
     IReceiptStorage receiptStorage,
-    IBloomStorage bloomStorage,
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
     ILogIndexStorage logIndexStorage,
-    int maxBlockDepth = 1000,
     int minBlocksToUseIndex = 32)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, bloomStorage, logManager, receiptsRecovery, maxBlockDepth)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
 
@@ -41,7 +38,7 @@ public class IndexedLogFinder(
 
     private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
     {
-        if (indexRange.from > fromBlock.Number && FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is { } beforeIndex)
+        if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
         {
             foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
                 yield return log;
@@ -49,15 +46,18 @@ public class IndexedLogFinder(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        IEnumerable<long> indexNumbers = _logIndexStorage.EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to);
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexNumbers, cancellationToken))
+        IEnumerable<ulong> indexBlockNumbers = _logIndexStorage
+            .EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
+            .Select(static n => (ulong)n);
+
+        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken: cancellationToken))
         {
             yield return log;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (indexRange.to < toBlock.Number && FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is { } afterIndex)
+        if ((ulong)indexRange.to < toBlock.Number && FindHeaderOrLogError((ulong)(indexRange.to + 1), cancellationToken) is { } afterIndex)
         {
             foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
                 yield return log;

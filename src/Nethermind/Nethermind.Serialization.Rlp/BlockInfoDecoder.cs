@@ -9,28 +9,28 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockInfoDecoder))]
-    public sealed class BlockInfoDecoder() : RlpValueDecoder<BlockInfo>
+    public sealed class BlockInfoDecoder() : RlpDecoder<BlockInfo>
     {
         public static BlockInfoDecoder Instance { get; } = new();
 
-        public override void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                stream.Encode(Rlp.OfEmptyList);
+                writer.EncodeNullObject();
                 return;
             }
 
             int contentLength = GetContentLength(item, rlpBehaviors);
 
             bool hasMetadata = item.Metadata != BlockMetadata.None;
-            stream.StartSequence(contentLength);
-            stream.Encode(item.BlockHash);
-            stream.Encode(item.WasProcessed);
-            stream.Encode(item.TotalDifficulty);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.BlockHash);
+            writer.Encode(item.WasProcessed);
+            writer.Encode(item.TotalDifficulty);
             if (hasMetadata)
             {
-                stream.Encode((int)item.Metadata);
+                writer.Encode((int)item.Metadata);
             }
         }
 
@@ -52,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-        protected override BlockInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override BlockInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -70,7 +70,7 @@ namespace Nethermind.Serialization.Rlp
             // if we hadn't reached the end of the stream, assume we have metadata to decode
             if (decoderContext.Position != lastCheck)
             {
-                metadata = (BlockMetadata)decoderContext.DecodeInt();
+                metadata = (BlockMetadata)decoderContext.DecodeUInt();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)

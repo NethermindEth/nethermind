@@ -3,17 +3,19 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
-using FluentAssertions.Json;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json.Linq;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Optimism.Test.Rpc;
 
@@ -98,7 +100,47 @@ public class OptimismEngineRpcModuleTest
 
         ResultWrapper<OptimismSignalSuperchainV1Result> result = rpcModule.engine_signalSuperchainV1(signal);
 
-        result.Data.Should().Be(new OptimismSignalSuperchainV1Result(current));
+        Assert.That(result.Data, Is.EqualTo(new OptimismSignalSuperchainV1Result(current)));
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitnessV4_delegates_Optimism_payload()
+    {
+        IEngineRpcModule engineRpcModule = Substitute.For<IEngineRpcModule>();
+        OptimismExecutionPayloadV3 payload = new() { BlockHash = Hash256.Zero, WithdrawalsRoot = Hash256.Zero };
+        Hash256?[] blobVersionedHashes = [];
+        byte[][] executionRequests = [];
+        ResultWrapper<NewPayloadWithWitnessV1Result> expected =
+            ResultWrapper<NewPayloadWithWitnessV1Result>.Success(NewPayloadWithWitnessV1Result.FromPayloadStatus(
+                new PayloadStatusV1 { Status = PayloadStatus.Syncing }));
+        engineRpcModule.engine_newPayloadWithWitnessV4(payload, blobVersionedHashes, Hash256.Zero, executionRequests)
+            .Returns(expected);
+        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(
+            engineRpcModule, Substitute.For<IOptimismSignalSuperchainV1Handler>());
+
+        ResultWrapper<NewPayloadWithWitnessV1Result> result = await rpcModule.engine_newPayloadWithWitnessV4(
+            payload, blobVersionedHashes, Hash256.Zero, executionRequests);
+
+        Assert.That(result, Is.SameAs(expected));
+        await engineRpcModule.Received(1).engine_newPayloadWithWitnessV4(
+            payload, blobVersionedHashes, Hash256.Zero, executionRequests);
+    }
+
+    [Test]
+    public void NewPayloadWithWitnessV4_capability_is_enabled_for_Isthmus_without_SSZ_route()
+    {
+        OptimismReleaseSpec spec = new() { IsOpIsthmusEnabled = true };
+        OptimismEngineRpcCapabilitiesProvider provider = new(new TestSingleReleaseSpecProvider(spec));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                provider.GetJsonRpcCapabilities()[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4)].IsEnabled(),
+                Is.True);
+            Assert.That(
+                provider.GetSszRestPaths()[SszRestPaths.PostPayloadsWitness].IsEnabled(),
+                Is.False);
+        });
     }
 
     private static IEnumerable<(string, string, OptimismProtocolVersion)> SignalSuperchainV1JsonCases()
@@ -123,6 +165,6 @@ public class OptimismEngineRpcModuleTest
         OptimismSuperchainSignal signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal);
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_signalSuperchainV1", signal);
 
-        JToken.Parse(response).Should().BeEquivalentTo($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""");
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""")).Using(JToken.EqualityComparer));
     }
 }

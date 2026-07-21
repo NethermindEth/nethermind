@@ -9,7 +9,7 @@ namespace Nethermind.Core.Test
 {
     public class TestLogger : InterfaceLogger
     {
-        public List<string> LogList { get; set; } = new();
+        public List<string> LogList { get; set; } = [];
 
         public void Info(string text) => LogList.Add(text);
 

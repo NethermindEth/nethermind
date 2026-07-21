@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -16,14 +15,14 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class Eip2929Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
-        [TestCase("0x60013f5060023b506003315060f13f5060f23b5060f3315060f23f5060f33b5060f1315032315030315000", 8653)]
-        [TestCase("0x60006000600060ff3c60006000600060ff3c600060006000303c00", 2835)]
-        [TestCase("0x60015450601160015560116002556011600255600254600154", 44529)]
-        [TestCase("0x60008080808060046000f15060008080808060ff6000f15060008080808060ff6000fa50", 2869)]
-        public void Eip2929_gas_cost(string codeHex, long expectedGasExcludingTx)
+        [TestCase("0x60013f5060023b506003315060f13f5060f23b5060f3315060f23f5060f33b5060f1315032315030315000", 8653ul)]
+        [TestCase("0x60006000600060ff3c60006000600060ff3c600060006000303c00", 2835ul)]
+        [TestCase("0x60015450601160015560116002556011600255600254600154", 44529ul)]
+        [TestCase("0x60008080808060046000f15060008080808060ff6000f15060008080808060ff6000fa50", 2869ul)]
+        public void Eip2929_gas_cost(string codeHex, ulong expectedGasExcludingTx)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
@@ -32,7 +31,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
+            Assert.That(result.StatusCode, Is.EqualTo(1));
             AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
         }
 

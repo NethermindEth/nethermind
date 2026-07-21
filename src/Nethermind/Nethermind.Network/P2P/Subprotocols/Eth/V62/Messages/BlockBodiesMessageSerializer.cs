@@ -9,26 +9,26 @@ using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
+    public class BlockBodiesMessageSerializer(BlockBodyDecoder blockBodyDecoder = null) : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
-        private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
+        private readonly BlockBodyDecoder _blockBodyDecoder = blockBodyDecoder ?? BlockBodyDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(contentLength);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
                 if (body is null)
                 {
-                    stream.Encode(Rlp.OfEmptyList);
+                    writer.Encode(Rlp.OfEmptyList);
                 }
                 else
                 {
-                    _blockBodyDecoder.Encode(stream, body);
+                    _blockBodyDecoder.Encode(ref writer, body);
                 }
             }
         }
@@ -53,11 +53,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
 
-            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startingPosition = ctx.Position;
             try
             {
-                BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false, limit: RlpLimit);
+                BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false, allowNulls: true, limit: RlpLimit);
                 OwnedBlockBodies ownedBodies = new(bodies, memoryOwner);
                 memoryOwner = null;
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));

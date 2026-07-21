@@ -97,7 +97,7 @@ namespace Nethermind.Benchmarks.Core
 
             Transaction[] CreateTransactions(int txCount, int authPerTx)
             {
-                List<Transaction> list = new();
+                List<Transaction> list = [];
                 for (int i = 0; i < txCount; i++)
                 {
                     PrivateKey signer = _privateKeys[i];
@@ -110,9 +110,9 @@ namespace Nethermind.Benchmarks.Core
                             PrivateKey authority = _privateKeys[i + y + _privateKeys.Length / 2];
                             return CreateAuthorizationTuple(
                             authority,
-                            (ulong)rnd.NextInt64(),
+                            rnd.NextUInt64(),
                             Address.Zero,
-                            (ulong)rnd.NextInt64());
+                            rnd.NextUInt64());
                         }).ToArray()
                         )
                         .SignedAndResolved(signer)
@@ -125,10 +125,9 @@ namespace Nethermind.Benchmarks.Core
 
             static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
             {
-                KeccakRlpStream rlp = new();
-                rlp.WriteByte(Eip7702Constants.Magic);
-                AuthorizationTupleDecoder.EncodeWithoutSignature(rlp, chainId, codeAddress, nonce);
-                Signature sig = _ethereumEcdsa.Sign(signer, rlp.GetValueHash());
+                KeccakRlpWriter writer = new();
+                AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, chainId, codeAddress, nonce);
+                Signature sig = _ethereumEcdsa.Sign(signer, writer.GetValueHash());
 
                 return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
             }
