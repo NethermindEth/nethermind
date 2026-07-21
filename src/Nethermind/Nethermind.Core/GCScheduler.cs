@@ -108,6 +108,8 @@ public sealed class GCScheduler
             $"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} gen2 kind={kind} index={info.Index} gen={info.Generation} " +
             $"pausesMs={pauses} pausePct={info.PauseTimePercentage:F1} heapGB={info.HeapSizeBytes / 1e9:F1} " +
             $"promotedMB={info.PromotedBytes / 1e6:F0} pinned={info.PinnedObjectsCount} " +
+            $"compacted={info.Compacted} memLoadGB={info.MemoryLoadBytes / 1e9:F1} " +
+            $"highThreshGB={info.HighMemoryLoadThresholdBytes / 1e9:F1} availGB={info.TotalAvailableMemoryBytes / 1e9:F1} " +
             $"totalPauseS={GC.GetTotalPauseDuration().TotalSeconds:F1}");
     }
 
@@ -130,6 +132,7 @@ public sealed class GCScheduler
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
+            Console.WriteLine($"[GCDIAG] event source created: {eventSource.Name}");
             if (eventSource.Name == "Microsoft-Windows-DotNETRuntime")
             {
                 EnableEvents(eventSource, EventLevel.Informational, GCKeyword);
@@ -295,14 +298,18 @@ public sealed class GCScheduler
     {
         if (Volatile.Read(ref _forcedGCExclusions) > 0)
         {
+            Console.WriteLine($"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} GCCollect gen={generation} mode={mode} blocking={blocking} compacting={compacting} -> excluded");
             return false;
         }
 
         if (!MarkGCPaused())
         {
             // Skip if another GC is in progress
+            Console.WriteLine($"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} GCCollect gen={generation} mode={mode} blocking={blocking} compacting={compacting} -> guard held");
             return false;
         }
+
+        Console.WriteLine($"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} GCCollect gen={generation} mode={mode} blocking={blocking} compacting={compacting} -> running (lohMode={GCSettings.LargeObjectHeapCompactionMode})");
 
         // Reset the block counter after GC
         _countToGC = MaxBlocksWithoutGC;
@@ -354,6 +361,7 @@ public sealed class GCScheduler
             return;
         }
 
+        GCMemoryInfo before = GC.GetGCMemoryInfo();
         long pauseBeforeMs = (long)GC.GetTotalPauseDuration().TotalMilliseconds;
         long start = Environment.TickCount64;
         bool fired = GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
@@ -361,7 +369,9 @@ public sealed class GCScheduler
         long pauseDeltaMs = (long)GC.GetTotalPauseDuration().TotalMilliseconds - pauseBeforeMs;
         Console.WriteLine(
             $"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} sweep fired={fired} wallMs={wallMs} " +
-            $"pauseDeltaMs={pauseDeltaMs} allocGB={sinceBaseline / 1e9:F1}");
+            $"pauseDeltaMs={pauseDeltaMs} allocGB={sinceBaseline / 1e9:F1} " +
+            $"memLoadGB={before.MemoryLoadBytes / 1e9:F1} highThreshGB={before.HighMemoryLoadThresholdBytes / 1e9:F1} " +
+            $"lohMode={GCSettings.LargeObjectHeapCompactionMode}");
     }
 
     private static bool IsBackgroundGCInFlight()
