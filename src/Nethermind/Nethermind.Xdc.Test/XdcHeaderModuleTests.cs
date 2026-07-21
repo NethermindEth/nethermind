@@ -66,6 +66,15 @@ public class XdcHeaderModuleTests
 
         Rlp encoded = Rlp.Encode(plain);
 
-        Assert.That(encoded.Bytes, Is.Not.Empty);
+        Assert.That(encoded.Bytes, Is.EqualTo(new HeaderDecoder().Encode(plain).Bytes));
+    }
+
+    [Test]
+    public void Encode_throws_for_non_base_header_that_is_not_the_decoder_subtype()
+    {
+        XdcSubnetHeaderDecoder subnetDecoder = new();
+        XdcBlockHeader plainXdc = Build.A.XdcBlockHeader().TestObject;
+
+        Assert.That(() => subnetDecoder.Encode(plainXdc), Throws.InvalidOperationException);
     }
 }

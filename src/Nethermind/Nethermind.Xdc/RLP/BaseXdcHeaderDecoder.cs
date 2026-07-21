@@ -10,13 +10,20 @@ using System;
 namespace Nethermind.Xdc.RLP;
 
 /// <remarks>
-/// The plain-header fallback (see <see cref="FallbackDecoder"/>) is encode-only. 
+/// The plain-header fallback (see <see cref="FallbackDecoder"/>) is encode-only.
 /// Distinguishing a foreign header from an XDC one after <c>mixHash</c>/<c>nonce</c> would require
 /// telling XDC's required <c>Validators</c>/<c>Penalties</c> fields apart from Ethereum's optional
 /// post-merge fields (<c>BaseFeePerGas</c>, <c>WithdrawalsRoot</c>, etc.) — both just look like "more
 /// RLP content" at that point, so no reliable byte-shape check exists. This is safe because XDC nodes
 /// only ever decode XDC-shaped chain data through the global registry; it is not safe to decode
 /// arbitrary foreign headers once this decoder is registered as the process-wide default.
+/// <para>
+/// The encode fallback is deliberately restricted to a genuine base <see cref="BlockHeader"/>. Any
+/// other <see cref="XdcBlockHeader"/> subtype that is not <typeparamref name="TH"/> (e.g. a plain
+/// <see cref="XdcBlockHeader"/> routed through <c>XdcSubnetHeaderDecoder</c>) would silently drop its
+/// XDC-specific fields and produce a wrong block hash, so it throws instead — surfacing the wiring bug
+/// loudly rather than corrupting output.
+/// </para>
 /// </remarks>
 public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeaderDecoder where TH : XdcBlockHeader
 {
@@ -107,6 +114,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
 
         if (header is not TH h)
         {
+            EnsurePlainFallbackAllowed(header);
             FallbackDecoder.Encode(ref writer, header, rlpBehaviors);
             return;
         }
@@ -142,6 +150,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
 
         if (item is not TH header)
         {
+            EnsurePlainFallbackAllowed(item);
             return FallbackDecoder.Encode(item, rlpBehaviors);
         }
 
@@ -155,10 +164,22 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
     {
         if (item is not TH header)
         {
+            EnsurePlainFallbackAllowed(item);
             return FallbackDecoder.GetLength(item, rlpBehaviors);
         }
 
         return Rlp.LengthOfSequence(GetContentLength(header, rlpBehaviors));
+    }
+
+    // Only a genuine base BlockHeader may take the plain-shape fallback. Any other BlockHeader subtype
+    // that isn't TH (notably a different XdcBlockHeader subtype) would lose its XDC fields, so fail loudly.
+    private void EnsurePlainFallbackAllowed(BlockHeader header)
+    {
+        if (header.GetType() != typeof(BlockHeader))
+        {
+            throw new InvalidOperationException(
+                $"{GetType().Name} can only encode {typeof(TH).Name} or a plain {nameof(BlockHeader)}, but got {header.GetType().Name}.");
+        }
     }
 
     private int GetContentLength(TH header, RlpBehaviors rlpBehaviors)
