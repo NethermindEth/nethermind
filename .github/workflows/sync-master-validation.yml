@@ -333,6 +333,13 @@ jobs:
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
 
+      - name: Stop Grafana Alloy
+        if: always()
+        continue-on-error: true
+        run: |
+          docker stop -t 15 grafana-alloy 2>/dev/null || true
+          docker rm -f grafana-alloy 2>/dev/null || true
+
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-chain]
     if: always()

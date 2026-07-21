@@ -181,3 +181,10 @@ jobs:
       - name: Check size of DB
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
+
+      - name: Stop Grafana Alloy
+        if: always()
+        continue-on-error: true
+        run: |
+          docker stop -t 15 grafana-alloy 2>/dev/null || true
+          docker rm -f grafana-alloy 2>/dev/null || true
