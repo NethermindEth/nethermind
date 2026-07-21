@@ -11,9 +11,7 @@ using NUnit.Framework;
 namespace Nethermind.Xdc.Test;
 
 /// <summary>
-/// Verifies that <see cref="XdcHeaderModule"/> wires the correct <see cref="BlockHeader"/> decoders,
-/// both in DI and as the process-wide static <see cref="Rlp"/> default (mirrors
-/// <c>Nethermind.AuRa.Test.Encoding.AuRaHeaderDecoderTests</c>).
+/// Verifies that <see cref="XdcHeaderModule"/> wires the correct <see cref="BlockHeader"/> decoders
 /// </summary>
 [TestFixture, NonParallelizable]
 public class XdcHeaderModuleTests
@@ -57,11 +55,6 @@ public class XdcHeaderModuleTests
         Assert.That(Rlp.GetDecoder<BlockBody>(), Is.Not.Null);
     }
 
-    /// <summary>
-    /// Regression guard: once XDC's decoder is the global default, code that still encodes a plain
-    /// (non-XDC) <see cref="BlockHeader"/> — e.g. test fixtures shared with generic-chain tests —
-    /// must not start throwing.
-    /// </summary>
     [Test]
     public void Global_decoder_still_encodes_plain_BlockHeader()
     {
