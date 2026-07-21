@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -121,12 +120,11 @@ public class LogFinderTests
     {
         SetUp(allowReceiptIterator: true, chainLength: Environment.ProcessorCount + 2);
 
-        FieldInfo lockField = typeof(LogFinder).GetField("ParallelLock", BindingFlags.NonPublic | BindingFlags.Static)!;
-        int before = (int)lockField.GetValue(null)!;
+        bool before = LogFinder.IsParallelScanSlotHeld;
 
         _ = _logFinder.FindLogs(AllBlockFilter().Build());
 
-        Assert.That((int)lockField.GetValue(null)!, Is.EqualTo(before), "building an unenumerated parallel getLogs result must not acquire the process-wide parallel slot");
+        Assert.That(LogFinder.IsParallelScanSlotHeld, Is.EqualTo(before), "building an unenumerated parallel getLogs result must not acquire the process-wide parallel slot");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

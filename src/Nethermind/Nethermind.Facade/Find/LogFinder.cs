@@ -27,6 +27,8 @@ namespace Nethermind.Facade.Find
         private static int ParallelExecutions = 0;
         private static int ParallelLock = 0;
 
+        public static bool IsParallelScanSlotHeld => Volatile.Read(ref ParallelLock) != 0;
+
         private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
