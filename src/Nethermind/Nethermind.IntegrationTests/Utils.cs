@@ -148,6 +148,9 @@ public static class Utils
 
         ContainerBuilder builder = new ContainerBuilder()
             .WithImage(image)
+            // The image is either explicitly supplied by the test runner or built locally above.
+            // Do not contact a registry for a local integration-test image.
+            .WithImagePullPolicy(PullPolicy.Never)
             .WithCommand(command)
             .WithPortBinding(8545, true)
             .WithPortBinding(8551, true);
