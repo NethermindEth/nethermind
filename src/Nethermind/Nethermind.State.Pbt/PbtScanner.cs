@@ -212,6 +212,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         if (wrapper.IsEmpty) return;
 
         stats.WrapperCount++;
+        stats.WrappersByDepth[depth]++;
         int childDepth = depth + PbtTrieNodeGroup.LevelsPerGroup;
         int childBytes = 0;
         for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
@@ -220,6 +221,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             if (child.IsEmpty) continue;
 
             stats.WrappedChildCount++;
+            stats.WrappedChildrenByDepth[depth]++;
             childBytes += child.Length;
 
             // a wrapped child is never itself a wrapper: the level a wrapper holds is the level that
@@ -486,6 +488,16 @@ public sealed class PbtScanReport
         public long[] GroupsByDepth { get; } = new long[DepthSlots];
         public long[] GroupBytesByDepth { get; } = new long[DepthSlots];
         public long[] StemsByDepth { get; } = new long[DepthSlots];
+
+        /// <summary>Wrappers by the depth of the group they hold, which is where their key sits.</summary>
+        public long[] WrappersByDepth { get; } = new long[DepthSlots];
+
+        /// <summary>
+        /// Wrapped children by the depth of the wrapper holding them, so that the two histograms read
+        /// as one table; a child itself sits <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> levels below.
+        /// </summary>
+        public long[] WrappedChildrenByDepth { get; } = new long[DepthSlots];
+
         public long[] ChainsByStartDepth { get; } = new long[DepthSlots];
         public long[] ChainsBySpan { get; } = new long[DepthSlots];
 
@@ -522,6 +534,8 @@ public sealed class PbtScanReport
             AddInto(GroupsByDepth, other.GroupsByDepth);
             AddInto(GroupBytesByDepth, other.GroupBytesByDepth);
             AddInto(StemsByDepth, other.StemsByDepth);
+            AddInto(WrappersByDepth, other.WrappersByDepth);
+            AddInto(WrappedChildrenByDepth, other.WrappedChildrenByDepth);
             AddInto(ChainsByStartDepth, other.ChainsByStartDepth);
             AddInto(ChainsBySpan, other.ChainsBySpan);
         }
@@ -598,22 +612,31 @@ public sealed class PbtScanReport
 
         report.AppendLine($"--- {partition} ---");
         report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems");
+        if (stats.WrapperCount != 0)
+        {
+            report.AppendLine($"  {stats.WrapperCount:N0} of those blobs also hold {stats.WrappedChildCount:N0} of those nodes, for {stats.WrapperBytes:N0} bytes of framing");
+        }
+
         report.AppendLine();
 
-        AppendDepthTable(report, "Trie node groups by depth", stats.GroupsByDepth, stats.GroupBytesByDepth);
+        AppendDepthTable(report, "Trie node groups by depth", ("groups", "bytes", "avg size"), stats.GroupsByDepth, stats.GroupBytesByDepth);
+        AppendDepthTable(report, "Wrappers by depth", ("wrappers", "children", "avg children"), stats.WrappersByDepth, stats.WrappedChildrenByDepth);
         AppendCountTable(report, "Stems by depth", "depth", "stems", stats.StemsByDepth);
         AppendCountTable(report, "Node chains by start depth", "depth", "chains", stats.ChainsByStartDepth);
         AppendCountTable(report, "Node chains by span", "levels", "chains", stats.ChainsBySpan);
     }
 
-    private static void AppendDepthTable(StringBuilder report, string title, long[] counts, long[] bytes)
+    /// <summary>A depth histogram of two totals, the second averaged over the first.</summary>
+    private static void AppendDepthTable(StringBuilder report, string title, (string Count, string Total, string Average) columns, long[] counts, long[] totals)
     {
+        if (!HasAny(counts)) return;
+
         report.AppendLine($"  {title}");
-        report.AppendLine($"    {"depth",5}  {"groups",15}  {"bytes",18}  {"avg size",10}");
+        report.AppendLine($"    {"depth",5}  {columns.Count,15}  {columns.Total,18}  {columns.Average,12}");
         for (int depth = 0; depth < counts.Length; depth++)
         {
             if (counts[depth] == 0) continue;
-            report.AppendLine($"    {depth,5}  {counts[depth],15:N0}  {bytes[depth],18:N0}  {(double)bytes[depth] / counts[depth],10:N1}");
+            report.AppendLine($"    {depth,5}  {counts[depth],15:N0}  {totals[depth],18:N0}  {(double)totals[depth] / counts[depth],12:N1}");
         }
 
         report.AppendLine();
@@ -621,9 +644,7 @@ public sealed class PbtScanReport
 
     private static void AppendCountTable(StringBuilder report, string title, string keyHeader, string unit, long[] counts)
     {
-        bool any = false;
-        for (int i = 0; i < counts.Length && !any; i++) any = counts[i] != 0;
-        if (!any) return;
+        if (!HasAny(counts)) return;
 
         report.AppendLine($"  {title}");
         report.AppendLine($"    {keyHeader,6}  {unit,15}");
@@ -633,6 +654,16 @@ public sealed class PbtScanReport
         }
 
         report.AppendLine();
+    }
+
+    private static bool HasAny(long[] counts)
+    {
+        foreach (long count in counts)
+        {
+            if (count != 0) return true;
+        }
+
+        return false;
     }
 
     private static void AppendLeafColumn(StringBuilder report, string title, LeafColumnStats stats)
