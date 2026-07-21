@@ -211,6 +211,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Starts computing the transactions-trie root in the background, letting callers overlap it
     /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
     /// </summary>
+    /// <remarks>
+    /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
+    /// race the memoized task. Callers must invoke both sequentially per payload instance.
+    /// </remarks>
     /// <returns>
     /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
     /// </returns>
