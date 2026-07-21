@@ -1,41 +1,73 @@
 name: Run RPC Benchmarks
 
-# Benchmark a Nethermind node's JSON-RPC (state-reading calls) on the self-hosted
-# `reproducible-benchmarks` runner, reusing the DB snapshot that the EXPB
-# reproducible-benchmarks workflow already uses there. Supports two load tools
-# (flood/Vegeta and EthCallChaos) and optional dotTrace profiling with automatic
-# XML post-processing.
+# Benchmark an execution client's JSON-RPC (state-reading calls) on the
+# self-hosted `reproducible-benchmarks` runner, reusing the DB snapshots kept
+# there: the EXPB Nethermind snapshots plus the same-block snapshot sets
+# (/mnt/sda/<client>-<block>) that also cover geth and reth. Supports three load
+# tools (flood/Vegeta, EthCallChaos, json-bench), a cross-client comparison mode
+# (reference_client: the same requests go to both nodes and responses are
+# diffed — flood --equality / json-bench compare), and optional dotTrace
+# profiling (Nethermind only) with automatic XML post-processing.
 #
-# The pristine DB snapshot is NEVER mounted writable: the node runs against an
-# isolated overlay/copy of it (same overlay mechanism as expb's
-# snapshot_backend: overlay), and the snapshot is fingerprinted before and after
-# the run — the job FAILS if it changed. See scripts/rpc-bench/README.md.
+# The pristine DB snapshots are NEVER mounted writable: each node runs against
+# an isolated overlay/copy (same overlay mechanism as expb's snapshot_backend:
+# overlay), and every snapshot is fingerprinted before and after the run — the
+# job FAILS if it changed. See scripts/rpc-bench/README.md.
 
 on:
   workflow_dispatch:
     inputs:
       benchmark_tool:
-        description: Load-testing tool to use
+        description: Load-testing tool to use (with reference_client, flood runs --equality and jsonbench runs compare)
         required: true
         type: choice
         options:
           - flood
           - ethcallchaos
+          - jsonbench
         default: flood
+      client:
+        description: Client to benchmark (geth/reth use their upstream images and the runner's <client>-<block> snapshot set)
+        required: true
+        type: choice
+        options:
+          - nethermind
+          - geth
+          - reth
+        default: nethermind
+      reference_client:
+        description: Start a second client from its same-block snapshot and compare responses (flood/jsonbench only)
+        required: true
+        type: choice
+        options:
+          - none
+          - geth
+          - nethermind
+          - reth
+        default: none
+      snapshot_block:
+        description: >-
+          Snapshot set tag: picks /mnt/sda/<client>-<tag> (nethermind resolves to
+          nethermind[-flat]-<tag> per state_layout). Empty = the expb snapshot for
+          nethermind, and 25490000 for geth/reth or whenever reference_client is set
+          (a comparison needs both nodes at the same head).
+        required: false
+        default: ""
       docker_image:
         description: >-
-          Use a specific Docker image instead of building/reusing one
-          (e.g. nethermindeth/nethermind:master-21f1dca). Leave empty to
-          auto-resolve from the branch.
+          Use a specific Docker image for the benchmarked client instead of the
+          default (e.g. nethermindeth/nethermind:master-21f1dca). Empty =
+          auto-resolve from the branch (nethermind) or the upstream image
+          (geth/reth). The reference client's image is node_config.reference_image.
         required: false
         default: ""
       dottrace:
-        description: Capture a JetBrains dotTrace timeline snapshot of the node and post-process it to XML (works with any image)
+        description: Capture a JetBrains dotTrace timeline snapshot of the node and post-process it to XML (nethermind only, works with any image)
         required: false
         type: boolean
         default: false
       state_layout:
-        description: State layout — picks the DB snapshot and layout flags (expb convention)
+        description: State layout — picks the Nethermind DB snapshot and layout flags (expb convention); ignored for geth/reth
         required: true
         type: choice
         options:
@@ -48,8 +80,9 @@ on:
         default: ""
       tool_config:
         description: >-
-          Tool-specific config as JSON. flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30,"deep_check":false,"label":"nethermind","extra_args":""}.
+          Tool-specific config as JSON. flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30,"deep_check":false,"label":"","extra_args":""}.
           ethcallchaos: {"ref":"","corpus_db":"","rate":50,"parallel":8,"duration":300,"leaderboard_top":50,"api_port":5000} (empty ref = pinned commit default).
+          jsonbench: {"ref":"","mode":"","benchmark_config":"","compare_config":"config/compare/defaults.yaml","rps":100,"duration":"60s","vus":10,"concurrency":5,"timeout":30,"validate_schema":false,"html_report":true,"fail_on_diff":false,"extra_args":""}.
           Leave empty for defaults.
         required: false
         default: ""
@@ -57,8 +90,9 @@ on:
         description: >-
           Advanced node/runner overrides as JSON:
           {"db_source":"","db_isolation":"overlay","scratch_root":"/mnt/sda/expb-data/rpc-bench-scratch",
-          "network":"mainnet","jsonrpc_modules":"Eth,...","health_timeout_minutes":30,"cpuset":"2-7,10-15","memory":"64g"}.
-          Leave empty for defaults (db_source resolved from state_layout).
+          "network":"mainnet","jsonrpc_modules":"Eth,...","health_timeout_minutes":30,"cpuset":"2-7,10-15","memory":"64g",
+          "reference_db_source":"","reference_image":"","reference_flags":""}.
+          Leave empty for defaults (db_source resolved from client/state_layout/snapshot_block).
         required: false
         default: ""
   pull_request:
@@ -83,16 +117,23 @@ jobs:
       branch: ${{ steps.resolve.outputs.branch }}
       clean_branch: ${{ steps.resolve.outputs.clean_branch }}
       benchmark_tool: ${{ steps.resolve.outputs.benchmark_tool }}
+      client: ${{ steps.resolve.outputs.client }}
+      reference_client: ${{ steps.resolve.outputs.reference_client }}
+      comparison: ${{ steps.resolve.outputs.comparison }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       image_mode: ${{ steps.resolve.outputs.image_mode }}
       image_ref: ${{ steps.resolve.outputs.image_ref }}
+      ref_image_ref: ${{ steps.resolve.outputs.ref_image_ref }}
       db_source: ${{ steps.resolve.outputs.db_source }}
+      ref_db_source: ${{ steps.resolve.outputs.ref_db_source }}
       db_isolation: ${{ steps.resolve.outputs.db_isolation }}
       scratch_root: ${{ steps.resolve.outputs.scratch_root }}
       network: ${{ steps.resolve.outputs.network }}
       jsonrpc_modules: ${{ steps.resolve.outputs.jsonrpc_modules }}
       layout_flags: ${{ steps.resolve.outputs.layout_flags }}
+      ref_layout_flags: ${{ steps.resolve.outputs.ref_layout_flags }}
       additional_flags: ${{ steps.resolve.outputs.additional_flags }}
+      ref_additional_flags: ${{ steps.resolve.outputs.ref_additional_flags }}
       health_timeout: ${{ steps.resolve.outputs.health_timeout }}
       node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
       node_memory: ${{ steps.resolve.outputs.node_memory }}
@@ -106,6 +147,9 @@ jobs:
           PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           PUSH_BRANCH: ${{ github.ref_name }}
           IN_TOOL: ${{ inputs.benchmark_tool }}
+          IN_CLIENT: ${{ inputs.client }}
+          IN_REFERENCE_CLIENT: ${{ inputs.reference_client }}
+          IN_SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
           IN_DOCKER_IMAGE: ${{ inputs.docker_image }}
           IN_DOTTRACE: ${{ inputs.dottrace }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
@@ -118,6 +162,9 @@ jobs:
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             benchmark_tool="${IN_TOOL:-flood}"
+            client="${IN_CLIENT:-nethermind}"
+            reference_client="${IN_REFERENCE_CLIENT:-none}"
+            snapshot_block="${IN_SNAPSHOT_BLOCK:-}"
             docker_image="${IN_DOCKER_IMAGE:-}"
             dottrace="${IN_DOTTRACE:-false}"
             state_layout="${IN_STATE_LAYOUT:-flat}"
@@ -128,12 +175,38 @@ jobs:
             # PR labeled with 'rpc-benchmark': run flood on common read methods.
             branch="${PR_HEAD_BRANCH}"
             benchmark_tool="flood"
+            client="nethermind"
+            reference_client="none"
+            snapshot_block=""
             docker_image=""
             dottrace="false"
             state_layout="flat"
             additional_flags=""
             tool_config='{"tests":"eth_call eth_getBalance eth_getCode eth_getStorageAt eth_getTransactionCount eth_getBlockByNumber","rates":"10 100 500","duration":30}'
             node_config=""
+          fi
+
+          case "${client}" in
+            nethermind|geth|reth) ;;
+            *) echo "Unknown client '${client}'."; exit 1;;
+          esac
+          case "${reference_client}" in
+            none|nethermind|geth|reth) ;;
+            *) echo "Unknown reference_client '${reference_client}'."; exit 1;;
+          esac
+          comparison="false"
+          [[ "${reference_client}" != "none" ]] && comparison="true"
+          if [[ "${comparison}" == "true" && "${benchmark_tool}" == "ethcallchaos" ]]; then
+            echo "reference_client comparison is supported for flood and jsonbench only (EthCallChaos drives a single node)."
+            exit 1
+          fi
+          if [[ "${dottrace}" == "true" && "${client}" != "nethermind" ]]; then
+            echo "dottrace requires client=nethermind (dotTrace is .NET-specific)."
+            exit 1
+          fi
+          if [[ -n "${snapshot_block}" ]] && ! [[ "${snapshot_block}" =~ ^[0-9]+$ ]]; then
+            echo "snapshot_block must be a block number tag (e.g. 25490000), got '${snapshot_block}'."
+            exit 1
           fi
 
           branch="${branch#refs/heads/}"
@@ -153,22 +226,63 @@ jobs:
 
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
 
-          # Snapshot paths follow the expb data layout on the runner
-          # (snapshot_source in /mnt/sda/expb-data/github-action-mainnet*.yaml).
           case "${state_layout}" in
-            flat)
-              default_db_source="/mnt/sda/nethermind-flat-snapshot"
-              layout_flags="--FlatDb.Enabled=true"
-              ;;
-            halfpath)
-              default_db_source="/mnt/sda/nethermind-snapshot"
-              layout_flags=""
-              ;;
-            *)
-              echo "Unknown state_layout '${state_layout}'."; exit 1;;
+            flat|halfpath) ;;
+            *) echo "Unknown state_layout '${state_layout}'."; exit 1;;
           esac
 
-          db_source="$(nc '.db_source')";           [[ -z "${db_source}" ]] && db_source="${default_db_source}"
+          # Snapshot resolution. Named snapshot sets follow the runner's
+          # /mnt/sda/<client>-<block> convention (all clients captured at the
+          # same head); without a tag, nethermind falls back to the expb
+          # snapshots (snapshot_source in /mnt/sda/expb-data/github-action-mainnet*.yaml).
+          # geth/reth and comparison runs need the same-head sets, so they
+          # default to the standing 25490000 tag.
+          DEFAULT_SNAPSHOT_BLOCK="25490000"
+          if [[ -z "${snapshot_block}" ]] && { [[ "${comparison}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
+            snapshot_block="${DEFAULT_SNAPSHOT_BLOCK}"
+            echo "snapshot_block not set — defaulting to ${DEFAULT_SNAPSHOT_BLOCK} (required for geth/reth and comparisons)."
+          fi
+
+          snapshot_path() {
+            local c="$1"
+            if [[ -n "${snapshot_block}" ]]; then
+              if [[ "${c}" == "nethermind" ]]; then
+                if [[ "${state_layout}" == "flat" ]]; then
+                  echo "/mnt/sda/nethermind-flat-${snapshot_block}"
+                else
+                  echo "/mnt/sda/nethermind-${snapshot_block}"
+                fi
+              else
+                echo "/mnt/sda/${c}-${snapshot_block}"
+              fi
+            else
+              # Legacy expb snapshots exist for nethermind only (guarded above).
+              if [[ "${state_layout}" == "flat" ]]; then
+                echo "/mnt/sda/nethermind-flat-snapshot"
+              else
+                echo "/mnt/sda/nethermind-snapshot"
+              fi
+            fi
+          }
+
+          client_layout_flags() {
+            # --FlatDb.Enabled applies to any nethermind instance on the flat snapshot.
+            if [[ "$1" == "nethermind" && "${state_layout}" == "flat" ]]; then
+              echo "--FlatDb.Enabled=true"
+            fi
+          }
+          layout_flags="$(client_layout_flags "${client}")"
+          ref_layout_flags=""
+          [[ "${comparison}" == "true" ]] && ref_layout_flags="$(client_layout_flags "${reference_client}")"
+
+          db_source="$(nc '.db_source')";           [[ -z "${db_source}" ]] && db_source="$(snapshot_path "${client}")"
+          ref_db_source=""
+          ref_additional_flags=""
+          if [[ "${comparison}" == "true" ]]; then
+            ref_db_source="$(nc '.reference_db_source')"
+            [[ -z "${ref_db_source}" ]] && ref_db_source="$(snapshot_path "${reference_client}")"
+            ref_additional_flags="$(nc '.reference_flags')"
+          fi
           db_isolation="$(nc '.db_isolation')";     [[ -z "${db_isolation}" ]] && db_isolation="overlay"
           scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="/mnt/sda/expb-data/rpc-bench-scratch"
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
@@ -209,15 +323,40 @@ jobs:
             echo "db_source and scratch_root must be disjoint (scratch is wiped on teardown)."
             exit 1
           fi
+          if [[ -n "${ref_db_source}" ]]; then
+            validate_runner_path "node_config.reference_db_source" "${ref_db_source}"
+            if [[ "${ref_db_source}/" == "${scratch_root}"/* || "${scratch_root}/" == "${ref_db_source}"/* ]]; then
+              echo "reference_db_source and scratch_root must be disjoint (scratch is wiped on teardown)."
+              exit 1
+            fi
+          fi
 
-          # Decide how to get the Docker image (dotTrace works with any image —
-          # the host dottrace CLI is mounted in, expb-style).
-          #   provided -> use docker_image verbatim
+          # Default upstream images for non-Nethermind clients. The snapshot
+          # sidecar (_snapshot_web3_clientVersion.json) is logged at startup so
+          # a snapshot/image version mismatch is visible; pin via docker_image /
+          # node_config.reference_image when it matters.
+          default_client_image() {
+            case "$1" in
+              geth) echo "ethereum/client-go:stable" ;;
+              reth) echo "ghcr.io/paradigmxyz/reth:latest" ;;
+              nethermind) echo "nethermindeth/nethermind:master" ;;
+            esac
+          }
+
+          # Decide how to get the benchmarked client's Docker image (dotTrace
+          # works with any Nethermind image — the host dottrace CLI is mounted
+          # in, expb-style).
+          #   provided -> use docker_image (or the upstream default) verbatim
           #   reuse    -> pull the prebuilt Docker Hub image for master/release/etc.
           #   build    -> build locally on the runner from Dockerfile
           if [[ -n "${docker_image}" ]]; then
             image_mode="provided"
             image_ref="${docker_image}"
+          elif [[ "${client}" != "nethermind" ]]; then
+            # geth/reth are references to compare against, not the code under
+            # test — branch resolution/builds do not apply to them.
+            image_mode="provided"
+            image_ref="$(default_client_image "${client}")"
           elif [[ "${branch}" == "master" || "${branch}" == "performance" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
             image_mode="reuse"
             image_ref="nethermindeth/nethermind:${clean_branch}"
@@ -226,21 +365,34 @@ jobs:
             image_ref="nethermind-rpcbench:${clean_branch}"
           fi
 
+          ref_image_ref=""
+          if [[ "${comparison}" == "true" ]]; then
+            ref_image_ref="$(nc '.reference_image')"
+            [[ -z "${ref_image_ref}" ]] && ref_image_ref="$(default_client_image "${reference_client}")"
+          fi
+
           {
             echo "should_run=true"
             echo "branch=${branch}"
             echo "clean_branch=${clean_branch}"
             echo "benchmark_tool=${benchmark_tool}"
+            echo "client=${client}"
+            echo "reference_client=${reference_client}"
+            echo "comparison=${comparison}"
             echo "dottrace=${dottrace}"
             echo "image_mode=${image_mode}"
             echo "image_ref=${image_ref}"
+            echo "ref_image_ref=${ref_image_ref}"
             echo "db_source=${db_source}"
+            echo "ref_db_source=${ref_db_source}"
             echo "db_isolation=${db_isolation}"
             echo "scratch_root=${scratch_root}"
             echo "network=${network}"
             echo "jsonrpc_modules=${jsonrpc_modules}"
             echo "layout_flags=${layout_flags}"
+            echo "ref_layout_flags=${ref_layout_flags}"
             echo "additional_flags=${additional_flags}"
+            echo "ref_additional_flags=${ref_additional_flags}"
             echo "health_timeout=${health_timeout}"
             echo "node_cpuset=${node_cpuset}"
             echo "node_memory=${node_memory}"
@@ -249,7 +401,7 @@ jobs:
             echo "TOOLCFG"
           } >> "${GITHUB_OUTPUT}"
 
-          echo "Resolved: tool=${benchmark_tool} branch=${branch} layout=${state_layout} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace}"
+          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace}"
 
   # ---------------------------------------------------------------------------
   # Run the benchmark on the self-hosted runner that holds the DB snapshot.
@@ -263,9 +415,12 @@ jobs:
       # NB: the `runner` context is not available in job-level env, so OUT_DIR /
       # STATE_DIR are exported from $RUNNER_TEMP in the "Set up run paths" step.
       DIAG_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag
-      CONTAINER_NAME: nethermind-rpcbench-${{ github.run_id }}
+      CONTAINER_NAME: rpcbench-primary-${{ github.run_id }}
+      REF_CONTAINER_NAME: rpcbench-reference-${{ github.run_id }}
       ECC_CONTAINER_NAME: ethcallchaos-bench-${{ github.run_id }}
+      JB_CONTAINER_NAME: jsonbench-bench-${{ github.run_id }}
       RPC_PORT: "8545"
+      REF_RPC_PORT: "8546"
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -278,11 +433,15 @@ jobs:
       - name: Print resolved configuration
         run: |
           echo "Tool:        ${{ needs.resolve.outputs.benchmark_tool }}"
+          echo "Client:      ${{ needs.resolve.outputs.client }}"
+          echo "Reference:   ${{ needs.resolve.outputs.reference_client }} (comparison: ${{ needs.resolve.outputs.comparison }})"
           echo "Branch:      ${{ needs.resolve.outputs.branch }}"
           echo "Image mode:  ${{ needs.resolve.outputs.image_mode }}"
           echo "Image ref:   ${{ needs.resolve.outputs.image_ref }}"
+          echo "Ref image:   ${{ needs.resolve.outputs.ref_image_ref }}"
           echo "dotTrace:    ${{ needs.resolve.outputs.dottrace }}"
           echo "DB source:   ${{ needs.resolve.outputs.db_source }}"
+          echo "Ref DB:      ${{ needs.resolve.outputs.ref_db_source }}"
           echo "Isolation:   ${{ needs.resolve.outputs.db_isolation }}"
           echo "Scratch:     ${{ needs.resolve.outputs.scratch_root }}"
           echo "Layout flags: ${{ needs.resolve.outputs.layout_flags }}"
@@ -324,9 +483,17 @@ jobs:
               echo "Unknown image mode '${IMAGE_MODE}'."; exit 1;;
           esac
 
-      - name: Start Nethermind node
+      - name: Pull reference client image
+        if: needs.resolve.outputs.comparison == 'true'
         env:
-          NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_ref }}
+          REF_IMAGE: ${{ needs.resolve.outputs.ref_image_ref }}
+        run: docker pull "${REF_IMAGE}" || echo "Pull failed — assuming ${REF_IMAGE} is a local image."
+
+      - name: Start node
+        env:
+          CLIENT: ${{ needs.resolve.outputs.client }}
+          INSTANCE: primary
+          NODE_IMAGE: ${{ needs.resolve.outputs.image_ref }}
           DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
           DB_ISOLATION: ${{ needs.resolve.outputs.db_isolation }}
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
@@ -340,6 +507,26 @@ jobs:
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
 
+      - name: Start reference node
+        if: needs.resolve.outputs.comparison == 'true'
+        env:
+          CLIENT: ${{ needs.resolve.outputs.reference_client }}
+          INSTANCE: reference
+          NODE_IMAGE: ${{ needs.resolve.outputs.ref_image_ref }}
+          CONTAINER_NAME: ${{ env.REF_CONTAINER_NAME }}
+          RPC_PORT: ${{ env.REF_RPC_PORT }}
+          DB_SOURCE: ${{ needs.resolve.outputs.ref_db_source }}
+          DB_ISOLATION: ${{ needs.resolve.outputs.db_isolation }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          NETWORK: ${{ needs.resolve.outputs.network }}
+          JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}
+          LAYOUT_FLAGS: ${{ needs.resolve.outputs.ref_layout_flags }}
+          ADDITIONAL_FLAGS: ${{ needs.resolve.outputs.ref_additional_flags }}
+          HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
+          DOTTRACE: "false"
+          NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
+        run: ./scripts/rpc-bench/start-node.sh
+
       - name: Run flood benchmark
         id: run-flood
         if: needs.resolve.outputs.benchmark_tool == 'flood'
@@ -347,6 +534,9 @@ jobs:
         env:
           RPC_URL: http://localhost:8545
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          CLIENT: ${{ needs.resolve.outputs.client }}
+          COMPARISON: ${{ needs.resolve.outputs.comparison }}
+          REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
         shell: bash
         run: |
           set -euo pipefail
@@ -356,9 +546,53 @@ jobs:
           export DURATION="$(get '.duration')";   [[ -z "${DURATION}" ]] && export DURATION="30"
           export DEEP_CHECK="$(get '.deep_check')";[[ -z "${DEEP_CHECK}" ]] && export DEEP_CHECK="false"
           export TESTS="$(get '.tests')"
-          export LABEL="$(get '.label')";          [[ -z "${LABEL}" ]] && export LABEL="nethermind"
+          export LABEL="$(get '.label')";          [[ -z "${LABEL}" ]] && export LABEL="${CLIENT}"
           export EXTRA_ARGS="$(get '.extra_args')"
+          if [[ "${COMPARISON}" == "true" ]]; then
+            # Switches run-flood.sh into equality (differential) mode.
+            export REFERENCE_RPC_URL="http://localhost:${REF_RPC_PORT}"
+            export REFERENCE_LABEL="${REFERENCE_CLIENT}"
+          fi
           ./scripts/rpc-bench/run-flood.sh
+
+      - name: Run json-bench benchmark
+        id: run-jsonbench
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench'
+        continue-on-error: true
+        env:
+          RPC_URL: http://localhost:8545
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
+          COMPARISON: ${{ needs.resolve.outputs.comparison }}
+          REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg="${TOOL_CONFIG}"; [[ -z "${cfg}" ]] && cfg='{}'
+          get() { echo "${cfg}" | jq -r "$1 // empty"; }
+          # For booleans '// empty' would swallow an explicit false — test null instead.
+          getb() { echo "${cfg}" | jq -r "$1 | if . == null then \"\" else tostring end"; }
+          # Only override when set; otherwise the script's pinned/default values
+          # apply (single source of truth for the pin).
+          jb_ref="$(get '.ref')";                        [[ -n "${jb_ref}" ]] && export JB_REF="${jb_ref}"
+          export JB_MODE="$(get '.mode')"
+          export JB_BENCHMARK_CONFIG="$(get '.benchmark_config')"
+          jb_cmp="$(get '.compare_config')";             [[ -n "${jb_cmp}" ]] && export JB_COMPARE_CONFIG="${jb_cmp}"
+          jb_rps="$(get '.rps')";                        [[ -n "${jb_rps}" ]] && export JB_RPS="${jb_rps}"
+          jb_dur="$(get '.duration')";                   [[ -n "${jb_dur}" ]] && export JB_DURATION="${jb_dur}"
+          jb_vus="$(get '.vus')";                        [[ -n "${jb_vus}" ]] && export JB_VUS="${jb_vus}"
+          jb_conc="$(get '.concurrency')";               [[ -n "${jb_conc}" ]] && export JB_CONCURRENCY="${jb_conc}"
+          jb_to="$(get '.timeout')";                     [[ -n "${jb_to}" ]] && export JB_TIMEOUT="${jb_to}"
+          export JB_VALIDATE_SCHEMA="$(getb '.validate_schema')"
+          jb_html="$(getb '.html_report')";              [[ -n "${jb_html}" ]] && export JB_HTML_REPORT="${jb_html}"
+          export JB_FAIL_ON_DIFF="$(getb '.fail_on_diff')"
+          export JB_EXTRA_ARGS="$(get '.extra_args')"
+          if [[ "${COMPARISON}" == "true" ]]; then
+            export REFERENCE_RPC_URL="http://localhost:${REF_RPC_PORT}"
+            export REFERENCE_CLIENT_TYPE="${REFERENCE_CLIENT}"
+          fi
+          ./scripts/rpc-bench/run-jsonbench.sh
 
       - name: Run EthCallChaos benchmark
         id: run-ecc
@@ -386,6 +620,12 @@ jobs:
           export ECC_MIN_MEAN_MS="$(get '.min_mean_ms')";     [[ -z "${ECC_MIN_MEAN_MS}" ]] && export ECC_MIN_MEAN_MS="1"
           export ECC_MAX_CV="$(get '.max_cv')";               [[ -z "${ECC_MAX_CV}" ]] && export ECC_MAX_CV="10"
           ./scripts/rpc-bench/run-ethcallchaos.sh
+
+      - name: Stop reference node and verify DB integrity
+        if: always() && needs.resolve.outputs.comparison == 'true'
+        env:
+          STOP_GRACE: "180"
+        run: NODE_ENV_FILE="${STATE_DIR}/node-reference.env" ./scripts/rpc-bench/stop-node.sh
 
       - name: Stop node and verify DB integrity
         if: always()
@@ -446,6 +686,20 @@ jobs:
           echo "exception_found=${exception_found}" >> "${GITHUB_OUTPUT}"
           echo "invalid_block_found=${invalid_block_found}" >> "${GITHUB_OUTPUT}"
 
+          # The reference node is not the code under test — scan warn-only so a
+          # noisy upstream image cannot fail a Nethermind benchmark run.
+          ref_log="${STATE_DIR}/node-reference.log"
+          if [[ -f "${ref_log}" ]]; then
+            ref_clean="${RUNNER_TEMP}/node-reference.clean.log"
+            sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${ref_log}" > "${ref_clean}"
+            for pattern in "Exception" "Unhandled" "Fatal" "ERROR"; do
+              if grep -in "${pattern}" "${ref_clean}" | head -n 10 | grep -q .; then
+                echo "::warning::'${pattern}' lines detected in the REFERENCE node log:"
+                grep -in "${pattern}" "${ref_clean}" | head -n 10 || true
+              fi
+            done
+          fi
+
       - name: Publish step summary
         if: always()
         shell: bash
@@ -454,7 +708,11 @@ jobs:
           {
             echo "# RPC Benchmark — ${{ needs.resolve.outputs.benchmark_tool }}"
             echo ""
-            echo "Branch: \`${{ needs.resolve.outputs.branch }}\` | image: \`${{ needs.resolve.outputs.image_ref }}\` | dotTrace: \`${{ needs.resolve.outputs.dottrace }}\`"
+            echo "Client: \`${{ needs.resolve.outputs.client }}\` | branch: \`${{ needs.resolve.outputs.branch }}\` | image: \`${{ needs.resolve.outputs.image_ref }}\` | dotTrace: \`${{ needs.resolve.outputs.dottrace }}\`"
+            if [[ "${{ needs.resolve.outputs.comparison }}" == "true" ]]; then
+              echo ""
+              echo "Reference: \`${{ needs.resolve.outputs.reference_client }}\` | image: \`${{ needs.resolve.outputs.ref_image_ref }}\`"
+            fi
             echo ""
           } >> "${GITHUB_STEP_SUMMARY}"
           shopt -s nullglob
@@ -471,8 +729,11 @@ jobs:
           path: |
             ${{ runner.temp }}/rpcbench-out/
             ${{ runner.temp }}/rpcbench-state/node.log
+            ${{ runner.temp }}/rpcbench-state/node-reference.log
             ${{ runner.temp }}/rpcbench-state/db-baseline.txt
             ${{ runner.temp }}/rpcbench-state/db-final.txt
+            ${{ runner.temp }}/rpcbench-state/db-baseline-reference.txt
+            ${{ runner.temp }}/rpcbench-state/db-final-reference.txt
           retention-days: 30
           if-no-files-found: warn
 
@@ -504,7 +765,7 @@ jobs:
           set -euo pipefail
           # The tool steps use continue-on-error so teardown and the integrity
           # check always run — their real outcome is enforced here instead.
-          if [[ "${{ steps.run-flood.outcome }}" == "failure" || "${{ steps.run-ecc.outcome }}" == "failure" ]]; then
+          if [[ "${{ steps.run-flood.outcome }}" == "failure" || "${{ steps.run-ecc.outcome }}" == "failure" || "${{ steps.run-jsonbench.outcome }}" == "failure" ]]; then
             echo "The benchmark tool step failed — failing the job."
             exit 1
           fi

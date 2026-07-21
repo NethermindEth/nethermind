@@ -121,13 +121,31 @@ wait_for_rpc() {
   done
 }
 
-# Compute a tamper tripwire over a RocksDB-style directory and write it to a
-# file. The fingerprint captures:
+# Fail unless two nodes report the same eth_blockNumber head — comparing
+# responses across nodes at different heads produces meaningless diffs
+# ('latest' resolves differently). Use snapshot sets taken at the same block.
+#   $1 = primary url, $2 = reference url.
+assert_same_head() {
+  local body='{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' a b
+  a="$(rpc_post "$1" "$body" 2>/dev/null | jq -r '.result // empty')"
+  b="$(rpc_post "$2" "$body" 2>/dev/null | jq -r '.result // empty')"
+  [[ -n "$a" && -n "$b" ]] || die "assert_same_head: could not read eth_blockNumber from both nodes ($1 -> '${a:-<none>}', $2 -> '${b:-<none>}')"
+  if (( 16#${a#0x} != 16#${b#0x} )); then
+    die "head mismatch: $1 is at block $((16#${a#0x})) but $2 is at $((16#${b#0x})) — both nodes must use snapshots taken at the same block"
+  fi
+  log "Both nodes report head block $((16#${a#0x})) ($a)."
+}
+
+# Compute a tamper tripwire over a snapshot directory and write it to a file.
+# The fingerprint captures:
 #   * a format-version header,
 #   * a full recursive listing of files/dirs/symlinks with type, size, mtime,
 #     mode, owner and symlink target, and
-#   * sha256 of the small control files RocksDB rewrites the instant it opens a
-#     DB read-write (CURRENT, IDENTITY, MANIFEST-*, OPTIONS-*).
+#   * sha256 of the small control files RocksDB/Pebble/LevelDB rewrite the
+#     instant they open a DB read-write (CURRENT, IDENTITY, MANIFEST-*,
+#     OPTIONS-*) — this covers Nethermind and geth snapshots; reth's MDBX
+#     (a single mdbx.dat) has no such control files and is covered by the
+#     size/mtime listing, which any write to it changes.
 # Comparing the baseline (pre-run) against the final (post-run) fingerprint
 # detects any plausible modification of the pristine snapshot. Hashing is
 # limited to the small control files so the check stays fast on a multi-TB DB;

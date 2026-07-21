@@ -12,12 +12,18 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/lib.sh"
 
 : "${STATE_DIR:?directory where start-node.sh persisted state}"
-[[ -f "$STATE_DIR/node.env" ]] || die "no node.env in $STATE_DIR (node never started?)"
-# shellcheck disable=SC1091
-source "$STATE_DIR/node.env"
+# NODE_ENV_FILE selects which instance to stop (node.env = primary,
+# node-reference.env = the comparison reference node).
+NODE_ENV_FILE="${NODE_ENV_FILE:-$STATE_DIR/node.env}"
+[[ -f "$NODE_ENV_FILE" ]] || die "no $(basename "$NODE_ENV_FILE") in $STATE_DIR (node never started?)"
+# shellcheck disable=SC1090,SC1091
+source "$NODE_ENV_FILE"
 
+SUFFIX="${INSTANCE_SUFFIX:-}"
+BASELINE_FILE="$STATE_DIR/db-baseline$SUFFIX.txt"
+FINAL_FILE="$STATE_DIR/db-final$SUFFIX.txt"
 STOP_GRACE="${STOP_GRACE:-180}"     # seconds; SIGINT (stop-signal) lets dotTrace finalize the .dtp
-LOG_OUT="${LOG_OUT:-$STATE_DIR/node.log}"
+LOG_OUT="${LOG_OUT:-$STATE_DIR/node$SUFFIX.log}"
 integrity_fail=0
 
 # ---------------------------------------------------------------------------
@@ -45,21 +51,21 @@ log "Verifying DB snapshot integrity..."
 # A fingerprint failure must never look like a clean snapshot: flag it and fall
 # through to teardown + the final die (with set -e it would otherwise abort here
 # and skip the umount/scratch cleanup below).
-if ! db_fingerprint "$DB_SOURCE" "$STATE_DIR/db-final.txt"; then
+if ! db_fingerprint "$DB_SOURCE" "$FINAL_FILE"; then
   log "::error::Failed to compute the final DB fingerprint — snapshot integrity could not be verified."
   integrity_fail=1
-elif ! diff -q "$STATE_DIR/db-baseline.txt" "$STATE_DIR/db-final.txt" >/dev/null 2>&1; then
+elif ! diff -q "$BASELINE_FILE" "$FINAL_FILE" >/dev/null 2>&1; then
   log "::error::DB SNAPSHOT WAS MODIFIED during the run — this must never happen."
   log "Fingerprint diff (first 60 lines):"
-  diff "$STATE_DIR/db-baseline.txt" "$STATE_DIR/db-final.txt" 2>/dev/null | head -n 60 || true
+  diff "$BASELINE_FILE" "$FINAL_FILE" 2>/dev/null | head -n 60 || true
   integrity_fail=1
 else
-  log "  OK — snapshot unchanged ($(wc -l < "$STATE_DIR/db-final.txt") fingerprint lines match)."
+  log "  OK — snapshot unchanged ($(wc -l < "$FINAL_FILE") fingerprint lines match)."
   # Persist the verified fingerprint as the cross-run anchor (compared by the
   # next run's start-node.sh to catch mutations from hard-interrupted runs).
   if [[ -n "${SCRATCH_ROOT:-}" ]]; then
     mkdir -p "$SCRATCH_ROOT/fingerprints" 2>/dev/null || true
-    cp "$STATE_DIR/db-final.txt" "$SCRATCH_ROOT/fingerprints/$(basename "$DB_SOURCE").txt" 2>/dev/null || true
+    cp "$FINAL_FILE" "$SCRATCH_ROOT/fingerprints/$(basename "$DB_SOURCE").txt" 2>/dev/null || true
   fi
 fi
 

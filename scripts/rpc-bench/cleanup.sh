@@ -17,7 +17,7 @@ source "$HERE/lib.sh"
 : "${SCRATCH_ROOT:?scratch root to clean}"
 DB_SOURCE="${DB_SOURCE:-}"
 
-reap_stale_containers "nethermind-rpcbench" "ethcallchaos-bench"
+reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "jsonbench-"
 
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || { log "cannot canonicalize SCRATCH_ROOT — skipping scratch wipe"; exit 0; }
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
@@ -39,7 +39,7 @@ while IFS= read -r m; do
   as_root umount "$m" 2>/dev/null || as_root umount -l "$m" 2>/dev/null || true
 done < <(awk -v d="$SCRATCH_ROOT" '$2 == d || index($2, d "/") == 1 { print $2 }' /proc/self/mounts 2>/dev/null | sort -r)
 
-for sub in run diag ethcallchaos; do
+for sub in run run-reference diag ethcallchaos jsonbench; do
   target="$SCRATCH_ROOT/$sub"
   [[ -e "$target" ]] || continue
   if ! (assert_no_mounts_under "$target") 2>/dev/null; then

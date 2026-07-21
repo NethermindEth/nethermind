@@ -2,20 +2,25 @@
 
 This directory holds the scripts behind the
 [`run-rpc-benchmarks.yml`](../../.github/workflows/run-rpc-benchmarks.yml) workflow,
-which benchmarks a Nethermind node's **state-reading JSON-RPC** (`eth_call`,
+which benchmarks an execution client's **state-reading JSON-RPC** (`eth_call`,
 `eth_getBalance`, `trace_*`, `debug_*`, …) on the self-hosted
 `reproducible-benchmarks` runner, reusing the DB snapshots that the EXPB
-reproducible-benchmarks workflow already keeps there.
+reproducible-benchmarks workflow already keeps there. Nethermind is the primary
+target; **geth and reth** can also be benchmarked from their same-block snapshot
+sets, and a **comparison mode** runs two clients side by side and diffs their
+responses.
 
-It can drive two different load tools and, optionally, capture a JetBrains
-dotTrace timeline of the node and post-process it to XML — the same flow the EXPB
-workflow uses.
+It can drive three load tools and, optionally, capture a JetBrains dotTrace
+timeline of the node (Nethermind only) and post-process it to XML — the same
+flow the EXPB workflow uses.
 
 ## Goals
 
-1. **A CI to check current node RPC performance** with either of two tools.
-2. **The on-disk DB snapshot must never be corrupted** — only reads against it.
+1. **A CI to check current node RPC performance** with any of three tools.
+2. **The on-disk DB snapshots must never be corrupted** — only reads against them.
 3. **dotTrace capture + XML** so RPC-call hot spots can be iterated on quickly.
+4. **Cross-client response comparison** — the same requests against Nethermind
+   and geth/reth, flagging any response differences (`reference_client`).
 
 ## Alignment with expb
 
@@ -37,6 +42,55 @@ Path selection and node startup deliberately mirror expb
   `--Merge.CompactMemory=No`, `--Merge.CollectionsPerDecommit=-1`,
   `--Pruning.Mode=None`) and env (`DOTNET_TieredCompilation=0`,
   `DOTNET_GCLatencyLevel=0`).
+
+## Multi-client snapshot sets
+
+Besides the expb Nethermind snapshots, the runner keeps **same-block snapshot
+sets** under `/mnt/sda/<client>-<block>` — e.g. `geth-25490000`,
+`nethermind-25490000`, `nethermind-flat-25490000`, `reth-25490000` — all
+captured at the same head, each carrying provenance sidecars
+(`_snapshot_metadata.json`, `_snapshot_web3_clientVersion.json`,
+`_snapshot_eth_getBlockByNumber.json`) which `start-node.sh` logs at startup.
+
+The `snapshot_block` input selects a set (Nethermind resolves to
+`nethermind[-flat]-<block>` per `state_layout`). It defaults to empty (the expb
+snapshot) for Nethermind-only runs, and to `25490000` for geth/reth and for any
+comparison run — a comparison **requires both nodes at the same head**, which
+the same-block sets guarantee (`assert_same_head` enforces it before any diff).
+
+Per-client node profiles in `start-node.sh`:
+
+| Client | Image default | Datadir handling | Parked-at-head flags |
+|---|---|---|---|
+| `nethermind` | branch resolution (build/reuse), like before | snapshot = datadir, mounted at `/execution-data` | discovery off, 0 peers, expb stability flags |
+| `geth` | `ethereum/client-go:stable` | snapshot holds the contents of `<datadir>/geth` → mounted at `/execution-data/geth` | `--nodiscover --maxpeers=0` |
+| `reth` | `ghcr.io/paradigmxyz/reth:latest` | snapshot = datadir (`db/`, `static_files/`), mounted at `/execution-data` | `--disable-discovery --max-*-peers=0` |
+
+geth/reth are compared against, not built from branches — pin their images via
+`docker_image` (primary) / `node_config.reference_image` (reference) when the
+default mutable tags matter. A snapshot/image version mismatch is visible from
+the logged `_snapshot_web3_clientVersion.json` sidecar.
+
+## Comparison mode (`reference_client`)
+
+Setting `reference_client` starts a **second, independently-isolated node**
+(own overlay, scratch subtree, fingerprint tripwire, container) from that
+client's same-block snapshot on port 8546, then runs the selected tool in its
+comparison mode:
+
+- `benchmark_tool=jsonbench` → `runner compare`: one-shot differential test of a
+  curated method list; writes `comparison-results.json` +
+  `comparison-report.html` and a per-method diff table into the step summary.
+  This is the **recommended** comparison path. Failing the job on any diff is
+  opt-in (`tool_config.fail_on_diff`) — some differences (error wording, gas
+  estimates) are legitimate until the method list is curated per client pair.
+- `benchmark_tool=flood` → flood `--equality`: the fork's differential mode
+  (`flood all nethermind=… geth=… --equality`); results are captured from
+  stdout into the summary.
+- `benchmark_tool=ethcallchaos` → rejected in `resolve` (single-node tool).
+
+Both nodes share the runner, so comparison runs measure **correctness**, not
+clean latency — for perf A/B use two separate single-node runs.
 
 ## How the node is started (and why the snapshot is safe)
 
@@ -73,30 +127,38 @@ same guards in the workflow's defensive-cleanup step).
 
 | Input | Meaning |
 |---|---|
-| `benchmark_tool` | `flood` or `ethcallchaos`. |
-| `docker_image` | Optional explicit image (skips build/reuse resolution). |
-| `dottrace` | Profile the node and post-process to XML. Works with **any** image. |
-| `state_layout` | `flat` (default) or `halfpath` — picks snapshot + layout flags. |
+| `benchmark_tool` | `flood`, `ethcallchaos`, or `jsonbench`. |
+| `client` | `nethermind` (default), `geth`, or `reth` — the node under test. |
+| `reference_client` | `none` (default) or a client to compare against (see comparison mode). |
+| `snapshot_block` | Same-block snapshot set tag (`/mnt/sda/<client>-<tag>`); empty = expb snapshot (nethermind) / `25490000` (geth/reth, comparisons). |
+| `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
+| `dottrace` | Profile the node and post-process to XML. Nethermind only; works with **any** Nethermind image. |
+| `state_layout` | `flat` (default) or `halfpath` — picks the Nethermind snapshot + layout flags; ignored for geth/reth. |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |
 | `tool_config` | Tool-specific JSON (see below). |
 | `node_config` | Advanced JSON overrides (see below). |
 
-Image resolution without `docker_image`: `master`/`performance`/`paprika`/`release/*`
-reuse the prebuilt `nethermindeth/nethermind:<branch>` Docker Hub image; any other
-branch is built from `Dockerfile` directly on the runner.
+Image resolution without `docker_image` (Nethermind):
+`master`/`performance`/`paprika`/`release/*` reuse the prebuilt
+`nethermindeth/nethermind:<branch>` Docker Hub image; any other branch is built
+from `Dockerfile` directly on the runner. geth/reth default to their upstream
+images (see the table above).
 
 ### `node_config` JSON
 
 ```json
 {
-  "db_source": "",                 // snapshot path; empty = resolved from state_layout
+  "db_source": "",                 // snapshot path; empty = resolved from client/state_layout/snapshot_block
   "db_isolation": "overlay",       // overlay | copy | readonly-bind
   "scratch_root": "/mnt/sda/expb-data/rpc-bench-scratch",
   "network": "mainnet",
   "jsonrpc_modules": "Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin",
   "health_timeout_minutes": 30,
   "cpuset": "",                    // e.g. "2-7,10-15" to pin the node like expb does
-  "memory": ""                     // e.g. "64g"
+  "memory": "",                    // e.g. "64g"
+  "reference_db_source": "",       // reference snapshot path; empty = resolved from reference_client/snapshot_block
+  "reference_image": "",           // reference image; empty = the client's upstream default
+  "reference_flags": ""            // extra flags for the reference node's command
 }
 ```
 
@@ -105,7 +167,7 @@ branch is built from `Dockerfile` directly on the runner.
 > comparisons (branch vs branch, before vs after a change). Pinning the node via
 > `node_config.cpuset` (expb uses `2-7,10-15`) improves stability.
 
-## The two tools and their configs
+## The three tools and their configs
 
 ### `flood` — Vegeta load test ([kamilchodola/flood](https://github.com/kamilchodola/flood))
 
@@ -115,11 +177,11 @@ of `rpc-comparison.yml`, but against the local snapshot-backed node.
 
 ```json
 {
-  "tests": "eth_call eth_getBalance",   // subset of `flood ls` Single Load Tests; empty = all
-  "rates": "10 100 500",                 // Vegeta request rates (req/s)
-  "duration": 30,                         // seconds per rate
-  "deep_check": false,                    // pass --deep-check
-  "label": "nethermind",
+  "tests": "eth_call eth_getBalance",   // subset of `flood ls` Single Load Tests; empty = all ('all' in equality mode)
+  "rates": "10 100 500",                 // Vegeta request rates (req/s); load mode only
+  "duration": 30,                         // seconds per rate; load mode only
+  "deep_check": false,                    // pass --deep-check; load mode only
+  "label": "",                            // node label; empty = the client name
   "extra_args": ""                        // appended to the flood invocation
 }
 ```
@@ -127,6 +189,40 @@ of `rpc-comparison.yml`, but against the local snapshot-backed node.
 Scope control: `tests` (which methods), `rates`, `duration`. Test names use the
 RPC method's camelCase (e.g. `eth_call`, `eth_getBalance`, `eth_getStorageAt`,
 `eth_getBlockByNumber`, `eth_feeHistory`) — `flood ls` prints the full list.
+With `reference_client`, flood runs `--equality` instead (rates/duration/output
+do not apply; flood rejects them in that mode).
+
+### `jsonbench` — [NethermindEth/json-bench](https://github.com/NethermindEth/json-bench)
+
+A Go runner (built on the runner from a pinned commit via its own
+`runner/Dockerfile`, which bundles the k6 binary) with two modes, auto-selected
+from `reference_client` and overridable via `mode`:
+
+- **benchmark** (single node, or both side by side): k6-driven load benchmark of
+  a weighted call mix; produces `results.json` / `results.csv` /
+  `report.html`. json-bench streams k6 metrics through Prometheus remote-write,
+  so a throwaway local Prometheus container runs for the duration.
+- **compare** (needs a reference node): one-shot differential test — each call
+  from the compare config goes to both nodes and the responses are diffed.
+
+```json
+{
+  "ref": "",                                       // json-bench commit/tag; empty = pinned default
+  "mode": "",                                      // benchmark | compare; empty = auto
+  "benchmark_config": "",                          // workload YAML; empty = generated default (mainnet read mix)
+  "compare_config": "config/compare/defaults.yaml",// repo-relative or absolute runner path
+  "rps": 100, "duration": "60s", "vus": 10,        // generated benchmark workload only
+  "concurrency": 5, "timeout": 30,                 // compare mode
+  "validate_schema": false,                        // compare: also validate against the OpenRPC schema
+  "html_report": true,
+  "fail_on_diff": false,                           // compare: fail the job on any response difference
+  "extra_args": ""
+}
+```
+
+A custom `benchmark_config` must reference the rendered registry names — the
+client name(s), e.g. `nethermind` / `geth` (a same-client reference gets a
+`-ref` suffix).
 
 ### `ethcallchaos` — [kamilchodola/EthCallChaos](https://github.com/kamilchodola/EthCallChaos)
 
@@ -158,8 +254,9 @@ in the tool repo → fresh evolution from scratch.
 
 ## dotTrace flow (goal #3)
 
-When `dottrace=true` — using the same mechanism as expb's `--dottrace`, so it
-works with **any** image (no special diag build):
+When `dottrace=true` (requires `client=nethermind` — dotTrace is .NET-specific) —
+using the same mechanism as expb's `--dottrace`, so it works with **any**
+Nethermind image (no special diag build):
 
 1. The host-installed dotTrace CLI (`/opt/dottrace`, installed on demand via
    `dotnet tool install JetBrains.dotTrace.GlobalTools`) is mounted read-only
@@ -187,8 +284,11 @@ scripts/dottrace-report.sh compare reports/before.xml reports/after.xml 30
 
 The `reproducible-benchmarks` self-hosted runner must provide:
 
-- **Docker** (the node runs as a container; EthCallChaos runs in a .NET SDK container).
-- **The expb DB snapshots** (`/mnt/sda/nethermind-flat-snapshot`, …).
+- **Docker** (the nodes run as containers; EthCallChaos runs in a .NET SDK
+  container; json-bench builds and runs its own runner image).
+- **The expb DB snapshots** (`/mnt/sda/nethermind-flat-snapshot`, …) and, for
+  geth/reth or comparison runs, the **same-block snapshot sets**
+  (`/mnt/sda/<client>-<block>`, e.g. `geth-25490000`).
 - **A writable scratch location** on the same large disk (default
   `/mnt/sda/expb-data/rpc-bench-scratch`).
 - **`mount`/`umount` privileges** and overlayfs (expb already uses both there).
@@ -199,9 +299,10 @@ The `reproducible-benchmarks` self-hosted runner must provide:
 
 | File | Role |
 |---|---|
-| `lib.sh` | Shared helpers: logging, path guards, RPC health wait, DB fingerprint tripwire. |
-| `start-node.sh` | Fingerprint baseline → isolate DB → start container → wait for RPC. |
-| `stop-node.sh` | Graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down. |
-| `run-flood.sh` | Install flood + Vegeta, run the selected tests, report. |
+| `lib.sh` | Shared helpers: logging, path guards, RPC health wait, head-match assert, DB fingerprint tripwire. |
+| `start-node.sh` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC. |
+| `stop-node.sh` | Graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
+| `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
+| `run-jsonbench.sh` | Clone/build json-bench's runner image, run `benchmark` (with throwaway Prometheus) or `compare`, report. |
 | `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |

@@ -2,8 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Run the `flood` load-testing tool (kamilchodola fork, Vegeta backend) against a
-# single already-running JSON-RPC node and collect per-test reports.
+# Run the `flood` load-testing tool (kamilchodola fork, Vegeta backend) against
+# an already-running JSON-RPC node and collect per-test reports. When
+# REFERENCE_RPC_URL is set, runs flood's EQUALITY (differential) mode instead:
+# the same requests go to both nodes and their responses are compared.
 #
 # Tool-specific knobs are read from env (the workflow fills them from the
 # `tool_config` JSON): RATES, DURATION, DEEP_CHECK, TESTS, LABEL, EXTRA_ARGS.
@@ -16,6 +18,10 @@ source "$HERE/lib.sh"
 RPC_URL="${RPC_URL:-http://localhost:8545}"
 : "${OUT_DIR:?output directory for flood results}"
 LABEL="${LABEL:-nethermind}"
+REFERENCE_RPC_URL="${REFERENCE_RPC_URL:-}"   # non-empty switches to equality mode
+REFERENCE_LABEL="${REFERENCE_LABEL:-reference}"
+# flood addresses nodes by name — keep the two labels distinct (NM-vs-NM runs).
+[[ -n "$REFERENCE_RPC_URL" && "$REFERENCE_LABEL" == "$LABEL" ]] && REFERENCE_LABEL="${REFERENCE_LABEL}-ref"
 FLOOD_REPO="${FLOOD_REPO:-git+https://github.com/kamilchodola/flood.git}"
 # Pin the fork to a specific commit so a push to its default branch cannot
 # silently change CI behavior. Override FLOOD_REF (sha/tag/branch) or FLOOD_REPO.
@@ -82,13 +88,18 @@ command -v flood >/dev/null 2>&1 || die "flood not on PATH after install"
 # Resolve the list of tests to run.
 # ---------------------------------------------------------------------------
 if [[ -z "$TESTS" ]]; then
-  log "No test filter given — discovering all Single Load Tests via 'flood ls'..."
-  mapfile -t test_list < <(
-    flood ls \
-      | sed -n '/Single Load Tests/,/Multi Load Tests/{/Single Load Tests\|Multi Load Tests\|───/d; s/- //p}' \
-      | sed 's/[[:space:]]//g' \
-      | sed '/^$/d'
-  )
+  if [[ -n "$REFERENCE_RPC_URL" ]]; then
+    # 'all' is flood's built-in run-every-equality-test name.
+    test_list=(all)
+  else
+    log "No test filter given — discovering all Single Load Tests via 'flood ls'..."
+    mapfile -t test_list < <(
+      flood ls \
+        | sed -n '/Single Load Tests/,/Multi Load Tests/{/Single Load Tests\|Multi Load Tests\|───/d; s/- //p}' \
+        | sed 's/[[:space:]]//g' \
+        | sed '/^$/d'
+    )
+  fi
 else
   IFS=', ' read -r -a test_list <<< "$TESTS"
 fi
@@ -104,29 +115,87 @@ deep=""
 read -ra extra_args_arr <<< "$EXTRA_ARGS"
 
 # ---------------------------------------------------------------------------
-# Run each test as a single-node load test.
+# Run each test — single-node load test, or two-node equality (differential)
+# test when a reference node is configured. flood rejects --output/--rates/
+# --duration in equality mode (results go to stdout, captured per-test).
 # ---------------------------------------------------------------------------
+if [[ -n "$REFERENCE_RPC_URL" ]]; then
+  # Diffing nodes at different heads is meaningless ('latest' diverges).
+  assert_same_head "$RPC_URL" "$REFERENCE_RPC_URL"
+fi
+
 for t in "${test_list[@]}"; do
   [[ -z "$t" ]] && continue
   od="$OUT_DIR/$t"
-  log "flood $t ${LABEL}=$RPC_URL --rates $RATES --duration $DURATION $deep --output $od"
-  # $RATES and $deep are intentionally word-split (SC2086); EXTRA_ARGS is passed
-  # via an array so its flags word-split but do not glob-expand.
-  # shellcheck disable=SC2086
-  flood "$t" "${LABEL}=$RPC_URL" \
-    --rates $RATES \
-    --duration "$DURATION" \
-    $deep \
-    --output "$od" \
-    ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/${t}.log" \
-    || log "::warning::flood test '$t' exited non-zero (continuing)"
+  if [[ -n "$REFERENCE_RPC_URL" ]]; then
+    log "flood $t ${LABEL}=$RPC_URL ${REFERENCE_LABEL}=$REFERENCE_RPC_URL --equality"
+    flood "$t" "${LABEL}=$RPC_URL" "${REFERENCE_LABEL}=$REFERENCE_RPC_URL" \
+      --equality \
+      ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/${t}.log" \
+      || log "::warning::flood equality test '$t' exited non-zero (continuing)"
+  else
+    log "flood $t ${LABEL}=$RPC_URL --rates $RATES --duration $DURATION $deep --output $od"
+    # $RATES and $deep are intentionally word-split (SC2086); EXTRA_ARGS is passed
+    # via an array so its flags word-split but do not glob-expand.
+    # shellcheck disable=SC2086
+    flood "$t" "${LABEL}=$RPC_URL" \
+      --rates $RATES \
+      --duration "$DURATION" \
+      $deep \
+      --output "$od" \
+      ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/${t}.log" \
+      || log "::warning::flood test '$t' exited non-zero (continuing)"
+  fi
 done
 
 # ---------------------------------------------------------------------------
-# Build a markdown summary directly from results.json (robust against the
-# pretty-printer's loosely-pinned dependencies; vegeta latencies are seconds).
+# Build a markdown summary. Load tests render directly from results.json
+# (robust against the pretty-printer's loosely-pinned dependencies; vegeta
+# latencies are seconds); equality tests only print to stdout, so their
+# captured logs are embedded instead.
 # ---------------------------------------------------------------------------
 summary="$OUT_DIR/flood-summary.md"
+
+if [[ -n "$REFERENCE_RPC_URL" ]]; then
+  {
+    echo "## RPC Comparison — flood equality (differential test)"
+    echo
+    echo "\`$LABEL\` = \`$RPC_URL\` vs \`$REFERENCE_LABEL\` = \`$REFERENCE_RPC_URL\`"
+    echo
+  } > "$summary"
+  missing=0
+  for t in "${test_list[@]}"; do
+    tlog="$OUT_DIR/${t}.log"
+    {
+      echo "### $t"
+      echo
+      if [[ -s "$tlog" ]]; then
+        # Surface mismatches loudly, then embed the (ANSI-stripped) tool output.
+        if sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$tlog" | grep -qiE 'mismatch|not equal|✖|✗|FAILED'; then
+          echo "> :warning: **response differences detected** — see the output below and \`${t}.log\` in the artifact."
+          echo
+        fi
+        echo "<details><summary>flood output (last 120 lines)</summary>"
+        echo
+        echo '```'
+        sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$tlog" | tail -n 120
+        echo '```'
+        echo
+        echo "</details>"
+      else
+        echo "**NO OUTPUT** — flood wrote no log for this test."
+        missing=$((missing + 1))
+      fi
+      echo
+    } >> "$summary"
+  done
+  log "flood equality summary written to $summary"
+  if (( missing == ${#test_list[@]} )); then
+    die "flood produced no output for any equality test — failing the benchmark step"
+  fi
+  exit 0
+fi
+
 {
   echo "## RPC Benchmark — flood (Vegeta load test)"
   echo
