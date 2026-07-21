@@ -25,9 +25,8 @@ public class IndexedLogFinder(
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
     ILogIndexStorage logIndexStorage,
-    int maxBlockDepth = 1000,
     int minBlocksToUseIndex = 32)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, maxBlockDepth)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
 
