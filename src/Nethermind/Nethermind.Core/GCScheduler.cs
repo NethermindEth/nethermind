@@ -21,6 +21,8 @@ public sealed class GCScheduler
     private const int MinSecondsBetweenForcedGC = 120;
     // 4 GiB ≈ 256 typical 30 MGas mainnet blocks
     internal const long SustainedSweepAllocationBytes = 4L * 1024 * 1024 * 1024;
+    // Far above any observed background gen2 duration; only guards against a missed completion.
+    private const long PendingSweepTimeoutMs = 60_000;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -39,6 +41,12 @@ public sealed class GCScheduler
     private bool _skipNextGC = false;
     private long _sweepBaselineAllocatedBytes;
     private int _forcedGCExclusions;
+
+    // Gen2 GC indices captured just before the last issued sweep; either kind advancing past its
+    // baseline means that sweep's collection has completed. -1 = no sweep in flight.
+    private long _pendingSweepBackgroundIndex = -1;
+    private long _pendingSweepFullBlockingIndex = -1;
+    private long _pendingSweepIssuedAtMs;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -236,12 +244,48 @@ public sealed class GCScheduler
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 
-        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+        // An induced gen2 while the previous sweep's background collection is still in flight is
+        // escalated by the runtime to a full blocking collection (~1s+ stop-the-world on replay-sized
+        // heaps). Stay armed and retry on a later tick instead; the budget check above keeps firing.
+        if (IsLastSweepStillRunning()) return;
+
+        long backgroundIndex = GC.GetGCMemoryInfo(GCKind.Background).Index;
+        long fullBlockingIndex = GC.GetGCMemoryInfo(GCKind.FullBlocking).Index;
+        if (GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false))
+        {
+            _pendingSweepBackgroundIndex = backgroundIndex;
+            _pendingSweepFullBlockingIndex = fullBlockingIndex;
+            _pendingSweepIssuedAtMs = Environment.TickCount64;
+        }
+    }
+
+    private bool IsLastSweepStillRunning()
+    {
+        if (_pendingSweepBackgroundIndex < 0) return false;
+
+        // Only one gen2 collection can be in flight, so either kind completing past its baseline
+        // proves the issued sweep is done. The timeout is a safety valve against a missed completion.
+        if (GC.GetGCMemoryInfo(GCKind.Background).Index > _pendingSweepBackgroundIndex
+            || GC.GetGCMemoryInfo(GCKind.FullBlocking).Index > _pendingSweepFullBlockingIndex
+            || Environment.TickCount64 - _pendingSweepIssuedAtMs > PendingSweepTimeoutMs)
+        {
+            _pendingSweepBackgroundIndex = -1;
+            return false;
+        }
+
+        return true;
     }
 
     internal long SweepBaselineAllocatedBytes
     {
         get => Volatile.Read(ref _sweepBaselineAllocatedBytes);
         set => Volatile.Write(ref _sweepBaselineAllocatedBytes, value);
+    }
+
+    internal void SetPendingSweep(long backgroundIndex, long fullBlockingIndex, long issuedAtMs)
+    {
+        _pendingSweepBackgroundIndex = backgroundIndex;
+        _pendingSweepFullBlockingIndex = fullBlockingIndex;
+        _pendingSweepIssuedAtMs = issuedAtMs;
     }
 }
