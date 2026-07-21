@@ -20,18 +20,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(contentLength);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
 
-            stream.Encode(message.RequestId);
+            writer.Encode(message.RequestId);
             if (message.PathsWithAccounts is null || message.PathsWithAccounts.Count == 0)
             {
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
             }
             else
             {
                 ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
-                stream.StartSequence(pwasLength);
+                writer.StartSequence(pwasLength);
                 for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
                     PathWithAccount pwa = pathsWithAccounts[i];
@@ -39,19 +39,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                     int accountContentLength = _decoder.GetContentLength(pwa.Account);
                     int pwaLength = Rlp.LengthOf(pwa.Path) + Rlp.LengthOfSequence(accountContentLength);
 
-                    stream.StartSequence(pwaLength);
-                    stream.Encode(pwa.Path);
-                    _decoder.Encode(pwa.Account, stream, accountContentLength);
+                    writer.StartSequence(pwaLength);
+                    writer.Encode(pwa.Path);
+                    _decoder.Encode(pwa.Account, ref writer, accountContentLength);
                 }
             }
 
-            stream.WriteByteArrayList(message.Proofs);
+            writer.WriteByteArrayList(message.Proofs);
         }
 
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startPos = ctx.Position;
             AccountRangeMessage message = new();
             ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;
@@ -75,7 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
                 message.PathsWithAccounts = pathsWithAccounts;
                 pathsWithAccounts = null;
-                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.AccountRangeProofsRlpLimit);
                 memoryOwner = null;
 
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));

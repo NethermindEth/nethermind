@@ -9,14 +9,14 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
-    public sealed class AccessListDecoder() : RlpValueDecoder<AccessList?>
+    public sealed class AccessListDecoder() : RlpDecoder<AccessList?>
     {
         private const int IndexLength = 32;
 
         public static readonly AccessListDecoder Instance = new();
 
         protected override AccessList? DecodeInternal(
-            ref Rlp.ValueDecoderContext decoderContext,
+            ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
@@ -70,16 +70,16 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public override void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                stream.WriteByte(Rlp.EmptyListByte);
+                writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
             int contentLength = GetContentLength(item);
-            stream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             foreach ((Address? address, AccessList.StorageKeysEnumerable storageKeys) in item)
             {
                 // {} brackets applied to show the content structure
@@ -89,15 +89,15 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 //   ...
                 //   IndexN
                 AccessItemLengths lengths = new(storageKeys.Count);
-                stream.StartSequence(lengths.ContentLength);
+                writer.StartSequence(lengths.ContentLength);
                 {
-                    stream.Encode(address);
-                    stream.StartSequence(lengths.IndexesContentLength);
+                    writer.Encode(address);
+                    writer.StartSequence(lengths.IndexesContentLength);
                     {
                         foreach (UInt256 index in storageKeys)
                         {
                             // storage indices are encoded as 32 bytes data arrays
-                            stream.Encode(index, IndexLength);
+                            writer.Encode(index, IndexLength);
                         }
                     }
                 }

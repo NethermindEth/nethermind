@@ -136,7 +136,8 @@ public class WalletTests
             Transaction tx = new();
             tx.SenderAddress = signerAddress;
 
-            ctx.Wallet.Sign(tx, chainId);
+            bool signed = ctx.Wallet.TrySignTransaction(tx, chainId);
+            Assert.That(signed, Is.True, $"wallet should sign tx for unlocked account {signerAddress}");
             Address recovered = ecdsa.RecoverAddress(tx);
             Assert.That(recovered, Is.EqualTo(signerAddress), $"{i}");
             Console.WriteLine(tx.Signature);

@@ -4,8 +4,8 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Facade.Find;
 using Nethermind.Int256;

@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -27,7 +27,7 @@ internal class EraReaderTests
         {
             TempPath tmpFile = TempPath.GetTempFile();
             using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
-            List<(Block, TxReceipt[])> addedContents = new();
+            List<(Block, TxReceipt[])> addedContents = [];
             HeaderDecoder headerDecoder = new();
 
             async Task AddBlock(Block block, TxReceipt[] receipts)
@@ -80,10 +80,10 @@ internal class EraReaderTests
         Assert.That(() => sut.ReadAccumulator(), Throws.Nothing);
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public async Task GetBlockByNumber_DifferentNumber_ReturnsBlockWithCorrectNumber(int number)
+    [TestCase(0UL)]
+    [TestCase(1UL)]
+    [TestCase(2UL)]
+    public async Task GetBlockByNumber_DifferentNumber_ReturnsBlockWithCorrectNumber(ulong number)
     {
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 
@@ -99,7 +99,13 @@ internal class EraReaderTests
 
         using EraReader sut = new(tmpFile.FilePath);
         List<(Block, TxReceipt[])> reEnumerated = await sut.ToListAsync();
-        reEnumerated.Should().BeEquivalentTo(tmpFile.AddedContents);
+        Assert.That(reEnumerated, Has.Count.EqualTo(tmpFile.AddedContents.Count));
+
+        for (int i = 0; i < tmpFile.AddedContents.Count; i++)
+        {
+            AssertBlockEquivalent(reEnumerated[i].Item1, tmpFile.AddedContents[i].Item1);
+            reEnumerated[i].Item2.AssertEquivalentTo(tmpFile.AddedContents[i].Item2);
+        }
     }
 
     [Test]
@@ -115,6 +121,9 @@ internal class EraReaderTests
         ValueHash256 root = calculator.ComputeRoot();
         using EraReader sut = new(tmpFile.FilePath);
         ValueHash256 fileRoot = await sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid, default);
-        root.Should().BeEquivalentTo(fileRoot);
+        Assert.That(root, Is.EqualTo(fileRoot));
     }
+
+    private static void AssertBlockEquivalent(Block actual, Block expected) =>
+        Assert.That(actual.ToString(Block.Format.Full), Is.EqualTo(expected.ToString(Block.Format.Full)));
 }

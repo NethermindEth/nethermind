@@ -5,7 +5,6 @@ using System.IO.Abstractions;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -24,10 +23,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.Init.Modules;
 
-public class PruningTrieStoreModule(IInitConfig initConfig) : Module
+public class PruningTrieStoreModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
+    protected override void Load(ContainerBuilder builder) =>
         builder
 
             // Special case for state db with pruning trie state.
@@ -36,12 +34,20 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
                 DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
-                return new FullPruningDb(
+                FullPruningDb db = new(
                     stateDbSettings,
                     dbFactory is not MemDbFactory
                         ? new FullPruningInnerDbFactory(dbFactory, fileSystem, stateDbSettings.DbPath)
                         : dbFactory,
                     () => Interlocked.Increment(ref Nethermind.Db.Metrics.StateDbInPruningWrites));
+                // Register the outer wrapper so GatherMetric() always reflects the currently active
+                // inner DB, even across full-pruning cycles. The inner DBs are not tracked:
+                // - via FullPruningInnerDbFactory they get SkipMetricsTracking = true so the
+                //   DbFactoryInterceptor skips registration.
+                // - via the MemDbFactory branch they're MemDbs created outside any interceptor and
+                //   therefore never reach the tracker either.
+                ctx.ResolveOptional<DbMonitoringModule.DbTracker>()?.AddDb(stateDbSettings.DbName, db);
+                return db;
             })
 
             .AddSingleton<INodeStorageFactory>(ctx =>
@@ -82,6 +88,20 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
             .AddSingleton<PruningTrieStateFactory>()
             .AddSingleton<PruningTrieStateFactoryOutput>()
 
+            // The trie backend's IStateBoundary. Registered here (not off IWorldStateManager) so it
+            // can be injected into the block tree, whose constructor runs before the manager graph.
+            .AddSingleton<StateBoundaryStore>(ctx =>
+            {
+                IPruningConfig pruningConfig = ctx.Resolve<IPruningConfig>();
+                ulong? retentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null;
+                return new StateBoundaryStore(
+                    ctx.ResolveKeyed<IDb>(DbNames.State),
+                    ctx.ResolveKeyed<IDb>(DbNames.BlockInfos),
+                    retentionWindowBlocks,
+                    ctx.Resolve<ILogManager>());
+            })
+            .Map<IStateBoundaryWriter, StateBoundaryStore>((store) => store)
+
             // Sync components backed by the patricia trie store
             .AddSingleton<FullStateFinder>()
             .AddSingleton<PatriciaSnapTrieFactory>()
@@ -92,12 +112,6 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
                 logManager
             ))
             ;
-
-        if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
-        {
-            builder.AddStep(typeof(RunVerifyTrie));
-        }
-    }
 
     private static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
 

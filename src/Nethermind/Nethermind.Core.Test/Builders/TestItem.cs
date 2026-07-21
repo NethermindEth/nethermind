@@ -156,8 +156,8 @@ namespace Nethermind.Core.Test.Builders
             random ??= Random;
 
             Account account = new(
-                (UInt256)random.Next(1000),
-                (UInt256)random.Next(1000),
+                (ulong)random.Next(1000),
+                (ulong)random.Next(1000),
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 
@@ -168,15 +168,16 @@ namespace Nethermind.Core.Test.Builders
         {
             accountDecoder ??= _accountDecoder;
             Account account = GenerateRandomAccount();
-            byte[] value = accountDecoder.Encode(account).Bytes;
+            IRlpDecoder<Account?> encoder = accountDecoder;
+            byte[] value = encoder.Encode(account).Bytes;
             return value;
         }
 
         public static Account GenerateIndexedAccount(int index)
         {
             Account account = new(
-                (UInt256)index,
-                (UInt256)index);
+                (ulong)index,
+                (ulong)index);
 
             return account;
         }
@@ -186,7 +187,8 @@ namespace Nethermind.Core.Test.Builders
             accountDecoder ??= _accountDecoder;
 
             Account account = GenerateIndexedAccount(index);
-            byte[] value = accountDecoder.Encode(account).Bytes;
+            IRlpDecoder<Account?> encoder = accountDecoder;
+            byte[] value = encoder.Encode(account).Bytes;
             return value;
         }
 

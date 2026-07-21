@@ -11,7 +11,7 @@ namespace Nethermind.Core.ServiceStopper;
 
 public class ServiceStopper(ILogManager logManager) : IServiceStopper
 {
-    private HashSet<IStoppableService> _stoppables = new();
+    private HashSet<IStoppableService> _stoppables = [];
     private ILogger _logger = logManager.GetClassLogger<ServiceStopper>();
 
 

@@ -17,6 +17,25 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json
 {
+    /// <summary>
+    /// Controls source-generated JSON metadata resolver order.
+    /// </summary>
+    public enum JsonTypeInfoResolverPriority
+    {
+        /// <summary>Engine API payload metadata. This is the most latency-sensitive RPC path.</summary>
+        EngineApi = 0,
+        /// <summary>Broad first-party RPC metadata generated at build time.</summary>
+        GeneratedRpc = 10,
+        /// <summary>Common facade RPC metadata such as block, transaction, and log DTOs.</summary>
+        Facade = 20,
+        /// <summary>Eth/debug/trace metadata for proofs, traces, and related payloads.</summary>
+        EthRpc = 30,
+        /// <summary>JSON-RPC response envelope metadata kept for legacy and fallback paths.</summary>
+        JsonRpcResponse = 40,
+        /// <summary>External or unclassified resolvers registered by plugins.</summary>
+        External = 100,
+    }
+
     public sealed class EthereumJsonSerializer : IJsonSerializer
     {
         // Must accommodate the deepest possible callTracer output: each NativeCallTracerCallFrame
@@ -26,8 +45,8 @@ namespace Nethermind.Serialization.Json
         public const int DefaultMaxDepth = 4096;
         private static readonly object _globalOptionsLock = new();
 
-        private static readonly List<JsonConverter> _additionalConverters = new();
-        private static readonly List<IJsonTypeInfoResolver> _additionalResolvers = new();
+        private static readonly List<JsonConverter> _additionalConverters = [];
+        private static readonly List<JsonTypeInfoResolverRegistration> _additionalResolvers = [];
         private static bool _strictHexFormat;
         private static int _optionsVersion;
 
@@ -65,9 +84,9 @@ namespace Nethermind.Serialization.Json
 
         public string Serialize<T>(T value, bool indented = false) => JsonSerializer.Serialize<T>(value, GetSerializerOptions(indented));
 
-        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> instanceConverters = null, int maxDepth = DefaultMaxDepth)
+        private static JsonSerializerOptions CreateOptions(bool indented, bool strictQuantity = false, IEnumerable<JsonConverter> instanceConverters = null, int maxDepth = DefaultMaxDepth)
         {
-            SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out IJsonTypeInfoResolver[] additionalResolvers);
+            SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers);
 
             JsonSerializerOptions result = new()
             {
@@ -83,23 +102,26 @@ namespace Nethermind.Serialization.Json
                 TypeInfoResolver = BuildTypeInfoResolver(additionalResolvers),
                 Converters =
                 {
-                    new LongConverter(),
-                    new UInt256Converter(),
+                    new LongConverter(strictQuantity),
+                    new UInt256Converter(strictQuantity),
                     new EvmWordConverter(),
-                    new ULongConverter(),
+                    new ULongConverter(strictQuantity),
                     new IntConverter(),
                     new ByteArrayConverter(),
+                    new HexBytesConverter(),
+                    new ByteArrayArrayConverter(),
                     new ByteReadOnlyMemoryConverter(),
                     new NullableByteReadOnlyMemoryConverter(),
                     new ArrayPoolListByteHexConverter(),
-                    new NullableLongConverter(),
-                    new NullableULongConverter(),
-                    new NullableUInt256Converter(),
+                    new NullableLongConverter(strictQuantity),
+                    new NullableULongConverter(strictQuantity),
+                    new NullableUInt256Converter(strictQuantity),
                     new NullableIntConverter(),
                     new TxTypeConverter(),
                     new DoubleConverter(),
                     new DoubleArrayConverter(),
                     new BooleanConverter(),
+                    new AddressConverter(strictHexFormat),
                     new AddressAsKeyConverter(),
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),
@@ -110,7 +132,10 @@ namespace Nethermind.Serialization.Json
                     new SignatureConverter(),
                     new ValueHash256Converter(strictHexFormat),
                     new Hash256Converter(strictHexFormat),
+                    new Hash256ArrayConverter(),
                     new IPAddressConverter(),
+                    new CappedArrayJsonConverter<int>(),
+                    new CappedArrayByteJsonConverter(),
                 }
             };
 
@@ -129,20 +154,40 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public static void AddTypeInfoResolver(IJsonTypeInfoResolver resolver)
+        /// <summary>
+        /// Adds a JSON metadata resolver after first-party RPC resolvers and before the default reflection resolver.
+        /// </summary>
+        public static void AddTypeInfoResolver(IJsonTypeInfoResolver resolver) =>
+            AddTypeInfoResolver(resolver, JsonTypeInfoResolverPriority.External);
+
+        /// <summary>
+        /// Adds a JSON metadata resolver with an explicit ordering priority.
+        /// </summary>
+        /// <remarks>
+        /// Lower priority values are queried first. Re-registering the same resolver updates its priority while preserving
+        /// its original registration sequence for stable tie-breaking.
+        /// </remarks>
+        public static void AddTypeInfoResolver(IJsonTypeInfoResolver resolver, JsonTypeInfoResolverPriority priority)
         {
             ArgumentNullException.ThrowIfNull(resolver);
             lock (_globalOptionsLock)
             {
                 for (int i = 0; i < _additionalResolvers.Count; i++)
                 {
-                    if (ReferenceEquals(_additionalResolvers[i], resolver))
+                    JsonTypeInfoResolverRegistration existing = _additionalResolvers[i];
+                    if (ReferenceEquals(existing.Resolver, resolver))
                     {
+                        if (existing.Priority != priority)
+                        {
+                            _additionalResolvers[i] = existing.WithPriority(priority);
+                            RefreshGlobalOptionsNoLock();
+                        }
+
                         return;
                     }
                 }
 
-                _additionalResolvers.Add(resolver);
+                _additionalResolvers.Add(new JsonTypeInfoResolverRegistration(resolver, priority, _additionalResolvers.Count));
                 RefreshGlobalOptionsNoLock();
             }
         }
@@ -166,6 +211,9 @@ namespace Nethermind.Serialization.Json
         public static JsonSerializerOptions JsonOptions { get; private set; } = CreateOptions(indented: false);
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
+
+        /// <summary>Options for RPC request parameter deserialization, enforcing EIP-1474 QUANTITY format when <see cref="StrictHexFormat"/> is <see langword="true"/>.</summary>
+        public static JsonSerializerOptions JsonRpcRequestOptions { get; private set; } = CreateOptions(indented: false);
 
         private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: true);
         private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: false);
@@ -253,10 +301,11 @@ namespace Nethermind.Serialization.Json
         {
             JsonOptions = CreateOptions(indented: false);
             JsonOptionsIndented = CreateOptions(indented: true);
+            JsonRpcRequestOptions = CreateOptions(indented: false, strictQuantity: _strictHexFormat);
             Interlocked.Increment(ref _optionsVersion);
         }
 
-        private static void SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out IJsonTypeInfoResolver[] additionalResolvers)
+        private static void SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers)
         {
             lock (_globalOptionsLock)
             {
@@ -267,15 +316,17 @@ namespace Nethermind.Serialization.Json
                     additionalConverters[i] = _additionalConverters[i];
                 }
 
-                additionalResolvers = new IJsonTypeInfoResolver[_additionalResolvers.Count];
+                additionalResolvers = new JsonTypeInfoResolverRegistration[_additionalResolvers.Count];
                 for (int i = 0; i < _additionalResolvers.Count; i++)
                 {
                     additionalResolvers[i] = _additionalResolvers[i];
                 }
+
+                SortResolverRegistrations(additionalResolvers);
             }
         }
 
-        private static IJsonTypeInfoResolver BuildTypeInfoResolver(IReadOnlyList<IJsonTypeInfoResolver> additionalResolvers)
+        private static IJsonTypeInfoResolver BuildTypeInfoResolver(IReadOnlyList<JsonTypeInfoResolverRegistration> additionalResolvers)
         {
             int additionalResolversCount = additionalResolvers.Count;
             if (additionalResolversCount == 0)
@@ -286,12 +337,21 @@ namespace Nethermind.Serialization.Json
             IJsonTypeInfoResolver[] resolverChain = new IJsonTypeInfoResolver[additionalResolversCount + 1];
             for (int i = 0; i < additionalResolversCount; i++)
             {
-                resolverChain[i] = additionalResolvers[i];
+                resolverChain[i] = additionalResolvers[i].Resolver;
             }
 
             resolverChain[additionalResolversCount] = new DefaultJsonTypeInfoResolver();
             return JsonTypeInfoResolver.Combine(resolverChain);
         }
+
+        private static void SortResolverRegistrations(JsonTypeInfoResolverRegistration[] registrations) =>
+            Array.Sort(registrations, static (left, right) =>
+            {
+                int priorityComparison = ((int)left.Priority).CompareTo((int)right.Priority);
+                return priorityComparison != 0
+                    ? priorityComparison
+                    : left.Sequence.CompareTo(right.Sequence);
+            });
 
         private static JsonConverter[] CopyConverters(IEnumerable<JsonConverter> converters)
         {
@@ -304,13 +364,21 @@ namespace Nethermind.Serialization.Json
                 return clone;
             }
 
-            List<JsonConverter> list = new();
-            foreach (JsonConverter converter in converters)
-            {
-                list.Add(converter);
-            }
+            List<JsonConverter> list = [.. converters];
 
             return [.. list];
+        }
+
+        private readonly struct JsonTypeInfoResolverRegistration(IJsonTypeInfoResolver resolver, JsonTypeInfoResolverPriority priority, int sequence)
+        {
+            public IJsonTypeInfoResolver Resolver { get; } = resolver;
+
+            public JsonTypeInfoResolverPriority Priority { get; } = priority;
+
+            public int Sequence { get; } = sequence;
+
+            public JsonTypeInfoResolverRegistration WithPriority(JsonTypeInfoResolverPriority priority) =>
+                new(Resolver, priority, Sequence);
         }
     }
 

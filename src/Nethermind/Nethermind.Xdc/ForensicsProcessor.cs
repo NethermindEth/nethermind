@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -160,15 +161,18 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
         List<string> lowerBlockNumToAncestorHashPath = [];
         List<string> higherBlockToAncestorNumHashPath = [];
-        bool orderSwapped = false;
+        bool orderSwapped = secondBlockInfo.BlockNumber < firstBlockInfo.BlockNumber;
 
-        long blockNumberDifference = secondBlockInfo.BlockNumber - firstBlockInfo.BlockNumber;
-        if (blockNumberDifference < 0)
+        ulong blockNumberDifference;
+        if (orderSwapped)
         {
             lowerBlockNumHash = secondBlockInfo.Hash;
             higherBlockNumberHash = firstBlockInfo.Hash;
-            blockNumberDifference = -blockNumberDifference;
-            orderSwapped = true;
+            blockNumberDifference = firstBlockInfo.BlockNumber - secondBlockInfo.BlockNumber;
+        }
+        else
+        {
+            blockNumberDifference = secondBlockInfo.BlockNumber - firstBlockInfo.BlockNumber;
         }
 
         if (blockNumberDifference > MaxForensicsTraversalDepth)
@@ -183,7 +187,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         lowerBlockNumToAncestorHashPath.Add(lowerBlockNumHash.ToString());
         higherBlockToAncestorNumHashPath.Add(higherBlockNumberHash.ToString());
 
-        for (int i = 0; i < blockNumberDifference; i++)
+        for (int i = 0; i < (int)blockNumberDifference; i++)
         {
             XdcBlockHeader? parentHeader = (XdcBlockHeader?)_blockTree.FindHeader(higherBlockNumberHash);
             if (parentHeader is null || parentHeader.ParentHash is null)
@@ -242,13 +246,13 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         }
 
         BlockRoundInfo proposedBlockInfo = higherBlockNumQCs[0].ProposedBlockInfo;
-        long blockDifference = higherBlockNumQCs[0].ProposedBlockInfo.BlockNumber - lowerBlockNumQCs[0].ProposedBlockInfo.BlockNumber;
-        if (blockDifference < 0 || blockDifference > MaxForensicsTraversalDepth)
+        ulong blockDifference = higherBlockNumQCs[0].ProposedBlockInfo.BlockNumber - lowerBlockNumQCs[0].ProposedBlockInfo.BlockNumber;
+        if (blockDifference > MaxForensicsTraversalDepth)
         {
             return false;
         }
 
-        for (int i = 0; i < blockDifference; i++)
+        for (int i = 0; i < (int)blockDifference; i++)
         {
             XdcBlockHeader? parentHeader = (XdcBlockHeader?)_blockTree.FindHeader(proposedBlockInfo.Hash);
             QuorumCertificate? parentQc = parentHeader?.ExtraConsensusData?.QuorumCert;
@@ -422,21 +426,26 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
     private ValueHash256 VoteHash(Vote vote)
     {
-        KeccakRlpStream stream = new();
-        _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        return stream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
+        return writer.GetValueHash();
     }
 
     private bool IsExtendingFromAncestor(BlockRoundInfo currentBlock, BlockRoundInfo ancestorBlock)
     {
-        long blockNumDiff = currentBlock.BlockNumber - ancestorBlock.BlockNumber;
-        if (blockNumDiff < 0 || blockNumDiff > MaxForensicsTraversalDepth)
+        // Callers do not all guarantee ordering, so guard against ulong underflow explicitly.
+        if (currentBlock.BlockNumber < ancestorBlock.BlockNumber)
+        {
+            return false;
+        }
+        ulong blockNumDiff = currentBlock.BlockNumber - ancestorBlock.BlockNumber;
+        if (blockNumDiff > MaxForensicsTraversalDepth)
         {
             return false;
         }
 
         Hash256 nextBlockHash = currentBlock.Hash;
-        for (int i = 0; i < blockNumDiff; i++)
+        for (int i = 0; i < (int)blockNumDiff; i++)
         {
             XdcBlockHeader? parentBlock = (XdcBlockHeader?)_blockTree.FindHeader(nextBlockHash);
             if (parentBlock is null || parentBlock.ParentHash is null)

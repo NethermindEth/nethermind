@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -37,7 +36,7 @@ namespace Nethermind.Mining.Test
 
             MinGasPriceTxFilter filter = new(blocksConfig);
             Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
-            filter.IsAllowed(tx, null!, releaseSpec).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
+            Assert.That(filter.IsAllowed(tx, null!, releaseSpec).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow), Is.True);
         }
 
         [TestCase(0L, 0L, 0L, true)]
@@ -69,7 +68,7 @@ namespace Nethermind.Mining.Test
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
                 .WithType(TxType.EIP1559).TestObject;
             BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000).WithBaseFeePerGas((UInt256)1000);
-            _filter.IsAllowed(tx, blockBuilder.TestObject.Header, specProvider.GetSpec(blockBuilder.TestObject.Header)).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
+            Assert.That(_filter.IsAllowed(tx, blockBuilder.TestObject.Header, specProvider.GetSpec(blockBuilder.TestObject.Header)).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow), Is.True);
         }
     }
 }

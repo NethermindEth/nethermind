@@ -4,7 +4,6 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -26,29 +25,29 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     public new static ExecutionPayloadV4 Create(Block block) => Create<ExecutionPayloadV4>(block);
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        BlockDecodingResult baseResult = base.TryGetBlock(totalDifficulty);
-        Block? block = baseResult.Block;
-        if (block is null)
+        Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
+        if (baseResult.IsError)
         {
             return baseResult;
         }
 
+        Block block = baseResult.Data;
         if (BlockAccessList is not null)
         {
             try
             {
-                block.BlockAccessList = Rlp.Decode<BlockAccessList>(BlockAccessList);
+                block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(BlockAccessList);
             }
             catch (RlpException e)
             {
-                return new($"Error decoding block access list: {e}");
+                return Result<Block>.Fail($"Error decoding block access list: {e}");
             }
         }
 
         block.EncodedBlockAccessList = BlockAccessList;
-        block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : new(ValueKeccak.Compute(BlockAccessList).Bytes);
+        block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : block.BlockAccessList!.WireHash;
         block.Header.SlotNumber = SlotNumber;
 
         return baseResult;

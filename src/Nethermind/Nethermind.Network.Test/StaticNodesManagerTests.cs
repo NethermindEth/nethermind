@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
@@ -24,7 +23,12 @@ namespace Nethermind.Network.Test
         private const string EnodeString =
             "enode://94c15d1b9e2fe7ce56e458b9a3b672ef11894ddedd0c6f247e0f1d3487f52b66208fb4aeb8179fce6e3a749ea93ed147c37976d67af557508d199d9594c35f09@192.81.208.223:30303";
 
+        // Different public key and port, but the SAME IP as EnodeString (for the ContainsIp refcount test).
+        private const string SameIpEnodeString =
+            "enode://94c15d1b9e2fe7ce56e458b9a3b672ef11894ddedd0c6f247e0f1d3487f52b66208fb4aeb8179fce6e3a749ea93ed147c37976d67af557508d199d9594c35f0a@192.81.208.223:30304";
+
         private static readonly NetworkNode Enode = new(EnodeString);
+        private static readonly NetworkNode SameIpEnode = new(SameIpEnodeString);
 
         [SetUp]
         public void Setup()
@@ -38,7 +42,7 @@ namespace Nethermind.Network.Test
         public async Task init_should_load_static_nodes_from_the_file()
         {
             await _staticNodesManager.InitAsync();
-            _staticNodesManager.Nodes.Count().Should().Be(2);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(2));
         }
 
         [Test]
@@ -46,18 +50,54 @@ namespace Nethermind.Network.Test
         {
             ValueTask<List<Node>> listTask = _staticNodesManager.DiscoverNodes(default).Take(1).ToListAsync();
 
-            _staticNodesManager.Nodes.Count().Should().Be(0);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(1);
-            (await listTask).Count.Should().Be(1);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
+            Assert.That(await listTask, Has.Count.EqualTo(1));
         }
 
         [Test]
         public async Task is_static_should_report_correctly()
         {
-            _staticNodesManager.IsStatic(Enode).Should().BeFalse();
+            Assert.That(_staticNodesManager.IsStatic(Enode), Is.False);
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.IsStatic(Enode).Should().BeTrue();
+            Assert.That(_staticNodesManager.IsStatic(Enode), Is.True);
+        }
+
+        [Test]
+        public async Task contains_ip_tracks_membership_and_normalizes()
+        {
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.False);
+            await _staticNodesManager.AddAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.True);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp.MapToIPv6()), Is.True, "IPv4-mapped-IPv6 is normalized");
+            await _staticNodesManager.RemoveAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.False);
+        }
+
+        [Test]
+        public async Task contains_ip_refcounts_nodes_sharing_an_ip()
+        {
+            await _staticNodesManager.AddAsync(Enode, false);
+            await _staticNodesManager.AddAsync(SameIpEnode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.True);
+
+            await _staticNodesManager.RemoveAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.True, "still referenced by the other node on the same IP");
+
+            await _staticNodesManager.RemoveAsync(SameIpEnode, false);
+            Assert.That(_staticNodesManager.ContainsIp(Enode.HostIp), Is.False, "last node on the IP removed");
+        }
+
+        [Test]
+        public async Task init_loaded_nodes_are_emitted_with_static_flag()
+        {
+            await _staticNodesManager.InitAsync();
+
+            List<Node> nodes = await _staticNodesManager.DiscoverNodes(default).Take(2).ToListAsync();
+
+            Assert.That(nodes, Has.Count.EqualTo(2));
+            Assert.That(nodes.All(static n => n.IsStatic), Is.True);
         }
 
         [Test]
@@ -68,7 +108,7 @@ namespace Nethermind.Network.Test
             await _staticNodesManager.AddAsync(Enode, false);
             List<Node> nodes = await listTask;
 
-            nodes[0].IsStatic.Should().BeTrue();
+            Assert.That(nodes[0].IsStatic, Is.True);
         }
 
         [Test]
@@ -77,10 +117,10 @@ namespace Nethermind.Network.Test
             bool eventRaised = false;
             _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; };
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(1);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
             await _staticNodesManager.RemoveAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(0);
-            eventRaised.Should().BeTrue();
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
+            Assert.That(eventRaised, Is.True);
         }
 
         [Test]
@@ -90,7 +130,7 @@ namespace Nethermind.Network.Test
             await File.WriteAllTextAsync(tempFile.Path, string.Empty);
             _staticNodesManager = new StaticNodesManager(tempFile.Path, LimboLogs.Instance);
             await _staticNodesManager.InitAsync();
-            _staticNodesManager.Nodes.Count().Should().Be(0);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
         }
     }
 }

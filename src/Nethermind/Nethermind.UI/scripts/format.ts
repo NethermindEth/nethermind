@@ -180,7 +180,6 @@ const networks = {
   "1": "Ethereum mainnet",
   "100": "Gnosis Mainnet",
   "480": "World Mainnet",
-  "8453": "Base mainnet",
   "10200": "Gnosis Chiado Testnet",
   "7032118028": "Ethereum Perfnet"
 }
@@ -190,7 +189,6 @@ const logos = {
   "1": "ethereum-logo.svg",
   "100": "gnosis.png",
   "480": "world-logo.svg",
-  "8453": "base-logo.svg",
   "10200": "gnosis.png",
   "7032118028": "perfnet.png"
 }

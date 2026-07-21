@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FastEnumUtility;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -16,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
 {
@@ -23,8 +23,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
     {
         public static class Scenario
         {
-            public const long FastSyncLag = 32;
-            public const long LargeDistanceBehindHead = 1024;
+            public const ulong FastSyncLag = 32;
+            public const ulong LargeDistanceBehindHead = 1024;
 
             public static BlockHeader Pivot { get; } = Build.A.Block
                 .WithDifficulty(1)
@@ -137,15 +137,15 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public class ScenarioBuilder
             {
-                private readonly List<Func<string>> _configActions = new();
+                private readonly List<Func<string>> _configActions = [];
 
-                private readonly List<Func<string>> _peeringSetups = new();
+                private readonly List<Func<string>> _peeringSetups = [];
 
-                private readonly List<Func<string>> _syncProgressSetups = new();
+                private readonly List<Func<string>> _syncProgressSetups = [];
 
-                private readonly List<Action> _overwrites = new();
+                private readonly List<Action> _overwrites = [];
 
-                private readonly List<ISyncPeer> _peers = new();
+                private readonly List<ISyncPeer> _peers = [];
 
                 public ISyncPeerPool SyncPeerPool { get; set; } = null!;
 
@@ -163,9 +163,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                     SyncProgressResolver = Substitute.For<ISyncProgressResolver>();
                     SyncProgressResolver.ChainDifficulty.Returns(ValidGenesis.TotalDifficulty ?? 0);
-                    SyncProgressResolver.FindBestHeader().Returns(0);
-                    SyncProgressResolver.FindBestFullBlock().Returns(0);
-                    SyncProgressResolver.FindBestFullState().Returns(0);
+                    SyncProgressResolver.FindBestHeader().Returns(0UL);
+                    SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                    SyncProgressResolver.FindBestFullState().Returns(0UL);
                     SyncProgressResolver.IsLoadingBlocksFromDb().Returns(false);
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
                     SyncProgressResolver.SyncPivot.Returns((Pivot.Number, Keccak.Zero));
@@ -242,6 +242,26 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder IfThisNodeRecoveredWithStateAheadOfHeaders()
+                {
+                    // Unclean shutdown lost the last block tree writes while the flat state WAL
+                    // survived: the block tree is consistent within itself but behind the state.
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            ulong bestHeader = ChainHead.Number - 2;
+                            SyncProgressResolver.FindBestHeader().Returns(bestHeader);
+                            SyncProgressResolver.FindBestFullBlock().Returns(bestHeader);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(bestHeader);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
+                            SyncProgressResolver.ChainDifficulty.Returns(bestHeader);
+                            return "recovered with state ahead of headers";
+                        }
+                    );
+                    return this;
+                }
+
                 public ScenarioBuilder IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
                 {
                     _syncProgressSetups.Add(
@@ -249,7 +269,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - LargeDistanceBehindHead);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - (ulong)LargeDistanceBehindHead);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - LargeDistanceBehindHead);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
@@ -265,9 +285,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(0);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(0UL);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
                             return "fully syncing";
@@ -283,8 +303,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 2);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 2UL);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
                             SyncProgressResolver.ChainDifficulty.Returns((ChainHead.TotalDifficulty ?? 0) + (UInt256)2);
                             return "fully syncing";
@@ -299,12 +319,29 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(Pivot.Number + 16);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(0);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(0UL);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "mid fast sync and fast blocks";
+                        }
+                    );
+                    return this;
+                }
+
+                public ScenarioBuilder IfThisNodeIsBehindThePivotInFastSync()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(MidWayToPivot.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(0UL);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "behind the pivot in fast sync";
                         }
                     );
                     return this;
@@ -316,9 +353,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(Pivot.Number + 16);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(0);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(0UL);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "mid fast sync";
@@ -334,7 +371,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - LargeDistanceBehindHead);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - (ulong)LargeDistanceBehindHead);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - LargeDistanceBehindHead);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
@@ -350,9 +387,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - FastSyncLag);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(0);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(0UL);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "mid fast blocks but fast sync finished";
@@ -367,9 +404,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - FastSyncLag);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - FastSyncLag);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - (ulong)FastSyncLag);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "just finished state sync but not fast blocks";
@@ -384,9 +421,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - FastSyncLag);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - FastSyncLag);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - (ulong)FastSyncLag);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "just finished state sync and fast blocks";
@@ -402,8 +439,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - FastSyncLag);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - (ulong)FastSyncLag);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "just finished state sync catch up";
@@ -412,17 +449,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState fastBlocksState = FastBlocksState.FinishedBlockAccessLists, bool stateFinished = false, long? bestHeader = null)
+                public ScenarioBuilder IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState fastBlocksState = FastBlocksState.FinishedBlockAccessLists, bool stateFinished = false, ulong? bestHeader = null)
                 {
                     _syncProgressSetups.Add(
                         () =>
                         {
-                            bestHeader ??= ChainHead.Number - FastSyncLag;
+                            bestHeader ??= (ChainHead.Number - (ulong)FastSyncLag);
                             SyncProgressResolver.FindBestHeader().Returns(bestHeader.Value);
 
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(stateFinished ? bestHeader.Value : 0);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(stateFinished ? (ulong)bestHeader.Value : 0UL);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "just after fast blocks and fast sync";
@@ -433,14 +470,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder IfThisNodeJustStartedFullSyncProcessing(FastBlocksState fastBlocksState = FastBlocksState.FinishedBlockAccessLists)
                 {
-                    long currentBlock = ChainHead.Number - FastSyncLag + 1;
+                    ulong currentBlock = ChainHead.Number - FastSyncLag + 1;
                     _syncProgressSetups.Add(
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(currentBlock);
                             SyncProgressResolver.FindBestFullBlock().Returns(currentBlock);
-                            SyncProgressResolver.FindBestFullState().Returns(currentBlock);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns((ulong)currentBlock);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)currentBlock);
                             return "just started full sync";
@@ -451,14 +488,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder IfThisNodeJustFinishedStateSyncButBehindHeader(FastBlocksState fastBlocksState = FastBlocksState.FinishedBlockAccessLists)
                 {
-                    long currentBlock = ChainHead.Number - FastSyncLag;
+                    ulong currentBlock = ChainHead.Number - FastSyncLag;
                     _syncProgressSetups.Add(
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(currentBlock);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0); //no full blocks available
-                            SyncProgressResolver.FindBestFullState().Returns(currentBlock - 4); //pivot is set to header, but then header follows the head of the chain
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL); //no full blocks available
+                            SyncProgressResolver.FindBestFullState().Returns((ulong)(currentBlock - 4)); //pivot is set to header, but then header follows the head of the chain
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)currentBlock);
                             return "just started full sync";
@@ -469,13 +506,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder IfThisNodeRecentlyStartedFullSyncProcessing(FastBlocksState fastBlocksState = FastBlocksState.FinishedBlockAccessLists)
                 {
-                    long currentBlock = ChainHead.Number - FastSyncLag / 2;
+                    ulong currentBlock = ChainHead.Number - FastSyncLag / 2;
                     _syncProgressSetups.Add(
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(currentBlock);
+                            SyncProgressResolver.FindBestFullState().Returns((ulong)currentBlock);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(currentBlock);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)currentBlock);
@@ -497,7 +534,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - FastSyncLag + 1);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - (ulong)FastSyncLag + 1UL);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - FastSyncLag);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)ChainHead.Number - FastSyncLag);
@@ -511,13 +548,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     // this is a scenario when we actually have state but the lookup depth is limiting
                     // our ability to find out at what level the state is
-                    long currentBlock = ChainHead.Number - LargeDistanceBehindHead;
+                    ulong currentBlock = ChainHead.Number - LargeDistanceBehindHead;
                     _syncProgressSetups.Add(
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0UL);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(currentBlock);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)currentBlock);
@@ -535,7 +572,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
 
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 1);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 1UL);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)ChainHead.Number);
@@ -551,7 +588,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     _syncProgressSetups.Add(
                         () =>
                         {
-                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - 1000);
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - 1000UL);
                             return "header is far from the HEAD";
                         }
                     );
@@ -624,21 +661,34 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder AndAPeerExactlyAtThePivotIsKnown()
+                {
+                    AddPeeringSetup("peer at pivot", AddPeer(Pivot));
+                    return this;
+                }
+
+                public ScenarioBuilder WhenStaticSnapPivotIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.SnapSync = true;
+                        SyncConfig.StaticSnapPivot = true;
+                        return "static snap pivot";
+                    });
+
+                    return this;
+                }
+
                 public ScenarioBuilder WhenSynchronizationIsDisabled()
                 {
                     _overwrites.Add(() => SyncConfig.SynchronizationEnabled = false);
                     return this;
                 }
 
-                public ScenarioBuilder WhenThisNodeIsLoadingBlocksFromDb()
-                {
-                    _overwrites.Add(() => SyncProgressResolver.IsLoadingBlocksFromDb().Returns(true));
-                    return this;
-                }
-
                 public ScenarioBuilder WhenStateAndBestHeaderCanBeBeDifferent(int maxBlockDiff)
                 {
-                    _overwrites.Add(() => SyncConfig.HeaderStateDistance = maxBlockDiff);
+                    _overwrites.Add(() => SyncConfig.HeaderStateDistance = (ulong)maxBlockDiff);
                     return this;
                 }
 
@@ -780,7 +830,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance);
                         selector.StopAsync().Wait();
                         selector.Update();
-                        selector.Current.Should().Be(syncMode);
+                        Assert.That(selector.Current, Is.EqualTo(syncMode));
                     }
 
                     SetDefaults();
@@ -809,20 +859,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder WhenMergeSyncPivotNotResolvedYet()
-                {
-                    _syncProgressSetups.Add(
-                        () =>
-                        {
-                            SyncConfig.MaxAttemptsToUpdatePivot = 3;
-                            BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-                            BeaconSyncStrategy.MergeTransitionFinished.Returns(true);
-                            return "merge sync pivot not resolved yet";
-                        }
-                    );
-
-                    return this;
-                }
             }
 
             public static ScenarioBuilder GoesLikeThis(bool needToWaitForHeaders) =>

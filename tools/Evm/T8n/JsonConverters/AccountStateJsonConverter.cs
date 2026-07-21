@@ -13,12 +13,17 @@ namespace Evm.T8n.JsonConverters;
 // required to serialize in geth t8n format
 public class AccountStateJsonConverter : JsonConverter<AccountState>
 {
-    private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
-
-    public override AccountState? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    private static readonly JsonSerializerOptions ReadOptions = new()
     {
-        return _ethereumJsonSerializer.Deserialize<AccountState>(ref reader);
-    }
+        PropertyNameCaseInsensitive = true,
+        Converters =
+        {
+            new UInt256Converter(),
+            new ByteArrayConverter(),
+        }
+    };
+
+    public override AccountState? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => JsonSerializer.Deserialize<AccountState>(ref reader, ReadOptions);
 
     public override void Write(Utf8JsonWriter writer, AccountState value, JsonSerializerOptions options)
     {
@@ -46,7 +51,7 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
             ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
             if (value.Storage.Count > 0)
             {
-                var storage = value.Storage.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToUInt256());
+                Dictionary<UInt256, UInt256> storage = value.Storage.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToUInt256());
                 writer.WritePropertyName("storage"u8);
                 JsonSerializer.Serialize(writer, storage, options);
             }

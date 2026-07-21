@@ -26,14 +26,14 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
-namespace Nethermind.Xdc.Test.P2P;
+namespace Nethermind.Xdc.Test;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcProtocolHandlerTests
 {
     private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll()
+        CreateAll(bool syncing = false)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
@@ -50,7 +50,8 @@ public class XdcProtocolHandlerTests
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
         Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
         blockTree.Head.Returns(headBlock);
-        blockTree.FindBestSuggestedHeader().Returns(headHeader);
+        BlockHeader bestSuggested = syncing ? Build.A.BlockHeader.WithNumber(1000).TestObject : headHeader;
+        blockTree.FindBestSuggestedHeader().Returns(bestSuggested);
 
         XdcProtocolHandler handler = new(
             timeoutManager,
@@ -295,6 +296,27 @@ public class XdcProtocolHandlerTests
             handler.SendSyncInfo(syncInfo);
 
             session.Received(2).DeliverMessage(Arg.Any<SyncInfoMsg>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_XdcMessageWhileSyncing_IsIgnoredWithoutDisconnect()
+    {
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
+            = CreateAll(syncing: true);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            handler.HandleMessage(CreatePacket(XdcMessageCode.VoteMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.TimeoutMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.SyncInfoMsg));
+
+            votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
+            timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
+            syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());
+            session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
         }
     }
 

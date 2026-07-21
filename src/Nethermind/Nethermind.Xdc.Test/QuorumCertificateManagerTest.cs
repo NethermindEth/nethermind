@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -16,6 +17,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Xdc.Test;
 
@@ -59,31 +61,45 @@ public class QuorumCertificateManagerTest
         int quorumCount = (int)Math.Ceiling(keys.Length * 0.667);
 
         //Base valid control case
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true)
+            .SetName("BaseValidControlCase");
 
         //Not enough signatures
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, [.. keys.Take(quorumCount - 1)]), headerBuilder, keys.Select(k => k.Address), false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, [.. keys.Take(quorumCount - 1)]), headerBuilder, keys.Select(k => k.Address), false)
+            .SetName("NotEnoughSignatures");
 
         //1 Vote is not master node
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false)
+            .SetName("VoteIsNotMasterNode");
 
         //Wrong gap number
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 1, keys), headerBuilder, masterNodes, false)
+            .SetName("WrongGapNumber");
 
         //Wrong block number in QC
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 2), 0, keys), headerBuilder, masterNodes, false)
+            .SetName("WrongBlockNumber");
 
         //Wrong hash in QC
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), 0, keys), headerBuilder, masterNodes, false)
+            .SetName("WrongHash");
 
         //Wrong round number in QC
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false)
+            .SetName("WrongRoundNumber");
 
         //N byte-distinct signatures but only N-1 unique signer addresses (keys[0] signs twice via ECDSA malleability)
         BlockRoundInfo roundInfo = new(headerBuilder.TestObject.Hash!, 1, 1);
         Signature[] sigs = XdcTestHelper.CreateVoteSignatures(roundInfo, 0, [.. keys.Take(quorumCount - 1)]);
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
-        yield return new TestCaseData(new QuorumCertificate(roundInfo, [.. sigs, malleable], 0), headerBuilder, masterNodes, false);
+        yield return new TestCaseData(new QuorumCertificate(roundInfo, [.. sigs, malleable], 0), headerBuilder, masterNodes, false)
+            .SetName("MalleableDuplicateSigner");
+
+        Signature[] highOnlySigs = XdcTestHelper.CreateVoteSignatures(roundInfo, 0, [.. keys.Take(quorumCount)])
+            .Select(XdcTestHelper.CreateMalleableSignature)
+            .ToArray();
+        yield return new TestCaseData(new QuorumCertificate(roundInfo, highOnlySigs, 0), headerBuilder, masterNodes, false)
+            .SetName("MalleableHighSOnly");
     }
 
     [TestCaseSource(nameof(QcCases))]
@@ -98,8 +114,8 @@ public class QuorumCertificateManagerTest
             .Returns(new EpochSwitchInfo(masternodes.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 1, 10)));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.EpochLength.Returns(900);
-        xdcReleaseSpec.Gap.Returns(450);
+        xdcReleaseSpec.EpochLength.Returns(900UL);
+        xdcReleaseSpec.Gap.Returns(450UL);
         xdcReleaseSpec.CertificateThreshold.Returns(0.667);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         QuorumCertificateManager quorumCertificateManager = new(
@@ -118,8 +134,8 @@ public class QuorumCertificateManagerTest
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.SwitchBlock.Returns(900L);
-        xdcReleaseSpec.Gap.Returns(450);
+        xdcReleaseSpec.SwitchBlock.Returns(900UL);
+        xdcReleaseSpec.Gap.Returns(450UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         XdcConsensusContext context = new();
         QuorumCertificateManager quorumCertificateManager = new(
@@ -304,6 +320,59 @@ public class QuorumCertificateManagerTest
         quorumCertificateManager.CommitCertificate(qc);
 
         Assert.That(context.HighestCommitBlock.Hash, Is.EqualTo(grandParentHeader.Hash));
+    }
+
+    [Test]
+    public void OnUpdateMainChain_GenesisBlock_CallsInitialize()
+    {
+        XdcConsensusContext context = new();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.SwitchBlock.Returns(900UL);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        _ = new QuorumCertificateManager(
+            context,
+            blockTree,
+            specProvider,
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
+
+        XdcBlockHeader genesisHeader = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
+
+        blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([genesisHeader], true));
+
+        Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
+        Assert.That(context.CurrentRound, Is.EqualTo(1UL));
+    }
+
+    [Test]
+    public void OnUpdateMainChain_NonGenesisBlockWithValidQc_UpdatesHighestQc()
+    {
+        XdcConsensusContext context = new();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.SwitchBlock.Returns(100UL);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        blockTree.FindHeader(Arg.Any<Hash256>()).Returns(Build.A.XdcBlockHeader().WithNumber(1).TestObject);
+        context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 0)).TestObject;
+
+        _ = new QuorumCertificateManager(
+            context,
+            blockTree,
+            specProvider,
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
+
+        XdcBlockHeader blockHeader = Build.A.XdcBlockHeader().WithNumber(5).WithGeneratedExtraConsensusData().TestObject;
+        QuorumCertificate qc = blockHeader.ExtraConsensusData!.QuorumCert!;
+
+        blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([blockHeader], true));
+
+        Assert.That(context.HighestQC, Is.SameAs(qc));
     }
 
     [Test]

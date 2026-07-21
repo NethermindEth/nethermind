@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Threading;
@@ -30,16 +29,16 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
     private readonly Channel<ProcessRequest> _processChannel;
 
-    private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
+    private sealed record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
     {
-        private bool _disposed = false;
+        private bool _disposed;
+
         public ValueTask DisposeAsync()
         {
-            if (Interlocked.CompareExchange(ref _disposed, true, false)) return ValueTask.CompletedTask;
-            BufferOwner.Dispose();
+            if (!Interlocked.CompareExchange(ref _disposed, true, false)) BufferOwner.Dispose();
             return ValueTask.CompletedTask;
         }
-    };
+    }
 
     private readonly int _workerTaskCount = 1;
 
@@ -74,10 +73,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    private static readonly byte[] _jsonOpeningBracket = [Convert.ToByte('[')];
-    private static readonly byte[] _jsonComma = [Convert.ToByte(',')];
-    private static readonly byte[] _jsonClosingBracket = [Convert.ToByte(']')];
-
     public override async Task ProcessAsync(ArraySegment<byte> data, CancellationToken cancellationToken)
     {
         IncrementBytesReceivedMetric(data.Count);
@@ -108,7 +103,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
         for (int i = 0; i < _workerTaskCount; i++)
         {
-            allTasks.Add(Task.Run(async () => await WorkerLoop(cts.Token)));
+            allTasks.Add(Task.Run(() => WorkerLoop(cts.Token)));
         }
 
         await cts.WhenAllSucceed(allTasks);
@@ -126,57 +121,33 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
-        long allResponsesSize = 0;
+        using SocketJsonRpcResponseSink<TStream> sink = new(
+            _stream,
+            _jsonRpcLocalStats,
+            _maxBatchResponseBodySize,
+            _sendSemaphore,
+            _jsonRpcContext);
 
-        await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext).WithCancellation(cancellationToken))
-        {
-            using (result)
-            {
-                int singleResponseSize = await SendJsonRpcResult(result, cancellationToken);
-                allResponsesSize += singleResponseSize;
+        await _jsonRpcProcessor.ProcessAsync(
+            request,
+            _jsonRpcContext,
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments),
+            cancellationToken);
 
-                long startTime = Stopwatch.GetTimestamp();
-
-                if (result.IsCollection)
-                {
-                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
-                    _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
-                }
-                else
-                {
-                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
-                    _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
-                }
-            }
-        }
-
-        IncrementBytesSentMetric(allResponsesSize);
+        IncrementBytesSentMetric(sink.BytesWritten);
     }
 
-    private void IncrementBytesReceivedMetric(long size)
+    private void IncrementBytesReceivedMetric(long size) =>
+        IncrementBytesMetric(size, ref Metrics.JsonRpcBytesReceivedWebSockets, ref Metrics.JsonRpcBytesReceivedIpc);
+
+    private void IncrementBytesSentMetric(long size) =>
+        IncrementBytesMetric(size, ref Metrics.JsonRpcBytesSentWebSockets, ref Metrics.JsonRpcBytesSentIpc);
+
+    private void IncrementBytesMetric(long size, ref long webSocketsMetric, ref long ipcMetric)
     {
-        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
-        {
-            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, size);
-        }
-
-        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
-        {
-            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedIpc, size);
-        }
-    }
-
-    private void IncrementBytesSentMetric(long size)
-    {
-        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
-        {
-            Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, size);
-        }
-
-        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
-        {
-            Interlocked.Add(ref Metrics.JsonRpcBytesSentIpc, size);
-        }
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws) Interlocked.Add(ref webSocketsMetric, size);
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC) Interlocked.Add(ref ipcMetric, size);
     }
 
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)
@@ -184,47 +155,9 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         await _sendSemaphore.WaitAsync(cancellationToken);
         try
         {
-            if (result.IsCollection)
-            {
-                int responseSize = 1;
-                bool isFirst = true;
-                await _stream.WriteAsync(_jsonOpeningBracket, cancellationToken);
-                await using JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(cancellationToken);
-                while (await enumerator.MoveNextAsync())
-                {
-                    JsonRpcResult.Entry entry = enumerator.Current;
-                    using (entry)
-                    {
-                        if (!isFirst)
-                        {
-                            await _stream.WriteAsync(_jsonComma, cancellationToken);
-                            responseSize += 1;
-                        }
-                        isFirst = false;
-                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, cancellationToken, indented: false);
-                        _ = _jsonRpcLocalStats.ReportCall(entry.Report);
-
-                        // We reached the limit and don't want to responded to more request in the batch
-                        if (!_jsonRpcContext.IsAuthenticated && responseSize > _maxBatchResponseBodySize)
-                        {
-                            enumerator.IsStopped = true;
-                        }
-                    }
-                }
-
-                await _stream.WriteAsync(_jsonClosingBracket);
-                responseSize++;
-
-                responseSize += await _stream.WriteEndOfMessageAsync();
-
-                return responseSize;
-            }
-            else
-            {
-                int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, cancellationToken, indented: false);
-                responseSize += await _stream.WriteEndOfMessageAsync();
-                return responseSize;
-            }
+            JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
+            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
+            return (int)responseSize;
         }
         finally
         {

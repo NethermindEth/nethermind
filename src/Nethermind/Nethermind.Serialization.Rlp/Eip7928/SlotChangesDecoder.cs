@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -10,19 +11,19 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncoder<SlotChanges>
+public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
 {
     public static readonly SlotChangesDecoder Instance = new();
 
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
-    public SlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlySlotChanges DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
         UInt256 slot = ctx.DecodeUInt256();
-        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _txLimit);
+        StorageChange[] changes = StorageChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
 
         // EIP-7928: a slot in storage_changes must have at least one change.
         // A slot with zero changes belongs in storage_reads instead.
@@ -32,7 +33,6 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         }
 
         uint? lastIndex = null;
-        IndexedChanges<StorageChange> changesList = new(changes.Length);
         foreach (StorageChange s in changes)
         {
             uint index = s.Index;
@@ -41,9 +41,8 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
                 ThrowStorageChangesOutOfOrder(index, lastIndex.Value);
             }
             lastIndex = index;
-            changesList.Add(s);
         }
-        SlotChanges slotChanges = new(slot, changesList);
+        ReadOnlySlotChanges slotChanges = new(slot, changes);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -53,53 +52,50 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         return slotChanges;
     }
 
-    public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int GetLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.Key);
-        EncodeStorageChanges(stream, item.Changes, rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.Encode(item.Key);
+        EncodeStorageChanges(ref writer, item.Changes, rlpBehaviors);
     }
 
-    public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
+    public void Encode<TWriter>(ref TWriter writer, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int storageChangesLength = StorageChangesContentLength(item.Changes, rlpBehaviors);
-        return Rlp.LengthOfSequence(storageChangesLength) + Rlp.LengthOf(item.Key);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.Encode(item.Key);
+        EncodeStorageChanges(ref writer, item.Changes, rlpBehaviors);
     }
 
-    private static void EncodeStorageChanges(RlpStream stream, IndexedChanges<StorageChange> changes, RlpBehaviors rlpBehaviors)
-    {
-        int contentLength = StorageChangesContentLength(changes, rlpBehaviors);
-        stream.StartSequence(contentLength);
-        if (changes.HasPrestate)
-        {
-            StorageChangeDecoder.Instance.Encode(stream, changes.Prestate, rlpBehaviors);
-        }
+    public static int GetContentLength(ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOf(item.Key) + StorageChangesSequenceLength(item.Changes, rlpBehaviors);
 
-        ReadOnlySpan<StorageChange> blockAccessChanges = changes.BlockAccessChanges;
-        for (int i = 0; i < blockAccessChanges.Length; i++)
+    public static int GetContentLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOf(item.Key) + StorageChangesSequenceLength(item.Changes, rlpBehaviors);
+
+    private static int StorageChangesSequenceLength(IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    {
+        int len = 0;
+        foreach (StorageChange c in changes)
         {
-            StorageChangeDecoder.Instance.Encode(stream, blockAccessChanges[i], rlpBehaviors);
+            len += StorageChangeDecoder.Instance.GetLength(c, rlpBehaviors);
         }
+        return Rlp.LengthOfSequence(len);
     }
 
-    private static int StorageChangesContentLength(IndexedChanges<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    private static void EncodeStorageChanges<TWriter>(ref TWriter writer, IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int length = 0;
-        if (changes.HasPrestate)
-        {
-            length += StorageChangeDecoder.Instance.GetLength(changes.Prestate, rlpBehaviors);
-        }
-
-        ReadOnlySpan<StorageChange> blockAccessChanges = changes.BlockAccessChanges;
-        for (int i = 0; i < blockAccessChanges.Length; i++)
-        {
-            length += StorageChangeDecoder.Instance.GetLength(blockAccessChanges[i], rlpBehaviors);
-        }
-
-        return length;
+        int len = 0;
+        foreach (StorageChange c in changes) len += StorageChangeDecoder.Instance.GetLength(c, rlpBehaviors);
+        writer.StartSequence(len);
+        foreach (StorageChange c in changes) StorageChangeDecoder.Instance.Encode(ref writer, c, rlpBehaviors);
     }
 
     [DoesNotReturn, StackTraceHidden]

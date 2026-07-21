@@ -24,7 +24,7 @@ namespace Ethereum.Test.Base
 
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testsDirectory, testName, SearchOption.AllDirectories);
 
-            List<EthereumTest> generalStateTests = new();
+            List<EthereumTest> generalStateTests = [];
 
             //load all tests from found test files in ethereum tests submodule
             foreach (string testFile in testFiles)

@@ -3,10 +3,10 @@
 
 using System;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto;
@@ -49,7 +49,7 @@ public class SignatureTests
         string fromConverter = JsonSerializer.Serialize(signature, options);
         string fromToString = $"\"{signature}\"";
 
-        fromConverter.Should().Be(fromToString, "the converter must produce the same wire format as Signature.ToString()");
+        Assert.That(fromConverter, Is.EqualTo(fromToString), "the converter must produce the same wire format as Signature.ToString()");
     }
 
     [Test]
@@ -68,6 +68,51 @@ public class SignatureTests
         Hash256 keccak = Keccak.Compute(Bytes.Concat(messageType, data));
         Span<byte> publicKey = stackalloc byte[65];
         bool result = SecP256k1.RecoverKeyFromCompact(publicKey, keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
+    }
+
+    [Test]
+    public void HasLowS_AcceptsCanonicalSignature()
+    {
+        PrivateKey key = new PrivateKeyGenerator().Generate();
+        Signature signature = new EthereumEcdsa(0).Sign(key, Hash256.Zero);
+        Assert.That(signature.HasLowS(), Is.True);
+    }
+
+    [Test]
+    public void HasLowS_RejectsMalleableCounterpart()
+    {
+        PrivateKey key = new PrivateKeyGenerator().Generate();
+        Signature signature = new EthereumEcdsa(0).Sign(key, Hash256.Zero);
+        Signature flipped = FlipSignature(signature);
+        Assert.That(signature, Is.Not.EqualTo(flipped));
+        Assert.That(signature.HasLowS(), Is.True);
+        Assert.That(flipped.HasLowS(), Is.False);
+    }
+
+    [Test]
+    public void HasLowS_BoundaryAtHalfN()
+    {
+        Signature atHalf = new(in UInt256.Zero, SecP256k1Curve.HalfN, Signature.VOffset);
+        Assert.That(atHalf.HasLowS(), Is.True);
+
+        Signature overHalf = new(in UInt256.Zero, SecP256k1Curve.HalfNPlusOne, Signature.VOffset);
+        Assert.That(overHalf.HasLowS(), Is.False);
+
+        Signature minS = new(in UInt256.Zero, UInt256.One, Signature.VOffset);
+        Assert.That(minS.HasLowS(), Is.True);
+    }
+
+    private static Signature FlipSignature(Signature original)
+    {
+        ReadOnlySpan<byte> bytes = original.Bytes;
+        UInt256 s = new(bytes[32..], true);
+        UInt256 sNew = SecP256k1Curve.N - s;
+
+        byte[] result = new byte[65];
+        bytes[..32].CopyTo(result);
+        sNew.ToBigEndian(result.AsSpan(32, 32));
+        result[64] = original.V == Signature.VOffset ? (byte)28 : (byte)27;
+        return new Signature(result);
     }
 }

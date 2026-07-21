@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -14,10 +15,11 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Repositories;
 
@@ -37,7 +39,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
+        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb, (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>());
         SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
 
         IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
@@ -54,6 +56,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
+            .AddSingleton<IUnresolvedBlockhashPolicy, NullUnresolvedBlockhashPolicy>()
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
@@ -77,11 +80,12 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         SimulateDictionaryHeaderStore tmpHeaderStore,
         IBlockAccessListStore tmpBalStore)
     {
-        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb);
+        IHeaderDecoder headerDecoder = (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>();
+        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb, headerDecoder);
         const int badBlocksStored = 1;
 
         SimulateDictionaryBlockStore tmpBlockStore = new(mainBlockStore);
-        IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
+        IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored, headerDecoder);
 
         return new(tmpBlockStore,
             tmpHeaderStore,
@@ -91,8 +95,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             tmpBalStore,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
-            NullBloomStorage.Instance,
             new SyncConfig(),
+            NullStateBoundary.Instance,
             new BlockTreeLogHider(logManager));
     }
 

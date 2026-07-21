@@ -5,6 +5,7 @@
   <PropertyGroup>
     <RootNamespace>Nethermind.State.Flat.Test</RootNamespace>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,5 +13,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.State.Flat\Nethermind.State.Flat.csproj" />
   </ItemGroup>
 </Project>

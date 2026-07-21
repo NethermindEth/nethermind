@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -149,7 +148,7 @@ namespace Nethermind.Evm.Test
             return _logManager;
         }
 
-        [TestCase(0)]
+        [TestCase(0UL)]
         [TestCase(MainnetSpecProvider.HomesteadBlockNumber)]
         [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber)]
         [TestCase(MainnetSpecProvider.TangerineWhistleBlockNumber)]
@@ -164,7 +163,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 4, MainnetSpecProvider.OsakaBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 7, MainnetSpecProvider.AmsterdamBlockTimestamp)]
-        public void Test(long blockNumber, ulong? timestamp = null)
+        public void Test(ulong blockNumber, ulong? timestamp = null)
         {
             ILogger logger = _logManager.GetClassLogger<InvalidOpcodeTests>();
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
@@ -184,12 +183,12 @@ namespace Nethermind.Evm.Test
 
                 if (isValidOpcode)
                 {
-                    result.Error.Should().NotBe(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
+                    Assert.That(result.Error, Is.Not.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
                 }
                 else
                 {
-                    result.Error.Should().Be(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
-                    result.StatusCode.Should().Be(0, ((Instruction)i).ToString());
+                    Assert.That(result.Error, Is.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
+                    Assert.That(result.StatusCode, Is.EqualTo(0), ((Instruction)i).ToString());
                 }
             }
         }

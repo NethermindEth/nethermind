@@ -26,7 +26,7 @@ public class AuRaGasLimitOverrideFactory(
 {
     public AuRaContractGasLimitOverride? GetGasLimitCalculator()
     {
-        IDictionary<long, Address> blockGasLimitContractTransitions = parameters.BlockGasLimitContractTransitions;
+        IDictionary<ulong, Address> blockGasLimitContractTransitions = parameters.BlockGasLimitContractTransitions;
 
         if (blockGasLimitContractTransitions?.Any() == true)
         {

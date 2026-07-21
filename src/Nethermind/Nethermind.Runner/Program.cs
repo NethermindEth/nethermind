@@ -24,8 +24,8 @@ using Nethermind.Db.Rocks;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Logging.Microsoft;
 using Nethermind.Logging.NLog;
-using Nethermind.Network.Discovery;
 using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
@@ -42,6 +42,9 @@ using Testably.Abstractions;
 #if !DEBUG
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 #endif
+
+if (!BitConverter.IsLittleEndian)
+    throw new PlatformNotSupportedException("Nethermind requires a little-endian platform.");
 
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
@@ -182,6 +185,8 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     {
         PurgeDatabaseDirectory(initConfig.BaseDbPath, preserveNetwork: true);
     }
+
+    DatabasePurger.DeleteOrphan(initConfig.BaseDbPath, "bloom", logger);
 
     logger.Info("Configuration complete");
 
@@ -354,6 +359,17 @@ void ConfigureLogger(ParseResult parseResult)
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
         NLogConfigurator.ConfigureLogLevels(logLevel);
+
+    string loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat)!;
+
+    try
+    {
+        NLogConfigurator.ConfigureConsoleFormat(loggingFormat);
+    }
+    catch (ArgumentException ex)
+    {
+        logger.Error(ex.Message);
+    }
 }
 
 void ConfigureSeqLogger(IConfigProvider configProvider)
@@ -466,6 +482,7 @@ RootCommand CreateRootCommand()
         BasicOptions.ForceResync,
         BasicOptions.LoggerConfigurationSource,
         BasicOptions.LogLevel,
+        BasicOptions.LoggingFormat,
         BasicOptions.PluginsDirectory,
         BasicOptions.PurgeDb
     ];
@@ -587,19 +604,6 @@ static class BasicOptions
         HelpName = "path"
     };
 
-    public static Option<string> LoggerConfigurationSource { get; } =
-        new("--logger-config", "--loggerConfigSource", "-lcs")
-        {
-            Description = "The path to the logging configuration file.",
-            HelpName = "path"
-        };
-
-    public static Option<string> LogLevel { get; } = new("--log", "-l")
-    {
-        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
-        HelpName = "level"
-    };
-
     public static Option<bool> ForceResync { get; } = CreateForceResyncOption();
 
     private static Option<bool> CreateForceResyncOption()
@@ -618,6 +622,26 @@ static class BasicOptions
 
         return option;
     }
+
+    public static Option<string> LoggerConfigurationSource { get; } =
+        new("--logger-config", "--loggerConfigSource", "-lcs")
+        {
+            Description = "The path to the logging configuration file.",
+            HelpName = "path"
+        };
+
+    public static Option<string> LoggingFormat { get; } = new("--logging-format")
+    {
+        Description = "Console log output format. Allowed values: plain, ecs, gcp, logstash, gelf.",
+        HelpName = "format",
+        DefaultValueFactory = _ => "plain"
+    };
+
+    public static Option<string> LogLevel { get; } = new("--log", "-l")
+    {
+        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
+        HelpName = "level"
+    };
 
     public static Option<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")

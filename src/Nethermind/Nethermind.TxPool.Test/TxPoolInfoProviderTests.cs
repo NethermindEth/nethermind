@@ -3,10 +3,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -45,19 +43,19 @@ public class TxPoolInfoProviderTests
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, transactions } });
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending.Count.Should().Be(1);
-        info.Queued.Count.Should().Be(1);
+        Assert.That(info.Pending.Count, Is.EqualTo(1));
+        Assert.That(info.Queued.Count, Is.EqualTo(1));
 
         KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> pending = info.Pending.First();
-        pending.Key.Value.Should().Be(_address);
-        pending.Value.Count.Should().Be(3);
+        Assert.That(pending.Key.Value, Is.EqualTo(_address));
+        Assert.That(pending.Value.Count, Is.EqualTo(3));
         VerifyNonceAndTransactions(pending.Value, 3);
         VerifyNonceAndTransactions(pending.Value, 4);
         VerifyNonceAndTransactions(pending.Value, 5);
 
         KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> queued = info.Queued.First();
-        queued.Key.Value.Should().Be(_address);
-        queued.Value.Count.Should().Be(4);
+        Assert.That(queued.Key.Value, Is.EqualTo(_address));
+        Assert.That(queued.Value.Count, Is.EqualTo(4));
         VerifyNonceAndTransactions(queued.Value, 1);
         VerifyNonceAndTransactions(queued.Value, 2);
         VerifyNonceAndTransactions(queued.Value, 8);
@@ -67,7 +65,7 @@ public class TxPoolInfoProviderTests
     [Test]
     public void GetInfo_WhenSenderHasStandardAndBlobTransactions_OmitsBlobs()
     {
-        _stateReader.GetNonce(_address).Returns((UInt256)0);
+        _stateReader.GetNonce(_address).Returns(0UL);
         Transaction[] standard = BuildTransactions([0, 2]);
         Transaction[] blobs = BuildTransactions([1, 3]);
         _txPool.GetPendingTransactionsBySender()
@@ -79,8 +77,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending[_address].Keys.Should().BeEquivalentTo(new ulong[] { 0 });
-        info.Queued[_address].Keys.Should().BeEquivalentTo(new ulong[] { 2 });
+        Assert.That(info.Pending[_address].Keys, Is.EqualTo(new ulong[] { 0 }));
+        Assert.That(info.Queued[_address].Keys, Is.EqualTo(new ulong[] { 2 }));
     }
 
     [Test]
@@ -91,15 +89,15 @@ public class TxPoolInfoProviderTests
         // NotContainKey assertions. Today the blob mock is unconsulted (matches geth's
         // BlobPool.Content() empty-stub behaviour), so the address is absent because the
         // standard-pool dictionary has no entry for it.
-        _stateReader.GetNonce(_address).Returns((UInt256)0);
+        _stateReader.GetNonce(_address).Returns(0UL);
         Transaction[] blobs = BuildTransactions([0, 1]);
         _txPool.GetPendingLightBlobTransactionsBySender()
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, blobs } });
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending.Should().NotContainKey(_address);
-        info.Queued.Should().NotContainKey(_address);
+        Assert.That(info.Pending.ContainsKey(_address), Is.False);
+        Assert.That(info.Queued.ContainsKey(_address), Is.False);
     }
 
     // Inputs are always nonce-sorted: TxDistinctSortedPool's group comparer puts
@@ -126,15 +124,13 @@ public class TxPoolInfoProviderTests
     [TestCaseSource(nameof(SenderInfoCases))]
     public void GetSenderInfo_WhenSenderHasTransactions_SplitsByNonceAgainstAccount(SenderScenario scenario)
     {
-        _stateReader.GetNonce(_address).Returns((UInt256)scenario.AccountNonce);
+        _stateReader.GetNonce(_address).Returns(scenario.AccountNonce);
         _txPool.GetPendingTransactionsBySender(_address).Returns(BuildTransactions(scenario.TxNonces));
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Pending.Keys.Should().BeEquivalentTo(scenario.ExpectedPending,
-            "pending nonces are those continuous with the account nonce");
-        senderInfo.Queued.Keys.Should().BeEquivalentTo(scenario.ExpectedQueued,
-            "queued nonces are those beyond a gap from the account nonce");
+        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(scenario.ExpectedPending), "pending nonces are those continuous with the account nonce");
+        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(scenario.ExpectedQueued), "queued nonces are those beyond a gap from the account nonce");
     }
 
     [Test]
@@ -142,14 +138,13 @@ public class TxPoolInfoProviderTests
     {
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Should().BeSameAs(TxPoolSenderInfo.Empty,
-            "the empty singleton avoids allocating two empty dictionaries on the miss path");
+        Assert.That(senderInfo, Is.SameAs(TxPoolSenderInfo.Empty), "the empty singleton avoids allocating two empty dictionaries on the miss path");
     }
 
     [Test]
     public void GetSenderInfo_WhenSenderHasStandardAndBlobTransactions_OmitsBlobs()
     {
-        _stateReader.GetNonce(_address).Returns((UInt256)0);
+        _stateReader.GetNonce(_address).Returns(0UL);
         _txPool.GetPendingTransactionsBySender(_address).Returns(BuildTransactions([0, 2]));
         // Blob bucket is populated to make the exclusion semantics explicit; GetSenderInfo
         // does not consult the blob pool, so these nonces must not appear in the output.
@@ -157,8 +152,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Pending.Keys.Should().BeEquivalentTo(new ulong[] { 0 });
-        senderInfo.Queued.Keys.Should().BeEquivalentTo(new ulong[] { 2 });
+        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(new ulong[] { 0 }));
+        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(new ulong[] { 2 }));
     }
 
     [Test]
@@ -168,12 +163,12 @@ public class TxPoolInfoProviderTests
         // mock here becomes live and the result stops being TxPoolSenderInfo.Empty, failing
         // the assertion. Today the blob mock is unconsulted (matches geth's BlobPool.Content()
         // empty-stub behaviour), so the empty result comes from the standard pool being empty.
-        _stateReader.GetNonce(_address).Returns((UInt256)0);
+        _stateReader.GetNonce(_address).Returns(0UL);
         _txPool.GetPendingLightBlobTransactionsBySender(_address).Returns(BuildTransactions([0, 1]));
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Should().BeSameAs(TxPoolSenderInfo.Empty);
+        Assert.That(senderInfo, Is.SameAs(TxPoolSenderInfo.Empty));
     }
 
     [Test]
@@ -206,20 +201,20 @@ public class TxPoolInfoProviderTests
     [TestCaseSource(nameof(CountCases))]
     public void GetCounts_WhenPoolHasOneSender_ReturnsPendingAndQueuedTotals(SenderScenario scenario)
     {
-        _stateReader.GetNonce(_address).Returns((UInt256)scenario.AccountNonce);
+        _stateReader.GetNonce(_address).Returns(scenario.AccountNonce);
         _txPool.GetPendingTransactionsBySender()
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, BuildTransactions(scenario.TxNonces) } });
 
         TxPoolCounts counts = _infoProvider.GetCounts();
 
-        counts.Pending.Should().Be(scenario.ExpectedPending.Length, "pending count must match the split");
-        counts.Queued.Should().Be(scenario.ExpectedQueued.Length, "queued count must match the split");
+        Assert.That(counts.Pending, Is.EqualTo(scenario.ExpectedPending.Length), "pending count must match the split");
+        Assert.That(counts.Queued, Is.EqualTo(scenario.ExpectedQueued.Length), "queued count must match the split");
     }
 
     [Test]
     public void GetCounts_WhenSenderHasStandardAndBlob_CountsAcrossBothPools()
     {
-        _stateReader.GetNonce(_address).Returns((UInt256)0);
+        _stateReader.GetNonce(_address).Returns(0UL);
         _txPool.GetPendingTransactionsBySender()
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, BuildTransactions([0, 2]) } });
         _txPool.GetPendingLightBlobTransactionsBySender()
@@ -227,12 +222,12 @@ public class TxPoolInfoProviderTests
 
         TxPoolCounts counts = _infoProvider.GetCounts();
 
-        counts.Pending.Should().Be(3, "nonces 0, 1, 2 form a continuous run from account nonce 0");
-        counts.Queued.Should().Be(1, "nonce 5 is queued behind the gap");
+        Assert.That(counts.Pending, Is.EqualTo(3), "nonces 0, 1, 2 form a continuous run from account nonce 0");
+        Assert.That(counts.Queued, Is.EqualTo(1), "nonce 5 is queued behind the gap");
     }
 
     private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce) =>
-        transactionNonce[nonce].Nonce.Should().Be(nonce);
+        Assert.That(transactionNonce[nonce].Nonce, Is.EqualTo(nonce));
 
     private Transaction[] GetTransactions() =>
         BuildTransactions([1, 2, 3, 4, 5, 8, 9]);

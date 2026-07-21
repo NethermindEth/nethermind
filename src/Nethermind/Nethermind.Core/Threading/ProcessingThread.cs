@@ -1,21 +1,22 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
+using System;
 
 namespace Nethermind.Core.Threading;
 
 /// <summary>
-/// Identifies the current async flow as the main block processing path.
+/// Identifies the current thread as the main block processing path.
 /// Set by BlockchainProcessor before processing blocks.
 /// </summary>
 public static class ProcessingThread
 {
-    private static readonly AsyncLocal<bool> _isBlockProcessingThread = new();
+    [ThreadStatic]
+    private static bool _isBlockProcessingThread;
 
     public static bool IsBlockProcessingThread
     {
-        get => _isBlockProcessingThread.Value;
-        set => _isBlockProcessingThread.Value = value;
+        get => _isBlockProcessingThread;
+        set => _isBlockProcessingThread = value;
     }
 }

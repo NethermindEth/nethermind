@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
@@ -29,7 +28,7 @@ using System;
 using System.Collections.Generic;
 using static Nethermind.Consensus.Processing.AutoReadOnlyTxProcessingEnvFactory;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.Contracts;
 
 internal class MasternodeVotingContractTests
 {
@@ -79,12 +78,12 @@ internal class MasternodeVotingContractTests
         MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory);
 
         Address[] candidates = masterVoting.GetCandidates(genesis);
-        candidates.Length.Should().Be(3);
+        Assert.That(candidates.Length, Is.EqualTo(3));
 
         foreach (Address candidate in candidates)
         {
             UInt256 stake = masterVoting.GetCandidateStake(genesis, candidate);
-            stake.Should().Be(10_000_000.Ether);
+            Assert.That(stake, Is.EqualTo(10_000_000.Ether));
         }
     }
 

@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             NetworkDiagTracer.IsEnabled = true;
 
-            _disposables = new();
+            _disposables = [];
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
@@ -111,14 +111,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Metadata_correct()
         {
-            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-            Assert.That(_handler.Name, Is.EqualTo("eth66"));
-            Assert.That(_handler.ProtocolVersion, Is.EqualTo(66));
-            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
-            Assert.That(_handler.IncludeInTxPool, Is.True);
-            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-            Assert.That(_handler.HeadHash, Is.Null);
-            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+                Assert.That(_handler.Name, Is.EqualTo("eth66"));
+                Assert.That(_handler.ProtocolVersion, Is.EqualTo(66));
+                Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+                Assert.That(_handler.IncludeInTxPool, Is.True);
+                Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+                Assert.That(_handler.HeadHash, Is.Null);
+                Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -238,9 +241,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleZeroMessage(firstMessage, Eth66MessageCode.GetPooledTransactions);
             HandleZeroMessage(secondMessage, Eth66MessageCode.GetPooledTransactions);
 
-            Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs.Count, Is.EqualTo(2));
-            Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs[1], Is.SameAs(backgroundTaskScheduler.ScheduledFulfillFuncs[0]));
-            Assert.That(backgroundTaskScheduler.ScheduledRequestsHaveDelegateFields, Is.EqualTo(new[] { false, false }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs.Count, Is.EqualTo(2));
+                Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs[1], Is.SameAs(backgroundTaskScheduler.ScheduledFulfillFuncs[0]));
+                Assert.That(backgroundTaskScheduler.ScheduledRequestsHaveDelegateFields, Is.EqualTo(new[] { false, false }));
+            }
         }
 
         [Test]
@@ -406,8 +412,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
         private sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
-            public List<Delegate> ScheduledFulfillFuncs { get; } = new();
-            public List<bool> ScheduledRequestsHaveDelegateFields { get; } = new();
+            public List<Delegate> ScheduledFulfillFuncs { get; } = [];
+            public List<bool> ScheduledRequestsHaveDelegateFields { get; } = [];
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
             {

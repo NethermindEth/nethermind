@@ -55,8 +55,11 @@ public class JsonConfigProviderTests
         IDiscoveryConfig? networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
         IJsonRpcConfig? jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
 
-        Assert.That(keystoreConfig.KdfparamsDklen, Is.EqualTo(100));
-        Assert.That(keystoreConfig.Cipher, Is.EqualTo("test"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keystoreConfig.KdfparamsDklen, Is.EqualTo(100));
+            Assert.That(keystoreConfig.Cipher, Is.EqualTo("test"));
+        }
 
         Assert.That(jsonRpcConfig.EnabledModules.Length, Is.EqualTo(2));
 
@@ -64,7 +67,13 @@ public class JsonConfigProviderTests
 
         new[] { ModuleType.Eth, ModuleType.Debug }.ForEach(CheckIfEnabled);
 
-        Assert.That(networkConfig.Concurrency, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(networkConfig.Concurrency, Is.EqualTo(4));
+            Assert.That(networkConfig.Bootnodes, Has.Length.EqualTo(2));
+            Assert.That(networkConfig.Bootnodes[0].ToString(), Does.StartWith("enode://"));
+            Assert.That(networkConfig.Bootnodes[1].ToString(), Does.StartWith("enode://"));
+        }
     }
 
     [Test]

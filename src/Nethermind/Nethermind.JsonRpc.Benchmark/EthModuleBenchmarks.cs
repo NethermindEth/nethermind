@@ -6,7 +6,11 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.History;
+using Nethermind.Synchronization;
+using NSubstitute;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -85,8 +89,17 @@ namespace Nethermind.JsonRpc.Benchmark
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
                 new LogIndexConfig(),
+                new ReceiptConfig(),
                 new BlocksConfig().SecondsPerSlot,
-                _headBlockSignal);
+                _headBlockSignal,
+                new EthCapabilitiesProvider(
+                    blockTree.AsReadOnly(),
+                    _container.Resolve<IStateBoundary>(),
+                    _container.Resolve<ISyncConfig>(),
+                    Substitute.For<ISyncPointers>(),
+                    Substitute.For<IHistoryConfig>(),
+                    Substitute.For<IHistoryPruner>()),
+                new BlockForRpcFactory());
         }
 
         [GlobalCleanup]

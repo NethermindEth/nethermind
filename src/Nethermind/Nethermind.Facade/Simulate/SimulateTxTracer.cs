@@ -46,13 +46,13 @@ public sealed class SimulateTxTracer : TxTracer
         IsTracingReceipt = true;
         IsTracingLogs = true;
         IsTracingActions = true;
-        _logs = new();
+        _logs = [];
     }
 
     public int LogCount => _logs.Count;
     public SimulateCallResult? TraceResult { get; set; }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         if (!_isTracingTransfers) return;
@@ -81,8 +81,8 @@ public sealed class SimulateTxTracer : TxTracer
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
-        GasUsed = (ulong)gasSpent.SpentGas,
-        MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
+        GasUsed = gasSpent.SpentGas,
+        MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
         ReturnData = output,
         Status = StatusCode.Success,
         Logs = _logs.Select((entry, i) => new Log
@@ -101,8 +101,8 @@ public sealed class SimulateTxTracer : TxTracer
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
-        GasUsed = (ulong)gasSpent.SpentGas,
-        MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
+        GasUsed = gasSpent.SpentGas,
+        MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
         Error = new Error
         {
             Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,

@@ -1,0 +1,20 @@
+[
+  {
+    "run": "EveryBlock",
+    "test": {
+      "description": "ERC20 transfers"
+    },
+    "request": {
+      "jsonrpc":"2.0",
+      "method":"eth_getLogs",
+      "params":[{
+        "fromBlock":"{{Hex(Recent.Number)}}",
+        "toBlock":"{{Hex(Recent.Number)}}",
+        "topics": [
+          "{{Topic.Transfer}}"
+        ]
+      }],
+      "id": "{{Request.Number}}"
+    }
+  }
+]

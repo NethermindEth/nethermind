@@ -15,7 +15,7 @@ namespace Nethermind.Evm
     /// </summary>
     public class Prepare
     {
-        private readonly List<byte> _byteCode = new();
+        private readonly List<byte> _byteCode = [];
         public static Prepare EvmCode => new();
         public byte[] Done => _byteCode.ToArray();
 

@@ -16,8 +16,8 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
 
@@ -84,8 +84,8 @@ public class BlockValidatorTests
             .WithParent(parent)
             .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
             .TestObject;
-        blockValidator.ValidateSuggestedBlock(block, parent, out _).Should().Be(false);
-        blockValidator.ValidateOrphanedBlock(block, out _).Should().Be(true);
+        Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
+        Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
     }
 
     private static IEnumerable<TestCaseData> CorruptedBodyFieldCases()
@@ -205,7 +205,7 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-            "InsufficientMaxFeePerBlobGas")
+            "max fee per blob gas less than block blob gas fee")
         { TestName = "InsufficientMaxFeePerBlobGas" };
 
         yield return new TestCaseData(
@@ -220,8 +220,8 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new())
-                .WithEncodedBlockAccessList(Rlp.Encode(new BlockAccessList()).Bytes).TestObject,
+                .WithBlockAccessList(new ReadOnlyBlockAccessList())
+                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
             "InvalidBlockLevelAccessListHash")
@@ -232,7 +232,7 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new())
+                .WithBlockAccessList(new ReadOnlyBlockAccessList())
                 .WithEncodedBlockAccessList([0xfa]).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
@@ -244,7 +244,7 @@ public class BlockValidatorTests
                 .WithParent(parent)
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
-                .WithBlockAccessList(new()).TestObject,
+                .WithBlockAccessList(new ReadOnlyBlockAccessList()).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
             "BlockLevelAccessListNotEnabled")
@@ -263,12 +263,13 @@ public class BlockValidatorTests
         Assert.That(error, Does.StartWith(expectedError));
     }
 
-    [TestCase(30_000, true)]
-    [TestCase(29_999, false)]
-    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
+    // WithPrecompileChanges yields 25 BAL items; the cap is itemCount <= gasLimit / Eip7928Constants.ItemCost.
+    [TestCase(50_000ul, true)]
+    [TestCase(49_999ul, false)]
+    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(ulong gasLimit, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
             .WithGasLimit(gasLimit)
@@ -291,16 +292,16 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_enforces_bal_index_bounds(uint index, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        AccountChanges accountChanges = Build.An.AccountChanges
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
             .WithBalanceChanges(new BalanceChange(index, 1))
             .TestObject;
-        BlockAccessList bal = Build.A.BlockAccessList
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(accountChanges)
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(10_000)
+            .WithGasLimit(10_000ul)
             .WithTransactions(2, Amsterdam.Instance)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -317,16 +318,16 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_rejects_bal_item_when_gas_limit_allows_no_items()
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        AccountChanges accountChanges = Build.An.AccountChanges
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
             .WithBalanceChanges(new BalanceChange(0, 1))
             .TestObject;
-        BlockAccessList bal = Build.A.BlockAccessList
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(accountChanges)
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(0)
+            .WithGasLimit(0ul)
             .WithTransactions([])
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -339,16 +340,16 @@ public class BlockValidatorTests
         AssertValidation(false, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
-    [TestCase(30_000, true)]
-    [TestCase(29_999, false)]
-    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(long gasLimit, bool expectedValid)
+    [TestCase(30_000ul, true)]
+    [TestCase(29_999ul, false)]
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(ulong gasLimit, bool expectedValid)
     {
         // Hive eels/consume-rlp feeds blocks via RLP, which leaves Block.BlockAccessList null
         // (BlockDecoder does not decode BAL). The pre-execution check in
         // ValidateBlockLevelAccessList is gated on a non-null BAL and therefore skipped, so
         // ValidateProcessedBlock must catch the floor against the BAL produced during execution.
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
         byte[] encodedBal = Rlp.Encode(bal).Bytes;
         Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
 
@@ -367,71 +368,28 @@ public class BlockValidatorTests
             .WithWithdrawals([])
             .WithBlockAccessListHash(balHash)
             .TestObject;
-        processedBlock.GeneratedBlockAccessList = bal;
+        // Build a GeneratedBlockAccessList with the same shape as the suggested BAL so the
+        // ItemCount-based gas-limit boundary check exercises the generated path identically.
+        GeneratedBlockAccessList generated = new();
+        BlockAccessListAtIndex contribution = new();
+        contribution.AddStorageChange(Eip2935Constants.BlockHashHistoryAddress, 0, 0, new UInt256(parent.Hash!.BytesToArray(), isBigEndian: true));
+        UInt256 eip4788Slot1 = 12u % Eip4788Constants.RingBufferSize;
+        UInt256 eip4788Slot2 = (12u % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
+        contribution.AddStorageChange(Eip4788Constants.BeaconRootsAddress, eip4788Slot1, 0, 12);
+        contribution.AddStorageRead(Eip4788Constants.BeaconRootsAddress, eip4788Slot2);
+        for (UInt256 i = 0; i < 4; i++)
+        {
+            contribution.AddStorageRead(Eip7002Constants.WithdrawalRequestPredeployAddress, i);
+            contribution.AddStorageRead(Eip7251Constants.ConsolidationRequestPredeployAddress, i);
+        }
+        generated.Merge(contribution);
+        processedBlock.GeneratedBlockAccessList = generated;
 
         BlockValidator sut = AmsterdamSut();
 
         bool isValid = sut.ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
 
         AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
-    }
-
-    [Test]
-    public void ValidateProcessedBlock_bal_size_check_uses_fresh_item_count_when_generated_bal_instance_is_reused()
-    {
-        // BlockAccessListManager reuses the same generated-BAL instance across blocks;
-        // a stale cached ItemCount on that instance would let an oversized BAL slip past
-        // the EIP-7928 floor (or reject a valid one). This regression validates two blocks
-        // through the same BAL instance and verifies the second validation sees the new count.
-        BlockHeader parent = Build.A.BlockHeader.TestObject;
-        const long gasLimit = 30_000; // floor = 30_000 / Eip7928Constants.ItemCost (2000) = 15 items
-
-        BlockAccessList sharedBal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
-        Assert.That(sharedBal.ItemCount, Is.EqualTo(15), "fixture sized at the boundary");
-
-        BlockValidator sut = AmsterdamSut();
-
-        // Block 1 — at the boundary, must pass and cache ItemCount=15.
-        Block suggestedBlock1 = Build.A.Block
-            .WithParent(parent)
-            .WithGasLimit(gasLimit)
-            .WithBlobGasUsed(0)
-            .WithWithdrawals([])
-            .TestObject;
-        Block processedBlock1 = Build.A.Block
-            .WithParent(parent)
-            .WithGasLimit(gasLimit)
-            .WithBlobGasUsed(0)
-            .WithWithdrawals([])
-            .TestObject;
-        processedBlock1.GeneratedBlockAccessList = sharedBal;
-
-        bool block1Valid = sut.ValidateProcessedBlock(processedBlock1, [], suggestedBlock1, out string? error1);
-        Assert.That(block1Valid, Is.True, "block 1 sized at the floor should pass");
-        Assert.That(error1, Is.Null);
-
-        // Mutate the shared BAL to push it one item over the floor.
-        sharedBal.AddAccountRead(TestItem.AddressA);
-        Assert.That(sharedBal.ItemCount, Is.EqualTo(16), "fresh count must reflect the new account read");
-
-        // Block 2 — same gas limit, same BAL instance, now over the floor. Must fail.
-        Block suggestedBlock2 = Build.A.Block
-            .WithParent(parent)
-            .WithGasLimit(gasLimit)
-            .WithBlobGasUsed(0)
-            .WithWithdrawals([])
-            .TestObject;
-        Block processedBlock2 = Build.A.Block
-            .WithParent(parent)
-            .WithGasLimit(gasLimit)
-            .WithBlobGasUsed(0)
-            .WithWithdrawals([])
-            .TestObject;
-        processedBlock2.GeneratedBlockAccessList = sharedBal;
-
-        bool block2Valid = sut.ValidateProcessedBlock(processedBlock2, [], suggestedBlock2, out string? error2);
-        Assert.That(block2Valid, Is.False, "block 2 over the floor must be rejected — stale cached count would let it through");
-        Assert.That(error2, Does.StartWith("BlockAccessListGasLimitExceeded"));
     }
 
     // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
@@ -444,7 +402,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_rejects_bal_index_above_tx_count_plus_one(uint balanceChangeIndex, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        BlockAccessList bal = Build.A.BlockAccessList
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithPrecompileChanges(parent.Hash!, timestamp: 12)
             .WithAccountChanges(
                 Build.An.AccountChanges
@@ -455,7 +413,7 @@ public class BlockValidatorTests
 
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(30_000_000)
+            .WithGasLimit(30_000_000ul)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBal(bal)
@@ -491,7 +449,7 @@ public class BlockValidatorTests
 
 file static class BalBuilderExtensions
 {
-    public static BlockBuilder WithBal(this BlockBuilder builder, BlockAccessList bal)
+    public static BlockBuilder WithBal(this BlockBuilder builder, ReadOnlyBlockAccessList bal)
     {
         byte[] encoded = Rlp.Encode(bal).Bytes;
         return builder

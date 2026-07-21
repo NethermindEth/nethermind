@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -22,7 +21,7 @@ namespace Nethermind.Core.Test.Collections
             int snapshot = journalSet.TakeSnapshot();
             journalSet.AddRange(Enumerable.Range(10, 10));
             journalSet.Restore(snapshot);
-            journalSet.Should().BeEquivalentTo(Enumerable.Range(0, 10));
+            Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
         }
 
         [Test]
@@ -32,7 +31,7 @@ namespace Nethermind.Core.Test.Collections
             int snapshot = journalSet.TakeSnapshot();
             journalSet.Restore(snapshot);
             journalSet.Restore(snapshot);
-            journalSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
+            Assert.That(journalSet, Is.EqualTo(Enumerable.Empty<int>()));
         }
 
         [Test]
@@ -43,7 +42,7 @@ namespace Nethermind.Core.Test.Collections
             journalSet.AddRange(Enumerable.Range(0, 10));
             journalSet.Restore(snapshot);
             journalSet.Restore(snapshot);
-            journalSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
+            Assert.That(journalSet, Is.EqualTo(Enumerable.Empty<int>()));
         }
 
         [Test]
@@ -54,7 +53,16 @@ namespace Nethermind.Core.Test.Collections
             int snapshot = journalSet.TakeSnapshot();
             journalSet.AddRange(Enumerable.Range(0, 20));
             journalSet.Restore(snapshot);
-            journalSet.Should().BeEquivalentTo(Enumerable.Range(0, 10));
+            Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
+        }
+
+        [Test]
+        public void Single_returns_the_only_item()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.Add(3);
+
+            Assert.That(journalSet.First, Is.EqualTo(3));
         }
     }
 }

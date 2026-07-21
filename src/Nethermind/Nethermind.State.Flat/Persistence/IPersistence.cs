@@ -40,9 +40,7 @@ public interface IPersistence
         bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value);
 
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
-        IFlatIterator CreateAccountIterator() => CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
-        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) => CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
         bool IsPreimageMode { get; }
     }
 
@@ -51,16 +49,31 @@ public interface IPersistence
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
         void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
-        void SetStateTrieNode(in TreePath path, TrieNode tnValue);
-        void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
+        void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
-        void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
+        /// <summary>
+        /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced
+        /// during sync. When slot values are RLP-wrapped the bytes are stored verbatim; in raw mode the value is
+        /// unwrapped to its stripped bytes.
+        /// </summary>
+        void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
         void SetAccountRaw(in ValueHash256 addrHash, Account account);
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
-        void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
-        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
+
+        /// <summary>
+        /// Deletes every state trie node whose node and subtree are entirely contained within the value range
+        /// <c>[<paramref name="from"/>, <paramref name="to"/>]</c> — i.e. every node at path P for which
+        /// <c><paramref name="from"/> &lt;= P.ToLowerBoundPath()</c> and <c>P.ToUpperBoundPath() &lt;= <paramref name="to"/></c>.
+        /// A node whose subtree only partially overlaps the range (an ancestor of the range) is left intact.
+        /// </summary>
+        void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to);
+
+        /// <inheritdoc cref="DeleteStateTrieNodeRange"/>
+        /// <remarks>Restricted to the storage trie of the account identified by <paramref name="addressHash"/>.</remarks>
+        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
     }
 
     /// <summary>

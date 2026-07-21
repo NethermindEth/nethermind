@@ -16,38 +16,32 @@ public class LogEntryDecoderTests
     private static LogEntry CreateSampleLogEntry() =>
         new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
 
-    private static void AssertLogEntriesEqual(LogEntry expected, LogEntry actual)
-    {
-        Assert.That(actual.Data, Is.EqualTo(expected.Data), "data");
-        Assert.That(actual.Address, Is.EqualTo(expected.Address), "address");
-        Assert.That(actual.Topics, Is.EqualTo(expected.Topics), "topics");
-    }
-
     [TestCase(true, false)]
     [TestCase(false, false)]
     [TestCase(false, true)]
     public void Can_do_roundtrip(bool valueDecode, bool useDecoderInstance)
     {
         LogEntry logEntry = CreateSampleLogEntry();
+        LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
         Rlp rlp = useDecoderInstance
-            ? LogEntryDecoder.Instance.Encode(logEntry)
+            ? decoder.Encode(logEntry)
             : Rlp.Encode(logEntry);
 
-        LogEntry decoded;
+        LogEntry? decoded;
         if (useDecoderInstance)
         {
-            Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
-            decoded = LogEntryDecoder.Instance.Decode(ref ctx)!;
+            RlpReader ctx = new(rlp.Bytes);
+            decoded = decoder.Decode(ref ctx);
         }
         else
         {
             decoded = valueDecode
-                ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan())
-                : Rlp.Decode<LogEntry>(rlp);
+                ? Rlp.Decode<LogEntry?>(rlp.Bytes.AsSpan())
+                : Rlp.Decode<LogEntry?>(rlp);
         }
 
-        AssertLogEntriesEqual(logEntry, decoded);
+        Assert.That(decoded, Is.EqualTo(logEntry).UsingPropertiesComparer());
     }
 
     [Test]
@@ -55,11 +49,14 @@ public class LogEntryDecoderTests
     {
         LogEntry logEntry = CreateSampleLogEntry();
         Rlp rlp = Rlp.Encode(logEntry);
-        Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
-        LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
+        RlpReader reader = new(rlp.Bytes);
+        LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
 
-        Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
-        Assert.That(logEntry.Address == decoded.Address, "address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
+            Assert.That(logEntry.Address == decoded.Address, "address");
+        }
 
         Span<byte> buffer = stackalloc byte[32];
         KeccaksIterator iterator = new(decoded.TopicsRlp, buffer);
@@ -74,8 +71,18 @@ public class LogEntryDecoderTests
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((LogEntry)null!);
-        LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
+        LogEntry? decoded = Rlp.Decode<LogEntry?>(rlp);
         Assert.That(decoded, Is.Null);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Interface_decoders_return_null_for_empty_log_entry(bool compact)
+    {
+        RlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
+        RlpReader ctx = new(Rlp.OfEmptyList.Bytes);
+
+        Assert.That(decoder.Decode(ref ctx), Is.Null);
     }
 
     [Test]
@@ -88,7 +95,7 @@ public class LogEntryDecoderTests
 
         Assert.Throws<RlpException>(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(malformed.Bytes);
+            RlpReader ctx = new(malformed.Bytes);
             LogEntryDecoder.Instance.Decode(ref ctx);
         });
     }
@@ -101,14 +108,14 @@ public class LogEntryDecoderTests
 
         Assert.Throws<RlpLimitException>(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(malformed.Bytes);
+            RlpReader ctx = new(malformed.Bytes);
             if (useStructRef)
             {
                 CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
             }
             else
             {
-                CompactLogEntryDecoder.Decode(ref ctx);
+                CompactLogEntryDecoder.Instance.Decode(ref ctx);
             }
         });
     }
@@ -120,7 +127,7 @@ public class LogEntryDecoderTests
 
         Assert.Throws<RlpLimitException>(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(malformed);
+            RlpReader ctx = new(malformed);
             CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
         });
     }

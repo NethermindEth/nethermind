@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -27,13 +30,14 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
     public class StartingSyncPivotUpdaterTests
     {
         private IBlockTree? _blockTree;
-        private ISyncModeSelector? _syncModeSelector;
         private ISyncPeerPool? _syncPeerPool;
         private ISyncConfig? _syncConfig;
+        private ISyncProgressResolver? _syncProgressResolver;
         private IBlockCacheService? _blockCacheService;
         private IBeaconSyncStrategy? _beaconSyncStrategy;
         private IDb? _metadataDb;
         private IBlockTree? _externalPeerBlockTree;
+        private ISyncPeer? _syncPeer;
 
         [SetUp]
         public void Setup()
@@ -55,6 +59,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
             fakePeer.Node.Returns(new Node(node));
+            _syncPeer = fakePeer;
 
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncPeerPool.InitializedPeers.Returns(new[] { new PeerInfo(fakePeer) });
@@ -63,107 +68,164 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _blockTree = Build.A.BlockTree()
                 .WithMetadataDb(_metadataDb)
                 .TestObject;
-            _syncModeSelector = Substitute.For<ISyncModeSelector>();
             _syncConfig = new SyncConfig()
             {
-                MaxAttemptsToUpdatePivot = 1
+                FastSync = true,
+                MaxAttemptsToUpdatePivot = 1,
+                MultiSyncModeSelectorLoopTimerMs = 1
             };
+            // Eligibility inputs that MultiSyncModeSelector used to gate UpdatingPivot on are now checked by the updater itself.
+            _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            _syncProgressResolver.FindBestFullState().Returns(0UL);
             _blockCacheService = new BlockCacheService();
             _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+            _beaconSyncStrategy.MergeTransitionFinished.Returns(true);
+        }
+
+        private StartingSyncPivotUpdater CreateUpdater() =>
+            new(_blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, _beaconSyncStrategy!, LimboLogs.Instance);
+
+        private UnsafeStartingSyncPivotUpdater CreateUnsafeUpdater() =>
+            new(_blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, _beaconSyncStrategy!, LimboLogs.Instance);
+
+        // Real BeaconSync over an empty block cache: the only finalized hash source is the block tree.
+        private StartingSyncPivotUpdater CreateUpdaterWithRealBeaconSync()
+        {
+            IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+            poSSwitcher.TransitionFinished.Returns(true);
+            BeaconSync beaconSync = new(
+                Substitute.For<IBeaconPivot>(),
+                _blockTree!,
+                _syncConfig!,
+                _blockCacheService!,
+                poSSwitcher,
+                LimboLogs.Instance);
+
+            return new StartingSyncPivotUpdater(
+                _blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, beaconSync, LimboLogs.Instance);
         }
 
         [Test]
-        public void TrySetFreshPivot_saves_FinalizedHash_in_db()
+        public async Task TrySetFreshPivot_saves_FinalizedHash_in_db()
         {
-            _ = new StartingSyncPivotUpdater(
-                _blockTree!,
-                _syncModeSelector!,
-                _syncPeerPool!,
-                _syncConfig!,
-                _blockCacheService!,
-                _beaconSyncStrategy!,
-                LimboLogs.Instance
-            );
-
-            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
             _beaconSyncStrategy!.GetFinalizedHash().Returns(expectedFinalizedHash);
 
-            _syncModeSelector!.Changed += Raise.EventWith(args);
+            await CreateUpdater().EnsureSyncPivot(default);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            Rlp.ValueDecoderContext ctx = new(storedData!);
-            long storedPivotBlockNumber = ctx.DecodeLong();
+            RlpReader ctx = new(storedData!);
+            ulong storedPivotBlockNumber = ctx.DecodeULong();
             Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
-            storedFinalizedHash.Should().Be(expectedFinalizedHash);
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
+            Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
+            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
         }
 
-        [TestCase(2, true, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
-        [TestCase(ISyncConfig.InfiniteAttempts, false, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
-        public void TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, bool expectFallback, int expectedFinalConfigValue)
+        [Test]
+        public async Task TrySetFreshPivot_falls_back_to_FinalizedHash_persisted_in_block_tree_when_no_FCU_received()
+        {
+            Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
+
+            await CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(default);
+
+            byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
+            Assert.That(storedData, Is.Not.Null, "pivot should be updated from the persisted finalized hash without any FCU");
+            RlpReader ctx = new(storedData!);
+            Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_keeps_waiting_when_persisted_FinalizedHash_is_zero()
+        {
+            _syncConfig!.MaxAttemptsToUpdatePivot = ISyncConfig.InfiniteAttempts;
+            _blockTree!.ForkChoiceUpdated(Keccak.Zero, Keccak.Zero);
+
+            using CancellationTokenSource cts = new();
+            Task task = CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(cts.Token);
+            await Task.WhenAny(task, Task.Delay(200));
+            cts.Cancel();
+            try { await task; } catch (OperationCanceledException) { }
+
+            Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
+                "a zero finalized hash means no data, so no pivot should be set");
+            Assert.That(_syncConfig!.MaxAttemptsToUpdatePivot, Is.EqualTo(ISyncConfig.InfiniteAttempts),
+                "attempts remain, so the updater must keep waiting instead of falling back to the static pivot");
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_ignores_zero_cached_FinalizedHash_and_falls_back_to_block_tree()
+        {
+            Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
+            _blockCacheService!.FinalizedHash = Keccak.Zero;
+
+            await CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(default);
+
+            byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
+            Assert.That(storedData, Is.Not.Null, "a zero cached finalized hash must not shadow the persisted one");
+            RlpReader ctx = new(storedData!);
+            Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+        }
+
+        [TestCase(2, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
+        [TestCase(ISyncConfig.InfiniteAttempts, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
+        public async Task TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, int expectedFinalConfigValue)
         {
             _syncConfig!.MaxAttemptsToUpdatePivot = maxAttempts;
             // Finalized hash unset → TrySetFreshPivot returns null → counts as a failed attempt.
             _beaconSyncStrategy!.GetFinalizedHash().Returns((Hash256?)null);
 
-            _ = new StartingSyncPivotUpdater(
-                _blockTree!,
-                _syncModeSelector!,
-                _syncPeerPool!,
-                _syncConfig!,
-                _blockCacheService!,
-                _beaconSyncStrategy!,
-                LimboLogs.Instance
-            );
+            using CancellationTokenSource cts = new();
+            Task task = CreateUpdater().EnsureSyncPivot(cts.Token);
 
-            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
-            for (int i = 0; i < 100; i++)
-            {
-                _syncModeSelector!.Changed += Raise.EventWith(args);
-            }
+            // Finite attempts: the loop gives up on its own. Infinite attempts: it never completes, so cancel it.
+            await Task.WhenAny(task, Task.Delay(500));
+            cts.Cancel();
+            try { await task; } catch (OperationCanceledException) { }
 
-            if (expectFallback)
-            {
-                _beaconSyncStrategy.Received().AllowBeaconHeaderSync();
-            }
-            else
-            {
-                _beaconSyncStrategy.DidNotReceive().AllowBeaconHeaderSync();
-            }
-            _syncConfig.MaxAttemptsToUpdatePivot.Should().Be(expectedFinalConfigValue);
+            Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(expectedFinalConfigValue));
         }
 
         [Test]
-        public void TrySetFreshPivot_for_unsafe_updater_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
+        public async Task TrySetFreshPivot_for_unsafe_updater_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
         {
-            _ = new UnsafeStartingSyncPivotUpdater(
-                _blockTree!,
-                _syncModeSelector!,
-                _syncPeerPool!,
-                _syncConfig!,
-                _blockCacheService!,
-                _beaconSyncStrategy!,
-                LimboLogs.Instance
-            );
-
-            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
             Hash256 expectedPivotBlockHash = _externalPeerBlockTree!.FindLevel(expectedPivotBlockNumber)!.BlockInfos[0].BlockHash;
             _beaconSyncStrategy!.GetHeadBlockHash().Returns(expectedHeadBlockHash);
 
-            _syncModeSelector!.Changed += Raise.EventWith(args);
+            await CreateUnsafeUpdater().EnsureSyncPivot(default);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            Rlp.ValueDecoderContext ctx = new(storedData!);
-            long storedPivotBlockNumber = ctx.DecodeLong();
+            RlpReader ctx = new(storedData!);
+            ulong storedPivotBlockNumber = ctx.DecodeULong();
             Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
-            storedPivotBlockHash.Should().Be(expectedPivotBlockHash);
+            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(storedPivotBlockHash, Is.EqualTo(expectedPivotBlockHash));
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_for_unsafe_updater_ignores_peer_header_with_mismatched_number()
+        {
+            ulong requestedPivotNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            Hash256 wrongNumberHash = _externalPeerBlockTree!.FindLevel(requestedPivotNumber + 5)!.BlockInfos[0].BlockHash;
+            _syncPeer!.GetBlockHeaders(requestedPivotNumber, 1, 0, default)
+                .ReturnsForAnyArgs(_ => _externalPeerBlockTree!.FindHeaders(wrongNumberHash, 1, 0, default));
+
+            _beaconSyncStrategy!.GetHeadBlockHash().Returns(_externalPeerBlockTree!.HeadHash);
+
+            await CreateUnsafeUpdater().EnsureSyncPivot(default);
+
+            Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
+                "a peer header at a number other than the requested one must not set the pivot");
         }
     }
 }

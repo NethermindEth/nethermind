@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -52,7 +51,7 @@ namespace Nethermind.Core.Test
 
             LogEntry[] testEntries = testedEntries(entries);
             IEnumerable<bool> results = testEntries.Select(e => bloom.Matches(e));
-            results.Should().AllBeEquivalentTo(isMatchExpectation);
+            Assert.That(results, Is.All.EqualTo(isMatchExpectation));
         }
 
         [TestCase(1, 1, "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000002000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000400000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")]
@@ -66,7 +65,7 @@ namespace Nethermind.Core.Test
             Bloom bloom = new();
             bloom.Add(GetLogEntries(count, topicMax));
 
-            bloom.ToString().Should().Be(expectedValue);
+            Assert.That(bloom.ToString(), Is.EqualTo(expectedValue));
         }
 
         [Test]

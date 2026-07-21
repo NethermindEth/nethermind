@@ -14,11 +14,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>
-/// Wraps an <see cref="ArrayPoolList{T}"/> of <see cref="BlobAndProofV1"/> and writes JSON
-/// directly into a <see cref="PipeWriter"/>, bypassing <see cref="System.Text.Json.Utf8JsonWriter"/>
-/// to avoid extra buffer copies for large blob payloads.
-/// </summary>
+/// <summary>Writes blob/proof V1 results directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class BlobsV1DirectResponse(ArrayPoolList<BlobAndProofV1?> items) : IStreamableResult, IReadOnlyList<BlobAndProofV1?>, IDisposable
 {
     private readonly ArrayPoolList<BlobAndProofV1?> _items = items;
@@ -27,41 +23,31 @@ public sealed class BlobsV1DirectResponse(ArrayPoolList<BlobAndProofV1?> items) 
 
     public BlobAndProofV1? this[int index] => _items[index];
 
-    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        writer.Write("["u8);
-
-        int count = _items.Count;
-        for (int i = 0; i < count; i++)
-        {
-            if (i > 0) writer.Write(","u8);
-
-            BlobAndProofV1? item = _items[i];
-            if (item is null)
-            {
-                writer.Write("null"u8);
-            }
-            else
-            {
-                writer.Write("{\"blob\":\"0x"u8);
-                HexWriter.WriteHexChunked(writer, item.Blob);
-                writer.Write("\",\"proof\":\"0x"u8);
-                HexWriter.WriteHexSmall(writer, item.Proof);
-                writer.Write("\"}"u8);
-            }
-
-            // Flush after each entry for backpressure
-            FlushResult flushResult = await writer.FlushAsync(cancellationToken);
-            if (flushResult.IsCompleted || flushResult.IsCanceled)
-                return;
-        }
-
-        writer.Write("]"u8);
-    }
+    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        StreamableResultWriter.WriteArrayAsync(writer, _items.Count, new ItemWriter(_items), cancellationToken);
 
     public IEnumerator<BlobAndProofV1?> GetEnumerator() => _items.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public void Dispose() => _items.Dispose();
+
+    private readonly struct ItemWriter(ArrayPoolList<BlobAndProofV1?> items) : IJsonArrayItemWriter
+    {
+        public void WriteItem(PipeWriter writer, int index)
+        {
+            BlobAndProofV1? item = items[index];
+            if (item is null)
+            {
+                writer.Write("null"u8);
+                return;
+            }
+
+            writer.Write("{\"blob\":"u8);
+            HexWriter.WriteHexString(writer, item.Blob, chunked: true);
+            writer.Write(",\"proof\":"u8);
+            HexWriter.WriteHexString(writer, item.Proof, chunked: false);
+            writer.Write("}"u8);
+        }
+    }
 }

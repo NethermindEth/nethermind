@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Stats.Model;
@@ -42,7 +41,7 @@ namespace Nethermind.Network.Test.P2P
             DisconnectMessageSerializer serializer = new();
             byte[] serialized = Bytes.FromHexString(hex);
             using DisconnectMessage deserialized = serializer.Deserialize(serialized);
-            deserialized.Reason.Should().Be((int)expectedReason);
+            Assert.That(deserialized.Reason, Is.EqualTo((int)expectedReason));
         }
     }
 }

@@ -132,17 +132,13 @@ internal static class EngineBenchmarkHost
                 }
 
                 using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
-                await foreach (JsonRpcResult result in processor.ProcessAsync(ctx.Request.BodyReader, rpcContext))
-                {
-                    using (result)
-                    {
-                        ctx.Response.StatusCode = 200;
-                        ctx.Response.ContentType = "application/json";
-                        await Serializer.SerializeAsync(ctx.Response.BodyWriter, result.Response!);
-                        await ctx.Response.CompleteAsync();
-                        break;
-                    }
-                }
+                BenchmarkJsonRpcResponseSink sink = new(ctx);
+                await processor.ProcessAsync(
+                    ctx.Request.BodyReader,
+                    rpcContext,
+                    sink,
+                    new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
+                    ctx.RequestAborted);
             }));
     }
 
@@ -197,5 +193,49 @@ internal static class EngineBenchmarkHost
     {
         public CancellationToken Token => CancellationToken.None;
         public void Exit(int exitCode) { }
+    }
+
+    private sealed class BenchmarkJsonRpcResponseSink(HttpContext context) : IJsonRpcResponseSink
+    {
+        private bool _isFirstBatchItem = true;
+
+        public long BytesWritten => 0;
+        public bool StopRequested => false;
+
+        public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+        {
+            EnsureStarted();
+            await Serializer.SerializeAsync(context.Response.BodyWriter, response);
+            await context.Response.CompleteAsync();
+        }
+
+        public async ValueTask BeginBatchAsync(CancellationToken cancellationToken)
+        {
+            EnsureStarted();
+            await JsonRpcResponseWriter.WriteBatchStartAsync(context.Response.Body, cancellationToken);
+        }
+
+        public async ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+        {
+            if (!_isFirstBatchItem)
+            {
+                await JsonRpcResponseWriter.WriteBatchSeparatorAsync(context.Response.Body, cancellationToken);
+            }
+
+            _isFirstBatchItem = false;
+            await Serializer.SerializeAsync(context.Response.BodyWriter, response);
+        }
+
+        public async ValueTask EndBatchAsync(CancellationToken cancellationToken)
+        {
+            await JsonRpcResponseWriter.WriteBatchEndAsync(context.Response.Body, cancellationToken);
+            await context.Response.CompleteAsync();
+        }
+
+        private void EnsureStarted()
+        {
+            context.Response.StatusCode = 200;
+            context.Response.ContentType = "application/json";
+        }
     }
 }

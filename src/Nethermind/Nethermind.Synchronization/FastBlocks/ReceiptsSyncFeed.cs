@@ -30,16 +30,16 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class ReceiptsSyncFeed : BarrierSyncFeed<ReceiptsSyncBatch?>
     {
-        protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
+        protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc => ComputeBarrier(_blockTree.SyncPivot.BlockNumber);
+        protected override ulong SyncConfigBarrierCalc => ComputeBarrier(_blockTree.SyncPivot.BlockNumber);
 
-        private long ComputeBarrier(long pivotNumber)
+        private ulong ComputeBarrier(ulong pivotNumber)
         {
-            long requested = Math.Max(_syncConfig.AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier);
-            long clamped = Math.Max(1, Math.Min(pivotNumber, requested));
-            long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
-            return cutoffBlockNumber is null ? clamped : long.Max(clamped, cutoffBlockNumber.Value);
+            ulong requested = Math.Max(_syncConfig.AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier);
+            ulong clamped = Math.Max(1UL, Math.Min(pivotNumber, requested));
+            ulong? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
+            return cutoffBlockNumber is null ? clamped : ulong.Max(clamped, cutoffBlockNumber.Value);
         }
 
         protected override Func<bool> HasPivot =>
@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
-        private bool AllDownloaded => (_syncPointers.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= _barrier;
+        private bool AllDownloaded => (_syncPointers.LowestInsertedReceiptBlockNumber ?? ulong.MaxValue) <= _barrier;
 
         public override bool IsFinished => AllDownloaded;
         public override string FeedName => nameof(ReceiptsSyncFeed);
@@ -91,13 +91,13 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _pivotNumber = -1; // First reset in `InitializeFeed`.
+            _pivotNumber = 0; // First reset in `InitializeFeed`.
         }
 
         public override void InitializeFeed()
         {
-            long newPivotNumber = _blockTree.SyncPivot.BlockNumber;
-            long newBarrier = ComputeBarrier(newPivotNumber);
+            ulong newPivotNumber = _blockTree.SyncPivot.BlockNumber;
+            ulong newBarrier = ComputeBarrier(newPivotNumber);
             if (_pivotNumber != newPivotNumber || _barrier != newBarrier)
             {
                 _pivotNumber = newPivotNumber;
@@ -220,6 +220,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
+                    NormalizeZeroBlooms(receipts);
                     // BlockInfo has no timestamp
                     IReceiptSpec releaseSpec = _specProvider.GetReceiptSpec(blockInfo.BlockNumber);
                     // TODO: Optimism use op root calculator
@@ -230,6 +231,23 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             return preparedReceipts is not null;
+        }
+
+        /// <summary>
+        /// Recomputes a receipt's bloom from its logs when a peer ships an all-zero bloom for a
+        /// receipt that has logs. A non-zero but wrong bloom is left alone and caught later by the
+        /// receipts-root comparison.
+        /// </summary>
+        internal static void NormalizeZeroBlooms(TxReceipt[] receipts)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                TxReceipt receipt = receipts[i];
+                if ((receipt.Logs?.Length ?? 0) > 0 && receipt.Bloom == Bloom.Empty)
+                {
+                    receipt.Bloom = receipt.CalculateBloom();
+                }
+            }
         }
 
         private int InsertReceipts(ReceiptsSyncBatch batch)
@@ -326,8 +344,8 @@ namespace Nethermind.Synchronization.FastBlocks
             public bool ShouldDownloadBlock(BlockInfo info)
             {
                 bool hasReceipt = receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
-                long? cutoff = historyPruner?.CutoffBlockNumber;
-                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
+                ulong? cutoff = historyPruner?.CutoffBlockNumber;
+                cutoff = cutoff is null ? null : ulong.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = !hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
                 if (!shouldDownload) syncReport.FastBlocksReceipts.IncrementSkipped();
                 return shouldDownload;

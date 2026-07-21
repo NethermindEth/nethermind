@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -66,13 +67,13 @@ public class ValidateSubmissionHandler(
         if (_logger.IsInfo)
             _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
 
-        BlockDecodingResult decodingResult = payload.TryGetBlock();
-        Block? block = decodingResult.Block;
-        if (block is null)
+        Result<Block> decodingResult = payload.TryGetBlock();
+        if (decodingResult.IsError)
         {
             if (_logger.IsTrace) _logger.Trace($"Invalid block: {decodingResult.Error}. Result of {payloadStr}.");
             return FlashbotsResult.Invalid($"Block {payload} could not be parsed as a block: {decodingResult.Error}");
         }
+        Block block = decodingResult.Data;
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 
@@ -91,7 +92,7 @@ public class ValidateSubmissionHandler(
         return FlashbotsResult.Valid();
     }
 
-    private bool ValidateBlock(Block block, BidTrace message, long registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidateBlock(Block block, BidTrace message, ulong registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
     {
         error = null;
 
@@ -178,7 +179,7 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, ulong registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
     {
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
 
@@ -256,7 +257,7 @@ public class ValidateSubmissionHandler(
         }
     }
 
-    private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidateBlockMetadata(Block block, ulong registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
     {
         if (!_headerValidator.Validate(block.Header, parentHeader, false, out error))
         {
@@ -275,7 +276,7 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
+        ulong calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
 
         if (calculatedGasLimit != block.Header.GasLimit)
         {
@@ -286,20 +287,22 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private long GetGasLimit(BlockHeader parentHeader, long desiredGasLimit, IReleaseSpec releaseSpec)
+    private ulong GetGasLimit(BlockHeader parentHeader, ulong desiredGasLimit, IReleaseSpec releaseSpec)
     {
-        long parentGasLimit = parentHeader.GasLimit;
-        long gasLimit = parentGasLimit;
+        ulong parentGasLimit = parentHeader.GasLimit;
+        ulong gasLimit = parentGasLimit;
+        ulong newBlockNumber = parentHeader.Number + 1;
 
-        long? targetGasLimit = desiredGasLimit;
-        long newBlockNumber = parentHeader.Number + 1;
+        ulong maxGasLimitDifference = (parentGasLimit / releaseSpec.GasLimitBoundDivisor).SaturatingSub(1);
 
-        if (targetGasLimit is not null)
+        if (desiredGasLimit > parentGasLimit)
         {
-            long maxGasLimitDifference = Math.Max(0, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
-            gasLimit = targetGasLimit.Value > parentGasLimit
-                ? parentGasLimit + Math.Min(targetGasLimit.Value - parentGasLimit, maxGasLimitDifference)
-                : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit.Value, maxGasLimitDifference);
+            gasLimit = parentGasLimit + Math.Min(desiredGasLimit - parentGasLimit, maxGasLimitDifference);
+        }
+        else if (desiredGasLimit < parentGasLimit)
+        {
+            // Non-trivial: parentGasLimit - desiredGasLimit is safe (parentGasLimit > desiredGasLimit here).
+            gasLimit = parentGasLimit - Math.Min(parentGasLimit - desiredGasLimit, maxGasLimitDifference);
         }
 
         gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(releaseSpec, gasLimit, newBlockNumber);
@@ -382,7 +385,6 @@ public class ValidateSubmissionHandler(
             error = "Malformed proposer payment, max priority fee per gas not equal to block max priority fee per gas";
             return false;
         }
-
 
         error = null;
         return true;

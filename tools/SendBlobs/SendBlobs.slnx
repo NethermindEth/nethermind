@@ -27,7 +27,6 @@
     <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.Merkleization/Nethermind.Merkleization.csproj" Id="5919141f-9e50-4817-8c9f-8d631c8cecfa" />
     <Project Path="../../src/Nethermind/Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" Id="ef53ed8d-6484-49a7-80ab-99e13d918a90" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />

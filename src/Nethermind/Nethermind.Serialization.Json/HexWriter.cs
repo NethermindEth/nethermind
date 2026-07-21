@@ -2,26 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
-using System.IO.Pipelines;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Text.Json;
+using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
 
-/// <summary>
-/// Shared low-level hex encoding primitives used by JSON converters.
-/// </summary>
+/// <summary>Shared low-level hex encoding primitives used by JSON converters.</summary>
 public static class HexWriter
 {
-    /// <summary>
-    /// Encode the low 8 bytes of a Vector128 to 16 hex chars using SSSE3 PSHUFB.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Ssse3Encode8Bytes(ref byte dest, Vector128<byte> input)
     {
@@ -37,9 +33,6 @@ public static class HexWriter
         Ssse3.Shuffle(hexLookup, Sse2.UnpackLow(hi, lo)).StoreUnsafe(ref dest);
     }
 
-    /// <summary>
-    /// Encode 16 bytes of a Vector128 to 32 hex chars using SSSE3 PSHUFB.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Ssse3Encode16Bytes(ref byte dest, Vector128<byte> input)
     {
@@ -56,11 +49,7 @@ public static class HexWriter
         Ssse3.Shuffle(hexLookup, Sse2.UnpackHigh(hi, lo)).StoreUnsafe(ref Unsafe.Add(ref dest, 16));
     }
 
-    /// <summary>
-    /// Encode 32 bytes to 64 hex chars using AVX-512 VBMI cross-lane byte permutation.
-    /// vpermi2b does arbitrary byte interleave across the full 256-bit register in a single
-    /// instruction, eliminating the UnpackLow/UnpackHigh + lane-crossing overhead of SSSE3/AVX2.
-    /// </summary>
+    // vpermi2b interleaves high/low nibbles across the full 256-bit register, avoiding SSSE3/AVX2 lane-crossing overhead.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Avx512VbmiEncode32Bytes(ref byte dest, Vector256<byte> input)
     {
@@ -95,11 +84,7 @@ public static class HexWriter
         Avx2.Shuffle(hexLookup, interleaved1).StoreUnsafe(ref Unsafe.Add(ref dest, 32));
     }
 
-    /// <summary>
-    /// 512-byte lookup table: for byte value i, HexByteLookup[i*2] and [i*2+1] are the
-    /// two lowercase hex ASCII chars. Single indexed load + 16-bit store per byte,
-    /// replacing ~10 ALU ops of a branchless arithmetic approach.
-    /// </summary>
+    // Two lowercase hex ASCII chars per byte; replaces branchless arithmetic with one indexed load and one 16-bit store.
     private static ReadOnlySpan<byte> HexByteLookup =>
         "000102030405060708090a0b0c0d0e0f"u8 +
         "101112131415161718191a1b1c1d1e1f"u8 +
@@ -118,16 +103,10 @@ public static class HexWriter
         "e0e1e2e3e4e5e6e7e8e9eaebecedeeef"u8 +
         "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"u8;
 
-    /// <summary>
-    /// Scalar: encode one byte to 2 hex chars via lookup table.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeByte(ref byte dest, int byteVal) => Unsafe.WriteUnaligned(ref dest,
             Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetReference(HexByteLookup), byteVal * 2)));
 
-    /// <summary>
-    /// Scalar: encode a ulong (big-endian byte order) to 16 hex chars.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeUlongScalar(ref byte dest, ulong value)
     {
@@ -140,9 +119,6 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Scalar: encode a byte span to hex chars.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeBytesScalar(ref byte dest, ReadOnlySpan<byte> src)
     {
@@ -154,9 +130,6 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Encode a ulong to 16 hex chars, dispatching to SSSE3 or scalar.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeUlong(ref byte dest, ulong value)
     {
@@ -171,9 +144,6 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Encode 32 bytes to 64 hex chars, dispatching to AVX-512 VBMI, SSSE3, or scalar.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Encode32Bytes(ref byte dest, ReadOnlySpan<byte> src)
     {
@@ -193,10 +163,29 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Write a non-zero ulong as a hex JSON string value ("0x...") using WriteRawValue.
-    /// Used by LongConverter and ULongConverter.
-    /// </summary>
+    /// <summary>Writes a 32-byte big-endian value as a JSON string of 64 lowercase hex chars.</summary>
+    /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
+    [SkipLocalsInit]
+    public static void WriteFixed32HexRawValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data, bool addHexPrefix = true)
+    {
+        Unsafe.SkipInit(out HexBuffer72 rawBuf);
+        ref byte b = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
+
+        b = (byte)'"';
+        nint hexOffset = addHexPrefix ? 3 : 1;
+        if (addHexPrefix)
+        {
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
+        }
+        Encode32Bytes(ref Unsafe.Add(ref b, hexOffset), data);
+        int spanLength = addHexPrefix ? 68 : 66;
+        Unsafe.Add(ref b, spanLength - 1) = (byte)'"';
+
+        writer.WriteRawValue(
+            MemoryMarshal.CreateReadOnlySpan(ref b, spanLength),
+            skipInputValidation: true);
+    }
+
     [SkipLocalsInit]
     internal static void WriteUlongHexRawValue(Utf8JsonWriter writer, ulong value)
     {
@@ -221,59 +210,98 @@ public static class HexWriter
             skipInputValidation: true);
     }
 
-    /// <summary>
-    /// Write a UInt256 as a hex JSON string value ("0x...") using WriteRawValue.
-    /// </summary>
+    public static void WriteUlongHexStringValue(Utf8JsonWriter writer, ulong value)
+    {
+        if (value == 0)
+        {
+            writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
+            return;
+        }
+
+        WriteUlongHexRawValue(writer, value);
+    }
+
+    /// <summary>Writes a <see cref="UInt256"/> as a JSON string of lowercase hex chars.</summary>
+    /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
     [SkipLocalsInit]
-    internal static void WriteUInt256HexRawValue(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false)
+    public static void WriteUInt256HexRawValue(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false, bool addHexPrefix = true)
     {
         Unsafe.SkipInit(out HexBuffer72 rawBuf);
         ref byte buffer = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
 
-        BuildUInt256Hex(ref buffer, value, includeQuotes: true, zeroPadded, out nint spanStart, out int spanLength);
+        BuildUInt256Hex(ref buffer, value, includeQuotes: true, zeroPadded, addHexPrefix, out nint spanStart, out int spanLength);
 
         writer.WriteRawValue(
             MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength),
             skipInputValidation: true);
     }
 
-    /// <summary>
-    /// Write a UInt256 as a hex property name ("0x...").
-    /// </summary>
+    /// <summary>Writes a JSON string containing a <see cref="UInt256"/> as lowercase hex chars.</summary>
+    /// <param name="writer">The destination writer.</param>
+    /// <param name="value">The value to write.</param>
+    /// <param name="zeroPadded">Whether to pad the value to 64 hex chars.</param>
+    /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
     [SkipLocalsInit]
-    internal static void WriteUInt256HexPropertyName(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false)
+    public static void WriteUInt256HexString(IBufferWriter<byte> writer, UInt256 value, bool zeroPadded = false, bool addHexPrefix = true)
     {
         Unsafe.SkipInit(out HexBuffer72 rawBuf);
         ref byte buffer = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
 
-        BuildUInt256Hex(ref buffer, value, includeQuotes: false, zeroPadded, out nint spanStart, out int spanLength);
+        BuildUInt256Hex(ref buffer, value, includeQuotes: true, zeroPadded, addHexPrefix, out nint spanStart, out int spanLength);
+
+        writer.Write(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength));
+    }
+
+    /// <summary>Writes a <see cref="UInt256"/> as a JSON property name of lowercase hex chars.</summary>
+    /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
+    [SkipLocalsInit]
+    public static void WriteUInt256HexPropertyName(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false, bool addHexPrefix = true)
+    {
+        Unsafe.SkipInit(out HexBuffer72 rawBuf);
+        ref byte buffer = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
+
+        BuildUInt256Hex(ref buffer, value, includeQuotes: false, zeroPadded, addHexPrefix, out nint spanStart, out int spanLength);
 
         writer.WritePropertyName(
             MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength));
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void BuildUInt256Hex(ref byte buffer, UInt256 value, bool includeQuotes, bool zeroPadded, out nint spanStart, out int spanLength)
+    public static void WriteUInt256StorageSlot(Utf8JsonWriter writer, in UInt256 key, in UInt256 value)
     {
-        nint hexOffset = includeQuotes ? 3 : 2;
+        WriteUInt256HexPropertyName(writer, key, zeroPadded: true, addHexPrefix: true);
+        WriteUInt256HexRawValue(writer, value, zeroPadded: true, addHexPrefix: true);
+    }
+
+    // Buffer layout (logical): [opening "?][0x?][64 hex chars][closing "?].
+    // EncodeUInt256Hex always writes 64 chars at `hexOffset`; the trimmed significant
+    // nibbles end up at the tail, so `spanStart = 64 - nibbleCount` regardless of
+    // which optional prefixes are present.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void BuildUInt256Hex(ref byte buffer, UInt256 value, bool includeQuotes, bool zeroPadded, bool addHexPrefix, out nint spanStart, out int spanLength)
+    {
+        nint hexOffset = (includeQuotes ? 1 : 0) + (addHexPrefix ? 2 : 0);
         EncodeUInt256Hex(ref Unsafe.Add(ref buffer, hexOffset), value);
 
         int nibbleCount = zeroPadded ? 64 : GetSignificantNibbleCount(value);
-        spanStart = zeroPadded ? 0 : 64 - nibbleCount;
+        spanStart = 64 - nibbleCount;
         ref byte spanRef = ref Unsafe.Add(ref buffer, spanStart);
 
+        nint offset = 0;
         if (includeQuotes)
         {
             spanRef = (byte)'"';
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref spanRef, 1), (ushort)0x7830); // "0x" LE
-            Unsafe.Add(ref spanRef, nibbleCount + 3) = (byte)'"';
-            spanLength = nibbleCount + 4;
+            offset = 1;
         }
-        else
+        if (addHexPrefix)
         {
-            Unsafe.WriteUnaligned(ref spanRef, (ushort)0x7830); // "0x" LE
-            spanLength = nibbleCount + 2;
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref spanRef, offset), (ushort)0x7830); // "0x" LE
+            offset += 2;
         }
+        if (includeQuotes)
+        {
+            Unsafe.Add(ref spanRef, offset + nibbleCount) = (byte)'"';
+        }
+        spanLength = nibbleCount + (int)offset + (includeQuotes ? 1 : 0);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -334,41 +362,26 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// 24-byte inline buffer for ulong hex encoding (20 bytes needed, rounded up to
-    /// 3 x 8-byte ulong elements for alignment). Used instead of stackalloc to avoid
-    /// GS cookie (stack canary) overhead. The JIT inserts a cookie write in the prologue
-    /// and a verify + CORINFO_HELP_FAIL_FAST call in the epilogue for every stackalloc
-    /// buffer, adding ~35 bytes per method. Inline array structs are treated as regular
-    /// locals and avoid this.
-    /// </summary>
+    // Inline buffers avoid stackalloc GS-cookie overhead on hot hex writers.
     [InlineArray(3)]
     private struct HexBuffer24
     {
         private ulong _element0;
     }
 
-    /// <summary>
-    /// 72-byte inline buffer for hash/UInt256 hex encoding (68 bytes needed, rounded up
-    /// to 9 x 8-byte ulong elements for alignment). Used instead of stackalloc to avoid
-    /// GS cookie (stack canary) overhead. The JIT inserts a cookie write in the prologue
-    /// and a verify + CORINFO_HELP_FAIL_FAST call in the epilogue for every stackalloc
-    /// buffer, adding ~35 bytes per method. Inline array structs are treated as regular
-    /// locals and avoid this.
-    /// </summary>
     [InlineArray(9)]
     internal struct HexBuffer72
     {
         private ulong _element0;
     }
 
-    private const int MaxHexRequest = 4096;
+    private const int MaxHexRequest = (int)Eip4844Constants.GasPerBlob * 2;
 
-    /// <summary>
-    /// Writes a large byte array as hex directly into a <see cref="PipeWriter"/>
-    /// in chunks, bounded by the actual span size returned by GetSpan.
-    /// </summary>
-    public static void WriteHexChunked(PipeWriter writer, byte[] data)
+    /// <summary>Writes a large byte array as hex directly into an <see cref="IBufferWriter{T}"/>.</summary>
+    public static void WriteHexChunked(IBufferWriter<byte> writer, byte[] data) => WriteHexChunked(writer, (ReadOnlySpan<byte>)data);
+
+    /// <summary>Writes a large byte span as hex directly into an <see cref="IBufferWriter{T}"/>.</summary>
+    public static void WriteHexChunked(IBufferWriter<byte> writer, ReadOnlySpan<byte> data)
     {
         ReadOnlySpan<byte> remaining = data;
         while (remaining.Length > 0)
@@ -382,21 +395,69 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Writes a small byte array as hex in a single span into a <see cref="PipeWriter"/>.
-    /// </summary>
-    public static void WriteHexSmall(PipeWriter writer, byte[] data)
+    /// <summary>Writes a small byte array as hex in a single span into an <see cref="IBufferWriter{T}"/>.</summary>
+    public static void WriteHexSmall(IBufferWriter<byte> writer, byte[] data) => WriteHexSmall(writer, (ReadOnlySpan<byte>)data);
+
+    /// <summary>Writes a small byte span as hex in a single span into an <see cref="IBufferWriter{T}"/>.</summary>
+    public static void WriteHexSmall(IBufferWriter<byte> writer, ReadOnlySpan<byte> data)
     {
         int hexLen = data.Length * 2;
         Span<byte> hex = writer.GetSpan(hexLen);
         int inputLen = Math.Min(data.Length, hex.Length / 2);
-        EncodeToHex(((ReadOnlySpan<byte>)data)[..inputLen], ref MemoryMarshal.GetReference(hex));
+        EncodeToHex(data[..inputLen], ref MemoryMarshal.GetReference(hex));
         writer.Advance(inputLen * 2);
     }
 
-    /// <summary>
-    /// Encode arbitrary-length bytes to hex using SIMD (AVX-512 VBMI / SSSE3) with scalar tail.
-    /// </summary>
+    /// <summary>Writes a JSON string containing a <c>0x</c>-prefixed lowercase hex byte sequence.</summary>
+    public static void WriteHexString(IBufferWriter<byte> writer, ReadOnlySpan<byte> data, bool chunked)
+    {
+        writer.Write("\"0x"u8);
+        if (chunked) WriteHexChunked(writer, data);
+        else WriteHexSmall(writer, data);
+        writer.Write("\""u8);
+    }
+
+    /// <summary>Writes a JSON string containing a <c>0x</c>-prefixed lowercase hex unsigned integer.</summary>
+    public static void WriteUlongHexString(IBufferWriter<byte> writer, ulong value)
+    {
+        if (value == 0)
+        {
+            writer.Write("\"0x0\""u8);
+            return;
+        }
+
+        Span<byte> buffer = writer.GetSpan(20);
+        buffer[0] = (byte)'"';
+        buffer[1] = (byte)'0';
+        buffer[2] = (byte)'x';
+        value.TryFormat(buffer[3..], out int bytesWritten, "x");
+        buffer[bytesWritten + 3] = (byte)'"';
+        writer.Advance(bytesWritten + 4);
+    }
+
+    [SkipLocalsInit]
+    public static void WriteHexStringValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data)
+    {
+        const int StackThreshold = 512;
+        int tokenLength = 4 + data.Length * 2;
+        // data is unbounded (e.g. a whole memory snapshot), so only stay on the stack while small.
+        byte[] rented = tokenLength > StackThreshold ? ArrayPool<byte>.Shared.Rent(tokenLength) : null;
+        Span<byte> token = rented is not null ? rented : stackalloc byte[StackThreshold];
+        try
+        {
+            token[0] = (byte)'"';
+            token[1] = (byte)'0';
+            token[2] = (byte)'x';
+            EncodeToHex(data, ref token[3]);
+            token[tokenLength - 1] = (byte)'"';
+            writer.WriteRawValue(token[..tokenLength], skipInputValidation: true);
+        }
+        finally
+        {
+            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
     private static void EncodeToHex(ReadOnlySpan<byte> src, ref byte dest)
     {
         int offset = 0;

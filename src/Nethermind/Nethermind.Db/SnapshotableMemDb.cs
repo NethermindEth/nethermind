@@ -19,7 +19,7 @@ namespace Nethermind.Db
         private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = new(new EntryComparer());
         private readonly EntryComparer _entryComparer = new();
         private int _currentVersion = 0;
-        private readonly HashSet<int> _activeSnapshotVersions = new();
+        private readonly HashSet<int> _activeSnapshotVersions = [];
         private readonly Lock _versionLock = new();
         private readonly bool _neverPrune = neverPrune;
 
@@ -112,7 +112,7 @@ namespace Nethermind.Db
             List<KeyValuePair<byte[], byte[]?>> result;
             lock (_versionLock)
             {
-                result = new List<KeyValuePair<byte[], byte[]?>>();
+                result = [];
                 foreach (byte[] key in GetAllUniqueKeys())
                 {
                     byte[]? value = GetValueAtVersion(key, _currentVersion);
@@ -130,7 +130,7 @@ namespace Nethermind.Db
             List<byte[]> result;
             lock (_versionLock)
             {
-                result = new List<byte[]>();
+                result = [];
                 foreach (byte[] key in GetAllUniqueKeys())
                 {
                     if (GetValueAtVersion(key, _currentVersion) is not null)
@@ -147,7 +147,7 @@ namespace Nethermind.Db
             List<byte[]> result;
             lock (_versionLock)
             {
-                result = new List<byte[]>();
+                result = [];
                 foreach (byte[] key in GetAllUniqueKeys())
                 {
                     byte[]? value = GetValueAtVersion(key, _currentVersion);
@@ -290,7 +290,7 @@ namespace Nethermind.Db
             List<KeyValuePair<byte[], byte[]?>> result;
             lock (_versionLock)
             {
-                result = new List<KeyValuePair<byte[], byte[]?>>();
+                result = [];
                 foreach (byte[] key in GetAllUniqueKeys())
                 {
                     byte[]? value = GetValueAtVersion(key, version);
@@ -446,7 +446,7 @@ namespace Nethermind.Db
 
             SortedSet<(byte[] Key, int Version, byte[]? Value)> view = _db.GetViewBetween(lower, upper);
             // Materialize before removing to avoid modifying during enumeration
-            List<(byte[] Key, int Version, byte[]? Value)> toRemove = new(view);
+            List<(byte[] Key, int Version, byte[]? Value)> toRemove = [.. view];
             foreach ((byte[] Key, int Version, byte[]? Value) entry in toRemove)
             {
                 _db.Remove(entry);

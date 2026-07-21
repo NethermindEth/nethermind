@@ -29,33 +29,24 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private bool _isInBeaconModeControl = false;
         private readonly ILogger _logger = logManager.GetClassLogger<BeaconSync>();
 
-        // beacon header sync can be initialized only when global pivot is already set,
-        // otherwise it might result in conflicting pivots and a deadlock
-        private bool _canInitBeaconHeaderSync = false;
-
         public void StopSyncing()
         {
             if (!_isInBeaconModeControl)
             {
                 _beaconPivot.RemoveBeaconPivot();
-                _blockCacheService.BlockCache.Clear();
+                _blockCacheService.Clear();
             }
 
             _isInBeaconModeControl = true;
         }
 
-        public bool TryInitBeaconHeaderSync(BlockHeader blockHeader)
+        public void InitBeaconHeaderSync(BlockHeader blockHeader)
         {
-            if (!_canInitBeaconHeaderSync) return false;
-
             StopBeaconModeControl();
             _beaconPivot.EnsurePivot(blockHeader);
-            return true;
         }
 
         public void StopBeaconModeControl() => _isInBeaconModeControl = false;
-
-        public void AllowBeaconHeaderSync() => _canInitBeaconHeaderSync = true;
 
         public bool ShouldBeInBeaconHeaders()
         {
@@ -107,7 +98,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool MergeTransitionFinished => _poSSwitcher.TransitionFinished;
 
-        public long? GetTargetBlockHeight()
+        public ulong? GetTargetBlockHeight()
         {
             if (_beaconPivot.BeaconPivotExists())
             {
@@ -116,8 +107,22 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
-        public Hash256? GetFinalizedHash() => _blockCacheService.FinalizedHash;
+        /// <remarks>
+        /// Falls back to the finalized hash persisted by the block tree when the cache holds nothing usable
+        /// (no forkchoice update yet, or a zero finalized hash), so that a node restarted before its first
+        /// pivot update can make progress. Safe because finalized blocks cannot be reorged and pivot updates
+        /// enforce monotonicity, so a stale persisted value can only produce an older-but-valid pivot.
+        /// </remarks>
+        public Hash256? GetFinalizedHash()
+        {
+            Hash256? cached = _blockCacheService.FinalizedHash;
+            return cached is not null && cached != Keccak.Zero ? cached : _blockTree.FinalizedHash;
+        }
 
+        /// <remarks>
+        /// Unlike <see cref="GetFinalizedHash"/>, there is no block tree fallback: a head can be reorged away,
+        /// and the block tree's own head reflects local processing progress, not the CL forkchoice target.
+        /// </remarks>
         public Hash256? GetHeadBlockHash() => _blockCacheService.HeadBlockHash;
     }
 
@@ -125,7 +130,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         void StopSyncing();
 
-        bool TryInitBeaconHeaderSync(BlockHeader blockHeader);
+        void InitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
     }

@@ -9,8 +9,8 @@ using Microsoft.AspNetCore.Http;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>GET /engine/v{N}/payloads/{payloadId}</c>, the SSZ-REST equivalent of
-/// <c>engine_getPayloadV{N}</c>.
+/// Handles <c>GET /engine/v2/payloads/{payload_id}</c>, the SSZ-REST equivalent of
+/// <c>engine_getPayloadV{N}</c> (the version is selected by the <c>Eth-Execution-Version</c> header).
 /// </summary>
 public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule engine)
     : SszEndpointHandlerBase
@@ -28,9 +28,9 @@ public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule eng
 
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
+        ctx.Response.Headers.CacheControl = "no-store";
         if (TryParsePayloadId(extra.Span, out byte[] id, out string err))
         {
-            ctx.Response.Headers.CacheControl = "no-store";
             await WriteSszResultAsync(ctx, await TVersion.Call(engine, id), static (d, w) => TVersion.Encode(d!, w));
         }
         else

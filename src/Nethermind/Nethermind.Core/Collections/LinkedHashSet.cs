@@ -21,7 +21,7 @@ namespace Nethermind.Core.Collections
 
         public LinkedHashSet()
         {
-            _dict = new Dictionary<T, LinkedListNode<T>>();
+            _dict = [];
             _list = new LinkedList<T>();
         }
 

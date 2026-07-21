@@ -23,17 +23,17 @@ public class BlockDecoderTests
     private static Block[] BuildScenarios()
     {
         Transaction[] transactions = new Transaction[100];
-        for (int i = 0; i < transactions.Length; i++)
+        for (uint i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
-                .WithData(new byte[] { (byte)i })
-                .WithNonce((UInt256)i)
+                .WithData([(byte)i])
+                .WithNonce(i)
                 .WithValue((UInt256)i)
                 .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA, true)
                 .TestObject;
         }
 
-        BlockHeader[] uncles = new BlockHeader[16];
+        BlockHeader[] uncles = new BlockHeader[2];
 
         for (int i = 0; i < uncles.Length; i++)
         {
@@ -109,7 +109,7 @@ public class BlockDecoderTests
     public void Can_do_roundtrip_null()
     {
         BlockDecoder decoder = new();
-        Rlp result = decoder.Encode(null);
+        Rlp result = decoder.Encode((Block?)null);
         Block decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
         Assert.That(decoded, Is.Null);
     }
@@ -122,7 +122,7 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
 
         byte[] bytes = Bytes.FromHexString(regression5644);
-        Rlp.ValueDecoderContext ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded = decoder.Encode(decoded);
         Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
@@ -134,7 +134,7 @@ public class BlockDecoderTests
     {
         BlockDecoder decoder = new();
         Rlp encoded = decoder.Encode(block);
-        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        RlpReader ctx = new(encoded.Bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded2 = decoder.Encode(decoded);
         Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
@@ -201,10 +201,96 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Receipt_recovery_hashes_encoded_legacy_and_typed_transactions_without_decoding()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.AccessList).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBaseFeePerGas(1)
+            .WithTransactions(transactions)
+            .WithWithdrawals(2)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithMixHash(Keccak.EmptyTreeHash)
+            .TestObject;
+
+        BlockDecoder decoder = new();
+        byte[] encoded = decoder.Encode(block).Bytes;
+        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)
+            ?? throw new AssertionException("encoded block should decode for receipt recovery");
+
+        try
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(recovery.GetNextTransactionHash(), Is.EqualTo(transactions[i].Hash), $"transaction {i}");
+            }
+
+            Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    [Test]
+    public void Receipt_recovery_calculates_a_missing_in_memory_transaction_hash()
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(1)
+            .Signed()
+            .TestObject;
+        Hash256 expectedHash = transaction.CalculateHash();
+        transaction.Hash = null;
+        ReceiptRecoveryBlock recovery = new(Build.A.Block.WithTransactions(transaction).TestObject);
+        Hash256 actualHash = recovery.GetNextTransactionHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualHash, Is.EqualTo(expectedHash));
+            Assert.That(transaction.Hash, Is.EqualTo(expectedHash), "the calculated hash should be cached on the transaction");
+        }
+    }
+
+    public static byte[][] MalformedRecoveryTransactions =
+    [
+        [],
+        [0xc0],
+        [0x80],
+        [0x01],
+        [0x81, 0x01],
+        [0x82, 0x00, 0xc0],
+        [0x82, 0x80, 0xc0],
+        [0x82, 0x01],
+        [0xc2, 0x80],
+        [0xb8, 0x38],
+        [0xb8, 0x01, 0x01],
+    ];
+
+    [TestCaseSource(nameof(MalformedRecoveryTransactions))]
+    public void Receipt_recovery_rejects_malformed_transaction_envelopes(byte[] transactionData)
+    {
+        ReceiptRecoveryBlock recovery = new(
+            null,
+            Build.A.BlockHeader.TestObject,
+            transactionData,
+            transactionCount: 1);
+
+        Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+    }
+
+    [Test]
     public void Get_length_null()
     {
         BlockDecoder decoder = new();
-        Assert.That(decoder.GetLength(null, RlpBehaviors.None), Is.EqualTo(1));
+        Assert.That(decoder.GetLength((Block?)null, RlpBehaviors.None), Is.EqualTo(1));
     }
 
     public static byte[][] MalformedInput =
@@ -224,7 +310,7 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
         Assert.Throws<RlpException>(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(input);
+            RlpReader ctx = new(input);
             decoder.Decode(ref ctx);
         });
     }

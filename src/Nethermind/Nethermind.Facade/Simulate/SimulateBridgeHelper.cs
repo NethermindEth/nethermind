@@ -14,7 +14,6 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
@@ -35,20 +34,55 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
-        long blockNumber,
+        ulong blockNumber,
         IReleaseSpec releaseSpec)
     {
+        // state-override commits must not trigger EIP-158 deletion on accounts whose
+        // code/nonce were zeroed while storage remains — EIP-7610 collision checks need that storage.
+        releaseSpec = releaseSpec.WithoutEip158();
+
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
 
-        IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
-        IEnumerable<Address> targets = blockStateCall.Calls?.Select(static details => details.Transaction.To!) ?? [];
-        foreach (Address address in senders.Union(targets).Where(static t => t is not null))
+        TransactionWithSourceDetails[]? calls = blockStateCall.Calls;
+        if (calls is not null)
         {
-            stateProvider.CreateAccountIfNotExists(address, 0, 0);
+            if (calls.Length == 1)
+            {
+                Transaction transaction = calls[0].Transaction;
+                Address? sender = transaction.SenderAddress;
+                if (sender is not null)
+                {
+                    stateProvider.CreateAccountIfNotExists(sender, 0, 0);
+                }
+
+                Address? to = transaction.To;
+                if (to is not null && !Equals(sender, to))
+                {
+                    stateProvider.CreateAccountIfNotExists(to, 0, 0);
+                }
+            }
+            else
+            {
+                HashSet<Address> seenAddresses = new(calls.Length * 2, Address.EqualityComparer);
+                for (int i = 0; i < calls.Length; i++)
+                {
+                    Transaction transaction = calls[i].Transaction;
+                    CreateAccountIfNotExists(transaction.SenderAddress, stateProvider, seenAddresses);
+                    CreateAccountIfNotExists(transaction.To, stateProvider, seenAddresses);
+                }
+            }
         }
 
         stateProvider.Commit(releaseSpec, commitRoots: true);
         stateProvider.CommitTree(blockNumber);
+    }
+
+    private static void CreateAccountIfNotExists(Address? address, IWorldState stateProvider, HashSet<Address> seenAddresses)
+    {
+        if (address is not null && seenAddresses.Add(address))
+        {
+            stateProvider.CreateAccountIfNotExists(address, 0, 0);
+        }
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -56,10 +90,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
-        long gasCapLimit,
+        ulong gasCapLimit,
         CancellationToken cancellationToken)
     {
-        List<SimulateBlockResult<TTrace>> list = new();
+        int blockCount = payload.BlockStateCalls?.Count ?? 0;
+        List<SimulateBlockResult<TTrace>> list = new(blockCount);
         SimulateOutput<TTrace> result = new()
         {
             Items = list
@@ -97,7 +132,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
-        long gasCapLimit,
+        ulong gasCapLimit,
         CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
@@ -108,7 +143,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, ulong> nonceCache = new();
+            Dictionary<Address, ulong> nonceCache = [];
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
@@ -121,9 +156,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
 
-                env.SimulateRequestState.TxsWithExplicitGas = calls
-                    .Select((c) => c.HadGasLimitInRequest)
-                    .ToArray();
+                env.SimulateRequestState.SetTxsWithExplicitGas(calls);
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
@@ -170,9 +203,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
-        Transaction[] transactions = calls
-            .Select(t => CreateTransaction(t, stateProvider, nonceCache))
-            .ToArray();
+        Transaction[] transactions = new Transaction[calls.Length];
+        for (int i = 0; i < calls.Length; i++)
+        {
+            transactions[i] = CreateTransaction(calls[i], stateProvider, nonceCache);
+        }
 
         Withdrawal[]? withdrawals = null;
         if (spec.WithdrawalsEnabled)
@@ -187,19 +222,22 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
-        long latestBlockNumber = latestBlock?.Number ?? 0;
+        ulong latestBlockNumber = latestBlock?.Number ?? 0;
 
         if (latestBlockNumber < parent.Number)
         {
             parent = latestBlock?.Header ?? blockTree.Head!.Header;
         }
 
-        BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
+        BlockStateCall<TransactionWithSourceDetails>? firstBlock =
+            payload.BlockStateCalls is { Count: > 0 } blockStateCalls
+                ? blockStateCalls[0]
+                : null;
 
-        ulong lastKnown = (ulong)latestBlockNumber;
+        ulong lastKnown = latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
+            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
             if (searchResult is not null)
             {
                 parent = searchResult.Header;
@@ -224,7 +262,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
-                    cachedNonce = test.Nonce.ToUInt64(null);
+                    cachedNonce = test.Nonce;
                 }
                 // else // Todo think if we shall create account here
             }
@@ -261,7 +299,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.IsPostMerge = false;
         }
 
-        IReleaseSpec spec = specProvider.GetSpec(result);
+        IReleaseSpec spec = specProvider.GetSpec(GetSimulatedActivation(block.BlockOverrides, result));
 
         if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
@@ -284,4 +322,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         return (result, spec);
     }
+
+    private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>
+        new(overrides?.Number ?? (ulong)header.Number, overrides?.Time ?? header.Timestamp);
 }

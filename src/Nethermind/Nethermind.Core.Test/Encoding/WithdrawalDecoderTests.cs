@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -25,7 +24,7 @@ public class WithdrawalDecoderTests
         };
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
 
-        rlp.ToHexString().Should().BeEquivalentTo("d8010294fffffffffffffffffffffffffffffffffffffffe03");
+        Assert.That(rlp.ToHexString(), Is.EqualTo("d8010294fffffffffffffffffffffffffffffffffffffffe03"));
     }
 
     [Test]
@@ -41,11 +40,11 @@ public class WithdrawalDecoderTests
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
         Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp);
 
-        decoded.Should().BeEquivalentTo(withdrawal);
+        Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
     }
 
     [Test]
-    public void Should_decode_with_ValueDecoderContext()
+    public void Should_decode_with_RlpReader()
     {
         Withdrawal withdrawal = new()
         {
@@ -54,15 +53,16 @@ public class WithdrawalDecoderTests
             Address = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
             AmountInGwei = ulong.MaxValue
         };
-        RlpStream stream = new(1024);
         WithdrawalDecoder codec = new();
+        byte[] bytes = new byte[codec.GetLength(withdrawal, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
 
-        codec.Encode(stream, withdrawal);
+        codec.Encode(ref writer, withdrawal);
 
-        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
+        RlpReader decoderContext = new(bytes);
         Withdrawal? decoded = codec.Decode(ref decoderContext);
 
-        decoded.Should().BeEquivalentTo(withdrawal);
+        Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
     }
 
     [Test]
@@ -78,7 +78,7 @@ public class WithdrawalDecoderTests
         byte[] rlp1 = new WithdrawalDecoder().Encode(withdrawal).Bytes;
         byte[] rlp2 = Rlp.Encode(withdrawal).Bytes;
 
-        rlp1.Should().BeEquivalentTo(rlp2);
+        Assert.That(rlp1, Is.EqualTo(rlp2));
     }
 
     /// <summary>
@@ -110,7 +110,7 @@ public class WithdrawalDecoderTests
 
         byte[] rlp = CombineRlpList(tamperedRlp1, tamperedRlp2);
 
-        void Decode() => rlp.AsRlpValueContext().DecodeArray(decoder!);
+        void Decode() => new RlpReader(rlp).DecodeArray(decoder!);
         Assert.That(Decode, Throws.InstanceOf<RlpException>().And.Message.Contain("checkpoint failed"));
     }
 
@@ -129,4 +129,5 @@ public class WithdrawalDecoderTests
 
         return result;
     }
+
 }

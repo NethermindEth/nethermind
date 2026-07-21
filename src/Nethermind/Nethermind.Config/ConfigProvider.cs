@@ -55,7 +55,7 @@ public class ConfigProvider : IConfigProvider
             Type type = typeof(IConfig);
             IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindBasedTypes(type).Where(static x => x.IsInterface);
             IList<(Type ConfigType, Type DirectImplementation)> types =
-                new List<(Type ConfigType, Type DirectImplementation)>();
+                [];
 
             foreach (Type @interface in interfaces)
             {

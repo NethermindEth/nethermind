@@ -8,7 +8,7 @@ import requests
 
 CONFIGS_PATH = './src/Nethermind/Nethermind.Runner/configs'
 APPLICATION_JSON = { 'Content-type': 'application/json' }
-SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "base-mainnet", "base-sepolia", "worldchain-mainnet", "worldchain-sepolia"]
+SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "worldchain-mainnet", "worldchain-sepolia"]
 
 configs = {
     # fast sync section
@@ -34,18 +34,6 @@ configs = {
         "url": "https://api.etherscan.io/v2/api?chainid=11155111",
         "blockReduced": 1000,
         "multiplierRequirement": 1000,
-        "isPoS": True
-    },
-    "base-mainnet": {
-        "url": "https://mainnet.base.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": True
-    },
-    "base-sepolia": {
-        "url": "https://sepolia.base.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
         "isPoS": True
     },
     "op-mainnet": {

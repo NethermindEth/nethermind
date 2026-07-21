@@ -29,8 +29,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
-        internal static ulong HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
+        internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
+        internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
+        internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -40,7 +41,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
 
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
 
         // this means that we know what the number, hash, and total diff of the head block is
@@ -110,7 +111,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
-        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -341,14 +342,22 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     continue;
                 }
 
-                sizeEstimate += MessageSizeEstimator.EstimateSize(block);
+                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                // Cap the message size; return the prefix (bodies match request hashes positionally).
+                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
                 {
                     break;
                 }
 
                 blocks.Add(block);
+                sizeEstimate += blockSize;
+
+                // Soft limit keeps the common-case response small.
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
             }
 
             return Task.FromResult(new BlockBodiesMessage(blocks));
@@ -382,12 +391,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 }
 
                 Hash256 blockHash = hashes[i];
-                if (SyncServer.FindHeader(blockHash) is null)
+                TxReceipt[]? blockTxReceipts = SyncServer.GetReceipts(blockHash);
+                if (blockTxReceipts is null)
                 {
                     break;
                 }
-
-                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(blockHash);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
@@ -473,7 +481,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         #region IPeerWithSatelliteProtocol
 
         private Dictionary<string, object>? _protocolHandlers;
-        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= [];
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => ProtocolHandlers[protocol] = protocolHandler;
 

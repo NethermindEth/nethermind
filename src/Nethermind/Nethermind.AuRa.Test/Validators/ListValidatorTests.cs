@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -36,17 +35,17 @@ namespace Nethermind.AuRa.Test.Validators
         {
             get
             {
-                yield return new TestCaseData(TestItem.AddressA, 0L) { ExpectedResult = true };
-                yield return new TestCaseData(TestItem.AddressA, 1L) { ExpectedResult = false };
-                yield return new TestCaseData(TestItem.AddressB, 1L) { ExpectedResult = true };
-                yield return new TestCaseData(TestItem.AddressB, 0L) { ExpectedResult = false };
-                yield return new TestCaseData(TestItem.AddressC, 0L) { ExpectedResult = false };
-                yield return new TestCaseData(TestItem.AddressC, 1L) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressA, 0UL) { ExpectedResult = true };
+                yield return new TestCaseData(TestItem.AddressA, 1UL) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressB, 1UL) { ExpectedResult = true };
+                yield return new TestCaseData(TestItem.AddressB, 0UL) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressC, 0UL) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressC, 1UL) { ExpectedResult = false };
             }
         }
 
         [TestCaseSource(nameof(ValidateTestCases))]
-        public bool should_validate_correctly(Address address, long index) =>
+        public bool should_validate_correctly(Address address, ulong index) =>
             _validSealerStrategy.IsValidSealer(GetListValidator(TestItem.AddressA, TestItem.AddressB).Validators, address, index, out _);
 
         [TestCase(1)]
@@ -54,7 +53,7 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(4)]
         [TestCase(10)]
         public void should_get_current_sealers_count(int validatorCount) =>
-            GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.Length.Should().Be(validatorCount);
+            Assert.That(GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.Length, Is.EqualTo(validatorCount));
 
         [TestCase(1, ExpectedResult = 1)]
         [TestCase(2, ExpectedResult = 2)]
@@ -66,21 +65,21 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(10, ExpectedResult = 6)]
         [TestCase(100, ExpectedResult = 51)]
         public int should_get_min_sealers_for_finalization(int validatorCount) =>
-            GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.MinSealersForFinalization();
+            (int)GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.MinSealersForFinalization();
 
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
             LimboLogs logManager = LimboLogs.Instance;
             Action act = () => new ListBasedValidator(null, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), logManager, 1);
-            act.Should().Throw<ArgumentNullException>();
+            Assert.That(act, Throws.TypeOf<ArgumentNullException>());
         }
 
         [Test]
         public void throws_ArgumentException_on_empty_addresses()
         {
             Action act = () => GetListValidator();
-            act.Should().Throw<ArgumentException>();
+            Assert.That(act, Throws.TypeOf<ArgumentException>());
         }
     }
 }

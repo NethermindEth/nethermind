@@ -18,11 +18,24 @@ defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
+  build:
+    uses: ./.github/workflows/build-test-artifacts.yml
+    with:
+      matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-x64","os":"ubuntu-latest","variant":"checked","build_args":"-p:DefineConstants=TRACE%3BDEBUG"}]}'
+
   tests:
     name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DOTNET_GCConserveMemory: 9
+      # Only these fixture tests read the src/tests submodule at runtime.
+      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       matrix:
@@ -30,9 +43,12 @@ jobs:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
-          - label: no-intrinsics
+            artifact: checked
+          - &no_intrinsics
+            label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
+            artifact: release
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -92,18 +108,30 @@ jobs:
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
+        exclude:
+          - { variant: *no_intrinsics, project: Nethermind.Api.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Config.Test }
+          - { variant: *no_intrinsics, project: Nethermind.EthStats.Test }
+          - { variant: *no_intrinsics, project: Nethermind.HealthChecks.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Logging.NLog.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Monitoring.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Sockets.Test }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
+          submodules: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) && 'recursive' || 'false' }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
           cache: true
-          cache-dependency-path: |
-            src/Nethermind/Nethermind.Runner/packages.lock.json
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: ${{ matrix.variant.artifact }}
 
       - name: ${{ matrix.project }}
         id: test
@@ -111,16 +139,18 @@ jobs:
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
-          dotnet build ${{ matrix.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          dotnet restore ${{ matrix.project }}.csproj
           test_args=(--no-build --no-restore)
 
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
 
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
@@ -128,9 +158,11 @@ jobs:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
+            artifact: checked
           - label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
+            artifact: release
         test:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
@@ -140,30 +172,22 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
     steps:
-      - name: Free up disk space
-        if: startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
           cache: true
-          cache-dependency-path: |
-            src/Nethermind/Nethermind.Runner/packages.lock.json
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: ${{ matrix.variant.artifact }}
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
@@ -173,15 +197,37 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
-          dotnet build ${{ matrix.test.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          dotnet restore ${{ matrix.test.project }}.csproj
           test_args=(--no-build --no-restore)
 
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+
+  # The pyspec fixtures under the build variants now run through the reusable nethtest
+  # workflow instead of the Ethereum.Blockchain.Pyspec.Test NUnit shards. Matches the
+  # NUnit TEST_SKIP_HEAVY=1 scope those variant jobs used: the heavy engine / sync /
+  # Amsterdam-BAL fixtures are skipped (build-config bugs live in the EVM + crypto, which
+  # blockTest exercises as well as engineTest), leaving block + state + tx. Sequential
+  # (patricia) config, coarsely chunked, once per variant. checked builds the runner with
+  # DEBUG defines; no-intrinsics disables hardware intrinsics at run time.
+  pyspec-checked:
+    name: EEST nethtest (checked)
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: blockTest,stateTest,txTest
+      setup_group: sequential
+      variant: checked
+
+  pyspec-no-intrinsics:
+    name: EEST nethtest (no-intrinsics)
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: blockTest,stateTest,txTest
+      setup_group: sequential
+      variant: no-intrinsics
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-chunked]
+    needs: [tests, tests-chunked, pyspec-checked, pyspec-no-intrinsics]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -189,5 +235,7 @@ jobs:
         run: |
           [[ \
             "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" \
+            "${{ needs.tests-chunked.result }}" == "success" && \
+            "${{ needs.pyspec-checked.result }}" == "success" && \
+            "${{ needs.pyspec-no-intrinsics.result }}" == "success" \
           ]]

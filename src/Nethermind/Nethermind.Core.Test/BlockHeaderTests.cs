@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -19,6 +18,23 @@ namespace Nethermind.Core.Test;
 [TestFixture]
 public class BlockHeaderTests
 {
+    /// <summary>
+    /// Guards the hand-maintained roster in <see cref="BlockHeader.CloneForProcessing"/>: every settable
+    /// member must be carried into the clone except execution outputs the processor recomputes.
+    /// </summary>
+    [Test]
+    public void CloneForProcessing_carries_every_consensus_input()
+    {
+        BlockHeader src = new(
+            Keccak.Compute("parent"), Keccak.Compute("uncles"), Address.Zero, 1, 2, 3, 4, [5]);
+        BlockHeaderMembers.FillWithDistinctValues(src);
+
+        BlockHeader clone = src.CloneForProcessing();
+
+        BlockHeaderMembers.AssertCarriesAllMembers(src, clone,
+            nameof(BlockHeader.StateRoot), nameof(BlockHeader.GasUsed), nameof(BlockHeader.Bloom));
+    }
+
     [Test]
     public void Hash_as_expected()
     {
@@ -28,15 +44,15 @@ public class BlockHeaderTests
             Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1"),
             Difficulty = Bytes.FromHexString("0x020000").ToUInt256(),
             ExtraData = [],
-            GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
-            GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
+            GasLimit = 0x2fefbaUL,
+            GasUsed = 0x5208UL,
             MixHash = new Hash256(Bytes.FromHexString("0x00be1f287e0911ea2f070b3650a1a0346535895b6c919d7e992a0c255a83fc8b")),
-            Nonce = (ulong)Bytes.FromHexString("0xa0ddc06c6d7b9f48").ToUnsignedBigInteger(),
-            Number = (long)Bytes.FromHexString("0x01").ToUInt256(),
+            Nonce = 0xa0ddc06c6d7b9f48UL,
+            Number = 0x01UL,
             ParentHash = new Hash256(Bytes.FromHexString("0x5a39ed1020c04d4d84539975b893a4e7c53eab6c2965db8bc3468093a31bc5ae")),
             ReceiptsRoot = new Hash256(Bytes.FromHexString("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2")),
             StateRoot = new Hash256(Bytes.FromHexString("0x5c2e5a51a79da58791cdfe572bcfa3dfe9c860bf7fad7d9738a1aace56ef9332")),
-            Timestamp = (ulong)Bytes.FromHexString("0x59d79f18").ToUnsignedBigInteger(),
+            Timestamp = 0x59d79f18UL,
             TxRoot = new Hash256(Bytes.FromHexString("0x5c9151c2413d1cd25c51ffb4ac38948acc1359bf08c6b49f283660e9bcf0f516")),
             UnclesHash = new Hash256(Bytes.FromHexString("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"))
         };
@@ -54,15 +70,15 @@ public class BlockHeaderTests
             Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1"),
             Difficulty = Bytes.FromHexString("0x020080").ToUInt256(),
             ExtraData = [],
-            GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
-            GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
+            GasLimit = 0x2fefbaUL,
+            GasUsed = 0x5208UL,
             MixHash = new Hash256(Bytes.FromHexString("0x615bbf44eb133eab3cb24d5766ae9617d9e45ee00e7a5667db30672b47d22149")),
-            Nonce = (ulong)Bytes.FromHexString("0x4c4f3d3e055cb264").ToUnsignedBigInteger(),
-            Number = (long)Bytes.FromHexString("0x03").ToUInt256(),
+            Nonce = 0x4c4f3d3e055cb264UL,
+            Number = 0x03UL,
             ParentHash = new Hash256(Bytes.FromHexString("0xde1457da701ef916533750d46c124e9ae50b974410bd590fbcf4c935a4d19465")),
             ReceiptsRoot = new Hash256(Bytes.FromHexString("0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2")),
             StateRoot = new Hash256(Bytes.FromHexString("0xfb4084a7f8b57e370fefe24a3da3aaea6c4dd8b6f6251916c32440336035160b")),
-            Timestamp = (ulong)Bytes.FromHexString("0x59d79f1c").ToUnsignedBigInteger(),
+            Timestamp = 0x59d79f1cUL,
             TxRoot = new Hash256(Bytes.FromHexString("0x1722b8a91bfc4f5614ce36ee77c7cce6620ab4af36d3c54baa66d7dbeb7bce1a")),
             UnclesHash = new Hash256(Bytes.FromHexString("0xe676a42c388d2d24bb2927605d5d5d82fba50fb60d74d44b1cd7d1c4e4eee3c0"))
         };
@@ -112,8 +128,6 @@ public class BlockHeaderTests
             Nonce = 1,
             Hash = TestItem.KeccakB,
             TotalDifficulty = UInt256.One,
-            AuRaSignature = [1],
-            AuRaStep = 1,
             BaseFeePerGas = 2,
             WithdrawalsRoot = TestItem.KeccakB,
             BlockAccessListHash = TestItem.KeccakB,
@@ -122,26 +136,29 @@ public class BlockHeaderTests
 
         BlockHeader child = parent.CreateSimulatedChild(112);
 
-        child.Should().BeOfType<BlockHeader>();
-        child.ParentHash.Should().Be(parent.Hash!);
-        child.UnclesHash.Should().Be(Keccak.OfAnEmptySequenceRlp);
-        child.Beneficiary.Should().Be(parent.Beneficiary!);
-        child.Difficulty.Should().Be(UInt256.Zero);
-        child.Number.Should().Be(parent.Number + 1);
-        child.GasLimit.Should().Be(parent.GasLimit);
-        child.Timestamp.Should().Be(112);
-        child.ExtraData.Should().BeEmpty();
-        child.MixHash.Should().Be(Hash256.Zero);
-        child.RequestsHash.Should().Be(parent.RequestsHash!);
-        child.Hash.Should().BeNull();
-        child.Bloom.Should().BeNull();
-        child.StateRoot.Should().BeNull();
-        child.TxRoot.Should().BeNull();
-        child.ReceiptsRoot.Should().BeNull();
-        child.BlobGasUsed.Should().BeNull();
-        child.ExcessBlobGas.Should().BeNull();
-        child.ParentBeaconBlockRoot.Should().BeNull();
-        child.SlotNumber.Should().BeNull();
+        Assert.Multiple(() =>
+        {
+            Assert.That(child, Is.TypeOf<BlockHeader>());
+            Assert.That(child.ParentHash, Is.EqualTo(parent.Hash!));
+            Assert.That(child.UnclesHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+            Assert.That(child.Beneficiary, Is.EqualTo(parent.Beneficiary!));
+            Assert.That(child.Difficulty, Is.EqualTo(UInt256.Zero));
+            Assert.That(child.Number, Is.EqualTo(parent.Number + 1));
+            Assert.That(child.GasLimit, Is.EqualTo(parent.GasLimit));
+            Assert.That(child.Timestamp, Is.EqualTo(112));
+            Assert.That(child.ExtraData, Is.Empty);
+            Assert.That(child.MixHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(child.RequestsHash, Is.EqualTo(parent.RequestsHash!));
+            Assert.That(child.Hash, Is.Null);
+            Assert.That(child.Bloom, Is.Null);
+            Assert.That(child.StateRoot, Is.Null);
+            Assert.That(child.TxRoot, Is.Null);
+            Assert.That(child.ReceiptsRoot, Is.Null);
+            Assert.That(child.BlobGasUsed, Is.Null);
+            Assert.That(child.ExcessBlobGas, Is.Null);
+            Assert.That(child.ParentBeaconBlockRoot, Is.Null);
+            Assert.That(child.SlotNumber, Is.Null);
+        });
     }
 
     [Test]
@@ -157,16 +174,16 @@ public class BlockHeaderTests
         Assert.That(baseFee, Is.EqualTo(UInt256.Zero));
     }
 
-    [TestCase(100, 100, 88, 0)]
-    [TestCase(100, 300, 267, 10)]
-    [TestCase(500, 200, 185, 200)]
-    [TestCase(500, 0, 0, 200)]
-    [TestCase(21, 23, 23, 21)]
-    [TestCase(21, 23, 61, 300)]
-    [TestCase(500, 0, 10, 200, 10)]
-    [TestCase(100, 100, 88, 0, 80)]
-    [TestCase(100, 100, 110, 0, 110)]
-    public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, long gasUsed, long? minimalBaseFee = null)
+    [TestCase(100, 100, 88, 0UL)]
+    [TestCase(100, 300, 267, 10UL)]
+    [TestCase(500, 200, 185, 200UL)]
+    [TestCase(500, 0, 0, 200UL)]
+    [TestCase(21, 23, 23, 21UL)]
+    [TestCase(21, 23, 61, 300UL)]
+    [TestCase(500, 0, 10, 200UL, 10)]
+    [TestCase(100, 100, 88, 0UL, 80)]
+    [TestCase(100, 100, 110, 0UL, 110)]
+    public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, ulong gasUsed, long? minimalBaseFee = null)
     {
         IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
@@ -178,7 +195,7 @@ public class BlockHeaderTests
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = gasTarget * Eip1559Constants.DefaultElasticityMultiplier;
+        blockHeader.GasLimit = (ulong)gasTarget * Eip1559Constants.DefaultElasticityMultiplier;
         blockHeader.BaseFeePerGas = (UInt256)baseFee;
         blockHeader.GasUsed = gasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
@@ -187,13 +204,13 @@ public class BlockHeaderTests
 
     [TestCaseSource(nameof(HasBodyTestSource))]
     public void Should_have_empty_body_as_expected((BlockHeader Header, bool HasBody) fixture) =>
-        fixture.Header.HasBody.Should().Be(fixture.HasBody);
+        Assert.That(fixture.Header.HasBody, Is.EqualTo(fixture.HasBody));
 
     public class BaseFeeTestCases
     {
         public int ParentBaseFee { get; set; }
-        public int ParentGasUsed { get; set; }
-        public int ParentTargetGasUsed { get; set; }
+        public ulong ParentGasUsed { get; set; }
+        public ulong ParentTargetGasUsed { get; set; }
         public int ExpectedBaseFee { get; set; }
     }
 

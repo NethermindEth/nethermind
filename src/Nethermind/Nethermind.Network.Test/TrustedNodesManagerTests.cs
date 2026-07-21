@@ -4,7 +4,6 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -36,13 +35,10 @@ public class TrustedNodesManagerTests
         using CancellationTokenSource cts = new();
         await cts.CancelAsync();
 
-        await FluentActions.Awaiting(() => manager.RemoveAsync(enode, updateFile: true, cts.Token))
-            .Should().ThrowAsync<System.OperationCanceledException>(because: "the pre-cancelled token must abort SaveFileAsync");
+        Assert.That(async () => await manager.RemoveAsync(enode, updateFile: true, cts.Token), Throws.InstanceOf<System.OperationCanceledException>(), "the pre-cancelled token must abort SaveFileAsync");
 
-        nodeRemovedFired.Should().BeTrue(
-            because: "NodeRemoved must fire before the file write, so a cancelled SaveFileAsync cannot leave the peer untrusted-in-memory yet still connected via the missed disconnect event chain");
-        manager.Nodes.Should().NotContain(n => n.NodeId == enode.PublicKey,
-            because: "the in-memory dict must already be cleared before the cancellation point, so an aborted file write cannot leave the peer trusted in memory");
+        Assert.That(nodeRemovedFired, Is.True, "NodeRemoved must fire before the file write, so a cancelled SaveFileAsync cannot leave the peer untrusted-in-memory yet still connected via the missed disconnect event chain");
+        Assert.That(manager.Nodes, Has.None.Matches<NetworkNode>(n => n.NodeId == enode.PublicKey), "the in-memory dict must already be cleared before the cancellation point, so an aborted file write cannot leave the peer trusted in memory");
     }
 
     [Test]
@@ -54,10 +50,9 @@ public class TrustedNodesManagerTests
         Enode enodeOriginal = new(EnodeString);
         await manager.AddAsync(enodeOriginal, updateFile: false);
 
-        manager.IsTrusted(enodeOriginal).Should().BeTrue(because: "precondition: the peer was just added");
+        Assert.That(manager.IsTrusted(enodeOriginal), Is.True, "precondition: the peer was just added");
 
         Enode enodeSamePubkeyDifferentAddress = new(EnodeStringSamePubkeyDifferentAddress);
-        manager.IsTrusted(enodeSamePubkeyDifferentAddress).Should().BeTrue(
-            because: "trust is keyed by public key only, matching geth's Server.trusted map (p2p/server.go:644 trusted[enode.ID()]); a trusted peer at a different address is still trusted");
+        Assert.That(manager.IsTrusted(enodeSamePubkeyDifferentAddress), Is.True, "trust is keyed by public key only, matching geth's Server.trusted map (p2p/server.go:644 trusted[enode.ID()]); a trusted peer at a different address is still trusted");
     }
 }

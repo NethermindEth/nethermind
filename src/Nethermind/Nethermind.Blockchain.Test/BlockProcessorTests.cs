@@ -12,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -20,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -51,11 +51,14 @@ public class BlockProcessorTests
     [Test]
     public void ApplyStateChanges_uses_parent_state_without_prestate_sentinels()
     {
-        BlockAccessList bal = new();
-        AccountChanges accountChanges = AddAccountRead(bal, TestItem.AddressA);
-        accountChanges.AddBalanceChange(new(0, 150));
-        accountChanges.AddNonceChange(new(0, 3));
-        accountChanges.GetOrAddSlotChanges(1).AddStorageChange(new(0, 0x2Au));
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 150))
+                .WithNonceChanges(new NonceChange(0, 3))
+                .WithStorageChanges(1, new StorageChange(0, 0x2Au))
+                .TestObject)
+            .TestObject;
 
         ApplyStateChangesInParentScope(
             bal,
@@ -66,7 +69,7 @@ public class BlockProcessorTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
-                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)3));
+                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(3ul));
                     Assert.That(new UInt256(stateProvider.Get(storageCell), isBigEndian: true), Is.EqualTo((UInt256)0x2Au));
                 }
             });
@@ -75,8 +78,12 @@ public class BlockProcessorTests
     [Test]
     public void ApplyStateChanges_creates_missing_account_from_balance_change()
     {
-        BlockAccessList bal = new();
-        AddAccountRead(bal, TestItem.AddressA).AddBalanceChange(new(0, 25));
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 25))
+                .TestObject)
+            .TestObject;
 
         ApplyStateChangesInParentScope(
             bal,
@@ -119,6 +126,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
+            static worldState => new EthereumCodeInfoRepository(worldState),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -127,7 +135,7 @@ public class BlockProcessorTests
             .WithNumber(7)
             .WithParentHash(parentHash)
             .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -138,8 +146,8 @@ public class BlockProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltWorldStates, Has.Count.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltWorldStates.Count, Is.EqualTo(2));
             Assert.That(parentReaderFactory.BuiltWorldStates[0], Is.Not.SameAs(parentReaderFactory.BuiltWorldStates[1]));
             Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
         }
@@ -189,6 +197,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
+            static worldState => new EthereumCodeInfoRepository(worldState),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -196,7 +205,7 @@ public class BlockProcessorTests
             .WithNumber(7)
             .WithParentHash(parentHash)
             .WithTransactions(tx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
@@ -211,21 +220,15 @@ public class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(1));
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(1));
             Assert.That(parentReaderFactory.BuiltHeaders[0]!.StateRoot, Is.EqualTo(parentStateRoot));
         }
 
         balManager.ReturnTxProcessor(1);
     }
 
-    private static AccountChanges AddAccountRead(BlockAccessList bal, Address address)
-    {
-        bal.AddAccountRead(address);
-        return bal.GetAccountChanges(address)!;
-    }
-
     private static void ApplyStateChangesInParentScope(
-        BlockAccessList bal,
+        ReadOnlyBlockAccessList bal,
         Action<IWorldState>? genesisSetup,
         Action<IWorldState> assertState)
     {
@@ -253,7 +256,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
+        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -275,7 +278,6 @@ public class BlockProcessorTests
             processor,
             HoodiSpecProvider.Instance,
             stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             preWarmer);
@@ -404,13 +406,9 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        // After Process returns, the event handler should be unsubscribed.
-        // Verify by checking that firing the event doesn't cause issues
-        // (if still subscribed, it would try to cancel a disposed CTS).
         int externalHandlerCallCount = 0;
         processor.TransactionsExecuted += () => externalHandlerCallCount++;
 
-        // Process another block to trigger the event — only our handler should fire
         using IDisposable scope = stateProvider.BeginScope(null);
         Block block2 = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block2.Header);
@@ -442,7 +440,6 @@ public class BlockProcessorTests
     {
         IBlockProcessor processor = NullBlockProcessor.Instance;
 
-        // Should not throw
         Action handler = () => { };
         processor.TransactionsExecuted += handler;
         processor.TransactionsExecuted -= handler;
@@ -482,7 +479,7 @@ public class BlockProcessorTests
         public CancellationToken CapturedToken { get; private set; }
 
         public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
-            CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+            CancellationToken cancellationToken = default)
         {
             CapturedToken = cancellationToken;
             return Task.CompletedTask;
@@ -490,6 +487,7 @@ public class BlockProcessorTests
 
         public CacheType ClearCaches() => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
+        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Dispose() { }
     }
 
@@ -501,9 +499,9 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 
-    [TestCase(2000, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
-    [TestCase(1999, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(long gasRemaining, bool shouldThrow)
+    [TestCase(2000ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, bool shouldThrow)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -513,22 +511,28 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            static worldState => new EthereumCodeInfoRepository(worldState));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
-        BlockAccessList suggestedBal = new();
-        suggestedBal.AddAccountRead(TestItem.AddressA);
-        suggestedBal.AddStorageRead(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(1)
+                .TestObject)
+            .TestObject;
 
         Block block = Build.A.Block
-            .WithNumber(1)
+            .WithNumber(1ul)
             .WithGasUsed(gasRemaining)
             .WithBlockAccessList(suggestedBal)
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
         // Generated BAL has the account but no storage reads
-        balManager.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressA);
+        BlockAccessListAtIndex generatedAtIndex = new();
+        generatedAtIndex.AddAccountRead(TestItem.AddressA);
+        balManager.GeneratedBlockAccessList.Merge(generatedAtIndex);
 
         if (shouldThrow)
         {
@@ -551,7 +555,8 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            static worldState => new EthereumCodeInfoRepository(worldState));
 
         Address lowAddress = TestItem.AddressA;
         Address highAddress = TestItem.AddressB;
@@ -560,9 +565,18 @@ public class BlockProcessorTests
             (lowAddress, highAddress) = (highAddress, lowAddress);
         }
 
-        BlockAccessList suggestedBal = new();
-        suggestedBal.AddBalanceChange(highAddress, before: 0, after: 2);
-        suggestedBal.AddBalanceChange(lowAddress, before: 0, after: 1);
+        // Build suggested BAL with accounts declared in high→low order so the validator must
+        // match by address rather than by insertion order.
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(highAddress)
+                .WithBalanceChanges(new BalanceChange(0, 2))
+                .TestObject)
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(lowAddress)
+                .WithBalanceChanges(new BalanceChange(0, 1))
+                .TestObject)
+            .TestObject;
 
         Block block = Build.A.Block
             .WithNumber(1)
@@ -572,10 +586,69 @@ public class BlockProcessorTests
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        balManager.GeneratedBlockAccessList.AddBalanceChange(lowAddress, before: 0, after: 1);
-        balManager.GeneratedBlockAccessList.AddBalanceChange(highAddress, before: 0, after: 2);
+        // Generated BAL in low→high (canonical) order — index lookup must reconcile despite
+        // the suggested side using the opposite insertion order.
+        BlockAccessListAtIndex slice = new();
+        slice.AddBalanceChange(lowAddress, before: 0, after: 1);
+        slice.AddBalanceChange(highAddress, before: 0, after: 2);
+        balManager.GeneratedBlockAccessList.Merge(slice);
 
         Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+    }
+
+    // Verify-only structural-equivalence check: covers the mismatch classes the column-index
+    // and gas-budget checks don't catch (their inputs slip through to the structural walk in
+    // SetBlockAccessList).
+    [TestCaseSource(nameof(VerifyOnlyStructuralMismatchCases))]
+    public void SetBlockAccessList_verify_only_rejects_structural_mismatch(
+        ReadOnlyBlockAccessList suggested,
+        Action<BlockAccessListAtIndex> populateGenerated)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(0)
+            .WithBlockAccessList(suggested)
+            .TestObject;
+
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        BlockAccessListAtIndex slice = new();
+        populateGenerated(slice);
+        balManager.GeneratedBlockAccessList.Merge(slice);
+
+        Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+            () => balManager.SetBlockAccessList(block));
+    }
+
+    private static IEnumerable<TestCaseData> VerifyOnlyStructuralMismatchCases()
+    {
+        // storage_reads content mismatch (count matches, values differ): the one mismatch class
+        // nothing else catches — column-index only tracks read counts via the gas-budget check.
+        yield return new TestCaseData(
+            Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithStorageReads((UInt256)5)
+                    .TestObject)
+                .TestObject,
+            (Action<BlockAccessListAtIndex>)(s => s.AddStorageRead(TestItem.AddressA, (UInt256)7)))
+            .SetName("storage_reads content mismatch (same count, different value)");
+
+        // Per-account presence mismatch with matching count: suggested has AddressA, generated
+        // touched AddressB — the structural walk catches via `generated.GetAccountChanges` miss.
+        yield return new TestCaseData(
+            Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 1))
+                    .TestObject)
+                .TestObject,
+            (Action<BlockAccessListAtIndex>)(s => s.AddBalanceChange(TestItem.AddressB, before: 0, after: 1)))
+            .SetName("account presence mismatch (same count, different address)");
     }
 
     [TestCase(1)]
@@ -590,7 +663,7 @@ public class BlockProcessorTests
         Block block = Build.A.Block
             .WithNumber(1)
             .WithTransactions(1, Amsterdam.Instance)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
@@ -625,7 +698,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(100_000)
             .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -658,7 +731,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(100_000)
             .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -697,7 +770,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(250_000)
             .WithTransactions(firstTx, createTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -730,7 +803,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(100_000)
             .WithTransactions(onlyTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -772,7 +845,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(100_000)
             .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -804,7 +877,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(txCount * 21_000)
             .WithTransactions(transactions)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         using RecordingTransactionProcessorAdapter transactionProcessor = new();
@@ -848,7 +921,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(txCount * 21_000)
             .WithTransactions(transactions)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         using RecordingTransactionProcessorAdapter transactionProcessor = new(traceOperation: true);
@@ -925,12 +998,12 @@ public class BlockProcessorTests
 
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithGasLimit(txCount * 1_000_000L)
+            .WithGasLimit((ulong)txCount * 1_000_000ul)
             .WithTransactions(transactions)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = new();
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
             stateProvider,
@@ -961,9 +1034,8 @@ public class BlockProcessorTests
     [Test]
     public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
     {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
         GasValidationResultSlot[] gasResults = ResultsForCount(2);
-        gasResults[0].TrySetResult(new GasValidationResult(1, 2, intrinsicGas, null));
+        gasResults[0].TrySetResult(new GasValidationResult(1, 2, null));
 
         BlockProcessor.ParallelBlockValidationTransactionsExecutor.CancelIncompleteGasResults(gasResults, gasResults.Length);
 
@@ -984,7 +1056,9 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            static worldState => new EthereumCodeInfoRepository(worldState),
+            readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)
     {
@@ -999,7 +1073,7 @@ public class BlockProcessorTests
         Block block = Build.A.Block
             .WithNumber(1)
             .WithTransactions(txCount, Amsterdam.Instance)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
@@ -1019,11 +1093,8 @@ public class BlockProcessorTests
     }
 
     private static GasValidationResult
-        GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
-    {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
-        return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
-    }
+        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
+        new(blockGasUsed, blockStateGasUsed, exception);
 
     private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
     {
@@ -1032,7 +1103,7 @@ public class BlockProcessorTests
         balManager.Setup(block);
     }
 
-    private static GasValidationResultSlot[] BuildGasResults(Block block, params (long Gas, long StateGas, InvalidBlockException? Exception)[] rows)
+    private static GasValidationResultSlot[] BuildGasResults(Block block, params (ulong Gas, ulong StateGas, InvalidBlockException? Exception)[] rows)
     {
         GasValidationResultSlot[] slots = ResultsForCount(rows.Length);
         for (int i = 0; i < rows.Length; i++)
@@ -1045,11 +1116,11 @@ public class BlockProcessorTests
     private static Transaction[] CreateParallelValidationTransactions(int txCount)
     {
         Transaction[] transactions = new Transaction[txCount];
-        for (int i = 0; i < transactions.Length; i++)
+        for (uint i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
-                .WithNonce((UInt256)i)
-                .WithGasLimit(21_000)
+                 .WithNonce(i)
+                 .WithGasLimit(21_000ul)
                 .TestObject;
         }
 
@@ -1057,8 +1128,8 @@ public class BlockProcessorTests
     }
 
     private static Transaction CreateTxForExecutionOrder(
-        int nonce,
-        long gasLimit,
+        uint nonce,
+        ulong gasLimit,
         int dataLength = 0,
         int authorizationCount = 0,
         int accessListStorageKeys = 0,
@@ -1066,7 +1137,7 @@ public class BlockProcessorTests
     {
         byte[] data = dataLength == 0 ? [] : new byte[dataLength];
         TransactionBuilder<Transaction> builder = Build.A.Transaction
-            .WithNonce((UInt256)nonce)
+            .WithNonce(nonce)
             .WithGasLimit(gasLimit);
 
         if (contractCreation)
@@ -1189,11 +1260,17 @@ public class BlockProcessorTests
         {
         }
 
-        public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+        public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled => true;
+        public bool BatchReadEnabled => false;
+        public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
         public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
+        {
+        }
+
+        public void WaitForBalWarmup()
         {
         }
 
@@ -1201,7 +1278,7 @@ public class BlockProcessorTests
         {
         }
 
-        public void SpendGas(long gas)
+        public void SpendGas(ulong gas)
         {
         }
 
@@ -1250,10 +1327,6 @@ public class BlockProcessorTests
         public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
         {
         }
-
-        public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
-        {
-        }
     }
 
     private sealed class BalIndexRecordingTransactionProcessorAdapter(
@@ -1266,7 +1339,7 @@ public class BlockProcessorTests
             int txIndex = (int)transaction.Nonce;
             balIndexes.Add((txIndex, balIndex));
 
-            long gasUsed = 21_000 + txIndex;
+            ulong gasUsed = 21_000ul + (ulong)txIndex;
             transaction.BlockGasUsed = gasUsed;
             txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
 
@@ -1283,7 +1356,7 @@ public class BlockProcessorTests
         private readonly ManualResetEventSlim _parallelExecutionStarted = new();
         private int _executedCount;
 
-        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = new();
+        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = [];
         public ConcurrentDictionary<int, byte> ThreadIds { get; } = new();
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
@@ -1358,7 +1431,7 @@ public class BlockProcessorTests
         {
             public override bool IsTracingInstructions => true;
 
-            public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+            public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
                 blockTracer.RecordOpcode();
         }
     }

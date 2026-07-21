@@ -8,80 +8,69 @@ namespace Nethermind.Evm.Precompiles;
 
 internal static partial class Eip2537
 {
-    /// <param name="source">Must have 96 bytes length.</param>
+    /// <param name="source">Must have <see cref="LenG1Trimmed"/> bytes length.</param>
     /// <param name="destination">Must be zero-initialized.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeG1(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        source[..48].CopyTo(destination[16..64]);
-        source[48..].CopyTo(destination[80..128]);
+        source[..LenFpTrimmed].CopyTo(destination[LenFpPad..LenFp]);
+        source[LenFpTrimmed..].CopyTo(destination[(LenFp + LenFpPad)..(2 * LenFp)]);
     }
 
-    /// <param name="source">Must have 192 bytes length.</param>
+    /// <param name="source">Must have <see cref="LenG2Trimmed"/> bytes length.</param>
     /// <param name="destination">Must be zero-initialized.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeG2(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        source[..48].CopyTo(destination[16..64]);
-        source[48..96].CopyTo(destination[80..128]);
-        source[96..144].CopyTo(destination[144..192]);
-        source[144..].CopyTo(destination[208..256]);
+        source[..LenFpTrimmed].CopyTo(destination[LenFpPad..LenFp]);
+        source[LenFpTrimmed..(2 * LenFpTrimmed)].CopyTo(destination[(LenFp + LenFpPad)..(2 * LenFp)]);
+        source[(2 * LenFpTrimmed)..(3 * LenFpTrimmed)].CopyTo(destination[(2 * LenFp + LenFpPad)..(3 * LenFp)]);
+        source[(3 * LenFpTrimmed)..].CopyTo(destination[(3 * LenFp + LenFpPad)..(4 * LenFp)]);
     }
 
-    /// <param name="source">Must have 64 bytes length.</param>
-    /// <param name="destination">Must have 48 bytes length.</param>
+    /// <summary>
+    /// Unpads a field element into its trimmed form, rejecting non-canonical input: the leading pad must
+    /// be zero and the value must be less than the base field modulus.
+    /// </summary>
+    /// <remarks>
+    /// EIP-2537 requires canonical Fp coordinates; otherwise the accelerator silently reduces mod p,
+    /// accepting invalid input.
+    /// </remarks>
+    /// <param name="source">Must have <see cref="LenFp"/> bytes length.</param>
+    /// <param name="destination">Must have <see cref="LenFpTrimmed"/> bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeFp(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        if (source[..16].ContainsAnyExcept((byte)0))
+        ReadOnlySpan<byte> value = source[LenFpPad..];
+
+        if (source[..LenFpPad].ContainsAnyExcept((byte)0) || value.SequenceCompareTo(_baseFieldOrder) >= 0)
             return false;
 
-        source[16..].CopyTo(destination);
+        value.CopyTo(destination);
 
         return true;
     }
 
-    /// <param name="source">Must have 128 bytes length.</param>
-    /// <param name="destination">Must have 96 bytes length.</param>
+    /// <param name="source">Must have <see cref="LenFp"/> * 2 bytes length.</param>
+    /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 2 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeFp2(ReadOnlySpan<byte> source, Span<byte> destination)
-    {
-        if (source[..16].ContainsAnyExcept((byte)0) || source[64..80].ContainsAnyExcept((byte)0))
-            return false;
+        => TryDecodeFp(source[..LenFp], destination)
+        && TryDecodeFp(source[LenFp..], destination[LenFpTrimmed..]);
 
-        source[16..64].CopyTo(destination);
-        source[80..128].CopyTo(destination[48..]);
-
-        return true;
-    }
-
-    /// <param name="source">Must have 128 bytes length.</param>
-    /// <param name="destination">Must have 96 bytes length.</param>
+    /// <param name="source">Must have <see cref="LenFp"/> * 2 bytes length.</param>
+    /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 2 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeG1(ReadOnlySpan<byte> source, Span<byte> destination)
-    {
-        if (source[..16].ContainsAnyExcept((byte)0) || source[64..80].ContainsAnyExcept((byte)0))
-            return false;
+        => TryDecodeFp(source[..LenFp], destination)
+        && TryDecodeFp(source[LenFp..], destination[LenFpTrimmed..]);
 
-        source[16..64].CopyTo(destination);
-        source[80..128].CopyTo(destination[48..]);
-
-        return true;
-    }
-
-    /// <param name="source">Must have 256 bytes length.</param>
-    /// <param name="destination">Must have 192 bytes length.</param>
+    /// <param name="source">Must have <see cref="LenFp"/> * 4 bytes length.</param>
+    /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 4 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeG2(ReadOnlySpan<byte> source, Span<byte> destination)
-    {
-        if (source[..16].ContainsAnyExcept((byte)0) || source[64..80].ContainsAnyExcept((byte)0))
-            return false;
-
-        source[16..64].CopyTo(destination);
-        source[80..128].CopyTo(destination[48..96]);
-        source[144..192].CopyTo(destination[96..144]);
-        source[208..256].CopyTo(destination[144..]);
-
-        return true;
-    }
+        => TryDecodeFp(source[..LenFp], destination)
+        && TryDecodeFp(source[LenFp..(2 * LenFp)], destination[LenFpTrimmed..(2 * LenFpTrimmed)])
+        && TryDecodeFp(source[(2 * LenFp)..(3 * LenFp)], destination[(2 * LenFpTrimmed)..(3 * LenFpTrimmed)])
+        && TryDecodeFp(source[(3 * LenFp)..], destination[(3 * LenFpTrimmed)..]);
 }

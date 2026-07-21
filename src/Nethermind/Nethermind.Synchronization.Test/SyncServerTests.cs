@@ -7,7 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -54,7 +54,7 @@ public class SyncServerTests
         ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
         Hash256 result = ctx.SyncServer.FindHash(123)!;
 
-        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
+        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         Assert.That(result, Is.EqualTo(TestItem.KeccakA));
@@ -336,7 +336,7 @@ public class SyncServerTests
             .WithTotalDifficulty(ctx.LocalBlockTree.Head!.TotalDifficulty)
             .TestObject;
         ctx.LocalBlockTree.SuggestBlock(newPostMergeBlock);
-        ctx.LocalBlockTree.UpdateMainChain(new[] { newPostMergeBlock }, true, true);
+        ctx.LocalBlockTree.TryUpdateMainChain(newPostMergeBlock.Header, true, true, preloadedBlocks: new[] { newPostMergeBlock });
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
@@ -519,10 +519,9 @@ public class SyncServerTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task Broadcast_NewBlock_on_arrival_to_sqrt_of_peers([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100)] int peerCount)
     {
-        int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1)); // -1 because of ignoring sender
+        int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1));
 
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
@@ -531,19 +530,27 @@ public class SyncServerTests
 
         ISyncServer remoteServer = Substitute.For<ISyncServer>();
         int count = 0;
+        CountdownEvent received = expectedPeers > 0 ? new CountdownEvent(expectedPeers) : null!;
         remoteServer
             .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
-            .Do(_ => Interlocked.Increment(ref count));
+            .Do(_ =>
+            {
+                int n = Interlocked.Increment(ref count);
+                if (received is not null && n <= expectedPeers) received.Signal();
+            });
         PeerInfo[] peers = CreatePeerInfos(peerCount, remoteBlockTree, remoteServer);
         ConfigurePeers(ctx, peers);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peers[0].SyncPeer);
 
-        Assert.That(() => count, Is.EqualTo(expectedPeers).After(5000, 100));
+        if (received is not null)
+        {
+            Assert.That(received.Wait(TimeSpan.FromSeconds(30)), Is.True, "Broadcast did not reach all expected peers");
+        }
+        Assert.That(count, Is.EqualTo(expectedPeers));
         await CloseSyncPeerMocks(peers);
     }
 
     [Test]
-    [Retry(3)]
     [Parallelizable(ParallelScope.None)]
     public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
     {
@@ -559,32 +566,39 @@ public class SyncServerTests
             .Select(p => new PeerInfo(p))
             .ToArray();
 
-        ConfigurePeers(ctx, peers);
-
         const int blocksCount = 100;
         int startBlock = (int)localBlockTree.Head!.Number;
+
+        // Older in-flight range broadcasts are cancelled as the head advances, so intermediate updates
+        // may be coalesced away; only the latest range is guaranteed to reach every peer.
+        ulong genesisNumber = localBlockTree.Genesis!.Number;
+        // AddBranch adds blocks up to branchLength - 1, so the highest head is blocksCount - 1, not blocksCount.
+        ulong finalLatest = (ulong)Enumerable.Range(startBlock + 1, blocksCount - 1).Last(x => x % frequency == 0);
+
+        ManualResetEventSlim[] perPeerFinalRange = peers.Select(_ => new ManualResetEventSlim(false)).ToArray();
+        for (int i = 0; i < peers.Length; i++)
+        {
+            int idx = i;
+            peers[i].SyncPeer
+                .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
+                .Do(call =>
+                {
+                    if (call.ArgAt<BlockHeader>(0).Number == genesisNumber &&
+                        call.ArgAt<BlockHeader>(1).Number == finalLatest)
+                        perPeerFinalRange[idx].Set();
+                });
+        }
+
+        ConfigurePeers(ctx, peers);
+
         localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
-        (long earliest, int latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
-            .Where(x => x % frequency == 0)
-            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
-            .ToArray()[^2..];
-
-        foreach (PeerInfo peerInfo in peers)
+        for (int i = 0; i < peers.Length; i++)
         {
-            Assert.That(
-                () =>
-                {
-                    (long earliest, long latest)[] arr = peerInfo.SyncPeer.ReceivedCalls()
-                        .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
-                        .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                        .Select(a => (earliest: a[0], latest: a[1])).ToArray();
-                    return arr.Length >= 2 ? arr[^2..] : arr;
-                },
-                Is.EquivalentTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
-            );
+            Assert.That(perPeerFinalRange[i].Wait(TimeSpan.FromSeconds(30)), Is.True,
+                $"Peer {i} was not notified of the latest block range (genesis -> {finalLatest})");
         }
     }
 
@@ -620,11 +634,9 @@ public class SyncServerTests
         IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
         using (IBlockCommitter _ = trieStore.BeginBlockCommit(1))
         {
-            using (ICommitter committer = scopedTrieStore.BeginCommit(node))
-            {
-                TreePath path = TreePath.Empty;
-                committer.CommitNode(ref path, node);
-            }
+            using ICommitter committer = scopedTrieStore.BeginCommit(node);
+            TreePath path = TreePath.Empty;
+            committer.CommitNode(ref path, node);
         }
 
         Assert.That(stateDb.KeyExists(nodeKey), Is.False);
@@ -637,7 +649,7 @@ public class SyncServerTests
     public void Correctly_clips_lowestBlock()
     {
         Context ctx = new();
-        ctx.BlockTree.GetLowestBlock().Returns(5);
+        ctx.BlockTree.GetLowestBlock().Returns(5UL);
         Assert.That(ctx.SyncServer.LowestBlock, Is.EqualTo(0));
     }
 
@@ -688,7 +700,7 @@ public class SyncServerTests
         ctx.BlockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
         if (shouldReadStore)
         {
-            blockAccessListStore.GetRlp(TestItem.KeccakA).Returns(ArrayMemoryManager.From(expectedRlp));
+            blockAccessListStore.GetRlp(header.Number, TestItem.KeccakA).Returns(ArrayMemoryManager.From(expectedRlp));
         }
 
         SyncServer syncServer = ctx.CreateSyncServer(blockAccessListStore);
@@ -705,11 +717,11 @@ public class SyncServerTests
 
         if (shouldReadStore)
         {
-            blockAccessListStore.Received(1).GetRlp(TestItem.KeccakA);
+            blockAccessListStore.Received(1).GetRlp(header.Number, TestItem.KeccakA);
         }
         else
         {
-            blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<Hash256>());
+            blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>());
         }
     }
 

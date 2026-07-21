@@ -52,9 +52,9 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
         (string? executablePath, string? argumentPrefix) = GetExecutablePath();
 
         // Build the method pattern for JitDisasm
-        var methodPattern = BuildMethodPattern();
+        string methodPattern = BuildMethodPattern();
 
-        var startInfo = new ProcessStartInfo
+        ProcessStartInfo startInfo = new()
         {
             FileName = executablePath,
             UseShellExecute = false,
@@ -84,7 +84,7 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
             startInfo.EnvironmentVariables["JITASM_VERBOSE"] = "1";
 
         // Build arguments for internal runner
-        var args = new StringBuilder();
+        StringBuilder args = new();
         if (argumentPrefix is not null)
         {
             args.Append(EscapeArg(argumentPrefix));
@@ -135,7 +135,7 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
 
         try
         {
-            using var process = Process.Start(startInfo);
+            using Process? process = Process.Start(startInfo);
             if (process is null)
             {
                 return new JitResult { Success = false, Error = "Failed to start process" };
@@ -146,12 +146,12 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
 
             await process.WaitForExitAsync();
 
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
+            string stdout = await stdoutTask;
+            string stderr = await stderrTask;
 
             // Parse the JIT output from stdout (JIT diagnostics can go to either stream)
             // In tier1 mode, multiple compilations are captured; take only the last (Tier-1)
-            var disassembly = DisassemblyParser.Parse(stdout, lastOnly: tier1);
+            string disassembly = DisassemblyParser.Parse(stdout, lastOnly: tier1);
 
             if (string.IsNullOrWhiteSpace(disassembly))
             {
@@ -188,13 +188,11 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
         }
     }
 
-    private string BuildMethodPattern()
-    {
+    private string BuildMethodPattern() =>
         // Build pattern for DOTNET_JitDisasm
         // Just use the method name - the JIT will match any method with this name
         // Type filtering is done post-hoc by parsing the output
-        return methodName;
-    }
+        methodName;
 
     /// <summary>
     /// Returns the executable path and any prefix arguments needed (e.g., DLL path for dotnet host).
@@ -202,15 +200,15 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
     private static (string FileName, string? ArgumentPrefix) GetExecutablePath()
     {
         // Get the path to the current executable
-        var currentExe = Environment.ProcessPath;
+        string? currentExe = Environment.ProcessPath;
         if (currentExe is not null && File.Exists(currentExe))
         {
             // When running via "dotnet run", ProcessPath is the dotnet host, not our tool.
             // Detect this by checking if it ends with "dotnet" (or "dotnet.exe").
-            var exeName = Path.GetFileNameWithoutExtension(currentExe);
+            string exeName = Path.GetFileNameWithoutExtension(currentExe);
             if (exeName.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
             {
-                var assemblyLocation = typeof(JitRunner).Assembly.Location;
+                string assemblyLocation = typeof(JitRunner).Assembly.Location;
                 if (!string.IsNullOrEmpty(assemblyLocation))
                 {
                     return ("dotnet", assemblyLocation);
@@ -221,15 +219,15 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
         }
 
         // Fallback to assembly location
-        var location = typeof(JitRunner).Assembly.Location;
+        string location = typeof(JitRunner).Assembly.Location;
         if (!string.IsNullOrEmpty(location))
         {
             // For .dll, try to find the corresponding .exe
-            var directory = Path.GetDirectoryName(location)!;
-            var baseName = Path.GetFileNameWithoutExtension(location);
+            string directory = Path.GetDirectoryName(location)!;
+            string baseName = Path.GetFileNameWithoutExtension(location);
 
             // Try .exe first (Windows)
-            var exePath = Path.Combine(directory, baseName + ".exe");
+            string exePath = Path.Combine(directory, baseName + ".exe");
             if (File.Exists(exePath))
             {
                 return (exePath, null);

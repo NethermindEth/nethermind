@@ -8,16 +8,16 @@ namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceEntry
     {
-        public StateTestTxTraceEntry() => Stack = new List<string>();
+        public StateTestTxTraceEntry() => Stack = [];
 
         public int Pc { get; set; }
 
         [JsonPropertyName("op")]
         public byte Operation { get; set; }
 
-        public long Gas { get; set; }
+        public ulong Gas { get; set; }
 
-        public long GasCost { get; set; }
+        public ulong GasCost { get; set; }
 
         public string Memory { get; set; }
 

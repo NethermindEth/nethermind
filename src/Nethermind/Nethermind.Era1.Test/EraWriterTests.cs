@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.IO;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
 
@@ -47,7 +47,7 @@ internal class EraWriterTests
         stream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>()).Returns(Task.CompletedTask);
 
         EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
-        for (int i = 0; i < EraWriter.MaxEra1Size; i++)
+        for (uint i = 0; i < EraWriter.MaxEra1Size; i++)
         {
             Block block = Build.A.Block.WithNumber(i)
                 .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -115,7 +115,7 @@ internal class EraWriterTests
         }
 
         using E2StoreReader fileReader = new(tmpFile.Path);
-        fileReader.BlockOffset(0).Should().Be(8);
+        Assert.That(fileReader.BlockOffset(0), Is.EqualTo(8));
     }
 
     [Test]

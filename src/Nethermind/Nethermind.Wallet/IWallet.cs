@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Security;
-using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -17,18 +17,34 @@ namespace Nethermind.Wallet
         bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan = null);
         bool LockAccount(Address address);
         bool IsUnlocked(Address address);
-        Signature Sign(Hash256 message, Address address, SecureString passphrase = null);
-        Signature Sign(Hash256 message, Address address);
         Address[] GetAccounts();
-        void Sign(Transaction tx, ulong chainId)
-        {
-            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
-            tx.Signature = Sign(hash, tx.SenderAddress)
-                ?? throw new CryptographicException($"Failed to sign tx {tx.Hash} using the {tx.SenderAddress} address.");
-            tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * chainId : (ulong)(tx.Signature.RecoveryId + 27);
-        }
-        Signature SignMessage(byte[] message, Address address) => Sign(Eip191Hasher.HashMessage(message), address);
         event EventHandler<AccountLockedEventArgs> AccountLocked;
         event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+
+        bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature);
+
+        bool TrySignMessage(byte[] message, Address address, [NotNullWhen(true)] out Signature signature)
+        {
+            ValueHash256 hash = Eip191Hasher.HashMessageValue(message);
+            return TrySign(in hash, address, out signature);
+        }
+
+        bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+            => TrySign(in message, address, out signature);
+
+        bool TrySignMessage(byte[] message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
+        {
+            ValueHash256 hash = Eip191Hasher.HashMessageValue(message);
+            return TrySign(in hash, address, passphrase, out signature);
+        }
+
+        bool TrySignTransaction(Transaction tx, ulong chainId)
+        {
+            ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
+            if (!TrySign(in hash, tx.SenderAddress, out Signature sig)) return false;
+            sig.V = tx.Type == TxType.Legacy ? sig.V + 8 + 2 * chainId : (ulong)(sig.RecoveryId + 27);
+            tx.Signature = sig;
+            return true;
+        }
     }
 }

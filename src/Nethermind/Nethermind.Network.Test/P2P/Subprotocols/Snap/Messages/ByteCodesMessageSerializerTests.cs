@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using NUnit.Framework;
@@ -28,9 +27,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             byte[] data = { 202, 136, 23, 106, 21, 106, 229, 131, 72, 176, 192 };
             ByteCodesMessageSerializer serializer = new();
-            ByteCodesMessage decode = serializer.Deserialize(data);
+            using ByteCodesMessage decode = serializer.Deserialize(data);
             byte[] messageEncode = serializer.Serialize(decode);
-            messageEncode.Should().BeEquivalentTo(data);
+            Assert.That(messageEncode, Is.EqualTo(data));
         }
     }
 }

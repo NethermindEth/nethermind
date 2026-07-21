@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
 
@@ -34,16 +35,61 @@ public class ChainSpecBasedSpecProviderTests
     [SetUp]
     public void Setup() => Eip4844Constants.OverrideIfAny(1);
 
-    [TestCase(0, null, false)]
-    [TestCase(0, 0ul, false)]
-    [TestCase(0, 4660ul, false)]
-    [TestCase(1, 4660ul, false)]
-    [TestCase(1, 4661ul, false)]
-    [TestCase(4, 4672ul, true)]
-    [TestCase(4, 4673ul, true)]
-    [TestCase(5, 4680ul, true)]
+    private static ChainSpec LoadGethGenesisFromString(string json)
+    {
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        return new GethGenesisLoader(new EthereumJsonSerializer()).Load(stream);
+    }
+
+    private static ChainSpec LoadChainSpecFromString(string json)
+    {
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        return new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+    }
+
+    private static ChainSpec LoadGethGenesisWithBlobSchedule(string forkTimestamps, string blobSchedule)
+    {
+        string genesisJson = $$"""
+        {
+          "config": {
+            "chainId": 3151908,
+            "homesteadBlock": 0,
+            "eip150Block": 0,
+            "eip155Block": 0,
+            "eip158Block": 0,
+            "byzantiumBlock": 0,
+            "constantinopleBlock": 0,
+            "petersburgBlock": 0,
+            "istanbulBlock": 0,
+            "berlinBlock": 0,
+            "londonBlock": 0,
+            "terminalTotalDifficulty": 0,
+            "terminalTotalDifficultyPassed": true,
+        {{forkTimestamps}},
+            "blobSchedule": {
+        {{blobSchedule}}
+            }
+          },
+          "difficulty": "0x0",
+          "gasLimit": "0x3938700",
+          "timestamp": "0x6a0c6040",
+          "alloc": {}
+        }
+        """;
+
+        return LoadGethGenesisFromString(genesisJson);
+    }
+
+    [TestCase(0ul, null, false)]
+    [TestCase(0ul, 0ul, false)]
+    [TestCase(0ul, 4660ul, false)]
+    [TestCase(1ul, 4660ul, false)]
+    [TestCase(1ul, 4661ul, false)]
+    [TestCase(4ul, 4672ul, true)]
+    [TestCase(4ul, 4673ul, true)]
+    [TestCase(5ul, 4680ul, true)]
     [NonParallelizable]
-    public void Timestamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
+    public void Timestamp_activation_equal_to_genesis_timestamp_loads_correctly(ulong blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
@@ -67,8 +113,11 @@ public class ChainSpecBasedSpecProviderTests
         testProvider.GenesisSpec = expectedSpec;
 
         CompareSpecs(testProvider, provider, (blockNumber, timestamp));
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(testProvider.GenesisSpec.Eip1559TransitionBlock));
-        Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(testProvider.GenesisSpec.DifficultyBombDelay));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(testProvider.GenesisSpec.Eip1559TransitionBlock));
+            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(testProvider.GenesisSpec.DifficultyBombDelay));
+        }
     }
 
     [Test]
@@ -87,20 +136,20 @@ public class ChainSpecBasedSpecProviderTests
     }
 
 
-    [TestCase(0, null, false, false, false)]
-    [TestCase(0, 0ul, false, false, false)]
-    [TestCase(0, 4660ul, false, false, false)]
-    [TestCase(1, 4660ul, false, false, false)]
-    [TestCase(1, 4661ul, false, false, false)]
-    [TestCase(1, 4672ul, false, false, false)]
-    [TestCase(2, 4673ul, false, false, true)]
-    [TestCase(3, 4680ul, false, false, true)]
-    [TestCase(4, 4672ul, false, true, false)]
-    [TestCase(5, 4672ul, true, true, false)]
-    [TestCase(5, 4673ul, true, true, false)]
-    [TestCase(6, 4680ul, true, true, false)]
+    [TestCase(0ul, null, false, false, false)]
+    [TestCase(0ul, 0ul, false, false, false)]
+    [TestCase(0ul, 4660ul, false, false, false)]
+    [TestCase(1ul, 4660ul, false, false, false)]
+    [TestCase(1ul, 4661ul, false, false, false)]
+    [TestCase(1ul, 4672ul, false, false, false)]
+    [TestCase(2ul, 4673ul, false, false, true)]
+    [TestCase(3ul, 4680ul, false, false, true)]
+    [TestCase(4ul, 4672ul, false, true, false)]
+    [TestCase(5ul, 4672ul, true, true, false)]
+    [TestCase(5ul, 4673ul, true, true, false)]
+    [TestCase(6ul, 4680ul, true, true, false)]
     [NonParallelizable]
-    public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
+    public void Logs_warning_when_timestampActivation_happens_before_blockActivation(ulong blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
@@ -203,7 +252,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(3338477UL));
             Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(786432));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei));
             Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(393216));
@@ -214,7 +263,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)5007716));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(5007716UL));
             Assert.That(spec.MaxBlobCount, Is.EqualTo(9));
             Assert.That(spec.TargetBlobCount, Is.EqualTo(6));
             Assert.That(spec.Eip2935ContractAddress, Is.EqualTo(Eip2935Constants.BlockHashHistoryAddress));
@@ -248,10 +297,10 @@ public class ChainSpecBasedSpecProviderTests
         VerifyPragueSpecificsForMainnetHoodiAndSepolia(chainId, postOsakaSpec);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)8346193));
+            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo(8346193UL));
             Assert.That(postBPO1Spec.MaxBlobCount, Is.EqualTo(15));
             Assert.That(postBPO1Spec.TargetBlobCount, Is.EqualTo(10));
-            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)11684671));
+            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo(11684671UL));
             Assert.That(postBPO2Spec.MaxBlobCount, Is.EqualTo(21));
             Assert.That(postBPO2Spec.TargetBlobCount, Is.EqualTo(14));
         }
@@ -476,7 +525,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(1112826UL));
             Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei));
             Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(131072));
@@ -627,7 +676,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         IReleaseSpec oldSpec = oldSpecProvider.GetSpec(activation);
         IReleaseSpec newSpec = newSpecProvider.GetSpec(activation);
-        long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
+        ulong? daoBlockNumber = newSpecProvider.DaoBlockNumber;
 
         bool isMainnet = daoBlockNumber is not null;
         if (isMainnet)
@@ -959,6 +1008,220 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    [TestCase(null, 0ul, TestName = "Nethermind chainspec genesis slot number: absent defaults to zero")]
+    [TestCase(123ul, 123ul, TestName = "Nethermind chainspec genesis slot number: configured value")]
+    public void Nethermind_chainspec_genesis_uses_slot_number_when_eip7843_is_active_at_genesis(
+        ulong? slotNumber,
+        ulong expectedSlotNumber)
+    {
+        string slotNumberJson = slotNumber is null ? "" : $"""
+        ,
+            "slotNumber": {slotNumber}
+        """;
+        string chainSpecJson = $$"""
+        {
+          "name": "Test",
+          "engine": { "NethDev": {} },
+          "params": {
+            "chainID": "0x1",
+            "eip7843TransitionTimestamp": "0x0"
+          },
+          "genesis": {
+            "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+            "difficulty": "0x1",
+            "gasLimit": "0x1000000",
+            "timestamp": "0x0"{{slotNumberJson}}
+          },
+          "accounts": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadChainSpecFromString(chainSpecJson);
+
+        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
+    }
+
+    [Test]
+    public void Geth_genesis_base_fee_per_gas_supports_uint256_quantity()
+    {
+        const string genesisJson = """
+        {
+          "config": {
+            "chainId": 3151908,
+            "homesteadBlock": 0,
+            "eip150Block": 0,
+            "eip155Block": 0,
+            "eip158Block": 0,
+            "byzantiumBlock": 0,
+            "constantinopleBlock": 0,
+            "petersburgBlock": 0,
+            "istanbulBlock": 0,
+            "berlinBlock": 0,
+            "londonBlock": 0
+          },
+          "difficulty": "0x1",
+          "gasLimit": "0x3938700",
+          "baseFeePerGas": "0x10000000000000000",
+          "alloc": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+
+        Assert.That(chainSpec.Genesis.BaseFeePerGas, Is.EqualTo(UInt256.Parse("18446744073709551616")));
+    }
+
+    [TestCase(null, 0ul, TestName = "Geth genesis Amsterdam slot number: absent defaults to zero")]
+    [TestCase(123ul, 123ul, TestName = "Geth genesis Amsterdam slot number: configured value")]
+    public void Geth_genesis_amsterdam_uses_slot_number_from_genesis(
+        ulong? slotNumber,
+        ulong expectedSlotNumber)
+    {
+        string slotNumberJson = slotNumber is null ? "" : $"""
+        ,
+          "slotNumber": {slotNumber}
+        """;
+        string genesisJson = $$"""
+        {
+          "config": {
+            "chainId": 3151908,
+            "homesteadBlock": 0,
+            "eip150Block": 0,
+            "eip155Block": 0,
+            "eip158Block": 0,
+            "byzantiumBlock": 0,
+            "constantinopleBlock": 0,
+            "petersburgBlock": 0,
+            "istanbulBlock": 0,
+            "berlinBlock": 0,
+            "londonBlock": 0,
+            "amsterdamTime": 15
+          },
+          "difficulty": "0x1",
+          "gasLimit": "0x3938700",
+          "timestamp": 15{{slotNumberJson}},
+          "alloc": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+
+        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
+    }
+
+    [TestCase(1ul)]
+    [TestCase(3151908ul)]
+    public void Geth_genesis_defaults_deposit_contract_address_when_prague_is_active(ulong chainId)
+    {
+        string genesisJson = $$"""
+        {
+          "config": {
+            "chainId": {{chainId}},
+            "homesteadBlock": 0,
+            "eip150Block": 0,
+            "eip155Block": 0,
+            "eip158Block": 0,
+            "byzantiumBlock": 0,
+            "constantinopleBlock": 0,
+            "petersburgBlock": 0,
+            "istanbulBlock": 0,
+            "berlinBlock": 0,
+            "londonBlock": 0,
+            "terminalTotalDifficulty": 0,
+            "shanghaiTime": 0,
+            "cancunTime": 0,
+            "pragueTime": 0
+          },
+          "difficulty": "0x0",
+          "gasLimit": "0x3938700",
+          "timestamp": 0,
+          "alloc": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GenesisSpec.IsEip6110Enabled, Is.True);
+            Assert.That(provider.GenesisSpec.DepositContractAddress, Is.EqualTo(Address.Zero));
+        }
+    }
+
+    [TestCaseSource(nameof(GethGenesisBlobScheduleForkCollisionTestCaseSource))]
+    public void Geth_genesis_blob_schedule_uses_latest_fork_settings_when_multiple_forks_activate_at_genesis(
+        string forkTimestamps,
+        string blobSchedule,
+        ulong expectedTargetBlobs,
+        ulong expectedMaxBlobs,
+        ulong expectedBlobBaseFeeUpdateFraction)
+    {
+        ChainSpec chainSpec = LoadGethGenesisWithBlobSchedule(forkTimestamps, blobSchedule);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GenesisSpec.TargetBlobCount, Is.EqualTo(expectedTargetBlobs));
+            Assert.That(provider.GenesisSpec.MaxBlobCount, Is.EqualTo(expectedMaxBlobs));
+            Assert.That(provider.GenesisSpec.BlobBaseFeeUpdateFraction, Is.EqualTo(expectedBlobBaseFeeUpdateFraction));
+        }
+    }
+
+    public static IEnumerable GethGenesisBlobScheduleForkCollisionTestCaseSource
+    {
+        get
+        {
+            yield return new TestCaseData(
+                """
+                "shanghaiTime": 0,
+                "cancunTime": 0,
+                "pragueTime": 0,
+                "osakaTime": 0,
+                "bpo1Time": 0
+                """,
+                """
+                "cancun": { "target": 3, "max": 6, "baseFeeUpdateFraction": 3338477 },
+                "prague": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 },
+                "osaka": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 },
+                "bpo1": { "target": 10, "max": 15, "baseFeeUpdateFraction": 8346193 }
+                """,
+                10ul,
+                15ul,
+                8346193ul)
+            { TestName = "Geth genesis blob schedule fork collisions: BPO1 at genesis" };
+
+            yield return new TestCaseData(
+                """
+                "shanghaiTime": 0,
+                "cancunTime": 0,
+                "pragueTime": 0,
+                "osakaTime": 0,
+                "bpo1Time": 0,
+                "bpo2Time": 0,
+                "amsterdamTime": 0,
+                "bpo3Time": 0,
+                "bpo4Time": 0,
+                "bpo5Time": 0
+                """,
+                """
+                "cancun": { "target": 3, "max": 6, "baseFeeUpdateFraction": 3338477 },
+                "prague": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 },
+                "osaka": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 },
+                "bpo1": { "target": 10, "max": 15, "baseFeeUpdateFraction": 8346193 },
+                "bpo2": { "target": 14, "max": 21, "baseFeeUpdateFraction": 11684671 },
+                "amsterdam": { "target": 14, "max": 21, "baseFeeUpdateFraction": 11684671 },
+                "bpo3": { "target": 21, "max": 32, "baseFeeUpdateFraction": 17805213 },
+                "bpo4": { "target": 32, "max": 48, "baseFeeUpdateFraction": 26707819 },
+                "bpo5": { "target": 48, "max": 72, "baseFeeUpdateFraction": 40061729 }
+                """,
+                48ul,
+                72ul,
+                40061729ul)
+            { TestName = "Geth genesis blob schedule fork collisions: BPO5 at genesis" };
+        }
+    }
+
     [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
     public void Test_BlobSchedule_IsApplied_AlongWithForkSchedule(
         ulong eip4844Timestamp,
@@ -995,11 +1258,11 @@ public class ChainSpecBasedSpecProviderTests
         {
             const int NoneAllowed = 0;
             const int Default = 6;
-            static TestCaseData MakeTestCase(string testName, int eip4844Timestamp, int eip7002Timestamp, (int timestamp, int max)[] settings, ulong[] expectedActivationSettings)
+            static TestCaseData MakeTestCase(string testName, ulong eip4844Timestamp, ulong eip7002Timestamp, (ulong timestamp, ulong max)[] settings, ulong[] expectedActivationSettings)
                 => new([
-                    (ulong)eip4844Timestamp,
-                    (ulong)eip7002Timestamp,
-                    settings.Select(s => new BlobScheduleSettings { Timestamp = (ulong)s.timestamp, Max = (ulong)s.max }).ToArray(),
+                    eip4844Timestamp,
+                    eip7002Timestamp,
+                    settings.Select(s => new BlobScheduleSettings { Timestamp = s.timestamp, Max = s.max }).ToArray(),
                     expectedActivationSettings])
                 { TestName = $"BlobScheduleActivations: {testName}" };
 

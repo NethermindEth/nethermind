@@ -8,9 +8,9 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
+public sealed class TimeoutDecoder : RlpDecoder<Timeout>
 {
-    protected override Timeout DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Timeout DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -38,43 +38,44 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         return new Timeout(round, signature, gapNumber);
     }
 
-    public Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
 
-        return new Rlp(rlpStream.Data.ToArray());
+        return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
 
-        stream.Encode(item.Round);
+        writer.Encode(item.Round);
 
         // When encoding for sealing, signature is not included
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
             if (item.Signature is null)
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
             else
             {
                 Span<byte> sigBuffer = stackalloc byte[Signature.Size];
                 item.Signature.WriteBytesWithRecoveryTo(sigBuffer);
-                stream.Encode(sigBuffer);
+                writer.Encode(sigBuffer);
             }
         }
 
-        stream.Encode(item.GapNumber);
+        writer.Encode(item.GapNumber);
     }
 
     public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

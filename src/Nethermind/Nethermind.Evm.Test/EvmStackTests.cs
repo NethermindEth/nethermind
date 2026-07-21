@@ -3,10 +3,10 @@
 
 using System;
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -59,8 +59,8 @@ public class EvmStackTests
 
         EvmExceptionType result = InvokePush(op, ref stack);
 
-        result.Should().Be(EvmExceptionType.StackOverflow);
-        stack.Head.Should().Be(EvmStack.MaxStackSize - 1);
+        Assert.That(result, Is.EqualTo(EvmExceptionType.StackOverflow));
+        Assert.That(stack.Head, Is.EqualTo(EvmStack.MaxStackSize - 1));
     }
 
     [TestCase(PopUInt256_1, 0)]
@@ -78,8 +78,8 @@ public class EvmStackTests
 
         bool result = InvokePopBool(op, ref stack);
 
-        result.Should().BeFalse();
-        stack.Head.Should().Be(preFilled);
+        Assert.That(result, Is.False);
+        Assert.That(stack.Head, Is.EqualTo(preFilled));
     }
 
     [TestCase(Dup)]
@@ -102,8 +102,8 @@ public class EvmStackTests
             _ => throw new System.ArgumentOutOfRangeException(nameof(op), op, null),
         };
 
-        result.Should().Be(EvmExceptionType.StackUnderflow);
-        stack.Head.Should().Be(1);
+        Assert.That(result, Is.EqualTo(EvmExceptionType.StackUnderflow));
+        Assert.That(stack.Head, Is.EqualTo(1));
     }
 
     [Test]
@@ -116,8 +116,8 @@ public class EvmStackTests
 
         int result = stack.PopByte();
 
-        result.Should().Be(-1);
-        stack.Head.Should().Be(0);
+        Assert.That(result, Is.EqualTo(-1));
+        Assert.That(stack.Head, Is.EqualTo(0));
     }
 
     [Test]
@@ -128,8 +128,8 @@ public class EvmStackTests
 
         Address? result = stack.PopAddress();
 
-        result.Should().BeNull();
-        stack.Head.Should().Be(0);
+        Assert.That(result, Is.Null);
+        Assert.That(stack.Head, Is.EqualTo(0));
     }
 
     [TestCase(0)]
@@ -153,10 +153,38 @@ public class EvmStackTests
             used,
             pushSize: 32);
 
-        result.Should().Be(EvmExceptionType.None);
-        stack.PopWord256(out Span<byte> word).Should().BeTrue();
-        for (int i = 0; i < used; i++) word[i].Should().Be((byte)(0xA0 + i), $"byte {i} high-end");
-        for (int i = used; i < 32; i++) word[i].Should().Be(0, $"byte {i} zero-pad tail");
+        Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+        Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
+        for (int i = 0; i < used; i++) Assert.That(word[i], Is.EqualTo((byte)(0xA0 + i)), $"byte {i} high-end");
+        for (int i = used; i < 32; i++) Assert.That(word[i], Is.EqualTo(0), $"byte {i} zero-pad tail");
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(17)]
+    [TestCase(31)]
+    [TestCase(32)]
+    public void PushRightPaddedBytes_traces_the_completed_word(int length)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        StackPushTracer tracer = new();
+        vmState.InitializeStacks(tracer, default, out EvmStack stack);
+        byte[] source = new byte[EvmPooledMemory.WordSize];
+        for (int i = 0; i < source.Length; i++) source[i] = (byte)(i + 1);
+        byte[] expected = new byte[EvmPooledMemory.WordSize];
+        source.AsSpan(0, length).CopyTo(expected);
+
+        EvmExceptionType result = stack.PushRightPaddedBytes<OnFlag>(
+            ref MemoryMarshal.GetArrayDataReference(source),
+            (uint)length);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(tracer.StackItem, Is.EqualTo(expected));
+            Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
+            Assert.That(word.ToArray(), Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -166,11 +194,11 @@ public class EvmStackTests
         vmState.InitializeStacks(default, out EvmStack stack);
         UInt256 value = new(0x1111111111111111UL, 0x2222222222222222UL, 0x3333333333333333UL, 0x4444444444444444UL);
 
-        stack.PushUInt256<OffFlag>(in value).Should().Be(EvmExceptionType.None);
-        stack.PopUInt256(out UInt256 popped).Should().BeTrue();
+        Assert.That(stack.PushUInt256<OffFlag>(in value), Is.EqualTo(EvmExceptionType.None));
+        Assert.That(stack.PopUInt256(out UInt256 popped), Is.True);
 
-        popped.Should().Be(value);
-        stack.Head.Should().Be(0);
+        Assert.That(popped, Is.EqualTo(value));
+        Assert.That(stack.Head, Is.EqualTo(0));
     }
 
     [Test]
@@ -181,17 +209,20 @@ public class EvmStackTests
         UInt256 x = new(1), y = new(2), z = new(3);
 
         // Push in order x, y, z so z is top of stack.
-        stack.PushUInt256<OffFlag>(in x).Should().Be(EvmExceptionType.None);
-        stack.PushUInt256<OffFlag>(in y).Should().Be(EvmExceptionType.None);
-        stack.PushUInt256<OffFlag>(in z).Should().Be(EvmExceptionType.None);
+        Assert.That(stack.PushUInt256<OffFlag>(in x), Is.EqualTo(EvmExceptionType.None));
+        Assert.That(stack.PushUInt256<OffFlag>(in y), Is.EqualTo(EvmExceptionType.None));
+        Assert.That(stack.PushUInt256<OffFlag>(in z), Is.EqualTo(EvmExceptionType.None));
 
         // Multi-out pop returns top first: a=z (was top), b=y, c=x (deepest).
-        stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c).Should().BeTrue();
+        Assert.That(stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c), Is.True);
 
-        a.Should().Be(z);
-        b.Should().Be(y);
-        c.Should().Be(x);
-        stack.Head.Should().Be(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a, Is.EqualTo(z));
+            Assert.That(b, Is.EqualTo(y));
+            Assert.That(c, Is.EqualTo(x));
+            Assert.That(stack.Head, Is.EqualTo(0));
+        }
     }
 
     // Direct-encoder coverage for the new PushN fast paths (PUSH1..PUSH32 normal path).
@@ -240,13 +271,13 @@ public class EvmStackTests
 
         EvmExceptionType result = InvokePushNBytes(n, ref stack, ref MemoryMarshal.GetArrayDataReference(immediate));
 
-        result.Should().Be(EvmExceptionType.None);
-        stack.PopWord256(out Span<byte> word).Should().BeTrue();
+        Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+        Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
 
         for (int i = 0; i < 32 - n; i++)
-            word[i].Should().Be(0, $"high-end byte {i} must be zero for PUSH{n}");
+            Assert.That(word[i], Is.EqualTo(0), $"high-end byte {i} must be zero for PUSH{n}");
         for (int i = 0; i < n; i++)
-            word[32 - n + i].Should().Be((byte)(0xA0 + i), $"immediate byte {i} of PUSH{n}");
+            Assert.That(word[32 - n + i], Is.EqualTo((byte)(0xA0 + i)), $"immediate byte {i} of PUSH{n}");
     }
 
     private static EvmExceptionType InvokePushNBytes(int n, ref EvmStack stack, ref byte imm) => n switch
@@ -320,9 +351,16 @@ public class EvmStackTests
 
     private static VmState<EthereumGasPolicy> CreateEvmState() =>
         VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromLong(10_000),
+            EthereumGasPolicy.FromULong(10_000UL),
             ExecutionType.CALL,
-            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default),
+            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default),
             new StackAccessTracker(),
             Snapshot.Empty);
+
+    private sealed class StackPushTracer : TxTracer
+    {
+        public byte[] StackItem { get; private set; } = [];
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => StackItem = stackItem.ToArray();
+    }
 }

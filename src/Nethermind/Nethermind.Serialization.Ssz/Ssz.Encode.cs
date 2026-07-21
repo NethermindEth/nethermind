@@ -1,11 +1,15 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Serialization.Ssz;
 
+/// <summary>
+/// https://github.com/ethereum/consensus-specs/blob/dev/ssz/simple-serialize.md
+/// </summary>
 public static partial class Ssz
 {
     public static void Encode(Span<byte> span, BitArray? vector)
@@ -14,10 +18,17 @@ public static partial class Ssz
         {
             return;
         }
-        int byteLength = (vector.Length + 7) / 8;
+
+        EncodeVector(span, vector);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void EncodeVector(Span<byte> span, BitArray value)
+    {
+        int byteLength = (value.Length + 7) / 8;
         byte[] bytes = new byte[byteLength];
-        vector.CopyTo(bytes, 0);
-        Encode(span, bytes);
+        value.CopyTo(bytes, 0);
+        bytes.CopyTo(span);
     }
 
     public static void Encode(Span<byte> span, BitArray? list, int limit)
@@ -26,10 +37,17 @@ public static partial class Ssz
         {
             return;
         }
-        int byteLength = (list.Length + 8) / 8;
+
+        EncodeList(span, list);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void EncodeList(Span<byte> span, BitArray value)
+    {
+        int byteLength = (value.Length + 8) / 8;
         byte[] bytes = new byte[byteLength];
-        list.CopyTo(bytes, 0);
-        bytes[byteLength - 1] |= (byte)(1 << (list.Length % 8));
-        Encode(span, bytes);
+        value.CopyTo(bytes, 0);
+        bytes[byteLength - 1] |= (byte)(1 << (value.Length % 8));
+        bytes.CopyTo(span);
     }
 }

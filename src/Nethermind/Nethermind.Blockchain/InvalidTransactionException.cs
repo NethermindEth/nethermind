@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain;

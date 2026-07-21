@@ -9,9 +9,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
-/// <summary>
-/// Holds byte memory that must stay alive until the JSON-RPC response has been serialized.
-/// </summary>
+/// <summary>Holds byte memory that must stay alive until the JSON-RPC response has been serialized.</summary>
 [JsonConverter(typeof(OwnedByteMemoryConverter))]
 public sealed class OwnedByteMemory : IDisposable
 {
@@ -23,9 +21,7 @@ public sealed class OwnedByteMemory : IDisposable
         _memoryManager = memoryManager;
     }
 
-    /// <summary>
-    /// Gets the owned bytes to serialize.
-    /// </summary>
+    /// <summary>Gets the owned bytes to serialize.</summary>
     public Memory<byte> Memory => _memoryManager.Memory;
 
     public void Dispose() => ((IDisposable)_memoryManager).Dispose();

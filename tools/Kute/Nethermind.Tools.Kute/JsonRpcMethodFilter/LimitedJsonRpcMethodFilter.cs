@@ -3,17 +3,11 @@
 
 namespace Nethermind.Tools.Kute.JsonRpcMethodFilter;
 
-public sealed class LimitedJsonRpcMethodFilter : IJsonRpcMethodFilter
+public sealed class LimitedJsonRpcMethodFilter(IJsonRpcMethodFilter filter, int limit) : IJsonRpcMethodFilter
 {
-    private readonly IJsonRpcMethodFilter _filter;
+    private readonly IJsonRpcMethodFilter _filter = filter;
 
-    private int _usagesLeft;
-
-    public LimitedJsonRpcMethodFilter(IJsonRpcMethodFilter filter, int limit)
-    {
-        _filter = filter;
-        _usagesLeft = limit;
-    }
+    private int _usagesLeft = limit;
 
     public bool ShouldSubmit(string methodName)
     {

@@ -50,7 +50,7 @@ public class ImportFlatDb(
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
             if (_logger.IsWarn) _logger.Warn($"Current state is {reader.CurrentState}");
-            if (reader.CurrentState.BlockNumber > 0)
+            if (reader.CurrentState != StateId.PreGenesis)
             {
                 if (_logger.IsInfo) _logger.Info("Flat db already exist");
                 return;

@@ -4,6 +4,7 @@
 using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -18,23 +19,23 @@ namespace Nethermind.Consensus.AuRa.Validators
         private static readonly PendingValidatorsDecoder PendingValidatorsDecoder = new();
 
         private readonly IDb _db;
-        private long _latestFinalizedValidatorsBlockNumber;
+        private ulong _latestFinalizedValidatorsBlockNumber;
         private ValidatorInfo? _latestValidatorInfo;
-        private static readonly int EmptyBlockNumber = -1;
-        private static readonly ValidatorInfo EmptyValidatorInfo = new(-1, -1, []);
-        private static Hash256 GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
+        private static readonly ulong EmptyBlockNumber = ulong.MaxValue;
+        private static readonly ValidatorInfo EmptyValidatorInfo = new(ulong.MaxValue, ulong.MaxValue, []);
+        private static Hash256 GetKey(in ulong blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
         public ValidatorStore([KeyFilter(DbNames.BlockInfos)] IDb db)
         {
             _db = db;
-            _latestFinalizedValidatorsBlockNumber = _db.Get(LatestFinalizedValidatorsBlockNumberKey)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? EmptyBlockNumber;
+            _latestFinalizedValidatorsBlockNumber = _db.GetULongFromBigEndianByteArrayWithoutLeadingZeros(LatestFinalizedValidatorsBlockNumberKey, EmptyBlockNumber);
         }
 
-        public void SetValidators(long finalizingBlockNumber, Address[] validators)
+        public void SetValidators(ulong finalizingBlockNumber, Address[] validators)
         {
-            if (finalizingBlockNumber > _latestFinalizedValidatorsBlockNumber)
+            if (_latestFinalizedValidatorsBlockNumber == EmptyBlockNumber || finalizingBlockNumber > _latestFinalizedValidatorsBlockNumber)
             {
-                ValidatorInfo validatorInfo = new(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber, validators);
+                ValidatorInfo validatorInfo = new(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber ? EmptyBlockNumber : _latestFinalizedValidatorsBlockNumber, validators);
                 Rlp rlp = Rlp.Encode(validatorInfo);
                 _db.Set(GetKey(finalizingBlockNumber), rlp.Bytes);
                 _db.PutSpan(LatestFinalizedValidatorsBlockNumberKey.Bytes, finalizingBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
@@ -45,11 +46,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
 
-        public Address[] GetValidators(in long? blockNumber = null) => blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber
+        public Address[] GetValidators(in ulong? blockNumber = null) => blockNumber is null || _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber || blockNumber > _latestFinalizedValidatorsBlockNumber
                 ? GetLatestValidatorInfo().Validators
                 : FindValidatorInfo(blockNumber.Value).Validators;
 
-        public ValidatorInfo GetValidatorsInfo(in long? blockNumber = null) => blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber
+        public ValidatorInfo GetValidatorsInfo(in ulong? blockNumber = null) => blockNumber is null || _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber || blockNumber > _latestFinalizedValidatorsBlockNumber
                 ? GetLatestValidatorInfo()
                 : FindValidatorInfo(blockNumber.Value);
 
@@ -57,21 +58,27 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             get
             {
-                Rlp.ValueDecoderContext ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
+                RlpReader ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
                 return PendingValidatorsDecoder.Decode(ref ctx);
             }
-            set => _db.Set(PendingValidatorsKey, PendingValidatorsDecoder.Encode(value).Bytes);
+            set => StorePendingValidators(value);
         }
 
-        private ValidatorInfo FindValidatorInfo(in long blockNumber)
+        private void StorePendingValidators(PendingValidators value)
+        {
+            using ArrayPoolSpan<byte> rlp = PendingValidatorsDecoder.EncodeToArrayPoolSpan(value);
+            _db.PutSpan(PendingValidatorsKey.Bytes, rlp);
+        }
+
+        private ValidatorInfo FindValidatorInfo(in ulong blockNumber)
         {
             ValidatorInfo currentValidatorInfo = GetLatestValidatorInfo();
-            while (currentValidatorInfo.FinalizingBlockNumber >= blockNumber)
+            while (currentValidatorInfo.FinalizingBlockNumber >= blockNumber && currentValidatorInfo.PreviousFinalizingBlockNumber != EmptyBlockNumber)
             {
                 currentValidatorInfo = LoadValidatorInfo(currentValidatorInfo.PreviousFinalizingBlockNumber);
             }
 
-            return currentValidatorInfo;
+            return currentValidatorInfo.FinalizingBlockNumber >= blockNumber ? EmptyValidatorInfo : currentValidatorInfo;
         }
 
         private ValidatorInfo GetLatestValidatorInfo()
@@ -81,9 +88,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             return info;
         }
 
-        private ValidatorInfo LoadValidatorInfo(in long blockNumber)
+        private ValidatorInfo LoadValidatorInfo(in ulong blockNumber)
         {
-            if (blockNumber > EmptyBlockNumber)
+            if (blockNumber != EmptyBlockNumber)
             {
                 Span<byte> bytes = _db.Get(GetKey(blockNumber));
 

@@ -5,7 +5,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.StateSync;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.P2P;
 
 internal class XdcStateSyncDownloader(ILogManager logManager) : StateSyncDownloader(logManager)
 {

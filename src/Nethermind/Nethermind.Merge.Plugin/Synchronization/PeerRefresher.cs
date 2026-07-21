@@ -18,6 +18,7 @@ using Nethermind.Synchronization.Peers;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Benchmark")]
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class PeerRefresher : IPeerRefresher, IAsyncDisposable
@@ -25,7 +26,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private readonly IPeerDifficultyRefreshPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
-    private (Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
+    private Blockhashes _lastBlockhashes = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
     private readonly ILogger _logger;
     private bool _disposed;
@@ -42,7 +43,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     public void RefreshPeers(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
         if (_disposed) return;
-        _lastBlockhashes = (headBlockhash, headParentBlockhash, finalizedBlockhash);
+        _lastBlockhashes = new Blockhashes(headBlockhash, headParentBlockhash, finalizedBlockhash);
         TimeSpan timePassed = DateTime.UtcNow - _lastRefresh;
         if (timePassed > _minRefreshDelay)
         {
@@ -55,7 +56,11 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
     }
 
-    private void TimerOnElapsed(object? sender, EventArgs e) => Refresh(_lastBlockhashes.headBlockhash, _lastBlockhashes.headParentBlockhash, _lastBlockhashes.finalizedBlockhash);
+    private void TimerOnElapsed(object? sender, EventArgs e)
+    {
+        Blockhashes last = _lastBlockhashes;
+        Refresh(last.HeadBlockhash, last.HeadParentBlockhash, last.FinalizedBlockhash);
+    }
 
     private void Refresh(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
@@ -97,9 +102,6 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     {
         // headBlockhash is obtained together with headParentBlockhash
         Task<IOwnedReadOnlyList<BlockHeader>?> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
-        Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero
-            ? Task.FromResult<BlockHeader?>(null)
-            : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
 
         BlockHeader? headBlockHeader, headParentBlockHeader, finalizedBlockHeader;
 
@@ -108,11 +110,15 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             using IOwnedReadOnlyList<BlockHeader>? headAndParentHeaders = await getHeadParentHeaderTask;
             if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders!, out headBlockHeader, out headParentBlockHeader))
             {
-                _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected response length");
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected head/parent response");
                 return;
             }
 
-            finalizedBlockHeader = await getFinalizedHeaderTask;
+            // Requested only after the head/parent response is validated, so an early return cannot
+            // leave a finalized-header request running with no reliable cancellation signal.
+            finalizedBlockHeader = finalizedBlockhash == Keccak.Zero
+                ? null
+                : await syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
         }
         catch (AggregateException exception) when (exception.InnerException is OperationCanceledException)
         {
@@ -135,6 +141,12 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader is null)
         {
             _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: no finalized block header");
+            return;
+        }
+
+        if (finalizedBlockHeader is not null && finalizedBlockHeader.Hash != finalizedBlockhash)
+        {
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: finalized block header hash mismatch");
             return;
         }
 
@@ -177,24 +189,26 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         headBlockHeader = null;
         headParentBlockHeader = null;
 
-        if (headers.Count > 2)
+        // No head/parent returned: the peer may simply not have them yet. Benign — the finalized
+        // header is requested and validated separately.
+        if (headers.Count == 0)
+        {
+            return true;
+        }
+
+        // Otherwise a correct peer returns [parent] or [parent, head] starting at exactly the
+        // requested parent. Any other shape or a different first header is a bad response.
+        if (headers.Count > 2 || headers[0].Hash != headParentBlockhash)
         {
             return false;
         }
 
-        if (headers.Count == 1 && headers[0].Hash == headParentBlockhash)
-        {
-            headParentBlockHeader = headers[0];
-        }
-        else if (headers.Count == 2)
-        {
-            // Maybe the head is not the same as we expected. In that case, leave it as null
-            if (headBlockhash == headers[1].Hash)
-            {
-                headBlockHeader = headers[1];
-            }
+        headParentBlockHeader = headers[0];
 
-            headParentBlockHeader = headers[0];
+        // The head may legitimately differ from what we expected; only accept it when it matches.
+        if (headers.Count == 2 && headBlockhash == headers[1].Hash)
+        {
+            headBlockHeader = headers[1];
         }
 
         return true;
@@ -209,6 +223,8 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
         return default;
     }
+
+    private sealed record Blockhashes(Hash256 HeadBlockhash, Hash256 HeadParentBlockhash, Hash256 FinalizedBlockhash);
 }
 
 public interface IPeerRefresher

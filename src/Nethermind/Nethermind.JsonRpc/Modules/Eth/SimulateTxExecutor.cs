@@ -95,8 +95,8 @@ public class SimulateTxExecutor<TTrace>(
         Dictionary<Address, AccountOverride>? stateOverride = null,
         SearchResult<BlockHeader>? searchResult = null)
     {
-        if (call.BlockStateCalls is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
+        if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
 
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
@@ -120,7 +120,7 @@ public class SimulateTxExecutor<TTrace>(
 
         if (call.BlockStateCalls is not null)
         {
-            long lastBlockNumber = header.Number;
+            ulong lastBlockNumber = header.Number;
             ulong lastBlockTime = header.Timestamp;
 
             using ArrayPoolListRef<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = new(call.BlockStateCalls.Count);
@@ -133,14 +133,13 @@ public class SimulateTxExecutor<TTrace>(
                 if (givenNumber > long.MaxValue)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
 
-                if (givenNumber <= (ulong)lastBlockNumber)
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                if (givenNumber <= lastBlockNumber)
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.BlockNumberNotIncreasing, ErrorCodes.InvalidInputBlocksOutOfOrder);
 
-                // if the no. of filler blocks are greater than maximum simulate blocks cap
-                if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
+                if (givenNumber - header.Number > (ulong)_blocksLimit)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"too many blocks", ErrorCodes.ClientLimitExceededError);
 
-                for (ulong fillBlockNumber = (ulong)lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
+                for (ulong fillBlockNumber = lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
                     ulong fillBlockTime = lastBlockTime + _secondsPerSlot;
                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
@@ -154,24 +153,24 @@ public class SimulateTxExecutor<TTrace>(
 
                 blockToSimulate.BlockOverrides.Number = givenNumber;
 
-                if (blockToSimulate.BlockOverrides.Time is not null)
+                if (blockToSimulate.BlockOverrides.Time is { } blockTime)
                 {
-                    if (blockToSimulate.BlockOverrides.Time <= lastBlockTime)
+                    if (blockTime <= lastBlockTime)
                     {
                         return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
                     }
-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    lastBlockTime = blockTime;
                 }
                 else
                 {
-                    blockToSimulate.BlockOverrides.Time = lastBlockTime + _secondsPerSlot;
-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    lastBlockTime += _secondsPerSlot;
+                    blockToSimulate.BlockOverrides.Time = lastBlockTime;
                 }
-                lastBlockNumber = (long)givenNumber;
+                lastBlockNumber = givenNumber;
 
                 if (blockToSimulate.StateOverrides is not null)
                 {
-                    IReleaseSpec spec = specProvider.GetSpec((long)givenNumber, blockToSimulate.BlockOverrides.Time);
+                    IReleaseSpec spec = specProvider.GetSpec(givenNumber, blockToSimulate.BlockOverrides.Time);
                     foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
                     {
                         if (accountOverride.MovePrecompileToAddress is null) continue;
@@ -202,7 +201,7 @@ public class SimulateTxExecutor<TTrace>(
         Dictionary<Address, AccountOverride>? stateOverride,
         CancellationToken token)
     {
-        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap!.Value, token);
+        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap.EffectiveGasCap(), token);
 
         foreach (SimulateBlockResult<TTrace> item in results.Items)
         {
@@ -314,4 +313,17 @@ internal static class SimulateErrorMessages
     /// (error code <see cref="ErrorCodes.InsufficientFunds"/>).
     /// </summary>
     public const string InsufficientFunds = "Insufficient funds to pay for gas fees and value for a transaction";
+
+    /// <summary>
+    /// Returned when a simulated block number is not strictly greater than the previous one
+    /// (error code <see cref="ErrorCodes.InvalidInputBlocksOutOfOrder"/>). Mandated verbatim by
+    /// the execution-apis spec.
+    /// </summary>
+    public const string BlockNumberNotIncreasing = "Block number in sequence did not increase";
+
+    /// <summary>
+    /// Returned when <c>blockStateCalls</c> is an empty array
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string EmptyBlockStateCalls = "empty input";
 }

@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -42,7 +41,7 @@ namespace Nethermind.Network.Test
             sessionMonitor.AddSession(session);
             sessionMonitor.RemoveSession(session);
 
-            sessionMonitor.Sessions.Should().BeEmpty();
+            Assert.That(sessionMonitor.Sessions, Is.Empty);
         }
 
         [Test]
@@ -94,11 +93,11 @@ namespace Nethermind.Network.Test
             // Sessions should have different LastPingUtc values due to jitter
             DateTime[] pingTimes = sessions.Select(s => s.LastPingUtc).ToArray();
             int distinctCount = pingTimes.Distinct().Count();
-            distinctCount.Should().BeGreaterThan(1, "Sessions added at the same time should have staggered ping times");
+            Assert.That(distinctCount, Is.GreaterThan(1), "Sessions added at the same time should have staggered ping times");
 
             // The spread should cover a meaningful portion of the interval
             TimeSpan spread = pingTimes.Max() - pingTimes.Min();
-            spread.Should().BeGreaterThan(TimeSpan.FromMilliseconds(100), "Ping time spread should be non-trivial");
+            Assert.That(spread, Is.GreaterThan(TimeSpan.FromMilliseconds(100)), "Ping time spread should be non-trivial");
         }
 
         private ISession CreateUnresponsiveSession()

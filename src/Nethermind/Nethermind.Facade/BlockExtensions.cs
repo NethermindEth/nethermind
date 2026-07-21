@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.Contracts;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Core;
 
 namespace Nethermind.Facade

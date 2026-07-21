@@ -1,40 +1,36 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Discovery.Discv4;
 
 namespace Nethermind.Xdc.Discovery;
 
-// Parameters mirror DiscoveryApp so Autofac resolves [KeyFilter] attributes via WithAttributeFiltering().
 public class XdcDiscoveryApp(
-    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
-    INodesLocator nodesLocator,
-    IDiscoveryManager? discoveryManager,
-    INodeTable? nodeTable,
-    IMessageSerializationService? msgSerializationService,
-    ICryptoRandom? cryptoRandom,
-    [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage? discoveryStorage,
-    DiscoveryPersistenceManager discoveryPersistenceManager,
+    ILifetimeScope rootScope,
+    IEnode enode,
     IProcessExitSource processExitSource,
-    INetworkConfig? networkConfig,
-    IDiscoveryConfig? discoveryConfig,
-    ITimestamper? timestamper,
-    ILogManager? logManager,
-    NodeFilter? inboundMessageFilter = null)
-    : DiscoveryApp(nodeKey, nodesLocator, discoveryManager, nodeTable, msgSerializationService, cryptoRandom,
-        discoveryStorage, discoveryPersistenceManager, processExitSource, networkConfig, discoveryConfig,
-        timestamper, logManager, inboundMessageFilter)
+    INetworkConfig networkConfig,
+    IDiscoveryConfig discoveryConfig,
+    IIPResolver ipResolver,
+    ILogManager logManager)
+    : DiscoveryApp(
+        rootScope,
+        enode,
+        networkConfig,
+        discoveryConfig,
+        ipResolver,
+        processExitSource,
+        logManager,
+        static builder => builder
+            .RegisterType<XdcNettyDiscoveryHandler>()
+            .As<NettyDiscoveryHandler>()
+            .WithAttributeFiltering())
 {
-    protected override NettyDiscoveryHandler CreateDiscoveryHandler(IChannel channel) =>
-        new XdcNettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager, _inboundMessageFilter);
 }

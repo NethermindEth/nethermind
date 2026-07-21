@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -59,7 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             NetworkDiagTracer.IsEnabled = true;
 
-            _disposables = new();
+            _disposables = [];
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
@@ -342,7 +343,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_new_block_hashes()
         {
-            using NewBlockHashesMessage msg = new((Keccak.Zero, 1), (Keccak.Zero, 2));
+            using NewBlockHashesMessage msg = new((Keccak.Zero, 1UL), (Keccak.Zero, 2UL));
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
         }
@@ -350,7 +351,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Should_disconnect_peer_sending_new_block_hashes_in_PoS()
         {
-            using NewBlockHashesMessage msg = new((Keccak.Zero, 1), (Keccak.Zero, 2));
+            using NewBlockHashesMessage msg = new((Keccak.Zero, 1UL), (Keccak.Zero, 2UL));
 
             _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(true);
 
@@ -402,7 +403,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(50)]
         public void Should_truncate_array_when_too_many_body(int availableBody)
         {
-            List<Block> blocks = new();
+            List<Block> blocks = [];
             Transaction[] transactions = Build.A.Transaction.TestObjectNTimes(1000);
             for (int i = 0; i < availableBody; i++)
             {
@@ -510,7 +511,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         private sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
-            public List<Type> RequestTypes { get; } = new();
+            public List<Type> RequestTypes { get; } = [];
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
                 TimeSpan? timeout = null, string? source = null)
@@ -563,6 +564,87 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
             Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Cancelled_mid_processing_releases_transactions_unless_rescheduled([Values] bool rescheduleSucceeds)
+        {
+            Transaction[] txs = new Transaction[2];
+            for (int i = 0; i < txs.Length; i++)
+            {
+                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+                txs[i].SetPreHashNoLock([(byte)(i + 1)]);
+            }
+
+            ArrayPoolList<Transaction> list = new(txs.Length, txs);
+
+            using CancellationTokenSource cts = new();
+            bool triedToReschedule = false;
+
+            // process first transaction and reschedule
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(ctx =>
+            {
+                Transaction tx = ctx.Arg<Transaction>();
+                _ = tx.Hash;
+                cts.Cancel();
+                return AcceptTxResult.Accepted;
+            });
+
+            CallbackBackgroundTaskScheduler scheduler = new(() =>
+            {
+                triedToReschedule = true;
+                if (rescheduleSucceeds)
+                {
+                    // The new task now owns the remaining txs: process tx[1] and release the list.
+                    list[1].ClearPreHash();
+                    list.Dispose();
+                }
+                return rescheduleSucceeds;
+            });
+
+
+            using TestEth62ProtocolHandler handler = new(
+                _session,
+                _svc,
+                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager,
+                scheduler,
+                _transactionPool,
+                _gossipPolicy,
+                LimboLogs.Instance,
+                _txGossipPolicy);
+
+            handler.HandleSlowPublic(list, cts.Token);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(triedToReschedule, Is.True);
+                Assert.That(txs[0].Hash, Is.Not.Null);
+                Assert.That(txs[1].Hash, Is.Null);
+                Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
+            }
+        }
+
+        private sealed class TestEth62ProtocolHandler(
+            ISession session,
+            IMessageSerializationService serializer,
+            INodeStatsManager statsManager,
+            ISyncServer syncServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
+            ITxPool txPool,
+            IGossipPolicy gossipPolicy,
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : Eth62ProtocolHandler(session, serializer, statsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
+        {
+            public void HandleSlowPublic(IOwnedReadOnlyList<Transaction> transactions, CancellationToken cancellationToken) =>
+                HandleSlow(new TransactionsRequest(transactions, 0), cancellationToken).GetAwaiter().GetResult();
+        }
+
+        private sealed class CallbackBackgroundTaskScheduler(Func<bool> onSchedule) : IBackgroundTaskScheduler
+        {
+            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
+                TimeSpan? timeout = null, string? source = null) => onSchedule();
         }
 
         [Test]
@@ -738,28 +820,38 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(100000)]
         [TestCase(102400)]
         [TestCase(222222)]
-        [Retry(10)]
         public void should_send_single_transaction_even_if_exceed_MaxPacketSize(int dataSize)
         {
-            int txCount = 512; //we will try to send 512 txs
+            const int txCount = 512;
 
             Transaction[] txs = new Transaction[txCount];
-
             for (int i = 0; i < txCount; i++)
             {
                 txs[i] = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
-            Transaction tx = txs[0];
-            int sizeOfOneTx = tx.GetLength();
+            int sizeOfOneTx = txs[0].GetLength();
             int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
             int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
             int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
 
+            CountdownEvent delivered = new(messagesCount);
+            int matchingDeliveries = 0;
+            _session.When(s => s.DeliverMessage(Arg.Any<TransactionsMessage>()))
+                .Do(call =>
+                {
+                    TransactionsMessage msg = (TransactionsMessage)call[0];
+                    if (msg.Transactions.Count == numberOfTxsInOneMsg || msg.Transactions.Count == nonFullMsgTxsCount)
+                    {
+                        Interlocked.Increment(ref matchingDeliveries);
+                        if (!delivered.IsSet) delivered.Signal();
+                    }
+                });
+
             _handler.SendNewTransactions(txs);
 
-            Assert.That(() => _session.ReceivedCallsMatching(s => s.DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount)), messagesCount), Is.True.After(500, 50));
-
+            Assert.That(delivered.Wait(TimeSpan.FromSeconds(30)), Is.True, "Not all expected messages were delivered within 30s");
+            Assert.That(matchingDeliveries, Is.EqualTo(messagesCount));
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
@@ -809,6 +901,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        }
+
+        [Test]
+        public void Should_disconnect_on_unknown_message_type()
+        {
+            HandleIncomingStatusMessage();
+
+            using StatusMessage filler = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            using DisposableByteBuffer packet = _svc.ZeroSerialize(filler).AsDisposable();
+            packet.ReadByte();
+            _handler.HandleMessage(new ZeroPacket(packet) { PacketType = 99 });
+
+            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
         }
     }
 }

@@ -5,11 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -58,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptCanonicalityMonitor.ReceiptsInserted), e.WasRemoved);
 
-        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed) => ScheduleAction(async () => await TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
+        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed) => ScheduleAction(() => TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
 
         private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
         {

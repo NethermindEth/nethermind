@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,7 +26,7 @@ public class CompositeBlockTracerTests
         CompositeBlockTracer compositeBlockTracer = new();
         compositeBlockTracer.AddRange(gethLikeBlockTracer, parityLikeBlockTracer);
 
-        compositeBlockTracer.IsTracingRewards.Should().Be(true);
+        Assert.That(compositeBlockTracer.IsTracingRewards, Is.EqualTo(true));
     }
 
     [Test]
@@ -62,10 +61,10 @@ public class CompositeBlockTracerTests
         blockTracer.EndBlockTrace();
 
         IReadOnlyCollection<GethLikeTxTrace> gethResult = gethLikeBlockTracer.BuildResult();
-        gethResult.Count.Should().Be(3);
+        Assert.That(gethResult.Count, Is.EqualTo(3));
 
         IReadOnlyCollection<ParityLikeTxTrace> parityResult = parityLikeBlockTracer.BuildResult();
-        parityResult.Count.Should().Be(3);
+        Assert.That(parityResult.Count, Is.EqualTo(3));
     }
 
     [Test]

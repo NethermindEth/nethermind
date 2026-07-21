@@ -42,6 +42,8 @@ public class Eth68ProtocolHandler(ISession session,
     )
     : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
+    private const int MaxPooledTransactionHashesPerRequest = 256;
+
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
@@ -56,7 +58,7 @@ public class Eth68ProtocolHandler(ISession session,
     public new static byte Version => EthVersions.Eth68;
     public override byte ProtocolVersion => Version;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -75,10 +77,9 @@ public class Eth68ProtocolHandler(ISession session,
                     ReportIn(ignored, size);
                 }
 
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
@@ -143,18 +144,20 @@ public class Eth68ProtocolHandler(ISession session,
             if (txSize > maxTxSize)
                 continue;
 
-            if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
+            if (CanRequestPooledTransaction(txType))
             {
-                Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
-                hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
-                packetSizeLeft = TransactionsMessage.MaxPacketSize;
-                toRequestCount = 0;
-            }
+                bool countsTowardPacketSize = txSize <= TransactionsMessage.MaxPacketSize;
+                if (ShouldSendCurrentRequest(countsTowardPacketSize, txSize, packetSizeLeft, toRequestCount))
+                {
+                    SendHashesToRequest();
+                }
 
-            if (_blobSupportEnabled || txType != TxType.Blob)
-            {
                 hashesToRequest.Add(hash);
-                packetSizeLeft -= txSize;
+                _txPool.NotifyAboutTx(hash, this);
+                if (countsTowardPacketSize)
+                {
+                    packetSizeLeft -= txSize;
+                }
                 toRequestCount++;
             }
         }
@@ -167,7 +170,21 @@ public class Eth68ProtocolHandler(ISession session,
         {
             hashesToRequest.Dispose();
         }
+
+        void SendHashesToRequest()
+        {
+            Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
+            hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
+            packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            toRequestCount = 0;
+        }
     }
+
+    private bool CanRequestPooledTransaction(TxType txType) => _blobSupportEnabled || txType is not TxType.Blob;
+
+    private static bool ShouldSendCurrentRequest(bool countsTowardPacketSize, int txSize, int packetSizeLeft, int toRequestCount) =>
+        toRequestCount >= MaxPooledTransactionHashesPerRequest
+        || (countsTowardPacketSize && txSize > packetSizeLeft && toRequestCount > 0);
 
     private ArrayPoolListRef<int> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
     {
@@ -261,6 +278,11 @@ public class Eth68ProtocolHandler(ISession session,
         {
             if (!ValidateSizeAndType(transactionsSpan[i]))
             {
+                // [0, startIdx) were already handled in a prior scheduler slot.
+                for (int j = startIdx; j < transactionsSpan.Length; j++)
+                {
+                    transactionsSpan[j].ClearPreHash();
+                }
                 transactions.Dispose();
                 throw new SubprotocolException("invalid pooled tx type or size");
             }

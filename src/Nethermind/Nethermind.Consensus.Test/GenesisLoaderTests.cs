@@ -4,10 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -124,7 +124,7 @@ public class GenesisLoaderTests
         _scopeDisposable.When(x => x.Dispose()).Do(_ => scopeExited = true);
         _worldStateManager.When(x => x.FlushCache(Arg.Any<CancellationToken>())).Do(_ =>
         {
-            scopeExited.Should().BeTrue("FlushCache should be called after scope exit");
+            Assert.That(scopeExited, Is.True, "FlushCache should be called after scope exit");
         });
 
         GenesisLoader loader = CreateLoader(TimeSpan.FromSeconds(10));

@@ -6,8 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Discovery.Discv4.Serializers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -22,7 +22,7 @@ namespace Nethermind.Network.Test.Builders
     public class SerializationBuilder(ITimestamper timestamper = null) : BuilderBase<IMessageSerializationService>
     {
         private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
-        private List<SerializerInfo> _serializers = new();
+        private List<SerializerInfo> _serializers = [];
 
         public SerializationBuilder With<T>(IZeroMessageSerializer<T> serializer) where T : MessageBase
         {

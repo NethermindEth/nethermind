@@ -27,7 +27,7 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Total number of blocks processed")]
-    public static long Blocks { get; set; }
+    public static ulong Blocks { get; set; }
 
     [CounterMetric]
     [Description("Total number of chain reorganizations")]
@@ -51,11 +51,11 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
-    public static long GasUsed { get; set; }
+    public static ulong GasUsed { get; set; }
 
     [GaugeMetric]
     [Description("Gas Limit for processed blocks")]
-    public static long GasLimit { get; set; }
+    public static ulong GasLimit { get; set; }
 
     [GaugeMetric]
     [Description("Total difficulty on the chain")]
@@ -77,13 +77,13 @@ public static class Metrics
     [GaugeMetric]
     [Description("The current height of the canonical chain.")]
     [DataMember(Name = "ethereum_blockchain_height")]
-    public static long BlockchainHeight { get; set; }
+    public static ulong BlockchainHeight { get; set; }
 
     //EIP-2159: Common Prometheus Metrics Names for Clients
     [GaugeMetric]
     [Description("The estimated highest block available.")]
     [DataMember(Name = "ethereum_best_known_block_number")]
-    public static long BestKnownBlockNumber { get; set; }
+    public static ulong BestKnownBlockNumber { get; set; }
 
     [GaugeMetric]
     [Description("Number of invalid blocks.")]
@@ -98,7 +98,7 @@ public static class Metrics
     public static double StateMerkleizationTime { get; set; }
 
     [DetailedMetric]
-    [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.2, Count = 30)]
+    [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.2, Count = 35)]
     [Description("Histogram of block MGas per second")]
     public static IMetricObserver BlockMGasPerSec { get; set; } = new NoopMetricObserver();
 

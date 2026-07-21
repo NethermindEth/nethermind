@@ -6,9 +6,10 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
+using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Xdc;
 
@@ -16,6 +17,17 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
     : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     private readonly INethermindApi _api = api;
+
+    // Non-trivial cast: ISpecProvider -> XdcChainSpecBasedSpecProvider.
+    // Safe in the XDC context because XDC nodes are always configured with
+    // XdcChainSpecBasedSpecProvider. Throws early at startup if the DI
+    // container is mis-configured rather than silently returning null.
+    private XdcChainSpecBasedSpecProvider XdcSpecProvider =>
+        _api.SpecProvider as XdcChainSpecBasedSpecProvider
+        ?? throw new InvalidOperationException(
+            $"Expected {nameof(XdcChainSpecBasedSpecProvider)} but got {_api.SpecProvider?.GetType().Name}. " +
+            "Ensure the DI container registers XdcChainSpecBasedSpecProvider for ISpecProvider.");
+
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
         ISnapshotManager snapshotManager = _api.Context.Resolve<ISnapshotManager>();
@@ -28,7 +40,7 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
-                new SignTransactionFilter(snapshotManager, _api.BlockTree, _api.SpecProvider),
+                new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),
                 _api.HeadTxValidator,
                 true
             );
@@ -37,8 +49,6 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
         return txPool;
     }
 
-    // Consensus loop must run on all nodes to keep QC/TC state current
-    protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
-
-    protected new IComparer<Transaction> CreateTxPoolTxComparer() => new XdcTransactionComparerProvider(_api.SpecProvider!, _api.BlockTree!).GetDefaultComparer();
+    protected new IComparer<Transaction> CreateTxPoolTxComparer() =>
+        new XdcTransactionComparerProvider(XdcSpecProvider, _api.BlockTree!).GetDefaultComparer();
 }

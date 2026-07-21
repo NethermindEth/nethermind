@@ -26,6 +26,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -51,8 +52,8 @@ public class Eth70ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
-        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 2UL.MiB;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         NetworkDiagTracer.IsEnabled = true;
 
         _session = Substitute.For<ISession>();
@@ -66,7 +67,7 @@ public class Eth70ProtocolHandlerTests
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
         _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
-        _syncManager.LowestBlock.Returns(0);
+        _syncManager.LowestBlock.Returns(0UL);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
@@ -103,28 +104,31 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-        Assert.That(_handler.Name, Is.EqualTo("eth70"));
-        Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
-        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
-        Assert.That(_handler.IncludeInTxPool, Is.True);
-        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-        Assert.That(_handler.HeadHash, Is.Null);
-        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth70"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        }
     }
 
     [Test]
     public void Default_size_limits_match_eth_protocol_limits()
     {
-        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL * 1024 * 1024));
-        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL * 1024 * 1024));
+        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL.MiB));
+        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL.MiB));
     }
 
     [Test]
     public void Should_mark_last_block_incomplete_when_truncated()
     {
-        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)1.MB;
-        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)1.MB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 1UL.MB;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = 1UL.MB;
 
         const int receiptCount = 20000;
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
@@ -139,7 +143,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_return_empty_receipts_block_when_local_block_has_no_receipts()
+    public void Should_return_empty_receipts_block_when_local_block_has_no_transactions()
     {
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
@@ -149,6 +153,19 @@ public class Eth70ProtocolHandlerTests
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
             m.TxReceipts.Count == 1 && m.TxReceipts[0].Length == 0 && !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_stop_response_when_receipts_are_not_known_locally()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns((TxReceipt[]?)null);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.TxReceipts.Count == 0 && !m.LastBlockIncomplete));
     }
 
     [Test]
@@ -166,8 +183,8 @@ public class Eth70ProtocolHandlerTests
     public void Should_return_expected_receipts_for_first_block_receipt_index(
         long firstBlockReceiptIndex,
         int expectedLength,
-        int expectedFirstReceiptIndex,
-        int expectedLastReceiptIndex)
+        int? expectedFirstReceiptIndex,
+        int? expectedLastReceiptIndex)
     {
         TxReceipt[] receipts = BuildSequentialReceipts(3);
 
@@ -180,8 +197,8 @@ public class Eth70ProtocolHandlerTests
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
             m.TxReceipts.Count == 1 &&
             m.TxReceipts[0].Length == expectedLength &&
-            m.TxReceipts[0][0].GasUsedTotal == receipts[expectedFirstReceiptIndex].GasUsedTotal &&
-            m.TxReceipts[0][expectedLength - 1].GasUsedTotal == receipts[expectedLastReceiptIndex].GasUsedTotal &&
+            (expectedLength == 0 || m.TxReceipts[0][0].GasUsedTotal == receipts[expectedFirstReceiptIndex!.Value].GasUsedTotal) &&
+            (expectedLength == 0 || m.TxReceipts[0][expectedLength - 1].GasUsedTotal == receipts[expectedLastReceiptIndex!.Value].GasUsedTotal) &&
             !m.LastBlockIncomplete));
     }
 
@@ -226,9 +243,9 @@ public class Eth70ProtocolHandlerTests
 
         TxReceipt[] receipts =
         [
+            new() { GasUsedTotal = GasCostOf.Transaction / 2, Logs = [] },
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
+            new() { GasUsedTotal = GasCostOf.Transaction * 3 / 2, Logs = [] }
         ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
@@ -280,10 +297,13 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
 
-        Assert.That(result.Count, Is.EqualTo(1));
-        AssertReceiptsEqual(result[0], receipts);
-        Assert.That(requestCount, Is.EqualTo(2));
-        Assert.That(blockHashes.IndexerReadCount, Is.EqualTo(blockHashes.Count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(1));
+            AssertReceiptsEqual(result[0], receipts);
+            Assert.That(requestCount, Is.EqualTo(2));
+            Assert.That(blockHashes.IndexerReadCount, Is.EqualTo(blockHashes.Count));
+        }
     }
 
     [Test]
@@ -350,11 +370,14 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(2));
-        Assert.That(result[0], Is.Empty);
-        Assert.That(result[1], Has.Length.EqualTo(block2Receipts.Length));
-        Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
-        Assert.That(result[1][0].Logs, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(2));
+            Assert.That(result[0], Is.Empty);
+            Assert.That(result[1], Has.Length.EqualTo(block2Receipts.Length));
+            Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
+            Assert.That(result[1][0].Logs, Is.Empty);
+        }
     }
 
     [TestCaseSource(nameof(EmptyReceiptsPayloadCases))]
@@ -458,25 +481,25 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_reject_when_intrinsic_exceeds_block_gas()
+    public void Should_reject_when_receipt_gas_is_below_minimum_supported_transaction_gas()
     {
         TxReceipt[] receipts =
         [
-            new() { GasUsedTotal = GasCostOf.Transaction / 2, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+            new() { GasUsedTotal = GasCostOf.Transaction / 2 - 1, Logs = [] }
         ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), true);
+            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Intrinsic gas lower bound exceeds block gas used"));
     }
 
     [Test]
@@ -655,7 +678,7 @@ public class Eth70ProtocolHandlerTests
         BlockHeader header = Build.A.BlockHeader
             .WithHash(blockHash)
             .WithNumber(1)
-            .WithGasUsed(GasCostOf.Transaction * headerGasUsedMultiplier)
+            .WithGasUsed(GasCostOf.Transaction * (ulong)headerGasUsedMultiplier)
             .TestObject;
         _syncManager.FindHeader(blockHash).Returns(header);
 
@@ -667,7 +690,7 @@ public class Eth70ProtocolHandlerTests
         TxReceipt[] receipts = new TxReceipt[receiptGasUsedMultiplier];
         for (int i = 0; i < receipts.Length; i++)
         {
-            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] };
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (ulong)(i + 1), Logs = [] };
         }
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
@@ -696,6 +719,18 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_reject_null_receipt_payload_during_deserialization()
+    {
+        TxReceipt[] receipts = [null!];
+        using ReceiptsMessage70 response = new(1111, new[] { receipts }.ToPooledList(), false);
+
+        HandleIncomingStatusMessage();
+        RlpException? exception = Assert.Throws<RlpException>(() => HandleZeroMessage(response, Eth70MessageCode.Receipts));
+
+        Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
+    }
+
+    [Test]
     public async Task Should_return_immediately_when_peer_returns_fewer_blocks_than_requested()
     {
         // Scenario: Handler requests N blocks, peer returns fewer with LastBlockIncomplete = false
@@ -720,7 +755,7 @@ public class Eth70ProtocolHandlerTests
             int toReturn = Math.Min(7, actualRequested);
 
             TxReceipt[][] payload = Enumerable.Range(0, toReturn)
-                .Select(i => new[] { new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] } })
+                .Select(i => new[] { new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (ulong)(i + 1), Logs = [] } })
                 .ToArray();
 
             ReceiptsMessage70 response = new(sent.RequestId, payload.ToPooledList(), lastBlockIncomplete: false);
@@ -798,9 +833,8 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
         ];
 
-        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
         _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
-        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns((TxReceipt[]?)null);
         _syncManager.GetReceipts(TestItem.KeccakB).Returns(
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
@@ -808,20 +842,19 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
 
-        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
-        Assert.That(response.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
-        Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
-        Assert.That(response.LastBlockIncomplete, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+            Assert.That(response.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
+            Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
+            Assert.That(response.LastBlockIncomplete, Is.False);
+        }
     }
 
     [Test]
     public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
     {
-        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
-        _syncManager.GetReceipts(Keccak.Zero).Returns(
-        [
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
-        ]);
+        _syncManager.GetReceipts(Keccak.Zero).Returns((TxReceipt[]?)null);
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
@@ -903,6 +936,34 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_include_next_block_after_empty_first_block_completion()
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 1;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = 1000;
+
+        TxReceipt[] block1Receipts = BuildSequentialReceipts(1);
+        TxReceipt[] block2Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] }
+        ];
+
+        _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns(block2Receipts);
+
+        using GetReceiptsMessage70 request = new(1111, block1Receipts.Length, new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.TxReceipts.Count == 2 &&
+            m.TxReceipts[0].Length == 0 &&
+            m.TxReceipts[1].Length == block2Receipts.Length &&
+            !m.LastBlockIncomplete));
+    }
+
+    [Test]
     public void Should_send_single_large_block_above_soft_limit_when_below_hard_limit()
     {
         SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 300;
@@ -979,11 +1040,14 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero);
 
-        Assert.That(fullResponseLength, Is.GreaterThan((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
-        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
-        Assert.That(response.TxReceipts[0], Has.Length.EqualTo(1));
-        Assert.That(response.LastBlockIncomplete, Is.True);
-        Assert.That(GetReceiptsMessageLength(response), Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fullResponseLength, Is.GreaterThan((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+            Assert.That(response.TxReceipts[0], Has.Length.EqualTo(1));
+            Assert.That(response.LastBlockIncomplete, Is.True);
+            Assert.That(GetReceiptsMessageLength(response), Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+        }
     }
 
     [Test]
@@ -1014,7 +1078,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_not_split_small_block_when_hitting_limit_single_block()
     {
-        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)10.MB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 10UL.MB;
 
         TxReceipt[] smallBlockReceipts =
         [
@@ -1059,20 +1123,20 @@ public class Eth70ProtocolHandlerTests
         TxReceipt[] receipts = new TxReceipt[count];
         for (int i = 0; i < receipts.Length; i++)
         {
-            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] };
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (ulong)(i + 1), Logs = [] };
         }
 
         return receipts;
     }
 
-    private static TxReceipt BuildReceiptWithLogData(long gasUsedTotal, int logDataSize) =>
+    private static TxReceipt BuildReceiptWithLogData(ulong gasUsedTotal, int logDataSize) =>
         new()
         {
             GasUsedTotal = gasUsedTotal,
             Logs = [new LogEntry(TestItem.AddressA, new byte[logDataSize], [])]
         };
 
-    private void SetupBlockMetadata(Hash256 blockHash, long gasLimit, long gasUsed, params long[] txGasLimits)
+    private void SetupBlockMetadata(Hash256 blockHash, ulong gasLimit, ulong gasUsed, params ulong[] txGasLimits)
     {
         Transaction[] transactions = new Transaction[txGasLimits.Length];
         for (int i = 0; i < txGasLimits.Length; i++)
@@ -1121,13 +1185,15 @@ public class Eth70ProtocolHandlerTests
             .SetName("Should_return_receipts_when_first_block_receipt_index_is_zero");
         yield return new TestCaseData(2L, 1, 2, 2)
             .SetName("Should_return_last_receipt_when_first_block_receipt_index_is_last");
+        yield return new TestCaseData(3L, 0, null, null)
+            .SetName("Should_return_empty_block_when_first_block_receipt_index_equals_receipts_count");
     }
 
     public sealed record InvalidPartialContinuationCase(
         Hash256[] RequestedHashes,
         Dictionary<long, ReceiptsPageResponse> Responses,
-        long FirstBlockGasUsed,
-        long? SecondBlockGasUsed,
+        ulong FirstBlockGasUsed,
+        ulong? SecondBlockGasUsed,
         string ExpectedExceptionMessage);
 
     public sealed record ReceiptsPageResponse(TxReceipt[][] Receipts, bool LastBlockIncomplete);
@@ -1160,12 +1226,22 @@ public class Eth70ProtocolHandlerTests
             SecondBlockGasUsed: GasCostOf.Transaction,
             ExpectedExceptionMessage: "Block gas used mismatch between receipts and header"))
             .SetName("Rejects partial continuation that completes below header gas before continuing");
+
+        yield return new TestCaseData(new InvalidPartialContinuationCase(
+            [Keccak.Zero, TestItem.KeccakA],
+            new Dictionary<long, ReceiptsPageResponse>
+            {
+                [0] = new([firstShortPage], LastBlockIncomplete: true),
+                [1] = new([Array.Empty<TxReceipt>(), nextBlock], LastBlockIncomplete: false)
+            },
+            FirstBlockGasUsed: GasCostOf.Transaction * 2,
+            SecondBlockGasUsed: GasCostOf.Transaction,
+            ExpectedExceptionMessage: "Block gas used mismatch between receipts and header"))
+            .SetName("Rejects empty partial continuation that completes below header gas before continuing");
     }
 
     private static IEnumerable<TestCaseData> InvalidFirstBlockReceiptIndexCases()
     {
-        yield return new TestCaseData(2L)
-            .SetName("Should_disconnect_when_first_block_receipt_index_equals_receipts_count");
         yield return new TestCaseData(3L)
             .SetName("Should_disconnect_when_first_block_receipt_index_exceeds_receipts_count");
     }

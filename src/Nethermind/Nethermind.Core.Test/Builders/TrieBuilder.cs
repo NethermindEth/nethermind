@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -12,8 +11,6 @@ namespace Nethermind.Core.Test.Builders
 {
     public class TrieBuilder : BuilderBase<PatriciaTree>
     {
-        private readonly AccountDecoder _accountDecoder = new();
-
         public TrieBuilder(INodeStorage db) => TestObjectInternal = new PatriciaTree(new RawScopedTrieStore(db), Keccak.EmptyTreeHash, true, LimboLogs.Instance);
 
         public TrieBuilder WithAccountsByIndex(int start, int count)
@@ -42,8 +39,8 @@ namespace Nethermind.Core.Test.Builders
         private Account GenerateIndexedAccount(int index)
         {
             Account account = new(
-                (UInt256)index,
-                (UInt256)index,
+                (ulong)index,
+                (ulong)index,
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 
@@ -53,7 +50,7 @@ namespace Nethermind.Core.Test.Builders
         private byte[] GenerateIndexedAccountRlp(int index)
         {
             Account account = GenerateIndexedAccount(index);
-            byte[] value = _accountDecoder.Encode(account).Bytes;
+            byte[] value = Rlp.Encode(account).Bytes;
             return value;
         }
 

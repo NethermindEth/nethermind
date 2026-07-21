@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Crypto;
@@ -25,6 +24,7 @@ public partial class EthRpcModuleTests
     private const string UnlockedTestAccount = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
     private const string LockedAccount = "0x000000000000000000000000000000000000dead";
     private const string FeeFieldsMissingMessage = "missing gasPrice or maxFeePerGas/maxPriorityFeePerGas";
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
 
     [TestCase(TxType.Legacy, "gas", "gas not specified", TestName = "GasMissing")]
     [TestCase(TxType.Legacy, "gasPrice", FeeFieldsMissingMessage, TestName = "LegacyFeesMissing")]
@@ -41,9 +41,9 @@ public partial class EthRpcModuleTests
         TransactionForRpc rpcTx = BuildTx(type, omitField);
         string response = await SignTransaction(rpcTx);
 
-        response.Should().Contain($"\"code\":{ErrorCodes.InvalidInput}",
+        Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
             "missing required field must surface as InvalidInput so callers can branch on it");
-        response.Should().Contain(expectedMessage,
+        Assert.That(response, Does.Contain(expectedMessage),
             "error message must be precise so callers know which field to fix");
     }
 
@@ -55,9 +55,9 @@ public partial class EthRpcModuleTests
         TransactionForRpc rpcTx = BuildTx(TxType.Legacy, omitField, fromOverride);
         string response = await SignTransaction(rpcTx);
 
-        response.Should().Contain($"\"code\":{ErrorCodes.InvalidInput}",
+        Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
             "wallet lookup failure surfaces as -32000 to align with keystore error handling");
-        response.Should().Contain("authentication needed: password or unlock",
+        Assert.That(response, Does.Contain("authentication needed: password or unlock"),
             "wording must match keystore error so tools that text-match keep working");
     }
 
@@ -70,8 +70,8 @@ public partial class EthRpcModuleTests
 
         string response = await SignTransaction(rpcTx);
 
-        response.Should().Contain("exceeds the configured cap",
-            "fees above RpcTxFeeCap must be rejected before signing — DOS / fat-finger guard");
+        Assert.That(response, Does.Contain("exceeds the configured cap"),
+            "fees above RpcTxFeeCap must be rejected before signing - DOS / fat-finger guard");
     }
 
     [Test]
@@ -84,7 +84,7 @@ public partial class EthRpcModuleTests
             From = new Address(UnlockedTestAccount),
             To = new Address("0x2d44c0e097f6cd0f514edac633d82e01280b4a5c"),
             Gas = 0x76c0,
-            Nonce = (UInt256)0,
+            Nonce = 0UL,
             MaxFeePerGas = (UInt256)0x9184e72a000,
             MaxPriorityFeePerGas = (UInt256)0x3b9aca00,
             MaxFeePerBlobGas = (UInt256)1_000_000,
@@ -94,7 +94,7 @@ public partial class EthRpcModuleTests
 
         string response = await SignTransaction(rpcTx);
 
-        response.Should().Contain("commitments must be provided alongside blobs",
+        Assert.That(response, Does.Contain("commitments must be provided alongside blobs"),
             "blob signing without commitments must surface a precise error so callers know what to add");
     }
 
@@ -122,9 +122,9 @@ public partial class EthRpcModuleTests
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", param);
         JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
-        response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
+        Assert.That(response.Result, Is.Not.Null, "precondition: signing must succeed for valid input");
 
-        response.Result!.Tx.Should().BeOfType(expectedEchoType,
+        Assert.That(response.Result!.Tx, Is.TypeOf(expectedEchoType),
             "no-type input must auto-promote to EIP-1559; explicit type must be preserved");
     }
 
@@ -137,19 +137,19 @@ public partial class EthRpcModuleTests
         TransactionForRpc rpcTx = BuildTx(type);
         ParsedSignTransactionResult result = await SignTransactionForResult(rpcTx);
 
-        Transaction decoded = TxDecoder.Instance.DecodeCompleteNotNull(
+        Transaction decoded = TxRlpDecoder.DecodeCompleteNotNull(
             result.Raw,
             RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
 
-        decoded.Type.Should().Be(type, "type must round-trip through RLP encode/decode");
-        decoded.GasLimit.Should().Be(0x76c0L, "gas must round-trip exactly — caller provided it explicitly");
-        decoded.Nonce.Should().Be((UInt256)0, "nonce must round-trip — caller provided it explicitly");
+        Assert.That(decoded.Type, Is.EqualTo(type), "type must round-trip through RLP encode/decode");
+        Assert.That(decoded.GasLimit, Is.EqualTo(0x76c0UL), "gas must round-trip exactly - caller provided it explicitly");
+        Assert.That(decoded.Nonce, Is.EqualTo(0UL), "nonce must round-trip - caller provided it explicitly");
 
         Address recovered = new EthereumEcdsa(decoded.ChainId ?? 1).RecoverAddress(decoded)!;
-        recovered.Should().Be(new Address(UnlockedTestAccount),
-            "signature must recover to the from address — raw is the canonical signed artifact");
+        Assert.That(recovered, Is.EqualTo(new Address(UnlockedTestAccount)),
+            "signature must recover to the from address - raw is the canonical signed artifact");
 
-        result.Tx.Should().BeOfType(expectedEchoType,
+        Assert.That(result.Tx, Is.TypeOf(expectedEchoType),
             "tx echo must preserve subclass so JSON shape survives for clients that branch on type");
     }
 
@@ -166,7 +166,7 @@ public partial class EthRpcModuleTests
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", rpcTx);
         JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
-        response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
+        Assert.That(response.Result, Is.Not.Null, "precondition: signing must succeed for valid input");
         return response.Result!;
     }
 
@@ -189,8 +189,8 @@ public partial class EthRpcModuleTests
         JsonRpcSuccessResponse response = new() { Result = result };
         response.Dispose();
 
-        pool.Returned.Should().ContainSingle().Which.Should().BeSameAs(rented,
-            "the rented buffer must come back to the pool — otherwise pooling is strictly " +
+        Assert.That(pool.Returned, Is.EqualTo([rented]),
+            "the rented buffer must come back to the pool - otherwise pooling is strictly " +
             "worse than direct allocation");
     }
 
@@ -218,8 +218,8 @@ public partial class EthRpcModuleTests
 
         Address to = new("0x2d44c0e097f6cd0f514edac633d82e01280b4a5c");
         UInt256 value = 0x9184e72a;
-        long gas = 0x76c0;
-        UInt256 nonce = 0;
+        ulong gas = 0x76c0;
+        ulong nonce = 0;
         UInt256 gasPrice = 0x9184e72a000;
 
         return type switch

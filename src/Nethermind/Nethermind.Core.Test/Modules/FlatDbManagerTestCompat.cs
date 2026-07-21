@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -28,7 +26,7 @@ internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbMa
 
     private StateId NormalizeState(StateId stateId)
     {
-        if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != -1 &&
+        if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != StateId.PreGenesis.BlockNumber &&
             !flatDbManager.HasStateForBlock(stateId))
             return StateId.PreGenesis;
         return stateId;
@@ -37,10 +35,4 @@ internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbMa
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) => flatDbManager.AddSnapshot(snapshot, transientResource);
-
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
-    {
-        add => flatDbManager.ReorgBoundaryReached += value;
-        remove => flatDbManager.ReorgBoundaryReached -= value;
-    }
 }

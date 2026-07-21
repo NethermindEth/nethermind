@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
@@ -25,9 +26,11 @@ using Nethermind.Config;
 using Nethermind.Synchronization;
 using NSubstitute;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Consensus.Rewards;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -40,7 +43,9 @@ using Nethermind.Network;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using Nethermind.Stats;
+using Nethermind.History;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -48,10 +53,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
-        public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
+        private bool? _previousStrictHexFormat;
+
+        public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig() { Timeout = -1 };
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
         public IDebugRpcModule DebugRpcModule => Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         public ITraceRpcModule TraceRpcModule => Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
+        public IProofRpcModule ProofRpcModule => Container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
         public IBlockchainBridge Bridge => Container.Resolve<IBlockchainBridge>();
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
@@ -59,6 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
         public ILogIndexConfig LogIndexConfig { get; } = new LogIndexConfig();
+        public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -124,6 +133,18 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithReceiptConfig(IReceiptConfig receiptConfig)
+            {
+                _blockchain.ReceiptConfig = receiptConfig;
+                return this;
+            }
+
+            public Builder<T> WithFlatDb(bool useFlatDb)
+            {
+                _blockchain.UseFlatDb = useFlatDb;
+                return this;
+            }
+
             public Builder<T> WithEthRpcModule(Func<TestRpcBlockchain, IEthRpcModule> builder)
             {
                 _blockchain._ethRpcModuleBuilder = builder;
@@ -184,15 +205,27 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.LogIndexConfig,
+            @this.ReceiptConfig,
             @this.BlocksConfig.SecondsPerSlot,
-            new HeadBlockSignal(@this.BlockTree));
+            new HeadBlockSignal(@this.BlockTree),
+            new EthCapabilitiesProvider(
+                @this.BlockTree.AsReadOnly(),
+                @this.Container.Resolve<IStateBoundary>(),
+                @this.Container.Resolve<ISyncConfig>(),
+                Substitute.For<ISyncPointers>(),
+                Substitute.For<IHistoryConfig>(),
+                Substitute.For<IHistoryPruner>()),
+            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory());
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            _previousStrictHexFormat ??= EthereumJsonSerializer.StrictHexFormat;
             EthereumJsonSerializer.StrictHexFormat = RpcConfig.StrictHexFormat;
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                if (SealEngineType == Core.SealEngineType.AuRa) builder.AddModule(new AuRaHeaderModule());
+                builder.AddSingleton<IJsonRpcConfig>(RpcConfig);
                 configurer?.Invoke(builder);
             });
 
@@ -211,14 +244,32 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IRlpxHost>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),
+                Substitute.For<IPeerManager>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
+                [new DefaultP2PCapabilityResolver()],
                 LimboLogs.Instance
             );
 
             EthRpcModule = _ethRpcModuleBuilder(this);
 
             return this;
+        }
+
+        public override void Dispose()
+        {
+            try
+            {
+                base.Dispose();
+            }
+            finally
+            {
+                if (_previousStrictHexFormat is bool previousStrictHexFormat)
+                {
+                    EthereumJsonSerializer.StrictHexFormat = previousStrictHexFormat;
+                    _previousStrictHexFormat = null;
+                }
+            }
         }
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
@@ -239,7 +290,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
-                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _currentBlockchainProcessor.Start();
         }
     }

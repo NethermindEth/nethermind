@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -21,7 +20,7 @@ public class NodeStorageFactoryTests
 
         NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
-        nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(INodeStorage.KeyScheme.Hash);
+        Assert.That(nodeStorageFactory.WrapKeyValueStore(memDb).Scheme, Is.EqualTo(INodeStorage.KeyScheme.Hash));
     }
 
     [TestCase(INodeStorage.KeyScheme.Hash)]
@@ -32,7 +31,7 @@ public class NodeStorageFactoryTests
 
         NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
-        nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(INodeStorage.KeyScheme.HalfPath);
+        Assert.That(nodeStorageFactory.WrapKeyValueStore(memDb).Scheme, Is.EqualTo(INodeStorage.KeyScheme.HalfPath));
     }
 
     [TestCase(INodeStorage.KeyScheme.Hash)]
@@ -48,7 +47,7 @@ public class NodeStorageFactoryTests
 
         NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
-        nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(preferredKeyScheme);
+        Assert.That(nodeStorageFactory.WrapKeyValueStore(memDb).Scheme, Is.EqualTo(preferredKeyScheme));
     }
 
     [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Hash, true)]
@@ -63,8 +62,8 @@ public class NodeStorageFactoryTests
         NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         INodeStorage nodeStorage = nodeStorageFactory.WrapKeyValueStore(memDb, forceUsePreferredKeyScheme: true);
-        nodeStorage.Scheme.Should().Be(expectedScheme);
-        nodeStorage.RequirePath.Should().Be(requirePath);
+        Assert.That(nodeStorage.Scheme, Is.EqualTo(expectedScheme));
+        Assert.That(nodeStorage.RequirePath, Is.EqualTo(requirePath));
     }
 
     private MemDb PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme? scheme)

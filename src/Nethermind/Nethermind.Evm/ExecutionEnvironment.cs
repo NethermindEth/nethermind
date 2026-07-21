@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-#if DEBUG
-using System.Diagnostics;
-#endif
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
+using Queue =
+#if ZK_EVM
+        Nethermind.Evm.ZkEvmQueue<Nethermind.Evm.ExecutionEnvironment>;
+#else
+        System.Collections.Concurrent.ConcurrentQueue<Nethermind.Evm.ExecutionEnvironment>;
+#endif
 
 namespace Nethermind.Evm
 {
@@ -17,9 +19,8 @@ namespace Nethermind.Evm
     /// </summary>
     public sealed class ExecutionEnvironment : IDisposable
     {
-        private static readonly ConcurrentQueue<ExecutionEnvironment> _pool = new();
+        private static readonly Queue _pool = new();
         private UInt256 _value;
-        private UInt256 _transferValue;
 
         /// <summary>
         /// Parsed bytecode for the current call.
@@ -45,11 +46,6 @@ namespace Nethermind.Evm
         public int CallDepth { get; private set; }
 
         /// <summary>
-        /// ETH value transferred in this call.
-        /// </summary>
-        public ref readonly UInt256 TransferValue => ref _transferValue;
-
-        /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
         /// DELEGATECALL behaves like a library call, and it uses the value information from the caller even
         /// as no transfer happens.
@@ -72,17 +68,15 @@ namespace Nethermind.Evm
             Address caller,
             Address? codeSource,
             int callDepth,
-            in UInt256 transferValue,
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
-            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new ExecutionEnvironment();
+            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new();
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
             env.Caller = caller;
             env.CodeSource = codeSource;
             env.CallDepth = callDepth;
-            env._transferValue = transferValue;
             env._value = value;
             env.InputData = inputData;
             return env;
@@ -100,7 +94,6 @@ namespace Nethermind.Evm
                 Caller = null!;
                 CodeSource = null;
                 CallDepth = 0;
-                _transferValue = default;
                 _value = default;
                 InputData = default;
                 _pool.Enqueue(this);
@@ -111,8 +104,7 @@ namespace Nethermind.Evm
         }
 
 #if DEBUG
-
-        private readonly StackTrace _creationStackTrace = new();
+        private readonly System.Diagnostics.StackTrace _creationStackTrace = new();
 
         ~ExecutionEnvironment()
         {

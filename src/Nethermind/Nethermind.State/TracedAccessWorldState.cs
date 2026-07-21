@@ -7,12 +7,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
@@ -20,45 +17,45 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches, IBlockAccessListSource
+/// <remarks>
+/// Setup contract: <see cref="SetGeneratingBlockAccessList"/> must run with a non-null slice
+/// before any state-mutating method. Hot-path mutators dereference
+/// <c>_generatingBlockAccessList</c> without a null-check, so a missed setup fails fast with
+/// <see cref="NullReferenceException"/> at the first write rather than silently corrupting BAL output.
+/// </remarks>
+public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
-    public PreBlockCaches Caches => (_innerWorldState.ScopeProvider as IPreBlockCaches)?.Caches
-        ?? throw new InvalidOperationException($"{nameof(IPreBlockCaches)} is unavailable from the wrapped world state's scope provider.");
-    public bool IsWarmWorldState => (_innerWorldState.ScopeProvider as IPreBlockCaches)?.IsWarmWorldState ?? false;
-
-    public bool IsInScope => _innerWorldState.IsInScope;
-    public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
-    public Hash256 StateRoot => _innerWorldState.StateRoot;
-    protected IWorldState _innerWorldState = innerWorldState;
-    private BlockAccessList? _generatingBlockAccessList;
+    // Set by SetGeneratingBlockAccessList; see class remarks.
+    private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
-    public BlockAccessList? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
-    public void SetGeneratingBlockAccessList(BlockAccessList? bal) => _generatingBlockAccessList = bal;
+    private UInt256 _scratchBalance;
+    private ValueHash256 _scratchCodeHash;
+    // Scratch buffer for intra-tx SLOAD on the parallel path (see GetInternal). Per-worker —
+    // the returned span is consumed by the EVM stack push before another GetInternal runs.
+    private readonly byte[] _scratchStorage = new byte[32];
+    // Single-slot cache for the last storage cell read: a repeated same-cell SLOAD skips the BAL
+    // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
+    private StorageCell _lastReadStorageCell;
+    private AccountChangesAtIndex? _lastReadStorageChanges;
+    private bool _hasLastReadCell;
+    public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
+    public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
 
-    public bool HasStateForBlock(BlockHeader? baseBlock)
-        => _innerWorldState.HasStateForBlock(baseBlock);
-
-    public void WarmUp(AccessList? accessList)
-        => _innerWorldState.WarmUp(accessList);
-
-    public void WarmUp(Address address)
-        => _innerWorldState.WarmUp(address);
-
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         UInt256? currentBalance = GetBalanceCurrent(address);
-        _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
+        base.AddToBalance(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance + balanceChange;
         _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
     }
 
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         bool? currentlyExists = AccountExistsCurrent(address);
         UInt256? currentBalance = GetBalanceCurrent(address);
-        bool res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        bool res = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
         res = currentlyExists ?? res;
 
@@ -68,76 +65,89 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return res;
     }
 
-    public IDisposable BeginScope(BlockHeader? baseBlock)
-        => _innerWorldState.BeginScope(baseBlock);
+    public override IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
-    public IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
-
-    public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
-        _generatingBlockAccessList.AddStorageRead(storageCell);
-        return GetInternal(storageCell);
+        AccountChangesAtIndex accountChanges;
+        if (_hasLastReadCell && _lastReadStorageCell.Equals(storageCell))
+        {
+            // Already recorded this exact cell; reuse its entry and skip the read-recording.
+            accountChanges = _lastReadStorageChanges!;
+        }
+        else
+        {
+            accountChanges = _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
+            _lastReadStorageCell = storageCell;
+            _lastReadStorageChanges = accountChanges;
+            _hasLastReadCell = true;
+        }
+        return GetInternal(accountChanges, in storageCell);
     }
 
-    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
-        => _innerWorldState.GetOriginal(storageCell);
-
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
-        UInt256? currentNonce = GetNonceCurrent(address);
-        _innerWorldState.IncrementNonce(address, delta, out oldNonce);
+        ulong? currentNonce = GetNonceCurrent(address);
+        base.IncrementNonce(address, delta, out oldNonce);
         oldNonce = currentNonce ?? oldNonce;
-        _generatingBlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
+        _generatingBlockAccessList.AddNonceChange(address, oldNonce + delta);
     }
 
-    public void SetNonce(Address address, in UInt256 nonce)
+    public override void SetNonce(Address address, in ulong nonce)
     {
-        _innerWorldState.SetNonce(address, nonce);
-        _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
+        base.SetNonce(address, nonce);
+        _generatingBlockAccessList.AddNonceChange(address, nonce);
     }
 
-    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+    public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         byte[] oldCode = GetCodeInternal(address) ?? [];
         _generatingBlockAccessList.AddCodeChange(address, oldCode, code);
-        return _innerWorldState.InsertCode(address, codeHash, code, spec, isGenesis);
+        return base.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
-    public void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         ReadOnlySpan<byte> oldValue = GetInternal(storageCell);
         _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
-        _innerWorldState.Set(storageCell, newValue);
+        base.Set(storageCell, newValue);
     }
 
-    public UInt256 GetBalance(Address address)
+    public override ref readonly UInt256 GetBalance(Address address)
     {
-        AddAccountRead(address);
-        return GetBalanceInternal(address);
+        AccountChangesAtIndex? accountChanges = RecordReadAndGetChanges(address);
+        if (accountChanges?.BalanceChange is { } bc)
+        {
+            _scratchBalance = bc.Value;
+            return ref _scratchBalance;
+        }
+        return ref base.GetBalance(address);
     }
 
-    public UInt256 GetNonce(Address address)
+    public override ulong GetNonce(Address address)
     {
         AddAccountRead(address);
         return GetNonceInternal(address);
     }
 
-    public ValueHash256 GetCodeHash(Address address)
+    public override ref readonly ValueHash256 GetCodeHash(Address address)
     {
-        AddAccountRead(address);
-        return GetCodeHashInternal(address);
+        AccountChangesAtIndex? accountChanges = RecordReadAndGetChanges(address);
+        if (accountChanges?.CodeChange is { } cc)
+        {
+            _scratchCodeHash = cc.CodeHash;
+            return ref _scratchCodeHash;
+        }
+        return ref base.GetCodeHash(address);
     }
 
-    public byte[]? GetCode(Address address)
+    public override byte[]? GetCode(Address address)
     {
         AddAccountRead(address);
         return GetCodeInternal(address);
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash)
-        => _innerWorldState.GetCode(codeHash);
-
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         oldBalance = 0;
 
@@ -147,32 +157,32 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
 
         UInt256? currentBalance = GetBalanceCurrent(address);
-        _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
+        base.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance - balanceChange;
         _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
     }
 
-    public void DeleteAccount(Address address)
+    public override void DeleteAccount(Address address)
     {
         _generatingBlockAccessList.DeleteAccount(address, GetBalanceInternal(address));
-        _innerWorldState.DeleteAccount(address);
+        base.DeleteAccount(address);
     }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
-        _innerWorldState.CreateAccount(address, balance, nonce);
+        base.CreateAccount(address, balance, nonce);
     }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
-        _innerWorldState.CreateAccountIfNotExists(address, balance, nonce);
+        base.CreateAccountIfNotExists(address, balance, nonce);
     }
 
-    public bool TryGetAccount(Address address, out AccountStruct account)
+    public override bool TryGetAccount(Address address, out AccountStruct account)
     {
         AddAccountRead(address);
         account = AccountExistsInternal(address) ? new(
@@ -183,13 +193,20 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return !account.IsTotallyEmpty;
     }
 
-    public void AddAccountRead(Address address)
+    public override void AddAccountRead(Address address)
     {
         if (_systemAccountReadSuppressionDepth == 0 || address != Address.SystemUser)
         {
             _generatingBlockAccessList.AddAccountRead(address);
         }
     }
+
+    /// <summary>Records the account read (honoring SystemUser suppression) and returns its change entry in one probe.</summary>
+    private AccountChangesAtIndex? RecordReadAndGetChanges(Address address)
+        // Suppressed SystemUser reads must not be recorded: use a non-mutating lookup.
+        => _systemAccountReadSuppressionDepth != 0 && address == Address.SystemUser
+            ? _generatingBlockAccessList.GetAccountChanges(address)
+            : _generatingBlockAccessList.RecordReadAndGet(address);
 
     public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
@@ -201,45 +218,47 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         _generatingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
+        _hasLastReadCell = false;
+        _lastReadStorageChanges = null;
     }
 
-    public void MergeGeneratingBal(BlockAccessList other)
-        => other.Merge(_generatingBlockAccessList);
+    BlockAccessListAtIndex? IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
 
-    BlockAccessList IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
-
-    public void Restore(Snapshot snapshot)
+    public override void Restore(Snapshot snapshot)
     {
+        // A revert can un-record the last cell's slot, so drop the single-slot cache.
+        _hasLastReadCell = false;
+        _lastReadStorageChanges = null;
         _generatingBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
-        _innerWorldState.Restore(snapshot);
+        base.Restore(snapshot);
     }
 
-    public Snapshot TakeSnapshot(bool newTransactionStart = false)
+    public override Snapshot TakeSnapshot(bool newTransactionStart = false)
     {
         int blockAccessListSnapshot = _generatingBlockAccessList.TakeSnapshot();
-        Snapshot snapshot = _innerWorldState.TakeSnapshot(newTransactionStart);
+        Snapshot snapshot = base.TakeSnapshot(newTransactionStart);
         return new(snapshot.StorageSnapshot, snapshot.StateSnapshot, blockAccessListSnapshot);
     }
 
-    public bool AccountExists(Address address)
+    public override bool AccountExists(Address address)
     {
         AddAccountRead(address);
         return AccountExistsInternal(address);
     }
 
-    public bool IsContract(Address address)
+    public override bool IsContract(Address address)
     {
         AddAccountRead(address);
         return GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
     }
 
-    public bool IsStorageEmpty(Address address)
+    public override bool IsStorageEmpty(Address address)
     {
         AddAccountRead(address);
-        return _innerWorldState.IsStorageEmpty(address);
+        return base.IsStorageEmpty(address);
     }
 
-    public bool IsDeadAccount(Address address)
+    public override bool IsDeadAccount(Address address)
     {
         AddAccountRead(address);
         return !AccountExistsInternal(address) ||
@@ -249,67 +268,35 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
                 GetCodeHashInternal(address) == Keccak.OfAnEmptyString);
     }
 
-    public void ClearStorage(Address address)
+    public override void ClearStorage(Address address)
     {
         AddAccountRead(address);
-        _innerWorldState.ClearStorage(address);
+        base.ClearStorage(address);
     }
 
-    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
-        => _innerWorldState.Commit(releaseSpec, tracer, isGenesis, commitRoots);
-
-    public void CommitTree(long blockNumber)
-        => _innerWorldState.CommitTree(blockNumber);
-
-    public void DecrementNonce(Address address, UInt256 delta)
-        => _innerWorldState.DecrementNonce(address, delta);
-
-    public ArrayPoolList<AddressAsKey>? GetAccountChanges()
-        => _innerWorldState.GetAccountChanges();
-
-    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-        => _innerWorldState.GetTransientState(storageCell);
-
-    public void SetTransientState(in StorageCell storageCell, byte[] newValue)
-        => _innerWorldState.SetTransientState(storageCell, newValue);
-
-    public void RecalculateStateRoot()
-        => _innerWorldState.RecalculateStateRoot();
-
-    public void Reset(bool resetBlockChanges = true)
-        => _innerWorldState.Reset(resetBlockChanges);
-
-    public void ResetTransient()
-        => _innerWorldState.ResetTransient();
-
-    public void CreateEmptyAccountIfDeleted(Address address)
-        => _innerWorldState.CreateEmptyAccountIfDeleted(address);
-
+    public override void DecrementNonce(Address address, ulong delta)
+    {
+        ulong? currentNonce = GetNonceCurrent(address);
+        base.DecrementNonce(address, delta);
+        ulong oldNonce = currentNonce ?? (GetNonce(address) + delta);
+        _generatingBlockAccessList.AddNonceChange(address, oldNonce - delta);
+    }
     private UInt256 GetBalanceInternal(Address address)
-        => GetBalanceCurrent(address) ?? _innerWorldState.GetBalance(address);
+        => GetBalanceCurrent(address) ?? base.GetBalance(address);
 
     private UInt256? GetBalanceCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.BalanceChanges.Count >= 1)
-        {
-            return accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].Value;
-        }
-        return null;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        return accountChanges?.BalanceChange?.Value;
     }
 
-    private UInt256 GetNonceInternal(Address address)
-        => GetNonceCurrent(address) ?? _innerWorldState.GetNonce(address);
+    private ulong GetNonceInternal(Address address)
+        => GetNonceCurrent(address) ?? base.GetNonce(address);
 
-    private UInt256? GetNonceCurrent(Address address)
+    private ulong? GetNonceCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.NonceChanges.Count >= 1)
-        {
-            return accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].Value;
-        }
-
-        return null;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        return accountChanges?.NonceChange?.Value;
     }
 
     private byte[]? GetCodeCurrent(Address address)
@@ -328,78 +315,64 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
-        {
-            codeChange = accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1];
-            return true;
-        }
-
-        codeChange = null;
-        return false;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        codeChange = accountChanges?.CodeChange;
+        return codeChange is not null;
     }
 
     private byte[]? GetCodeInternal(Address address)
-        => GetCodeCurrent(address) ?? _innerWorldState.GetCode(address);
+        => GetCodeCurrent(address) ?? base.GetCode(address);
 
     private ValueHash256 GetCodeHashInternal(Address address)
-        => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : _innerWorldState.GetCodeHash(address);
+        => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : base.GetCodeHash(address);
 
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
-    {
-        if (parallel)
-        {
-            AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
-            if (accountChanges is not null)
-            {
-                accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+        => GetInternal(parallel ? _generatingBlockAccessList.GetAccountChanges(storageCell.Address) : null, in storageCell);
 
-                if (slotChanges is not null && slotChanges.Changes.Count >= 1)
-                {
-                    StorageChange last = slotChanges.Changes.Values[slotChanges.Changes.Count - 1];
-                    return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in last.Value)), 32).ToArray();
-                }
-            }
+    private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell)
+    {
+        if (parallel && accountChanges?.TryGetStorageChange(storageCell.Index, out StorageChange? change) == true)
+        {
+            // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
+            // frame without allocating a new byte[32] per SLOAD.
+            Unsafe.WriteUnaligned(ref MemoryMarshal.GetArrayDataReference(_scratchStorage), change.Value.Value);
+            return _scratchStorage;
         }
 
-        return _innerWorldState.Get(storageCell);
+        return base.Get(storageCell);
     }
 
     private bool AccountExistsInternal(Address address)
-        => AccountExistsCurrent(address) ?? _innerWorldState.AccountExists(address);
+        => AccountExistsCurrent(address) ?? base.AccountExists(address);
 
     private bool? AccountExistsCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && (accountChanges.NonceChanges.Count >= 1 || accountChanges.BalanceChanges.Count >= 1))
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges is not null && (accountChanges.NonceChange is not null || accountChanges.BalanceChange is not null))
         {
-            // if nonce or balance is changed in this tx must exist
-            // could have been created this tx
+            // if nonce or balance is changed in this tx must exist (could have been created this tx)
             return true;
         }
 
-        if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
+        // EIP-7928: code-only modifications (e.g. EIP-7702 SetCode) also imply existence at this index.
+        if (accountChanges?.CodeChange is { Code.Length: > 0 })
         {
-            IndexedChangeValues<CodeChange> codeChanges = accountChanges.CodeChanges;
-            if (codeChanges[codeChanges.Count - 1].Code.Length != 0)
-            {
-                return true;
-            }
+            return true;
         }
 
         return null;
     }
 
-    private void RecordCreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    private void RecordCreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         AddAccountRead(address);
         if (!balance.IsZero)
         {
             _generatingBlockAccessList.AddBalanceChange(address, 0, balance);
         }
-        if (!nonce.IsZero)
+        if (nonce != 0)
         {
-            _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
+            _generatingBlockAccessList.AddNonceChange(address, nonce);
         }
     }
 

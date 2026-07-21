@@ -37,8 +37,8 @@ public abstract class PyspecBlockchainTestFixture<TSelf>() : PyspecBlockchainFix
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        PyspecLoader.Load<BlockchainTest, TSelf>("blockchain_tests", "BlockchainTests");
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests", "BlockchainTests");
 }
 
 // Heavy/Linux-x64-only blockchain fixtures: engine payloads, sync-mode payloads, and the
@@ -51,8 +51,8 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf>() : PyspecLinuxX6
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        PyspecLoader.Load<BlockchainTest, TSelf>("blockchain_tests_engine", "EngineBlockchainTests");
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests_engine", "EngineBlockchainTests");
 }
 
 // Sync fixtures share the engine-payload format and additionally ship a `syncPayload` field
@@ -63,8 +63,8 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64B
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        PyspecLoader.Load<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
 }
 
 // Loads only `for_amsterdam` because parallel-BAL execution is gated on EIP-7928.
@@ -73,9 +73,9 @@ public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool b
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/for_amsterdam")
-            .LoadTests<BlockchainTest>();
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.ToTestCases(new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/for_amsterdam")
+            .LoadTests<BlockchainTest>());
 }
 
 // Engine-payload variant of the Amsterdam fixture; loads from `for_amsterdam` engine tree.
@@ -84,9 +84,9 @@ public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, 
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests_engine/for_amsterdam")
-            .LoadTests<BlockchainTest>();
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.ToTestCases(new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests_engine/for_amsterdam")
+            .LoadTests<BlockchainTest>());
 }
 
 [TestFixture]
@@ -99,8 +99,8 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
 
-    public static IEnumerable<GeneralStateTest> LoadTests() =>
-        PyspecLoader.Load<GeneralStateTest, TSelf>("state_tests", "StateTests");
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.LoadCases<GeneralStateTest, TSelf>("state_tests", "StateTests");
 }
 
 // Tx-validation fixtures: decode raw txbytes, run TxValidator, compare against per-fork expected exception.
@@ -118,8 +118,8 @@ public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
         Assert.That((bool)result, Is.True, result.Error);
     }
 
-    public static IEnumerable<TransactionTest> LoadTests() =>
-        PyspecLoader.Load<TransactionTest, TSelf>("transaction_tests", "TransactionTests");
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.LoadCases<TransactionTest, TSelf>("transaction_tests", "TransactionTests");
 }
 
 internal static class PyspecLoader
@@ -127,6 +127,26 @@ internal static class PyspecLoader
     public static IEnumerable<T> Load<T, TSelf>(string root, string suffix) where T : EthereumTest =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             $"fixtures/{root}/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>(suffix)}").LoadTests<T>();
+
+    public static IEnumerable<TestCaseData> LoadCases<T, TSelf>(string root, string suffix) where T : EthereumTest =>
+        ToTestCases(Load<T, TSelf>(root, suffix));
+
+    public static IEnumerable<TestCaseData> ToTestCases<T>(IEnumerable<T> tests) where T : EthereumTest
+    {
+        int index = 0;
+        foreach (T test in tests)
+        {
+            yield return new TestCaseData(test).SetName(GetTestCaseName(test, index++));
+        }
+    }
+
+    private static string GetTestCaseName(EthereumTest test, int index)
+    {
+        string name = test.Name ?? test.ToString() ?? test.GetType().Name;
+        return string.IsNullOrEmpty(test.Category)
+            ? $"{name}#{index}"
+            : $"{test.Category}/{name}#{index}";
+    }
 }
 
 // Skips heavy tests in CI on runners that are too slow or running variant builds.

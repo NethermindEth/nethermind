@@ -58,7 +58,7 @@ public class Eth69ProtocolHandler(
         set { }
     }
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
@@ -67,23 +67,22 @@ public class Eth69ProtocolHandler(
                 StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
                 ReportIn(statusMsg, size);
                 Handle(statusMsg);
-                break;
+                return true;
             case Eth69MessageCode.Receipts:
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
                 ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);
-                break;
+                return true;
             case Eth69MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
-                break;
+                return true;
             case Eth69MessageCode.BlockRangeUpdate:
                 BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
                 ReportIn(blockRangeUpdateMsg, size);
                 Handle(blockRangeUpdateMsg);
-                break;
+                return true;
             default:
-                base.HandleMessageCore(message);
-                break;
+                return base.HandleMessageCore(message);
         }
     }
 
@@ -101,7 +100,7 @@ public class Eth69ProtocolHandler(
 
         SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
         {
-            NetworkId = (ulong)status.NetworkId,
+            NetworkId = status.NetworkId,
             BestHash = status.LatestBlockHash,
             GenesisHash = status.GenesisHash,
             Protocol = status.Protocol,
@@ -109,7 +108,7 @@ public class Eth69ProtocolHandler(
             ForkId = status.ForkId
         };
 
-        Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+        Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
         HeadNumber = status.LatestBlock;
         HeadHash = status.LatestBlockHash;
         NotifyProtocolInitialized(eventArgs);
@@ -124,18 +123,19 @@ public class Eth69ProtocolHandler(
                 $"BlockRangeUpdate with earliest ({blockRangeUpdate.EarliestBlock}) > latest ({blockRangeUpdate.LatestBlock})."
             );
         }
-
-        if (blockRangeUpdate.LatestBlockHash.IsZero)
+        else if (blockRangeUpdate.LatestBlockHash.IsZero)
         {
             Disconnect(
                 DisconnectReason.InvalidBlockRangeUpdate,
                 "BlockRangeUpdate with latest block hash as zero."
             );
         }
-
-        _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
-        HeadNumber = blockRangeUpdate.LatestBlock;
-        HeadHash = blockRangeUpdate.LatestBlockHash;
+        else
+        {
+            _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
+            HeadNumber = blockRangeUpdate.LatestBlock;
+            HeadHash = blockRangeUpdate.LatestBlockHash;
+        }
     }
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)

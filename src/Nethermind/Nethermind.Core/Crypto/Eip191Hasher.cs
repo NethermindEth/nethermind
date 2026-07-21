@@ -15,7 +15,9 @@ namespace Nethermind.Core.Crypto
 
         // EIP-191: keccak256("\x19Ethereum Signed Message:\n" || ascii(byteLength) || messageBytes).
         // Operates on raw bytes — never round-trip through UTF-8, since the message may not be valid UTF-8.
-        public static Hash256 HashMessage(ReadOnlySpan<byte> message)
+        public static Hash256 HashMessage(ReadOnlySpan<byte> message) => new(HashMessageValue(message));
+
+        public static ValueHash256 HashMessageValue(ReadOnlySpan<byte> message)
         {
             Span<byte> lengthDigits = stackalloc byte[20];
             Utf8Formatter.TryFormat(message.Length, lengthDigits, out int lengthByteCount);
@@ -26,7 +28,7 @@ namespace Nethermind.Core.Crypto
             Header.CopyTo(span);
             lengthDigits[..lengthByteCount].CopyTo(span[Header.Length..]);
             message.CopyTo(span[(Header.Length + lengthByteCount)..]);
-            return Keccak.Compute(span);
+            return ValueKeccak.Compute(span);
         }
     }
 }

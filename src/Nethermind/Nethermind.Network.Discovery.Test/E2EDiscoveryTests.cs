@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -18,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test;
@@ -26,12 +26,11 @@ namespace Nethermind.Network.Discovery.Test;
 [TestFixture(DiscoveryVersion.V5)]
 public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 {
-    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan PeerDiscoveryTimeout = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan PeerDiscoveryPollInterval = TimeSpan.FromMilliseconds(100);
 
-    /// <summary>
-    /// Common code for all node
-    /// </summary>
-    private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
+    private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null, bool bootnodeTcpPortZero = false)
     {
         ConfigProvider configProvider = new();
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -40,60 +39,121 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         if (bootEnode is not null)
         {
-            spec.Bootnodes = [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
+            spec.Bootnodes = bootnodeTcpPortZero
+                ? [new(new Enode(bootEnode.PublicKey, bootEnode.HostIp, port: 0, discoveryPort: bootEnode.Port))]
+                : [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
         }
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
         int port = AssignDiscoveryPort();
-        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
+        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
         discoveryConfig.DiscoveryVersion = discoveryVersion;
+        discoveryConfig.UseDefaultDiscv5Bootnodes = false;
 
-        return new ContainerBuilder()
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.GetForkId(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(new ForkId(0, 0));
+        forkInfo.IsForkIdCompatible(new ForkId(0, 0)).Returns(true);
+
+        ContainerBuilder builder = new();
+        builder
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"))
-            .Build();
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"));
+        builder.RegisterInstance(forkInfo).As<IForkInfo>();
+        return builder.Build();
     }
 
     int _discoveryPort = 0;
     private int AssignDiscoveryPort() => Interlocked.Increment(ref _discoveryPort);
-    int _discoveryIp = 1;
-    private int AssignDiscoveryIp() => Interlocked.Increment(ref _discoveryIp);
+    int _ip = 1;
+    private int AssignIp() => Interlocked.Increment(ref _ip);
 
-    [Test]
-    [Retry(3)]
+    [TestCase(false)]
+    [TestCase(true)]
+    [Category("Flaky"), Retry(3)]
     [Parallelizable(ParallelScope.None)]
-    public async Task TestDiscovery()
+    public async Task TestDiscovery(bool bootnodeTcpPortZero)
     {
-        if (discoveryVersion == DiscoveryVersion.V5) Assert.Ignore("DiscV5 does not seems to work.");
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         await using IContainer boot = CreateNode(TestItem.PrivateKeys[0]);
         IEnode bootEnode = boot.Resolve<IEnode>();
-        await using IContainer node1 = CreateNode(TestItem.PrivateKeys[1], bootEnode);
-        await using IContainer node2 = CreateNode(TestItem.PrivateKeys[2], bootEnode);
-        await using IContainer node3 = CreateNode(TestItem.PrivateKeys[3], bootEnode);
-        await using IContainer node4 = CreateNode(TestItem.PrivateKeys[4], bootEnode);
+        await using IContainer node1 = CreateNode(TestItem.PrivateKeys[1], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node2 = CreateNode(TestItem.PrivateKeys[2], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node3 = CreateNode(TestItem.PrivateKeys[3], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node4 = CreateNode(TestItem.PrivateKeys[4], bootEnode, bootnodeTcpPortZero);
 
         IContainer[] nodes = [boot, node1, node2, node3, node4];
 
-        HashSet<PublicKey> nodeKeys = nodes.Select(ctx => ctx.Resolve<IEnode>().PublicKey).ToHashSet();
+        HashSet<PublicKey> nodeKeys = GetNodeKeys(nodes);
 
         foreach (IContainer node in nodes)
         {
             await node.Resolve<PseudoNethermindRunner>().StartDiscovery(cancellationTokenSource.Token);
         }
 
-        foreach (IContainer node in nodes)
+        Task[] waitTasks = new Task[nodes.Length];
+        for (int i = 0; i < nodes.Length; i++)
         {
-            IPeerPool pool = node.Resolve<IPeerPool>();
-            HashSet<PublicKey> expectedKeys = new(nodeKeys);
-            expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
-
-            Assert.That(() => pool.Peers.Select(static kvp => kvp.Value.Node.Id).ToHashSet(),
-                Is.EquivalentTo(expectedKeys).After(15000, 100));
+            waitTasks[i] = AssertPeerPoolContainsExpectedNodes(nodes[i], nodeKeys, cancellationTokenSource.Token);
         }
+
+        await Task.WhenAll(waitTasks);
+    }
+
+    private static HashSet<PublicKey> GetNodeKeys(IContainer[] nodes)
+    {
+        HashSet<PublicKey> nodeKeys = [];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            nodeKeys.Add(nodes[i].Resolve<IEnode>().PublicKey);
+        }
+
+        return nodeKeys;
+    }
+
+    private static async Task AssertPeerPoolContainsExpectedNodes(IContainer node, HashSet<PublicKey> nodeKeys, CancellationToken cancellationToken)
+    {
+        IPeerPool pool = node.Resolve<IPeerPool>();
+        PublicKey localKey = node.Resolve<IEnode>().PublicKey;
+        HashSet<PublicKey> expectedKeys = [.. nodeKeys];
+        expectedKeys.Remove(localKey);
+
+        using CancellationTokenSource timeoutCts = new(PeerDiscoveryTimeout);
+        using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+        CancellationToken linkedToken = linkedCts.Token;
+
+        while (!linkedToken.IsCancellationRequested)
+        {
+            HashSet<PublicKey> actualKeys = GetPeerKeys(pool);
+            if (actualKeys.SetEquals(expectedKeys))
+            {
+                return;
+            }
+
+            try
+            {
+                await Task.Delay(PeerDiscoveryPollInterval, linkedToken);
+            }
+            catch (OperationCanceledException) when (linkedToken.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+
+        Assert.That(GetPeerKeys(pool), Is.EquivalentTo(expectedKeys), $"Node {localKey} did not discover all peers before {PeerDiscoveryTimeout}.");
+    }
+
+    private static HashSet<PublicKey> GetPeerKeys(IPeerPool pool)
+    {
+        HashSet<PublicKey> peerKeys = [];
+        foreach (KeyValuePair<PublicKeyAsKey, Peer> peer in pool.Peers)
+        {
+            peerKeys.Add(peer.Value.Node.Id);
+        }
+
+        return peerKeys;
     }
 }

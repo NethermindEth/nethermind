@@ -1,10 +1,8 @@
 name: Sync PR Gate (Hoodi)
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [master]
-  pull_request_review:
-    types: [submitted]
 
 concurrency:
   group: sync-pr-${{ github.event.pull_request.number }}
@@ -14,37 +12,45 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
-jobs:
-  check-approval:
-    name: "Check PR approval"
-    if: >-
-      github.event_name == 'pull_request_target' ||
-      github.event.review.state == 'approved'
-    runs-on: ubuntu-latest
-    outputs:
-      run: ${{ steps.check.outputs.run }}
-    steps:
-      - name: Check if sync should run
-        id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          if [ "$IS_FORK" != "true" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+permissions:
+  contents: read
 
-          # Fork PR: only run if at least one approval exists
-          approved=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews" \
-            --jq '[.[] | select(.state == "APPROVED")] | length > 0')
-          echo "run=$approved" >> "$GITHUB_OUTPUT"
+jobs:
+  build-image:
+    name: Build PR image
+    if: github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-arm64-8-core
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Build Docker image
+        run: |
+          docker build -t nethermind:pr-local \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=true \
+            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
+            .
+
+      - name: Save image
+        run: docker save nethermind:pr-local | gzip > /tmp/nethermind-pr-local.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nethermind-pr-local-image
+          path: /tmp/nethermind-pr-local.tar.gz
+          retention-days: 1
+          if-no-files-found: error
 
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }})"
-    needs: check-approval
-    if: needs.check-approval.outputs.run == 'true'
+    needs: build-image
+    if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
     strategy:
@@ -60,7 +66,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -70,6 +76,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -78,6 +85,7 @@ jobs:
           path: tests
           token: ${{ steps.gh-app.outputs.token }}
           clean: true
+          persist-credentials: false
 
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@v1
@@ -111,23 +119,23 @@ jobs:
           cd sedge
           make compile
 
-      - name: Build Docker image locally
-        run: |
-          docker build -t nethermind:pr-local \
-            --build-arg BUILD_CONFIG=release \
-            --build-arg CI=true \
-            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
-            .
+      - name: Download PR image
+        uses: actions/download-artifact@v4
+        with:
+          name: nethermind-pr-local-image
+          path: /tmp
+
+      - name: Load PR image
+        run: docker load < /tmp/nethermind-pr-local.tar.gz
 
       - name: Generate and run Sedge
         working-directory: sedge
         env:
           SYNC_MODE: ${{ matrix.mode }}
           FLATDB: ${{ matrix.flatdb }}
-          SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
-          GRAFANA_URL: ${{ secrets.GRAFANA_CONNECTION_STRING }}
         run: |
           node_name="SyncPRGate-hoodi-${SYNC_MODE}-${GITHUB_RUN_ID}"
+          echo "node_name=$node_name" >> $GITHUB_ENV
 
           ./build/sedge deps install
 
@@ -153,16 +161,25 @@ jobs:
             --el-extra-flag Sync.SnapSync=true \
             --el-extra-flag "Metrics.NodeName=${node_name}" \
             --el-extra-flag Metrics.Enabled=true \
-            --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
-            --el-extra-flag "Seq.ApiKey=${SEQ_API_KEY}" \
-            --el-extra-flag Seq.MinLevel=Info \
             --el-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
-            --el-extra-flag "Metrics.PushGatewayUrl=${GRAFANA_URL}" \
             --checkpoint-sync-url=https://checkpoint-sync.hoodi.ethpandaops.io
 
           # Use docker compose directly instead of `sedge run` because sedge run
           # does `docker compose pull` which fails for the locally-built image.
           docker compose up -d
+
+      - name: Start Grafana Alloy
+        continue-on-error: true
+        uses: ./.github/actions/start-alloy
+        with:
+          network: hoodi
+          node-name: ${{ env.node_name }}
+          loki-url: ${{ secrets.LOKI_URL }}
+          loki-username: ${{ secrets.LOKI_USERNAME }}
+          loki-password: ${{ secrets.LOKI_PASSWORD }}
+          prometheus-url: ${{ secrets.PROMETHEUS_URL }}
+          prometheus-username: ${{ secrets.PROMETHEUS_USERNAME }}
+          prometheus-password: ${{ secrets.PROMETHEUS_PASSWORD }}
 
       - name: Wait for hoodi to sync
         env:
@@ -197,3 +214,10 @@ jobs:
       - name: Check size of DB
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
+
+      - name: Stop Grafana Alloy
+        if: always()
+        continue-on-error: true
+        run: |
+          docker stop -t 15 grafana-alloy 2>/dev/null || true
+          docker rm -f grafana-alloy 2>/dev/null || true

@@ -33,7 +33,7 @@ internal static class JsonRpcGenerator
             typeof(IRpcRpcModule).FullName,
             typeof(ISubscribeRpcModule).FullName
         };
-        var types = _assemblies.SelectMany(a => Assembly.Load(a).GetTypes())
+        IOrderedEnumerable<Type> types = _assemblies.SelectMany(a => Assembly.Load(a).GetTypes())
             .Where(t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t) &&
                 !excluded.Any(x => x is not null && (t.FullName?.Contains(x, StringComparison.Ordinal) ?? false)))
             .OrderBy(t => t.Name);
@@ -48,11 +48,11 @@ internal static class JsonRpcGenerator
             }
         }
 
-        var methodMap = new Dictionary<string, IEnumerable<MethodInfo>>();
+        Dictionary<string, IEnumerable<MethodInfo>> methodMap = [];
 
-        foreach (var type in types)
+        foreach (Type type in types)
         {
-            var attr = type.GetCustomAttribute<RpcModuleAttribute>();
+            RpcModuleAttribute? attr = type.GetCustomAttribute<RpcModuleAttribute>();
 
             if (attr is null)
             {
@@ -61,7 +61,7 @@ internal static class JsonRpcGenerator
             }
 
             string ns = attr.ModuleType.ToLowerInvariant();
-            var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public);
+            MethodInfo[] methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public);
 
             if (!methodMap.TryAdd(ns, methods))
                 methodMap[ns] = methodMap[ns].Concat(methods);
@@ -76,7 +76,7 @@ internal static class JsonRpcGenerator
 
         int i = 0;
 
-        foreach (var (ns, methods) in methodMap)
+        foreach ((string ns, IEnumerable<MethodInfo> methods) in methodMap)
         {
             methodMap[ns] = methods.OrderBy(m => m.Name);
 
@@ -88,8 +88,8 @@ internal static class JsonRpcGenerator
     {
         string fileName = Path.Join(path, $"{ns}.md");
 
-        using var stream = File.Open(fileName, FileMode.Create);
-        using var file = new StreamWriter(stream);
+        using FileStream stream = File.Open(fileName, FileMode.Create);
+        using StreamWriter file = new(stream);
         file.NewLine = "\n";
 
         file.WriteLine($"""
@@ -104,9 +104,9 @@ internal static class JsonRpcGenerator
 
             """);
 
-        foreach (var method in methods)
+        foreach (MethodInfo method in methods)
         {
-            var attr = method.GetCustomAttribute<JsonRpcMethodAttribute>();
+            JsonRpcMethodAttribute? attr = method.GetCustomAttribute<JsonRpcMethodAttribute>();
 
             if (attr is null || !attr.IsImplemented)
                 continue;
@@ -151,7 +151,7 @@ internal static class JsonRpcGenerator
 
     private static void WriteParameters(StreamWriter file, MethodInfo method)
     {
-        var parameters = method.GetParameters();
+        ParameterInfo[] parameters = method.GetParameters();
 
         if (parameters.Length == 0)
             return;
@@ -163,9 +163,9 @@ internal static class JsonRpcGenerator
 
         int i = 1;
 
-        foreach (var p in parameters)
+        foreach (ParameterInfo p in parameters)
         {
-            var attr = p.GetCustomAttribute<JsonRpcParameterAttribute>();
+            JsonRpcParameterAttribute? attr = p.GetCustomAttribute<JsonRpcParameterAttribute>();
 
             file.Write($"{i++}. `{p.Name}`: ");
 
@@ -254,7 +254,7 @@ internal static class JsonRpcGenerator
 
         if (!jsonType.Equals(_objectTypeName, StringComparison.Ordinal))
         {
-            if (TryGetEnumerableItemType(type, out var itemType, out bool isDictionary))
+            if (TryGetEnumerableItemType(type, out Type? itemType, out bool isDictionary))
             {
                 file.Write($"{(isDictionary ? "map" : "array")} of ");
 
@@ -269,9 +269,9 @@ internal static class JsonRpcGenerator
         if (!omitTypeName)
             file.WriteLine(_objectTypeName);
 
-        var properties = GetSerializableProperties(type);
+        IEnumerable<PropertyInfo> properties = GetSerializableProperties(type);
 
-        foreach (var prop in properties)
+        foreach (PropertyInfo prop in properties)
         {
             string propJsonType = GetJsonTypeName(prop.PropertyType);
 
@@ -280,7 +280,7 @@ internal static class JsonRpcGenerator
             if (propJsonType.Equals(_objectTypeName, StringComparison.Ordinal))
                 WriteExpandedType(file, prop.PropertyType, indentation + 2, true, parentTypes.Append(type.FullName));
             else if (propJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
-                TryGetEnumerableItemType(prop.PropertyType, out var itemType, out bool _))
+                TryGetEnumerableItemType(prop.PropertyType, out Type? itemType, out bool _))
                 WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(type.FullName));
         }
     }
@@ -289,7 +289,7 @@ internal static class JsonRpcGenerator
     {
         file.Flush();
 
-        using var sourceFile = File.OpenRead(fileName);
+        using FileStream sourceFile = File.OpenRead(fileName);
 
         try
         {
@@ -303,7 +303,7 @@ internal static class JsonRpcGenerator
 
     private static string GetJsonTypeName(Type type)
     {
-        var underlyingType = Nullable.GetUnderlyingType(type);
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
 
         if (underlyingType is not null)
             return GetJsonTypeName(underlyingType);
@@ -311,7 +311,7 @@ internal static class JsonRpcGenerator
         if (type.IsEnum)
             return "_integer_";
 
-        if (TryGetEnumerableItemType(type, out var itemType, out bool isDictionary))
+        if (TryGetEnumerableItemType(type, out Type? itemType, out bool isDictionary))
             return $"{(isDictionary ? "map" : "array")} of {GetJsonTypeName(itemType!)}";
 
         return type.Name switch
@@ -337,7 +337,7 @@ internal static class JsonRpcGenerator
 
     private static Type GetReturnType(Type type)
     {
-        var returnType = type.IsGenericType
+        Type returnType = type.IsGenericType
             ? type.GetGenericTypeDefinition() == typeof(Task<>)
                 ? type.GetGenericArguments()[0].GetGenericArguments()[0]
                 : type.GetGenericArguments()[0]
@@ -361,7 +361,7 @@ internal static class JsonRpcGenerator
     {
         if (type.IsArray && type.HasElementType)
         {
-            var elementType = type.GetElementType();
+            Type? elementType = type.GetElementType();
 
             // Ignore a byte array as it is treated as a hex string
             if (elementType == typeof(byte))

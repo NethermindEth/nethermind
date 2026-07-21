@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
@@ -45,23 +44,23 @@ namespace Nethermind.Evm.Test.Tracing
                 Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
-            Assert.That(err, Is.EqualTo("insufficient sender balance for transfer"));
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(0));
+            Assert.That(err, Is.EqualTo(GasEstimator.InsufficientBalance));
         }
 
         [Test]
         public void Only_traces_actions_and_receipts()
         {
             EstimateGasTracer tracer = new();
-            (tracer.IsTracingActions && tracer.IsTracingReceipt).Should().BeTrue();
-            (tracer.IsTracingBlockHash
+            Assert.That((tracer.IsTracingActions && tracer.IsTracingReceipt), Is.True);
+            Assert.That((tracer.IsTracingBlockHash
              || tracer.IsTracingState
              || tracer.IsTracingStorage
              || tracer.IsTracingCode
              || tracer.IsTracingInstructions
              || tracer.IsTracingMemory
              || tracer.IsTracingStack
-             || tracer.IsTracingOpLevelStorage).Should().BeFalse();
+             || tracer.IsTracingOpLevelStorage), Is.False);
         }
 
         [Test]
@@ -75,8 +74,8 @@ namespace Nethermind.Evm.Test.Tracing
                 ExecutionType.TRANSACTION, false);
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
-            Assert.That(err, Is.EqualTo("insufficient sender balance for transfer"));
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(0));
+            Assert.That(err, Is.EqualTo(GasEstimator.InsufficientBalance));
         }
 
         [Test]
@@ -103,7 +102,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(300, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(14L);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(14L));
             Assert.That(err, Is.Null);
         }
 
@@ -133,7 +132,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(24L);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(24L));
             Assert.That(err, Is.Null);
         }
 
@@ -141,11 +140,11 @@ namespace Nethermind.Evm.Test.Tracing
         public void Handles_well_revert()
         {
             using TestEnvironment testEnvironment = new();
-            long gasLimit = 100_000_000;
+            ulong gasLimit = 100_000_000ul;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            long gasLeft = gasLimit - 22000;
+            ulong gasLeft = gasLimit - 22000ul;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
             gasLeft = 63 * gasLeft / 64;
@@ -155,10 +154,10 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 _executionType, false);
 
-            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
-            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
-            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(35146L);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000ul);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000ul);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000ul);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(35146ul));
             Assert.That(err, Is.Null);
         }
 
@@ -176,7 +175,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
             testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? _).Should().Be(1);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? _), Is.EqualTo(1));
         }
 
         [Test]
@@ -192,9 +191,9 @@ namespace Nethermind.Evm.Test.Tracing
 
             Action reportError = () => testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
 
-            reportError.Should().NotThrow();
-            reportError.Should().NotThrow();
-            reportError.Should().NotThrow();
+            Assert.That(reportError, Throws.Nothing);
+            Assert.That(reportError, Throws.Nothing);
+            Assert.That(reportError, Throws.Nothing);
         }
 
         [Test]
@@ -223,7 +222,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(18);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(18));
             Assert.That(err, Is.Null);
         }
 
@@ -253,19 +252,19 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(17);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(17));
             Assert.That(err, Is.Null);
         }
 
-        [TestCase(-1)]
-        [TestCase(10000)]
-        [TestCase(10001)]
-        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException(int errorMargin)
+        [TestCase(ulong.MaxValue)]
+        [TestCase(10000UL)]
+        [TestCase(10001UL)]
+        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException(ulong errorMargin)
         {
             Transaction tx = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
-            tracer.MarkAsSuccess(Address.Zero, 1, [], []);
+            tracer.MarkAsSuccess(Address.Zero, 1ul, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new(
@@ -278,13 +277,42 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Not.Null);
         }
 
-        [TestCase(Transaction.BaseTxGasCost, GasEstimator.DefaultErrorMargin, false)]
-        [TestCase(Transaction.BaseTxGasCost, 100, false)]
-        [TestCase(Transaction.BaseTxGasCost, 1000, false)]
-        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimator.DefaultErrorMargin, true)]
-        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimator.DefaultErrorMargin, true)]
-        [TestCase(Transaction.BaseTxGasCost + 123456789, 123, true)]
-        public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(int totalGas, int errorMargin, bool fail)
+        [Test]
+        public void Estimate_uses_next_block_spec_for_execution_across_fork_boundary()
+        {
+            BlocksConfig blocksConfig = new();
+            BlockHeader header = Build.A.BlockHeader
+                .WithNumber(MainnetSpecProvider.ParisBlockNumber + 100)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp - blocksConfig.SecondsPerSlot)
+                .TestObject;
+
+            BlockExecutionContext? captured = null;
+            ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+            processor.When(p => p.SetBlockExecutionContext(Arg.Any<BlockExecutionContext>()))
+                .Do(ci => captured = ci.Arg<BlockExecutionContext>());
+
+            IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue);
+
+            GasEstimator sut = new(processor, stateProvider, MainnetSpecProvider.Instance, blocksConfig);
+
+            Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
+            EstimateGasTracer tracer = new();
+            tracer.MarkAsSuccess(Address.Zero, 21000, [], []);
+
+            sut.Estimate(tx, header, tracer, out string? _);
+
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured!.Value.Spec.IsEip4844Enabled, Is.True);
+        }
+
+        [TestCase(Transaction.BaseTxGasCost, (ulong)GasEstimator.DefaultErrorMargin, false)]
+        [TestCase(Transaction.BaseTxGasCost, 100UL, false)]
+        [TestCase(Transaction.BaseTxGasCost, 1000UL, false)]
+        [TestCase(Transaction.BaseTxGasCost + 10000, (ulong)GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 20000, (ulong)GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 123456789, 123UL, true)]
+        public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(uint totalGas, ulong errorMargin, bool fail)
         {
             Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
@@ -298,14 +326,14 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
+            ulong result = sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
 
             if (fail)
             {
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(err, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap"));
-                    Assert.That(result, Is.EqualTo(0));
+                    Assert.That(result, Is.EqualTo(0ul));
                 }
             }
             else
@@ -313,7 +341,7 @@ namespace Nethermind.Evm.Test.Tracing
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(err, Is.Null);
-                    Assert.That(result, Is.EqualTo(totalGas).Within(totalGas * (errorMargin / 10000d + 1)));
+                    Assert.That((double)result, Is.EqualTo((double)totalGas).Within(totalGas * (errorMargin / 10000d + 1)));
                 }
             }
         }
@@ -321,10 +349,10 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Estimate_simple_transfer_with_errorMargin_should_be_exact()
         {
-            Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(30000ul).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
-            const int totalGas = Transaction.BaseTxGasCost;
+            const uint totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
@@ -334,7 +362,7 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, out string? err);
+            ulong result = sut.Estimate(tx, block.Header, tracer, out string? err);
 
             using (Assert.EnterMultipleScope())
             {
@@ -346,10 +374,10 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Estimate_UseZeroErrorMargin_EstimationResultIsExact()
         {
-            Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(30000ul).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
-            const int totalGas = Transaction.BaseTxGasCost;
+            const uint totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
@@ -359,7 +387,7 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, out string? err, 0);
+            ulong result = sut.Estimate(tx, block.Header, tracer, out string? err, 0ul);
 
             using (Assert.EnterMultipleScope())
             {
@@ -372,62 +400,62 @@ namespace Nethermind.Evm.Test.Tracing
         public void Should_return_zero_when_out_of_gas_detected_during_estimation()
         {
             TestEnvironment testEnvironment = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(100000ul).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(1000ul, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
             testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
 
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 500, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 500ul, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when OutOfGas is detected");
-            err.Should().NotBeNull("Error message should be provided when OutOfGas is detected");
-            testEnvironment.tracer.OutOfGas.Should().BeTrue("OutOfGas should be set to true");
+            Assert.That(estimate, Is.EqualTo(0ul), "Should return 0 when OutOfGas is detected");
+            Assert.That(err, Is.Not.Null, "Error message should be provided when OutOfGas is detected");
+            Assert.That(testEnvironment.tracer.OutOfGas, Is.True, "OutOfGas should be set to true");
         }
 
         [Test]
         public void Should_return_zero_when_status_code_is_failure()
         {
             TestEnvironment testEnvironment = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(100000ul).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(1000ul, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
-            testEnvironment.tracer.MarkAsFailed(Address.Zero, 500, Array.Empty<byte>(), "execution failed");
+            testEnvironment.tracer.MarkAsFailed(Address.Zero, 500ul, Array.Empty<byte>(), "execution failed");
 
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when StatusCode is Failure");
-            err.Should().NotBeNull("Error message should be provided when transaction always fails");
-            testEnvironment.tracer.StatusCode.Should().Be(StatusCode.Failure);
+            Assert.That(estimate, Is.EqualTo(0ul), "Should return 0 when StatusCode is Failure");
+            Assert.That(err, Is.Not.Null, "Error message should be provided when transaction always fails");
+            Assert.That(testEnvironment.tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [Test]
         public void Should_return_positive_estimate_when_no_failure_conditions()
         {
             TestEnvironment testEnvironment = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(128ul).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            testEnvironment.tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(128ul, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
-            testEnvironment.tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
+            testEnvironment.tracer.ReportAction(100ul, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
             testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>());
             testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
 
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 63, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 63ul, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-            estimate.Should().Be(1, "Should match the Easy_one_level_case result");
-            err.Should().BeNull("No error should occur");
-            testEnvironment.tracer.OutOfGas.Should().BeFalse("No OutOfGas should be detected");
-            testEnvironment.tracer.StatusCode.Should().Be(StatusCode.Success, "StatusCode should be Success");
+            ulong estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            Assert.That(estimate, Is.EqualTo(1ul), "Should match the Easy_one_level_case result");
+            Assert.That(err, Is.Null, "No error should occur");
+            Assert.That(testEnvironment.tracer.OutOfGas, Is.False, "No OutOfGas should be detected");
+            Assert.That(testEnvironment.tracer.StatusCode, Is.EqualTo(StatusCode.Success), "StatusCode should be Success");
         }
 
         [Test]
@@ -435,7 +463,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(100000)
+                .WithGasLimit(100000ul)
                 .WithSenderAddress(Address.Zero)
                 .WithValue(1.Ether) // Value transfer with zero balance
                 .TestObject;
@@ -443,12 +471,12 @@ namespace Nethermind.Evm.Test.Tracing
 
             // Address.Zero has zero balance by default in test environment
             EstimateGasTracer tracer = new();
-            tracer.MarkAsFailed(Address.Zero, 0, Array.Empty<byte>(), "insufficient balance");
+            tracer.MarkAsFailed(Address.Zero, 0ul, Array.Empty<byte>(), "insufficient balance");
 
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
+            ulong estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when Address.Zero has insufficient balance for value transfer");
-            err.Should().Be("insufficient balance", "Should provide insufficient balance error message");
+            Assert.That(estimate, Is.EqualTo(0ul), "Should return 0 when Address.Zero has insufficient balance for value transfer");
+            Assert.That(err, Is.EqualTo("insufficient balance"), "Should provide insufficient balance error message");
         }
 
         [Test]
@@ -456,21 +484,21 @@ namespace Nethermind.Evm.Test.Tracing
         {
             TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(100000)
+                .WithGasLimit(100000ul)
                 .WithSenderAddress(Address.Zero)
                 .WithValue(1.Ether)
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
             EstimateGasTracer tracer = new();
-            tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
+            tracer.ReportAction(100000ul, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
             tracer.ReportActionError(EvmExceptionType.OutOfGas);
-            tracer.MarkAsFailed(Address.Zero, 100000, Array.Empty<byte>(), "out of gas");
+            tracer.MarkAsFailed(Address.Zero, 100000ul, Array.Empty<byte>(), "out of gas");
 
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
+            ulong estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when Address.Zero transaction runs out of gas");
-            err.Should().Be("Gas estimation failed due to out of gas", "Should provide out of gas error message");
+            Assert.That(estimate, Is.EqualTo(0ul), "Should return 0 when Address.Zero transaction runs out of gas");
+            Assert.That(err, Is.EqualTo("Gas estimation failed due to out of gas"), "Should provide out of gas error message");
         }
 
         [Test]
@@ -478,20 +506,20 @@ namespace Nethermind.Evm.Test.Tracing
         {
             TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(100000)
+                .WithGasLimit(100000ul)
                 .WithSenderAddress(Address.Zero)
                 .WithValue(1.Ether)
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
             EstimateGasTracer tracer = new();
-            tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
-            tracer.MarkAsFailed(Address.Zero, 50000, Array.Empty<byte>(), "execution reverted");
+            tracer.ReportAction(100000ul, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
+            tracer.MarkAsFailed(Address.Zero, 50000ul, Array.Empty<byte>(), "execution reverted");
 
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
+            ulong estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when Address.Zero transaction always fails");
-            err.Should().Be("execution reverted", "Should provide the specific execution failure message");
+            Assert.That(estimate, Is.EqualTo(0ul), "Should return 0 when Address.Zero transaction always fails");
+            Assert.That(err, Is.EqualTo("execution reverted"), "Should provide the specific execution failure message");
         }
 
         [Test]
@@ -499,21 +527,21 @@ namespace Nethermind.Evm.Test.Tracing
         {
             TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(100000)
-                .WithGasPrice(0)
+                .WithGasLimit(100000ul)
+                .WithGasPrice(0ul)
                 .WithSenderAddress(Address.Zero)
                 .WithValue(0) // No value transfer - should work even with zero balance
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            testEnvironment.tracer.ReportAction(100000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
+            testEnvironment.tracer.ReportAction(100000ul, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
             testEnvironment.tracer.ReportActionEnd(79000, Array.Empty<byte>());
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 21000, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 21000ul, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            estimate.Should().BeGreaterThan(0, "Should succeed when Address.Zero has no value transfer");
-            err.Should().BeNull("No error should occur for Address.Zero with no value transfer");
+            Assert.That(estimate, Is.GreaterThan(0ul), "Should succeed when Address.Zero has no value transfer");
+            Assert.That(err, Is.Null, "No error should occur for Address.Zero with no value transfer");
         }
 
         [Test]
@@ -521,40 +549,39 @@ namespace Nethermind.Evm.Test.Tracing
         {
             TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction
-                .WithGasLimit(21000) // Very low gas limit
+                .WithGasLimit(21000ul) // Very low gas limit
                 .WithSenderAddress(Address.Zero)
                 .WithValue(0)
                 .TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(21000).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(21000ul).TestObject;
 
             EstimateGasTracer tracer = new();
             // Simulate gas spent exceeding available limits
-            tracer.ReportAction(21000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
-            tracer.MarkAsSuccess(Address.Zero, 25000, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            tracer.ReportAction(21000ul, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.TRANSACTION, false);
+            tracer.MarkAsSuccess(Address.Zero, 25000ul, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
-            long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
+            ulong estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when gas spent exceeds limits");
-            err.Should().Be("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap",
-                "Should provide gas limit exceeded error message");
+            Assert.That(estimate, Is.EqualTo(0ul), "Should return 0 when gas spent exceeds limits");
+            Assert.That(err, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap"), "Should provide gas limit exceeded error message");
         }
 
         [Test]
         public void Should_estimate_gas_successfully_ignoring_precompile_costs()
         {
             TestEnvironment testEnvironment = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(30000).WithSenderAddress(TestItem.AddressA).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(30000ul).WithSenderAddress(TestItem.AddressA).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            testEnvironment.tracer.ReportAction(30000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(30000ul, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
-            testEnvironment.tracer.ReportAction(28000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(28000ul, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.CALL, true);
             testEnvironment.tracer.ReportActionEnd(26000, Array.Empty<byte>());
             testEnvironment.tracer.ReportActionEnd(25000, Array.Empty<byte>());
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-            result.Should().BeGreaterThan(0, "Should estimate positive gas, ignoring precompile costs");
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            Assert.That(result, Is.GreaterThan(0ul), "Should estimate positive gas, ignoring precompile costs");
             Assert.That(err, Is.Null);
         }
 
@@ -562,23 +589,23 @@ namespace Nethermind.Evm.Test.Tracing
         public void Should_estimate_gas_successfully_for_simple_transaction()
         {
             TestEnvironment testEnvironment = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(30000).WithSenderAddress(TestItem.AddressA).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasLimit(30000ul).WithSenderAddress(TestItem.AddressA).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-            testEnvironment.tracer.ReportAction(30000, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
+            testEnvironment.tracer.ReportAction(30000ul, 0, TestItem.AddressA, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
             testEnvironment.tracer.ReportActionEnd(28000, Array.Empty<byte>());
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-            result.Should().BeGreaterThan(0, "Should estimate positive gas for successful transaction");
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            Assert.That(result, Is.GreaterThan(0ul), "Should estimate positive gas for successful transaction");
             Assert.That(err, Is.Null);
         }
 
-        [TestCase(50_000, false)]
-        [TestCase(500_000, false)]
-        [TestCase(1_000_000, false)]
-        [TestCase(1_100_000, true)]
-        public void Should_estimate_gas_for_explicit_gas_check_and_revert(long gasLimit, bool shouldSucceed)
+        [TestCase(50_000ul, false)]
+        [TestCase(500_000ul, false)]
+        [TestCase(1_000_000ul, false)]
+        [TestCase(1_100_000ul, true)]
+        public void Should_estimate_gas_for_explicit_gas_check_and_revert(ulong gasLimit, bool shouldSucceed)
         {
             TestEnvironment testEnvironment = new();
             Address contractAddress = TestItem.AddressB;
@@ -595,17 +622,16 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1) // Ensure opcode `REVERT` is available
                 .WithTransactions(tx).TestObject;
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
             if (shouldSucceed)
             {
-                result.Should().BeGreaterThan(1_000_000,
-                    "Gas estimation should account for the gas threshold in the contract");
-                err.Should().BeNull();
+                Assert.That(result, Is.GreaterThan(1_000_000ul), "Gas estimation should account for the gas threshold in the contract");
+                Assert.That(err, Is.Null);
             }
             else
             {
-                err.Should().NotBeNull("Gas estimation should fail when the gas limit is too low");
+                Assert.That(err, Is.Not.Null, "Gas estimation should fail when the gas limit is too low");
             }
         }
 
@@ -613,11 +639,11 @@ namespace Nethermind.Evm.Test.Tracing
         public void Should_succeed_with_internal_revert()
         {
             using TestEnvironment testEnvironment = new();
-            long gasLimit = 100_000;
+            ulong gasLimit = 100_000ul;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            long gasLeft = gasLimit - 22000;
+            ulong gasLeft = gasLimit - 22000ul;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
@@ -629,39 +655,39 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.CALL, false);
 
-            testEnvironment.tracer.ReportActionRevert(gasLeft - 1000, Array.Empty<byte>());
-            testEnvironment.tracer.ReportActionEnd(gasLeft - 500, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionRevert(gasLeft - 1000ul, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionEnd(gasLeft - 500ul, Array.Empty<byte>());
             testEnvironment.tracer.ReportActionEnd(gasLeft, Array.Empty<byte>());
-            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 25000, Array.Empty<byte>(), Array.Empty<LogEntry>());
+            testEnvironment.tracer.MarkAsSuccess(Address.Zero, 25000ul, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0);
-            err.Should().BeNull();
-            testEnvironment.tracer.TopLevelRevert.Should().BeFalse();
-            testEnvironment.tracer.OutOfGas.Should().BeFalse();
+            Assert.That(result, Is.GreaterThan(0ul));
+            Assert.That(err, Is.Null);
+            Assert.That(testEnvironment.tracer.TopLevelRevert, Is.False);
+            Assert.That(testEnvironment.tracer.OutOfGas, Is.False);
         }
 
         [Test]
         public void Should_fail_with_top_level_revert()
         {
             using TestEnvironment testEnvironment = new();
-            long gasLimit = 100_000;
+            ulong gasLimit = 100_000ul;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            long gasLeft = gasLimit - 22000;
+            ulong gasLeft = gasLimit - 22000ul;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 ExecutionType.TRANSACTION, false);
 
-            testEnvironment.tracer.ReportActionRevert(gasLeft - 1000, Array.Empty<byte>());
-            testEnvironment.tracer.MarkAsFailed(Address.Zero, 25000, Array.Empty<byte>(), "execution reverted");
+            testEnvironment.tracer.ReportActionRevert(gasLeft - 1000ul, Array.Empty<byte>());
+            testEnvironment.tracer.MarkAsFailed(Address.Zero, 25000ul, Array.Empty<byte>(), "execution reverted");
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().Be(0);
-            err.Should().Be("execution reverted");
-            testEnvironment.tracer.TopLevelRevert.Should().BeTrue();
+            Assert.That(result, Is.EqualTo(0ul));
+            Assert.That(err, Is.EqualTo("execution reverted"));
+            Assert.That(testEnvironment.tracer.TopLevelRevert, Is.True);
         }
 
         [Test]
@@ -696,7 +722,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(callerAddress, callerCode);
 
-            long gasLimit = 300_000;
+            ulong gasLimit = 300_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(callerAddress)
@@ -708,10 +734,10 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed when inner call reverts but transaction succeeds overall");
-            err.Should().BeNull("No error should occur - inner reverts should not be treated as top-level failures");
+            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when inner call reverts but transaction succeeds overall");
+            Assert.That(err, Is.Null, "No error should occur - inner reverts should not be treated as top-level failures");
         }
 
         [Test]
@@ -757,7 +783,7 @@ namespace Nethermind.Evm.Test.Tracing
             Address factoryAddress = TestItem.AddressB;
             testEnvironment.InsertContract(factoryAddress, factoryCode);
 
-            long gasLimit = 500_000;
+            ulong gasLimit = 500_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(factoryAddress)
@@ -769,10 +795,10 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed for CREATE2 + setup call pattern");
-            err.Should().BeNull("No error for CREATE2 + setup call");
+            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE2 + setup call pattern");
+            Assert.That(err, Is.Null, "No error for CREATE2 + setup call");
         }
 
         [Test]
@@ -816,7 +842,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(callerAddress, callerCode);
 
-            long gasLimit = 500_000;
+            ulong gasLimit = 500_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(callerAddress)
@@ -828,10 +854,10 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed with mixed inner reverts");
-            err.Should().BeNull("No error when inner calls revert but overall tx succeeds");
+            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed with mixed inner reverts");
+            Assert.That(err, Is.Null, "No error when inner calls revert but overall tx succeeds");
         }
 
         [Test]
@@ -876,7 +902,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(callerAddress, callerCode);
 
-            long gasLimit = 500_000;
+            ulong gasLimit = 500_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(callerAddress)
@@ -888,16 +914,16 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed when inner call OOGs but caller handles it");
-            err.Should().BeNull("No error - inner OOG should not affect top-level estimation");
+            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when inner call OOGs but caller handles it");
+            Assert.That(err, Is.Null, "No error - inner OOG should not affect top-level estimation");
         }
 
-        [TestCase(50_000, true)]
-        [TestCase(500_000, true)]
-        [TestCase(1_000, false)]
-        public void Should_estimate_gas_with_gas_sensitive_branching(long gasThreshold, bool shouldSucceed)
+        [TestCase(50_000ul, true)]
+        [TestCase(500_000ul, true)]
+        [TestCase(1_000ul, false)]
+        public void Should_estimate_gas_with_gas_sensitive_branching(ulong gasThreshold, bool shouldSucceed)
         {
             // Contract that checks gasLeft() and branches: if gasLeft >= threshold, SSTORE; else REVERT.
             // Tests that the binary search correctly handles gas-dependent execution paths.
@@ -907,11 +933,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             // Use the existing pattern from Should_estimate_gas_for_explicit_gas_check_and_revert
             // Bytecode: PUSH3 <threshold>, GAS, LT, PUSH1 <revert_pc>, JUMPI, PUSH1 1, PUSH1 0, SSTORE, STOP, JUMPDEST, PUSH1 0, PUSH1 0, REVERT
-            long check = gasThreshold;
+            ulong check = gasThreshold;
             byte[] contractCode = Bytes.FromHexString($"0x62{check:x6}5a10600f576001600055005b6000806000fd");
             testEnvironment.InsertContract(contractAddress, contractCode);
 
-            long gasLimit = 1_100_000;
+            ulong gasLimit = 1_100_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(contractAddress)
@@ -923,17 +949,17 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
             if (shouldSucceed)
             {
-                result.Should().BeGreaterThan(0, "Gas estimation should find enough gas for the success path");
-                err.Should().BeNull("No error - binary search should find gas level above threshold");
+                Assert.That(result, Is.GreaterThan(0), "Gas estimation should find enough gas for the success path");
+                Assert.That(err, Is.Null, "No error - binary search should find gas level above threshold");
             }
             else
             {
-                result.Should().BeGreaterThan(0, "Low threshold should always succeed");
-                err.Should().BeNull();
+                Assert.That(result, Is.GreaterThan(0), "Low threshold should always succeed");
+                Assert.That(err, Is.Null);
             }
         }
 
@@ -975,7 +1001,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(factoryAddress, factoryCode);
 
-            long gasLimit = 500_000;
+            ulong gasLimit = 500_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(factoryAddress)
@@ -987,10 +1013,10 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed for CREATE with constructor that makes calls");
-            err.Should().BeNull("No error for constructor-call pattern");
+            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE with constructor that makes calls");
+            Assert.That(err, Is.Null, "No error for constructor-call pattern");
         }
 
         [Test]
@@ -1017,13 +1043,13 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(callerAddress, callerCode);
 
-            long gasLimit = 300_000;
+            ulong gasLimit = 300_000ul;
             Block block = Build.A.Block
                 .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long? firstResult = null;
+            ulong? firstResult = null;
             for (int i = 0; i < 10; i++)
             {
                 // Each estimation uses a fresh tracer (as BlockchainBridge.EstimateGas does)
@@ -1037,13 +1063,13 @@ namespace Nethermind.Evm.Test.Tracing
                     .WithSenderAddress(TestItem.AddressA)
                     .TestObject;
 
-                long result = freshEnv.estimator.Estimate(tx, block.Header, freshEnv.tracer, out string? err);
+                ulong result = freshEnv.estimator.Estimate(tx, block.Header, freshEnv.tracer, out string? err);
 
-                result.Should().BeGreaterThan(0, $"Iteration {i}: gas estimation should succeed");
-                err.Should().BeNull($"Iteration {i}: no error expected");
+                Assert.That(result, Is.GreaterThan(0ul), $"Iteration {i}: gas estimation should succeed");
+                Assert.That(err, Is.Null, $"Iteration {i}: no error expected");
 
                 firstResult ??= result;
-                result.Should().Be(firstResult.Value, $"Iteration {i}: result should be consistent");
+                Assert.That(result, Is.EqualTo(firstResult.Value), $"Iteration {i}: result should be consistent");
 
                 freshEnv.Dispose();
             }
@@ -1102,7 +1128,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(addrA, codeA);
 
-            long gasLimit = 500_000;
+            ulong gasLimit = 500_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(addrA)
@@ -1114,10 +1140,10 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed for deeply nested call chain");
-            err.Should().BeNull("No error for deeply nested calls");
+            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for deeply nested call chain");
+            Assert.That(err, Is.Null, "No error for deeply nested calls");
         }
 
         [Test]
@@ -1160,7 +1186,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(factoryAddress, factoryCode);
 
-            long gasLimit = 500_000;
+            ulong gasLimit = 500_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(factoryAddress)
@@ -1172,10 +1198,10 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed for CREATE2 with inner revert in constructor");
-            err.Should().BeNull("No error for GnosisSafe-like CREATE2 pattern");
+            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed for CREATE2 with inner revert in constructor");
+            Assert.That(err, Is.Null, "No error for GnosisSafe-like CREATE2 pattern");
         }
 
         [Test]
@@ -1192,7 +1218,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(contractAddress, contractCode);
 
-            long gasLimit = 300_000;
+            ulong gasLimit = 300_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(contractAddress)
@@ -1204,12 +1230,12 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().Be(0, "Gas estimation should fail when top-level call reverts");
-            err.Should().NotBeNull("Should report an error when top-level reverts");
+            Assert.That(result, Is.EqualTo(0ul), "Gas estimation should fail when top-level call reverts");
+            Assert.That(err, Is.Not.Null, "Should report an error when top-level reverts");
             // The error contains the revert data (hex-encoded output from the REVERT opcode)
-            testEnvironment.tracer.TopLevelRevert.Should().BeTrue("TopLevelRevert should be set for top-level REVERT");
+            Assert.That(testEnvironment.tracer.TopLevelRevert, Is.True, "TopLevelRevert should be set for top-level REVERT");
         }
 
         [Test]
@@ -1238,7 +1264,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
             testEnvironment.InsertContract(proxyAddress, proxyCode);
 
-            long gasLimit = 300_000;
+            ulong gasLimit = 300_000ul;
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithTo(proxyAddress)
@@ -1250,10 +1276,82 @@ namespace Nethermind.Evm.Test.Tracing
                 .WithGasLimit(gasLimit)
                 .TestObject;
 
-            long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed when DELEGATECALL reverts but caller handles it");
-            err.Should().BeNull("No error for caught DELEGATECALL revert");
+            Assert.That(result, Is.GreaterThan(0ul), "Gas estimation should succeed when DELEGATECALL reverts but caller handles it");
+            Assert.That(err, Is.Null, "No error for caught DELEGATECALL revert");
+        }
+
+        [Test]
+        public void Estimate_subcall_contract_uses_optimistic_multiplier_not_margin_multiplier()
+        {
+            using TestEnvironment testEnvironment = new();
+
+            Address innerAddress = TestItem.AddressB;
+            byte[] innerCode = Prepare.EvmCode
+                .PushData(0x01)
+                .PushData(0x00)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+            testEnvironment.InsertContract(innerAddress, innerCode);
+
+            Address outerAddress = TestItem.AddressC;
+            byte[] outerCode = Prepare.EvmCode
+                .Call(innerAddress, 100_000)
+                .Op(Instruction.POP)
+                .PushData(0x02)
+                .PushData(0x01)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+            testEnvironment.InsertContract(outerAddress, outerCode);
+
+            ulong gasLimit = 300_000;
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(gasLimit)
+                .WithTo(outerAddress)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            Block block = Build.A.Block
+                .WithNumber(MainnetSpecProvider.ByzantiumBlockNumber + 1)
+                .WithTransactions(tx)
+                .WithGasLimit(gasLimit)
+                .TestObject;
+
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err, errorMargin: 0);
+
+            Assert.That(err, Is.Null);
+            Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
+        }
+
+        [Test]
+        public void IsSimpleTransfer_returns_false_for_SetCodeTx_with_authorization_list()
+        {
+            using TestEnvironment testEnvironment = new();
+
+            Address target = TestItem.AddressB;
+
+            ulong gasLimit = 100_000;
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.SetCode)
+                .WithGasLimit(gasLimit)
+                .WithTo(target)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithAuthorizationCode(new AuthorizationTuple(1, Address.Zero, 0, new Signature(new byte[64], 0)))
+                .TestObject;
+
+            Block block = Build.A.Block
+                .WithNumber(MainnetSpecProvider.PragueActivation.BlockNumber)
+                .WithTimestamp(MainnetSpecProvider.PragueActivation.Timestamp!.Value)
+                .WithTransactions(tx)
+                .WithGasLimit(gasLimit)
+                .TestObject;
+
+            ulong result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
+
+            Assert.That(err, Is.Null, err);
+            Assert.That(result, Is.GreaterThan(Transaction.BaseTxGasCost));
         }
 
         private class TestEnvironment : IDisposable

@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -26,7 +27,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers;
 
 public class P2PProtocolHandler(
     ISession session,
-    PublicKey localNodeId,
+    IEnode enode,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
@@ -42,8 +43,8 @@ public class P2PProtocolHandler(
     private TaskCompletionSource<Packet> _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
-    private readonly List<Capability> _agreedCapabilities = new();
-    private List<Capability> _availableCapabilities = new();
+    private readonly List<Capability> _agreedCapabilities = [];
+    private List<Capability> _availableCapabilities = [];
 
     private byte _protocolVersion = 5;
 
@@ -57,10 +58,10 @@ public class P2PProtocolHandler(
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> _supportedCapabilities = new();
+    private readonly List<Capability> _supportedCapabilities = [];
 
     public int ListenPort { get; } = session.LocalPort;
-    public PublicKey LocalNodeId { get; } = localNodeId;
+    private readonly PublicKey _localNodeId = enode.PublicKey;
     private string RemoteClientId { get; set; }
 
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
@@ -180,7 +181,7 @@ public class P2PProtocolHandler(
                     break;
                 }
             default:
-                if (Logger.IsTrace) TraceUnhandledPacket(msg.PacketType);
+                DisconnectUnhandledPacket(msg.PacketType);
                 break;
         }
 
@@ -223,8 +224,12 @@ public class P2PProtocolHandler(
             => Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceUnhandledPacket(int packetType)
-            => Logger.Trace($"{Session.RemoteNodeId} Unhandled packet type: {packetType}");
+        void DisconnectUnhandledPacket(int packetType)
+        {
+            string details = $"Unknown P2P message type {packetType}";
+            if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId} {details}");
+            Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
+        }
     }
 
     private bool TryGetNextAgreedCapability(string? previousProtocolCode, [NotNullWhen(true)] out Capability? nextCapability)
@@ -349,7 +354,7 @@ public class P2PProtocolHandler(
 
     public async Task<bool> SendPing()
     {
-        TaskCompletionSource<Packet> newSource = new();
+        TaskCompletionSource<Packet> newSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<Packet> previousSource =
             Interlocked.CompareExchange(ref _pongCompletionSource, newSource, null);
 
@@ -426,7 +431,7 @@ public class P2PProtocolHandler(
         {
             Capabilities = _supportedCapabilities.ToPooledList(),
             ClientId = ProductInfo.PublicClientId,
-            NodeId = LocalNodeId,
+            NodeId = _localNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion
         };

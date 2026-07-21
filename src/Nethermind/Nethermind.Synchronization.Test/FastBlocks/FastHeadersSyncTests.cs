@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
@@ -64,7 +63,7 @@ public class FastHeadersSyncTests
         // Regression test for issue #11447: Reset() with a null LowestInsertedBlockHeader used to fall
         // back to 0, producing a current value of (_pivotNumber + 1) — visible as "Old Headers
         // 24,998,904 / 24,998,903 (100.00 %)" right after a fresh FlatDB sync started.
-        const long pivotNumber = 1000;
+        const ulong pivotNumber = 1000UL;
         BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
         blockTree.SyncPivot = (pivotNumber, TestItem.KeccakA);
 
@@ -87,8 +86,8 @@ public class FastHeadersSyncTests
 
         feed.InitializeFeed();
 
-        syncReport.FastBlocksHeaders.CurrentValue.Should().Be(0);
-        syncReport.FastBlocksHeaders.TargetValue.Should().Be(pivotNumber);
+        Assert.That(syncReport.FastBlocksHeaders.CurrentValue, Is.EqualTo(0));
+        Assert.That(syncReport.FastBlocksHeaders.TargetValue, Is.EqualTo(pivotNumber));
     }
 
     [Test]
@@ -127,9 +126,9 @@ public class FastHeadersSyncTests
 
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree();
         IBlockTree blockTree = blockTreeBuilder.TestObject;
-        for (int i = 500; i < 1000; i++)
+        for (ulong i = 500; i < 1000; i++)
         {
-            blockTree.Insert(forkedBlockTree.FindHeader(i)!).Should().Be(AddBlockResult.Added);
+            Assert.That(blockTree.Insert(forkedBlockTree.FindHeader(i)!), Is.EqualTo(AddBlockResult.Added));
         }
         blockTree.SyncPivot = (pivotBlock.Number, pivotBlock.Hash!);
 
@@ -330,10 +329,10 @@ public class FastHeadersSyncTests
 
         // HandleDependantBatch would start from first batch in batches, stopped at second in batch (only process 2 batch)
         using HeadersSyncBatch newBatch = (await feed.PrepareRequest())!;
-        blockTree.LowestInsertedHeader!.Number.Should().Be(batches[1].StartNumber);
+        Assert.That(blockTree.LowestInsertedHeader!.Number, Is.EqualTo(batches[1].StartNumber));
 
         // New batch would be at end of batch 5 (batch 6).
-        newBatch.EndNumber.Should().Be(batches[^1].StartNumber - 1);
+        Assert.That(newBatch.EndNumber, Is.EqualTo(batches[^1].StartNumber - 1));
         batches.DisposeItems();
     }
 
@@ -395,7 +394,7 @@ public class FastHeadersSyncTests
         feed.HandleResponse(batch2);
 
         // The whole new batch should get processed instead of skipping due to concurrently modified _nextHeaderHash.
-        blockTree.LowestInsertedHeader!.Number.Should().Be(batch2.StartNumber);
+        Assert.That(blockTree.LowestInsertedHeader!.Number, Is.EqualTo(batch2.StartNumber));
     }
 
     [Test]
@@ -425,13 +424,13 @@ public class FastHeadersSyncTests
         }
 
         using HeadersSyncBatch? result = await feed.PrepareRequest();
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
     public async Task Does_not_prepare_batch_when_destination_moves_past_request_cursor()
     {
-        const long pivotNumber = 1000;
+        const ulong pivotNumber = 1000UL;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((pivotNumber, TestItem.KeccakA));
 
@@ -456,14 +455,14 @@ public class FastHeadersSyncTests
         feed.InitializeFeed();
 
         using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
-        firstBatch.Should().NotBeNull();
-        firstBatch!.StartNumber.Should().Be(995);
-        firstBatch.RequestSize.Should().Be(6);
+        Assert.That(firstBatch, Is.Not.Null);
+        Assert.That(firstBatch!.StartNumber, Is.EqualTo(995));
+        Assert.That(firstBatch.RequestSize, Is.EqualTo(6));
 
         feed.DestinationNumber = 996;
 
         using HeadersSyncBatch? overrunBatch = await feed.PrepareRequest();
-        overrunBatch.Should().BeNull();
+        Assert.That(overrunBatch, Is.Null);
     }
 
     [Test]
@@ -493,9 +492,9 @@ public class FastHeadersSyncTests
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
         using HeadersSyncBatch? result = await feed.PrepareRequest();
 
-        result.Should().BeNull();
-        feed.CurrentState.Should().Be(SyncFeedState.Finished);
-        report.FastBlocksHeaders.HasEnded.Should().BeTrue();
+        Assert.That(result, Is.Null);
+        Assert.That(feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        Assert.That(report.FastBlocksHeaders.HasEnded, Is.True);
     }
 
     [Test]
@@ -528,8 +527,8 @@ public class FastHeadersSyncTests
         feed.InitializeFeed();
         using HeadersSyncBatch? result = await feed.PrepareRequest();
 
-        result.Should().NotBeNull();
-        result!.EndNumber.Should().Be(499);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.EndNumber, Is.EqualTo(499));
     }
 
     //Missing headers in the start is not allowed
@@ -564,7 +563,7 @@ public class FastHeadersSyncTests
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
-        const int lowestInserted = 999;
+        const ulong lowestInserted = 999UL;
         localBlockTree.Insert(peerChain.Head!, BlockTreeInsertBlockOptions.SaveHeader);
 
         ISyncReport report = new NullSyncReport();
@@ -576,12 +575,15 @@ public class FastHeadersSyncTests
         using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
         dependentBatch!.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
 
-        void FillBatch(HeadersSyncBatch batch, long start, bool applyNulls)
+        void FillBatch(HeadersSyncBatch batch, ulong start, bool applyNulls)
         {
             int c = count;
-            List<BlockHeader?> list = Enumerable.Range((int)start, batch.RequestSize)
-                .Select(i => peerChain.FindBlock(i, BlockTreeLookupOptions.None)!.Header)
-                .ToList<BlockHeader?>();
+            List<BlockHeader?> list = new(batch.RequestSize);
+            ulong current = start;
+            for (int j = 0; j < batch.RequestSize; j++, current++)
+            {
+                list.Add(peerChain.FindBlock(current, BlockTreeLookupOptions.None)!.Header);
+            }
             if (applyNulls)
                 for (int i = nullIndex; 0 < c; i += increment)
                 {
@@ -593,9 +595,9 @@ public class FastHeadersSyncTests
             batch.Response = list.ToPooledList();
         }
 
-        FillBatch(firstBatch!, lowestInserted - firstBatch!.RequestSize, false);
-        FillBatch(dependentBatch, lowestInserted - dependentBatch.RequestSize * 2, true);
-        long targetHeaderInDependentBatch = dependentBatch.StartNumber;
+        FillBatch(firstBatch!, lowestInserted - (ulong)firstBatch!.RequestSize, false);
+        FillBatch(dependentBatch, lowestInserted - (ulong)(dependentBatch.RequestSize * 2), true);
+        ulong targetHeaderInDependentBatch = dependentBatch.StartNumber;
 
         feed.HandleResponse(dependentBatch);
         feed.HandleResponse(firstBatch);
@@ -624,9 +626,9 @@ public class FastHeadersSyncTests
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
 
         // Insert some chain
-        for (int i = 0; i < 600; i++)
+        for (ulong i = 0; i < 600; i++)
         {
-            localBlockTree.SuggestHeader(peerChain.FindHeader(i)!).Should().Be(AddBlockResult.Added);
+            Assert.That(localBlockTree.SuggestHeader(peerChain.FindHeader(i)!), Is.EqualTo(AddBlockResult.Added));
         }
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -635,21 +637,27 @@ public class FastHeadersSyncTests
             localBlockTreeBuilder.ChainLevelInfoRepository, localBlockTreeBuilder.HeaderStore);
         feed.InitializeFeed();
 
-        void FillBatch(HeadersSyncBatch batch) =>
-            batch.Response = Enumerable.Range((int)batch.StartNumber!, batch.RequestSize)
-                .Select(i => peerChain.FindBlock(i, BlockTreeLookupOptions.None)!.Header)
-                .ToPooledList<BlockHeader?>(batch.RequestSize);
+        void FillBatch(HeadersSyncBatch batch)
+        {
+            List<BlockHeader?> list = new(batch.RequestSize);
+            ulong current = batch.StartNumber;
+            for (int j = 0; j < batch.RequestSize; j++, current++)
+            {
+                list.Add(peerChain.FindBlock(current, BlockTreeLookupOptions.None)!.Header);
+            }
+            batch.Response = list.ToPooledList();
+        }
 
         using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
-        batch1.StartNumber.Should().Be(808);
+        Assert.That(batch1.StartNumber, Is.EqualTo(808));
 
         using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
-        batch2.StartNumber.Should().Be(616);
+        Assert.That(batch2.StartNumber, Is.EqualTo(616));
 
         using HeadersSyncBatch batch3 = (await feed.PrepareRequest())!;
-        batch3.StartNumber.Should().Be(424);
+        Assert.That(batch3.StartNumber, Is.EqualTo(424));
 
-        (await feed.PrepareRequest()).Should().Be(null);
+        Assert.That((await feed.PrepareRequest()), Is.EqualTo(null));
 
         FillBatch(batch1);
         FillBatch(batch2);
@@ -660,9 +668,9 @@ public class FastHeadersSyncTests
         feed.HandleResponse(batch3);
 
         // The dependency batch is processed during prepare request.
-        (await feed.PrepareRequest()).Should().Be(null);
+        Assert.That((await feed.PrepareRequest()), Is.EqualTo(null));
 
-        localBlockTree.LowestInsertedHeader?.Number.Should().Be(0);
+        Assert.That(localBlockTree.LowestInsertedHeader?.Number, Is.EqualTo(0));
     }
 
     [Test]
@@ -676,7 +684,7 @@ public class FastHeadersSyncTests
             PivotNumber = pivotHeader.Number,
             PivotHash = pivotHeader.Hash!.ToString(),
             PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!,
-            FastHeadersMemoryBudget = (ulong)100.KB,
+            FastHeadersMemoryBudget = 100UL.KB,
         };
 
         BlockTreeBuilder localBlockTreeBuilder = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig);
@@ -684,9 +692,9 @@ public class FastHeadersSyncTests
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
 
         // Insert some chain
-        for (int i = 300; i < 600; i++)
+        for (ulong i = 300; i < 600; i++)
         {
-            localBlockTree.Insert(peerChain.FindHeader(i)!).Should().Be(AddBlockResult.Added);
+            Assert.That(localBlockTree.Insert(peerChain.FindHeader(i)!), Is.EqualTo(AddBlockResult.Added));
         }
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -695,8 +703,8 @@ public class FastHeadersSyncTests
             localBlockTreeBuilder.ChainLevelInfoRepository, localBlockTreeBuilder.HeaderStore);
         feed.InitializeFeed();
 
-        (await feed.PrepareRequest()).Should().NotBe(null);
-        (await feed.PrepareRequest()).Should().Be(null);
+        Assert.That((await feed.PrepareRequest()), Is.Not.EqualTo(null));
+        Assert.That((await feed.PrepareRequest()), Is.EqualTo(null));
     }
 
     [Test]
@@ -719,12 +727,13 @@ public class FastHeadersSyncTests
         IBlockTree localBlockTree = localBlockTreeBuilder.TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
 
-        long firstCheckedHeader = pivotHeader.Number - GethSyncLimits.MaxHeaderFetch;
-        for (long i = firstCheckedHeader - 1; i <= firstCheckedHeader; i++)
+        // pivot.Number (700) >> MaxHeaderFetch, so firstCheckedHeader > 0 and the loop cannot underflow.
+        ulong firstCheckedHeader = pivotHeader.Number - (ulong)GethSyncLimits.MaxHeaderFetch;
+        for (ulong i = firstCheckedHeader - 1; i <= firstCheckedHeader; i++)
         {
             BlockHeader header = peerChain.FindHeader(i)!;
             header.TotalDifficulty = null;
-            localBlockTree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded).Should().Be(AddBlockResult.Added);
+            Assert.That(localBlockTree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded), Is.EqualTo(AddBlockResult.Added));
         }
         levelInfoRepository.Delete(firstCheckedHeader - 1);
 
@@ -734,10 +743,98 @@ public class FastHeadersSyncTests
             levelInfoRepository, localBlockTreeBuilder.HeaderStore);
         feed.InitializeFeed();
 
-        (await feed.PrepareRequest()).Should().NotBe(null);
-        (await feed.PrepareRequest()).Should().NotBe(null);
-        (await feed.PrepareRequest()).Should().NotBe(null);
+        Assert.That((await feed.PrepareRequest()), Is.Not.EqualTo(null));
+        Assert.That((await feed.PrepareRequest()), Is.Not.EqualTo(null));
+        Assert.That((await feed.PrepareRequest()), Is.Not.EqualTo(null));
     }
+
+    [Test]
+    public async Task Can_initialize_feed_after_restart_when_pivot_chain_level_is_missing()
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = new() { FastSync = true };
+
+        Func<BlockTreeBuilder> createBuilderOverSharedDbs = SharedDbsBlockTreeBuilderFactory(syncConfig);
+        BlockTreeBuilder builderBeforeRestart = createBuilderOverSharedDbs();
+        BlockTree treeBeforeRestart = builderBeforeRestart.TestObject;
+        Assert.That(treeBeforeRestart.Insert(pivot), Is.EqualTo(AddBlockResult.Added));
+        treeBeforeRestart.SyncPivot = (pivot.Number, pivot.Hash!); // Persisted to the metadata db
+        builderBeforeRestart.ChainLevelInfoRepository.Delete(pivot.Number); // The chain level write that was lost
+
+        BlockTreeBuilder builderAfterRestart = createBuilderOverSharedDbs();
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.FinalTotalDifficulty.Returns(pivot.TotalDifficulty);
+        using HeadersSyncFeed feed = CreateFeed(builderAfterRestart, syncConfig, poSSwitcher);
+
+        feed.InitializeFeed();
+
+        using HeadersSyncBatch? batch = await feed.PrepareRequest();
+        Assert.That(batch, Is.Not.Null);
+        Assert.That(batch!.EndNumber, Is.EqualTo(pivot.Number));
+    }
+
+    [Test]
+    public async Task Resets_header_sync_after_restart_when_lowest_inserted_header_chain_level_is_missing()
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        BlockHeader lowestInserted = remoteBlockTree.FindHeader(900, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = pivot.Number,
+            PivotHash = pivot.Hash!.ToString(),
+            PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
+        };
+
+        Func<BlockTreeBuilder> createBuilderOverSharedDbs = SharedDbsBlockTreeBuilderFactory(syncConfig);
+        BlockTreeBuilder builderBeforeRestart = createBuilderOverSharedDbs();
+        BlockTree treeBeforeRestart = builderBeforeRestart.TestObject;
+        Assert.That(treeBeforeRestart.Insert(lowestInserted), Is.EqualTo(AddBlockResult.Added));
+        treeBeforeRestart.LowestInsertedHeader = lowestInserted; // Persisted to the metadata db
+        builderBeforeRestart.ChainLevelInfoRepository.Delete(lowestInserted.Number); // The chain level write that was lost
+
+        BlockTreeBuilder builderAfterRestart = createBuilderOverSharedDbs();
+        BlockTree treeAfterRestart = builderAfterRestart.TestObject;
+        Assert.That(treeAfterRestart.LowestInsertedHeader?.Number, Is.EqualTo(lowestInserted.Number),
+            "the level-less lowest inserted header must be loaded back on restart for the test to be meaningful");
+        using HeadersSyncFeed feed = CreateFeed(builderAfterRestart, syncConfig, Substitute.For<IPoSSwitcher>());
+
+        feed.InitializeFeed();
+
+        Assert.That(treeAfterRestart.LowestInsertedHeader, Is.Null);
+        using HeadersSyncBatch? batch = await feed.PrepareRequest();
+        Assert.That(batch, Is.Not.Null);
+        Assert.That(batch!.EndNumber, Is.EqualTo(pivot.Number));
+    }
+
+    private static Func<BlockTreeBuilder> SharedDbsBlockTreeBuilderFactory(TestSyncConfig syncConfig)
+    {
+        TestMemDb blocksDb = new();
+        TestMemDb headersDb = new();
+        TestMemDb blockNumbersDb = new();
+        TestMemDb blockInfoDb = new();
+        TestMemDb metadataDb = new();
+        return () => Build.A.BlockTree()
+            .WithoutSettingHead
+            .WithBlocksDb(blocksDb)
+            .WithHeadersDb(headersDb)
+            .WithBlocksNumberDb(blockNumbersDb)
+            .WithBlockInfoDb(blockInfoDb)
+            .WithMetadataDb(metadataDb)
+            .WithSyncConfig(syncConfig);
+    }
+
+    private static HeadersSyncFeed CreateFeed(BlockTreeBuilder builder, TestSyncConfig syncConfig, IPoSSwitcher poSSwitcher) => new(
+        blockTree: builder.TestObject,
+        syncPeerPool: Substitute.For<ISyncPeerPool>(),
+        syncConfig: syncConfig,
+        syncReport: new NullSyncReport(),
+        poSSwitcher: poSSwitcher,
+        logManager: LimboLogs.Instance,
+        chainLevelInfoRepository: builder.ChainLevelInfoRepository,
+        headerStore: builder.HeaderStore);
 
     [Test]
     public async Task Will_never_lose_batch_on_invalid_batch()
@@ -763,7 +860,7 @@ public class FastHeadersSyncTests
             Substitute.For<IHeaderStore>());
         feed.InitializeFeed();
 
-        List<HeadersSyncBatch> batches = new();
+        List<HeadersSyncBatch> batches = [];
         while (true)
         {
             HeadersSyncBatch? batch = await feed.PrepareRequest();
@@ -812,7 +909,7 @@ public class FastHeadersSyncTests
             batches.Add(batch);
         }
 
-        batches.Count.Should().Be(totalBatchCount);
+        Assert.That(batches.Count, Is.EqualTo(totalBatchCount));
     }
 
 
@@ -829,7 +926,7 @@ public class FastHeadersSyncTests
         };
 
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).WithStateRoot(TestItem.KeccakA).TestObject);
-        blockTree.SyncPivot.Returns((1, Keccak.Zero));
+        blockTree.SyncPivot.Returns((1UL, Keccak.Zero));
 
         HeadersSyncFeed feed = new(
             blockTree,
@@ -864,7 +961,7 @@ public class FastHeadersSyncTests
             chainLevelInfoRepository: Substitute.For<IChainLevelInfoRepository>(),
             headerStore: Substitute.For<IHeaderStore>(),
             totalDifficultyStrategy: new CumulativeTotalDifficultyStrategy());
-        blockTree.SyncPivot.Returns((1000, TestItem.KeccakA));
+        blockTree.SyncPivot.Returns((1000UL, TestItem.KeccakA));
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(900).TestObject;
         header.Difficulty = 10;
@@ -899,10 +996,10 @@ public class FastHeadersSyncTests
             chainLevelInfoRepository: Substitute.For<IChainLevelInfoRepository>(),
             headerStore: Substitute.For<IHeaderStore>(),
             totalDifficultyStrategy: new CumulativeTotalDifficultyStrategy());
-        blockTree.SyncPivot.Returns((1010, TestItem.KeccakB));
+        blockTree.SyncPivot.Returns((1010UL, TestItem.KeccakB));
 
         Action act = () => feed.InitializeFeed();
-        act.Should().Throw<InvalidOperationException>();
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -926,14 +1023,14 @@ public class FastHeadersSyncTests
             chainLevelInfoRepository: Substitute.For<IChainLevelInfoRepository>(),
             headerStore: Substitute.For<IHeaderStore>(),
             totalDifficultyStrategy: new CumulativeTotalDifficultyStrategy());
-        blockTree.SyncPivot.Returns((1000, TestItem.KeccakB));
+        blockTree.SyncPivot.Returns((1000UL, TestItem.KeccakB));
 
         syncPeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, default)
             .Returns(Task.FromResult<int?>(5));
 
         feed.InitializeFeed();
         HeadersSyncBatch? req = await feed.PrepareRequest(default);
-        req!.RequestSize.Should().Be(5);
+        Assert.That(req!.RequestSize, Is.EqualTo(5));
     }
 
     private class ResettableHeaderSyncFeed(
@@ -942,16 +1039,16 @@ public class FastHeadersSyncTests
         ISyncConfig? syncConfig,
         ISyncReport? syncReport,
         ILogManager? logManager,
-        long? hangOnBlockNumber = null,
-        long? hangOnBlockNumberAfterInsert = null,
+        ulong? hangOnBlockNumber = null,
+        ulong? hangOnBlockNumberAfterInsert = null,
         ManualResetEventSlim? hangLatch = null,
         bool alwaysStartHeaderSync = false
         ) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, Substitute.For<IPoSSwitcher>(), logManager,
             Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>(), alwaysStartHeaderSync: alwaysStartHeaderSync)
     {
         private readonly ManualResetEventSlim? _hangLatch = hangLatch;
-        private readonly long? _hangOnBlockNumber = hangOnBlockNumber;
-        private readonly long? _hangOnBlockNumberAfterInsert = hangOnBlockNumberAfterInsert;
+        private readonly ulong? _hangOnBlockNumber = hangOnBlockNumber;
+        private readonly ulong? _hangOnBlockNumberAfterInsert = hangOnBlockNumberAfterInsert;
 
         public void Reset()
         {
@@ -987,13 +1084,13 @@ public class FastHeadersSyncTests
         ISyncConfig? syncConfig,
         ISyncReport? syncReport,
         ILogManager? logManager,
-        long destinationNumber
+        ulong destinationNumber
         ) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, Substitute.For<IPoSSwitcher>(), logManager,
             Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>())
     {
-        public long DestinationNumber { get; set; } = destinationNumber;
+        public ulong DestinationNumber { get; set; } = destinationNumber;
 
-        protected override long HeadersDestinationNumber => DestinationNumber;
+        protected override ulong HeadersDestinationNumber => DestinationNumber;
     }
 
 }

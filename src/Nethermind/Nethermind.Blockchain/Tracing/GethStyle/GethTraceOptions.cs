@@ -20,6 +20,8 @@ public record GethTraceOptions
 
     public bool EnableMemory { get; init; }
 
+    public bool EnableReturnData { get; init; }
+
     public bool DisableStack { get; init; }
 
     [JsonConverter(typeof(CustomTimeDurationConverter))]
@@ -34,6 +36,11 @@ public record GethTraceOptions
     public Dictionary<Address, AccountOverride>? StateOverrides { get; init; }
 
     public BlockOverride? BlockOverrides { get; set; }
+
+    /// <summary>
+    /// When set, overrides <c>JsonRpc.EnableTracingStreamMode</c> for this single call.
+    /// </summary>
+    public bool? StreamMode { get; init; }
 
     public static GethTraceOptions Default { get; } = new();
 }

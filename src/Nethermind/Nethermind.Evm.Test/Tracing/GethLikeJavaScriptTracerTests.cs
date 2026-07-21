@@ -4,7 +4,8 @@
 using System;
 using System.Linq;
 using System.Text.Json;
-using FluentAssertions;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
@@ -20,6 +21,43 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
+    {
+        const int concurrency = 16;
+        string marker = Guid.NewGuid().ToString("N");
+        string tracerCode = $$"""
+                              {
+                                  marker: "{{marker}}",
+                                  result: function() { return this.marker; }
+                              }
+                              """;
+        using CountdownEvent ready = new(concurrency);
+        using ManualResetEventSlim start = new();
+
+        Task[] tasks = Enumerable.Range(0, concurrency).Select(_ => Task.Factory.StartNew(
+            () =>
+            {
+                using Engine engine = new(Shanghai.Instance);
+                ready.Signal();
+                start.Wait();
+                dynamic tracer = engine.CreateTracer(tracerCode);
+                Assert.That((string)tracer.result(), Is.EqualTo(marker));
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default)).ToArray();
+
+        bool allReady = ready.Wait(TimeSpan.FromSeconds(30));
+        start.Set();
+        Assert.That(allReady, Is.True);
+        Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+        using Engine sequentialEngine = new(Shanghai.Instance);
+        dynamic cachedTracer = sequentialEngine.CreateTracer(tracerCode);
+        Assert.That((string)cachedTracer.result(), Is.EqualTo(marker));
+    }
+
     [TestCase("{ result: function(ctx, db) { return null } }", TestName = "fault")]
     [TestCase("{ fault: function(log, db) { } }", TestName = "result")]
     [TestCase("{ fault: function(log, db) { }, result: function(ctx, db) { return null }, enter: function(frame) { } }", TestName = "exit")]
@@ -28,7 +66,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         using GethLikeBlockJavaScriptTracer tracer = GetTracer(tracerCode);
         Action trace = () => ExecuteBlock(tracer, MStore());
-        trace.Should().Throw<ArgumentException>();
+        Assert.That(trace, Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -46,7 +84,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "0:PUSH32:0:79000:0", "33:PUSH1:0:78997:0", "35:MSTORE:0:78994:0", "36:PUSH32:0:78988:0", "69:PUSH1:0:78985:0", "71:MSTORE:0:78982:0", "72:STOP:0:78976:0" };
-        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
@@ -67,7 +105,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "STOP : 0 : false" };
-        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 
     [Test]
@@ -85,7 +123,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         int[] expected = { 0, 1, 2, 0, 1, 2, 0 };
-        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expected);
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expected));
     }
 
     [Test]
@@ -109,7 +147,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         int[] expectedResult = { 0, 32, 64 };
-        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedResult);
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedResult));
     }
 
     [Test]
@@ -126,7 +164,37 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        traces.CustomTracerResult?.Value.Should().BeEquivalentTo("942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:");
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo("942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:"));
+    }
+
+    [Test]
+    public void log_contract_is_restored_after_inner_call_returns()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        var entry = log.getDepth() + ':' + toHex(log.contract.getAddress());
+                        if (this.retVal.length == 0 || this.retVal[this.retVal.length - 1] != entry) {
+                            this.retVal.push(entry);
+                        }
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        string caller = "1:942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
+        string callee = "2:76e68a8696537e4141926f3e528733af9e237d69";
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(new[] { caller, callee, caller }));
     }
 
     [Test]
@@ -199,6 +267,32 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "35: SSTORE 0", "71: SSTORE 20", "107: SLOAD 0", "108: STOP a01234 <- a01234" };
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+    }
+
+    [Test]
+    public void getState_reads_live_slot_by_raw_key()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        if (log.op.toNumber() == 0x00) {
+                            let a = log.contract.getAddress();
+                            this.retVal.push(toHex(db.getState(a, toWord('0'))));
+                            this.retVal.push(toHex(db.getState(a, toWord('20'))));
+                        }
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) {
+                        return this.retVal;
+                    }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                SStore_double(),
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        string[] expectedStrings = { SampleHexData1.PadLeft(64, '0'), SampleHexData2.PadLeft(64, '0') };
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 

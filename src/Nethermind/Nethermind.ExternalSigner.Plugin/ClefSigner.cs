@@ -12,7 +12,6 @@ namespace Nethermind.ExternalSigner.Plugin;
 
 public class ClefSigner : IHeaderSigner, ISignerStore
 {
-
     private readonly ClefWallet _clefWallet;
 
     private ClefSigner(ClefWallet clefWallet, Address author)
@@ -36,20 +35,17 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// Clef will not sign data directly, but will parse and sign data in the format:
     /// keccak256("\x19Ethereum Signed Message:\n${message length}${message}")
     /// </summary>
-    /// <param name="message">Message to be signed.</param>
-    /// <returns><see cref="Signature"/> of <paramref name="message"/>.</returns>
-    public Signature Sign(in ValueHash256 message)
-        => _clefWallet.Sign(new Hash256(message), Address);
+    public bool TrySign(in ValueHash256 message, [NotNullWhen(true)] out Signature signature)
+        => _clefWallet.TrySign(in message, Address, out signature);
 
     /// <summary>
     /// Used to sign a clique header. The full Rlp of the header has to be sent,
     /// since clef does not sign data directly, but will parse and decide itself what to sign.
     /// </summary>
-    /// <param name="header">Clique header</param>
-    /// <returns><see cref="Signature"/> of the hash of the clique header.</returns>
-    public Signature Sign(BlockHeader header) => _clefWallet.Sign(header, Address);
+    public bool TrySign(BlockHeader header, [NotNullWhen(true)] out Signature signature)
+        => _clefWallet.TrySign(header, Address, out signature);
 
-    public ValueTask Sign(Transaction tx) =>
+    public bool TrySign(Transaction tx) =>
         throw new NotImplementedException("Remote signing of transactions is not supported.");
 
     private static Address GetSignerAddress(ClefWallet clefWallet, Address? blockAuthorAccount)
@@ -72,5 +68,3 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     private static void ThrowInvalidOperationSetSigner() =>
         throw new InvalidOperationException("Cannot set a signer when using a remote signer.");
 }
-
-

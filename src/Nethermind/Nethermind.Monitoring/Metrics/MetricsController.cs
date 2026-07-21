@@ -32,11 +32,11 @@ namespace Nethermind.Monitoring.Metrics
         private readonly int _intervalMilliseconds;
         private static bool _staticLabelsInitialized;
 
-        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
+        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = [];
         private volatile IMetricUpdater[][] _updaterValues = [];
 
         // Largely for testing reason
-        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
+        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = [];
 
         private readonly bool _useCounters;
         private readonly bool _enableDetailedMetric;
@@ -56,7 +56,7 @@ namespace Nethermind.Monitoring.Metrics
 
         public class GaugePerKeyMetricUpdater(IDictionary dict, string dictionaryName) : IMetricUpdater
         {
-            private readonly Dictionary<string, Gauge> _gauges = new();
+            private readonly Dictionary<string, Gauge> _gauges = [];
             public IReadOnlyDictionary<string, Gauge> Gauges => _gauges;
 
             public void Update()
@@ -221,7 +221,7 @@ namespace Nethermind.Monitoring.Metrics
                     meter = new(type.Namespace!);
                 }
 
-                IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
+                IList<IMetricUpdater> metricUpdaters = [];
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
                 foreach (MemberInfo member in members)
                 {
@@ -257,6 +257,24 @@ namespace Nethermind.Monitoring.Metrics
                     });
 
                 metricUpdater = new SummaryMetricUpdater(summary);
+                memberInfo.SetValue(metricUpdater);
+
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
+
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<HistogramMetricAttribute>() is HistogramMetricAttribute explicitHistogramAttribute)
+            {
+                CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
+
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description,
+                    new HistogramConfiguration()
+                    {
+                        LabelNames = explicitHistogramAttribute.LabelNames,
+                        Buckets = explicitHistogramAttribute.Buckets
+                    });
+
+                metricUpdater = new HistogramMetricUpdater(histogram);
                 memberInfo.SetValue(metricUpdater);
 
                 _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);

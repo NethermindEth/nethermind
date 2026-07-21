@@ -22,3 +22,5 @@
 - Follow DRY — extract repeated blocks (5+ lines) into shared methods, but don't over-extract trivial one-liners
 - In generic types, move methods that don't depend on the type parameter to a non-generic base class or static helper to avoid redundant JIT instantiations per closed type
 - Do not use `#region` / `#endregion`
+- Follow linting rules as defined in [`.github/workflows/code-lint.yml`](../../.github/workflows/code-lint.yml), including whitespace formatting, spelling, removing unused `using`
+- Prefer constants to magic numbers where the value is reused or may be changed in future

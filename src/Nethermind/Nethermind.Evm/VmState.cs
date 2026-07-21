@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -21,13 +20,22 @@ namespace Nethermind.Evm;
 public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
+    private static readonly
+#if ZK_EVM
+        ZkEvmQueue<VmState<TGasPolicy>>
+#else
+        System.Collections.Concurrent.ConcurrentQueue<VmState<TGasPolicy>>
+#endif
+        _statePool = new();
+
     private static readonly StackPool _stackPool = new();
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
     public long InitialStateGasUsed;
-    public long StateGasRefundPending;
+    // State-gas refund already made spendable in this frame while its accounting correction
+    // still has to reach the ancestor frame that originally paid the state gas.
+    public long StateGasRefundAdvanced;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -39,6 +47,12 @@ public class VmState<TGasPolicy> : IDisposable
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
     public bool IsContinuation { get; set; } // TODO: move to CallEnv
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
+
+    /// <summary>
+    /// EIP-8037: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for this (dead)
+    /// recipient; on this frame's error/revert no account is created, so the parent refunds it.
+    /// </summary>
+    public bool NewAccountCharged { get; private set; } // TODO: move to CallEnv
 
     private bool _isDisposed = true;
 
@@ -66,6 +80,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: true,
             isStatic: false,
             isCreateOnPreExistingAccount: false,
+            newAccountCharged: false,
             env: env,
             stateForAccessLists: accessedItems,
             snapshot: snapshot);
@@ -85,7 +100,8 @@ public class VmState<TGasPolicy> : IDisposable
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
-        bool isTopLevel = false)
+        bool isTopLevel = false,
+        bool newAccountCharged = false)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -96,6 +112,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: isTopLevel,
             isStatic: isStatic,
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            newAccountCharged: newAccountCharged,
             env: env,
             stateForAccessLists: stateForAccessLists,
             snapshot: snapshot);
@@ -103,7 +120,10 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     private static VmState<TGasPolicy> Rent()
-        => _statePool.TryDequeue(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
+    {
+        if (_statePool.TryDequeue(out VmState<TGasPolicy>? state)) return state;
+        return new VmState<TGasPolicy>();
+    }
 
     [SkipLocalsInit]
     private void Initialize(
@@ -114,6 +134,7 @@ public class VmState<TGasPolicy> : IDisposable
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        bool newAccountCharged,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
@@ -121,15 +142,21 @@ public class VmState<TGasPolicy> : IDisposable
         _env = env;
         _snapshot = snapshot;
         _accessTracker = stateForAccessLists;
+#if ZK_EVM
+        // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
+        // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
+        // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
+        _memory = default;
+#endif
         if (executionType.IsAnyCreate())
         {
             _accessTracker.WasCreated(env.ExecutingAccount);
         }
         _accessTracker.TakeSnapshot();
-        Debug.Assert(StateGasRefundPending == 0, "Pooled VmState returned with uncleared StateGasRefundPending.");
+        Debug.Assert(StateGasRefundAdvanced == 0, "Pooled VmState returned with uncleared StateGasRefundAdvanced.");
         Gas = gas;
         InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
-        StateGasRefundPending = 0;
+        StateGasRefundAdvanced = 0;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -141,6 +168,7 @@ public class VmState<TGasPolicy> : IDisposable
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+        NewAccountCharged = newAccountCharged;
 
         if (!_isDisposed)
         {
@@ -197,7 +225,7 @@ public class VmState<TGasPolicy> : IDisposable
         if (!IsTopLevel) _env?.Dispose();
         _env = null;
         _snapshot = default;
-        StateGasRefundPending = 0;
+        StateGasRefundAdvanced = 0;
 
         _statePool.Enqueue(this);
 
@@ -282,7 +310,8 @@ public class VmState<TGasPolicy> : IDisposable
     public void CommitToParent(VmState<TGasPolicy> parentState)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        parentState.Refund += Refund;
+        // `checked` traps a buggy refund propagation that would otherwise wrap silently.
+        parentState.Refund = checked(parentState.Refund + Refund);
         _canRestore = false; // we can't restore if we committed
     }
 }

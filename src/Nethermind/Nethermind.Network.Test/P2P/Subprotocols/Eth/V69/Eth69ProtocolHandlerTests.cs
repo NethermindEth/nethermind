@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -66,7 +67,7 @@ public class Eth69ProtocolHandlerTests
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
         _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
-        _syncManager.LowestBlock.Returns(0);
+        _syncManager.LowestBlock.Returns(0UL);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
@@ -202,9 +203,8 @@ public class Eth69ProtocolHandlerTests
             Build.A.Receipt.WithAllFieldsFilled.TestObject
         ];
 
-        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
         _syncManager.GetReceipts(Keccak.Zero).Returns(blockReceipts);
-        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns((TxReceipt[]?)null);
         _syncManager.GetReceipts(TestItem.KeccakB).Returns(
         [
             Build.A.Receipt.WithAllFieldsFilled.TestObject
@@ -219,11 +219,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
     {
-        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
-        _syncManager.GetReceipts(Keccak.Zero).Returns(
-        [
-            Build.A.Receipt.WithAllFieldsFilled.TestObject
-        ]);
+        _syncManager.GetReceipts(Keccak.Zero).Returns((TxReceipt[]?)null);
 
         IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
@@ -281,36 +277,34 @@ public class Eth69ProtocolHandlerTests
         }
     }
 
-    [Test]
-    public void Should_disconnect_on_invalid_BlockRangeUpdate()
+    private static IEnumerable<TestCaseData> InvalidBlockRangeUpdates()
     {
-        using BlockRangeUpdateMessage msg = new()
-        {
-            EarliestBlock = 2,
-            LatestBlock = 1,
-            LatestBlockHash = Keccak.Compute("2")
-        };
-
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
-
-        _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+        yield return new TestCaseData(2UL, 1UL, Keccak.Compute("2")).SetName("earliest_after_latest");
+        yield return new TestCaseData(1UL, 2UL, Keccak.Zero).SetName("empty_hash");
     }
 
-    [Test]
-    public void Should_disconnect_on_invalid_BlockRangeUpdate_empty_hash()
+    [TestCaseSource(nameof(InvalidBlockRangeUpdates))]
+    public void Should_disconnect_on_invalid_BlockRangeUpdate(ulong earliestBlock, ulong latestBlock, Hash256 latestBlockHash)
     {
+        HandleIncomingStatusMessage();
+        ulong headNumber = _handler.HeadNumber;
+        Hash256? headHash = _handler.HeadHash;
+
         using BlockRangeUpdateMessage msg = new()
         {
-            EarliestBlock = 1,
-            LatestBlock = 2,
-            LatestBlockHash = Keccak.Zero
+            EarliestBlock = earliestBlock,
+            LatestBlock = latestBlock,
+            LatestBlockHash = latestBlockHash
         };
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+        using (Assert.EnterMultipleScope())
+        {
+            _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
+            Assert.That(_handler.HeadNumber, Is.EqualTo(headNumber));
+            Assert.That(_handler.HeadHash, Is.EqualTo(headHash));
+        }
     }
 
     [Test]

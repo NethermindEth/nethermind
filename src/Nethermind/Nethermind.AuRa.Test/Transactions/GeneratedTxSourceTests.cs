@@ -21,10 +21,11 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             ITxSource innerSource = Substitute.For<ITxSource>();
             ITxSealer txSealer = Substitute.For<ITxSealer>();
+            txSealer.TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(true);
             IStateReader stateReader = Substitute.For<IStateReader>();
 
             BlockHeader parent = Build.A.BlockHeader.TestObject;
-            long gasLimit = long.MaxValue;
+            ulong gasLimit = ulong.MaxValue;
             Transaction poolTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
             GeneratedTransaction generatedTx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressB).TestObject;
             innerSource.GetTransactions(parent, gasLimit).Returns(new[] { poolTx, generatedTx });
@@ -33,8 +34,8 @@ namespace Nethermind.AuRa.Test.Transactions
 
             txSource.GetTransactions(parent, gasLimit).ToArray();
 
-            txSealer.Received().Seal(generatedTx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
-            txSealer.DidNotReceive().Seal(poolTx, Arg.Any<TxHandlingOptions>());
+            txSealer.Received().TrySeal(generatedTx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
+            txSealer.DidNotReceive().TrySeal(poolTx, Arg.Any<TxHandlingOptions>());
         }
     }
 }

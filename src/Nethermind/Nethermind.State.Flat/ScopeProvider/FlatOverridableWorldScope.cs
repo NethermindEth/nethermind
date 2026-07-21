@@ -131,7 +131,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     {
         public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
         {
             StateId currentState = new(baseBlock);
             SnapshotBundle snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
@@ -174,7 +174,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public byte[]? GetCode(in ValueHash256 codeHash)
             => codeHash == ValueKeccak.OfAnEmptyString ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
         {
             StateId stateId = new(baseBlock);
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
@@ -183,7 +183,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);
 
             PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
-            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
+            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);

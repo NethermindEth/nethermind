@@ -7,6 +7,7 @@ namespace Nethermind.JsonRpc;
 
 public interface IJsonRpcService
 {
-    Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context);
-    JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null);
+    ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context);
+    JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null);
+    JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, string? methodName = null);
 }

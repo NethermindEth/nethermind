@@ -32,6 +32,8 @@ public class ShutterTxLoader(
     IAbiEncoder abiEncoder,
     ILogManager logManager)
 {
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
+
     private readonly ShutterLogScanner _logScanner = new(
                 new(new Address(cfg.SequencerContractAddress!)),
                 logFinder,
@@ -190,12 +192,12 @@ public class ShutterTxLoader(
 
     private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
     {
-        Transaction tx = TxDecoder.Instance.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
+        Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
         tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
         return tx;
     }
 
-    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, long headBlockNumber)
+    private IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer, ulong headBlockNumber)
     {
         lock (_events)
         {
@@ -240,7 +242,7 @@ public class ShutterTxLoader(
         };
     }
 
-    private void LoadFromScanningLogs(ulong eon, ulong txPointer, long headBlockNumber)
+    private void LoadFromScanningLogs(ulong eon, ulong txPointer, ulong headBlockNumber)
     {
         _txPointer = txPointer;
 

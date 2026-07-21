@@ -12,12 +12,12 @@ namespace Nethermind.KeyStore.Test;
 
 public class FilePasswordProviderTests
 {
-    private static readonly List<(string Name, string Content)> _files = new()
-    {
+    private static readonly List<(string Name, string Content)> _files =
+    [
         ("TestingPasswordProviderFileF1", "PF1"),
         ("TestingPasswordProviderFileF2", "P    F2"),
         ("TestingPasswordProviderFileF3", "   P    F3    ")
-    };
+    ];
 
     private string TestDir => TestContext.CurrentContext.WorkDirectory;
 

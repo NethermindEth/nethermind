@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.IO.Pipelines;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -15,24 +17,24 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public interface IDebugBridge
 {
-    GethLikeTxTrace GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    GethLikeTxTrace GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    GethLikeTxTrace GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
-    IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     Block? GetBlock(BlockParameter param);
     byte[] GetBlockRlp(BlockParameter param);
     byte[] GetDbValue(string dbName, byte[] key);
     object GetConfigValue(string category, string name);
-    ChainLevelInfo GetLevelInfo(long number);
-    int DeleteChainSlice(long startNumber, bool force = false);
+    ChainLevelInfo GetLevelInfo(ulong number);
+    int DeleteChainSlice(ulong startNumber, bool force = false);
     void UpdateHeadBlock(Hash256 blockHash);
-    Task<bool> MigrateReceipts(long from, long to);
+    Task<bool> MigrateReceipts(ulong from, ulong to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     SyncReportSummary GetCurrentSyncStage();
     bool HaveNotSyncedHeadersYet();
@@ -42,5 +44,5 @@ public interface IDebugBridge
     TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
     Transaction? GetTransactionFromHash(Hash256 hash);
     Hash256? GetTransactionBlockHash(Hash256 transactionHash);
-    IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
 }

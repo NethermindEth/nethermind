@@ -19,7 +19,7 @@ namespace Nethermind.Core;
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    public Block(BlockHeader header, BlockBody body, BlockAccessList? bal = null)
+    public Block(BlockHeader header, BlockBody body, ReadOnlyBlockAccessList? bal = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = body ?? throw new ArgumentNullException(nameof(body));
@@ -30,7 +30,7 @@ public class Block
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null,
-        BlockAccessList? blockAccessList = null)
+        ReadOnlyBlockAccessList? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
@@ -92,15 +92,15 @@ public class Block
 
     public Hash256? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
 
-    public long GasLimit => Header.GasLimit; // do not add setter here
+    public ulong GasLimit => Header.GasLimit; // do not add setter here
 
-    public long GasUsed => Header.GasUsed; // do not add setter here
+    public ulong GasUsed => Header.GasUsed; // do not add setter here
 
     public ulong Timestamp => Header.Timestamp; // do not add setter here
 
     public DateTime TimestampDate => Header.TimestampDate; // do not add setter here
 
-    public long Number => Header.Number; // do not add setter here
+    public ulong Number => Header.Number; // do not add setter here
 
     public UInt256 Difficulty => Header.Difficulty; // do not add setter here
 
@@ -126,10 +126,10 @@ public class Block
 
     // suggested BAL from network
     [JsonIgnore]
-    public BlockAccessList? BlockAccessList { get; set; }
+    public ReadOnlyBlockAccessList? BlockAccessList { get; set; }
 
     [JsonIgnore]
-    public BlockAccessList? GeneratedBlockAccessList { get; set; }
+    public GeneratedBlockAccessList? GeneratedBlockAccessList { get; set; }
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }

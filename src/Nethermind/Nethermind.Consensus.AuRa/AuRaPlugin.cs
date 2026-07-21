@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -25,9 +24,11 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
@@ -39,7 +40,6 @@ namespace Nethermind.Consensus.AuRa
     /// </summary>
     public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
-        private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus Engine";
@@ -48,23 +48,8 @@ namespace Nethermind.Consensus.AuRa
 
         public string SealEngineType => Core.SealEngineType.AuRa;
 
-        private StartBlockProducerAuRa? _blockProducerStarter;
-
-        private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
-
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-        public Task Init(INethermindApi nethermindApi)
-        {
-            _nethermindApi = nethermindApi as AuRaNethermindApi;
-            return Task.CompletedTask;
-        }
 
-        public IBlockProducer InitBlockProducer() => BlockProducerStarter!.BuildProducer();
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
-                BlockProducerStarter.CreateTrigger(),
-                _nethermindApi.BlockTree,
-                blockProducer);
 
         public IModule Module => new AuRaModule(chainSpec);
 
@@ -80,18 +65,24 @@ namespace Nethermind.Consensus.AuRa
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
             builder
+                .AddModule(new AuRaHeaderModule())
+                .Intercept<ChainSpec>(AuRaChainSpecLoader.ProcessChainSpec)
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
-                .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
+                .AddSingleton<AuRaTxPoolTxSourceFactory>()
+                .AddSingleton<AuRaBlockProducerEnvFactory>()
+                .AddSingleton<AuRaBlockProducerFactory>()
+                .Bind<IBlockProducerFactory, AuRaBlockProducerFactory>()
+                .Bind<IBlockProducerRunnerFactory, AuRaBlockProducerFactory>()
                 .AddSingleton<AuraStatefulComponents>()
                 .AddSingleton<TxAuRaFilterBuilders>()
                 .AddSingleton<PermissionBasedTxFilter.Cache>()
                 .AddSingleton<IValidatorStore, ValidatorStore>()
                 .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
                 .AddSingleton<ReportingContractBasedValidator.Cache>()
-                .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
-                    ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
+                .AddSingleton<IReportingValidator, IMainProcessingContext, AuraStatefulComponents>(
+                    static (_, statefulComponents) => statefulComponents.MainProcessingReportingValidator)
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
 
                 // Steps override
@@ -102,6 +93,12 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IMainProcessingModule, AuraMainProcessingModule>()
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
+                .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters>(
+                    (blockTree, chainLevelInfoRepository, validatorStore, logManager, param) =>
+                        new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition))
+
+                .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
+                .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
@@ -123,7 +120,7 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
-            if (Rlp.GetStreamEncoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+            if (Rlp.GetDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
         /// <summary>
@@ -143,7 +140,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
-                IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
+                IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
                 (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
                 ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 

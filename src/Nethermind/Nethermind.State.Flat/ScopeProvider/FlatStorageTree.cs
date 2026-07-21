@@ -62,6 +62,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     public Hash256 RootHash => _tree.RootHash;
+
+    internal bool IsDisposed => _scope.IsDisposed;
+
     public byte[] Get(in UInt256 index)
     {
         byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
@@ -92,7 +95,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
-            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId))
+            // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
+            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId)
+                || _trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId))
                 _scope.IncrementOutstandingWarmups();
         }
     }
@@ -107,21 +112,31 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 return false;
             }
 
-            // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
-            // this is just to warm up the nodes.
-            ValueHash256 key = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(index, ref key);
+            if (!_bundle.TryLeaseReadOnlyBundle())
+            {
+                return false;
+            }
 
-            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
-            return true;
+            try
+            {
+                // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
+                // this is just to warm up the nodes.
+                ValueHash256 key = ValueKeccak.Zero;
+                StorageTree.ComputeKeyWithLookup(index, ref key);
+
+                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                return true;
+            }
+            finally
+            {
+                _bundle.ReleaseReadOnlyBundleLease();
+            }
         }
         finally
         {
             _scope.DecrementOutstandingWarmups();
         }
     }
-
-    public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
 

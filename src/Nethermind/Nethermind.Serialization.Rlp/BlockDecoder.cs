@@ -8,10 +8,11 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class BlockDecoder(IHeaderDecoder headerDecoder) : RlpValueDecoder<Block>
+    public sealed class BlockDecoder(IHeaderDecoder headerDecoder) : RlpDecoder<Block>
     {
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
         private readonly BlockBodyDecoder _blockBodyDecoder = new(headerDecoder);
+        private readonly WithdrawalDecoder _withdrawalDecoder = new();
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
@@ -56,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        protected override Block? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Block? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -78,67 +79,68 @@ namespace Nethermind.Serialization.Rlp
             return block;
         }
 
-        public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
                 return Rlp.OfEmptyList;
             }
 
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new(rlpStream.Data.ToArray());
+            byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+            RlpWriter writer = new(bytes);
+            Encode(ref writer, item, rlpBehaviors);
+            return new(bytes);
         }
 
-        public override void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
             (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            _headerDecoder.Encode(stream, item.Header);
-            stream.StartSequence(txsLength);
+            writer.StartSequence(contentLength);
+            _headerDecoder.Encode(ref writer, item.Header);
+            writer.StartSequence(txsLength);
 
             byte[][]? encodedTxs = item.EncodedTransactions;
             if (encodedTxs is not null)
             {
                 for (int i = 0; i < encodedTxs.Length; i++)
                 {
-                    TxDecoder.WriteWrappedFormat(stream, item.Transactions[i].Type, encodedTxs[i]);
+                    TxDecoder.WriteWrappedFormat(ref writer, item.Transactions[i].Type, encodedTxs[i]);
                 }
             }
             else
             {
                 for (int i = 0; i < item.Transactions.Length; i++)
                 {
-                    stream.Encode(item.Transactions[i]);
+                    TxDecoder.Instance.Encode(ref writer, item.Transactions[i]);
                 }
             }
 
-            stream.StartSequence(unclesLength);
+            writer.StartSequence(unclesLength);
             for (int i = 0; i < item.Uncles.Length; i++)
             {
-                stream.Encode(item.Uncles[i]);
+                _headerDecoder.Encode(ref writer, item.Uncles[i]);
             }
 
             if (withdrawalsLength.HasValue)
             {
-                stream.StartSequence(withdrawalsLength.Value);
+                writer.StartSequence(withdrawalsLength.Value);
 
                 for (int i = 0; i < item.Withdrawals.Length; i++)
                 {
-                    stream.Encode(item.Withdrawals[i]);
+                    _withdrawalDecoder.Encode(ref writer, item.Withdrawals[i]);
                 }
             }
         }
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
-            Rlp.ValueDecoderContext decoderContext = new(memory, true);
+            RlpReader decoderContext = new(memory.Span);
 
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -154,7 +156,8 @@ namespace Nethermind.Serialization.Rlp
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);
 
-            Memory<byte> transactionMemory = decoderContext.ReadMemory(contentLength);
+            Memory<byte> transactionMemory = memory.Slice(decoderContext.Position, contentLength);
+            decoderContext.SkipBytes(contentLength);
 
             decoderContext.SkipItem(); // Skip uncles
 

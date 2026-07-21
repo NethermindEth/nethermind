@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Setup()
         {
             _ctx = new();
-            _disposables = new();
+            _disposables = [];
             _ctx.Session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
         }
 

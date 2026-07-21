@@ -18,13 +18,16 @@ public class NullBlockAccessListManager : IBlockAccessListManager
 
     private NullBlockAccessListManager() { }
 
-    public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled => false;
     public bool ParallelExecutionEnabled => false;
+    public bool BatchReadEnabled => false;
+    public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options) { }
+    public void WaitForBalWarmup() { }
     public void Setup(Block block) { }
-    public void SpendGas(long gas) { }
+    public void SpendGas(ulong gas) { }
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     public ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null) => throw new InvalidOperationException("NullBlockAccessListManager does not provide transaction processors.");
     public void NextTransaction() { }
@@ -37,5 +40,4 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }
     public void ProcessWithdrawals(Block block, IReleaseSpec spec) { }
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec) { }
-    public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress) { }
 }

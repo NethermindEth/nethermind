@@ -17,7 +17,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
     private readonly OpcodeCounter _counter;
     private readonly BlockRange _range;
     private readonly ILogger _logger;
-    private readonly Action<long> _onBlockCompleted;
+    private readonly Action<ulong> _onBlockCompleted;
     private readonly string _sessionId;
 
     // Dual output writers
@@ -29,8 +29,9 @@ public sealed class RealTimeTracer : IAsyncDisposable
     private readonly Stopwatch _stopwatch;
     private readonly DateTime _startedAt;
     private readonly SemaphoreSlim _cumulativeWriteLock = new(1, 1);
-    private long _firstBlock = -1;
-    private long _lastBlock = -1;
+    private ulong _firstBlock;
+    private ulong _lastBlock;
+    private bool _hasProcessedAnyBlock;
     private long _totalBlocksProcessed;
     private bool _rangeCompleted;
     private Task? _rangeCompleteFinalizeTask;
@@ -64,7 +65,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
         BlockRange range,
         string outputDirectory,
         string sessionId,
-        Action<long> onBlockCompleted,
+        Action<ulong> onBlockCompleted,
         ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(outputDirectory);
@@ -113,9 +114,10 @@ public sealed class RealTimeTracer : IAsyncDisposable
 
         // Update tracking state
         _totalBlocksProcessed++;
-        if (_firstBlock < 0)
+        if (!_hasProcessedAnyBlock)
         {
             _firstBlock = trace.BlockNumber;
+            _hasProcessedAnyBlock = true;
         }
         _lastBlock = trace.BlockNumber;
 
@@ -172,7 +174,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
             {
                 BlockNumber = trace.BlockNumber,
                 ParentHash = trace.ParentHash.ToString(),
-                Timestamp = (long)trace.Timestamp,
+                Timestamp = trace.Timestamp,
                 TransactionCount = trace.TransactionCount,
                 GasUsed = null,
                 TracedAt = DateTime.UtcNow
@@ -188,8 +190,8 @@ public sealed class RealTimeTracer : IAsyncDisposable
         {
             Metadata = new CumulativeMetadata
             {
-                FirstBlock = _firstBlock >= 0 ? _firstBlock : _range.StartBlock,
-                LastBlock = _lastBlock >= 0 ? _lastBlock : _range.StartBlock,
+                FirstBlock = _hasProcessedAnyBlock ? _firstBlock : _range.StartBlock,
+                LastBlock = _hasProcessedAnyBlock ? _lastBlock : _range.StartBlock,
                 TotalBlocksProcessed = _totalBlocksProcessed,
                 SessionId = _sessionId,
                 Mode = "RealTime",

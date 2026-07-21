@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using Nethermind.Core;
+
 namespace Nethermind.Taiko.ZkGas;
 
 /// <summary>
@@ -9,12 +13,34 @@ namespace Nethermind.Taiko.ZkGas;
 /// </summary>
 /// <param name="blockZkGasLimit">Maximum ZK gas permitted within a single block.</param>
 /// <param name="txIntrinsicZkGas">Flat ZK gas charged once per transaction before any opcode runs.</param>
-public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas)
+/// <param name="opcodeMultipliers">Per-opcode multiplier table charged against, indexed by opcode byte.
+/// Empty selects an all-<see cref="ZkGasSchedule.FailsafeMultiplier"/> table (used pre-Unzen, when the
+/// tracer still runs but its totals are discarded by the block processor).</param>
+/// <param name="precompileMultipliers">Per-precompile multiplier dictionary, keyed by full
+/// precompile address. Addresses not in the dictionary (including a null/empty argument) are
+/// charged at <see cref="ZkGasSchedule.FailsafeMultiplier"/>.</param>
+public class ZkGasMeter(
+    ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
+    ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas,
+    ReadOnlyMemory<ushort> opcodeMultipliers = default,
+    FrozenDictionary<AddressAsKey, ushort>? precompileMultipliers = null)
 {
+    private static readonly ReadOnlyMemory<ushort> _failsafeOpcodeTable = BuildFailsafeOpcodeTable();
+
+    private static ushort[] BuildFailsafeOpcodeTable()
+    {
+        ushort[] a = new ushort[256];
+        a.AsSpan().Fill(ZkGasSchedule.FailsafeMultiplier);
+        return a;
+    }
+
     /// <summary>Per-block ZK gas ceiling captured at construction time.</summary>
     private readonly ulong _blockZkGasLimit = blockZkGasLimit;
 
     private readonly ulong _txIntrinsicZkGas = txIntrinsicZkGas;
+
+    private readonly ReadOnlyMemory<ushort> _opcodeMultipliers = opcodeMultipliers.IsEmpty ? _failsafeOpcodeTable : opcodeMultipliers;
+    private readonly FrozenDictionary<AddressAsKey, ushort> _precompileMultipliers = precompileMultipliers ?? FrozenDictionary<AddressAsKey, ushort>.Empty;
 
     /// <summary>Finalized ZK gas accumulated from fully committed transactions.</summary>
     private ulong _blockZkGasUsed;
@@ -50,13 +76,19 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
 
     /// <summary>
     /// Promotes the current transaction's ZK gas into the finalized block total.
-    /// Returns false if the commit would exceed the block limit.
-    /// When the commit succeeds, <see cref="IsLimitExceeded"/> is reset to <c>false</c>
-    /// so that a temporary projection spike during opcode charging does not bleed into
-    /// subsequent transactions.
+    /// Returns <c>false</c> and leaves block state (<see cref="BlockZkGasUsed"/>,
+    /// <see cref="IsLimitExceeded"/>) unchanged when either <see cref="IsLimitExceeded"/>
+    /// is already set (a prior charge failed mid-tx, leaving <c>_txZkGasUsed</c>
+    /// underestimated) or the commit would overflow the block limit.
     /// </summary>
     public bool CommitTransaction()
     {
+        if (IsLimitExceeded)
+        {
+            _txZkGasUsed = 0;
+            return false;
+        }
+
         ulong next = _blockZkGasUsed + _txZkGasUsed;
         if (next < _blockZkGasUsed) // overflow
         {
@@ -74,7 +106,6 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
 
         _blockZkGasUsed = next;
         _txZkGasUsed = 0;
-        IsLimitExceeded = false; // successful commit – clear any temporary projection spike
         return true;
     }
 
@@ -98,17 +129,19 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
     /// </summary>
     public bool ChargeOpcode(byte opcode, ulong rawGas)
     {
-        ulong multiplier = ZkGasSchedule.OpcodeMultipliers[opcode];
+        ulong multiplier = _opcodeMultipliers.Span[opcode];
         return ChargeAmount(rawGas, multiplier);
     }
 
     /// <summary>
-    /// Charges ZK gas for a single precompile execution.
-    /// Returns false if the charge would exceed the block limit.
+    /// Charges ZK gas for a single precompile execution, keyed by the precompile's full address
+    /// so canonical EVM precompiles and Taiko-extended precompiles can coexist without colliding
+    /// by low byte. Returns false if the charge would exceed the block limit. An address absent
+    /// from the multiplier dictionary is charged at <see cref="ZkGasSchedule.FailsafeMultiplier"/>.
     /// </summary>
-    public bool ChargePrecompile(byte addressLowByte, ulong gasUsed)
+    public bool ChargePrecompile(Address address, ulong gasUsed)
     {
-        ulong multiplier = ZkGasSchedule.PrecompileMultipliers[addressLowByte];
+        ulong multiplier = _precompileMultipliers.TryGetValue(address, out ushort m) ? m : ZkGasSchedule.FailsafeMultiplier;
         return ChargeAmount(gasUsed, multiplier);
     }
 
@@ -119,15 +152,12 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <strong>Invariant – do not call <see cref="CommitTransaction"/> while
-    /// <see cref="IsLimitExceeded"/> is <c>true</c>.</strong>
     /// When this method returns <c>false</c>, <c>_txZkGasUsed</c> is intentionally <em>not</em>
     /// updated. The opcode has already executed inside the EVM (the tracer charges after
     /// execution), so its ZK cost was consumed but is not reflected in the tracked total.
-    /// At that point <c>_txZkGasUsed</c> understates the true ZK cost of the transaction.
-    /// Committing an under-counted transaction would produce a block that exceeds the ZK
-    /// prover budget and cannot be proven. The caller must cancel the transaction instead
-    /// (via <see cref="CancelTransaction"/>).
+    /// <see cref="CommitTransaction"/> enforces this by refusing to commit when
+    /// <see cref="IsLimitExceeded"/> is set. Call <see cref="CancelTransaction"/> to discard
+    /// the in-flight total and reset the flag.
     /// </para>
     /// </remarks>
     private bool ChargeAmount(ulong rawGas, ulong multiplier)

@@ -52,7 +52,7 @@ public class FlatStateReader(
 
     public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb[codeHash.Bytes];
 
-    public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+    public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
     {
         StateId stateId = new(baseBlock);
 
@@ -62,7 +62,7 @@ public class FlatStateReader(
         ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
 
         PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
-        patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
+        patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));

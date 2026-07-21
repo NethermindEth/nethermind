@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,16 +27,15 @@ namespace Nethermind.Synchronization.FastBlocks;
 
 public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatch?>
 {
-    protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
+    protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
-    protected override long SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
+    protected override ulong SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
     protected override Func<bool> HasPivot =>
         () =>
         {
-            (long pivotNumber, Hash256 pivotHash) = _blockTree.SyncPivot;
-            BlockHeader? pivotHeader = _blockTree.FindHeader(pivotHash, blockNumber: pivotNumber);
+            BlockHeader? pivotHeader = FindPivotHeader(out ulong pivotNumber, out Hash256 pivotHash);
             return pivotHeader is not null &&
-                   (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotHash));
+                   (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotNumber, pivotHash));
         };
 
     private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
@@ -48,13 +47,15 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private readonly ISyncPointers _syncPointers;
     private readonly ISyncPeerPool _syncPeerPool;
     private readonly BlockAccessListDownloadStrategy _blockAccessListDownloadStrategy;
+    private readonly bool _blockAccessListsEverEnabled;
 
     private SyncStatusList _syncStatusList;
 
-    private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || AllDownloaded;
-    private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? long.MaxValue) <= _barrier;
+    private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded;
+    private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? ulong.MaxValue) <= _barrier;
+    private bool PivotHasNoBlockAccessLists => FindPivotHeader(out _, out _) is { BlockAccessListHash: null };
 
-    public override bool IsFinished => AllDownloaded;
+    public override bool IsFinished => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded || PivotHasNoBlockAccessLists;
     public override string FeedName => nameof(BlockAccessListsSyncFeed);
 
     public BlockAccessListsSyncFeed(
@@ -76,13 +77,14 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncReport = syncReport;
         _blockTree = blockTree;
         _blockAccessListDownloadStrategy = new(blockTree, syncReport);
+        _blockAccessListsEverEnabled = specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
 
         if (!_syncConfig.FastSync)
         {
             throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
         }
 
-        _pivotNumber = -1; // First reset in `InitializeFeed`.
+        _pivotNumber = 0; // First reset in `InitializeFeed`.
     }
 
     public override void InitializeFeed()
@@ -122,6 +124,13 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             PostFinishCleanUp();
             return false;
         }
+
+        if (PivotHasNoBlockAccessLists)
+        {
+            FallAsleep();
+            return false;
+        }
+
         return true;
     }
 
@@ -131,30 +140,38 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncReport.FastBlockAccessLists.MarkEnd();
     }
 
+    private BlockHeader? FindPivotHeader(out ulong pivotNumber, out Hash256 pivotHash)
+    {
+        (pivotNumber, pivotHash) = _blockTree.SyncPivot;
+        return _blockTree.FindHeader(pivotHash, blockNumber: pivotNumber);
+    }
+
     public override async Task<BlockAccessListsSyncBatch?> PrepareRequest(CancellationToken token = default)
     {
         BlockAccessListsSyncBatch? batch = null;
-        if (ShouldBuildANewBatch())
+        if (!ShouldBuildANewBatch())
         {
-            int requestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, _approximateAllocationStrategy, AllocationContexts.BlockAccessLists, token))
-                ?? GethSyncLimits.MaxBodyFetch;
+            return null;
+        }
 
-            BlockInfo?[] infos;
-            while (!_syncStatusList.TryGetInfosForBatch(requestSize, _blockAccessListDownloadStrategy, out infos))
-            {
-                token.ThrowIfCancellationRequested();
-                _syncPointers.LowestInsertedBlockAccessListBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
-                UpdateSyncReport();
-            }
+        int requestSize =
+            (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, _approximateAllocationStrategy, AllocationContexts.BlockAccessLists, token))
+            ?? GethSyncLimits.MaxBodyFetch;
 
-            if (infos[0] is not null)
+        BlockInfo?[] infos;
+        while (!_syncStatusList.TryGetInfosForBatch(requestSize, _blockAccessListDownloadStrategy, out infos))
+        {
+            token.ThrowIfCancellationRequested();
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
+            UpdateSyncReport();
+        }
+
+        if (infos[0] is not null)
+        {
+            batch = new BlockAccessListsSyncBatch(infos)
             {
-                batch = new BlockAccessListsSyncBatch(infos)
-                {
-                    Prioritized = true
-                };
-            }
+                Prioritized = true
+            };
         }
 
         _syncPointers.LowestInsertedBlockAccessListBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
@@ -220,11 +237,11 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         {
             BlockInfo? blockInfo = blockInfos[i];
             bool hasAccessListResponse = (batch.Response?.Count ?? 0) > i;
-            ReadOnlySpan<byte> accessListRlp = hasAccessListResponse
+            byte[]? accessListRlp = hasAccessListResponse
                 ? batch.Response![i]
-                : ReadOnlySpan<byte>.Empty;
+                : null;
 
-            if (!accessListRlp.IsEmpty)
+            if (accessListRlp is not null)
             {
                 // last batch
                 if (blockInfo is null)
@@ -236,7 +253,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 bool isValid = !hasBreachedProtocol && IsValidAccessList(blockInfo, accessListRlp, out errorMessage);
                 if (isValid)
                 {
-                    _blockAccessListStore.Insert(blockInfo.BlockHash, accessListRlp);
+                    _blockAccessListStore.Insert(blockInfo.BlockNumber, blockInfo.BlockHash, accessListRlp);
                     _syncStatusList.MarkInserted(blockInfo.BlockNumber);
                     validResponsesCount++;
                 }
@@ -287,7 +304,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport) : IBlockDownloadStrategy
     {
-        private long _lowestQueriedBlockWithAccessLists = long.MaxValue;
+        private ulong _lowestQueriedBlockWithAccessLists = ulong.MaxValue;
 
         public bool ShouldDownloadBlock(BlockInfo info)
         {
@@ -304,10 +321,10 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
             if (header.BlockAccessListHash is not null)
             {
-                long currentLowest = Interlocked.Read(ref _lowestQueriedBlockWithAccessLists);
+                ulong currentLowest = Interlocked.Read(ref _lowestQueriedBlockWithAccessLists);
                 while (info.BlockNumber < currentLowest)
                 {
-                    long previousLowest = Interlocked.CompareExchange(ref _lowestQueriedBlockWithAccessLists, info.BlockNumber, currentLowest);
+                    ulong previousLowest = Interlocked.CompareExchange(ref _lowestQueriedBlockWithAccessLists, info.BlockNumber, currentLowest);
                     if (previousLowest == currentLowest)
                     {
                         break;

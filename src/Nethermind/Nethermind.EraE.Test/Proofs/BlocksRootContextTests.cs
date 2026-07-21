@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -18,7 +17,7 @@ public class BlocksRootContextTests
     {
         using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
 
-        sut.AccumulatorType.Should().Be(AccumulatorType.HistoricalHashesAccumulator);
+        Assert.That(sut.AccumulatorType, Is.EqualTo(AccumulatorType.HistoricalHashesAccumulator));
     }
 
     [Test]
@@ -26,7 +25,7 @@ public class BlocksRootContextTests
     {
         using BlocksRootContext sut = CreateHistoricalRootsContext();
 
-        sut.AccumulatorType.Should().Be(AccumulatorType.HistoricalRoots);
+        Assert.That(sut.AccumulatorType, Is.EqualTo(AccumulatorType.HistoricalRoots));
     }
 
     [Test]
@@ -34,7 +33,7 @@ public class BlocksRootContextTests
     {
         using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp, MainnetSpecProvider.Instance);
 
-        sut.AccumulatorType.Should().Be(AccumulatorType.HistoricalSummaries);
+        Assert.That(sut.AccumulatorType, Is.EqualTo(AccumulatorType.HistoricalSummaries));
     }
 
     [Test]
@@ -45,7 +44,7 @@ public class BlocksRootContextTests
 
         sut.ProcessBlock(block);
 
-        sut.Populated.Should().BeTrue();
+        Assert.That(sut.Populated, Is.True);
     }
 
     [Test]
@@ -53,7 +52,7 @@ public class BlocksRootContextTests
     {
         using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
 
-        sut.Invoking(c => _ = c.AccumulatorRoot).Should().Throw<InvalidOperationException>();
+        Assert.That(() => _ = sut.AccumulatorRoot, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -63,7 +62,7 @@ public class BlocksRootContextTests
 
         sut.FinalizeContext();
 
-        sut.Invoking(c => _ = c.AccumulatorRoot).Should().Throw<InvalidOperationException>();
+        Assert.That(() => _ = sut.AccumulatorRoot, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -71,7 +70,7 @@ public class BlocksRootContextTests
     {
         using BlocksRootContext sut = CreateHistoricalRootsContext();
 
-        sut.Invoking(c => _ = c.HistoricalRoot).Should().Throw<InvalidOperationException>();
+        Assert.That(() => _ = sut.HistoricalRoot, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -79,7 +78,7 @@ public class BlocksRootContextTests
     {
         using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp, MainnetSpecProvider.Instance);
 
-        sut.Invoking(c => _ = c.HistoricalSummary).Should().Throw<InvalidOperationException>();
+        Assert.That(() => _ = sut.HistoricalSummary, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -91,7 +90,7 @@ public class BlocksRootContextTests
 
         sut.FinalizeContext();
 
-        sut.Invoking(c => _ = c.AccumulatorRoot).Should().NotThrow();
+        Assert.That(() => _ = sut.AccumulatorRoot, Throws.Nothing);
     }
 
     [Test]
@@ -105,7 +104,7 @@ public class BlocksRootContextTests
 
         sut.FinalizeContext();
 
-        sut.Invoking(c => _ = c.HistoricalRoot).Should().NotThrow();
+        Assert.That(() => _ = sut.HistoricalRoot, Throws.Nothing);
     }
 
     [Test]
@@ -119,7 +118,7 @@ public class BlocksRootContextTests
 
         sut.FinalizeContext();
 
-        sut.Invoking(c => _ = c.HistoricalSummary).Should().NotThrow();
+        Assert.That(() => _ = sut.HistoricalSummary, Throws.Nothing);
     }
 
     private static BlocksRootContext CreateHistoricalRootsContext()
