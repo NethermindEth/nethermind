@@ -216,7 +216,19 @@ public abstract partial class BaseEngineModuleTests
                     ? new BlocksConfig { MinGasPrice = bc.MinGasPrice, ParallelExecution = ParallelExecutionOverride.Value }
                     : c);
             }
-            return configs;
+
+            List<IConfig> materialized = configs.ToList();
+            foreach (IConfig config in materialized)
+            {
+                // Production payload-improvement budget (SecondsPerSlot × 0.25 = 3s) is too tight under CI
+                // load: a starved thread pool truncates the first build to an empty block, which the
+                // parent-hash improvement wait accepts. Timeout tests register their own improvement factories.
+                if (config is IBlocksConfig blocksConfig)
+                {
+                    blocksConfig.SingleBlockImprovementOfSlot = 5;
+                }
+            }
+            return materialized;
         }
 
         /// <summary>
