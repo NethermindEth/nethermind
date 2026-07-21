@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -29,23 +30,27 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
             return false;
         }
 
-        try
+        Task.Factory.StartNew(() =>
         {
-            if (_logger.IsInfo) _logger!.Info($"Collecting trie stats and verifying that no nodes are missing staring from block {stateAtBlock} with state root {stateAtBlock.StateRoot}...");
-
+            try
             {
-            if (!worldStateManager.VerifyTrie(stateAtBlock, exitSource.Token))
-                if (_logger.IsError) _logger!.Error($"Verify trie failed");
+                if (_logger.IsInfo) _logger!.Info($"Collecting trie stats and verifying that no nodes are missing staring from block {stateAtBlock} with state root {stateAtBlock.StateRoot}...");
+
+                if (!worldStateManager.VerifyTrie(stateAtBlock, exitSource.Token))
+                {
+                    if (_logger.IsError) _logger!.Error($"Verify trie failed");
+                }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsInfo) _logger.Info($"Verify trie cancelled");
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error($"Error in verify trie", e);
-        }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsInfo) _logger.Info($"Verify trie cancelled");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error in verify trie", e);
+            }
+
+        }, TaskCreationOptions.LongRunning);
 
         return true;
     }

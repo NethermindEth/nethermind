@@ -162,13 +162,6 @@ public class StateSyncRunner(
     {
         if (_logger.IsInfo) _logger.Info("Starting state sync.");
 
-        if (_logger.IsInfo)
-        {
-            _logger.Info($"Heal - {stateSyncPivot.UpdatedStorages.Count} accounts to heal (UpdatedStorages):");
-            foreach (Hash256 accountToHeal in stateSyncPivot.UpdatedStorages)
-                _logger.Info($"Heal - account to heal: {accountToHeal}");
-        }
-
         BlockHeader? finalPivot = null;
 
         while (!token.IsCancellationRequested)
@@ -183,9 +176,9 @@ public class StateSyncRunner(
             if (roundPivot is null)
             {
                 // Pivot not known yet — wait and retry. StateSyncPrecursorWait can return
+                // immediately, so without this we'd spin tightly.
                 await Task.Delay(1000, token);
                 continue;
-                // immediately, so without this we'd spin tightly.
             }
 
             await stateSyncDispatcher.Run(token);
