@@ -130,7 +130,7 @@ public sealed class DetectionScanner(
                 Schedule(req);
                 return Task.CompletedTask;
             }
-            catch (Exception e)
+            catch (ResourceNotFoundException e)
             {
                 // reached the bottom of retained history (pruned/unavailable receipts)
                 if (_logger.IsDebug) _logger.Debug($"Token detection reached retained-history floor for {account} at block {lo}: {e.Message}");

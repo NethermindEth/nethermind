@@ -141,7 +141,7 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
             // probe timed out (ProbeTimeout) — treat as no sibling, don't fault the refresh
             return null;
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is HttpRequestException or JsonException or IOException)
         {
             if (_logger.IsTrace) _logger.Trace($"No sibling node on port {port}: {e.Message}");
             return null;

@@ -89,7 +89,7 @@ public sealed class DetectionCache : IDetectionCache
                 File.Delete(_path);
             }
         }
-        catch (Exception e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not delete portfolio-viewer detection cache: {e.Message}");
         }
@@ -126,7 +126,7 @@ public sealed class DetectionCache : IDetectionCache
                 }
             }
         }
-        catch (Exception e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not load portfolio-viewer detection cache: {e.Message}");
         }
@@ -176,7 +176,7 @@ public sealed class DetectionCache : IDetectionCache
                 File.Move(tmp, _path, overwrite: true);
             }
         }
-        catch (Exception e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not persist portfolio-viewer detection cache: {e.Message}");
         }

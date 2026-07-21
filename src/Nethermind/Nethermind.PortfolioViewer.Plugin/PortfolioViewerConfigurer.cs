@@ -198,7 +198,8 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
                 context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
             await resp.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
         }
-        catch (Exception) when (!context.RequestAborted.IsCancellationRequested)
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException or IOException
+                                  && !context.RequestAborted.IsCancellationRequested)
         {
             if (!context.Response.HasStarted) context.Response.StatusCode = StatusCodes.Status502BadGateway;
         }
@@ -230,7 +231,8 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
             // track only pins we added, so unpin-all reclaims exactly these
             if (resp.IsSuccessStatusCode) pins.Add(cid);
         }
-        catch { /* best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved */ }
+        // best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
     }
 
     // Unpins only the CIDs this plugin pinned (never the user's other pins) and reclaims the space. Issued when
@@ -248,11 +250,13 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         if (ours.Count == 0) return;
         foreach (string cid in ours)
         {
+            // best-effort per pin: no local Kubo RPC (5001), or already unpinned
             try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/rm?arg={Uri.EscapeDataString(cid)}", content: null); }
-            catch { /* best-effort per pin: no local Kubo RPC (5001), or already unpinned */ }
+            catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
         }
         pins.Clear();
-        try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); } catch { }
+        try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); }
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
     }
 
     private async Task ProxyAsync(HttpContext context)

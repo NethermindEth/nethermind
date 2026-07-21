@@ -182,8 +182,9 @@ public class DetectionScannerTests
     public async Task Reaching_pruned_history_marks_complete()
     {
         SeedHead(5);
+        // LogFinder throws ResourceNotFoundException once it walks below the retained receipts
         _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw new InvalidOperationException("receipts unavailable"));
+            .Returns(_ => throw new ResourceNotFoundException("receipts unavailable"));
 
         _scanner.RequestScan(ChainId, Account);
         await _scheduler.RunAll();

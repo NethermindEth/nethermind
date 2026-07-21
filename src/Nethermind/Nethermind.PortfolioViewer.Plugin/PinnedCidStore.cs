@@ -57,7 +57,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
                 File.Delete(_path);
             }
         }
-        catch (Exception e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not delete portfolio-viewer pin list: {e.Message}");
         }
@@ -74,7 +74,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
                 foreach (string cid in data) _cids.TryAdd(cid, 0);
             }
         }
-        catch (Exception e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not load portfolio-viewer pin list: {e.Message}");
         }
@@ -92,7 +92,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
                 File.Move(tmp, _path, overwrite: true);
             }
         }
-        catch (Exception e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not persist portfolio-viewer pin list: {e.Message}");
         }
