@@ -122,10 +122,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, systemAccessLists);
-        // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        // Heavy transaction jobs need maximum lead; address warming continues independently.
         // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-        return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        Task transactionWarming = Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        return transactionWarming;
     }
 
     private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)
