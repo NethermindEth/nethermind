@@ -210,8 +210,11 @@ public class PbtScannerTests
             Assert.That(report.AccountNodes.GroupsByDepth[8], Is.EqualTo(1), "the wrapped child is counted at its own depth");
             Assert.That(report.WrapperCount, Is.EqualTo(1), "the depth-4 blob holds the depth-8 group");
             Assert.That(report.WrappedChildCount, Is.EqualTo(1));
+            Assert.That(report.AccountNodes.WrappersByDepth[4], Is.EqualTo(1), "a wrapper counts at the depth of the group it holds");
+            Assert.That(report.AccountNodes.WrappedChildrenByDepth[4], Is.EqualTo(1), "and its children beside it, not at their own depth");
             Assert.That(report.StemCount, Is.EqualTo(3));
             Assert.That(report.StemCountAgrees, Is.True);
+            Assert.That(report.Format(), Does.Contain("Wrappers by depth"));
         });
     }
 
@@ -243,6 +246,7 @@ public class PbtScannerTests
             Assert.That(report, Does.Not.Contain("--- Code ---"), "an empty partition is left out");
             Assert.That(report, Does.Contain("Account leaf blobs"));
             Assert.That(report, Does.Contain("Storage leaf blobs"));
+            Assert.That(report, Does.Not.Contain("Wrappers by depth"), "no group of this tree holds its children");
         });
     }
 
