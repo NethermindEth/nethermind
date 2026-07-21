@@ -135,7 +135,7 @@ public class DataFeed
         }
     }
 
-    private enum EntryType
+    internal enum EntryType
     {
         nodeData,
         txNodes,
@@ -147,20 +147,27 @@ public class DataFeed
         peers
     }
 
-    private class ChannelEntry
+    internal class ChannelEntry
     {
         public EntryType Type { get; set; }
         public byte[] Data { get; set; }
     }
-    private static async Task ChannelSubscribe(EntryType type, Func<Task<byte[]>> nextTask, Channel<ChannelEntry> channel, CancellationToken ct)
+    internal static async Task ChannelSubscribe(EntryType type, Func<Task<byte[]>> nextTask, Channel<ChannelEntry> channel, CancellationToken ct)
     {
         Task<byte[]> task = nextTask();
 
-        while (!ct.IsCancellationRequested)
+        try
         {
-            byte[] data = await task;
-            task = nextTask();
-            await channel.Writer.WriteAsync(new ChannelEntry { Type = type, Data = data }, ct);
+            while (!ct.IsCancellationRequested)
+            {
+                byte[] data = await task.WaitAsync(ct);
+                task = nextTask();
+                await channel.Writer.WriteAsync(new ChannelEntry { Type = type, Data = data }, ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Normal feed cancellation
         }
     }
 
@@ -205,19 +212,28 @@ public class DataFeed
         _lastTimeStamp = Stopwatch.GetTimestamp();
         while (!_lifetime.IsCancellationRequested)
         {
-            byte[] data = await GetStatsTask(delayMs: 1000);
+            byte[]? data = await GetStatsTask(delayMs: 1000);
+            if (data is null) continue;
+
             DataCompletion systemStats = _systemStats;
             _systemStats = new(TaskCreationOptions.RunContinuationsAsynchronously);
             systemStats.TrySetResult(data);
         }
     }
 
-    private async Task<byte[]> GetStatsTask(int delayMs)
+    internal async Task<byte[]?> GetStatsTask(int delayMs)
     {
         await TaskExtensions.DelaySafe(delayMs, _lifetime);
 
         Environment.ProcessCpuUsage cpuUsage = Environment.CpuUsage;
         long timeStamp = Stopwatch.GetTimestamp();
+
+        if (!HaveSubscribers)
+        {
+            _lastCpuUsage = cpuUsage;
+            _lastTimeStamp = timeStamp;
+            return null;
+        }
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(_lastTimeStamp, timeStamp);
 

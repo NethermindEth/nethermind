@@ -25,12 +25,12 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: latest-bal
+        default: tests-glamsterdam-devnet@v6.1.1
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.4.1
+        default: tests-zkevm@v0.5.0
         type: string
       filter:
         description: Regex filter for test names
@@ -41,6 +41,11 @@ on:
         description: Fail nethtest if no test progress is logged for this many minutes
         required: false
         default: '10'
+        type: string
+      variant:
+        description: Build/runtime variant (checked, no-intrinsics); empty = standard build
+        required: false
+        default: ''
         type: string
   workflow_dispatch:
     inputs:
@@ -66,12 +71,12 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: latest-bal
+        default: tests-glamsterdam-devnet@v6.1.1
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.4.1
+        default: tests-zkevm@v0.5.0
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -83,25 +88,27 @@ on:
         required: false
         default: '10'
         type: string
+      variant:
+        description: Build/runtime variant (checked, no-intrinsics); empty = standard build
+        required: false
+        default: ''
+        type: string
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
-  # Fixture source: the next-fork (BAL) releases of ethereum/execution-specs. They ship
-  # fixtures for all forks (Frontier..Amsterdam), so a separate execution-spec-tests
-  # "current spec" run adds no extra coverage. latest-bal resolves the newest BAL
-  # release per run so new upstream tests surface immediately; client-vs-spec drift
-  # then fails CI by design. Pass an exact tag (e.g. tests-bal@v7.2.0) to pin.
+  # Fixture source: the glamsterdam-devnet releases of ethereum/execution-specs. They ship
+  # fixtures for all forks (Frontier..Amsterdam) with the devnet-6 Amsterdam semantics
+  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v6.1.1) to pin.
   EEST_REPOSITORY: ethereum/execution-specs
-  EEST_VERSION: ${{ inputs.eest_version || 'latest-bal' }}
-  EEST_ARCHIVE: fixtures_bal.tar.gz
+  EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v6.1.1' }}
+  EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
-  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.4.1: v0.5.0
-  # changed the expected witness roots and the client currently matches v0.4.1
-  # (dispatch with zkevm_version=latest-zkevm to test against newer releases).
-  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.4.1' }}
+  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.5.0, which this
+  # branch's witness roots match (dispatch with zkevm_version to test other releases).
+  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.5.0' }}
   # ubuntu-latest runners have 16 GB of RAM. The runner ships with server GC
   # (throughput-oriented, collects lazily), which previously ballooned past the
   # runner limit on the full fixture set. Workstation GC keeps the heap tight,
@@ -109,6 +116,10 @@ env:
   # parallel-execution chunks (same setting the NUnit flat workflow uses).
   DOTNET_gcServer: '0'
   DOTNET_GCConserveMemory: '9'
+  # Build/runtime variant for the nethermind-tests-checked matrix: checked builds the
+  # runner with TRACE;DEBUG defines (overflow/assert checks); no-intrinsics disables
+  # hardware intrinsics at run time (SIMD software-fallback paths). Empty = standard.
+  VARIANT: ${{ inputs.variant || '' }}
 
 defaults:
   run:
@@ -136,12 +147,20 @@ jobs:
 
       - name: Build Nethermind.Test.Runner
         working-directory: src/Nethermind
-        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false
+        run: |
+          BUILD_ARGS=""
+          # checked variant: build with TRACE;DEBUG defines to enable overflow/assert checks.
+          # The semicolon must be MSBuild-escaped (%3B), else it is parsed as a -p property
+          # separator (MSB1006: Switch: DEBUG) - same escaping the NUnit checked matrix uses.
+          [ "$VARIANT" = "checked" ] && BUILD_ARGS='-p:DefineConstants=TRACE%3BDEBUG'
+          dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false $BUILD_ARGS
 
       - name: Upload runner artifact
         uses: actions/upload-artifact@v7
         with:
-          name: nethtest-runner
+          # Variant-suffixed so a caller can invoke this workflow once per variant in the
+          # same run without the artifact names colliding.
+          name: nethtest-runner-${{ inputs.variant || 'default' }}
           path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
           retention-days: 1
           include-hidden-files: true
@@ -180,7 +199,18 @@ jobs:
                 # The default (patricia) layout disposes its state store per test, so these
                 # jobs never approach the 16 GB runner limit; chunk counts here are sized for
                 # wall-clock, not memory.
-                if run_sequential; then
+                if [ -n "$VARIANT" ] && run_sequential; then
+                  # Build-variant coverage (checked / no-intrinsics): only the plain
+                  # sequential config, coarsely chunked. The variant exercises arithmetic
+                  # and SIMD-fallback code paths, which are independent of the BAL/parallel
+                  # and flat sub-variants, so those add no coverage here. Variant builds run
+                  # slower, so chunks are kept modest but under the job timeout.
+                  if [ "$type" = "engineTest" ]; then
+                    emit "$type" sequential full '' false false 4 3
+                  else
+                    emit "$type" sequential full '' false false 4 2
+                  fi
+                elif run_sequential; then
                   # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
                   # unfiltered, so the Amsterdam parallel/batch-read variant classes also
                   # ran under the default (patricia) layout — including parallel-full,
@@ -344,7 +374,7 @@ jobs:
       - name: Download runner artifact
         uses: actions/download-artifact@v8
         with:
-          name: nethtest-runner
+          name: nethtest-runner-${{ inputs.variant || 'default' }}
           path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
 
       - name: Select fixture release
@@ -628,6 +658,12 @@ jobs:
             echo ""
             echo "--- recent nethtest status ---"
             tail -30 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g' || true
+            echo ""
+            echo "--- managed thread stacks (deadlock diagnostics) ---"
+            if kill -0 "$NETHTEST_PID" 2>/dev/null; then
+              dotnet tool install --global dotnet-stack >/dev/null 2>&1 || true
+              "$HOME/.dotnet/tools/dotnet-stack" report -p "$NETHTEST_PID" 2>&1 | head -600 || true
+            fi
             echo "================================"
           }
 
@@ -684,6 +720,9 @@ jobs:
           }
 
           set +e
+          # no-intrinsics variant: disable hardware intrinsics so the EVM/crypto SIMD
+          # software-fallback paths are exercised.
+          [ "$VARIANT" = "no-intrinsics" ] && export DOTNET_EnableHWIntrinsic=0
           # Run the prebuilt runner directly (built once in prepare-matrix, downloaded above).
           dotnet artifacts/bin/Nethermind.Test.Runner/release/nethtest.dll \
             $RUNNER_FLAG \

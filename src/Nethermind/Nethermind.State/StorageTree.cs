@@ -80,15 +80,8 @@ namespace Nethermind.State
             }
             else
             {
-                Rlp rlpEncoded = Rlp.Encode(value);
-                if (rlpEncoded is null)
-                {
-                    encodedValue = [];
-                }
-                else
-                {
-                    encodedValue = rlpEncoded.Bytes;
-                }
+                encodedValue = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
+                Rlp.Encode(value, encodedValue);
             }
 
             return new BulkSetEntry(in key, encodedValue);
@@ -141,8 +134,6 @@ namespace Nethermind.State
         public void HintSet(in UInt256 index, byte[]? value)
         {
         }
-
-        public byte[] Get(in ValueHash256 hash) => GetArray(in hash, null);
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)

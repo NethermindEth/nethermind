@@ -8,7 +8,8 @@ using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Trie.Pruning;
+using Nethermind.Core.Attributes;
+using Nethermind.State.Flat.PersistedSnapshots;
 
 namespace Nethermind.State.Flat;
 
@@ -55,8 +56,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
 
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
     public FlatDbManager(
         IResourcePool resourcePool,
         IProcessExitSource processExitSource,
@@ -64,6 +63,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
+        IPersistedSnapshotLoader persistedSnapshotLoader,
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
@@ -77,6 +77,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
+        // Must run before any background worker or read can access the persisted tier.
+        persistedSnapshotLoader.Load();
+
         config.ValidateCompactSize();
         _compactSize = (int)config.CompactSize;
 
@@ -87,6 +90,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
+        // Created after the throwing setup above: a ctor throw never constructs the linked CTS (whose
+        // registration on the long-lived ProcessExitSource would otherwise leak, since Autofac does not
+        // dispose a failed-ctor instance).
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
@@ -142,11 +148,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             await foreach (StateId stateId in _persistenceJobs.Reader.ReadAllAsync(cancellationToken))
             {
-                await NotifyWhenSlow($"Persisting {stateId}", () =>
-                {
-                    PersistIfNeeded(stateId);
-                    return Task.CompletedTask;
-                });
+                await NotifyWhenSlow($"Persisting {stateId}", () => PersistIfNeeded(stateId));
             }
         }
         catch (OperationCanceledException)
@@ -154,16 +156,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
-    private void PersistIfNeeded(in StateId latestSnapshot)
+    private async Task PersistIfNeeded(StateId latestSnapshot)
     {
-        _persistenceManager.AddToPersistence(latestSnapshot);
+        await _persistenceManager.AddToPersistence(latestSnapshot);
 
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
         ClearReadOnlyBundleCache();
-        ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
@@ -241,16 +241,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             usage: usage);
     }
 
+    private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
+    private static readonly StringLabel _depthPersistedLabel = new("persisted");
+
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
     {
-        // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
-        // hard to pull of due to the constantly moving chain making invalidation hard.
+        // A linked-list snapshot chain was considered but rejected: the constantly moving chain makes
+        // invalidation error-prone.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
 
         if (baseBlock == StateId.PreGenesis)
         {
-            // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
+            // PreGenesis is a sentinel; Nethermind always generates genesis, so this path is always transient.
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics));
         }
 
         long sw = 0;
@@ -273,10 +276,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             }
 
             IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
-            SnapshotPooledList snapshots;
+            AssembledSnapshotResult assembled;
             try
             {
-                snapshots = _snapshotRepository.AssembleSnapshots(
+                assembled = _snapshotRepository.AssembleSnapshots(
                     baseBlock,
                     persistenceReader.CurrentState,
                     estimatedSize: Math.Max(1, _snapshotRepository.SnapshotCount / _compactSize));
@@ -287,12 +290,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 throw;
             }
 
-
             // Empty result + reader not at baseBlock means the path was removed concurrently;
             // retry unless baseBlock itself was pruned (orphaned), which no retry can recover.
-            if (snapshots.Count == 0 && persistenceReader.CurrentState != baseBlock)
+            if (assembled.SnapshotCount == 0 && persistenceReader.CurrentState != baseBlock)
             {
-                snapshots.Dispose();
+                assembled.Dispose();
                 persistenceReader.Dispose();
 
                 if (!_snapshotRepository.HasState(baseBlock))
@@ -304,9 +306,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 continue;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
+            if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {assembled.InMemory.Count} known states, {assembled.Persisted.Count} persisted, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics);
+            ReportBundleMetrics(assembled);
+
+            ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
@@ -314,9 +319,26 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 res.Dispose();
             }
 
-            Metrics.SnapshotBundleSize = snapshots.Count;
             return res;
         }
+    }
+
+    private static void ReportBundleMetrics(in AssembledSnapshotResult assembled)
+    {
+        int inMemoryDepth = assembled.InMemory.Count > 0
+            ? (int)(assembled.InMemory[^1].To.BlockNumber - assembled.InMemory[0].From.BlockNumber) : 0;
+        int persistedDepth = assembled.Persisted.Count > 0
+            ? (int)(assembled.Persisted[^1].To.BlockNumber - assembled.Persisted[0].From.BlockNumber) : 0;
+        Metrics.SnapshotBundleBlockNumberDepth.Observe(inMemoryDepth, _depthInMemoryLabel);
+        Metrics.SnapshotBundleBlockNumberDepth.Observe(persistedDepth, _depthPersistedLabel);
+
+        Metrics.SnapshotBundleSize = assembled.InMemory.Count;
+        Metrics.SnapshotBundlePersistedSnapshotSize = assembled.Persisted.Count;
+
+        long persistedBytes = 0;
+        for (int i = 0; i < assembled.Persisted.Count; i++)
+            persistedBytes += assembled.Persisted[i].Size;
+        Metrics.SnapshotBundlePersistedSnapshotMemory = persistedBytes;
     }
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
@@ -326,6 +348,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.BlockNumber} to {endBlock.BlockNumber}");
         StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
+        // PreGenesis (nothing persisted) carries the ulong.MaxValue sentinel, so a raw `<=` would reject
+        // every snapshot; only reject when there genuinely is a persisted state at or above this block.
         if (persistedStateId != StateId.PreGenesis && endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
@@ -334,7 +358,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
-        if (!_snapshotRepository.TryAddSnapshot(snapshot))
+        if (!_snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase))
         {
             if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
             _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
@@ -361,6 +385,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
 
+                // Block processing is now stalled waiting for the compactor to drain the queue; measure how long.
+                long stallStart = Stopwatch.GetTimestamp();
+
                 // This wait only occurs after several blocks have already entered the queue without blocking,
                 // so attempting to not block here to avoid blocking block processing is redundant.
                 TimeSpan delay = _compactorStallTimeout;
@@ -381,6 +408,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                         if (_logger.IsWarn) _logger.Warn("Compactor job stall! Persistence is too slow for the network.");
                     }
                 }
+
+                Metrics.CompactorStallTime.Observe(Stopwatch.GetTimestamp() - stallStart);
             }
         }
     }
@@ -419,8 +448,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState == StateId.PreGenesis) return;
-
-        _snapshotRepository.RemoveStatesUntil(persistedState);
 
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();

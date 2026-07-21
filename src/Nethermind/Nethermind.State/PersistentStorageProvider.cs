@@ -65,6 +65,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
+        // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
+        // (populator) executions, which never commit. No-op for backends without trie warm-up.
+        _currentScope.HintWarmSlot(new ValueAddress(storageCell.Address.Bytes), storageCell.Index);
     }
 
     /// <summary>
@@ -87,15 +90,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
 
-        if (_transactionChangesSnapshots.TryPeek(out int snapshot))
+        if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
+            if (head.CurrentIdx <= currentSnapshot)
             {
-                if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
-                {
-                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
-                }
+                // Untouched this transaction — the current value is the tx original.
+                return head.Value;
             }
+
+            // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
+            return head.OriginalIdx != -1 ? _changes[head.OriginalIdx].Value : value;
         }
 
         return value;
@@ -135,16 +140,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             trace = [];
         }
 
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         for (int i = 0; i <= currentPosition; i++)
         {
-            Change change = _changes[currentPosition - i];
+            ref readonly Change change = ref changes[currentPosition - i];
             if (_committedThisRound.Contains(change!.StorageCell))
             {
                 continue;
             }
 
             _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].Pop();
+            int forAssertion = _intraBlockCache[change.StorageCell].CurrentIdx;
             if (forAssertion != currentPosition - i)
             {
                 throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
@@ -553,11 +559,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
 
-            if (!storageCell.IsHash)
-            {
-                EnsureStorageTree();
-                _backend.HintSet(storageCell.Index, value);
-            }
+            EnsureStorageTree();
+            _backend.HintSet(storageCell.Index, value);
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
@@ -574,7 +577,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _provider._metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.CaptureOriginalValue(storageCell, valueChange.After);
+            _provider.CaptureOriginalValue(storageCell, valueChange.After);
             return valueChange.After;
         }
 
@@ -583,9 +586,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
-                : _backend.Get(storageCell.Hash);
+            return _backend.Get(storageCell.Index);
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)

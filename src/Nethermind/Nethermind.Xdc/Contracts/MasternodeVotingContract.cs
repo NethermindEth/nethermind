@@ -41,6 +41,16 @@ internal class MasternodeVotingContract(
         return (UInt256)result[0]!;
     }
 
+    public UInt256 GetCandidateStake(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
+    {
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidateCap", GenerateTransaction<Transaction>(ContractAddress, "getCandidateCap", Address.SystemUser, candidate), true);
+        object[] decoded = DecodeReturnData("getCandidateCap", result);
+        if (decoded.Length != 1)
+            throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
+
+        return (UInt256)decoded[0]!;
+    }
+
     public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
     {
         CallInfo callInfo = new(blockHeader, "getCandidateOwner", Address.SystemUser, candidate);
@@ -90,6 +100,13 @@ internal class MasternodeVotingContract(
         IConstantContract constant = GetConstant(source);
         object[] result = constant.Call(callInfo);
         return (Address[])result[0]!;
+    }
+
+    public Address[] GetCandidates(ITransactionProcessor transactionProcessor, BlockHeader blockHeader)
+    {
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidates", GenerateTransaction<Transaction>(ContractAddress, "getCandidates", Address.SystemUser), true);
+        object[] decoded = DecodeReturnData("getCandidates", result);
+        return (Address[])decoded[0]!;
     }
 
     /// <summary>

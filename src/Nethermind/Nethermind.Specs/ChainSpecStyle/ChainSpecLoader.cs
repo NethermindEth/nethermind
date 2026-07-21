@@ -160,11 +160,13 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7951TransitionTimestamp = chainSpecJson.Params.Eip7951TransitionTimestamp,
             Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
+            Eip7702Transition = chainSpecJson.Params.Eip7702Transition,
             Eip7702TransitionTimestamp = chainSpecJson.Params.Eip7702TransitionTimestamp,
             Eip7918TransitionTimestamp = chainSpecJson.Params.Eip7918TransitionTimestamp,
             Eip7823TransitionTimestamp = chainSpecJson.Params.Eip7823TransitionTimestamp,
             Eip7825TransitionTimestamp = chainSpecJson.Params.Eip7825TransitionTimestamp,
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
+            Eip2935Transition = chainSpecJson.Params.Eip2935Transition,
             Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,
             Eip2935ContractAddress = chainSpecJson.Params.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
             Eip2935RingBufferSize = chainSpecJson.Params.Eip2935RingBufferSize ?? Eip2935Constants.RingBufferSize,
@@ -181,6 +183,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             DepositContractAddress = LoadDependentParam(chainSpecJson.Params.Eip6110TransitionTimestamp, chainSpecJson.Params.DepositContractAddress,
                 () => chainSpecJson.Params.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null),
             Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
+            Eip7623Transition = chainSpecJson.Params.Eip7623Transition,
             Eip7623TransitionTimestamp = chainSpecJson.Params.Eip7623TransitionTimestamp,
             Eip7976TransitionTimestamp = chainSpecJson.Params.Eip7976TransitionTimestamp,
             Eip7981TransitionTimestamp = chainSpecJson.Params.Eip7981TransitionTimestamp,
@@ -213,8 +216,12 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7708TransitionTimestamp = chainSpecJson.Params.Eip7708TransitionTimestamp,
 
             Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
+            Eip8246TransitionTimestamp = chainSpecJson.Params.Eip8246TransitionTimestamp,
+            Eip8038TransitionTimestamp = chainSpecJson.Params.Eip8038TransitionTimestamp,
+            Eip8282TransitionTimestamp = chainSpecJson.Params.Eip8282TransitionTimestamp,
             Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
             Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
+            Eip2780TransitionTimestamp = chainSpecJson.Params.Eip2780TransitionTimestamp,
         };
 
         chainSpec.Parameters.ExpandAll(chainSpecJson.Params);

@@ -40,9 +40,7 @@ public interface IPersistence
         bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value);
 
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
-        IFlatIterator CreateAccountIterator() => CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
-        IFlatIterator CreateStorageIterator(in ValueHash256 accountKey) => CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
         bool IsPreimageMode { get; }
     }
 

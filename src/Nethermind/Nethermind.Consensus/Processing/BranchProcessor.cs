@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -20,7 +19,6 @@ public class BranchProcessor(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider,
     IWorldState stateProvider,
-    IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
@@ -143,9 +141,12 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
+                QueueClearCaches(preWarmTask);
+                // Hint producers touch the active snapshot bundle, which CommitTree rotates.
+                WaitAndClear(ref preWarmTask);
+
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-                QueueClearCaches(preWarmTask);
                 processedBlocksCount = i + 1;
 
                 if (notReadOnly)
@@ -168,8 +169,6 @@ public class BranchProcessor(
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                // Make sure the prewarm task is finished before we reset the state
-                WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
@@ -226,8 +225,7 @@ public class BranchProcessor(
             : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,
                 spec,
-                token,
-                beaconBlockRootHandler);
+                token);
 
     // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
     // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.

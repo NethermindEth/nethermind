@@ -84,11 +84,13 @@ public class XdcBlockHeader(
         internal set
         {
             _extraFieldsV2 = value;
-            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(value).Bytes];
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.EncodeAsBytes(value)];
         }
     }
 
     public bool IsSelfMined { get; } = isSelfMined;
+
+    internal XdcProcessedRewards? ProcessedRewards { get; set; }
 
     public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
@@ -155,6 +157,7 @@ public class XdcBlockHeader(
         header.Validator = Validator;
         header.Validators = Validators;
         header.Penalties = Penalties;
+        header.ProcessedRewards = ProcessedRewards;
     }
 
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)

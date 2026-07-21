@@ -9,7 +9,7 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
+public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; }
     // Empty code sentinel
@@ -53,21 +53,12 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         _streamBuildState = StreamBuildUnavailable;
     }
 
-    protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
-    {
-        Precompile = precompile;
-        Code = code;
-        _analyzer = null;
-        _streamBuildState = StreamBuildUnavailable;
-    }
-
     public ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
 
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-    private InstructionStream? _stream;
     private int _streamHits;
 
     private const int StreamBuildIdle = 0;
@@ -80,25 +71,17 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public ValueHash256 CodeHash { get; set; }
 
     /// <summary>
-    /// Returns the built stream, or <c>null</c> until ready: past <see cref="StreamInterpreter.BuildThreshold"/>
-    /// the build is scheduled once on the thread pool and callers keep getting <c>null</c> until it publishes,
-    /// so no call blocks. Lock-free via two CASes (schedule, publish).
+    /// Built stream from the shared cache, or <c>null</c> until built (scheduled once past
+    /// <see cref="StreamInterpreter.BuildThreshold"/>, never blocks). Held only by the shared cache, not this instance.
     /// </summary>
     internal InstructionStream? GetOrBuildStream()
     {
-        InstructionStream? stream = Volatile.Read(ref _stream);
-        if (stream is not null)
-            return stream;
         if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
             return null;
+        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
+            return cached;
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;
-
-        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
-        {
-            Volatile.Write(ref _stream, cached);
-            return cached;
-        }
 
         if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
             ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
@@ -109,11 +92,9 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private void BuildStream()
     {
         InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
-        if (stream is not null)
+        if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
         {
-            if (CodeHash != default)
-                InstructionStreamCache.Set(CodeHash, stream);
-            Interlocked.CompareExchange(ref _stream, stream, null);
+            InstructionStreamCache.Set(CodeHash, stream);
         }
         else
         {

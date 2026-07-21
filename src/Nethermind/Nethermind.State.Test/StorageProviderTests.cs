@@ -19,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Evm.Tracing.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -89,6 +90,35 @@ public class StorageProviderTests(bool useFlat)
         provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
         provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
         Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
+    }
+
+    [Test]
+    public void Original_value_tracks_transaction_start_across_stacked_writes()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        // tx0: capture the block original (zero), then write; changes stay uncommitted (BuildUp stacking).
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell);
+        provider.Set(cell, _values[1]);
+
+        // tx1 stacks on tx0. Its original is the value entering tx1 (_values[1]) and must stay stable
+        // across repeated same-slot writes (the case the removed chain walk resolved in O(N^2)).
+        provider.TakeSnapshot(newTransactionStart: true);
+        Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+        for (int i = 2; i <= 6; i++)
+        {
+            provider.Set(cell, _values[i]);
+            Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+        }
+
+        // A revert within tx1 must leave the transaction original unchanged.
+        int mid = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
+        provider.Set(cell, _values[7]);
+        provider.Restore(Snapshot.EmptyPosition, mid, Snapshot.EmptyPosition);
+        Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
     }
 
     [TestCase(-1)]
@@ -935,6 +965,24 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(clearedHash, Is.EqualTo(emptyHash));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
+    {
+        PreBlockCaches caches = new();
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
+
+        using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
+        caches.MainScope = null;
+        ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), _values[1]);
+
+        if (populator)
+            mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
+        else
+            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
+    }
+
     private class Context : IDisposable
     {
         public WorldState StateProvider { get; }
@@ -960,7 +1008,7 @@ public class StorageProviderTests(bool useFlat)
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, LimboLogs.Instance, isPrewarmer: true);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, new PrewarmerState(preBlockCaches, isPrewarmer: true), LimboLogs.Instance);
             }
 
             if (trackWrittenData)

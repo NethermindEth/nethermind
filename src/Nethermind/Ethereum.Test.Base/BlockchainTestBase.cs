@@ -129,7 +129,7 @@ public abstract class BlockchainTestBase
         configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
-        blocksConfig.PreWarmStateOnBlockProcessing = false;
+        blocksConfig.PreWarming = PreWarmMode.None;
         if (ParallelExecutionOverride.HasValue)
         {
             blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
@@ -292,7 +292,7 @@ public abstract class BlockchainTestBase
             }
 
             // zkEVM witness assertions. Engine-path diffs were gathered while driving
-            // engine_newPayloadWithWitness; the RLP path regenerates the witness post-hoc here.
+            // engine_newPayloadWithWitnessV*; the RLP path regenerates the witness post-hoc here.
             differences.AddRange(engineWitnessDifferences);
             if (test.Blocks is not null && HasAnyExecutionWitness(test))
             {
@@ -408,7 +408,7 @@ public abstract class BlockchainTestBase
     /// <summary>
     /// Replays the test's engine payloads through the JSON-RPC service.
     /// </summary>
-    /// <param name="witnessDifferences">Collector for zkEVM witness mismatches found while driving engine_newPayloadWithWitness.</param>
+    /// <param name="witnessDifferences">Collector for zkEVM witness mismatches found while driving engine_newPayloadWithWitnessV*.</param>
     /// <returns>
     /// The last payload status in <see cref="Result{TData}.Data"/>; when the last INVALID payload
     /// carried a validation error, that error in <see cref="Result{TData}.Error"/> (an expected
@@ -432,7 +432,7 @@ public abstract class BlockchainTestBase
                 throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{enginePayload.ForkChoiceUpdatedVersion}'");
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            // Only an unmutated, expected-VALID reference witness exercises engine_newPayloadWithWitness; EIP-8025
+            // Only an unmutated, expected-VALID reference witness exercises engine_newPayloadWithWitnessV*; EIP-8025
             // mutated payloads go through the plain endpoint (their witness is a corrupted reference useful for stateless exec).
             bool expectWitness = enginePayload.ExecutionWitness is not null
                 && enginePayload.ExecutionWitnessMutated != true
@@ -441,7 +441,7 @@ public abstract class BlockchainTestBase
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
-            string npMethod = expectWitness ? "engine_newPayloadWithWitness" : "engine_newPayloadV" + newPayloadVersion;
+            string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, npMethod, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
@@ -463,7 +463,7 @@ public abstract class BlockchainTestBase
                     Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
                     if (witnessResult.ExecutionWitness is null)
                     {
-                        witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitness returned VALID but no witness");
+                        witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitnessV{newPayloadVersion} returned VALID but no witness");
                     }
                     else
                     {
@@ -498,7 +498,7 @@ public abstract class BlockchainTestBase
         {
             ResultWrapper<NewPayloadWithWitnessV1Result> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
             JsonRpcSuccessResponse { Result: NewPayloadWithWitnessV1Result result } => result,
-            _ => throw new AssertionException($"engine_newPayloadWithWitness (V{payloadVersion}) returned unexpected response type {response.GetType().FullName}")
+            _ => throw new AssertionException($"engine_newPayloadWithWitnessV{payloadVersion} returned unexpected response type {response.GetType().FullName}")
         };
 
     private static bool TryGetRpcError(JsonRpcResponse response, out int errorCode, out string? errorMessage)
@@ -587,6 +587,9 @@ public abstract class BlockchainTestBase
         ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "EIP-7702 transaction with empty auth list"),
         ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "EIP-7702 transaction cannot be used to create contract"),
         ("TransactionException.TYPE_4_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
+        ("TransactionException.INVALID_SIGNATURE_VRS", "InvalidTxSignature: Signature is invalid"),
+        ("TransactionException.INVALID_CHAINID", "InvalidTxChainId"),
+        ("TransactionException.INVALID_CHAINID", "InvalidTxSignature: Signature is invalid"),
         // HeaderBlobGasMismatch covers both wrong header.BlobGasUsed and an
         // inflated header value when real tx blob gas stays below the limit.
         // Real tx overflow is handled by the BlockBlobGasExceeded regex below.

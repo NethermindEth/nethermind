@@ -167,10 +167,26 @@ public class RpcModuleTests
     }
 
     [Test]
+    public void BuildRpcSnapshot_ShouldUseSnapshotIdentity()
+    {
+        const long snapshotNumber = 104_357_250;
+        Snapshot snapshot = new(snapshotNumber, TestItem.KeccakA, [TestItem.AddressA]);
+
+        PublicApiSnapshot result = snapshot.BuildRpcSnapshot();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Number, Is.EqualTo((ulong)snapshotNumber));
+            Assert.That(result.Hash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(result.Signers, Is.EquivalentTo(new[] { TestItem.AddressA }));
+        }
+    }
+
+    [Test]
     public void CalculateBlockInfoByV1EpochNum_ShouldReturnFail_WhenV1EpochIsRequested()
     {
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.CalculateBlockInfoByV1EpochNum(1);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_calculateBlockInfoByV1EpochNum(1);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -194,7 +210,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber + 1).Returns(nextBlockRoundInfo);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -220,7 +236,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber + 1).Returns((BlockRoundInfo?)null);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -236,7 +252,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns((BlockRoundInfo?)null);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -260,7 +276,7 @@ public class RpcModuleTests
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByEpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByEpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -286,7 +302,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(blockRoundInfo);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByEpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByEpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -319,7 +335,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -337,7 +353,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(begin).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -358,7 +374,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -382,7 +398,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -406,7 +422,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -430,7 +446,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -469,7 +485,7 @@ public class RpcModuleTests
         _syncInfoManager.GetReceivedSyncInfos().Returns(new Dictionary<(ulong, Hash256), SyncInfoTypes>());
 
         // Act
-        ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
+        ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -486,7 +502,7 @@ public class RpcModuleTests
         _blockTree.Head.Returns((Block?)null);
 
         // Act
-        ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
+        ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -501,7 +517,7 @@ public class RpcModuleTests
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
         // Act
-        ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
+        ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -517,7 +533,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns((EpochSwitchInfo?)null);
 
         // Act
-        ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
+        ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -552,7 +568,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Latest);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Latest);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -590,7 +606,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Finalized);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -604,7 +620,7 @@ public class RpcModuleTests
         _quorumCertificateManager.HighestKnownCertificate.Returns((QuorumCertificate?)null);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Finalized);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -618,7 +634,7 @@ public class RpcModuleTests
         BlockParameter blockParameter = new(ulong.MaxValue);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -633,7 +649,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -650,7 +666,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns(header);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -669,7 +685,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns(header);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -696,7 +712,7 @@ public class RpcModuleTests
         _snapshotManager.GetSnapshotByBlockNumber(100, spec).Returns(snapshot);
 
         // Act
-        ResultWrapper<Address[]> result = _rpcModule.GetSigners(BlockParameter.Latest);
+        ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(BlockParameter.Latest);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -723,7 +739,7 @@ public class RpcModuleTests
         _snapshotManager.GetSnapshotByBlockNumber(50, spec).Returns(snapshot);
 
         // Act
-        ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
+        ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -737,7 +753,7 @@ public class RpcModuleTests
         BlockParameter blockParameter = new(ulong.MaxValue);
 
         // Act
-        ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
+        ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -752,7 +768,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
+        ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -761,13 +777,70 @@ public class RpcModuleTests
 
 
     [Test]
+    public void GetMissedRoundsInEpochByBlockNum_RoundGap_ReturnsOnlySkippedRounds()
+    {
+        const long epochBlockNumber = 1800;
+        const ulong epochRound = 900;
+        XdcBlockHeader epochHeader = BuildHeader(epochBlockNumber, epochRound, Hash256.Zero);
+        XdcBlockHeader block1801 = BuildHeader(1801, 901, epochHeader.Hash!);
+        XdcBlockHeader block1802 = BuildHeader(1802, 902, block1801.Hash!);
+        XdcBlockHeader block1803 = BuildHeader(1803, 905, block1802.Hash!);
+        Address[] masternodes = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+
+        _blockTree.FindHeader(1803).Returns(block1803);
+        _blockTree.FindHeader(block1802.Hash!).Returns(block1802);
+        _blockTree.FindHeader(block1801.Hash!).Returns(block1801);
+        _blockTree.FindHeader(epochHeader.Hash!).Returns(epochHeader);
+        _epochSwitchManager.GetEpochSwitchInfo(block1803).Returns(new EpochSwitchInfo(
+            masternodes,
+            [],
+            [],
+            new BlockRoundInfo(epochHeader.Hash!, epochRound, epochBlockNumber)));
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(CreateDummyXdcReleaseSpec(epochLength: 900));
+
+        ResultWrapper<PublicApiMissedRoundsMetadata> result =
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(new BlockParameter(1803));
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        PublicApiMissedRoundsMetadata data = result.Data!;
+        Assert.That(data.MissedRounds, Is.Not.Null);
+        MissedRoundInfo[] missedRounds = data.MissedRounds!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.EpochRound, Is.EqualTo(epochRound));
+            Assert.That(data.EpochBlockNumber, Is.EqualTo((UInt256)epochBlockNumber));
+            Assert.That(missedRounds, Has.Length.EqualTo(2));
+            Assert.That(missedRounds[0].Round, Is.EqualTo(903));
+            Assert.That(missedRounds[0].Miner, Is.EqualTo(TestItem.AddressA));
+            Assert.That(missedRounds[0].CurrentBlockHash, Is.EqualTo(block1803.Hash));
+            Assert.That(missedRounds[0].CurrentBlockNum, Is.EqualTo((UInt256)1803));
+            Assert.That(missedRounds[0].ParentBlockHash, Is.EqualTo(block1802.Hash));
+            Assert.That(missedRounds[0].ParentBlockNum, Is.EqualTo((UInt256)1802));
+            Assert.That(missedRounds[1].Round, Is.EqualTo(904));
+            Assert.That(missedRounds[1].Miner, Is.EqualTo(TestItem.AddressB));
+            Assert.That(missedRounds[1].CurrentBlockHash, Is.EqualTo(block1803.Hash));
+            Assert.That(missedRounds[1].CurrentBlockNum, Is.EqualTo((UInt256)1803));
+            Assert.That(missedRounds[1].ParentBlockHash, Is.EqualTo(block1802.Hash));
+            Assert.That(missedRounds[1].ParentBlockNum, Is.EqualTo((UInt256)1802));
+        }
+
+        static XdcBlockHeader BuildHeader(ulong number, ulong round, Hash256 parentHash) =>
+            Build.A.XdcBlockHeader()
+                .WithNumber(number)
+                .WithParentHash(parentHash)
+                .WithExtraConsensusData(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
+                .TestObject;
+    }
+
+    [Test]
     public void GetMissedRoundsInEpochByBlockNum_ShouldReturnFail_WhenInvalidBlockNumber()
     {
         // Arrange
         BlockParameter blockParameter = new(ulong.MaxValue);
 
         // Act
-        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
+        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -782,7 +855,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
+        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -799,7 +872,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns(header);
 
         // Act
-        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
+        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -811,6 +884,8 @@ public class RpcModuleTests
     {
         // Arrange
         Address account = TestItem.AddressA;
+        Address owner = TestItem.AddressB;
+        Address foundation = TestItem.AddressC;
         const ulong begin = 100;
         const ulong end = 200;
         const ulong epoch1 = 120;
@@ -828,32 +903,53 @@ public class RpcModuleTests
             new EpochSwitchInfo(Array.Empty<Address>(), Array.Empty<Address>(), Array.Empty<Address>(), new BlockRoundInfo(TestItem.KeccakB, 2, (long)epoch2)),
         ];
 
-        _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
+        XdcEpochRewards emptyEpochBreakdown = new()
+        {
+            Signers = new()
             {
-                callInfo[0] = epoch1;
-                callInfo[1] = epoch2;
-                return true;
-            });
+                [owner.ToString()] = new XdcRewardLog
+                {
+                    Reward = "99",
+                    Sign = 1,
+                },
+            },
+        };
+        XdcEpochRewards rewardedEpochBreakdown = new()
+        {
+            Signers = new()
+            {
+                [account.ToString()] = new XdcRewardLog
+                {
+                    Reward = "20",
+                    Sign = 5,
+                },
+            },
+            Rewards = new()
+            {
+                [account.ToString()] = new()
+                {
+                    [owner.ToString()] = "18",
+                    [foundation.ToString()] = "2",
+                },
+            },
+        };
 
-        _rewardsStore.HasEpochRewards(epoch1).Returns(true);
-        _rewardsStore.HasEpochRewards(epoch2).Returns(true);
-        _rewardsStore.TryGetAccountReward(account, epoch1, out Arg.Any<UInt256>())
+        _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
+        _rewardsStore.TryGetEpochRewards(TestItem.KeccakA, out Arg.Any<XdcEpochRewards?>())
             .Returns(callInfo =>
             {
-                callInfo[2] = (UInt256)10;
+                callInfo[1] = emptyEpochBreakdown;
                 return true;
             });
-        _rewardsStore.TryGetAccountReward(account, epoch2, out Arg.Any<UInt256>())
+        _rewardsStore.TryGetEpochRewards(TestItem.KeccakB, out Arg.Any<XdcEpochRewards?>())
             .Returns(callInfo =>
             {
-                callInfo[2] = (UInt256)20;
+                callInfo[1] = rewardedEpochBreakdown;
                 return true;
             });
 
         // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
+        ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -861,47 +957,107 @@ public class RpcModuleTests
         Assert.That(result.Data!.EpochRewards, Is.Not.Null);
         Assert.That(result.Data.EpochRewards!.Length, Is.EqualTo(2));
         Assert.That(result.Data.Total, Is.Not.Null);
-        Assert.That(result.Data.Total!.Address, Is.EqualTo(account));
-        Assert.That(result.Data.Total.TotalAccountReward, Is.EqualTo((UInt256)30));
+        Assert.That(result.Data.EpochRewards![1].DelegatedReward, Is.Not.Null);
+        Assert.That(result.Data.Total!.TotalDelegatedReward, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.EpochRewards[0].AccountStatus, Is.EqualTo(""));
+            Assert.That(result.Data.EpochRewards[0].AccountReward, Is.Null);
+            Assert.That(result.Data.EpochRewards[1].AccountStatus, Is.EqualTo(XdcConstants.RpcAccountStatusMasternode));
+            Assert.That(result.Data.EpochRewards[1].AccountReward, Is.EqualTo((UInt256)20));
+            Assert.That(result.Data.EpochRewards[1].DelegatedReward![owner.ToString()], Is.EqualTo((UInt256)18));
+            Assert.That(result.Data.EpochRewards[1].DelegatedReward![foundation.ToString()], Is.EqualTo((UInt256)2));
+            Assert.That(result.Data.Total!.Address, Is.EqualTo(account));
+            Assert.That(result.Data.Total.TotalAccountReward, Is.EqualTo((UInt256)20));
+            Assert.That(result.Data.Total.TotalDelegatedReward![owner.ToString()], Is.EqualTo((UInt256)18));
+            Assert.That(result.Data.Total.TotalDelegatedReward![foundation.ToString()], Is.EqualTo((UInt256)2));
+        }
+    }
+
+    [TestCase(
+        nameof(XdcEpochRewards.Signers),
+        nameof(XdcEpochRewards.Rewards),
+        XdcConstants.RpcAccountStatusMasternode)]
+    [TestCase(
+        nameof(XdcEpochRewards.SignersProtector),
+        nameof(XdcEpochRewards.RewardsProtector),
+        XdcConstants.RpcAccountStatusProtector)]
+    [TestCase(
+        nameof(XdcEpochRewards.SignersObserver),
+        nameof(XdcEpochRewards.RewardsObserver),
+        XdcConstants.RpcAccountStatusObserver)]
+    public void BuildAccountEpochReward_Signer_ReturnsSignerAndDelegatedRewards(
+        string signerSection,
+        string rewardSection,
+        string expectedStatus)
+    {
+        Address validator = Address.FromNumber(1);
+        Address owner = Address.FromNumber(2);
+        Address foundation = Address.FromNumber(3);
+        const ulong epoch = 1795;
+
+        XdcEpochRewards epochRewardData = new();
+        GetSignerSection(epochRewardData, signerSection)[validator.ToString()] = new XdcRewardLog
+        {
+            Reward = "57000000000000000000",
+            Sign = 59,
+        };
+        GetRewardSection(epochRewardData, rewardSection)[validator.ToString()] = new()
+        {
+            [owner.ToString()] = "51300000000000000000",
+            [foundation.ToString()] = "5700000000000000000",
+        };
+
+        AccountEpochReward epochReward = epochRewardData.BuildAccountEpochReward(validator, epoch);
+
+        Assert.That(epochReward.DelegatedReward, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(epochReward.EpochBlockNum, Is.EqualTo(epoch));
+            Assert.That(epochReward.Address, Is.EqualTo(validator));
+            Assert.That(epochReward.AccountStatus, Is.EqualTo(expectedStatus));
+            Assert.That(epochReward.AccountReward, Is.EqualTo(UInt256.Parse("57000000000000000000")));
+            Assert.That(epochReward.DelegatedReward[owner.ToString()], Is.EqualTo(UInt256.Parse("51300000000000000000")));
+            Assert.That(epochReward.DelegatedReward![foundation.ToString()], Is.EqualTo(UInt256.Parse("5700000000000000000")));
+        }
     }
 
     [Test]
-    public void GetRewardByAccount_ShouldReturnFail_WhenRequestIsPruned()
+    public void BuildAccountEpochReward_DelegateOnly_ReturnsEmptyEpochReward()
     {
-        // Arrange
-        Address account = TestItem.AddressA;
-        const ulong begin = 100;
-        const ulong end = 200;
-        const ulong requestedEpoch = 120;
-        const ulong oldestRetained = 150;
-        const ulong newestRetained = 300;
+        Address validator = Address.FromNumber(1);
+        Address owner = Address.FromNumber(2);
+        const ulong epoch = 1795;
 
-        XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
-        XdcBlockHeader endHeader = Build.A.XdcBlockHeader().WithNumber(end).TestObject;
-
-        _blockTree.FindHeader(begin).Returns(beginHeader);
-        _blockTree.FindHeader(end).Returns(endHeader);
-
-        EpochSwitchInfo[] epochSwitchInfos =
-        [
-            new EpochSwitchInfo(Array.Empty<Address>(), Array.Empty<Address>(), Array.Empty<Address>(), new BlockRoundInfo(TestItem.KeccakA, 1, (long)requestedEpoch)),
-        ];
-
-        _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
+        XdcEpochRewards epochRewardData = new()
+        {
+            Signers = new()
             {
-                callInfo[0] = oldestRetained;
-                callInfo[1] = newestRetained;
-                return true;
-            });
+                [validator.ToString()] = new XdcRewardLog
+                {
+                    Reward = "57000000000000000000",
+                    Sign = 59,
+                },
+            },
+            Rewards = new()
+            {
+                [validator.ToString()] = new()
+                {
+                    [owner.ToString()] = "51300000000000000000",
+                },
+            },
+        };
 
-        // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
+        AccountEpochReward epochReward = epochRewardData.BuildAccountEpochReward(owner, epoch);
 
-        // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(epochReward.EpochBlockNum, Is.EqualTo(epoch));
+            Assert.That(epochReward.Address, Is.EqualTo(owner));
+            Assert.That(epochReward.AccountStatus, Is.EqualTo(""));
+            Assert.That(epochReward.AccountReward, Is.Null);
+            Assert.That(epochReward.DelegatedReward, Is.Empty);
+        }
     }
 
     [Test]
@@ -925,11 +1081,11 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>()).Returns(false);
-        _rewardsStore.HasEpochRewards(epoch).Returns(false);
+        _rewardsStore.TryGetEpochRewards(TestItem.KeccakA, out Arg.Any<XdcEpochRewards?>())
+            .Returns(false);
 
         // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
+        ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -951,11 +1107,28 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
+        ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
+    private static Dictionary<string, XdcRewardLog> GetSignerSection(XdcEpochRewards rewards, string section) =>
+        section switch
+        {
+            nameof(XdcEpochRewards.Signers) => rewards.Signers,
+            nameof(XdcEpochRewards.SignersProtector) => rewards.SignersProtector,
+            nameof(XdcEpochRewards.SignersObserver) => rewards.SignersObserver,
+            _ => throw new ArgumentOutOfRangeException(nameof(section), section, null)
+        };
+
+    private static Dictionary<string, Dictionary<string, string>> GetRewardSection(XdcEpochRewards rewards, string section) =>
+        section switch
+        {
+            nameof(XdcEpochRewards.Rewards) => rewards.Rewards,
+            nameof(XdcEpochRewards.RewardsProtector) => rewards.RewardsProtector,
+            nameof(XdcEpochRewards.RewardsObserver) => rewards.RewardsObserver,
+            _ => throw new ArgumentOutOfRangeException(nameof(section), section, null)
+        };
 }
