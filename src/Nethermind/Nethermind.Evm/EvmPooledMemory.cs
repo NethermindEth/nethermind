@@ -51,7 +51,7 @@ public struct EvmPooledMemory
         return true;
     }
 
-    public bool TrySave(in UInt256 location, Span<byte> value)
+    public bool TrySave(in UInt256 location, ReadOnlySpan<byte> value)
     {
         if (value.Length == 0)
         {
@@ -125,34 +125,6 @@ public struct EvmPooledMemory
         return true;
     }
 
-    public bool TrySave(in UInt256 location, in ZeroPaddedSpan value)
-    {
-        if (value.Length == 0)
-        {
-            // Nothing to do
-            return true;
-        }
-
-        ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
-        if (isViolation) return false;
-
-        UpdateSize(newLength);
-
-        int intLocation = TruncateToInt32(location.u0);
-        value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
-        if (value.PaddingLength > 0)
-        {
-            ClearPadding(_memory, intLocation + value.Span.Length, value.PaddingLength);
-        }
-
-        return true;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void ClearPadding(byte[] memory, int offset, int length)
-            => memory.AsSpan(offset, length).Clear();
-    }
-
     /// <summary>
     /// Variant of <see cref="TrySave"/> requiring the caller to have already invoked
     /// <see cref="IGasPolicy{TSelf}.UpdateMemoryCost"/> for (<paramref name="location"/>,
@@ -160,28 +132,54 @@ public struct EvmPooledMemory
     /// so this skips re-validation. Mirrors <see cref="CopyAfterGas"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void SaveAfterGas(in UInt256 location, in ZeroPaddedSpan value)
+    internal void SaveAfterGas(in UInt256 location, ReadOnlySpan<byte> value)
     {
-        if (value.Length == 0)
+        int length = value.Length;
+        if (length == 0)
         {
             return;
         }
 
         Debug.Assert(location.IsUint64);
-        Debug.Assert(location.u0 + (ulong)value.Length <= Size);
-        PrepareAccessAfterGas(location.u0 + (ulong)value.Length);
+        Debug.Assert(location.u0 + (ulong)length <= Size);
+        PrepareAccessAfterGas(location.u0 + (ulong)length);
 
         int intLocation = TruncateToInt32(location.u0);
-        int spanLength = value.Span.Length;
-        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+        value.CopyTo(_memory.AsSpan(intLocation, length));
+    }
 
-        if (spanLength > 0)
+    /// <summary>
+    /// Copies a source range to memory and fills any bytes beyond the source with zeroes.
+    /// The caller must have already charged for and expanded the destination range.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void CopyFromZeroExtendedAfterGas(
+        in UInt256 destination,
+        ReadOnlySpan<byte> source,
+        in UInt256 sourceOffset,
+        int length)
+    {
+        if (length == 0)
         {
-            value.Span.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref memory, intLocation), spanLength));
+            return;
         }
-        if (value.PaddingLength > 0)
+
+        Debug.Assert(destination.IsUint64);
+        Debug.Assert(destination.u0 + (ulong)length <= Size);
+        PrepareAccessAfterGas(destination.u0 + (ulong)length);
+
+        Span<byte> target = _memory.AsSpan(TruncateToInt32(destination.u0), length);
+        int copiedLength = 0;
+        if (sourceOffset < source.Length)
         {
-            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref memory, intLocation + spanLength), value.PaddingLength).Clear();
+            int intSourceOffset = (int)sourceOffset;
+            copiedLength = Math.Min(source.Length - intSourceOffset, length);
+            source.Slice(intSourceOffset, copiedLength).CopyTo(target);
+        }
+
+        if (copiedLength != length)
+        {
+            target[copiedLength..].Clear();
         }
     }
 
