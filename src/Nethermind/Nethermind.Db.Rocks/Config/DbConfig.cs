@@ -361,8 +361,8 @@ public class DbConfig : IDbConfig
         // Much like account kinda small.
         "target_file_size_base=64000000;" +
 
-        // Using 4kb size is faster, IO wise, but uses additional 500 MB of memory, which if put on block cache is much better.
-        "block_based_table_factory.block_size=8000;" +
+        // TEST branch: take the 4kb-is-faster tradeoff the comment describes.
+        "block_based_table_factory.block_size=4096;" +
 
         // Smaller
         "write_buffer_size=32000000;" +
