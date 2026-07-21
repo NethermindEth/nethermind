@@ -29,7 +29,7 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
 
         foreach (Withdrawal withdrawal in withdrawals)
         {
-            Set(Rlp.Encode(key++).Bytes, _codec.Encode(withdrawal).Bytes);
+            Set(Rlp.Encode(key++).Bytes, _codec.EncodeAsBytes(withdrawal));
         }
     }
 }

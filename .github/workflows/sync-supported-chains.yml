@@ -211,6 +211,7 @@ jobs:
           esac
 
           node_name="SyncSupportedChains-${network}-${sync_mode}-${GITHUB_RUN_ID}"
+          echo "node_name=$node_name" >> $GITHUB_ENV
 
           if [ -z "${{ inputs.nethermind_image }}" ]; then
             REF_NAME="${{ github.ref_name }}"
@@ -231,29 +232,17 @@ jobs:
           GENERIC_METRICS_FLAGS=(
             --el-extra-flag "Metrics.NodeName=${node_name}" \
             --el-extra-flag Metrics.Enabled=true \
-            --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
-            --el-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
-            --el-extra-flag Seq.MinLevel=Info \
-            --el-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
-            --el-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
+            --el-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug"
           )
           OP_METRICS_FLAGS=(
             --el-op-extra-flag "Metrics.NodeName=${node_name}" \
             --el-op-extra-flag Metrics.Enabled=true \
-            --el-op-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
-            --el-op-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
-            --el-op-extra-flag Seq.MinLevel=Info \
-            --el-op-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
-            --el-op-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
+            --el-op-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug"
           )
           L2_METRICS_FLAGS=(
             --el-l2-extra-flag "Metrics.NodeName=${node_name}" \
             --el-l2-extra-flag Metrics.Enabled=true \
-            --el-l2-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
-            --el-l2-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
-            --el-l2-extra-flag Seq.MinLevel=Info \
-            --el-l2-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
-            --el-l2-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
+            --el-l2-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug"
           )
 
           extra_param=""
@@ -378,6 +367,19 @@ jobs:
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
+      - name: Start Grafana Alloy
+        continue-on-error: true
+        uses: ./.github/actions/start-alloy
+        with:
+          network: ${{ matrix.config.network }}
+          node-name: ${{ env.node_name }}
+          loki-url: ${{ secrets.LOKI_URL }}
+          loki-username: ${{ secrets.LOKI_USERNAME }}
+          loki-password: ${{ secrets.LOKI_PASSWORD }}
+          prometheus-url: ${{ secrets.PROMETHEUS_URL }}
+          prometheus-username: ${{ secrets.PROMETHEUS_USERNAME }}
+          prometheus-password: ${{ secrets.PROMETHEUS_PASSWORD }}
+
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         env:
@@ -428,6 +430,13 @@ jobs:
       - name: Check size of DB
         run: |
           du -h $GITHUB_WORKSPACE/sedge
+
+      - name: Stop Grafana Alloy
+        if: always()
+        continue-on-error: true
+        run: |
+          docker stop -t 15 grafana-alloy 2>/dev/null || true
+          docker rm -f grafana-alloy 2>/dev/null || true
 
       - name: Destroy VM
         if: always()

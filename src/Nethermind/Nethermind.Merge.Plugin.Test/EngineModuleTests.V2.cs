@@ -558,7 +558,10 @@ public partial class EngineModuleTests
             new ExecutionPayloadBodyV1Result([], null)
         ]);
 
-        await AssertStreamedJsonMatchesSerializer(response);
+        string streamedJson = await AssertStreamedJsonMatchesSerializer(response);
+
+        // V1 bodies predate EIP-7928 and must not carry the blockAccessList key.
+        Assert.That(streamedJson, Does.Not.Contain("blockAccessList"));
     }
 
     [Test]

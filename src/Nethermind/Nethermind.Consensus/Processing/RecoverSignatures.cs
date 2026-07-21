@@ -111,11 +111,16 @@ namespace Nethermind.Consensus.Processing
 
             if (tx.AuthorizationList.Length > 3)
             {
-                ParallelUnbalancedWork.For(0, tx.AuthorizationList.Length, (i) =>
-                {
-                    AuthorizationTuple tuple = tx.AuthorizationList[i];
-                    tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
-                });
+                ParallelUnbalancedWork.For(
+                    0,
+                    tx.AuthorizationList.Length,
+                    (list: tx.AuthorizationList, ecdsa: _ecdsa),
+                    static (i, state) =>
+                    {
+                        AuthorizationTuple tuple = state.list[i];
+                        tuple.Authority ??= state.ecdsa.RecoverAddress(tuple);
+                        return state;
+                    });
             }
             else
             {

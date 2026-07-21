@@ -146,7 +146,8 @@ public class BaseMergePluginModule : Module
             .AddLast<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
-            .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
+            .AddSingleton<IMainProcessingModule, IRpcCapabilitiesProvider>(static capabilitiesProvider =>
+                new WitnessCapturingMainProcessingModule(IsWitnessCaptureEnabled(capabilitiesProvider)))
             .AddSingleton<WitnessRendezvous>()
             .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 
@@ -191,7 +192,9 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
-                .AddSingleton<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
+                .AddSingleton<NewPayloadWithWitnessHandler>()
+                .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
+                .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>
@@ -210,6 +213,11 @@ public class BaseMergePluginModule : Module
             // Testing rpc
             .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
+
+    private static bool IsWitnessCaptureEnabled(IRpcCapabilitiesProvider capabilitiesProvider) =>
+        capabilitiesProvider.GetEngineCapabilities().TryGetValue(
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4), out RpcCapabilityOptions options)
+        && options.IsEnabled();
 
     IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IComponentContext ctx)
     {

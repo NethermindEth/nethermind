@@ -633,22 +633,27 @@ public partial class EthRpcModuleTests
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: mixed calldata returns floor");
 
-        // EIP-7981: access list with 1 address, no calldata — standard wins.
-        ulong eip7981Standard = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
+        ulong eip2780ValueTransferBase = GasCostOf.TransactionEip2780
+            + Eip8038Constants.ColdAccountAccess
+            + GasCostOf.TxValueCostEip2780
+            + GasCostOf.TransferLogEip2780;
+
+        // EIP-7981: access list with 1 address, no calldata - standard wins.
+        ulong eip7981Standard = eip2780ValueTransferBase + Eip8038Constants.AccessListAddressCost
             + 80UL * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, Array.Empty<byte>(), 100_000UL,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Standard.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7981: standard wins with access list");
 
-        // Modest calldata: standard still exceeds the floor (floor-wins covered by data-heavy cases).
-        ulong eip7981StandardWithCalldata = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
-            + 100UL * GasCostOf.TxDataZero
-            + 80UL * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
+        // EIP-7976 charges every calldata byte at the floor's nonzero-token rate.
+        ulong eip7981FloorWithCalldata = eip2780ValueTransferBase
+            + (100UL * Eip7981Spec.GasCosts.TxDataNonZeroMultiplier + 80UL)
+            * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, new byte[100], 100_000UL,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
-                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981StandardWithCalldata.ToHexString(true)}\",\"id\":67}}")
-            .SetName("EIP-7981: standard wins with calldata and access list");
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981FloorWithCalldata.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7981: floor wins with calldata and access list");
     }
 
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]
@@ -663,7 +668,7 @@ public partial class EthRpcModuleTests
             .WithData(data);
         if (accessList is not null)
             txBuilder.WithAccessList(accessList);
-        Transaction tx = txBuilder.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction tx = txBuilder.WithValue(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
         EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.GasPrice = null;

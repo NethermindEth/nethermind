@@ -22,6 +22,12 @@ public interface IRlpDecoder<T> : IRlpDecoder
 
     Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
+    /// <summary>
+    /// Encodes <paramref name="item"/> into a freshly allocated <see cref="byte"/> array,
+    /// without wrapping the result in a throwaway <see cref="Rlp"/>.
+    /// </summary>
+    byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+
     Rlp Encode(T[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null);
