@@ -19,8 +19,8 @@ public sealed class GCScheduler
     private const int BlocksBacklogTriggeringManualGC = 4;
     private const int MaxBlocksWithoutGC = 250;
     private const int MinSecondsBetweenForcedGC = 120;
-    // 4 GiB ≈ 256 typical 30 MGas mainnet blocks
-    internal const long SustainedSweepAllocationBytes = 4L * 1024 * 1024 * 1024;
+    // Keeps concurrent gen2 ahead of allocation bursts during sustained heavy-block processing.
+    internal const long SustainedSweepAllocationBytes = 512L * 1024 * 1024;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
