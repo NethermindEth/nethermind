@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -94,6 +95,39 @@ public class BlockValidatorTests
         CreateEip8288Validator(new FixedLeanProofVerifier(false)).ValidateSuggestedBlock(block, parent, out string? error);
 
         Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+    }
+
+    [Test]
+    public void Eip8288_full_block_with_dependency_frame_round_trips_through_rlp_and_validates()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
+        depData[31] = Eip8288Constants.LeanStarkScheme;
+        Transaction depTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeDepVerify, 0, null, Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, depData)],
+            FrameSignatures = [],
+        };
+        depTx.Hash = depTx.CalculateHash();
+
+        Block block = Build.A.Block.WithParent(parent).WithTransactions(depTx).TestObject;
+        block.Header.RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block)));
+        block.Header.Hash = block.Header.CalculateHash();
+
+        // Full-block RLP round-trip — the wire path a peer receives — then validate the decoded block.
+        Block decoded = Rlp.Decode<Block>(Rlp.Encode(block).Bytes);
+
+        Assert.That(decoded.Header.RecursiveStark, Is.Not.Null);
+        Assert.That(decoded.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(block.Header.RecursiveStark!.BlockDepsHash));
+        Assert.That(Eip8288Dependencies.ForBlock(decoded), Has.Count.EqualTo(1));
+        Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
+
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(decoded, parent, out string? error);
+
+        Assert.That(result, Is.True, error);
     }
 
     private static (Block Block, BlockHeader Parent) Eip8288Block()

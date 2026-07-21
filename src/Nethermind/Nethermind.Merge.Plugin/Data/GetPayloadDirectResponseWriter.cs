@@ -134,6 +134,13 @@ internal static class GetPayloadDirectResponseWriter
             WriteBlockAccessList(writer, block);
             writer.Write(",\"slotNumber\":"u8);
             WriteNullableUlongHexString(writer, block.SlotNumber);
+            if (block.Header.RecursiveStark is { } recursiveStark)
+            {
+                writer.Write(",\"recursiveStarkProof\":"u8);
+                WriteHexString(writer, recursiveStark.StarkProof, chunked: recursiveStark.StarkProof.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
+                writer.Write(",\"recursiveStarkBlockDepsHash\":"u8);
+                WriteHexString(writer, recursiveStark.BlockDepsHash.Bytes, chunked: false);
+            }
         }
 
         writer.Write("}"u8);

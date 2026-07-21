@@ -1914,6 +1914,40 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void SubmitTx_DependencyFrameTransaction_AcceptedWhenEip8288Active()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8288Prototype.Instance));
+            byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
+            depData[31] = Eip8288Constants.LeanSphincsScheme;
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.PrivateKeyA.Address,
+                Frames =
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(TxFrame.ModeDepVerify, 0, target: null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData),
+                ],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            frameTx.Hash = frameTx.CalculateHash();
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "EIP-8288 dependency-frame transactions must enter the pool once the fork is active");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
+        }
+
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);

@@ -33,6 +33,10 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         // rex/tooling submit frame txs for end-to-end devnet testing. Before frame txs may enter a
         // public mempool this gate must be tightened to also require those DoS filters. Static
         // well-formedness is already enforced downstream by MalformedTxFilter regardless.
+        // EIP-8288 dependency-verification frames ride this same admission path; their mode and
+        // per-tx dependency limits are validated downstream by MalformedTxFilter when EIP-8288 is
+        // active. Wrapper-based proof distribution is a separate mempool layer, not required while
+        // proofs are stubbed on devnets.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
