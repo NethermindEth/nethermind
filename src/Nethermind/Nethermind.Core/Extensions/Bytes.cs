@@ -148,11 +148,10 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 0) return ZeroByteSpan;
-
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
-            // Keep one or it will be interpreted as null
-            return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
+            // Keep one zero byte or it will be interpreted as null; the data-section-backed
+            // ZeroByteSpan avoids returning an interior reference that keeps the source alive.
+            return nonZeroIndex < 0 ? ZeroByteSpan : bytes[nonZeroIndex..];
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)

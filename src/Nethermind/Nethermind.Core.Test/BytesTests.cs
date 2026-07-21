@@ -867,5 +867,21 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(LeadingZerosCountCases))]
         public int LeadingZerosCount_cases(byte[] bytes, int startIndex) =>
             new ReadOnlySpan<byte>(bytes).LeadingZerosCount(startIndex);
+
+        private static IEnumerable<TestCaseData> WithoutLeadingZerosCases()
+        {
+            yield return new TestCaseData(Array.Empty<byte>()).Returns(new byte[] { 0 }).SetName("empty keeps one zero byte");
+            yield return new TestCaseData(new byte[] { 0 }).Returns(new byte[] { 0 }).SetName("single zero");
+            yield return new TestCaseData(new byte[32]).Returns(new byte[] { 0 }).SetName("all-zero word keeps one zero byte");
+            yield return new TestCaseData(new byte[] { 0, 1 }).Returns(new byte[] { 1 }).SetName("one leading zero");
+            yield return new TestCaseData(new byte[] { 1, 0 }).Returns(new byte[] { 1, 0 }).SetName("trailing zero kept");
+            byte[] word = new byte[32];
+            word[31] = 0xFF;
+            yield return new TestCaseData(word).Returns(new byte[] { 0xFF }).SetName("value in last byte of word");
+        }
+
+        [TestCaseSource(nameof(WithoutLeadingZerosCases))]
+        public byte[] WithoutLeadingZeros_cases(byte[] bytes) =>
+            new ReadOnlySpan<byte>(bytes).WithoutLeadingZeros().ToArray();
     }
 }
