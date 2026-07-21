@@ -36,7 +36,7 @@ public class Eip8038ConstantsTests
             Assert.That(Eip8038Constants.CallValue, Is.EqualTo(10300));
             Assert.That(Eip8038Constants.CreateAccess, Is.EqualTo(11000));
             Assert.That(RefundOf.SClearEip8038, Is.EqualTo(12480));
-            Assert.That(Eip8038Constants.PerAuthBaseRegular, Is.EqualTo(15816));
+            Assert.That(Eip8038Constants.PerAuthBaseRegular, Is.EqualTo(7816));
         });
 
     [Test]
