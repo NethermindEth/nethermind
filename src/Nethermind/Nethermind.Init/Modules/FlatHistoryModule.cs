@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -31,5 +31,7 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<ITrieNodeCache>(),
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
-            .AddStep(typeof(SeedFlatHistoryGenesis));
+            .AddStep(typeof(SeedFlatHistoryGenesis))
+            // Throwaway: migrates pre-watermark-format indexes; remove once all nodes have started on the new format.
+            .AddStep(typeof(MigrateFlatHistoryIndex));
 }

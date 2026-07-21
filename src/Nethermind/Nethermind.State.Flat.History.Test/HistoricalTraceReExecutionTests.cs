@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -84,7 +84,10 @@ public class HistoricalTraceReExecutionTests
         Account existing = new(nonce: 3, balance: 300);
         HistoryColumnsWriter.RecordAccount(_historyColumns, ExistingAddr, 5, existing);
         HistoryColumnsWriter.RecordStorage(_historyColumns, ExistingAddr, ExistingSlot, 5, [0xAA]);
-        HistoryColumnsWriter.MarkBlockAvailable(_historyColumns, HistoricalBlock);
+        // The historical scope is opened on a header at HistoricalBlock with state root KeccakB; availability requires
+        // both the watermark to cover the block and the captured root to match that header (EIP-1898 binding).
+        HistoryColumnsWriter.MarkBlock(_historyColumns, HistoricalBlock, TestItem.KeccakB);
+        HistoryColumnsWriter.SetWatermark(_historyColumns, HistoricalBlock);
 
         IReleaseSpec spec = MuirGlacier.Instance;
         Address freshAddr = TestItem.AddressB;

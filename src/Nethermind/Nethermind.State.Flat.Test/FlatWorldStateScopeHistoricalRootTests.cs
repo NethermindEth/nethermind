@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -133,6 +133,21 @@ public class FlatWorldStateScopeHistoricalRootTests
     }
 
     [Test]
+    public void Get_WithVerifyWithTrie_OnTrieLessScope_DoesNotThrow()
+    {
+        // VerifyWithTrie cross-checks each flat read against the trie. A trie-less historical scope has no trie — the
+        // backing reader throws on trie-node access — so verification must be skipped, not throw, for account and slot.
+        StateId currentStateId = new(100, TestItem.KeccakA);
+        using FlatWorldStateScope scope = BuildScope(currentStateId, isHistorical: true, verifyWithTrie: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => scope.Get(TestItem.AddressA), Throws.Nothing);
+            Assert.That(() => scope.CreateStorageTree(TestItem.AddressA).Get((UInt256)7), Throws.Nothing);
+        }
+    }
+
+    [Test]
     public void IsHistorical_DefaultsToFalse()
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -142,7 +157,7 @@ public class FlatWorldStateScopeHistoricalRootTests
         Assert.That(readOnlyBundle.IsHistorical, Is.False);
     }
 
-    private FlatWorldStateScope BuildScope(StateId currentStateId, bool isHistorical)
+    private FlatWorldStateScope BuildScope(StateId currentStateId, bool isHistorical, bool verifyWithTrie = false)
     {
         SnapshotBundle bundle = BuildBundle(isHistorical);
 
@@ -151,7 +166,7 @@ public class FlatWorldStateScopeHistoricalRootTests
             bundle,
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new MemDb()),
             Substitute.For<IFlatCommitTarget>(),
-            new FlatDbConfig { CompactSize = 2 },
+            new FlatDbConfig { CompactSize = 2, VerifyWithTrie = verifyWithTrie },
             new NoopTrieWarmer(),
             LimboLogs.Instance);
     }

@@ -154,7 +154,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         HintGet(address, account, promote: !isInCurrentSnapshot);
 
-        if (_configuration.VerifyWithTrie)
+        // A trie-less (history-backed) scope has no trie to verify against — the reader throws on trie-node access,
+        // and a historical value verified against the current trie would be wrong anyway.
+        if (_configuration.VerifyWithTrie && !_trieless)
         {
             Account? accTrie = _stateTree.Get(address);
             if (accTrie != account)

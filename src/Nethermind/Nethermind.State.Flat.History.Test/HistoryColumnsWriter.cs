@@ -1,8 +1,7 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -65,11 +64,14 @@ internal static class HistoryColumnsWriter
             batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets));
     }
 
-    public static void MarkBlockAvailable(IColumnsDb<FlatHistoryColumns> columns, ulong block)
+    /// <summary>Records the per-block availability marker (<c>block -> captured state root</c>).</summary>
+    public static void MarkBlock(IColumnsDb<FlatHistoryColumns> columns, ulong block, in ValueHash256 stateRoot)
     {
-        Span<byte> key = stackalloc byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(key, block);
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
-        batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(key, Array.Empty<byte>());
+        HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, stateRoot);
     }
+
+    /// <summary>Publishes the contiguous watermark (and stamps the format version), gating reads at or below it.</summary>
+    public static void SetWatermark(IColumnsDb<FlatHistoryColumns> columns, ulong watermark) =>
+        new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(watermark);
 }

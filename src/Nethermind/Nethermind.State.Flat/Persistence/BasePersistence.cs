@@ -151,7 +151,7 @@ public static class BasePersistence
     /// postdates flat sync and tooling can bypass the metadata column, so legacy raw DBs may lack it too.
     /// </remarks>
     /// <param name="slotStore">The column that holds storage slot values for this layout.</param>
-    public static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ISortedKeyValueStore slotStore, ILogger logger)
+    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ISortedKeyValueStore slotStore, ILogger logger)
     {
         IReadOnlyKeyValueStore meta = db.GetColumnDb(FlatDbColumns.Metadata);
         bool rlpWrap = ReadSlotEncoding(meta) switch

@@ -865,10 +865,7 @@ public class PersistenceManagerTests
     [Test]
     public async Task AddToPersistence_WithCaptureHook_CapturesHistoryUpToPersistedBlock()
     {
-        using SnapshotableMemColumnsDb<FlatDbColumns> historyDb = new();
-        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
-        HistoryWriter historyWriter = new(historyDb, historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
-
+        RecordingCaptureHook hook = new();
         using PersistenceManager manager = new(
             _config,
             ScheduleHelper.CreateWithOffset(_config, 0),
@@ -880,7 +877,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             Substitute.For<IProcessExitSource>(),
-            historyWriter);
+            hook);
 
         StateId from = Block0;
         StateId to = CreateStateId(16);
@@ -892,7 +889,7 @@ public class PersistenceManagerTests
 
         await manager.AddToPersistence(latest);
 
-        Assert.That(historyWriter.LastCapturedBlock, Is.EqualTo(16UL));
+        Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
     }
 
     // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed
@@ -900,10 +897,7 @@ public class PersistenceManagerTests
     [Test]
     public void FlushToPersistence_WithCaptureHook_CapturesTheFlushedRange()
     {
-        using SnapshotableMemColumnsDb<FlatDbColumns> historyDb = new();
-        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
-        HistoryWriter historyWriter = new(historyDb, historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
-
+        RecordingCaptureHook hook = new();
         using PersistenceManager manager = new(
             _config,
             ScheduleHelper.CreateWithOffset(_config, 0),
@@ -915,7 +909,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             Substitute.For<IProcessExitSource>(),
-            historyWriter);
+            hook);
 
         StateId to = CreateStateId(16);
         _ = CreateSnapshot(Block0, to, compacted: true);
@@ -928,7 +922,7 @@ public class PersistenceManagerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(flushed, Is.EqualTo(to));
-            Assert.That(historyWriter.LastCapturedBlock, Is.EqualTo(16UL), "the flushed range must be captured before it is pruned");
+            Assert.That(hook.CapturedUpTo, Is.EqualTo(to), "the flushed range must be captured before it is pruned");
         }
     }
 
@@ -1217,6 +1211,14 @@ public class PersistenceManagerTests
 
         public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+    }
+
+    private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook
+    {
+        public StateId? CapturedUpTo { get; private set; }
+
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository) =>
+            CapturedUpTo = persistedHead;
     }
 
     private sealed class ThrowingCaptureHook : IFlatPersistenceCaptureHook

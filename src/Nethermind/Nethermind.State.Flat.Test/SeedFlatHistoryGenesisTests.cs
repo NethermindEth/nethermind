@@ -3,6 +3,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -12,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.History;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -88,5 +90,30 @@ public class SeedFlatHistoryGenesisTests
         Assert.That(_reader.HasHistoryForBlock(0), Is.False);
     }
 
-    private SeedFlatHistoryGenesis Step(ChainSpec chainSpec) => new(chainSpec, _writer, _reader, LimboLogs.Instance);
+    // A fresh from-genesis node (head still at genesis) captures block 0 through the normal walk, so the step must
+    // not seed or warn even when the allocations are unreconstructible — the walk covers them properly.
+    [Test]
+    public async Task Skips_seeding_on_fresh_from_genesis_node()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Allocations = new()
+            {
+                [TestItem.AddressA] = new ChainSpecAllocation(
+                    1000, 0, code: null, constructor: [0x60, 0x00], storage: null),
+            },
+        };
+
+        await Step(chainSpec, headBlockNumber: 0).Execute(CancellationToken.None);
+
+        Assert.That(_reader.HasHistoryForBlock(0), Is.False);
+    }
+
+    private SeedFlatHistoryGenesis Step(ChainSpec chainSpec, int headBlockNumber = 100)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(headBlockNumber).TestObject);
+        blockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakA).TestObject);
+        return new(chainSpec, blockTree, _writer, _reader, LimboLogs.Instance);
+    }
 }

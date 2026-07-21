@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -21,6 +22,7 @@ namespace Nethermind.Init.Steps;
 [RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class SeedFlatHistoryGenesis(
     ChainSpec chainSpec,
+    IBlockTree blockTree,
     HistoryWriter historyWriter,
     HistoryReader historyReader,
     ILogManager logManager) : IStep
@@ -30,6 +32,14 @@ public class SeedFlatHistoryGenesis(
     public Task Execute(CancellationToken cancellationToken)
     {
         if (historyReader.HasHistoryForBlock(0)) return Task.CompletedTask;
+
+        // A fresh from-genesis node captures block 0 through the normal walk as it processes genesis, so there is
+        // nothing to seed and no gap to warn about. Only a node whose head is already past genesis with block 0
+        // uncaptured (history enabled after the genesis snapshot left memory) needs the chain-spec fallback.
+        if ((blockTree.Head?.Number ?? 0) == 0) return Task.CompletedTask;
+
+        // The genesis header carries the state root the seeded block-0 marker must bind to (EIP-1898 match).
+        if (blockTree.Genesis?.StateRoot is not { } genesisStateRoot) return Task.CompletedTask;
 
         Dictionary<Address, ChainSpecAllocation> allocations = chainSpec.Allocations ?? [];
 
@@ -54,7 +64,7 @@ public class SeedFlatHistoryGenesis(
             accounts.Add(new(address, account));
         }
 
-        historyWriter.SeedGenesis(accounts);
+        historyWriter.SeedGenesis(accounts, genesisStateRoot);
         if (_logger.IsInfo) _logger.Info($"Seeded flat history genesis from {accounts.Count} chain spec allocations.");
         return Task.CompletedTask;
     }

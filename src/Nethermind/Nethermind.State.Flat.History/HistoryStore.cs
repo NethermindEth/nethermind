@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
@@ -51,9 +51,9 @@ public sealed class HistoryStore
     }
 
     /// <summary>
-    /// Reads the value as of <paramref name="block"/> into <paramref name="outBuffer"/>. Returns -1 when the key
-    /// never changed at/before <paramref name="block"/> (caller falls back to the tip), 0 for a deletion tombstone,
-    /// otherwise the number of value bytes written.
+    /// Reads the value as of <paramref name="block"/> into <paramref name="outBuffer"/>. Returns -1 when the key never
+    /// changed at/before <paramref name="block"/> — with contiguous capture that means it did not exist at that height,
+    /// so the caller reports absent — 0 for a deletion tombstone, otherwise the number of value bytes written.
     /// </summary>
     public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer) =>
         TryGetAt(block, flatKey, outBuffer, out _);

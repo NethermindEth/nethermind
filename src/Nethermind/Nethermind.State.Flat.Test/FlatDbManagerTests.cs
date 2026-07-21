@@ -285,7 +285,7 @@ public class FlatDbManagerTests
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
         StateId historicalBlock = CreateStateId(10, rootByte: 10);
         _snapshotRepository.HasState(historicalBlock).Returns(false);
-        MarkBlocksAvailable(0, (ulong)HistoryBarrier);
+        MarkHistoryAvailable(0, (ulong)HistoryBarrier, block => CreateStateId(block, (byte)block));
 
         await using FlatDbManager inner = CreateManager();
         IFlatDbManager manager = historyEnabled ? WrapHistory(inner) : inner;
@@ -300,7 +300,7 @@ public class FlatDbManagerTests
     public async Task HasStateForBlock_serves_history_only_strictly_below_the_barrier(ulong block, bool expected)
     {
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
-        MarkBlocksAvailable(0, (ulong)HistoryBarrier + 50);
+        MarkHistoryAvailable(0, (ulong)HistoryBarrier + 50, b => CreateStateId(b, rootByte: 42));
         StateId stateId = CreateStateId(block, rootByte: 42);
         _snapshotRepository.HasState(stateId).Returns(false);
 
@@ -324,6 +324,44 @@ public class FlatDbManagerTests
         Assert.That(() => manager.GatherSnapshotBundle(historicalBlock, usage), Throws.InvalidOperationException);
     }
 
+    // The per-block marker binds the captured state root; a query below the barrier for the same height but a
+    // different (fork) root must route to the live manager, not be served canonical values from history (EIP-1898).
+    [Test]
+    public async Task HasStateForBlock_below_barrier_rejects_non_canonical_state_root()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, (ulong)HistoryBarrier, block => CreateStateId(block, (byte)block));
+        _snapshotRepository.HasState(Arg.Any<StateId>()).Returns(false);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.HasStateForBlock(CreateStateId(10, rootByte: 10)), Is.True, "the canonical root is served from history");
+            Assert.That(manager.HasStateForBlock(CreateStateId(10, rootByte: 99)), Is.False, "a non-canonical hash must not be served");
+        }
+    }
+
+    // History is served only up to the contiguous watermark; a block below the barrier but above the watermark must
+    // report no history (fail closed) rather than resolve to an earlier value across the gap.
+    [Test]
+    public async Task HasStateForBlock_below_barrier_fails_closed_above_the_watermark()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        _snapshotRepository.HasState(Arg.Any<StateId>()).Returns(false);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.HasStateForBlock(CreateStateId(40, rootByte: 40)), Is.True);
+            Assert.That(manager.HasStateForBlock(CreateStateId(50, rootByte: 50)), Is.False, "above the watermark must report no history");
+        }
+    }
+
     private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
         inner,
         _persistenceManager,
@@ -342,21 +380,24 @@ public class FlatDbManagerTests
         RecordStorage(20, [0xBB, 0xCC]);
         RecordStorage(30, ReadOnlySpan<byte>.Empty);
 
-        // Every processed block below the barrier carries an availability marker, as CaptureBlock writes one per
-        // captured block regardless of whether that block changed any account or slot.
-        MarkBlocksAvailable(0, (ulong)HistoryBarrier);
+        // Every captured block carries an availability marker holding its state root; the read gate also needs the
+        // contiguous watermark to cover the queried height. Root == CreateStateId(block, (byte)block) so it matches
+        // the roots the tests query with.
+        MarkHistoryAvailable(0, (ulong)HistoryBarrier, block => CreateStateId(block, (byte)block));
     }
 
-    private void MarkBlocksAvailable(ulong fromInclusive, ulong toExclusive)
+    private void MarkHistoryAvailable(ulong fromInclusive, ulong toExclusive, Func<ulong, StateId> stateAt)
     {
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
-        IWriteBatch available = batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks);
-        Span<byte> key = stackalloc byte[sizeof(ulong)];
-        for (ulong block = fromInclusive; block < toExclusive; block++)
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
         {
-            System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(key, block);
-            available.Set(key, Array.Empty<byte>());
+            IWriteBatch available = batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks);
+            for (ulong block = fromInclusive; block < toExclusive; block++)
+            {
+                HistoryAvailability.MarkBlock(available, block, stateAt(block).StateRoot);
+            }
         }
+
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(toExclusive - 1);
     }
 
     private void RecordAccount(ulong block, Account? account)

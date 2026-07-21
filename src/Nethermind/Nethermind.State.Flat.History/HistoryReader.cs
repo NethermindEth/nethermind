@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
@@ -26,7 +26,7 @@ public sealed class HistoryReader
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
     private readonly StorageClearStore _storageClears;
-    private readonly IDb _availableBlocks;
+    private readonly HistoryAvailability _availability;
     private readonly bool _rlpWrapSlots;
 
     public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, ILogManager logManager)
@@ -48,16 +48,17 @@ public sealed class HistoryReader
             history.GetColumnDb(FlatHistoryColumns.StorageHistory),
             history.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
-        _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
     }
 
-    [SkipLocalsInit]
-    public bool HasHistoryForBlock(ulong block)
-    {
-        Span<byte> key = stackalloc byte[sizeof(ulong)];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(key, block);
-        return _availableBlocks.KeyExists(key);
-    }
+    /// <summary>Whether contiguous history has been captured up to and including <paramref name="block"/>.</summary>
+    public bool HasHistoryForBlock(ulong block) => _availability.IsCovered(block);
+
+    /// <summary>
+    /// Whether <paramref name="state"/> can be served from history: it is at or below the contiguous watermark and its
+    /// state root matches the captured root at that height, so a non-canonical block hash is rejected (EIP-1898).
+    /// </summary>
+    public bool IsAvailable(in StateId state) => _availability.Matches(state.BlockNumber, state.StateRoot);
 
     /// <summary>
     /// Resolves the account as of <paramref name="block"/>. Returns <c>false</c> when the account did not exist at

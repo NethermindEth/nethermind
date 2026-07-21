@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -162,6 +162,7 @@ public class HistoryWriterTests
     [Test]
     public void CaptureUpTo_is_resumable_and_skips_already_captured_blocks()
     {
+        SeedGenesisFloor();
         Account atBlock1 = new(1, 11);
         Account atBlock2 = new(2, 22);
         CommitBlock(0, 1, accountChanges: [(AddrA, atBlock1)]);
@@ -338,6 +339,42 @@ public class HistoryWriterTests
         }
     }
 
+    // A capture that cannot walk down to the genesis floor (no genesis snapshot, no seeded floor) never connects, so
+    // the watermark must stay unset — reads report no history rather than a pre-gap value.
+    [Test]
+    public void Capture_that_cannot_connect_leaves_watermark_unadvanced()
+    {
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
+
+        _writer.CaptureUpTo(StateAt(2), _repository);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL));
+            Assert.That(_reader.HasHistoryForBlock(1), Is.False);
+            Assert.That(_reader.HasHistoryForBlock(2), Is.False);
+        }
+    }
+
+    // The per-block marker binds the block's state root; a query for the same height with a different root (a
+    // non-canonical EIP-1898 hash) must not be served.
+    [Test]
+    public void Capture_binds_block_state_root_for_availability()
+    {
+        SeedGenesisFloor();
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+
+        _writer.CaptureUpTo(StateAt(1), _repository);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.IsAvailable(StateAt(1)), Is.True);
+            Assert.That(_reader.IsAvailable(new StateId(1, TestItem.KeccakA)), Is.False,
+                "a different state root at the same height must not be available (EIP-1898)");
+        }
+    }
+
     [Test]
     public void Capture_with_history_disabled_records_nothing()
     {
@@ -356,7 +393,7 @@ public class HistoryWriterTests
     [Test]
     public void Seeded_genesis_allocations_read_at_every_height()
     {
-        _writer.SeedGenesis([new(AddrA, new Account(0, 1000))]);
+        _writer.SeedGenesis([new(AddrA, new Account(0, 1000))], StateAt(0).StateRoot);
 
         bool atGenesis = _reader.TryGetAccount(0, AddrA, out AccountStruct genesisAccount);
         bool atLater = _reader.TryGetAccount(7, AddrA, out AccountStruct laterAccount);
@@ -376,6 +413,7 @@ public class HistoryWriterTests
     [Test]
     public void Capture_over_converted_range_reads_persisted_bases()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1)), (AddrB, new Account(1, 100))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2)), (AddrB, null)], storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 3))]);
@@ -403,6 +441,7 @@ public class HistoryWriterTests
     [Test]
     public void Flag_on_keeps_tip_reads_correct_and_populates_history()
     {
+        SeedGenesisFloor();
         const int blockCount = 6;
         for (ulong block = 1; block <= blockCount; block++)
         {
@@ -567,6 +606,10 @@ public class HistoryWriterTests
 
         _repository.RemoveAndReleaseInMemoryKnownState(StateAt(block), SnapshotTier.InMemoryBase);
     }
+
+    // Establishes the block-0 watermark floor (as production genesis capture / SeedGenesis does) so a later capture
+    // walk connects to it and publishes its watermark without needing a genesis snapshot in the repository.
+    private void SeedGenesisFloor() => _writer.SeedGenesis([], StateAt(0).StateRoot);
 
     private static StateId StateAt(ulong blockNumber)
     {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -54,7 +54,7 @@ public sealed class HistoricalFlatDbManager(
         StateId persisted = persistenceManager.GetCurrentPersistedStateId();
         return persisted != StateId.PreGenesis
             && baseBlock.BlockNumber < persisted.BlockNumber
-            && historyReader.HasHistoryForBlock(baseBlock.BlockNumber);
+            && historyReader.IsAvailable(baseBlock);
     }
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values

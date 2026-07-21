@@ -73,7 +73,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             value = StorageTree.ZeroBytes;
         }
 
-        if (_config.VerifyWithTrie)
+        // A trie-less (history-backed) scope has no storage trie to verify against — the reader throws on trie-node
+        // access, and a historical value verified against the current trie would be wrong anyway.
+        if (_config.VerifyWithTrie && !_scope.Trieless)
         {
             byte[] treeValue = _tree.Get(index);
             if (!Bytes.AreEqual(treeValue, value))

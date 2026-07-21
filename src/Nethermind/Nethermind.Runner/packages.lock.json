@@ -816,8 +816,7 @@
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Crypto": "[1.40.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )"
+          "Nethermind.Specs": "[1.40.0-unstable, )"
         }
       },
       "nethermind.evm.precompiles": {
