@@ -50,11 +50,8 @@ internal sealed class PortfolioViewerStartupFilter : IStartupFilter
         };
 }
 
-/// <summary>
-/// Serves the embedded portfolio viewer page at <c>/portfolio</c> (plus its service worker), the
-/// sibling-node discovery list at <c>/portfolio-nodes</c>, and proxies JSON-RPC to discovered
-/// siblings via <c>/portfolio-rpc/{port}</c> so the multi-chain view works through a single port.
-/// </summary>
+/// <summary>Serves the embedded portfolio viewer page and its detection/IPFS/sibling-proxy endpoints under
+/// <c>/portfolio*</c>, so the multi-chain view works through a single JSON-RPC port.</summary>
 public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins)
 {
     private static readonly PathString NodesPath = new("/portfolio-nodes");
@@ -152,8 +149,7 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         return context.Response.SendFileAsync(file);
     }
 
-    // Absent Origin (same-origin navigations, non-browser clients) counts as same-origin; an unparseable
-    // Origin ("null" from a sandboxed context) counts as cross-origin.
+    // Absent Origin counts as same-origin; an unparseable "null" Origin counts as cross-origin.
     private static bool IsCrossOrigin(HttpContext context)
     {
         string? origin = context.Request.Headers.Origin;
@@ -272,7 +268,6 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         await siblings.ProxyAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
     }
 
-    // Forwards a detection request to a sibling node, so the multi-chain view drives detection on sibling chains.
     private async Task ProxyDetectAsync(HttpContext context)
     {
         context.Request.Path.StartsWithSegments(DetectProxyPathPrefix, out PathString remaining);
@@ -295,7 +290,6 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         await JsonSerializer.SerializeAsync(context.Response.Body, entry, JsonOpts, context.RequestAborted);
     }
 
-    // Trigger (or resume) a detection scan for one account, returning the current cached progress to poll on.
     private async Task ServeDetectPostAsync(HttpContext context)
     {
         DetectPost? post = await JsonSerializer.DeserializeAsync<DetectPost>(context.Request.Body, JsonOpts, context.RequestAborted);

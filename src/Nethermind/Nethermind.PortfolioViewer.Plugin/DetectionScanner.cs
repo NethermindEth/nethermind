@@ -20,29 +20,22 @@ public interface IDetectionScanner
     void RequestScan(long chainId, Address account);
 }
 
-/// <summary>
-/// Discovers the ERC-20 contracts an account has transferred to/from by scanning the node's own log
-/// index in-process, and writes the candidate set to <see cref="IDetectionCache"/>.
-/// </summary>
+/// <summary>Discovers the token/NFT contracts an account transferred, from this node's log index.</summary>
 /// <remarks>
-/// Runs through the node's <see cref="IBackgroundTaskScheduler"/> (BelowNormal priority, paused during block
-/// processing, cancelled when a block arrives), so a deep scan can't affect validator performance. Split into
-/// small block chunks chained until retained history is covered; a pre-empted chunk is retried. Reads only this
-/// node's data via <see cref="ILogFinder"/> (bloom-index backed), so it bypasses the JSON-RPC range/count caps.
+/// Runs through the <see cref="IBackgroundTaskScheduler"/> (yields to block processing), split into block
+/// chunks chained until retained history is covered, so a deep scan can't affect validator performance.
 /// </remarks>
 public sealed class DetectionScanner(
     IBackgroundTaskScheduler scheduler, ILogFinder logFinder, IBlockFinder blockFinder, IDetectionCache cache, ILogManager logManager)
     : IDetectionScanner
 {
-    // Transfer(address indexed from, address indexed to, uint256 value) — ERC-20 (3 topics) and ERC-721 (4 topics)
+    // ERC-20/ERC-721 Transfer, and ERC-1155 TransferSingle/TransferBatch event signatures
     private static readonly Hash256 TransferTopic = new("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef");
-    // ERC-1155 TransferSingle(operator, from indexed, to indexed, id, value) and TransferBatch (same indexed args)
     private static readonly Hash256 TransferSingleTopic = new("0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62");
     private static readonly Hash256 TransferBatchTopic = new("0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb");
 
-    // Per-account chunk size adapts: it grows on a chunk that completes (sparse accounts race ahead — the
-    // log index makes wide ranges cheap) and halves on one pre-empted by block processing (very active
-    // accounts settle on a size that fits an inter-block gap, instead of retrying an oversized range forever).
+    // Per-account chunk size adapts: grows after a chunk completes, halves when block processing pre-empts one,
+    // so busy accounts settle on a size that fits an inter-block gap.
     private const int BaseChunkBlocks = 5_000;
     private const int MinChunkBlocks = 250;
     private const int MaxChunkBlocks = 250_000;
@@ -64,9 +57,7 @@ public sealed class DetectionScanner(
     {
         long head = (long)(blockFinder.Head?.Number ?? 0);
         DetectionEntry? entry = cache.Get(chainId, account.ToString());
-        // Skip only when the retained history is fully covered (downward complete) AND no new blocks have
-        // arrived since the last scan. A previously-"complete" account is re-scanned for the forward gap as
-        // the chain advances, so tokens received after the first visit are still detected.
+        // skip only if history is fully covered AND no new blocks arrived; else re-scan the forward gap
         if (entry is { Complete: true } && entry.Head >= head) return;
         if (!_active.TryAdd(Key(chainId, account), BaseChunkBlocks)) return; // a chunk chain is already running for this account
         Schedule(new DetectRequest(chainId, account));
@@ -91,9 +82,8 @@ public sealed class DetectionScanner(
             long curHead = (long)(blockFinder.Head?.Number ?? 0);
             int chunk = CurrentChunk(key);
 
-            // Forward phase: cover blocks that arrived since the last scan, extending the covered range
-            // upward one chunk at a time (kept contiguous with the existing range). Runs before the downward
-            // history walk so freshly-received tokens surface first.
+            // Forward phase: cover blocks since the last scan first, so freshly-received tokens surface before
+            // the downward history walk.
             if (existing is not null && curHead > existing.Head)
             {
                 long flo = existing.Head + 1;
@@ -134,8 +124,7 @@ public sealed class DetectionScanner(
             }
             catch (OperationCanceledException)
             {
-                // pre-empted by block processing (or deadline) — keep any contracts found, don't advance the
-                // cursor, shrink the chunk so the retry is likelier to fit an inter-block gap, and retry later
+                // pre-empted by block processing — keep found contracts, don't advance the cursor, shrink, retry
                 Shrink(key);
                 Persist(chainId, account, erc20, nfts, priorScannedFrom, head, complete: false);
                 Schedule(req);
@@ -163,27 +152,24 @@ public sealed class DetectionScanner(
         return Task.CompletedTask;
     }
 
-    // Runs all four Transfer-topic scans for the account over [lo..hi], classifying emitting contracts
-    // into the ERC-20 and NFT sets.
+    // Scans [lo..hi] for the account as Transfer sender/receiver and ERC-1155 receiver.
     private void CollectAll(long lo, long hi, Address account, HashSet<string> erc20, HashSet<string> nfts, CancellationToken token)
     {
         Hash256 accountTopic = ToTopic(account);
-        // ERC-20 (3-topic) and ERC-721 (4-topic) share the Transfer event; from = topic1, to = topic2
+        // Transfer (ERC-20/721): from = topic1, to = topic2
         Collect(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferTopic), new SpecificTopic(accountTopic)), erc20, nfts, token);
         Collect(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferTopic), AnyTopic.Instance, new SpecificTopic(accountTopic)), erc20, nfts, token);
-        // ERC-1155 received: TransferSingle/TransferBatch with to = topic3 (operator = topic1, from = topic2)
+        // ERC-1155 received: to = topic3
         Collect(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferSingleTopic), AnyTopic.Instance, AnyTopic.Instance, new SpecificTopic(accountTopic)), null, nfts, token);
         Collect(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferBatchTopic), AnyTopic.Instance, AnyTopic.Instance, new SpecificTopic(accountTopic)), null, nfts, token);
     }
 
-    // Collects emitting-contract addresses. When erc20 is provided (Transfer scans), 3-topic logs are
-    // ERC-20 and 4-topic logs are ERC-721; when erc20 is null (ERC-1155 event scans), everything is an NFT.
+    // erc20 non-null (Transfer scans): 3-topic logs are ERC-20, 4-topic are ERC-721. erc20 null (ERC-1155): all NFT.
     private void Collect(long lo, long hi, TopicsFilter topics, HashSet<string>? erc20, HashSet<string> nfts, CancellationToken token)
     {
         LogFilter filter = new(0, new BlockParameter((ulong)lo), new BlockParameter((ulong)hi), AddressFilter.AnyAddress, topics)
         {
-            UseIndex = true // use the per-address log index when the node has it enabled (falls back to a
-                            // linear bloom scan otherwise), so deep scans skip ranges with no matching logs
+            UseIndex = true // use the per-address log index when enabled, so deep scans skip ranges with no logs
         };
         foreach (FilterLog log in logFinder.FindLogs(filter, token))
         {

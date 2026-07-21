@@ -7,20 +7,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.PortfolioViewer.Plugin;
 
-/// <summary>Tracks the IPFS pins this plugin added to the local Kubo node.</summary>
-/// <remarks>
-/// So "unpin all" removes only the plugin's own pins, never the user's unrelated pinset. Persisted (Kubo pins
-/// survive restarts too); if the file is lost the worst case is unreclaimed plugin pins, never lost user pins.
-/// </remarks>
+/// <summary>Tracks (persisted) the IPFS pins this plugin added, so "unpin all" removes only the plugin's own
+/// pins and never the user's unrelated pinset.</summary>
 public interface IPinnedCidStore
 {
-    /// <summary>Records a pin argument the plugin added; persists if it was not already tracked.</summary>
     void Add(string cid);
-
-    /// <summary>Snapshot of every pin argument the plugin has added.</summary>
     IReadOnlyCollection<string> Snapshot();
-
-    /// <summary>Forgets every tracked pin and removes the backing file.</summary>
     void Clear();
 }
 

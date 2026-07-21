@@ -7,36 +7,18 @@ using Nethermind.Logging;
 
 namespace Nethermind.PortfolioViewer.Plugin;
 
-/// <summary>Result and progress of one account's node-side token-detection scan on one chain.</summary>
-/// <param name="Contracts">ERC-20 candidate contracts (client confirms via a live balance check).</param>
-/// <param name="NftContracts">ERC-721 / ERC-1155 candidate contracts (client confirms via ownership checks).</param>
-/// <param name="ScannedFrom">Lowest block scanned so far (inclusive) — a resumable cursor.</param>
-/// <param name="Head">Head block when the scan started.</param>
-/// <param name="Complete">True once the sweep reached the bottom of retained history.</param>
-/// <param name="UpdatedMs">Unix-milliseconds timestamp of the last update.</param>
+/// <summary>Candidate contracts and scan progress for one account on one chain. ScannedFrom is a resumable
+/// cursor; Complete is set once the sweep reaches the bottom of retained history.</summary>
 public sealed record DetectionEntry(
     IReadOnlyList<string> Contracts, IReadOnlyList<string> NftContracts, long ScannedFrom, long Head, bool Complete, long UpdatedMs);
 
-/// <summary>
-/// Node-side cache of per-account token-detection results and scan progress.
-/// </summary>
-/// <remarks>
-/// Shared across every client of this node and persisted to the data directory, so a completed
-/// (or partially completed) scan is never repeated on reload or from another device. Keyed by
-/// chain id and lower-cased address. Only data derived from the node itself is stored.
-/// </remarks>
+/// <summary>Per-account token-detection cache, persisted to the data directory and shared across clients so a
+/// scan is never repeated. Keyed by chain id and lower-cased address.</summary>
 public interface IDetectionCache
 {
-    /// <summary>Returns the cached entry for the account on the chain, or null if never scanned.</summary>
     DetectionEntry? Get(long chainId, string address);
-
-    /// <summary>Stores (overwrites) the entry for the account on the chain and persists it.</summary>
     void Put(long chainId, string address, DetectionEntry entry);
-
-    /// <summary>Drops the cached entry for one account so its next scan re-walks from the head, and persists.</summary>
     void Remove(long chainId, string address);
-
-    /// <summary>Drops every cached entry and the backing file. Intended for developer/diagnostic use.</summary>
     void Clear();
 }
 
