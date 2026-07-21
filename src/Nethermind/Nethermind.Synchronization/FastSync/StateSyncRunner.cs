@@ -2,26 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using System.Buffers.Binary;
-using System.Diagnostics;
-using System.IO;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Win32.SafeHandles;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -40,8 +28,6 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
-    IBlockTree blockTree,
-    IBlockAccessListStore blockAccessListStore,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
@@ -51,61 +37,6 @@ public class StateSyncRunner(
 
     public async Task Run(CancellationToken token)
     {
-        // if (_logger.IsWarn) _logger.Warn($"We are starting");
-        // ulong blockBumber = 25538231UL; 
-        // // Hash256 blockHash = new("0x85c4131c3e543e6f27d9034173c3bab367aa7e3877ddbfa8ff250ef271b702f7");
-        // RecordedBalStore recordedBalStore = new(logManager);
-
-        // recordedBalStore.Insert(10000, new GeneratedBlockAccessList());
-
-        // ReadOnlyBlockAccessList? bal = recordedBalStore.Get(blockBumber);
-        // if(bal is null)
-        // {
-        //     if (_logger.IsWarn) _logger.Warn($"Bal not found for block number {blockBumber}.");
-        // }
-        // else
-        // {
-        //     if (_logger.IsInfo) _logger.Info($"Bal found for block number {blockBumber}: {bal}");
-        //     if (_logger.IsInfo) _logger.Info($"Total accounts in BAL: {bal.AccountChanges.Count}");
-
-        //     // Diagnostics: surface the exact constructs that ApplyChunk handles differently from the
-        //     // trusted per-block ApplyStateChanges. Whatever fires here is the divergence for this block.
-        //     int readOnly = 0, emptySlotChanges = 0, maybeEmptied = 0;
-        //     foreach (ReadOnlyAccountChanges acc in bal.AccountChanges)
-        //     {
-        //         // (2) read-only entry — ApplyChunk force-writes/deletes it; the reference skips it.
-        //         if (!acc.HasStateChanges)
-        //         {
-        //             readOnly++;
-        //             if (_logger.IsWarn) _logger.Warn($"BAL[{blockBumber}] READ-ONLY {acc.Address} reads={acc.StorageReads.Length} storSlots={acc.StorageChanges.Length}");
-        //         }
-
-        //         // (3) empty slot-change array — ApplyChunk's slot.Changes[^1] throws; the reference guards.
-        //         foreach (ReadOnlySlotChanges s in acc.StorageChanges)
-        //         {
-        //             if (s.Changes.Length == 0)
-        //             {
-        //                 emptySlotChanges++;
-        //                 if (_logger.IsWarn) _logger.Warn($"BAL[{blockBumber}] EMPTY slot-change {acc.Address} slot {s.Key}");
-        //             }
-        //         }
-
-        //         // (1) account emptied to zero — ApplyChunk force-deletes it on IsEmpty regardless of spec/touch.
-        //         bool bal0 = acc.BalanceChanges.Length > 0 && acc.BalanceChanges[^1].Value.IsZero;
-        //         bool nonce0 = acc.NonceChanges.Length > 0 && acc.NonceChanges[^1].Value == 0;
-        //         bool code0 = acc.CodeChanges.Length > 0 && (acc.CodeChanges[^1].Code?.Length ?? 0) == 0;
-        //         if (bal0 || nonce0 || code0)
-        //         {
-        //             maybeEmptied++;
-        //             if (_logger.IsWarn) _logger.Warn($"BAL[{blockBumber}] MAYBE-EMPTIED {acc.Address} bal0={bal0} nonce0={nonce0} code0={code0} storSlots={acc.StorageChanges.Length}");
-        //         }
-        //     }
-
-        //     if (_logger.IsWarn) _logger.Warn($"BAL[{blockBumber}] scan: accounts={bal.AccountChanges.Count} readOnly={readOnly} emptySlotChanges={emptySlotChanges} maybeEmptied={maybeEmptied}");
-        // }
-        // if(blockBumber % 1000 != 0)
-        //     return;
-
         try
         {
             if (syncProgressResolver.FindBestFullState() != 0)
@@ -126,7 +57,7 @@ public class StateSyncRunner(
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed. at pivot block " + (stateSyncPivot.GetPivotHeader()?.Number.ToString() ?? "<unknown>"));
                         
-                    if (firstPivot is not null && await RunBalHealing(firstPivot, token))
+                    if (await RunBalHealing(firstPivot, token))
                         return;
                 }
 
@@ -147,104 +78,85 @@ public class StateSyncRunner(
         }
     }
 
-    public async Task<bool> RunBalHealing(BlockHeader firstPivot, CancellationToken token)
+    public async Task<bool> RunBalHealing(BlockHeader? firstPivot, CancellationToken token)
     {
-        stateSyncPivot.UpdateHeaderForcefully();
-        BlockHeader? lastPivot = stateSyncPivot.GetPivotHeader();
-        GetBALS(firstPivot.Number, lastPivot!.Number);
-        if (lastPivot is null)
+        if (firstPivot is null)
         {
-            if (_logger.IsInfo) _logger.Info("BAL healing skipped - no pivot header available.");
+            if (_logger.IsInfo) _logger.Info("BAL healing skipped - no first pivot available.");
             return false;
         }
 
-        bool healingComplete = await balHealing.Run(firstPivot, lastPivot, stateSyncPivot.UpdatedStorages, token);
-
-        if (!healingComplete)
+        try
         {
-            if (_logger.IsError) _logger.Error("BAL healing unavailable or failed — falling back to traditional state sync.");
-            return false;
-        }
-
-        while (true)
-        {
-            firstPivot = lastPivot;
-
-            stateSyncPivot.UpdateHeaderForcefully();
-            lastPivot = stateSyncPivot.GetPivotHeader();
-
-            if(firstPivot.Number == lastPivot?.Number)
+            Hash256? root = balHealing.Reassemble(stateSyncPivot.UpdatedStorages);
+            if (root is null)
             {
-                if (_logger.IsInfo) _logger.Info($"BAL healing skipped - no new pivot header available after block {firstPivot.Number}.");
-                await Task.Delay(1000, token);
-                continue;
-            }
-    
-            if (_logger.IsInfo) _logger.Info($"BAL healing: first pivot {firstPivot.Number}, last pivot {lastPivot?.Number.ToString() ?? "<unknown>"}");
-            GetBALS(firstPivot.Number, lastPivot.Number);
-            bool healingComplete2 = await balHealing.Run(firstPivot, lastPivot, stateSyncPivot.UpdatedStorages, token);
-                
-            if (!healingComplete2)
-            {
-                if (_logger.IsError) _logger.Error("BAL healing unavailable or failed — falling back to traditional state sync.");
+                if (_logger.IsError) _logger.Error("BAL healing failed - trie reassembly failed.");
                 return false;
             }
 
-        }
+            BlockHeader currentPivot = firstPivot;
 
-        // if (_logger.IsInfo) _logger.Info("BAL healing completed — skipping traditional state sync.");
-
-        // if (syncConfig.VerifyTrieOnStateSyncFinished)
-        //     verifyTrieStarter?.TryStartVerifyTrie(lastPivot);
-
-        // return true;
-    }
-
-
-    public async void GetBALS(ulong start, ulong end)
-    {
-        RecordedBalStore recordedBalStore = new(logManager);
-        ulong blockNumber = start;
-        int tryCount = 0;
-        while (true)
-        {   
-            BlockHeader? header = blockTree.FindHeader(blockNumber);
-            while (header is null)
+            while (true)
             {
+                token.ThrowIfCancellationRequested();
+
+                stateSyncPivot.UpdateHeaderForcefully();
+                BlockHeader? nextPivot = stateSyncPivot.GetPivotHeader();
+                if (nextPivot is null)
+                {
+                    if (_logger.IsInfo) _logger.Info("BAL healing failed - no new pivot available.");
+                    return false;
+                }
+
+                if(currentPivot.Number == nextPivot.Number)
+                {
+
+                    if(stateSyncPivot.CanFinalize(currentPivot))
+                    {
+                        if (_logger.IsInfo) _logger.Info("BAL healing complete - no more pivots to apply.");
+                        break;
+                    }
+                    await Task.Delay(1000, token);
+                    continue;
+                }
+
+                root = balHealing.ApplyRange(root, currentPivot, nextPivot, token);
+                currentPivot = nextPivot;
+
+                if (root is null)
+                {
+                    return false;
+                }
+            }
             
-                if(tryCount == 5)
-                    break; 
-
-                if (_logger.IsWarn) _logger.Warn($"Will retry to find header for block number {blockNumber} after 5 seconds.");
-                tryCount += 1;
-                await Task.Delay(5000);
-                
-                header = blockTree.FindHeader(blockNumber);
-            }
-
-            if(header is null)
+            if(root != currentPivot.StateRoot)
             {
-                if (_logger.IsWarn) _logger.Warn($"Header not found for block number {blockNumber}.");
-                break;
+                if (_logger.IsError) _logger.Error($"BAL healing failed - produced root {root} does not match pivot state root {currentPivot.StateRoot}.");
+                return false;
             }
 
+            balHealing.FinalizeSync(currentPivot);
 
-            ReadOnlyBlockAccessList? bal = recordedBalStore.Get(blockNumber);
+            if (_logger.IsInfo) _logger.Info("BAL healing completed — skipping traditional state sync.");
 
-            if (bal is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Bal not found for block number {blockNumber}.");
-                break;
-            }
+            if (syncConfig.VerifyTrieOnStateSyncFinished)
+                verifyTrieStarter?.TryStartVerifyTrie(currentPivot);
 
-            blockAccessListStore.Insert(header.Number, header.Hash, bal);
-            if(_logger.IsInfo) _logger.Info($"Inserted bal for block number {blockNumber}.");
-
-            blockNumber++;
-            if (blockNumber > end)
-                break;
-        }                    
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is a clean shutdown, not a heal failure — let the caller's handler deal with it.
+            throw;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("BAL healing failed", e);
+            return false;
+        }
     }
+
 
     public async Task RunStateSyncRounds(CancellationToken token)
     {
@@ -304,142 +216,6 @@ public class StateSyncRunner(
         codeDb?.Tune(tuneType);
     }
 
-    /// <summary>
-    /// DEBUG-ONLY. Copies the live DB directory to a sibling <c>&lt;BaseDbPath&gt;_snapshot</c> dir right
-    /// after snap sync so post-snap-sync behaviour can be tested without re-downloading state each time.
-    /// The source DB dir is auto-detected from the state DB.
-    /// </summary>
-    /// <remarks>
-    /// Flushes the state and code DBs before copying to make the snapshot as consistent as possible,
-    /// but this is a plain file copy of a live RocksDB directory — it is a dev convenience, not a
-    /// guaranteed-consistent backup. Stop the node before relying on the copy for other column families.
-    /// </remarks>
-    private void BackupDatabaseForDebug()
-    {
-        try
-        {
-            // The state and code DBs live under <BaseDbPath> (e.g. .../state, .../code), but their
-            // exact depth varies (flat/columns layouts nest deeper). Their common ancestor directory
-            // is <BaseDbPath> itself — the whole DB dir to back up.
-            string? src = CommonAncestorDir(TryResolveDbPath(stateDb), TryResolveDbPath(codeDb));
-            if (string.IsNullOrEmpty(src))
-            {
-                if (_logger.IsError) _logger.Error("DEBUG: could not resolve DB path for backup; skipping.");
-                return;
-            }
-
-            string dst = Path.TrimEndingDirectorySeparator(src) + "_snapshot";
-
-            if (_logger.IsInfo) _logger.Info("DEBUG: flushing state/code DBs before backup.");
-            (stateDb as IDbMeta)?.Flush();
-            (codeDb as IDbMeta)?.Flush();
-
-            if (_logger.IsInfo) _logger.Info($"DEBUG: backing up DB from '{src}' to '{dst}'.");
-            CopyDirectory(src, dst);
-            if (_logger.IsInfo) _logger.Info($"DEBUG: DB backup completed at '{dst}'.");
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsError) _logger.Error("DEBUG: DB backup failed.", ex);
-        }
-    }
-
-    /// <summary>
-    /// Digs the on-disk path out of a (possibly wrapped) RocksDB instance via reflection, unwrapping
-    /// known decorators (<c>FullPruningDb</c>, the EOA-compressing wrapper) to reach <c>DbOnTheRocks._fullPath</c>.
-    /// </summary>
-    private static string? TryResolveDbPath(object? db, int depth = 0)
-    {
-        if (db is null || depth > 4) return null;
-
-        for (Type? t = db.GetType(); t is not null; t = t.BaseType)
-        {
-            FieldInfo? pathField = t.GetField("_fullPath", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (pathField?.GetValue(db) is string path && !string.IsNullOrEmpty(path))
-                return path;
-        }
-
-        // Not a raw DbOnTheRocks — descend into any wrapped inner db field.
-        foreach (FieldInfo field in db.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
-        {
-            if (!typeof(IDb).IsAssignableFrom(field.FieldType) && !typeof(ITunableDb).IsAssignableFrom(field.FieldType))
-                continue;
-            string? inner = TryResolveDbPath(field.GetValue(db), depth + 1);
-            if (inner is not null) return inner;
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Returns the deepest directory that is an ancestor of both paths — i.e. their longest common
-    /// path-segment prefix. Used to recover the DB base dir from two DB paths that nest to different depths.
-    /// </summary>
-    private static string? CommonAncestorDir(string? a, string? b)
-    {
-        if (string.IsNullOrEmpty(a)) return string.IsNullOrEmpty(b) ? null : Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(b));
-        if (string.IsNullOrEmpty(b)) return Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(a));
-
-        string[] segmentsA = Path.TrimEndingDirectorySeparator(a).Split(Path.DirectorySeparatorChar);
-        string[] segmentsB = Path.TrimEndingDirectorySeparator(b).Split(Path.DirectorySeparatorChar);
-
-        int i = 0;
-        int max = Math.Min(segmentsA.Length, segmentsB.Length);
-        while (i < max && segmentsA[i] == segmentsB[i]) i++;
-
-        return string.Join(Path.DirectorySeparatorChar, segmentsA, 0, i);
-    }
-
-    /// <summary>
-    /// Copies <paramref name="sourceDir"/> to <paramref name="destinationDir"/> using hardlinks
-    /// (<c>cp -al</c>) so the snapshot is near-instant and shares blocks with the source on the same
-    /// filesystem. RocksDB SST files are immutable once written, so hardlinking them is safe.
-    /// Falls back to a plain recursive byte copy if <c>cp</c> is unavailable or fails.
-    /// </summary>
-    private void CopyDirectory(string sourceDir, string destinationDir)
-    {
-        if (Directory.Exists(destinationDir))
-            Directory.Delete(destinationDir, recursive: true);
-
-        try
-        {
-            ProcessStartInfo psi = new("cp")
-            {
-                UseShellExecute = false,
-                RedirectStandardError = true,
-            };
-            psi.ArgumentList.Add("-al");
-            psi.ArgumentList.Add(sourceDir);
-            psi.ArgumentList.Add(destinationDir);
-
-            using Process? cp = Process.Start(psi);
-            if (cp is not null)
-            {
-                string error = cp.StandardError.ReadToEnd();
-                cp.WaitForExit();
-                if (cp.ExitCode == 0) return;
-                if (_logger.IsWarn) _logger.Warn($"DEBUG: 'cp -al' failed (exit {cp.ExitCode}): {error}. Falling back to byte copy.");
-            }
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsWarn) _logger.Warn($"DEBUG: 'cp -al' unavailable ({ex.Message}). Falling back to byte copy.");
-        }
-
-        CopyDirectoryRecursive(sourceDir, destinationDir);
-    }
-
-    private static void CopyDirectoryRecursive(string sourceDir, string destinationDir)
-    {
-        Directory.CreateDirectory(destinationDir);
-
-        foreach (string file in Directory.EnumerateFiles(sourceDir))
-            File.Copy(file, Path.Combine(destinationDir, Path.GetFileName(file)), overwrite: true);
-
-        foreach (string subDir in Directory.EnumerateDirectories(sourceDir))
-            CopyDirectoryRecursive(subDir, Path.Combine(destinationDir, Path.GetFileName(subDir)));
-    }
-
     private async Task StateSyncPrecursorWait(CancellationToken token)
     {
         await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
@@ -465,170 +241,4 @@ public class StateSyncRunner(
             await Task.Delay(1000, token);
         }
     }
-}
-
-
-public class RecordedBalStore(ILogManager logManager)
-{
-    private static readonly BlockAccessListDecoder BalDecoder = BlockAccessListDecoder.Instance;
-    private readonly ILogger _logger = logManager.GetClassLogger<RecordedBalStore>();
-    private readonly SlotStore _store = new("~/BAL", "bal");
-
-    public void Dispose() => _store.Dispose();
-
-    public void Insert(ulong number, GeneratedBlockAccessList bal)
-    {
-        using ArrayPoolSpan<byte> rlp = BlockAccessListDecoder.EncodeToArrayPoolSpan(bal);
-        if (!_store.Write(number, rlp))
-            if (_logger.IsDebug) _logger.Debug($"BAL slot for block {number} already filled; skipping.");
-    }
-
-    public ReadOnlyBlockAccessList? Get(ulong blockNumber)
-    {
-        ReadState state = new() { Logger = _logger, BlockNumber = blockNumber };
-        _store.TryRead(blockNumber, static (data, s) =>
-        {
-            try { s.Value = BalDecoder.Decode(data); }
-            catch (RlpException ex) { s.Logger.Warn($"Corrupt BAL slot for block {s.BlockNumber}: {ex.Message}"); }
-        }, state);
-        return state.Value;
-    }
-
-    private sealed class ReadState
-    {
-        public ReadOnlyBlockAccessList? Value;
-        public ILogger Logger;
-        public ulong BlockNumber;
-    }
-}
-
-
-public class SlotStore(string directory, string extension = "bin") : IDisposable
-{
-    private SlotFile? _file;
-    private ulong? _fileEra;
-    private readonly Lock _lock = new();
-
-    private string FilePath(ulong era) => Path.Combine(directory, $"{era:D8}.{extension}");
-
-    public bool TryRead<TArg>(ulong blockNumber, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-    {
-        ulong era = blockNumber / SlotFile.SlotsPerFile;
-        int slot = (int)(blockNumber % SlotFile.SlotsPerFile);
-        lock (_lock)
-        {
-            if (_fileEra != era)
-            {
-                string path = FilePath(era);
-                if (!File.Exists(path)) return false;
-                _file?.Dispose();
-                _file = new SlotFile(path);
-                _fileEra = era;
-            }
-            return _file!.TryRead(slot, action, arg);
-        }
-    }
-
-    public bool Write(ulong blockNumber, ReadOnlySpan<byte> data)
-    {
-        ulong era = blockNumber / SlotFile.SlotsPerFile;
-        int slot = (int)(blockNumber % SlotFile.SlotsPerFile);
-        lock (_lock)
-        {
-            if (_fileEra != era)
-            {
-                _file?.Dispose();
-                Directory.CreateDirectory(directory);
-                _file = new SlotFile(FilePath(era));
-                _fileEra = era;
-            }
-            return _file!.TryWrite(slot, data);
-        }
-    }
-
-    public void Dispose()
-    {
-        lock (_lock)
-        {
-            _file?.Dispose();
-            _file = null;
-            _fileEra = null;
-        }
-    }
-}
-
-
-/// <summary>
-/// Wraps a single era file: one <see cref="SafeFileHandle"/> kept open for the store's lifetime.
-/// The 65536-byte slot-index header is cached in memory; reads use <c>RandomAccess</c> positioned I/O
-/// (no locking required). Writes are serialized by a per-instance lock.
-/// </summary>
-public sealed class SlotFile : IDisposable
-{
-    public const int SlotsPerFile = 8192;
-    private const int HeaderSize = SlotsPerFile * 8; // 65536 bytes
-
-    private readonly SafeFileHandle _handle;
-    private readonly byte[] _header = new byte[HeaderSize];
-    private readonly Lock _writeLock = new();
-    private long _length;
-
-    public SlotFile(string path)
-    {
-        _handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
-        _length = RandomAccess.GetLength(_handle);
-        if (_length == 0)
-        {
-            RandomAccess.Write(_handle, _header, 0);
-            _length = HeaderSize;
-        }
-        else
-        {
-            RandomAccess.Read(_handle, _header, 0);
-        }
-    }
-
-    public bool TryRead<TArg>(int slot, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-    {
-        uint offset, size;
-        lock (_writeLock)
-        {
-            ReadOnlySpan<byte> entry = _header.AsSpan(slot * 8, 8);
-            offset = BinaryPrimitives.ReadUInt32BigEndian(entry);
-            if (offset == 0) return false;
-            size = BinaryPrimitives.ReadUInt32BigEndian(entry[4..]);
-        }
-        if (size == 0 || size > 64 * MemorySizes.MiB) return false;
-
-        byte[] rented = ArrayPool<byte>.Shared.Rent((int)size);
-        try
-        {
-            RandomAccess.Read(_handle, rented.AsSpan(0, (int)size), offset);
-            action(new ReadOnlySpan<byte>(rented, 0, (int)size), arg);
-            return true;
-        }
-        finally { ArrayPool<byte>.Shared.Return(rented); }
-    }
-
-    public bool TryWrite(int slot, ReadOnlySpan<byte> data)
-    {
-        lock (_writeLock)
-        {
-            if (BinaryPrimitives.ReadUInt32BigEndian(_header.AsSpan(slot * 8, 8)) != 0) return false;
-
-            if (_length > uint.MaxValue)
-                throw new InvalidOperationException($"Era file exceeded 4 GB limit at offset {_length}.");
-            uint offset = (uint)_length;
-            RandomAccess.Write(_handle, data, offset);
-            _length += data.Length;
-
-            Span<byte> entry = _header.AsSpan(slot * 8, 8);
-            BinaryPrimitives.WriteUInt32BigEndian(entry, offset);
-            BinaryPrimitives.WriteUInt32BigEndian(entry[4..], (uint)data.Length);
-            RandomAccess.Write(_handle, entry, slot * 8);
-            return true;
-        }
-    }
-
-    public void Dispose() => _handle.Dispose();
 }

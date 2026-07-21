@@ -76,7 +76,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(11, expected, BalanceBal(TestItem.AddressA, 150));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.True);
         _syncStore.Received(1).FinalizeSync(lastPivot);
@@ -102,7 +102,7 @@ public class FlatBalHealingTests
             lastPivot = SetupBlock(number, number == 260 ? expected : TestItem.KeccakA, bal);
         }
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.True);
         _syncStore.Received(1).FinalizeSync(lastPivot);
@@ -130,7 +130,7 @@ public class FlatBalHealingTests
             lastPivot = SetupBlock(number, number == 300 ? expected : TestItem.KeccakA, bal);
         }
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
         Assert.That(result, Is.True);
         _syncStore.Received(1).FinalizeSync(lastPivot);
@@ -153,7 +153,7 @@ public class FlatBalHealingTests
             .TestObject;
         BlockHeader lastPivot = SetupBlock(11, expected, Bal(changes));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.True);
         Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
@@ -172,7 +172,7 @@ public class FlatBalHealingTests
             .TestObject;
         BlockHeader lastPivot = SetupBlock(11, expected, Bal(changes));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
         Assert.That(result, Is.True);
     }
@@ -190,7 +190,7 @@ public class FlatBalHealingTests
             .TestObject;
         BlockHeader lastPivot = SetupBlock(11, expected, Bal(changes));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
         Assert.That(result, Is.True);
     }
@@ -204,7 +204,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(11, expected, BalanceBal(TestItem.AddressA, 0));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.True);
         _syncStore.Received(1).FinalizeSync(lastPivot);
@@ -219,7 +219,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(11, expected, BalanceBal(TestItem.AddressA, 0));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
         Assert.That(result, Is.True);
         _syncStore.Received(1).FinalizeSync(lastPivot);
@@ -246,7 +246,7 @@ public class FlatBalHealingTests
             .TestObject;
         BlockHeader lastPivot = SetupBlock(11, expected, Bal(changed, readOnly));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.True);
         _syncStore.Received(1).FinalizeSync(lastPivot);
@@ -267,7 +267,7 @@ public class FlatBalHealingTests
             .TestObject;
         BlockHeader lastPivot = SetupBlock(11, expected, Bal(changes));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
         Assert.That(result, Is.True);
         Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "cleared slot must be removed from flat store");
@@ -285,7 +285,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(11, expected, BalanceBal(TestItem.AddressA, 0));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
         Assert.That(result, Is.True);
         Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "removed account's storage must be wiped from flat store");
@@ -299,7 +299,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(11, TestItem.KeccakB, bal: null);
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.False);
         _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
@@ -314,7 +314,7 @@ public class FlatBalHealingTests
         // Target root does not match what applying the BAL produces.
         BlockHeader lastPivot = SetupBlock(11, TestItem.KeccakH, BalanceBal(TestItem.AddressA, 150));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.False);
         _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
@@ -331,7 +331,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(11, TestItem.KeccakB, BalanceBal(TestItem.AddressA, 150));
 
-        bool result = await healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.False);
         _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
@@ -349,7 +349,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(11, TestItem.KeccakB, BalanceBal(TestItem.AddressA, 150));
 
-        bool result = await healing.Run(firstPivot, lastPivot, [], default);
+        bool result = await RunOnce(healing, firstPivot, lastPivot, [], default);
 
         Assert.That(result, Is.False);
         _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
@@ -362,7 +362,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(11, TestItem.KeccakB, BalanceBal(TestItem.AddressA, 150));
 
-        bool result = await _healing.Run(firstPivot, lastPivot, [], new CancellationToken(canceled: true));
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], new CancellationToken(canceled: true));
 
         Assert.That(result, Is.False);
         _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
@@ -394,7 +394,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, referenceBase);
         BlockHeader lastPivot = SetupBlock(11, expected, bal);
 
-        bool ok = await _healing.Run(firstPivot, lastPivot, [], default);
+        bool ok = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
         Assert.That(ok, Is.True, $"seed {seed}: flat healing did not reach reference root {expected}.\nBAL:\n  {string.Join("\n  ", changes.Select(c => c.ToString()))}");
     }
@@ -419,7 +419,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, referenceBase);
         BlockHeader lastPivot = SetupBlock(11, expected, bal);
 
-        bool ok = await _healing.Run(firstPivot, lastPivot, updatedStorages, default);
+        bool ok = await RunOnce(_healing, firstPivot, lastPivot, updatedStorages, default);
 
         Assert.That(ok, Is.True, $"seed {seed}: healing with reassembly did not reach reference root {expected}.\nBAL:\n  {string.Join("\n  ", changes.Select(c => c.ToString()))}");
     }
@@ -456,7 +456,7 @@ public class FlatBalHealingTests
         for (int i = 0; i < bals.Length; i++)
             lastPivot = SetupBlock((ulong)(i + 1), roots[i], bals[i]);
 
-        bool ok = await _healing.Run(firstPivot, lastPivot, updatedStorages, default);
+        bool ok = await RunOnce(_healing, firstPivot, lastPivot, updatedStorages, default);
 
         Assert.That(ok, Is.True, $"seed {seed}: {bals.Length}-block healing did not reach reference root {expected}");
     }
@@ -525,7 +525,7 @@ public class FlatBalHealingTests
             probe.Add($"blk {i + 1} num={h.Number} hash={h.Hash} root={h.StateRoot} exists={exists} got={(got is null ? "null" : "present")}");
         }
 
-        bool ok = await _healing.Run(firstPivot, lastPivot, updatedStorages, default);
+        bool ok = await RunOnce(_healing, firstPivot, lastPivot, updatedStorages, default);
 
         // Reference final per-account.
         Address[] allAddrs = baseAccounts.Select(a => a.Address)
@@ -607,7 +607,7 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, baseRoot);
         BlockHeader lastPivot = SetupBlock(11, postRoot, bal);
         FlatBalHealing healing = new(_blockTree, _balStore, _reassembler, _persistence, _syncStore, _codeDb, new TestLogManager(LogLevel.Trace));
-        bool healed = await healing.Run(firstPivot, lastPivot, [], default);
+        bool healed = await RunOnce(healing, firstPivot, lastPivot, [], default);
         TestContext.Out.WriteLine($"healed={healed} postRoot={postRoot}");
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync);
@@ -943,6 +943,32 @@ public class FlatBalHealingTests
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync);
         SlotValue value = default;
         return reader.TryGetSlot(address, slot, ref value);
+    }
+
+    // Composes the split IBalHealing primitives into a single-round heal (reassemble → apply → finalize),
+    // mirroring one iteration of StateSyncRunner.RunBalHealing. Keeps these unit tests focused on the flat
+    // apply logic; the multi-round orchestration is exercised at the runner level.
+    private static Task<bool> RunOnce(FlatBalHealing healing, BlockHeader firstPivot, BlockHeader lastPivot, IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token)
+    {
+        try
+        {
+            Hash256? root = healing.Reassemble(updatedStorages);
+            if (root is null) return Task.FromResult(false);
+
+            root = healing.ApplyRange(root, firstPivot, lastPivot, token);
+            if (root is null) return Task.FromResult(false);
+
+            healing.FinalizeSync(lastPivot);
+            return Task.FromResult(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return Task.FromResult(false);
+        }
+        catch (Exception)
+        {
+            return Task.FromResult(false);
+        }
     }
 
     private static BlockHeader Pivot(ulong number, Hash256 stateRoot) =>

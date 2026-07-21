@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -11,5 +10,9 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public interface IBalHealing
 {
-    Task<bool> Run(BlockHeader firstPivot, BlockHeader lastPivot, IReadOnlyCollection<Hash256> updatedStorageAccounts, CancellationToken token);
+    Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages);
+
+    Hash256? ApplyRange(Hash256 baseRoot, BlockHeader from, BlockHeader to, CancellationToken token);
+
+    void FinalizeSync(BlockHeader pivot);
 }

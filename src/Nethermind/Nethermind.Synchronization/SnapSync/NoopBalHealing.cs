@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -14,6 +13,9 @@ public sealed class NoopBalHealing : IBalHealing
     public static readonly NoopBalHealing Instance = new();
     private NoopBalHealing() { }
 
-    public Task<bool> Run(BlockHeader firstPivot, BlockHeader lastPivot, IReadOnlyCollection<Hash256> updatedStorageAccounts, CancellationToken token)
-        => Task.FromResult(false);
+    public Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages) => null;
+
+    public Hash256? ApplyRange(Hash256 baseRoot, BlockHeader from, BlockHeader to, CancellationToken token) => null;
+
+    public void FinalizeSync(BlockHeader pivot) { }
 }
