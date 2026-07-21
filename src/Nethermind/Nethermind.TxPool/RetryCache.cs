@@ -27,7 +27,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private const int DefaultExpiringQueueLimit = DefaultMaxPendingResourcesPerHandler * DefaultTrackedHandlerCapacity;
     internal const int DefaultOverflowRequestLimit = 500_000;
     private const int MaxRetryResourcesPerTick = 256;
-    private const int MinQueueEntriesPerTick = 4096;
+    private const int MaxStaleQueueEntriesPerTick = 32_768;
     private const int AdmissionLockCount = 64;
 
     private readonly int _timeoutMs;
@@ -139,12 +139,11 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         int maxPendingResourcesPerHandler = DefaultMaxPendingResourcesPerHandler,
         int overflowRequestLimit = 0)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(requestingCacheSize);
         _logger = logManager.GetClassLogger(typeof(RetryCache<,>));
 
         _timeoutMs = timeoutMs;
         _timeout = TimeSpan.FromMilliseconds(timeoutMs);
-        _lifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
-        _token = _lifetimeCancellation.Token;
         _checkMs = Math.Max(1, _timeoutMs / 5);
         _requestingResources = new(requestingCacheSize);
         _expiringQueueLimit = expiringQueueLimit;
@@ -162,97 +161,97 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _maxPreferredRetryResourcesPerHandlerPerTick = Math.Max(
             1,
             MaxRetryResourcesPerTick / Math.Max(1, maxRetryRequests));
-        _maxQueueEntriesPerTick = (int)Math.Min(
-            int.MaxValue,
-            Math.Max(
-                MinQueueEntriesPerTick,
-                ((long)_expiringQueuePhysicalLimit + 4) / 5 + MaxRetryResourcesPerTick));
+        _maxQueueEntriesPerTick = MaxStaleQueueEntriesPerTick;
         _timeProvider = timeProvider;
-        _mainLoopTask = Task.Run(async () =>
+        _lifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        _token = _lifetimeCancellation.Token;
+        try
         {
-            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs), _timeProvider);
-
-            while (await timer.WaitForNextTickAsync(_token))
+            _mainLoopTask = Task.Run(async () =>
             {
-                Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests = null;
-                try
+                using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs), _timeProvider);
+
+                while (await timer.WaitForNextTickAsync(_token))
                 {
-                    int retryResourcesProcessed = 0;
-                    int queueEntriesProcessed = 0;
-                    int queueEntriesToProcess = Math.Min(ResourcesInRetryQueue, _maxQueueEntriesPerTick);
-                    while (!_token.IsCancellationRequested
-                        && queueEntriesProcessed < queueEntriesToProcess
-                        && _expiringQueue.TryPeek(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
-                        && _timeProvider.GetElapsedTime(item.EnqueuedAt) >= _timeout)
+                    Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests = null;
+                    try
                     {
-                        if (_expiringQueue.TryDequeue(out item))
+                        int retryResourcesProcessed = 0;
+                        int queueEntriesProcessed = 0;
+                        int queueEntriesToProcess = Math.Min(ResourcesInRetryQueue, _maxQueueEntriesPerTick);
+                        while (!_token.IsCancellationRequested
+                            && retryResourcesProcessed < MaxRetryResourcesPerTick
+                            && queueEntriesProcessed < queueEntriesToProcess
+                            && _expiringQueue.TryPeek(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
+                            && _timeProvider.GetElapsedTime(item.EnqueuedAt) >= _timeout)
                         {
-                            queueEntriesProcessed++;
-                            bool queueSlotTransferred = false;
-
-                            try
+                            if (_expiringQueue.TryDequeue(out item))
                             {
-                                if (_retryRequests.TryGetValue(item.ResourceId, out RetryRequestEntry currentEntry)
-                                    && currentEntry.RequestGeneration == item.RequestGeneration)
-                                {
-                                    if (retryResourcesProcessed >= MaxRetryResourcesPerTick)
-                                    {
-                                        Enqueue(item.ResourceId, currentEntry);
-                                        queueSlotTransferred = true;
-                                        continue;
-                                    }
+                                queueEntriesProcessed++;
+                                bool queueSlotTransferred = false;
 
-                                    BatchedHandlerPreference handlerPreference = new(
-                                        batchedRetryRequests,
-                                        _maxPreferredRetryResourcesPerHandlerPerTick);
-                                    if (currentEntry.Handlers.TryTake(
-                                        currentEntry.Generation,
-                                        ref handlerPreference,
-                                        out IMessageHandler<TMessage>? retryHandler,
-                                        out _))
+                                try
+                                {
+                                    if (_retryRequests.TryGetValue(item.ResourceId, out RetryRequestEntry currentEntry)
+                                        && currentEntry.RequestGeneration == item.RequestGeneration)
                                     {
-                                        retryResourcesProcessed++;
-                                        ReleaseHandlerSlot(retryHandler!);
-                                        Enqueue(item.ResourceId, currentEntry);
-                                        queueSlotTransferred = true;
-                                        CollectRetryRequest(item.ResourceId, retryHandler!, ref batchedRetryRequests);
-                                    }
-                                    else
-                                    {
-                                        _requestingResources.Set(item.ResourceId);
-                                        if (!TryRemove(item.ResourceId, currentEntry))
+                                        BatchedHandlerPreference handlerPreference = new(
+                                            batchedRetryRequests,
+                                            _maxPreferredRetryResourcesPerHandlerPerTick);
+                                        if (currentEntry.Handlers.TryTake(
+                                            currentEntry.Generation,
+                                            ref handlerPreference,
+                                            out IMessageHandler<TMessage>? retryHandler,
+                                            out _))
                                         {
-                                            _requestingResources.Delete(item.ResourceId);
+                                            retryResourcesProcessed++;
+                                            ReleaseHandlerSlot(retryHandler!);
+                                            Enqueue(item.ResourceId, currentEntry);
+                                            queueSlotTransferred = true;
+                                            CollectRetryRequest(item.ResourceId, retryHandler!, ref batchedRetryRequests);
+                                        }
+                                        else
+                                        {
+                                            _requestingResources.Set(item.ResourceId);
+                                            if (!TryRemove(item.ResourceId, currentEntry))
+                                            {
+                                                _requestingResources.Delete(item.ResourceId);
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            finally
-                            {
-                                if (!queueSlotTransferred)
+                                finally
                                 {
-                                    Interlocked.Decrement(ref _expiringQueueCounter);
+                                    if (!queueSlotTransferred)
+                                    {
+                                        Interlocked.Decrement(ref _expiringQueueCounter);
+                                    }
                                 }
                             }
                         }
+
+                        SendBatchedRetryRequests(batchedRetryRequests);
+                        batchedRetryRequests = null;
                     }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsError) _logger.Error($"Unexpected error in {typeof(TResourceId)} retry cache loop", ex);
+                        Clear();
+                    }
+                    finally
+                    {
+                        DisposeBatchedRetryRequests(batchedRetryRequests);
+                    }
+                }
 
-                    SendBatchedRetryRequests(batchedRetryRequests);
-                    batchedRetryRequests = null;
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error($"Unexpected error in {typeof(TResourceId)} retry cache loop", ex);
-                    Clear();
-                }
-                finally
-                {
-                    DisposeBatchedRetryRequests(batchedRetryRequests);
-                }
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"{typeof(TResourceId)} retry cache stopped");
-        }, _token);
+                if (_logger.IsDebug) _logger.Debug($"{typeof(TResourceId)} retry cache stopped");
+            }, _token);
+        }
+        catch
+        {
+            _lifetimeCancellation.Dispose();
+            throw;
+        }
     }
 
     public AnnounceResult Announced(in TResourceId resourceId, IMessageHandler<TMessage> handler)
