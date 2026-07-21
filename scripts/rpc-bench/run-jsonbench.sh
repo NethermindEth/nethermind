@@ -196,11 +196,11 @@ CALLS
   bench_cfg="/io/benchmark.yaml"
 elif [[ "$JB_MODE" == "benchmark" ]]; then
   # Adapt a curated config to this run. The repo's head-only configs list five
-  # clients and reference their own ./rpc-calls/*.jsonl fixtures — neither of
-  # which matches a single-node run here — so we rewrite the client list to the
-  # node(s) started here, absolutize fixture paths against the mounted checkout
-  # (/jb), inject a loose per-call threshold (per-method sub-metrics), and apply
-  # any rps/vus/duration override. A bare name maps to config/benchmark/<name>.yaml.
+  # clients — which won't match a single-node run here — so we rewrite the client
+  # list to the node(s) started here, inject a loose per-call threshold (per-method
+  # sub-metrics), and apply any rps/vus/duration override. Their ./rpc-calls/*.jsonl
+  # fixtures stay relative and resolve via the container's /jb working directory.
+  # A bare name maps to config/benchmark/<name>.yaml.
   case "$JB_BENCHMARK_CONFIG" in
     /*)  src_bench="$JB_BENCHMARK_CONFIG" ;;
     */*) src_bench="$work/src/$JB_BENCHMARK_CONFIG" ;;
@@ -237,19 +237,10 @@ dur = os.environ.get("JB_DURATION", "").strip()
 if dur:
     cfg["duration"] = dur
 
-# Fixture paths in the repo's configs are relative to the checkout root, which
-# is mounted read-only at /jb in the container. Make them absolute so they
-# resolve regardless of the container's working directory.
-def abs01(p):
-    if not isinstance(p, str) or p.startswith("/"):
-        return p
-    return "/jb/" + p.lstrip("./")
-
-if isinstance(cfg.get("calls_file"), str):
-    cfg["calls_file"] = abs01(cfg["calls_file"])
+# Fixture paths stay relative to the checkout root: the container runs with its
+# working directory at /jb (the mounted checkout) and json-bench's loader rejects
+# absolute paths (SafeReadPath), so the config's ./rpc-calls/... resolve as-is.
 for call in cfg.get("calls", []) or []:
-    if isinstance(call.get("file"), str):
-        call["file"] = abs01(call["file"])
     if not call.get("thresholds"):
         call["thresholds"] = ["p(99)<600000"]
 
@@ -270,6 +261,9 @@ read -ra extra_args_arr <<< "$JB_EXTRA_ARGS"
 docker_common=(
   --rm --name "$CONTAINER_NAME"
   --network host
+  # CWD at the checkout root so a config's relative ./rpc-calls/*.jsonl fixtures
+  # resolve (json-bench's loader forbids absolute paths).
+  -w /jb
   -v "$work/src:/jb:ro"
   -v "$work/io:/io"
 )

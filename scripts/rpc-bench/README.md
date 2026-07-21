@@ -228,9 +228,10 @@ across 27 contracts), `new-state-methods-head` (`eth_estimateGas`/`eth_getCode`/
 `eth_getProof`/`eth_getStorageAt` + `eth_call`) — or any repo-relative/absolute
 path. These target `latest`, so they run against the snapshot head. The script
 **rewrites the config's `clients:` list** to the node(s) started here (so the
-repo's five-client configs work as-is), absolutizes its `./rpc-calls/*.jsonl`
-fixtures against the mounted checkout, and injects a loose per-call threshold so
-k6 emits per-method sub-metrics into `summary.json`.
+repo's five-client configs work as-is) and injects a loose per-call threshold so
+k6 emits per-method sub-metrics into `summary.json`. The config's relative
+`./rpc-calls/*.jsonl` fixtures resolve via the container's working directory
+(the mounted checkout at `/jb`) — json-bench's loader rejects absolute paths.
 
 ### `ethcallchaos` — [kamilchodola/EthCallChaos](https://github.com/kamilchodola/EthCallChaos)
 
