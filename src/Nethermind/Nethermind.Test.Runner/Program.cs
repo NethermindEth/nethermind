@@ -290,7 +290,7 @@ internal class Program
                 {
                     string name = Path.GetFileNameWithoutExtension(file);
                     WriteFileExceptionStatus(name, ex);
-                    allResults.Add(new EthereumTestResult(name, ex.Message));
+                    allResults.Add(new EthereumTestResult(name, ex.ToString()));
                 }
             }
             return allResults;
@@ -319,7 +319,7 @@ internal class Program
                 {
                     string name = Path.GetFileNameWithoutExtension(item.file);
                     WriteFileExceptionStatus(name, ex);
-                    resultsByFile[item.index] = [new EthereumTestResult(name, ex.Message)];
+                    resultsByFile[item.index] = [new EthereumTestResult(name, ex.ToString())];
                 }
             });
 
@@ -539,7 +539,7 @@ internal class Program
                 string name = Path.GetFileNameWithoutExtension(files[index]);
                 Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {name} - {ex.Message}");
                 Console.Error.Flush();
-                fileResults.Add(new EthereumTestResult(name, ex.Message));
+                fileResults.Add(new EthereumTestResult(name, ex.ToString()));
             }
 
             resultsByFile[index] = fileResults;
