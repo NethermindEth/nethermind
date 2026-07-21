@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -70,6 +69,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         ulong txGasLimit = intrinsicGas + totalFrameGas;
+        if (txGasLimit < intrinsicGas)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
+        }
+
         UInt256 maxCost = (UInt256)txGasLimit * effectiveGasPrice;
 
         FrameTxContext frameContext = new(
@@ -109,6 +113,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Snapshot batchStartSnapshot = default;
         StackAccessTracker batchTracker = default;
         int batchStartLogCount = 0;
+        Address? batchStartPayer = null;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -123,6 +128,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
                 batchStartLogCount = allLogs.Count;
+                batchStartPayer = frameContext.Payer;
             }
 
             // Transient storage (TSTORE/TLOAD) is discarded between frames (spec: Cross-frame
@@ -155,9 +161,28 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameContext.MarkFrameSucceeded(i);
             }
 
-            LogEntry[] frameLogs = frameSucceeded && accessTracker.Logs.Count > frameLogStart
-                ? accessTracker.Logs.Skip(frameLogStart).ToArray()
-                : [];
+            int frameLogCount = accessTracker.Logs.Count - frameLogStart;
+            LogEntry[] frameLogs;
+            if (frameSucceeded && frameLogCount > 0)
+            {
+                frameLogs = new LogEntry[frameLogCount];
+                int skipped = 0;
+                int written = 0;
+                foreach (LogEntry log in accessTracker.Logs)
+                {
+                    if (skipped < frameLogStart)
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    frameLogs[written++] = log;
+                }
+            }
+            else
+            {
+                frameLogs = [];
+            }
             frameReceipts[i] = new TxFrameReceipt(
                 frameSucceeded ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure,
                 frameGasUsed,
@@ -190,14 +215,31 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // every remaining frame in the batch as skipped (status 0x3, gas refunded by
                     // not being consumed). The failed frame keeps its failure receipt.
                     // EIP8141-ISSUE: the spec does not state the receipt status of frames that ran
-                    // successfully earlier in the batch before the rollback, nor the fate of an
-                    // APPROVE issued inside a rolled-back batch. The mempool forbids atomic-batched
-                    // VERIFY frames and operation frames do not APPROVE, so this prototype supports
-                    // batches of SENDER/DEFAULT operation frames only; earlier frames keep their
-                    // recorded receipts while their state and logs are rolled back.
+                    // successfully earlier in the batch before the rollback; earlier frames keep
+                    // their recorded receipts while their state and logs are rolled back.
                     WorldState.Restore(batchStartSnapshot);
                     batchTracker.Restore();
                     allLogs.RemoveRange(batchStartLogCount, allLogs.Count - batchStartLogCount);
+
+                    // EIP-8141 (ethereum/EIPs#11955): APPROVE effects that committed inside the
+                    // batch survive its unroll. Execution approval is a context flag untouched by
+                    // Restore; a payment approved inside the batch had its payer debit and sender
+                    // nonce rolled back, so re-apply them. If the pre-batch balance can no longer
+                    // cover the max cost, void the payer so the terminal payer gate rejects the
+                    // transaction instead of refunding funds that were never collected.
+                    Address? batchPayer = frameContext.Payer;
+                    if (batchStartPayer is null && batchPayer is not null)
+                    {
+                        if (WorldState.GetBalance(batchPayer) >= frameContext.MaxCost)
+                        {
+                            WorldState.SubtractFromBalance(batchPayer, frameContext.MaxCost, spec);
+                            WorldState.IncrementNonce(frameContext.Sender);
+                        }
+                        else
+                        {
+                            frameContext.Payer = null;
+                        }
+                    }
 
                     int terminal = i;
                     while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
@@ -454,6 +496,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if ((scope & TxFrame.ApprovePayment) != 0)
         {
+            // The APPROVE opcode rejects a second payer and payment before execution approval
+            // (EvmInstructions.FrameTx.cs), but the default-code sponsor path signals approval
+            // directly, bypassing those guards — so they must be re-enforced here for both paths to
+            // agree. Without this, two payment approvals against the same target charge MaxCost and
+            // increment the nonce twice while only the last payer is refunded.
+            if (frameContext.Payer is not null || !frameContext.SenderApproved) return;
+
             // Re-checked at charge time: the frame may have moved the payer's balance after an
             // APPROVE issued from an inner call, and the debit must never throw mid-block. A void
             // payment leaves Payer unset, so the transaction fails the payer gate unless a later

@@ -144,10 +144,9 @@ public class BranchProcessor(
                 {
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
                 }
-                catch (Exception ex) when (
+                catch (BlockProcessor.BlockAccessListSequentialRetryException) when (
                     worldStateCloser is not null &&
-                    !blockOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList) &&
-                    IsRetryableBlockAccessListFailure(ex))
+                    !blockOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList))
                 {
                     CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
                     QueueClearCaches(preWarmTask);
@@ -240,19 +239,6 @@ public class BranchProcessor(
         {
             task?.GetAwaiter().GetResult();
             task = null;
-        }
-
-        static bool IsRetryableBlockAccessListFailure(Exception exception)
-        {
-            for (Exception? current = exception; current is not null; current = current.InnerException)
-            {
-                if (current is BlockProcessor.RetryableBlockAccessListException)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
     }
 

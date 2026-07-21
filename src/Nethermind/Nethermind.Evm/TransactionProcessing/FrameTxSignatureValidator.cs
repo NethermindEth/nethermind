@@ -22,6 +22,7 @@ public static class FrameTxSignatureValidator
 {
     public const string InvalidSignature = "frame transaction has an invalid signature";
     public const string InvalidSignatureLength = "frame transaction signature has the wrong length";
+    public const string InvalidMsgLength = "frame transaction signature msg must be empty or a 32-byte digest";
     public const string NonCanonicalSignature = "frame transaction signature must use a 0/1 recovery id and a canonical low s value";
     public const string InvalidP256Signer = "frame transaction P256 signer does not match the public key";
     public const string P256NotSupported = "frame transaction P256 signatures require the secp256r1 precompile";
@@ -41,6 +42,15 @@ public static class FrameTxSignatureValidator
             if (signature.Scheme == TxFrameSignature.SchemeArbitrary)
             {
                 continue; // structurally checked in FrameTxValidation; the witness is verified by frame code
+            }
+
+            // Msg is either empty (canonical hash) or a 32-byte digest. FrameTxValidation enforces
+            // this for mempool/block txs, but eth_call/estimateGas/simulate reach the processor with
+            // an unvalidated FrameTx, and ValueHash256(span) reads 32 bytes unchecked — a shorter
+            // non-empty Msg would over-read. Guard the length on the untrusted input.
+            if (!signature.Msg.IsEmpty && signature.Msg.Length != Hash256.Size)
+            {
+                return Fail(InvalidMsgLength, out error);
             }
 
             ValueHash256 message = signature.Msg.IsEmpty ? sigHash : new ValueHash256(signature.Msg.Span);

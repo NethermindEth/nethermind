@@ -144,6 +144,22 @@ public class FrameTxSignatureValidatorTests
     }
 
     [Test]
+    public void Validate_NonEmptyMsgShorterThanDigest_RejectedInsteadOfOverReading()
+    {
+        // eth_call/estimateGas/simulate reach the validator with an unvalidated FrameTx, so a
+        // non-empty Msg that is not a 32-byte digest must be rejected here — feeding it to
+        // ValueHash256(span), which reads 32 bytes unchecked, would over-read the buffer.
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, new byte[5], new byte[TxFrameSignature.Secp256k1SignatureLength]),
+        ];
+
+        Assert.That(Validate(tx, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidMsgLength));
+    }
+
+    [Test]
     public void Validate_ArbitraryEntry_PassesPreFlight()
     {
         // ARBITRARY witnesses are verified by frame code, not by the protocol pre-flight.

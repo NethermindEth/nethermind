@@ -416,6 +416,44 @@ public class BlockProcessorTests
         Assert.That(eventFired, Is.True, "TransactionsExecuted should fire after ProcessTransactions completes");
     }
 
+    [Test]
+    public void ProcessOne_wraps_parallel_bal_failure_for_sequential_retry()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        IBlockAccessListManager balManager = new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>());
+        BlockProcessor processor = new(
+            HoodiSpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            transactionsExecutor,
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor),
+            balManager);
+
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
+        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(block.Header, "invalid BAL");
+        transactionsExecutor.ProcessTransactions(
+                Arg.Any<Block>(),
+                Arg.Any<ProcessingOptions>(),
+                Arg.Any<BlockReceiptsTracer>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => throw new BlockAccessListManager.ParallelExecutionException(failure));
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+
+        BlockProcessor.BlockAccessListSequentialRetryException? exception = Assert.Throws<BlockProcessor.BlockAccessListSequentialRetryException>(
+            () => processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
+
+        Assert.That(exception!.InnerException, Is.SameAs(failure));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event()
     {
@@ -1491,7 +1529,7 @@ public class BlockProcessorTests
                     new(suggestedBlock.Header, "invalid BAL");
                 if (retryable)
                 {
-                    throw new BlockProcessor.RetryableBlockAccessListException(failure, failure);
+                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure);
                 }
 
                 throw failure;

@@ -131,10 +131,7 @@ public static class ExecutionRequestExtensions
         return (depositRequests, withdrawalRequests, consolidationRequests);
     }
 
-    /// <summary>
-    /// Decodes flat encoded execution request groups into deposit, withdrawal, consolidation,
-    /// builder deposit, and builder exit requests.
-    /// </summary>
+    /// <summary>Decodes all flat encoded execution request groups.</summary>
     /// <param name="requests">Flat encoded request groups, each prefixed by an execution request type byte.</param>
     /// <returns>The decoded request groups.</returns>
     public static (
