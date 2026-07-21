@@ -355,6 +355,9 @@ public class DbConfig : IDbConfig
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatStorageDbRocksDbOptions { get; set; } =
+        // TEST branch: match the account column - drop compression to remove per-read decompress cost.
+        "compression=kNoCompression;" +
+
         // Keep last level bloom filter. Take up most index memory
         "optimize_filters_for_hits=false;" +
 
