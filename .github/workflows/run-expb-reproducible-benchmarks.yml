@@ -774,7 +774,7 @@ jobs:
           psi_avg10() { awk -v k="$2" '$1 == k { for (i=2;i<=NF;i++) if ($i ~ /^avg10=/) { sub(/^avg10=/,"",$i); print $i; exit } }' "$1" 2>/dev/null; }
           stat_val() { awk -v k="$2" '$1 == k { print $2; exit }' "$1" 2>/dev/null; }
           start="$(date +%s)"; base=""
-          echo "epoch,anon,mem_current,mem_some10,mem_full10,cpu_some10,cpu_usage_usec,nr_throttled" > "${CSV}"
+          echo "epoch,anon,mem_current,mem_some10,mem_full10,cpu_some10,cpu_usage_usec,nr_throttled,anon_thp" > "${CSV}"
           while true; do
             [[ -e "${STOPFILE}" ]] && exit 0
             (( $(date +%s) - start > 28800 )) && exit 0
@@ -790,11 +790,12 @@ jobs:
             fi
             if [[ -n "${base}" ]]; then
               anon="$(stat_val "${base}/memory.stat" anon)"
+              athp="$(stat_val "${base}/memory.stat" anon_thp)"
               cur="$(cat "${base}/memory.current" 2>/dev/null)"
               ms="$(psi_avg10 "${base}/memory.pressure" some)"; mf="$(psi_avg10 "${base}/memory.pressure" full)"
               cs="$(psi_avg10 "${base}/cpu.pressure" some)"
               cu="$(stat_val "${base}/cpu.stat" usage_usec)"; nt="$(stat_val "${base}/cpu.stat" nr_throttled)"
-              echo "$(date +%s),${anon:-},${cur:-},${ms:-},${mf:-},${cs:-},${cu:-},${nt:-}" >> "${CSV}"
+              echo "$(date +%s),${anon:-},${cur:-},${ms:-},${mf:-},${cs:-},${cu:-},${nt:-},${athp:-}" >> "${CSV}"
             fi
             sleep "${INTERVAL}"
           done
