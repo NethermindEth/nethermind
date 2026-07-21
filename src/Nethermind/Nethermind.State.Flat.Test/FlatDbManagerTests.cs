@@ -195,7 +195,8 @@ public class FlatDbManagerTests
         using SemaphoreSlim persistJobDone = new(0);
 
         await using FlatDbManager manager = CreateManager();
-        manager.ReorgBoundaryReached += (_, _) => persistJobDone.Release();
+        _persistenceManager.When(x => x.AddToPersistence(Arg.Any<StateId>()))
+            .Do(_ => persistJobDone.Release());
 
         AddSnapshotAt(manager, realResourcePool, 11);
         Assert.That(await persistJobDone.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
@@ -222,7 +223,8 @@ public class FlatDbManagerTests
         using SemaphoreSlim persistJobDone = new(0);
 
         await using FlatDbManager manager = CreateManager();
-        manager.ReorgBoundaryReached += (_, _) => persistJobDone.Release();
+        _persistenceManager.When(x => x.AddToPersistence(Arg.Any<StateId>()))
+            .Do(_ => persistJobDone.Release());
 
         AddSnapshotAt(manager, realResourcePool, 11);
         Assert.That(await persistJobDone.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
