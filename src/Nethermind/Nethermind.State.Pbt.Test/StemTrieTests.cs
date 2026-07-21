@@ -49,19 +49,19 @@ public class StemTrieTests(PbtGroupFormat format)
 
         ValueHash256 root = harness.ApplyBatch([(keyA, valueA)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA)])));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(1));
+        Assert.That(NodeCount(harness), Is.EqualTo(1));
 
         // split: a run of single-child levels down to the group where the stems part, each at its
         // shortest unique prefix
         root = harness.ApplyBatch([(keyB, valueB)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyB, valueB)])));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(splitGroupCount));
+        Assert.That(NodeCount(harness), Is.EqualTo(splitGroupCount));
         AssertStoreMatchesFreshRebuild(harness, [(keyA, valueA), (keyB, valueB)]);
 
         // delete A: B hoists all the way back to the root group, tombstoning the whole run
         root = harness.ApplyBatch([(keyA, null)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyB, valueB)])));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(1));
+        Assert.That(NodeCount(harness), Is.EqualTo(1));
 
         root = harness.ApplyBatch([(keyB, null)]);
         Assert.That(root, Is.EqualTo(default(ValueHash256)));
@@ -175,18 +175,18 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyB, valueB), (keyC, valueC)])));
         // the root group, the depth-4 group holding C beside the path on towards A and B, the run
         // spanning depths 8 to 20, and the depth-20 group where A and B part
-        Assert.That(harness.Nodes, Has.Count.EqualTo(4));
+        Assert.That(NodeCount(harness), Is.EqualTo(4));
         AssertStoreMatchesFreshRebuild(harness, [(keyA, valueA), (keyB, valueB), (keyC, valueC)]);
 
         // delete B: A hoists out through the whole run, which dissolves, and lands next to C at depth 7
         root = harness.ApplyBatch([(keyB, null)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyC, valueC)])));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(2));
+        Assert.That(NodeCount(harness), Is.EqualTo(2));
         AssertStoreMatchesFreshRebuild(harness, [(keyA, valueA), (keyC, valueC)]);
 
         root = harness.ApplyBatch([(keyC, null)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA)])));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(1));
+        Assert.That(NodeCount(harness), Is.EqualTo(1));
 
         root = harness.ApplyBatch([(keyA, null)]);
         Assert.That(root, Is.EqualTo(default(ValueHash256)));
@@ -216,8 +216,8 @@ public class StemTrieTests(PbtGroupFormat format)
         ValueHash256 root = harness.ApplyBatch(all);
         Assert.That(root, Is.EqualTo(ReferenceRoot(all)));
         // the root group, the depth-4 group holding B, the run from 8 to 40, and the group where A1/A2 part
-        Assert.That(harness.Nodes, Has.Count.EqualTo(4));
-        Assert.That(harness.Nodes.Keys, Has.Some.Matches<TrieNodeKey>(key => key.Depth == 8), "the run is stored where it starts");
+        Assert.That(NodeCount(harness), Is.EqualTo(4));
+        Assert.That(harness.FlattenedNodes().Keys, Has.Some.Matches<TrieNodeKey>(key => key.Depth == 8), "the run is stored where it starts");
         AssertStoreMatchesFreshRebuild(harness, all);
 
         // Delete B and the depth-4 group is left with one child this batch never descended into. Only
@@ -225,7 +225,7 @@ public class StemTrieTests(PbtGroupFormat format)
         (byte[], byte[]?)[] justA = [(keyA1, valueA1), (keyA2, valueA2)];
         root = harness.ApplyBatch([(keyB, null)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot(justA)));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the run absorbed the one below it rather than pointing at it");
+        Assert.That(NodeCount(harness), Is.EqualTo(3), "the run absorbed the one below it rather than pointing at it");
         AssertStoreMatchesFreshRebuild(harness, justA);
 
         // Re-inserting B splits the run inside its own top four levels. The remainder keeps the slot this
@@ -233,7 +233,7 @@ public class StemTrieTests(PbtGroupFormat format)
         // that replaces the run.
         root = harness.ApplyBatch([(keyB, valueB)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot(all)));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(4));
+        Assert.That(NodeCount(harness), Is.EqualTo(4));
         AssertStoreMatchesFreshRebuild(harness, all);
     }
 
@@ -257,7 +257,7 @@ public class StemTrieTests(PbtGroupFormat format)
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         ValueHash256 root = harness.ApplyBatch([(keyA1, valueA1), (keyA2, valueA2)]);
-        Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the root group, the run from 4 to 40, and the group at 40");
+        Assert.That(NodeCount(harness), Is.EqualTo(3), "the root group, the run from 4 to 40, and the group at 40");
 
         Dictionary<TrieNodeKey, byte[]> before = new(harness.Nodes);
         Assert.That(harness.ApplyBatch([(keyA1, valueA1)]), Is.EqualTo(root), "a no-op write leaves the root alone");
@@ -271,7 +271,7 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(root, Is.EqualTo(ReferenceRoot(all)));
         // the root group, the run from 4 to 8, the group at 8 where C parts, the run from 12 to 40, and
         // the group at 40 — one run split into two by a branch landing between them
-        Assert.That(harness.Nodes, Has.Count.EqualTo(5));
+        Assert.That(NodeCount(harness), Is.EqualTo(5));
         AssertStoreMatchesFreshRebuild(harness, all);
     }
 
@@ -294,12 +294,12 @@ public class StemTrieTests(PbtGroupFormat format)
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         harness.ApplyBatch([(keyA1, valueA1), (keyA2, valueA2)]);
-        Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the root group, the run from 4 to 8, and the group at 8");
+        Assert.That(NodeCount(harness), Is.EqualTo(3), "the root group, the run from 4 to 8, and the group at 8");
 
         (byte[], byte[]?)[] all = [(keyA1, valueA1), (keyA2, valueA2), (keyD, valueD)];
         Assert.That(harness.ApplyBatch([(keyD, valueD)]), Is.EqualTo(ReferenceRoot(all)));
         // the run is gone: its four levels are the depth-4 group now, pointing straight at what it targeted
-        Assert.That(harness.Nodes, Has.Count.EqualTo(3));
+        Assert.That(NodeCount(harness), Is.EqualTo(3));
         AssertStoreMatchesFreshRebuild(harness, all);
     }
 
@@ -463,7 +463,6 @@ public class StemTrieTests(PbtGroupFormat format)
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
         AssertStoreMatchesFreshRebuild(harness, writes);
-        AssertChainsAreMaximal(harness);
 
         // The same writes through the production builder, whose precalculated levels cover the depths a
         // corridor is entered from: the two take different routes into it and must still agree.
@@ -492,7 +491,7 @@ public class StemTrieTests(PbtGroupFormat format)
         root = harness.ApplyBatch([([.. stemA, 5], valueA)]);
         root = harness.ApplyBatch([([.. stemA, 7], valueB)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([([.. stemA, 5], valueA), ([.. stemA, 7], valueB)])));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(1));
+        Assert.That(NodeCount(harness), Is.EqualTo(1));
     }
 
     [TestCase(1)]
@@ -853,7 +852,7 @@ public class StemTrieTests(PbtGroupFormat format)
         // the root group's own root is folded, not stored, so its unchanged hash reaches the caller by
         // value — a no-op rewrite must still return the true root, not the zero one an absent entry reads as
         Assert.That(harness.ApplyBatch([([.. target, 5], value)]), Is.EqualTo(before), "a no-op rewrite returns the same root");
-        return (provider.Rented.Count - rentsBefore, harness.Nodes.Count);
+        return (provider.Rented.Count - rentsBefore, NodeCount(harness));
     }
 
     /// <summary>A stem told apart from its fellows only by <paramref name="b0"/> and <paramref name="b1"/>, so it parts from them above depth 16.</summary>
@@ -897,48 +896,8 @@ public class StemTrieTests(PbtGroupFormat format)
         harness.ApplyBatch([([.. stemA, 5], null)]);
 
         Assert.That(provider.Rented, Is.Not.Empty, "the batches must have rented something to check");
-        Assert.That(CountUnreleased(provider.Rented), Is.Zero, "every rented buffer must end up fully released");
-        Assert.That(CountUnreleased(harness.HandedOut), Is.Zero, "every buffer the store handed to a read must end up fully released");
-    }
-
-    /// <summary>
-    /// How many of <paramref name="memories"/> still hold a lease — none should, once the updater has
-    /// returned. A fully released buffer refuses a fresh lease, an outstanding one takes it.
-    /// </summary>
-    private static int CountUnreleased(IEnumerable<RefCountingMemory> memories)
-    {
-        int unreleased = 0;
-        foreach (RefCountingMemory memory in memories)
-        {
-            try
-            {
-                memory.AcquireLease();
-            }
-            catch (InvalidOperationException)
-            {
-                continue;
-            }
-
-            ((IDisposable)memory).Dispose();
-            unreleased++;
-        }
-
-        return unreleased;
-    }
-
-    /// <summary>Hands out pooled memory and keeps a handle on each buffer, for <see cref="CountUnreleased"/>.</summary>
-    private sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
-    {
-        private readonly List<RefCountingMemory> _rented = [];
-
-        public IReadOnlyList<RefCountingMemory> Rented => _rented;
-
-        public RefCountingMemory Rent(int length)
-        {
-            RefCountingMemory memory = PooledRefCountingMemoryProvider.Instance.Rent(length);
-            _rented.Add(memory);
-            return memory;
-        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero, "every rented buffer must end up fully released");
+        Assert.That(TrackingMemoryProvider.CountUnreleased(harness.HandedOut), Is.Zero, "every buffer the store handed to a read must end up fully released");
     }
 
     /// <summary>
@@ -956,29 +915,37 @@ public class StemTrieTests(PbtGroupFormat format)
             Assert.That(actual.AsSpan().SequenceEqual(expected), $"node mismatch at {key}");
         }
 
-        AssertChainsAreMaximal(harness);
-        Assert.That(CountStems(harness, TrieNodeKey.Root), Is.EqualTo(harness.Blobs.Count), "the root subtree is every stem");
+        Dictionary<TrieNodeKey, byte[]> nodes = harness.FlattenedNodes();
+        AssertChainsAreMaximal(nodes);
+        Assert.That(CountStems(nodes, TrieNodeKey.Root), Is.EqualTo(harness.Blobs.Count), "the root subtree is every stem");
     }
+
+    /// <summary>
+    /// The nodes the store holds, counted as nodes rather than as blobs: a wrapper is one blob and
+    /// several nodes (see <see cref="PbtTrieNodeWrapper.WrapsChildren"/>), and it is the shape of the
+    /// trie these tests are about.
+    /// </summary>
+    private static int NodeCount(PbtTreeHarness harness) => harness.FlattenedNodes().Count;
 
     /// <summary>
     /// The stems under <paramref name="key"/>, counted from the store rather than hoisted, asserting
     /// on the way that the blob there says the same.
     /// </summary>
-    private static long CountStems(PbtTreeHarness harness, in TrieNodeKey key)
+    private static long CountStems(Dictionary<TrieNodeKey, byte[]> nodes, in TrieNodeKey key)
     {
-        if (!harness.Nodes.TryGetValue(key, out byte[]? blob)) return 0;
+        if (!nodes.TryGetValue(key, out byte[]? blob)) return 0;
 
         if (PbtNodeChain.IsChain(blob))
         {
             PbtNodeChain chain = PbtNodeChain.Decode(blob, key.Depth);
-            long reached = CountStems(harness, chain.TargetKey);
+            long reached = CountStems(nodes, chain.TargetKey);
             Assert.That(chain.Stats.StemCount, Is.EqualTo(reached), $"run at {key}");
             return reached;
         }
 
         // A stem sits at whichever position is its shortest unique prefix, boundary or inner, so every
         // position is visited; only a boundary internal roots a blob of its own to descend into.
-        PbtTrieNodeGroup group = PbtTrieNodeGroup.Decode(blob);
+        PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
         long counted = 0;
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
         {
@@ -988,7 +955,7 @@ public class StemTrieTests(PbtGroupFormat format)
                     counted++;
                     break;
                 case PbtTrieNodeGroup.NodeKind.Internal when PbtTrieNodeGroup.IsBoundaryPosition(position):
-                    counted += CountStems(harness, key.ChildGroup(PbtTrieNodeGroup.BoundarySlot(position)));
+                    counted += CountStems(nodes, key.ChildGroup(PbtTrieNodeGroup.BoundarySlot(position)));
                     break;
             }
         }
@@ -1007,19 +974,19 @@ public class StemTrieTests(PbtGroupFormat format)
     /// stand in for canonicality at all. Checking the runs directly says so where they break, rather than
     /// as a byte that differs.
     /// </remarks>
-    private static void AssertChainsAreMaximal(PbtTreeHarness harness)
+    private static void AssertChainsAreMaximal(Dictionary<TrieNodeKey, byte[]> nodes)
     {
-        foreach ((TrieNodeKey key, byte[] blob) in harness.Nodes)
+        foreach ((TrieNodeKey key, byte[] blob) in nodes)
         {
             if (!PbtNodeChain.IsChain(blob)) continue;
 
             PbtNodeChain chain = PbtNodeChain.Decode(blob, key.Depth);
             for (int depth = key.Depth + PbtTrieNodeGroup.LevelsPerGroup; depth < chain.TargetDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
             {
-                Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"{key} spans depth {depth}, which must hold nothing");
+                Assert.That(nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"{key} spans depth {depth}, which must hold nothing");
             }
 
-            Assert.That(harness.Nodes.TryGetValue(chain.TargetKey, out byte[]? target), $"{key} targets {chain.TargetKey}, which holds nothing");
+            Assert.That(nodes.TryGetValue(chain.TargetKey, out byte[]? target), $"{key} targets {chain.TargetKey}, which holds nothing");
             Assert.That(PbtNodeChain.IsChain(target), Is.False, $"{key} targets another run at {chain.TargetKey} rather than absorbing it");
         }
     }

@@ -190,9 +190,46 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         int depth = key[Stem.Length];
         PbtScanReport.TrieNodeStats stats = report[depth == 0 ? PbtTreePartition.Root : partition];
 
-        if (PbtNodeChain.IsChain(value)) ScanChain(value, depth, stats);
-        else ScanGroup(value, depth, stats, report);
+        ScanTrieNode(value, depth, stats, report);
     };
+
+    /// <summary>
+    /// Counts one trie node blob as what it holds, which for a wrapper is the group at the key's depth
+    /// and the children one group below it — so every histogram here reads as it did before the two
+    /// shared a blob.
+    /// </summary>
+    private static void ScanTrieNode(ReadOnlySpan<byte> value, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
+    {
+        if (PbtNodeChain.IsChain(value))
+        {
+            ScanChain(value, depth, stats);
+            return;
+        }
+
+        PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(value, out PbtTrieNodeGroup group);
+        ReadOnlySpan<byte> groupBytes = value[wrapper.Group];
+        ScanGroup(group, groupBytes.Length, depth, stats, report);
+        if (wrapper.IsEmpty) return;
+
+        stats.WrapperCount++;
+        int childDepth = depth + PbtTrieNodeGroup.LevelsPerGroup;
+        int childBytes = 0;
+        for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+        {
+            ReadOnlySpan<byte> child = value[wrapper.Child(slot, group)];
+            if (child.IsEmpty) continue;
+
+            stats.WrappedChildCount++;
+            childBytes += child.Length;
+
+            // a wrapped child is never itself a wrapper: the level a wrapper holds is the level that
+            // does not itself wrap (see PbtTrieNodeWrapper.WrapsChildren)
+            if (PbtNodeChain.IsChain(child)) ScanChain(child, childDepth, stats);
+            else ScanGroup(PbtTrieNodeGroup.Decode(child), child.Length, childDepth, stats, report);
+        }
+
+        stats.WrapperBytes += value.Length - groupBytes.Length - childBytes;
+    }
 
     /// <summary>
     /// The key range boundaries of any column, splitting the space evenly over the first two bytes of
@@ -251,14 +288,12 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         stats.ChainGroupBlobsAvoided += groupsSpanned - 1;
     }
 
-    private static void ScanGroup(ReadOnlySpan<byte> value, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
+    private static void ScanGroup(in PbtTrieNodeGroup group, int bytes, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
     {
-        PbtTrieNodeGroup group = PbtTrieNodeGroup.Decode(value);
-
         stats.GroupCount++;
-        stats.GroupBytes += value.Length;
+        stats.GroupBytes += bytes;
         stats.GroupsByDepth[depth]++;
-        stats.GroupBytesByDepth[depth] += value.Length;
+        stats.GroupBytesByDepth[depth] += bytes;
         if (group.Format == PbtGroupFormat.Interleaved) stats.InterleavedGroupCount++;
         if (depth == 0) report.RootSubtreeStemCount = group.Stats.StemCount;
 
@@ -391,7 +426,9 @@ public sealed class PbtScanReport
     public long GroupCount => Sum(static stats => stats.GroupCount);
     public long ChainCount => Sum(static stats => stats.ChainCount);
     public long StemCount => Sum(static stats => stats.StemCount);
-    public long TrieNodeBytes => Sum(static stats => stats.GroupBytes + stats.ChainBytes);
+    public long TrieNodeBytes => Sum(static stats => stats.GroupBytes + stats.ChainBytes + stats.WrapperBytes);
+    public long WrapperCount => Sum(static stats => stats.WrapperCount);
+    public long WrappedChildCount => Sum(static stats => stats.WrappedChildCount);
     public long InterleaveSkippedNodes => Sum(static stats => stats.InterleaveSkippedNodes);
     public long ChainSkippedNodes => Sum(static stats => stats.ChainSkippedNodes);
     public long ChainEntriesAvoided => Sum(static stats => stats.ChainEntriesAvoided);
@@ -437,6 +474,15 @@ public sealed class PbtScanReport
         public long GroupBytes { get; internal set; }
         public long ChainBytes { get; internal set; }
 
+        /// <summary>Blobs holding their children's blobs alongside their own group.</summary>
+        public long WrapperCount { get; internal set; }
+
+        /// <summary>Children so held — the lookups, and the keys, that the wrapping saves.</summary>
+        public long WrappedChildCount { get; internal set; }
+
+        /// <summary>The offset tables and counts those blobs spend to hold them.</summary>
+        public long WrapperBytes { get; internal set; }
+
         public long[] GroupsByDepth { get; } = new long[DepthSlots];
         public long[] GroupBytesByDepth { get; } = new long[DepthSlots];
         public long[] StemsByDepth { get; } = new long[DepthSlots];
@@ -465,6 +511,9 @@ public sealed class PbtScanReport
             StemCount += other.StemCount;
             GroupBytes += other.GroupBytes;
             ChainBytes += other.ChainBytes;
+            WrapperCount += other.WrapperCount;
+            WrappedChildCount += other.WrappedChildCount;
+            WrapperBytes += other.WrapperBytes;
             InterleaveSkippedNodes += other.InterleaveSkippedNodes;
             ChainSkippedNodes += other.ChainSkippedNodes;
             ChainEntriesAvoided += other.ChainEntriesAvoided;
@@ -516,6 +565,7 @@ public sealed class PbtScanReport
         report.AppendLine();
 
         report.AppendLine($"Totals: {GroupCount + ChainCount:N0} trie nodes ({TrieNodeBytes:N0} bytes), {GroupCount:N0} groups, {ChainCount:N0} chains, {StemCount:N0} stems");
+        report.AppendLine($"Stored in {GroupCount + ChainCount - WrappedChildCount:N0} blobs: {WrapperCount:N0} of them wrap {WrappedChildCount:N0} children, each a lookup and a key saved");
         report.AppendLine($"Root records {RootSubtreeStemCount:N0} stems for its subtree ({(StemCountAgrees ? "agrees" : "MISMATCH")})");
         report.AppendLine();
 

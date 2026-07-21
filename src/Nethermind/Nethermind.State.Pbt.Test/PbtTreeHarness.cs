@@ -29,6 +29,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtGroupFormat)" path="/param[@name='writeFormat']"/>
     public PbtGroupFormat WriteFormat { get; set; } = writeFormat;
 
+    /// <summary>The blobs as the store keeps them, a child a wrapper holds having no entry of its own.</summary>
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
     /// <summary>The leaf blobs, one per stem the trie holds — an emptied one is removed, not stored empty.</summary>
@@ -39,6 +40,32 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
 
     /// <summary>Count of <see cref="GetLeafBlob"/> calls, to pin that the updater skips the read for brand-new stems.</summary>
     public int LeafReads { get; private set; }
+
+    /// <summary>
+    /// Every node the store holds, keyed by where it sits in the trie — the children inside a wrapper
+    /// flattened back out to the keys they would have had of their own.
+    /// </summary>
+    /// <remarks>
+    /// What a walk of the trie wants, as against <see cref="Nodes"/>, which is what the store wants: a
+    /// blob's key says where its node is, and a wrapped child's is its parent's plus its boundary slot.
+    /// </remarks>
+    public Dictionary<TrieNodeKey, byte[]> FlattenedNodes()
+    {
+        Dictionary<TrieNodeKey, byte[]> flattened = new(_nodes);
+        foreach ((TrieNodeKey key, byte[] blob) in _nodes)
+        {
+            if (!PbtTrieNodeWrapper.IsWrapper(blob)) continue;
+
+            PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
+            for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+            {
+                byte[] child = blob[wrapper.Child(slot, group)];
+                if (child.Length != 0) flattened.Add(key.ChildGroup(slot), child);
+            }
+        }
+
+        return flattened;
+    }
 
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => Track(RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key)));
 

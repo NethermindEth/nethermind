@@ -103,11 +103,42 @@ public static partial class TrieUpdater
             Chain = 3,
         }
 
+        /// <summary>
+        /// A stored blob as the descent reads it: its bytes, and where they sit in the memory holding
+        /// them. A blob the store handed over is all of its memory; one the frame above holds in a
+        /// <see cref="PbtTrieNodeWrapper"/> is a slice of that frame's, and the entry offsets an
+        /// <see cref="Occupant"/> keeps are into the memory rather than the blob, which is why the two
+        /// travel together.
+        /// </summary>
+        private readonly struct StoredBlob(RefCountingMemory? memory, int offset, int length)
+        {
+            /// <summary>The whole of <paramref name="memory"/>, as the store hands a blob over; the absent blob for <c>null</c>.</summary>
+            public static StoredBlob Of(RefCountingMemory? memory) =>
+                memory is null ? default : new(memory, 0, memory.GetSpan().Length);
+
+            public bool IsEmpty => memory is null;
+
+            /// <inheritdoc cref="StoredBlob" path="/summary"/>
+            public RefCountingMemory? Memory => memory;
+
+            /// <summary>Where these bytes start in <see cref="Memory"/>.</summary>
+            public int Offset => offset;
+
+            public ReadOnlySpan<byte> Data => memory is null ? default : memory.GetSpan().Slice(offset, length);
+
+            /// <summary>The blob <paramref name="range"/> of these bytes holds; the absent blob for an empty range.</summary>
+            public StoredBlob Slice(Range range)
+            {
+                (int start, int sliceLength) = range.GetOffsetAndLength(length);
+                return sliceLength == 0 ? default : new StoredBlob(memory, offset + start, sliceLength);
+            }
+        }
+
         public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
             using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
             NodeResult root = default;
-            ApplyStored(TrieNodeKey.Root, changes.Entries, rootData, currentRoot, new BucketPlan(changes.Buckets, branchDepth: 0), ref root, out _, out delta);
+            ApplyStored(TrieNodeKey.Root, changes.Entries, StoredBlob.Of(rootData), currentRoot, new BucketPlan(changes.Buckets, branchDepth: 0), ref root, out _, out delta);
 
             using (root)
             {
@@ -138,11 +169,11 @@ public static partial class TrieUpdater
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyStored(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, RefCountingMemory? existingData,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, StoredBlob existingData,
             in ValueHash256 beforeHash, scoped BucketPlan plan, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
-            if (existingData is not null && PbtNodeChain.IsChain(existingData.GetSpan()))
-                ApplyChain(key, entries, existingData.GetSpan(), plan, ref result, out changed, out delta);
+            if (!existingData.IsEmpty && PbtNodeChain.IsChain(existingData.Data))
+                ApplyChain(key, entries, existingData.Data, plan, ref result, out changed, out delta);
             else
                 ApplyGroup(key, entries, existingData, beforeHash, plan, ref result, out changed, out delta);
         }
@@ -161,13 +192,28 @@ public static partial class TrieUpdater
 
             /// <summary>The occupant at boundary <paramref name="slot"/>, or <c>default</c> when the slot holds none.</summary>
             Occupant this[int slot] { get; }
+
+            /// <summary>
+            /// The blob of the child group under boundary <paramref name="slot"/> where this frame holds
+            /// it rather than the store, and the absent blob where the store does.
+            /// </summary>
+            /// <remarks>
+            /// A frame at a <see cref="PbtTrieNodeWrapper.WrapsChildren"/> depth holds every one of them:
+            /// its children have no keys of their own, so this is the only way to their bytes, whether the
+            /// descent is about to read one or the rebuild is copying an untouched one over.
+            /// </remarks>
+            StoredBlob ChildBlob(int slot);
         }
 
-        /// <summary>The occupants of a stored group, each read straight out of its encoding at the slot's fixed boundary position.</summary>
-        private readonly ref struct StoredOccupants(PbtTrieNodeGroup existing, RefCountingMemory? existingData) : IOccupants
+        /// <summary>
+        /// The occupants of a stored group, each read straight out of its encoding at the slot's fixed
+        /// boundary position, and the children the blob wraps around that encoding.
+        /// </summary>
+        private readonly ref struct StoredOccupants(PbtTrieNodeGroup existing, StoredBlob blob, PbtTrieNodeWrapper wrapper) : IOccupants
         {
             private readonly PbtTrieNodeGroup _existing = existing;
-            private readonly RefCountingMemory? _existingData = existingData;
+            private readonly StoredBlob _blob = blob;
+            private readonly PbtTrieNodeWrapper _wrapper = wrapper;
 
             public bool HasStoredEncoding => !_existing.IsEmpty;
 
@@ -177,20 +223,35 @@ public static partial class TrieUpdater
                 {
                     int position = PbtTrieNodeGroup.BoundaryPosition(slot);
                     NodeKind kind = _existing.KindAt(position);
-                    return kind == NodeKind.Absent ? default : new Occupant(new NodeRef((ResultKind)kind, _existing.EntryOffset(position)), _existingData);
+                    return kind == NodeKind.Absent
+                        ? default
+                        : new Occupant(new NodeRef((ResultKind)kind, GroupOffset + _existing.EntryOffset(position)), _blob.Memory);
                 }
             }
+
+            public StoredBlob ChildBlob(int slot) => _blob.Slice(_wrapper.Child(slot, _existing));
+
+            /// <summary>Where the group's entries start in the memory holding them, which a wrapper puts its children ahead of.</summary>
+            private int GroupOffset => _blob.Offset + _wrapper.GroupOffset;
         }
 
         /// <summary>The lone occupant a run-split or pushed stem seeds into an otherwise empty frame, held at its slot.</summary>
-        private readonly struct SeededOccupant(Occupant seed, int seedSlot) : IOccupants
+        /// <param name="seedBlob">
+        /// The blob under the seed, for the one seed that has one: a run split adopting the target group
+        /// its new frame wraps. Absent otherwise — a pushed stem roots no blob, and a seeded run carries
+        /// its own encoding in the occupant.
+        /// </param>
+        private readonly struct SeededOccupant(Occupant seed, int seedSlot, StoredBlob seedBlob) : IOccupants
         {
             private readonly Occupant _seed = seed;
             private readonly int _seedSlot = seedSlot;
+            private readonly StoredBlob _seedBlob = seedBlob;
 
             public bool HasStoredEncoding => false;
 
             public Occupant this[int slot] => slot == _seedSlot ? _seed : default;
+
+            public StoredBlob ChildBlob(int slot) => slot == _seedSlot ? _seedBlob : default;
         }
 
         private static NodeKind ToNodeKind(ResultKind kind)
@@ -210,9 +271,9 @@ public static partial class TrieUpdater
         /// may hold a stem). The caller disposes the result.
         /// </summary>
         /// <param name="existingData">
-        /// The group's stored encoding, which the caller owns and this keeps no lease on beyond the
+        /// The group's stored blob, which the caller owns and this keeps no lease on beyond the
         /// call: the occupants read out of it — and the root, when the writes leave the group as it
-        /// was — take their own.
+        /// was — take their own. Where the group wraps them, the blob holds its children too.
         /// </param>
         /// <param name="beforeHash"><inheritdoc cref="RebuildNode" path="/param[@name='beforeHash']"/></param>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
@@ -220,21 +281,25 @@ public static partial class TrieUpdater
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyGroup(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, RefCountingMemory? existingData,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, StoredBlob existingData,
             in ValueHash256 beforeHash, scoped BucketPlan plan, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
             Debug.Assert(depth <= PbtTrieNodeGroup.MaxGroupDepth);
 
-            PbtTrieNodeGroup existing = existingData is null ? default : PbtTrieNodeGroup.Decode(existingData.GetSpan());
+            PbtTrieNodeGroup existing = default;
+            PbtTrieNodeWrapper wrapper = existingData.IsEmpty ? default : PbtTrieNodeWrapper.Decode(existingData.Data, out existing);
+            Debug.Assert(
+                wrapper.IsEmpty || PbtTrieNodeWrapper.WrapsChildren(depth),
+                "only a group whose depth wraps holds its children");
 
             existing.BoundaryShape(out uint occupantsOccupied, out uint occupantsStems);
 
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            StoredOccupants occupants = new(existing, existingData);
+            StoredOccupants occupants = new(existing, existingData, wrapper);
             GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results)
                 .MergeUntouched(occupantsOccupied, occupantsStems);
             result = RebuildNode(key, occupants, existing, results, shape, beforeHash, existing.Stats, out changed, out delta);
@@ -366,7 +431,8 @@ public static partial class TrieUpdater
                 occupantsOccupied = 1u << seedSlot;
             }
 
-            SeededOccupant occupants = new(pushed, seedSlot);
+            // a pushed stem roots no blob of its own: its subtree is its leaf blob, keyed by the stem
+            SeededOccupant occupants = new(pushed, seedSlot, default);
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
@@ -465,6 +531,7 @@ public static partial class TrieUpdater
 
             uint changedMask = 0;
             uint storedChildMask = 0;
+            bool wraps = PbtTrieNodeWrapper.WrapsChildren(depth);
             PbtSubtreeStats childDeltas = default;
             for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
             {
@@ -476,13 +543,19 @@ public static partial class TrieUpdater
                 BucketPlan childPlan = plan.ForChild(slot, branchDepth);
                 bool childChanged;
                 PbtSubtreeStats childDelta;
-                if (occupant.Kind == ResultKind.Internal)
+                if (occupant.Kind == ResultKind.Internal && wraps)
+                {
+                    // this frame holds the child's blob itself, so there is no key to read it from and
+                    // none to settle afterwards either — the rebuild below writes it back out whole
+                    ApplyStored(childKey, bucket, occupants.ChildBlob(slot), occupant.NodeHash(), childPlan, ref result, out childChanged, out childDelta);
+                }
+                else if (occupant.Kind == ResultKind.Internal)
                 {
                     // a stored child blob — group or run — descends with its own content; the boundary
                     // internal caches its old root hash, which the child no longer stores itself
                     using RefCountingMemory? childData = store.GetTrieNode(childKey);
                     if (childData is not null) storedChildMask |= 1u << slot;
-                    ApplyStored(childKey, bucket, childData, occupant.NodeHash(), childPlan, ref result, out childChanged, out childDelta);
+                    ApplyStored(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, ref result, out childChanged, out childDelta);
 
                     // No frame writes its own key; this one, the parent, settles each child's: a stored one
                     // the writes emptied to nothing — it changed and holds no blob now — is removed here (a
@@ -556,6 +629,7 @@ public static partial class TrieUpdater
             where TOccupants : IOccupants, allows ref struct
         {
             bool isRoot = key.Depth == 0;
+            bool wraps = PbtTrieNodeWrapper.WrapsChildren(key.Depth);
             uint occupied = shape.Occupied;
             uint stems = shape.Stems;
             uint changedMask = shape.ChangedMask;
@@ -583,6 +657,12 @@ public static partial class TrieUpdater
 
                 // an untouched value survivor was never copied into results — read it straight from the occupant
                 NodeResult survivor = results[survivorSlot].Kind != ResultKind.Absent ? results[survivorSlot].Lease() : occupants[survivorSlot];
+
+                // A wrapping frame's blob goes with the collapse, and the survivor's bytes with it unless
+                // the descent rebuilt them: they move out into memory of their own, to be planted under the
+                // survivor's own key or absorbed into the run.
+                if (wraps && survivor.Blob is null) survivor = AdoptChildBlob(occupants.ChildBlob(survivorSlot).Data, survivor);
+
                 changed = CollapseToChain(key, survivorSlot, survivor, touchedMask, storedChildMask, beforeHash, afterStats, out NodeResult chain);
                 Release(results, handedUp: -1);
                 return chain;
@@ -650,7 +730,26 @@ public static partial class TrieUpdater
                 changedBoundaries[changedCount++] = (slot, new Boundary(results[slot].Hash, (stems >> slot & 1) != 0 ? results[slot].Stem : default));
             }
 
-            (FoldedNode rootFold, ValueHash256 rootHash, RefCountingMemory memory) = RebuildGroup(changedBoundaries[..changedCount], existing, occupied, stems, changedMask, afterStats);
+            // A wrapping frame writes its children's blobs into its own, so it rents one buffer for all of
+            // them and folds its group into what is left; every other frame's buffer is the group alone.
+            uint childSlots = wraps ? occupied & ~stems : 0;
+            int groupLength = PredictedGroupLength(existing, occupied, stems, changedMask);
+            RefCountingMemory memory = memoryProvider.Rent(WrappedLength(occupants, results, childSlots, groupLength));
+            Span<byte> groupDestination = memory.GetSpan();
+            PbtTrieNodeWrapper.Builder wrapperBuilder = default;
+            if (childSlots != 0)
+            {
+                wrapperBuilder = new PbtTrieNodeWrapper.Builder(memory.GetSpan(), BitOperations.PopCount(childSlots), groupLength);
+                for (uint remaining = childSlots; remaining != 0; remaining &= remaining - 1)
+                {
+                    wrapperBuilder.AppendChild(ChildBlobAt(occupants, results, BitOperations.TrailingZeroCount(remaining)));
+                }
+
+                groupDestination = wrapperBuilder.GroupDestination;
+            }
+
+            (FoldedNode rootFold, ValueHash256 rootHash) = RebuildGroup(groupDestination, changedBoundaries[..changedCount], existing, occupied, stems, changedMask, afterStats);
+            if (childSlots != 0) wrapperBuilder.Finish();
 
             // A stem root's stem and subtree root are read out of the fresh encoding while it is still held;
             // an internal root has no entry, its hash coming from the fold via rootHash instead.
@@ -658,7 +757,7 @@ public static partial class TrieUpdater
             ValueHash256 rootSubtreeRoot = default;
             if (rootFold.IsStored)
             {
-                PbtTrieNodeGroup.Slot rootSlot = PbtTrieNodeGroup.SlotAt(memory.GetSpan(), ToNodeKind(rootFold.Kind), rootFold.Offset);
+                PbtTrieNodeGroup.Slot rootSlot = PbtTrieNodeGroup.SlotAt(groupDestination, ToNodeKind(rootFold.Kind), rootFold.Offset);
                 rootStem = rootSlot.Stem;
                 rootSubtreeRoot = rootSlot.Hash;
             }
@@ -669,13 +768,18 @@ public static partial class TrieUpdater
             changed = rootHash != beforeHash;
 
             // Plant each child's own blob at its key — a run that lands here, or a group a descent
-            // rebuilt. The frame that built it never wrote it; this one, its parent, does.
-            for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+            // rebuilt. The frame that built it never wrote it; this one, its parent, does. A wrapping
+            // frame plants none of them: it has just written their bytes into its own blob, and the keys
+            // they would go under hold nothing.
+            if (!wraps)
             {
-                if (results[slot].Blob is { } childBlob)
+                for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
                 {
-                    childBlob.AcquireLease();
-                    store.SetTrieNode(key.ChildGroup(slot), childBlob);
+                    if (results[slot].Blob is { } childBlob)
+                    {
+                        childBlob.AcquireLease();
+                        store.SetTrieNode(key.ChildGroup(slot), childBlob);
+                    }
                 }
             }
 
@@ -688,6 +792,51 @@ public static partial class TrieUpdater
             return rootFold.IsStored
                 ? NodeResult.StemNode(rootStem, rootSubtreeRoot, ownBlob)
                 : NodeResult.Internal(rootHash, ownBlob);
+        }
+
+        /// <summary>
+        /// The blob of the child under boundary <paramref name="slot"/>, whichever of the two places a
+        /// wrapping frame's rebuild finds it: the encoding the descent produced, or — for a child left
+        /// untouched, or touched and unchanged — the wrapper the frame is replacing.
+        /// </summary>
+        private static ReadOnlySpan<byte> ChildBlobAt<TOccupants>(scoped in TOccupants occupants, ReadOnlySpan<NodeResult> results, int slot)
+            where TOccupants : IOccupants, allows ref struct =>
+            results[slot].Blob is { } blob ? blob.GetSpan() : occupants.ChildBlob(slot).Data;
+
+        /// <summary>
+        /// The length of the blob a frame whose children occupy <paramref name="childSlots"/> writes over
+        /// a group of <paramref name="groupLength"/> bytes; the group's own where it wraps none.
+        /// </summary>
+        private static int WrappedLength<TOccupants>(
+            scoped in TOccupants occupants, ReadOnlySpan<NodeResult> results, uint childSlots, int groupLength)
+            where TOccupants : IOccupants, allows ref struct
+        {
+            if (childSlots == 0) return groupLength;
+
+            int childBytes = 0;
+            for (uint remaining = childSlots; remaining != 0; remaining &= remaining - 1)
+            {
+                ReadOnlySpan<byte> child = ChildBlobAt(occupants, results, BitOperations.TrailingZeroCount(remaining));
+                Debug.Assert(!child.IsEmpty, "a boundary internal roots a blob, which a wrapping frame either rebuilt or already held");
+                childBytes += child.Length;
+            }
+
+            return PbtTrieNodeWrapper.EncodedLength(childBytes, groupLength, BitOperations.PopCount(childSlots));
+        }
+
+        /// <summary>
+        /// Copies a child's bytes out of the wrapper holding them into memory of its own, as the node an
+        /// enclosing frame can hand up: a run to be absorbed, or a group for an ancestor to plant under
+        /// the key it is about to need again.
+        /// </summary>
+        /// <param name="node">What the frame read the child as, whose hash a group keeps.</param>
+        private NodeResult AdoptChildBlob(ReadOnlySpan<byte> childBlob, in NodeResult node)
+        {
+            Debug.Assert(!childBlob.IsEmpty, "a boundary internal roots a blob, which a wrapping frame holds itself");
+
+            RefCountingMemory memory = memoryProvider.Rent(childBlob.Length);
+            childBlob.CopyTo(memory.GetSpan());
+            return PbtNodeChain.IsChain(childBlob) ? NodeResult.Chain(memory) : NodeResult.Internal(node.Hash, memory);
         }
 
         /// <summary>
@@ -710,8 +859,9 @@ public static partial class TrieUpdater
             // The one thing the descent has not already read. An untouched child never had a frame of its
             // own, and a boundary internal does not say whether its blob is a group — leaving a run of four
             // levels — or a run this one must merge with to stay maximal. Only deletes strand one, having
-            // emptied every sibling.
-            if (survivor.Kind == ResultKind.Internal && (touchedMask >> slot & 1) == 0)
+            // emptied every sibling. A wrapping frame has already adopted its survivor's bytes, which is
+            // the blob standing in for the read here.
+            if (survivor.Kind == ResultKind.Internal && survivor.Blob is null && (touchedMask >> slot & 1) == 0)
             {
                 using RefCountingMemory? childData = store.GetTrieNode(childKey);
                 if (childData is not null && PbtNodeChain.IsChain(childData.GetSpan()))
@@ -768,26 +918,32 @@ public static partial class TrieUpdater
         /// siblings shift.
         /// </param>
         /// <returns>
-        /// The encoding, its folded root — a stem root as an offset into the encoding to read back, or — the
+        /// The folded root — a stem root as an offset into the encoding to read back, or — the
         /// usual case — an internal root the encoding stores no entry for, the parent caching it in its
-        /// boundary slot — and that root's node hash. The caller takes the lease on the memory with it.
+        /// boundary slot — and that root's node hash.
         /// </returns>
+        /// <param name="destination">Exactly <see cref="PredictedGroupLength"/> bytes, which the caller rents ahead of any children it wraps around them.</param>
         /// <param name="stats">What the whole subtree amounts to, for the group's header; see <see cref="PbtTrieNodeGroup.Builder.Finish"/>.</param>
-        private (FoldedNode Root, ValueHash256 RootHash, RefCountingMemory Memory) RebuildGroup(
-            ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing, uint occupied, uint stems, uint changedMask,
-            in PbtSubtreeStats stats)
+        private (FoldedNode Root, ValueHash256 RootHash) RebuildGroup(
+            Span<byte> destination, ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
+            uint occupied, uint stems, uint changedMask, in PbtSubtreeStats stats)
         {
-            (uint presence, uint stemMask) = PredictShape(existing, occupied, stems, changedMask, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, writeFormat);
-            RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.EncodedLength(presence, stemMask));
-
-            GroupRebuild rebuild = new(changed, existing, occupied, stems, changedMask, memory.GetSpan(), writeFormat);
+            GroupRebuild rebuild = new(changed, existing, occupied, stems, changedMask, destination, writeFormat);
             // an internal group root is folded to a by-value hash and never stored, the parent caching it
             // in its boundary slot; only a stem root is written, which the caller reads back
             FoldedNode root = rebuild.Fold(PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, out ValueHash256 rootHash);
             int length = rebuild.Finish(stats);
-            Debug.Assert(length == memory.GetSpan().Length, "the predicted shape must size the fold's encoding exactly");
+            Debug.Assert(length == destination.Length, "the predicted shape must size the fold's encoding exactly");
 
-            return (root, rootHash, memory);
+            return (root, rootHash);
+        }
+
+        /// <summary>The length <see cref="RebuildGroup"/> will write, so that its buffer can be rented before the fold runs.</summary>
+        private int PredictedGroupLength(PbtTrieNodeGroup existing, uint occupied, uint stems, uint changedMask)
+        {
+            (uint presence, uint stemMask) = PredictShape(
+                existing, occupied, stems, changedMask, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, writeFormat);
+            return PbtTrieNodeGroup.EncodedLength(presence, stemMask);
         }
 
         /// <summary>
