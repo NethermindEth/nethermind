@@ -142,6 +142,65 @@ public class RecentRootStoreTests
         }
     }
 
+    [Test]
+    public void AreReferencesValid_true_for_empty_set()
+    {
+        IWorldState state = CreateState(out IDisposable scope);
+        using (scope)
+        {
+            (ValueHash256, ulong, ValueHash256)[] references = [];
+            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.True);
+        }
+    }
+
+    [Test]
+    public void AreReferencesValid_true_when_every_reference_is_valid()
+    {
+        IWorldState state = CreateState(out IDisposable scope);
+        using (scope)
+        {
+            RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
+            RecentRootStore.Write(state, Source, Salt, OtherRoot, 150, Spec);
+            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+
+            (ValueHash256, ulong, ValueHash256)[] references =
+            [
+                (sourceId, 100UL, Root),
+                (sourceId, 150UL, OtherRoot)
+            ];
+            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.True);
+        }
+    }
+
+    [Test]
+    public void AreReferencesValid_false_when_a_reference_is_invalid()
+    {
+        IWorldState state = CreateState(out IDisposable scope);
+        using (scope)
+        {
+            RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
+            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+
+            (ValueHash256, ulong, ValueHash256)[] references =
+            [
+                (sourceId, 100UL, Root),
+                (sourceId, 100UL, OtherRoot)
+            ];
+            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.False);
+        }
+    }
+
+    [Test]
+    public void AreReferencesValid_false_over_the_reference_cap()
+    {
+        IWorldState state = CreateState(out IDisposable scope);
+        using (scope)
+        {
+            (ValueHash256, ulong, ValueHash256)[] references = new (ValueHash256, ulong, ValueHash256)[Eip8272Constants.MaxRecentRootReferences + 1];
+            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.False);
+        }
+    }
+
     private static IWorldState CreateState(out IDisposable scope)
     {
         IWorldState state = TestWorldStateFactory.CreateForTest();
