@@ -20,7 +20,7 @@ public class TrieNodeKeyTests
     public void DbKey_PutsThePathFirstAndTheDepthLast()
     {
         Stem stem = new(Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd"));
-        TrieNodeKey key = TrieNodeKey.For(2 * PbtTrieNodeGroup.LevelsPerGroup, stem);
+        TrieNodeKey key = TrieNodeKey.For(2 * PbtLayout.TrieNodeGroupLevelsPerGroup, stem);
 
         byte[] dbKey = key.ToDbKey();
 

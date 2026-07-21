@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Pbt;
 
@@ -34,7 +35,7 @@ namespace Nethermind.Pbt;
 /// neither a count nor a slot mask is stored, and a view of one is the bytes and nothing else.
 /// </para>
 /// <para>
-/// Which groups wrap is fixed by <see cref="WrapsChildren"/> — absolute depth, so that a run
+/// Which groups wrap is fixed by <see cref="PbtLayout.IsWrappingDepth"/> — absolute depth, so that a run
 /// appearing or splitting somewhere above never re-parities the subtree below it, and so that the
 /// wrapped level is always the level that does not itself wrap: a child pulled into a wrapper or
 /// pushed back out of one is a bare group, never another wrapper.
@@ -51,18 +52,6 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
     private const int TrailerLength = sizeof(ushort) + sizeof(byte);
 
     private readonly ReadOnlySpan<byte> _data = data;
-
-    /// <summary>
-    /// Whether the group at <paramref name="depth"/> holds its children's blobs inside its own, which
-    /// alternates by group so that every other level is reached without a lookup of its own.
-    /// </summary>
-    /// <remarks>
-    /// Absolute rather than relative to the root or to the nearest run, which is what keeps a blob's
-    /// placement a function of its depth alone: a run splitting at an intermediate depth would
-    /// otherwise flip the parity of everything below it, re-keying a whole subtree. Depth 0 does not
-    /// wrap, so the zone roots at depth 4 keep the keys their columns are routed by.
-    /// </remarks>
-    public static bool WrapsChildren(int depth) => (depth & PbtTrieNodeGroup.LevelsPerGroup) != 0;
 
     /// <summary>True for an encoding ending in this type's format byte rather than a group's.</summary>
     public static bool IsWrapper(ReadOnlySpan<byte> data) => data.Length > 0 && data[^1] == FormatByte;
@@ -99,11 +88,11 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
         if (IsEmpty) return default;
 
         uint bit = 1u << slot;
-        uint childSlots = ChildSlots(group);
-        if ((childSlots & bit) == 0) return default;
+        uint childSlotsBitmask = ChildSlotsBitmask(group);
+        if ((childSlotsBitmask & bit) == 0) return default;
 
-        int tableOffset = GroupOffset - BitOperations.PopCount(childSlots) * OffsetLength;
-        int index = BitOperations.PopCount(childSlots & (bit - 1));
+        int tableOffset = GroupOffset - BitOperations.PopCount(childSlotsBitmask) * OffsetLength;
+        int index = BitOperations.PopCount(childSlotsBitmask & (bit - 1));
         return (index == 0 ? 0 : ChildEnd(tableOffset, index - 1))..ChildEnd(tableOffset, index);
     }
 
@@ -130,8 +119,8 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
         if (groupOffset <= 0) throw new InvalidDataException($"Trie node wrapper of {data.Length} bytes says its group is {GroupLength(data)}");
 
         group = PbtTrieNodeGroup.Decode(data[groupOffset..^TrailerLength]);
-        uint childSlots = ChildSlots(group);
-        int count = BitOperations.PopCount(childSlots);
+        uint childSlotsBitmask = ChildSlotsBitmask(group);
+        int count = BitOperations.PopCount(childSlotsBitmask);
         if (count == 0) throw new InvalidDataException("Trie node wrapper holds a group that roots no child blob");
 
         int tableOffset = groupOffset - count * OffsetLength;
@@ -157,7 +146,7 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
     /// The boundary slots rooting a blob of their own: a group's boundary internals, exactly. A slot
     /// holding a stem or a run roots none — both live in the group's own encoding.
     /// </summary>
-    private static uint ChildSlots(in PbtTrieNodeGroup group) => group.BoundaryShape().ChildSlots;
+    private static uint ChildSlotsBitmask(in PbtTrieNodeGroup group) => group.BoundaryShape().ChildSlots;
 
     private static int GroupLength(ReadOnlySpan<byte> data) => BinaryPrimitives.ReadUInt16LittleEndian(data[^TrailerLength..]);
 
@@ -167,53 +156,66 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
         BinaryPrimitives.ReadUInt16LittleEndian(data[(tableOffset + index * OffsetLength)..]);
 
     /// <summary>
-    /// Writes a wrapper into a caller-supplied buffer of exactly <see cref="EncodedLength"/> bytes:
-    /// the children first, in ascending slot order, then the group folded straight into
-    /// <see cref="GroupDestination"/>, then the trailer.
+    /// Writes a wrapper through a <see cref="BufferWriter"/>, in the order the encoding lays it out:
+    /// the children in ascending slot order, then their offset table, then the group, then the
+    /// trailer.
     /// </summary>
     /// <remarks>
-    /// The group's length has to be known before the buffer is rented, which the shape prediction that
-    /// already sizes a bare group's encoding gives — and knowing it is also what places the offset
-    /// table, so the children's ends are written where they fall rather than backfilled.
+    /// A child either arrives as bytes to copy (<see cref="AppendChild"/>) or is folded into the
+    /// writer by the producer itself and then claimed (<see cref="MarkChild"/>) — the latter is what
+    /// spares a rebuild a buffer per child and a copy out of it. Neither the count nor the group's
+    /// length is needed until the table and the trailer respectively, so nothing has to be predicted
+    /// before the children are in.
+    /// <para>
+    /// The builder carries the children's ends and nothing else: the writer is passed per call rather
+    /// than held, a <c>ref</c> field being unable to point at a ref struct. Those ends are the writer's
+    /// own count, which is the same thing because a wrapper is always the whole of the blob it is
+    /// written into — <see cref="PbtLayout.IsWrappingDepth"/> alternates, so the group above one never holds it.
+    /// </para>
     /// </remarks>
-    public ref struct Builder(Span<byte> destination, int childCount, int groupLength)
+    public ref struct Builder
     {
-        private readonly Span<byte> _destination = destination;
-        private readonly int _childCount = childCount;
-        private readonly int _tableOffset = destination.Length - TrailerLength - groupLength - childCount * OffsetLength;
-        private int _index;
-        private int _offset;
+        private RefList16<ushort> _ends;
 
         /// <summary>Appends one child's blob verbatim; children must be appended in ascending slot order.</summary>
-        public void AppendChild(ReadOnlySpan<byte> child)
+        public void AppendChild(ref BufferWriter writer, ReadOnlySpan<byte> child)
         {
-            Debug.Assert(!child.IsEmpty, "an absent child roots no blob to hold");
-            Debug.Assert(_index < _childCount, "more children than the wrapper was sized for");
-
-            child.CopyTo(_destination[_offset..]);
-            _offset += child.Length;
-            BinaryPrimitives.WriteUInt16LittleEndian(_destination[(_tableOffset + _index * OffsetLength)..], (ushort)_offset);
-            _index++;
+            writer.Write(child);
+            MarkChild(in writer);
         }
 
-        /// <summary>Where the group's own encoding goes, once every child is appended.</summary>
-        public readonly Span<byte> GroupDestination
+        /// <summary>Claims everything written since the last child as one more of them.</summary>
+        public void MarkChild(scoped in BufferWriter writer)
         {
-            get
+            int end = writer.WrittenCount;
+            Debug.Assert(end > (_ends.Count == 0 ? 0 : _ends[_ends.Count - 1]), "an absent child roots no blob to hold");
+            _ends.Add((ushort)end);
+        }
+
+        /// <summary>Writes the offset table, which closes the children and precedes the group.</summary>
+        public readonly void WriteOffsets(ref BufferWriter writer)
+        {
+            Debug.Assert(_ends.Count != 0, "a wrapper holds a group that roots at least one child blob");
+
+            int length = _ends.Count * OffsetLength;
+            Span<byte> table = writer.GetSpan(length);
+            for (int index = 0; index < _ends.Count; index++)
             {
-                Debug.Assert(_index == _childCount && _offset == _tableOffset, "the offsets follow every child, and the group those");
-                return _destination[(_tableOffset + _childCount * OffsetLength)..^TrailerLength];
+                BinaryPrimitives.WriteUInt16LittleEndian(table[(index * OffsetLength)..], _ends[index]);
             }
+
+            writer.Advance(length);
         }
 
-        /// <summary>Stamps the group's length and the format byte, and returns the encoded length.</summary>
-        public readonly int Finish()
+        /// <summary>Stamps the group's length and the format byte, closing the encoding.</summary>
+        public readonly void Finish(ref BufferWriter writer, int groupLength)
         {
-            Debug.Assert(_index == _childCount, "the wrapper holds fewer children than it was sized for");
+            Debug.Assert(_ends.Count != 0, "a wrapper holds a group that roots at least one child blob");
 
-            BinaryPrimitives.WriteUInt16LittleEndian(_destination[^TrailerLength..], (ushort)GroupDestination.Length);
-            _destination[^1] = FormatByte;
-            return _destination.Length;
+            Span<byte> trailer = writer.GetSpan(TrailerLength);
+            BinaryPrimitives.WriteUInt16LittleEndian(trailer, (ushort)groupLength);
+            trailer[sizeof(ushort)] = FormatByte;
+            writer.Advance(TrailerLength);
         }
     }
 }

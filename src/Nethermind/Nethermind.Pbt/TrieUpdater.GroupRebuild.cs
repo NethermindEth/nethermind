@@ -61,13 +61,13 @@ public static partial class TrieUpdater
         /// root. Its children are stored, so they are copied in its place and it is folded from them.
         /// </param>
         private static bool IsCleanRange(
-            PbtTrieNodeGroup existing, uint changed, uint range, int position, int width, PbtGroupFormat format) =>
+            PbtTrieNodeGroup existing, uint changed, uint rangeBitmask, int position, int width, PbtGroupFormat format) =>
             width > 1
-            && (changed & range) == 0
+            && (changed & rangeBitmask) == 0
             && !existing.IsEmpty
             && existing.Format == format
-            && PbtTrieNodeGroup.StoresInternalAtWidth(format, width)
-            && existing.KindAt(position) == NodeKind.Internal;
+            && PbtLayout.TrieNodeGroupStoresInternalAtWidth(format, width)
+            && (existing.KindAt(position) == NodeKind.Internal || position == PbtLayout.TrieNodeGroupRootPosition);
 
         /// <summary>
         /// Rebuilds a group's nodes from its sixteen boundary values directly into the group's final
@@ -94,12 +94,14 @@ public static partial class TrieUpdater
         /// </remarks>
         private ref struct GroupRebuild(
             ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
-            NodeGroupBitmasks boundary, uint changedMask, Span<byte> destination, PbtGroupFormat format)
+            NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 rootHash, Span<byte> destination,
+            PbtGroupFormat format)
         {
             private readonly ReadOnlySpan<(int Slot, Boundary Node)> _changed = changed;
             private readonly PbtTrieNodeGroup _existing = existing;
             private readonly NodeGroupBitmasks _boundary = boundary;
-            private readonly uint _changedMask = changedMask;
+            private readonly uint _changedBitmask = changedBitmask;
+            private readonly ValueHash256 _rootHash = rootHash;
             private readonly PbtGroupFormat _format = format;
             private PbtTrieNodeGroup.Builder _builder = new(destination, format);
             private int _cursor;
@@ -108,7 +110,7 @@ public static partial class TrieUpdater
             /// Whether boundary <paramref name="slot"/>'s value comes from the descent rather than from the
             /// encoding being replaced, which has none to give when the frame was seeded.
             /// </summary>
-            private readonly bool IsResolvedFromResults(int slot) => _existing.IsEmpty || (_changedMask >> slot & 1) != 0;
+            private readonly bool IsResolvedFromResults(int slot) => _existing.IsEmpty || (_changedBitmask >> slot & 1) != 0;
 
             /// <summary>
             /// The value at boundary <paramref name="slot"/>, taken from the sorted changed span when the
@@ -123,7 +125,7 @@ public static partial class TrieUpdater
                     return _changed[_cursor++].Node;
                 }
 
-                PbtTrieNodeGroup.Slot slotNode = _existing[PbtTrieNodeGroup.BoundaryPosition(slot)];
+                PbtTrieNodeGroup.Slot slotNode = _existing[PbtLayout.TrieNodeGroupBoundarySlotPosition(slot)];
                 return new Boundary(slotNode.Hash, (_boundary.Stems >> slot & 1) != 0 ? slotNode.Stem : default, Chain: null);
             }
 
@@ -134,14 +136,14 @@ public static partial class TrieUpdater
             /// </summary>
             /// <remarks>
             /// The rebuild's one entry point: <see cref="RebuildGroup"/> calls it for the whole group at
-            /// <see cref="PbtTrieNodeGroup.RootPosition"/>, and every other call is this recursing into its
+            /// <see cref="PbtLayout.TrieNodeGroupRootPosition"/>, and every other call is this recursing into its
             /// own halves. Post-order, so a node is appended only once all of its children are.
             /// </remarks>
             public FoldedNode Fold(int position, int firstSlot, int width, out ValueHash256 hash)
             {
-                uint range = ((1u << width) - 1) << firstSlot;
-                uint occupied = _boundary.Presence & range;
-                switch (KindOf(occupied, _boundary.Stems))
+                uint rangeBitmask = ((1u << width) - 1) << firstSlot;
+                uint occupiedBitmask = _boundary.Presence & rangeBitmask;
+                switch (KindOf(occupiedBitmask, _boundary.Stems))
                 {
                     case NodeKind.Absent:
                         hash = default;
@@ -161,19 +163,22 @@ public static partial class TrieUpdater
                             }
 
                             int stemHalf = width / 2;
-                            return (occupied & (((1u << stemHalf) - 1) << firstSlot)) != 0
+                            return (occupiedBitmask & (((1u << stemHalf) - 1) << firstSlot)) != 0
                                 ? Fold(position - width, firstSlot, stemHalf, out hash)
                                 : Fold(position - 1, firstSlot + stemHalf, stemHalf, out hash);
                         }
                 }
 
-                if (IsCleanRange(_existing, _changedMask, range, position, width, _format))
+                if (IsCleanRange(_existing, _changedBitmask, rangeBitmask, position, width, _format))
                 {
+                    // The group's own root stores no entry to read a hash back out of, so it takes the one
+                    // the parent cached — which is what lets a wholly unchanged group copy over with no
+                    // hashing at all, rather than refolding this level from its halves.
+                    bool isGroupRoot = position == PbtLayout.TrieNodeGroupRootPosition;
                     NodeGroupBitmasks clean = _existing.SubtreeBitmaps(position, width);
-                    hash = _existing[position].NodeHash();
-                    return FoldedNode.Stored(
-                        NodeKind.Internal,
-                        _builder.AppendSubtree(clean, _existing.SubtreeEntries(position, width, clean)));
+                    hash = isGroupRoot ? _rootHash : _existing[position].NodeHash();
+                    int offset = _builder.AppendSubtree(clean, _existing.SubtreeEntries(position, width, clean));
+                    return isGroupRoot ? FoldedNode.Unstored : FoldedNode.Stored(NodeKind.Internal, offset);
                 }
 
                 // a boundary slot: its internal node is the cached pointer to the child blob
@@ -203,7 +208,7 @@ public static partial class TrieUpdater
                 // The hash is folded either way — the root depends on every level of it. A format that
                 // skips this level, and the group root whatever the format (the parent caches it in its
                 // boundary slot), simply does not write it down, handing it to the parent instead.
-                bool storeHere = PbtTrieNodeGroup.StoresInternalAtWidth(_format, width) && width != PbtTrieNodeGroup.BoundarySlots;
+                bool storeHere = PbtLayout.TrieNodeGroupStoresInternalAtWidth(_format, width) && width != PbtLayout.TrieNodeGroupBoundarySlots;
                 return storeHere
                     ? FoldedNode.Stored(NodeKind.Internal, _builder.AppendInternal(position, hash))
                     : FoldedNode.Unstored;

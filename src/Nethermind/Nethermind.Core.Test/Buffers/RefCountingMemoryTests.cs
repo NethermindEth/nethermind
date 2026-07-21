@@ -61,4 +61,18 @@ public class RefCountingMemoryTests
         using RefCountingMemory mem = PooledRefCountingMemoryProvider.Instance.Rent(20);
         Assert.That(mem.GetSpan().Length, Is.EqualTo(20));
     }
+
+    [Test]
+    public void Shrink_narrows_the_value_to_what_a_producer_wrote()
+    {
+        byte[] rented = ArrayPool<byte>.Shared.Rent(64);
+        for (byte i = 0; i < 10; i++) rented[i] = i;
+
+        using RefCountingMemory mem = RefCountingMemory.Owning(rented, 10);
+        mem.Shrink(4);
+        Assert.That(mem.GetSpan().ToArray(), Is.EqualTo(rented[..4]));
+
+        mem.Shrink(0);
+        Assert.That(mem.GetSpan().IsEmpty);
+    }
 }

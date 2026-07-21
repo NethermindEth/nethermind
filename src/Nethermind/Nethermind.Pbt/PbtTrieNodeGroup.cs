@@ -154,15 +154,6 @@ public readonly ref partial struct PbtTrieNodeGroup
         };
     }
 
-    /// <summary>Trie levels covered by one group: a group rooted at depth d has its boundary slots at depth d + 4.</summary>
-    public const int LevelsPerGroup = 4;
-    public const int BoundarySlots = 1 << LevelsPerGroup;
-    public const int PositionCount = 2 * BoundarySlots - 1;
-    public const int RootPosition = 2 * BoundarySlots - 2;
-
-    /// <summary>The deepest group root depth; that group's boundary is the 248-bit stem level, where every node is a stem.</summary>
-    public const int MaxGroupDepth = Stem.LengthInBits - LevelsPerGroup;
-
     private const int EntriesOffset = 0;
 
     private const int PresenceTrailerOffset = 0;
@@ -184,7 +175,7 @@ public readonly ref partial struct PbtTrieNodeGroup
     /// now that the root position holds no stored internal node; buffers are sized by the exact
     /// <see cref="EncodedLength"/>.
     /// </summary>
-    public const int MaxEncodedLength = OverheadLength + PositionCount * HashLength + BoundarySlots * ChainExtraLength;
+    public const int MaxEncodedLength = OverheadLength + PbtLayout.TrieNodeGroupPositionCount * HashLength + PbtLayout.TrieNodeGroupBoundarySlots * ChainExtraLength;
 
     /// <summary>
     /// The encoded length of the group <paramref name="masks"/> describes, which they pin exactly:
@@ -196,36 +187,6 @@ public readonly ref partial struct PbtTrieNodeGroup
         + BitOperations.PopCount(masks.Presence) * HashLength
         + BitOperations.PopCount(masks.Stems) * Stem.Length
         + BitOperations.PopCount(masks.Chains) * ChainExtraLength;
-
-    /// <summary>Bit set at <see cref="BoundaryPosition"/>(i) for each boundary slot i.</summary>
-    private const uint BoundaryPositionsMask = 0x06CD8D9Bu;
-
-    /// <summary>
-    /// Bit set at each position <see cref="PbtGroupFormat.Interleaved"/> stores no internal node at: the odd
-    /// group-relative levels, 14 and 29 (level 1) and 2, 5, 9, 12, 17, 20, 24 and 27 (level 3).
-    /// </summary>
-    /// <remarks>
-    /// A position's level follows from the boundary slots its subtree covers — 16 at the root, then 8,
-    /// 4, 2 and 1 at the boundary — so the levels alternate with the width halving, and
-    /// <see cref="StoresInternalAtWidth"/> says the same thing by width where a walk has one to hand.
-    /// Disjoint from <see cref="BoundaryPositionsMask"/>: a boundary slot is a level of its own.
-    /// </remarks>
-    private const uint SkippedPositionsMask = 0x29125224u;
-
-    /// <summary>The widths whose level <see cref="PbtGroupFormat.Interleaved"/> stores an internal node at: 16, 4 and 1.</summary>
-    private const int KeptWidths = 0b10101;
-
-    /// <summary>Whether <paramref name="format"/> stores no internal node at <paramref name="position"/>.</summary>
-    /// <remarks>A stem node is stored at every position; only an internal node's hash is recomputable.</remarks>
-    public static bool IsSkippedPosition(PbtGroupFormat format, int position) =>
-        format == PbtGroupFormat.Interleaved && (SkippedPositionsMask & (1u << position)) != 0;
-
-    /// <summary>
-    /// Whether <paramref name="format"/> stores an internal node at the position whose subtree covers
-    /// <paramref name="width"/> boundary slots.
-    /// </summary>
-    public static bool StoresInternalAtWidth(PbtGroupFormat format, int width) =>
-        format == PbtGroupFormat.EveryLevel || (width & KeptWidths) != 0;
 
     private readonly ReadOnlySpan<byte> _data;
     private readonly NodeGroupBitmasks _masks;
@@ -251,9 +212,9 @@ public readonly ref partial struct PbtTrieNodeGroup
 
     /// <summary>Reads the node at <paramref name="position"/> on demand, borrowing from the wrapped span.</summary>
     /// <param name="position">
-    /// The node's index in the tile's post-order (depth-first) numbering, in <c>[0, <see cref="PositionCount"/>)</c>
+    /// The node's index in the tile's post-order (depth-first) numbering, in <c>[0, <see cref="PbtLayout.TrieNodeGroupPositionCount"/>)</c>
     /// — an internal DFS position, not the boundary-slot (leaf) index. The 16 boundary slots sit at
-    /// <see cref="BoundaryPosition(int)"/> and the group root at <see cref="RootPosition"/>; see the type
+    /// <see cref="PbtLayout.TrieNodeGroupBoundarySlotPosition(int)"/> and the group root at <see cref="PbtLayout.TrieNodeGroupRootPosition"/>; see the type
     /// remarks for the full numbering.
     /// </param>
     public Slot this[int position]
@@ -278,7 +239,7 @@ public readonly ref partial struct PbtTrieNodeGroup
         uint bit = 1u << position;
         return (_masks.Presence & bit) == 0 ? NodeKind.Absent
             : (_masks.Stems & bit) != 0 ? NodeKind.Stem
-            : IsBoundaryPosition(position) && (_masks.Chains >> BoundarySlot(position) & 1) != 0 ? NodeKind.Chain
+            : PbtLayout.TrieNodeGroupIsBoundaryPosition(position) && (_masks.Chains >> PbtLayout.TrieNodeGroupBoundarySlot(position) & 1) != 0 ? NodeKind.Chain
             : NodeKind.Internal;
     }
 
@@ -287,7 +248,7 @@ public readonly ref partial struct PbtTrieNodeGroup
     /// on to a node rather than reading it out; meaningful only where a node is present.
     /// </summary>
     /// <remarks>
-    /// <see cref="BoundarySlot"/> counts the boundary positions below <paramref name="position"/>, so
+    /// <see cref="PbtLayout.TrieNodeGroupBoundarySlot"/> counts the boundary positions below <paramref name="position"/>, so
     /// it doubles as the slot bound on the runs below it — whether or not the position is a boundary
     /// one itself.
     /// </remarks>
@@ -297,14 +258,8 @@ public readonly ref partial struct PbtTrieNodeGroup
         return EntriesOffset
             + BitOperations.PopCount(_masks.Presence & below) * HashLength
             + BitOperations.PopCount(_masks.Stems & below) * Stem.Length
-            + BitOperations.PopCount(_masks.Chains & ((1u << BoundarySlot(position)) - 1)) * ChainExtraLength;
+            + BitOperations.PopCount(_masks.Chains & ((1u << PbtLayout.TrieNodeGroupBoundarySlot(position)) - 1)) * ChainExtraLength;
     }
-
-    /// <summary>The lowest position of the subtree rooted at <paramref name="position"/> covering <paramref name="width"/> boundary slots.</summary>
-    private static int FirstSubtreePosition(int position, int width) => position - 2 * width + 2;
-
-    private static uint SubtreeMask(int position, int width) =>
-        ((1u << (position + 1)) - 1) & ~((1u << FirstSubtreePosition(position, width)) - 1);
 
     /// <summary>
     /// The bitmaps of the subtree rooted at <paramref name="position"/> and covering
@@ -312,8 +267,8 @@ public readonly ref partial struct PbtTrieNodeGroup
     /// </summary>
     internal NodeGroupBitmasks SubtreeBitmaps(int position, int width)
     {
-        uint mask = SubtreeMask(position, width);
-        return new NodeGroupBitmasks(_masks.Presence & mask, _masks.Stems & mask, _masks.Chains & BoundaryBits(mask));
+        uint mask = PbtLayout.TrieNodeGroupSubtreeBitmask(position, width);
+        return new NodeGroupBitmasks(_masks.Presence & mask, _masks.Stems & mask, _masks.Chains & PbtLayout.TrieNodeGroupBoundaryBitmask(mask));
     }
 
     /// <summary>
@@ -324,13 +279,13 @@ public readonly ref partial struct PbtTrieNodeGroup
     /// A subtree's positions are contiguous and entries are stored in ascending position order, so its
     /// entries are one unbroken run — ending at its root, the highest position it holds. The run starts
     /// where the entries below it end, which <see cref="EntryOffset"/> gives whether or not
-    /// <see cref="FirstSubtreePosition"/> itself holds a node, and <paramref name="masks"/> (from
+    /// <see cref="PbtLayout.TrieNodeGroupFirstSubtreePosition"/> itself holds a node, and <paramref name="masks"/> (from
     /// <see cref="SubtreeBitmaps"/>) pins its length — so neither needs a walk to find.
     /// <see cref="EncodedLength"/> counts a whole encoding's overhead, which a run of entries carries
     /// none of.
     /// </remarks>
     internal ReadOnlySpan<byte> SubtreeEntries(int position, int width, NodeGroupBitmasks masks) =>
-        _data.Slice(EntryOffset(FirstSubtreePosition(position, width)), EncodedLength(masks) - OverheadLength);
+        _data.Slice(EntryOffset(PbtLayout.TrieNodeGroupFirstSubtreePosition(position, width)), EncodedLength(masks) - OverheadLength);
 
     /// <summary>
     /// Reads the node of kind <paramref name="kind"/> whose entry starts at <paramref name="offset"/>
@@ -350,13 +305,6 @@ public readonly ref partial struct PbtTrieNodeGroup
     public static ValueSlot StemSlot(in Stem stem, in ValueHash256 leafSubtreeRoot) =>
         new() { Kind = NodeKind.Stem, Stem = stem, Hash = leafSubtreeRoot };
 
-    /// <summary>The post-order position of boundary slot <paramref name="slot"/>.</summary>
-    public static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
-
-    public static bool IsBoundaryPosition(int position) => (BoundaryPositionsMask & (1u << position)) != 0;
-
-    public static int BoundarySlot(int position) => BitOperations.PopCount(BoundaryPositionsMask & ((1u << position) - 1));
-
     /// <summary>
     /// The group's shape at its boundary, gathered down into slot order: bit <c>i</c> of
     /// <see cref="NodeGroupBitmasks.Presence"/> is set where boundary slot <c>i</c> holds a node, of
@@ -368,22 +316,7 @@ public readonly ref partial struct PbtTrieNodeGroup
     /// <see cref="PbtGroupFormat"/>; <see cref="Decode"/> keeps the stems and runs bitmaps disjoint
     /// subsets of the presence one, so neither needs masking against it.
     /// </remarks>
-    internal NodeGroupBitmasks BoundaryShape() => new(BoundaryBits(_masks.Presence), BoundaryBits(_masks.Stems), _masks.Chains);
-
-    /// <summary>Gathers the sixteen <see cref="BoundaryPositionsMask"/> bits of <paramref name="positions"/> down into slot order.</summary>
-    /// <remarks>
-    /// A software PEXT of the constant mask, whose bits fall in four groups of four — positions
-    /// <c>o + {0, 1, 3, 4}</c> for <c>o</c> in 0, 7, 15 and 22 — so each group compacts with one shift
-    /// and the four pack together. Branch-free and ISA-independent, unlike <c>Bmi2.ParallelBitExtract</c>.
-    /// </remarks>
-    internal static uint BoundaryBits(uint positions) =>
-        CompactGroup(positions)
-        | (CompactGroup(positions >> 7) << 4)
-        | (CompactGroup(positions >> 15) << 8)
-        | (CompactGroup(positions >> 22) << 12);
-
-    /// <summary>Compacts one group's bits — at 0, 1, 3 and 4 — down into the low four.</summary>
-    private static uint CompactGroup(uint group) => (group & 0b0011u) | ((group >> 1) & 0b1100u);
+    internal NodeGroupBitmasks BoundaryShape() => new(PbtLayout.TrieNodeGroupBoundaryBitmask(_masks.Presence), PbtLayout.TrieNodeGroupBoundaryBitmask(_masks.Stems), _masks.Chains);
 
     /// <summary>
     /// Validates a non-empty group encoding (bitmaps and implied length) and wraps it as a
@@ -405,13 +338,13 @@ public readonly ref partial struct PbtTrieNodeGroup
             BinaryPrimitives.ReadUInt32LittleEndian(trailer[StemsTrailerOffset..]),
             BinaryPrimitives.ReadUInt16LittleEndian(trailer[ChainsTrailerOffset..]));
         (uint presence, uint stems, uint chains) = masks;
-        if (presence >> PositionCount != 0 || (stems & ~presence) != 0)
+        if (presence >> PbtLayout.TrieNodeGroupPositionCount != 0 || (stems & ~presence) != 0)
         {
             throw new InvalidDataException("Invalid trie node group bitmaps");
         }
 
         // a run hangs from a boundary slot, and holds it: the slot roots neither a stem nor a child group
-        if ((chains & ~(BoundaryBits(presence) & ~BoundaryBits(stems))) != 0)
+        if ((chains & ~(PbtLayout.TrieNodeGroupBoundaryBitmask(presence) & ~PbtLayout.TrieNodeGroupBoundaryBitmask(stems))) != 0)
         {
             throw new InvalidDataException("Invalid trie node group run bitmap");
         }
@@ -419,14 +352,14 @@ public readonly ref partial struct PbtTrieNodeGroup
         // The root's internal node is folded from its children and already cached in the parent group's
         // boundary slot, so it is never stored — whatever the format. Only a stem, which nothing
         // recomputes, may occupy the root position.
-        if ((presence & (1u << RootPosition) & ~stems) != 0)
+        if ((presence & (1u << PbtLayout.TrieNodeGroupRootPosition) & ~stems) != 0)
         {
             throw new InvalidDataException("Trie node group stores an internal node at the root position");
         }
 
         // An interleaved group folds its odd levels' internal nodes rather than storing them, so a
         // present skipped position is a stem.
-        if (format == PbtGroupFormat.Interleaved && (presence & SkippedPositionsMask & ~stems) != 0)
+        if (PbtLayout.TrieNodeGroupHoldsSkippedInternal(format, presence, stems))
         {
             throw new InvalidDataException("Interleaved trie node group holds an internal node at a skipped level");
         }

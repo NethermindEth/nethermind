@@ -32,9 +32,9 @@ public class PbtTrieNodeWrapperTests
     [TestCase(4, true)]
     [TestCase(8, false)]
     [TestCase(12, true)]
-    [TestCase(PbtTrieNodeGroup.MaxGroupDepth, true)]
-    public void WrapsChildren_AlternatesByGroup(int depth, bool wraps) =>
-        Assert.That(PbtTrieNodeWrapper.WrapsChildren(depth), Is.EqualTo(wraps));
+    [TestCase(PbtLayout.TrieNodeGroupMaxGroupDepth, true)]
+    public void IsWrappingDepth_AlternatesByGroup(int depth, bool wraps) =>
+        Assert.That(PbtLayout.IsWrappingDepth(depth), Is.EqualTo(wraps));
 
     [Test]
     public void EncodeDecodeRoundTrip_AndDiscriminatesFromWhatItHolds()
@@ -81,7 +81,7 @@ public class PbtTrieNodeWrapperTests
         Assert.That(wrapper.GroupOffset, Is.Zero);
         Assert.That(bare[wrapper.Group], Is.EqualTo(bare));
         Assert.That(group.Stats, Is.EqualTo(Stats));
-        for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++) Assert.That(bare[wrapper.Child(slot, group)], Is.Empty, $"slot {slot}");
+        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++) Assert.That(bare[wrapper.Child(slot, group)], Is.Empty, $"slot {slot}");
     }
 
     private static readonly object[] Rejections =
@@ -114,10 +114,12 @@ public class PbtTrieNodeWrapperTests
         byte[] child = EncodeGroup();
         byte[] group = EncodeGroupOnly();
         byte[] encoded = new byte[PbtTrieNodeWrapper.EncodedLength(child.Length, group.Length, 1)];
-        PbtTrieNodeWrapper.Builder builder = new(encoded, 1, group.Length);
-        builder.AppendChild(child);
-        group.CopyTo(builder.GroupDestination);
-        builder.Finish();
+        BufferWriter writer = new(encoded);
+        PbtTrieNodeWrapper.Builder builder = default;
+        builder.AppendChild(ref writer, child);
+        builder.WriteOffsets(ref writer);
+        writer.Write(group);
+        builder.Finish(ref writer, group.Length);
 
         Assert.That(() => PbtTrieNodeWrapper.Decode(encoded, out _), Throws.TypeOf<InvalidDataException>());
     }
@@ -145,10 +147,13 @@ public class PbtTrieNodeWrapperTests
 
         byte[] group = EncodeGroupOnly();
         byte[] encoded = new byte[PbtTrieNodeWrapper.EncodedLength(childBytes, group.Length, children.Length)];
-        PbtTrieNodeWrapper.Builder builder = new(encoded, children.Length, group.Length);
-        foreach (byte[] child in children) builder.AppendChild(child);
-        group.CopyTo(builder.GroupDestination);
-        Assert.That(builder.Finish(), Is.EqualTo(encoded.Length));
+        BufferWriter writer = new(encoded);
+        PbtTrieNodeWrapper.Builder builder = default;
+        foreach (byte[] child in children) builder.AppendChild(ref writer, child);
+        builder.WriteOffsets(ref writer);
+        writer.Write(group);
+        builder.Finish(ref writer, group.Length);
+        Assert.That(writer.WrittenCount, Is.EqualTo(encoded.Length));
         return encoded;
     }
 
@@ -160,10 +165,10 @@ public class PbtTrieNodeWrapperTests
     {
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.Interleaved);
-        builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(ChildSlots[0]), ChildHash);
-        builder.AppendStem(PbtTrieNodeGroup.BoundaryPosition(2), StemPath, StemHash);
-        builder.AppendChain(PbtTrieNodeGroup.BoundaryPosition(ChainSlot), EncodeChain());
-        builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(ChildSlots[1]), ChildHash);
+        builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(ChildSlots[0]), ChildHash);
+        builder.AppendStem(PbtLayout.TrieNodeGroupBoundarySlotPosition(2), StemPath, StemHash);
+        builder.AppendChain(PbtLayout.TrieNodeGroupBoundarySlotPosition(ChainSlot), EncodeChain());
+        builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(ChildSlots[1]), ChildHash);
         return encoded[..builder.Finish(Stats)];
     }
 
@@ -171,8 +176,8 @@ public class PbtTrieNodeWrapperTests
     {
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.EveryLevel);
-        builder.AppendStem(PbtTrieNodeGroup.BoundaryPosition(0), StemPath, StemHash);
-        builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(1), ChildHash);
+        builder.AppendStem(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), StemPath, StemHash);
+        builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(1), ChildHash);
         return encoded[..builder.Finish(Stats)];
     }
 
@@ -181,7 +186,7 @@ public class PbtTrieNodeWrapperTests
     {
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.EveryLevel);
-        builder.AppendInternal(PbtTrieNodeGroup.BoundaryPosition(0), ChildHash);
+        builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), ChildHash);
         return encoded[..builder.Finish(Stats)];
     }
 

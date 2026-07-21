@@ -208,9 +208,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
         stats.WrapperCount++;
         stats.WrappersByDepth[depth]++;
-        int childDepth = depth + PbtTrieNodeGroup.LevelsPerGroup;
+        int childDepth = depth + PbtLayout.TrieNodeGroupLevelsPerGroup;
         int childBytes = 0;
-        for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
         {
             ReadOnlySpan<byte> child = value[wrapper.Child(slot, group)];
             if (child.IsEmpty) continue;
@@ -220,7 +220,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             childBytes += child.Length;
 
             // a wrapped child is a bare group, never a wrapper of its own: the level a wrapper holds is
-            // the level that does not itself wrap (see PbtTrieNodeWrapper.WrapsChildren)
+            // the level that does not itself wrap (see PbtLayout.IsWrappingDepth)
             ScanGroup(PbtTrieNodeGroup.Decode(child), child.Length, childDepth, stats, report);
         }
 
@@ -279,8 +279,8 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
         // an every-level spine would spend one group per LevelsPerGroup levels, each storing a hash at
         // every level of the path but its root — which the parent caches — so LevelsPerGroup entries
-        int groupsSpanned = span / PbtTrieNodeGroup.LevelsPerGroup;
-        stats.ChainEntriesAvoided += groupsSpanned * PbtTrieNodeGroup.LevelsPerGroup - PbtScanReport.ChainStoredHashes;
+        int groupsSpanned = span / PbtLayout.TrieNodeGroupLevelsPerGroup;
+        stats.ChainEntriesAvoided += groupsSpanned * PbtLayout.TrieNodeGroupLevelsPerGroup - PbtScanReport.ChainStoredHashes;
         stats.ChainGroupBlobsAvoided += groupsSpanned;
     }
 
@@ -299,14 +299,14 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         // A run's entry is the run's, not the group's, as a wrapped child's blob is the child's: the two
         // share an encoding, and the byte totals still say what each of them costs.
         int chainBytes = 0;
-        for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
         {
-            int position = PbtTrieNodeGroup.BoundaryPosition(slot);
+            int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
             if (group.KindAt(position) != PbtTrieNodeGroup.NodeKind.Chain) continue;
 
             ReadOnlySpan<byte> chain = group[position].ChainData;
             chainBytes += chain.Length;
-            ScanChain(chain, depth + PbtTrieNodeGroup.LevelsPerGroup, depth == 0 ? report[ZonePartition(slot)] : stats);
+            ScanChain(chain, depth + PbtLayout.TrieNodeGroupLevelsPerGroup, depth == 0 ? report[ZonePartition(slot)] : stats);
         }
 
         stats.GroupCount++;
@@ -316,7 +316,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         if (group.Format == PbtGroupFormat.Interleaved) stats.InterleavedGroupCount++;
         if (depth == 0) report.RootSubtreeStemCount = group.Stats.StemCount;
 
-        WalkPosition(group, PbtTrieNodeGroup.RootPosition, PbtTrieNodeGroup.BoundarySlots, depth, stats);
+        WalkPosition(group, PbtLayout.TrieNodeGroupRootPosition, PbtLayout.TrieNodeGroupBoundarySlots, depth, stats);
     }
 
     /// <summary>The partition of <paramref name="zone"/>, the leading nibble of a stem, as the leaf columns split them.</summary>
@@ -361,7 +361,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         bool right = WalkPosition(group, position - 1, childWidth, depth + 1, stats);
         if (!left && !right) return false;
 
-        if (PbtTrieNodeGroup.IsSkippedPosition(group.Format, position)) stats.InterleaveSkippedNodes++;
+        if (PbtLayout.TrieNodeGroupIsSkippedPosition(group.Format, position)) stats.InterleaveSkippedNodes++;
         return true;
     }
 
@@ -519,7 +519,7 @@ public sealed class PbtScanReport
 
         /// <summary>
         /// Wrapped children by the depth of the wrapper holding them, so that the two histograms read
-        /// as one table; a child itself sits <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> levels below.
+        /// as one table; a child itself sits <see cref="PbtLayout.TrieNodeGroupLevelsPerGroup"/> levels below.
         /// </summary>
         public long[] WrappedChildrenByDepth { get; } = new long[DepthSlots];
 

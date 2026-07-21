@@ -7,7 +7,7 @@ namespace Nethermind.Pbt;
 
 /// <summary>
 /// Position of a stem trie node group: its depth (0 at the root, a multiple of
-/// <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> up to <see cref="PbtTrieNodeGroup.MaxGroupDepth"/>)
+/// <see cref="PbtLayout.TrieNodeGroupLevelsPerGroup"/> up to <see cref="PbtLayout.TrieNodeGroupMaxGroupDepth"/>)
 /// and the path bits leading to it, MSB-first, zero-padded past <see cref="Depth"/> for canonical equality.
 /// </summary>
 public readonly record struct TrieNodeKey(byte Depth, Stem Path)
@@ -28,7 +28,7 @@ public readonly record struct TrieNodeKey(byte Depth, Stem Path)
     /// </remarks>
     public static TrieNodeKey For(int depth, in Stem path)
     {
-        Debug.Assert((uint)depth <= Stem.LengthInBits && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
+        Debug.Assert((uint)depth <= Stem.LengthInBits && depth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0);
 
         Span<byte> truncated = stackalloc byte[Stem.Length];
         path.Bytes[..((depth + 7) >> 3)].CopyTo(truncated);
@@ -45,7 +45,7 @@ public readonly record struct TrieNodeKey(byte Depth, Stem Path)
         currentPath.Bytes.CopyTo(path);
         Debug.Assert((path[Depth >> 3] & ((Depth & 4) == 0 ? 0xF0 : 0x0F)) == 0, "the path must be zero-padded past Depth for the new nibble to OR into");
         path[Depth >> 3] |= (byte)((Depth & 4) == 0 ? slot << 4 : slot);
-        return new TrieNodeKey((byte)(Depth + PbtTrieNodeGroup.LevelsPerGroup), new Stem(path));
+        return new TrieNodeKey((byte)(Depth + PbtLayout.TrieNodeGroupLevelsPerGroup), new Stem(path));
     }
 
     /// <summary>The 32-byte database key: the padded path bytes followed by the depth byte.</summary>

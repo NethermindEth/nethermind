@@ -64,12 +64,14 @@ public static partial class TrieUpdater
         /// property of the entries rather than of a depth, so that much does carry over the jump.
         /// </remarks>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
+        /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="result"><inheritdoc cref="ApplyGroup" path="/param[@name='result']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyChain(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, ReadOnlySpan<byte> chainData,
-            scoped BucketPlan plan, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
+            scoped BucketPlan plan, ref BufferWriter writer, out NodeResult result,
+            out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty);
@@ -106,8 +108,19 @@ public static partial class TrieUpdater
             if (splitDepth == targetDepth)
             {
                 using RefCountingMemory? targetData = store.GetTrieNode(chain.TargetKey);
-                NodeResult inner = default;
-                ApplyGroup(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref inner, out bool targetChanged, out delta);
+                BufferWriter targetWriter = new(memoryProvider, targetData?.GetSpan().Length ?? 0);
+                NodeResult inner;
+                bool targetChanged;
+                if (PbtLayout.IsWrappingDepth(targetDepth))
+                {
+                    ApplyWrapped(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref targetWriter, out inner, out targetChanged, out delta);
+                }
+                else
+                {
+                    ApplyGroup(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref targetWriter, out inner, out targetChanged, out delta);
+                }
+
+                if (targetWriter.Detach() is { } targetBlob) inner = inner.WithBlob(targetBlob);
 
                 // The run points at one group and one only (invariant 2). When the writes leave that group
                 // byte-identical, the run above it is unchanged too — its node hash folds from the target's,
@@ -132,36 +145,43 @@ public static partial class TrieUpdater
             // (branchDepth == depth ⇔ splitDepth − depth < LevelsPerGroup), else the deeper group — and let
             // ApplyChainSplit fold the split back into the run prefix reaching down to it. Nothing is stored
             // along that prefix (invariant 3), so the deeper group is unbucketed and partitions for itself.
-            int branchDepth = splitDepth & ~(PbtTrieNodeGroup.LevelsPerGroup - 1);
+            // A deeper group has a run minted above it, so it is one no blob of this frame's holds: it owns
+            // its own, however the run this frame replaces was held.
+            int branchDepth = splitDepth & ~(PbtLayout.TrieNodeGroupLevelsPerGroup - 1);
             bool branchesHere = branchDepth == depth;
-            result = ApplyChainSplit(
-                branchesHere ? key : TrieNodeKey.For(branchDepth, targetPath), depth, entries, chain,
-                branchesHere ? plan : plan.AfterJump(),
-                out changed, out delta);
+            if (branchesHere)
+            {
+                result = ApplyChainSplit(key, entries, chain, plan, ref writer, out changed, out delta);
+                return;
+            }
+
+            // The branch fell in a deeper group than the run's start, so the split node hangs below a run
+            // prefix reaching down to it, which holds no node of its own (invariant 3). That prefixed run's
+            // hash — not the split group's — is what changed against the run this frame replaced.
+            TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, targetPath);
+            BufferWriter splitWriter = new(memoryProvider);
+            NodeResult split = ApplyChainSplit(branchKey, entries, chain, plan.AfterJump(), ref splitWriter, out _, out delta);
+            if (splitWriter.Detach() is { } splitBlob) split = split.WithBlob(splitBlob);
+            result = WrapIntoChain(depth, branchKey, split, innerBlobStored: false, chain.Stats + delta);
+            changed = result.NodeHash() != chain.NodeHash;
         }
 
         /// <summary>
         /// Applies <paramref name="entries"/> to a run that branches inside the group at
         /// <paramref name="key"/>, making that group real: the rest of the run becomes its one seeded
         /// occupant — ridden into the boundary results here, no encoding holding it — and the ordinary
-        /// descent takes over. When the group sits below
-        /// <paramref name="prefixDepth"/>, the split node is folded back into the run prefix reaching down
-        /// to it.
+        /// descent takes over.
         /// </summary>
-        /// <param name="prefixDepth">
-        /// The depth the enclosing run starts at, at or above <paramref name="key"/>'s. Equal to it when the
-        /// branch is at the run's own frame — no prefix to wrap; shallower when the branch is in a deeper
-        /// group, whose split node the run prefix from there down folds back into a run.
-        /// </param>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
+        /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private NodeResult ApplyChainSplit(
-            in TrieNodeKey key, int prefixDepth, Span<PbtWriteBatch.StemEntry> entries, in PbtNodeChain chain,
-            scoped BucketPlan plan, out bool changed, out PbtSubtreeStats delta)
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in PbtNodeChain chain,
+            scoped BucketPlan plan, ref BufferWriter writer, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
-            int childDepth = depth + PbtTrieNodeGroup.LevelsPerGroup;
+            int childDepth = depth + PbtLayout.TrieNodeGroupLevelsPerGroup;
             Stem targetPath = chain.TargetPath;
             ValueHash256 targetHash = chain.TargetHash;
 
@@ -181,7 +201,7 @@ public static partial class TrieUpdater
             // is one of them: its blob moves out of the key the run left it under and into the wrapper
             // this frame is about to write. A run below the child depth is not stored anywhere to begin
             // with, and rides in the seed as it always has.
-            using RefCountingMemory? adopted = directChild && PbtTrieNodeWrapper.WrapsChildren(depth)
+            using RefCountingMemory? adopted = directChild && PbtLayout.IsWrappingDepth(depth)
                 ? store.GetTrieNode(chain.TargetKey)
                 : null;
             if (adopted is not null) store.SetTrieNode(chain.TargetKey, null);
@@ -189,14 +209,17 @@ public static partial class TrieUpdater
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
             SeededOccupant occupants = new(seed, targetSlot, StoredBlob.Of(adopted));
-            RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
+            RefList16<NodeResult> resultBuffer = new(PbtLayout.TrieNodeGroupBoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results)
+            PbtTrieNodeWrapper.Builder builder = default;
+            int mark = writer.WrittenCount;
+
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results, ref writer, ref builder)
                 .MergeUntouched(occupantsShape);
             // The seeded run is held by no encoding, so nothing can read it back later: it rides on in
             // `results` unless the descent already refreshed its slot.
-            if ((shape.TouchedMask >> targetSlot & 1) == 0)
+            if ((shape.TouchedBitmask >> targetSlot & 1) == 0)
             {
                 NodeResult seeded = seed;
 
@@ -205,15 +228,9 @@ public static partial class TrieUpdater
                 results[targetSlot] = seeded.Lease();
             }
 
-            NodeResult split = RebuildNode(key, occupants, default, results, shape, chain.NodeHash, chain.Stats, out changed, out delta);
-            if (prefixDepth == depth) return split;
-
-            // The branch fell in a deeper group than the run's start, so the split node hangs below a run
-            // prefix reaching down to it, which holds no node of its own (invariant 3). That prefixed run's
-            // hash — not the split group's — is what changed against the run this frame replaced.
-            NodeResult result = WrapIntoChain(prefixDepth, key, split, innerBlobStored: false, chain.Stats + delta);
-            changed = result.NodeHash() != chain.NodeHash;
-            return result;
+            return RebuildNode(
+                key, occupants, default, results, shape, chain.NodeHash, chain.Stats, ref writer, ref builder, mark,
+                out changed, out delta);
         }
 
         /// <summary>
