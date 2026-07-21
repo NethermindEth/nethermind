@@ -88,6 +88,7 @@ public class StateSyncRunner(
 
         try
         {
+            token.ThrowIfCancellationRequested();
             Hash256? root = balHealing.Reassemble(stateSyncPivot.UpdatedStorages);
             if (root is null)
             {
@@ -114,7 +115,6 @@ public class StateSyncRunner(
 
                     if(stateSyncPivot.CanFinalize(currentPivot))
                     {
-                        if (_logger.IsInfo) _logger.Info("BAL healing complete - no more pivots to apply.");
                         break;
                     }
                     await Task.Delay(1000, token);

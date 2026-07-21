@@ -17,8 +17,6 @@ namespace Nethermind.State.Flat.Sync;
 
 public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<FlatTreeSyncStore>();
-
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
 
@@ -54,7 +52,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         {
             RequestStateDeletion(writeBatch, path, node, existingNode);
 
-            if (_logger.IsInfo) _logger.Info($"Heal WRITE state trie node type={node.NodeType} path={path} hash={hash} ({data.Length}B) existing={existingNode?.NodeType.ToString() ?? "none"}");
             writeBatch.SetStateTrieNode(path, data);
             FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
         }
@@ -62,7 +59,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         {
             RequestStorageDeletion(writeBatch, address, path, node, existingNode);
 
-            if (_logger.IsInfo) _logger.Info($"Heal WRITE storage trie node address={address} type={node.NodeType} path={path} hash={hash} ({data.Length}B) existing={existingNode?.NodeType.ToString() ?? "none"}");
             writeBatch.SetStorageTrieNode(address, path, data);
             FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
         }
@@ -86,7 +82,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
         foreach (DeletionRange range in ranges.AsSpan())
         {
-            if (_logger.IsInfo) _logger.Info($"Heal DELETE state range path={path} [{range.From}..{range.To}] (accounts + trie nodes)");
             writeBatch.DeleteAccountRange(range.From, range.To);
             writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
         }
@@ -99,7 +94,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
         foreach (DeletionRange range in ranges.AsSpan())
         {
-            if (_logger.IsInfo) _logger.Info($"Heal DELETE storage range address={address} path={path} [{range.From}..{range.To}] (slots + trie nodes)");
             writeBatch.DeleteStorageRange(addressHash, range.From, range.To);
             writeBatch.DeleteStorageTrieNodeRange(addressHash, range.From, range.To);
         }
@@ -236,7 +230,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         // ever be reached.
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         ValueHash256 addressHash = address.ValueHash256;
-        if (_logger.IsInfo) _logger.Info($"Heal DELETE all storage for address={address} (empty/deleted account)");
         writeBatch.DeleteStorageRange(addressHash, ValueKeccak.Zero, ValueKeccak.MaxValue);
     }
 
@@ -247,8 +240,6 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateId from = reader.CurrentState;
         StateId to = new(pivotHeader);
-
-        if (_logger.IsInfo) _logger.Info($"Heal FINALIZE state {from} -> {to} (block {pivotHeader.Number} stateRoot {pivotHeader.StateRoot}) - flushing DB");
 
         // Snap/heal writes use DisableWAL and are only crash-durable once flushed. Flush before advancing the
         // WAL-durable pointer, so a crash can't leave CurrentState pointing past unflushed (holed) data. #11457
