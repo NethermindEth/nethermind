@@ -8,7 +8,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
