@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -38,21 +40,35 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
     [Test]
     public void ConcurrentRenters_GetIndependentEnvs()
     {
+        const int n = 4;
         FakeEnvFactory factory = new();
-        using SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: 4);
+        using SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: n);
 
-        SimulateReadOnlyBlocksProcessingEnvPool.PooledScope a = pool.Begin(null);
-        SimulateReadOnlyBlocksProcessingEnvPool.PooledScope b = pool.Begin(null);
-        try
+        ConcurrentBag<SimulateReadOnlyBlocksProcessingScope> scopes = [];
+        using Barrier barrier = new(n);
+        Thread[] threads = new Thread[n];
+        for (int i = 0; i < n; i++)
         {
-            Assert.That(factory.Created, Is.EqualTo(2));
-            Assert.That(ReferenceEquals(a.Scope, b.Scope), Is.False);
+            threads[i] = new Thread(() =>
+            {
+                SimulateReadOnlyBlocksProcessingEnvPool.PooledScope pooled = pool.Begin(null);
+                try
+                {
+                    scopes.Add(pooled.Scope);
+                    barrier.SignalAndWait(TimeSpan.FromSeconds(30));
+                }
+                finally
+                {
+                    pooled.Dispose();
+                }
+            });
         }
-        finally
-        {
-            a.Dispose();
-            b.Dispose();
-        }
+
+        foreach (Thread t in threads) t.Start();
+        foreach (Thread t in threads) t.Join();
+
+        Assert.That(factory.Created, Is.EqualTo(n), "each renter held concurrently forced a distinct env");
+        Assert.That(new HashSet<SimulateReadOnlyBlocksProcessingScope>(scopes), Has.Count.EqualTo(n), "every concurrent renter got an independent scope");
     }
 
     [TestCase(false)]
@@ -112,6 +128,7 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
     private sealed class FakeEnvFactory(bool throwOnBegin = false)
     {
         private bool _throwOnBegin = throwOnBegin;
+        private readonly object _envsLock = new();
 
         public List<FakeEnv> Envs { get; } = [];
 
@@ -130,7 +147,7 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         public ISimulateReadOnlyBlocksProcessingEnv Create()
         {
             FakeEnv env = new(_throwOnBegin);
-            Envs.Add(env);
+            lock (_envsLock) Envs.Add(env);
             return env;
         }
 
