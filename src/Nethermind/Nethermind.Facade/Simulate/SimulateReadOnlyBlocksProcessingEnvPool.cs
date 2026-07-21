@@ -111,10 +111,10 @@ public sealed class SimulateReadOnlyBlocksProcessingEnvPool(
         }
     }
 
-    public readonly struct PooledScope(
+    public readonly ref struct PooledScope(
         SimulateReadOnlyBlocksProcessingScope scope,
         ISimulateReadOnlyBlocksProcessingEnv env,
-        SimulateReadOnlyBlocksProcessingEnvPool pool) : IDisposable
+        SimulateReadOnlyBlocksProcessingEnvPool pool)
     {
         public SimulateReadOnlyBlocksProcessingScope Scope => scope;
 
