@@ -20,6 +20,8 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
+    private const int StorageReadBatchSize = 256;
+
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -294,22 +296,36 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
         // that never see a BAL never allocate the dedicated reader threads.
         WarmReadPool pool = _warmReadPool.Value;
-        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
+        int batchCount = (idx + StorageReadBatchSize - 1) / StorageReadBatchSize;
+        int workers = Math.Min(pool.MaxConcurrency, batchCount);
 
-        pool.Run(idx, workers, j =>
+        pool.Run(batchCount, workers, batchIndex =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        }, parallelOptions.CancellationToken);
-    }
 
-    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
-    {
-        StorageCell cell = new(address, in slot);
-        if (!sink.StillNeeded(in cell)) return;
-        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+            int start = batchIndex * StorageReadBatchSize;
+            int end = Math.Min(start + StorageReadBatchSize, idx);
+            SlotRead[] reads = new SlotRead[end - start];
+            int readCount = 0;
+
+            for (int j = start; j < end; j++)
+            {
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                StorageCell cell = new(address, in slot);
+                if (!sink.StillNeeded(in cell)) continue;
+                reads[readCount++] = new SlotRead(cell, selfDestructIdx);
+            }
+
+            if (readCount == 0) return;
+
+            SlotValue?[] values = new SlotValue?[readCount];
+            _snapshotBundle.GetSlots(reads.AsSpan(0, readCount), values);
+            for (int j = 0; j < readCount; j++)
+            {
+                StorageCell cell = reads[j].Cell;
+                sink.OnStorageRead(in cell, values[j]?.ToEvmBytes() ?? StorageTree.ZeroBytes);
+            }
+        }, parallelOptions.CancellationToken);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }

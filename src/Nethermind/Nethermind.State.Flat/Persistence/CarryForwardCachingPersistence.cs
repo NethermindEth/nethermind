@@ -175,6 +175,52 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
+        public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<SlotValue?> values)
+        {
+            if (cells.Length != values.Length)
+                throw new ArgumentException("Cells and values must have the same length.", nameof(values));
+
+            bool current = parent.IsCurrent(generation);
+            if (!current)
+            {
+                inner.GetSlots(cells, values);
+                return;
+            }
+
+            StorageCell[] missingCells = new StorageCell[cells.Length];
+            int[] missingIndices = new int[cells.Length];
+            int missingCount = 0;
+
+            for (int i = 0; i < cells.Length; i++)
+            {
+                StorageCell cell = cells[i];
+                if (parent._slots.TryGetValue((cell.Address, cell.Index), out CachedSlot cached))
+                {
+                    values[i] = cached.Found ? cached.Value : null;
+                    continue;
+                }
+
+                missingCells[missingCount] = cell;
+                missingIndices[missingCount] = i;
+                missingCount++;
+            }
+
+            if (missingCount == 0) return;
+
+            SlotValue?[] missingValues = new SlotValue?[missingCount];
+            inner.GetSlots(missingCells.AsSpan(0, missingCount), missingValues);
+            for (int i = 0; i < missingCount; i++)
+            {
+                StorageCell cell = missingCells[i];
+                SlotValue? value = missingValues[i];
+                values[missingIndices[i]] = value;
+                parent.TryCacheSlot(
+                    (cell.Address, cell.Index),
+                    new CachedSlot(value.HasValue, value.GetValueOrDefault()),
+                    generation);
+            }
+        }
+
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
