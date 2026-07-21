@@ -149,8 +149,8 @@ namespace Nethermind.Core.Extensions
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
-            // Keep one zero byte or it will be interpreted as null; the data-section-backed
-            // ZeroByteSpan avoids returning an interior reference that keeps the source alive.
+            // Keep one zero byte or it will be interpreted as null; return the shared constant
+            // instead of aliasing the source.
             return nonZeroIndex < 0 ? ZeroByteSpan : bytes[nonZeroIndex..];
         }
 
