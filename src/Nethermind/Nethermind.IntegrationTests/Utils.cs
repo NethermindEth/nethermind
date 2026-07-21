@@ -375,6 +375,7 @@ public static class Utils
                 // anchor on the parent block number we just read (parent + 1) and add the per-call offset
                 // — this keeps slot numbers monotonic across multiple CreateBlocksAsync invocations.
                 long parentNumber = Convert.ToInt64(latestBlock["number"].GetValue<string>().Substring(2), 16);
+                string parentGasLimit = latestBlock["gasLimit"].GetValue<string>();
                 payloadAttributes = new
                 {
                     timestamp = timestampHex,
@@ -382,7 +383,8 @@ public static class Utils
                     suggestedFeeRecipient = "0x0000000000000000000000000000000000000000",
                     withdrawals = Array.Empty<object>(),
                     parentBeaconBlockRoot = "0x0000000000000000000000000000000000000000000000000000000000000000",
-                    slotNumber = $"0x{parentNumber + i + 1:x}"
+                    slotNumber = $"0x{parentNumber + i + 1:x}",
+                    targetGasLimit = parentGasLimit
                 };
             }
             else
