@@ -125,7 +125,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
         ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
         // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-        return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        Task warmupTask = Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        blockState.WaitForExceptionalWarmupStart();
+        return warmupTask;
     }
 
     private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)
@@ -310,6 +312,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         finally
         {
+            blockState.ReleaseCanonicalExecution();
             // Don't complete the task until address warmer is also done.
             addressWarmer.Wait();
             addressWarmer.Dispose();
@@ -374,6 +377,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             try
             {
+                if (!HasStartBarrierJob(senderGroups)) blockState.ReleaseCanonicalExecution();
+
                 // Parallel across jobs; sequential within an unsplit sender group. Each worker
                 // rents one env for its lifetime (the helper runs init only after a worker claims
                 // a job, and the finalizer on success, cancellation, and captured exceptions);
@@ -401,7 +406,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         foreach ((int txIndex, Transaction? tx) in job.Transactions.AsSpan())
                         {
                             if (worker.Token.IsCancellationRequested) return worker;
-                            WarmupSingleTransaction(scope, tx, txIndex, blockState, worker.Token);
+                            WarmupSingleTransaction(
+                                scope,
+                                tx,
+                                txIndex,
+                                blockState,
+                                worker.Token,
+                                job.RequiresStartBarrier && txIndex == job.FirstIndex);
                         }
 
                         return worker;
@@ -422,6 +433,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error pre-warming transactions", ex);
         }
+    }
+
+    private static bool HasStartBarrierJob(ArrayPoolList<WarmupJob> jobs)
+    {
+        foreach (WarmupJob job in jobs.AsSpan())
+        {
+            if (job.RequiresStartBarrier) return true;
+        }
+
+        return false;
     }
 
     internal static ArrayPoolList<WarmupJob> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null)
@@ -505,6 +526,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <summary>Total gas limit above which a multi-tx sender group is warmed per-tx in parallel instead of sequentially.</summary>
     private const ulong SplitSenderGroupGasThreshold = 4_000_000;
 
+    // Starting canonical execution before an exceptional warmup job has reached the EVM makes
+    // cache warming scheduler-dependent. The short start barrier gives these jobs the lead time
+    // their gas-based prioritization is intended to provide without waiting for duplicate execution.
+    private const ulong ExceptionalWarmupGasThreshold = 10_000_000;
+
     private static ulong TotalGasLimit(ArrayPoolList<(int Index, Transaction Tx)> group)
     {
         ulong totalGasLimit = 0;
@@ -538,6 +564,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         public int LastIndex => Transactions[^1].Index;
         public bool IsHoisted => GasEstimate > SplitSenderGroupGasThreshold;
+        public bool RequiresStartBarrier => GasEstimate >= ExceptionalWarmupGasThreshold;
     }
 
     private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
@@ -555,7 +582,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Transaction tx,
         int txIndex,
         BlockState blockState,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool releaseCanonicalExecution)
     {
         try
         {
@@ -577,6 +605,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
+            if (releaseCanonicalExecution) blockState.ReleaseCanonicalExecution();
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
@@ -588,6 +617,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (Exception ex)
         {
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
+        }
+        finally
+        {
+            if (releaseCanonicalExecution) blockState.ReleaseCanonicalExecution();
         }
     }
 
@@ -775,7 +808,42 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
+    private sealed record BlockState
+    {
+        private readonly TaskCompletionSource<bool>? _exceptionalWarmupStarted;
+
+        public BlockState(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed = null)
+        {
+            PreWarmer = preWarmer;
+            Block = block;
+            Parent = parent;
+            Spec = spec;
+            SpeculativelyWarmed = speculativelyWarmed;
+            _exceptionalWarmupStarted = HasExceptionalTransaction(block)
+                ? new(TaskCreationOptions.RunContinuationsAsynchronously)
+                : null;
+        }
+
+        public BlockCachePreWarmer PreWarmer { get; }
+        public Block Block { get; }
+        public BlockHeader Parent { get; }
+        public IReleaseSpec Spec { get; }
+        public ISet<Hash256>? SpeculativelyWarmed { get; }
+
+        public void WaitForExceptionalWarmupStart() => _exceptionalWarmupStarted?.Task.GetAwaiter().GetResult();
+
+        public void ReleaseCanonicalExecution() => _exceptionalWarmupStarted?.TrySetResult(true);
+
+        private static bool HasExceptionalTransaction(Block block)
+        {
+            foreach (Transaction tx in block.Transactions)
+            {
+                if (tx.GasLimit >= ExceptionalWarmupGasThreshold) return true;
+            }
+
+            return false;
+        }
+    }
 
     /// <summary>
     /// Per-worker state for the transaction-warming loop: one env rented for the worker's

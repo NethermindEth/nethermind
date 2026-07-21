@@ -627,6 +627,25 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    [TestCase(9_999_999u, false)]
+    [TestCase(10_000_000u, true)]
+    public void GroupTransactionsBySender_StartBarrierAppliesOnlyToExceptionalJobs(uint gasLimit, bool expected)
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(1));
+            Assert.That(groups[0].RequiresStartBarrier, Is.EqualTo(expected));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
     // Below two workers a split cannot add parallelism; it only discards same-sender state
     // propagation. Negative means unlimited, matching ParallelOptions.MaxDegreeOfParallelism.
     [TestCase(1, 1)]
