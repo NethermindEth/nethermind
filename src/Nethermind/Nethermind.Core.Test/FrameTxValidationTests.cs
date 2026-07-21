@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -22,7 +24,8 @@ public class FrameTxValidationTests
     {
         Transaction tx = CreateValidFrameTx(mutate);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, out string? error);
+        // EIP-8288 disabled: the base EIP-8141 constraint matrix (mode 3 remains an invalid mode).
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.Create(), out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
@@ -137,8 +140,101 @@ public class FrameTxValidationTests
             null);
     }
 
+    [TestCaseSource(nameof(DependencyConstraintCases))]
+    public void IsWellFormed_Eip8288DependencyFrames_ReturnsExpectedError(Action<Transaction> mutate, string? expectedError)
+    {
+        Transaction tx = CreateValidFrameTx(mutate);
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip8288Enabled.Returns(true);
+
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, spec, out string? error);
+
+        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+        Assert.That(error, Is.EqualTo(expectedError));
+    }
+
+    private static IEnumerable<TestCaseData> DependencyConstraintCases()
+    {
+        yield return DepCase("SingleLeanSphincsDependency_Valid",
+            static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanSphincsScheme)], null);
+        yield return DepCase("SingleLeanStarkDependency_Valid",
+            static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanStarkScheme)], null);
+        yield return DepCase("MixedSchemesInOneFrame_Valid",
+            static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme)], null);
+
+        // data must be a non-empty multiple of 96 bytes.
+        yield return DepCase("EmptyData_DependencyFrameDataLength",
+            static tx => tx.Frames = [new TxFrame(TxFrame.ModeDepVerify, 0, null, 0, UInt256.Zero, Array.Empty<byte>())],
+            FrameTxValidation.DependencyFrameDataLength);
+        yield return DepCase("UnalignedData_DependencyFrameDataLength",
+            static tx => tx.Frames = [new TxFrame(TxFrame.ModeDepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, new byte[95])],
+            FrameTxValidation.DependencyFrameDataLength);
+
+        // at most MAX_DEPENDENCIES_PER_FRAME triples.
+        yield return DepCase("TooManyDependenciesPerFrame_TooManyDependenciesPerFrame",
+            static tx => tx.Frames = [DepFrame(Enumerable.Repeat(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.MaxDependenciesPerFrame + 1).ToArray())],
+            FrameTxValidation.TooManyDependenciesPerFrame);
+
+        // first 31 bytes of each triple must be zero.
+        yield return DepCase("NonZeroPadding_DependencyPaddingNotZero",
+            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], mutateData: static data => data[0] = 1)],
+            FrameTxValidation.DependencyPaddingNotZero);
+
+        // scheme must be LEANSPHINCS or LEANSTARK.
+        yield return DepCase("UnknownScheme_InvalidDependencyScheme",
+            static tx => tx.Frames = [DepFrame(0x12)], FrameTxValidation.InvalidDependencyScheme);
+
+        // gas_limit must equal the sum of per-scheme verification gas.
+        yield return DepCase("GasLimitMismatch_DependencyFrameGasMismatch",
+            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], gasLimit: 1)],
+            FrameTxValidation.DependencyFrameGasMismatch);
+
+        // target None, value 0, flags 0.
+        yield return DepCase("NonNullTarget_DependencyFrameShape",
+            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], target: TestItem.AddressB)],
+            FrameTxValidation.DependencyFrameShape);
+        yield return DepCase("NonZeroValue_DependencyFrameShape",
+            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], value: UInt256.One)],
+            FrameTxValidation.DependencyFrameShape);
+        yield return DepCase("NonZeroFlags_DependencyFrameShape",
+            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], flags: TxFrame.ApprovePayment)],
+            FrameTxValidation.DependencyFrameShape);
+
+        // per-transaction limits MAX_SIGS_PER_TX and MAX_STARKS_PER_TX.
+        yield return DepCase("TooManySigDeps_TooManySigDeps",
+            static tx => tx.Frames = [DepFrame(Enumerable.Repeat(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.MaxSigsPerTx + 1).ToArray())],
+            FrameTxValidation.TooManySigDeps);
+        yield return DepCase("TooManyStarkDeps_TooManyStarkDeps",
+            static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanStarkScheme)],
+            FrameTxValidation.TooManyStarkDeps);
+    }
+
     private static TestCaseData Case(string name, Action<Transaction> mutate, string? expectedError) =>
         new TestCaseData(mutate, expectedError).SetName($"IsWellFormed_{name}");
+
+    private static TestCaseData DepCase(string name, Action<Transaction> mutate, string? expectedError) =>
+        new TestCaseData(mutate, expectedError).SetName($"IsWellFormed_Eip8288_{name}");
+
+    private static TxFrame DepFrame(params byte[] schemes) => DepFrameRaw(schemes);
+
+    private static TxFrame DepFrameRaw(byte[] schemes, ulong? gasLimit = null, Address? target = null, UInt256 value = default, byte flags = 0, Action<byte[]>? mutateData = null)
+    {
+        ulong gas = 0;
+        byte[] data = new byte[schemes.Length * Eip8288Constants.DependencyTripleLength];
+        for (int i = 0; i < schemes.Length; i++)
+        {
+            int baseOffset = i * Eip8288Constants.DependencyTripleLength;
+            data[baseOffset + 31] = schemes[i];
+            data[baseOffset + 32] = 0xAA; // arbitrary non-zero data_hash / vk content
+            data[baseOffset + 64] = 0xBB;
+            gas += schemes[i] == Eip8288Constants.LeanStarkScheme
+                ? Eip8288Constants.LeanStarkVerificationGas
+                : Eip8288Constants.LeanSphincsVerificationGas;
+        }
+
+        mutateData?.Invoke(data);
+        return new TxFrame(TxFrame.ModeDepVerify, flags, target, gasLimit ?? gas, value, data);
+    }
 
     private static Transaction CreateValidFrameTx(Action<Transaction> mutate)
     {

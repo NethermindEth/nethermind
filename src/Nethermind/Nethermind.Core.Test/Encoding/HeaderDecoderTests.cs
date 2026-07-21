@@ -35,6 +35,28 @@ public class HeaderDecoderTests
     }
 
     [Test]
+    public void Can_encode_decode_with_recursive_stark()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithMixHash(Keccak.Compute("mix_hash"))
+            .WithNonce(1000)
+            .TestObject;
+        header.RecursiveStark = new RecursiveStark([1, 2, 3, 4], Keccak.Compute("deps"));
+
+        HeaderDecoder decoder = new();
+        Rlp rlp = decoder.Encode(header);
+        RlpReader decoderContext = new(rlp.Bytes);
+        BlockHeader decoded = decoder.Decode(ref decoderContext)!;
+
+        Assert.That(decoded.RecursiveStark, Is.Not.Null);
+        Assert.That(decoded.RecursiveStark!.StarkProof, Is.EqualTo(new byte[] { 1, 2, 3, 4 }));
+        Assert.That(decoded.RecursiveStark.BlockDepsHash, Is.EqualTo(Keccak.Compute("deps")));
+
+        decoded.Hash = decoded.CalculateHash();
+        Assert.That(decoded.Hash, Is.EqualTo(header.CalculateHash()), "hash");
+    }
+
+    [Test]
     public void Get_length_null()
     {
         HeaderDecoder decoder = new();

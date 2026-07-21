@@ -154,6 +154,24 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
+        if (spec.IsEip8288Enabled)
+        {
+            // Block-level recursive-STARK gas is charged as part of the block base fee, derived from
+            // every transaction dependency (spec Gas Accounting). Deterministic, so applied on both
+            // production and validation; the resulting GasUsed is checked against GasLimit and the
+            // suggested header like any other block gas.
+            header.GasUsed += Eip8288Dependencies.CalculateRecursiveStarkGas(block);
+
+            if (options.ContainsFlag(ProcessingOptions.ProducingBlock))
+            {
+                // The builder produces the aggregated proof off-chain; the prototype attaches a stub
+                // proof over the recomputed block_deps_hash. EIP8288-DEVIATION: no real STARK is
+                // generated (Lean Ethereum tooling / AGGREGATED_VK are TBD).
+                Hash256 depsHash = new(Eip8288Dependencies.ComputeBlockDepsHash(block));
+                header.RecursiveStark = new RecursiveStark([1], depsHash);
+            }
+        }
+
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
         if (ShouldCalculateReceiptsInBackground(receipts))
         {

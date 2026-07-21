@@ -16,6 +16,9 @@ public class TxFrame(byte mode, byte flags, Address? target, ulong gasLimit, UIn
     public const byte ModeVerify = 1;
     public const byte ModeSender = 2;
 
+    /// <summary>EIP-8288 dependency-verification frame; declares dependencies, not executed as EVM code.</summary>
+    public const byte ModeDepVerify = Eip8288Constants.DepVerifyFrameMode;
+
     public const byte ApproveScopeNone = 0x0;
     public const byte ApprovePayment = 0x1;
     public const byte ApproveExecution = 0x2;

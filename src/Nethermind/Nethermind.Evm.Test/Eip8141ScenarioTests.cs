@@ -49,7 +49,9 @@ public class Eip8141ScenarioTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        // Eip8288Prototype enables both EIP-8141 and EIP-8288, so the base frame scenarios below run
+        // unchanged while the EIP-8288 dependency-frame scenario is also exercisable.
+        _specProvider = new TestSpecProvider(Eip8288Prototype.Instance);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -257,6 +259,34 @@ public class Eip8141ScenarioTests
             Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
         }
+    }
+
+    // EIP-8288: a DEP_VERIFY frame is not executed as EVM — it only declares dependencies for the
+    // block-level recursive STARK. Its full gas_limit (the per-scheme verification gas) is charged
+    // unconditionally, it yields a success receipt with no logs, and later operation frames still run.
+    [Test]
+    public void DependencyFrame_NotExecuted_ChargesVerificationGas()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength * 2];
+        depData[31] = Eip8288Constants.LeanSphincsScheme;
+        depData[Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanStarkScheme;
+        ulong depGas = Eip8288Constants.LeanSphincsVerificationGas + Eip8288Constants.LeanStarkVerificationGas;
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDepVerify, 0, null, depGas, UInt256.Zero, depData),
+            SenderFrame(Recipient, value: 1_000));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+        TxFrameReceipt depReceipt = receipt.FrameReceipts![1];
+        Assert.That(depReceipt.GasUsed, Is.EqualTo(depGas), "the dependency frame charges its full verification gas");
+        Assert.That(depReceipt.Logs, Is.Empty);
+        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000), "later operation frames still run");
     }
 
     // Spec Cross-frame interactions: the EIP-2929 warm/cold journal is shared across frames — a

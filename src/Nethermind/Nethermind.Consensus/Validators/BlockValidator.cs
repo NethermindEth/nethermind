@@ -79,7 +79,45 @@ public class BlockValidator(
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
                ValidateEip4844Fields(block, spec, ref errorMessage) &&
                ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
-               ValidateBlockLevelAccessList(block, spec, ref errorMessage);
+               ValidateBlockLevelAccessList(block, spec, ref errorMessage) &&
+               ValidateRecursiveStark(block, spec, ref errorMessage);
+    }
+
+    /// <summary>
+    /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
+    /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
+    /// STARK must verify against the aggregated verification key.
+    /// EIP8288-DEVIATION: proof verification is delegated to <see cref="StubLeanProofVerifier"/>; a
+    /// real Lean Ethereum verifier would be injected here.
+    /// </summary>
+    private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
+    {
+        if (!spec.IsEip8288Enabled) return true;
+
+        RecursiveStark? recursiveStark = block.Header.RecursiveStark;
+        if (recursiveStark is null)
+        {
+            error = BlockErrorMessages.MissingRecursiveStark;
+            if (_logger.IsWarn) _logger.Warn($"Missing recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            return false;
+        }
+
+        Hash256 computed = new(Eip8288Dependencies.ComputeBlockDepsHash(block));
+        if (recursiveStark.BlockDepsHash != computed)
+        {
+            error = BlockErrorMessages.InvalidBlockDepsHash(recursiveStark.BlockDepsHash, computed);
+            if (_logger.IsWarn) _logger.Warn($"Block deps hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {recursiveStark.BlockDepsHash}, got {computed}");
+            return false;
+        }
+
+        if (!StubLeanProofVerifier.Instance.VerifyRecursiveStark(in computed.ValueHash256, Eip8288Constants.AggregatedVk, recursiveStark.StarkProof))
+        {
+            error = BlockErrorMessages.InvalidRecursiveStark;
+            if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            return false;
+        }
+
+        return true;
     }
 
     private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)

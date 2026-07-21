@@ -178,7 +178,8 @@ public sealed class GasFieldsTxValidator : ITxValidator
 }
 
 /// <summary>
-/// EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes).
+/// EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes), plus the
+/// EIP-8288 dependency-verification frame constraints when that fork is enabled.
 /// </summary>
 public sealed class FrameTxFieldsTxValidator : ITxValidator
 {
@@ -186,7 +187,7 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
     private FrameTxFieldsTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        FrameTxValidation.IsWellFormed(transaction, out string? error) ? ValidationResult.Success : error!;
+        FrameTxValidation.IsWellFormed(transaction, releaseSpec, out string? error) ? ValidationResult.Success : error!;
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator

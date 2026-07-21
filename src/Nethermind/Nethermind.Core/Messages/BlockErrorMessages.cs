@@ -131,6 +131,15 @@ public static class BlockErrorMessages
     public const string InvalidRequestsOrder =
         "InvalidRequestsOrder: Requests are not in the correct order in block.";
 
+    public const string MissingRecursiveStark =
+        "MissingRecursiveStark: EIP-8288 recursive STARK header entry is missing.";
+
+    public static string InvalidBlockDepsHash(Hash256? expected, Hash256? actual) =>
+        $"InvalidBlockDepsHash: block deps hash mismatch: expected {expected}, got {actual}";
+
+    public const string InvalidRecursiveStark =
+        "InvalidRecursiveStark: EIP-8288 recursive STARK failed verification.";
+
 
     public const string WithdrawalsContractEmpty =
         "WithdrawalsEmpty: Contract is not deployed.";

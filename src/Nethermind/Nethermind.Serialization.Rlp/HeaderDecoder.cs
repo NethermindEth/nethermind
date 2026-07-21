@@ -61,6 +61,16 @@ namespace Nethermind.Serialization.Rlp
             if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccak();
             if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccak();
             if (decoderContext.Position != headerCheck) blockHeader.SlotNumber = decoderContext.DecodeULong();
+            if (decoderContext.Position != headerCheck)
+            {
+                // EIP-8288 recursive_stark = [stark_proof, block_deps_hash].
+                int recursiveStarkLength = decoderContext.ReadSequenceLength();
+                int recursiveStarkCheck = decoderContext.Position + recursiveStarkLength;
+                byte[]? starkProof = decoderContext.DecodeByteArray();
+                Hash256? blockDepsHash = decoderContext.DecodeKeccak();
+                decoderContext.Check(recursiveStarkCheck);
+                blockHeader.RecursiveStark = new RecursiveStark(starkProof!, blockDepsHash!);
+            }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -141,7 +151,7 @@ namespace Nethermind.Serialization.Rlp
                 EncodeSeal(ref writer, header);
             }
 
-            Span<bool> requiredItems = stackalloc bool[8];
+            Span<bool> requiredItems = stackalloc bool[9];
             requiredItems[0] = !header.BaseFeePerGas.IsZero;
             requiredItems[1] = header.WithdrawalsRoot is not null;
             requiredItems[2] = header.BlobGasUsed is not null;
@@ -150,8 +160,9 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[5] = header.RequestsHash is not null;
             requiredItems[6] = header.BlockAccessListHash is not null;
             requiredItems[7] = header.SlotNumber is not null;
+            requiredItems[8] = header.RecursiveStark is not null;
 
-            for (int i = 6; i >= 0; i--)
+            for (int i = 7; i >= 0; i--)
             {
                 requiredItems[i] |= requiredItems[i + 1];
             }
@@ -164,6 +175,13 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[5]) writer.Encode(header.RequestsHash);
             if (requiredItems[6]) writer.Encode(header.BlockAccessListHash);
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
+            if (requiredItems[8])
+            {
+                RecursiveStark recursiveStark = header.RecursiveStark!;
+                writer.StartSequence(Rlp.LengthOf(recursiveStark.StarkProof) + Rlp.LengthOf(recursiveStark.BlockDepsHash));
+                writer.Encode(recursiveStark.StarkProof);
+                writer.Encode(recursiveStark.BlockDepsHash);
+            }
         }
 
         public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -208,7 +226,7 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += GetSealLength(item);
             }
 
-            Span<bool> requiredItems = stackalloc bool[8];
+            Span<bool> requiredItems = stackalloc bool[9];
             requiredItems[0] = !item.BaseFeePerGas.IsZero;
             requiredItems[1] = item.WithdrawalsRoot is not null;
             requiredItems[2] = item.BlobGasUsed is not null;
@@ -217,8 +235,9 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[5] = item.RequestsHash is not null;
             requiredItems[6] = item.BlockAccessListHash is not null;
             requiredItems[7] = item.SlotNumber is not null;
+            requiredItems[8] = item.RecursiveStark is not null;
 
-            for (int i = 6; i >= 0; i--)
+            for (int i = 7; i >= 0; i--)
             {
                 requiredItems[i] |= requiredItems[i + 1];
             }
@@ -231,6 +250,11 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash);
             if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
+            if (requiredItems[8])
+            {
+                RecursiveStark recursiveStark = item.RecursiveStark!;
+                contentLength += Rlp.LengthOfSequence(Rlp.LengthOf(recursiveStark.StarkProof) + Rlp.LengthOf(recursiveStark.BlockDepsHash));
+            }
 
             return contentLength;
         }
