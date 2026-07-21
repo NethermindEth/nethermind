@@ -4,7 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.State.Proofs;
 using Nethermind.Taiko.TaikoSpec;
 using NUnit.Framework;
 
@@ -82,6 +85,50 @@ public class TaikoExecutionPayloadTests
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Header.BlobGasUsed, Is.EqualTo(0UL));
         Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
+    }
+
+    // The shadowing setter must reach the base setter's memo invalidation: a tx-root task
+    // memoized by an earlier TryGetBlock must never supply the root for reassigned transactions
+    [Test]
+    public void TryGetBlock_recomputes_tx_root_when_transactions_change_between_calls()
+    {
+        TaikoExecutionPayload payload = BuildEmptyPayload();
+        payload.AttachSpecProvider(new TestSpecProvider(new TaikoReleaseSpec { IsUnzenEnabled = false, TaikoL2Address = Address.Zero }));
+
+        payload.Transactions = EncodeTxs(count: 64);
+        Hash256? originalRoot = payload.TryGetBlock().Data!.Header.TxRoot;
+
+        byte[][] replacementRlps = EncodeTxs(count: 64, nonceOffset: 1000);
+        payload.Transactions = replacementRlps;
+        Hash256? replacementRoot = payload.TryGetBlock().Data!.Header.TxRoot;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replacementRoot, Is.EqualTo(TxTrie.CalculateRoot(replacementRlps)));
+            Assert.That(replacementRoot, Is.Not.EqualTo(originalRoot));
+        }
+    }
+
+    // The delegating setter must preserve the Taiko null <-> empty round-trip
+    [Test]
+    public void Transactions_setter_preserves_null_round_trip()
+    {
+        TaikoExecutionPayload payload = new() { Transactions = EncodeTxs(count: 1) };
+
+        payload.Transactions = null;
+
+        Assert.That(payload.Transactions, Is.Null);
+    }
+
+    private static byte[][] EncodeTxs(int count, ulong nonceOffset = 0)
+    {
+        byte[][] rlps = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            Transaction tx = Build.A.Transaction.WithNonce(nonceOffset + (ulong)i).SignedAndResolved().TestObject;
+            rlps[i] = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        }
+        return rlps;
     }
 
     [Test]

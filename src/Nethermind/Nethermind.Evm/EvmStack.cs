@@ -186,30 +186,6 @@ public ref struct EvmStack
             ((ulong)Unsafe.Add(ref src, 6) << 56),
     };
 
-    public EvmExceptionType PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
-        where TTracingInst : struct, IFlag
-    {
-        ref byte bytes = ref PushBytesRef();
-        if (Unsafe.IsNullRef(ref bytes)) return EvmExceptionType.StackOverflow;
-
-        if (TTracingInst.IsActive)
-            _tracer.ReportStackPush(value);
-
-        ReadOnlySpan<byte> valueSpan = value.Span;
-        if (valueSpan.Length >= WordSize)
-        {
-            Debug.Assert(value.Length == WordSize, "Trying to push more than 32 bytes to the stack.");
-            Unsafe.As<byte, EvmWord>(ref bytes) = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(valueSpan));
-        }
-        else
-        {
-            Unsafe.As<byte, EvmWord>(ref bytes) = default; // Not full entry, clear first
-            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
-        }
-
-        return EvmExceptionType.None;
-    }
-
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushRightPaddedBytes<TTracingInst>(ref byte src, uint length)
@@ -223,14 +199,11 @@ public ref struct EvmStack
         }
         Head = (int)newOffset;
 
-        if (TTracingInst.IsActive)
-            ReportStackPush(ref src, length);
-
         ref byte dst = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
 
         if (length != WordSize)
         {
-            return PushBytesPartialZeroPadded(ref dst, ref src, length);
+            return PushBytesPartialZeroPadded<TTracingInst>(ref dst, ref src, length);
         }
 
         if (Vector256.IsHardwareAccelerated)
@@ -244,11 +217,15 @@ public ref struct EvmStack
                 Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref src, 16));
         }
 
+        if (TTracingInst.IsActive)
+            ReportPushWord(ref dst);
+
         return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private static EvmExceptionType PushBytesPartialZeroPadded(ref byte dst, ref byte src, nuint length)
+    private EvmExceptionType PushBytesPartialZeroPadded<TTracingInst>(ref byte dst, ref byte src, nuint length)
+        where TTracingInst : struct, IFlag
     {
         nuint q = length >> 3; // full 8-byte chunks: 0..3
         nuint r = length & 7;  // remainder: 0..7
@@ -296,6 +273,9 @@ public ref struct EvmStack
             Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = hi.AsByte();
         }
 
+        if (TTracingInst.IsActive)
+            ReportPushWord(ref dst);
+
         return EvmExceptionType.None;
     }
 
@@ -319,19 +299,12 @@ public ref struct EvmStack
            ((ulong)Unsafe.Add(ref src, 6) << 48),
     };
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly void ReportStackPush(ref byte span, uint length)
-    {
-        ReadOnlySpan<byte> value = MemoryMarshal.CreateReadOnlySpan(ref span, (int)length);
-        ZeroPaddedSpan padded = new(value, WordSize - value.Length, PadDirection.Right);
-        _tracer.ReportStackPush(padded);
-    }
-
     /// <summary>
-    /// Reports a UInt256 value at the given stack slot to the tracer (for tracing without push).
+    /// Reports the raw 32-byte word at the given stack slot to the tracer as a stack push
+    /// (also used to trace in-place top-of-stack updates).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public readonly void ReportPushUInt256(ref byte slot) =>
+    public readonly void ReportPushWord(ref byte slot) =>
         _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref slot, WordSize));
 
     /// <summary>
@@ -1306,7 +1279,7 @@ public ref struct EvmStack
         // Truncated PUSH32 is just a right-padded partial write, so reuse the tighter helper.
         if (pushSize == WordSize)
         {
-            return PushBytesPartialZeroPadded(ref dst, ref start, (uint)used);
+            return PushBytesPartialZeroPadded<OffFlag>(ref dst, ref start, (uint)used);
         }
 
         // Zeros on both sides.
