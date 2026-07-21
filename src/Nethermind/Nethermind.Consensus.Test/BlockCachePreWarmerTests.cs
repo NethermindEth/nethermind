@@ -772,6 +772,68 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    [Test]
+    public void PreWarmCaches_CompletesHeavyJobsBeforeStartingOrdinaryJobs()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        using ManualResetEventSlim heavyStarted = new();
+        using ManualResetEventSlim releaseHeavy = new();
+        using ManualResetEventSlim ordinaryStarted = new();
+
+        Transaction ordinary = Build.A.Transaction
+            .WithNonce(0)
+            .WithGasLimit(100_000)
+            .WithTo(TestItem.AddressC)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction heavy = Build.A.Transaction
+            .WithNonce(0)
+            .WithGasLimit(5_000_000)
+            .WithTo(TestItem.AddressC)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithTransactions(ordinary, heavy)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        StagedWarmupPolicy policy = new(
+            envFactory,
+            preBlockCaches,
+            heavyStarted,
+            releaseHeavy,
+            ordinaryStarted);
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            maxPoolSize: 10,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        using (mainWorldState.BeginScope(BuildParentHeader()))
+        {
+            Task warming = preWarmer.PreWarmCaches(block, BuildParentHeader(), Osaka.Instance);
+            try
+            {
+                Assert.That(heavyStarted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(ordinaryStarted.IsSet, Is.False);
+            }
+            finally
+            {
+                releaseHeavy.Set();
+            }
+
+            warming.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        }
+
+        Assert.That(ordinaryStarted.IsSet, Is.True);
+    }
+
     /// <summary>
     /// Verifies that a job whose whole transaction range has been overtaken by the main thread
     /// is skipped before a transaction-processing scope is built. Two workers are parked inside
@@ -1283,6 +1345,87 @@ public class BlockCachePreWarmerTests
 
             public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
             public void SetBlockExecutionContext(in Nethermind.Evm.BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
+    }
+
+    private sealed class StagedWarmupPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim heavyStarted,
+        ManualResetEventSlim releaseHeavy,
+        ManualResetEventSlim ordinaryStarted)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        public IReadOnlyTxProcessorSource Create() => new StagedWarmupEnv(
+            factory.Create(caches),
+            heavyStarted,
+            releaseHeavy,
+            ordinaryStarted);
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class StagedWarmupEnv(
+            IReadOnlyTxProcessorSource inner,
+            ManualResetEventSlim heavyStarted,
+            ManualResetEventSlim releaseHeavy,
+            ManualResetEventSlim ordinaryStarted) : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => new StagedWarmupScope(
+                inner.Build(baseBlock),
+                heavyStarted,
+                releaseHeavy,
+                ordinaryStarted);
+
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class StagedWarmupScope(
+            IReadOnlyTxProcessingScope inner,
+            ManualResetEventSlim heavyStarted,
+            ManualResetEventSlim releaseHeavy,
+            ManualResetEventSlim ordinaryStarted) : IReadOnlyTxProcessingScope
+        {
+            private readonly StagedWarmupTxProcessor _processor = new(
+                inner.TransactionProcessor,
+                heavyStarted,
+                releaseHeavy,
+                ordinaryStarted);
+
+            public Nethermind.Evm.TransactionProcessing.ITransactionProcessor TransactionProcessor => _processor;
+            public IWorldState WorldState => inner.WorldState;
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class StagedWarmupTxProcessor(
+            Nethermind.Evm.TransactionProcessing.ITransactionProcessor inner,
+            ManualResetEventSlim heavyStarted,
+            ManualResetEventSlim releaseHeavy,
+            ManualResetEventSlim ordinaryStarted)
+            : Nethermind.Evm.TransactionProcessing.ITransactionProcessor
+        {
+            public Nethermind.Evm.TransactionProcessing.TransactionResult Process(
+                Transaction transaction,
+                Nethermind.Evm.Tracing.ITxTracer txTracer,
+                Nethermind.Evm.TransactionProcessing.ExecutionOptions options)
+            {
+                if ((options & Nethermind.Evm.TransactionProcessing.ExecutionOptions.Warmup) != 0)
+                {
+                    if (transaction.GasLimit > 4_000_000)
+                    {
+                        heavyStarted.Set();
+                        releaseHeavy.Wait();
+                    }
+                    else
+                    {
+                        ordinaryStarted.Set();
+                    }
+                }
+
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
         }
     }
 

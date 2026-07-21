@@ -374,39 +374,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             try
             {
-                // Parallel across jobs; sequential within an unsplit sender group. Each worker
-                // rents one env for its lifetime (the helper runs init only after a worker claims
-                // a job, and the finalizer on success, cancellation, and captured exceptions);
-                // each job still builds and disposes its own scope, so no speculative state
-                // crosses jobs.
-                ParallelUnbalancedWork.For(
-                    0,
-                    senderGroups.Count,
-                    parallelOptions,
-                    () => new TxWarmupWorker(blockState, senderGroups, parallelOptions.CancellationToken),
-                    static (groupIndex, worker) =>
-                    {
-                        BlockState blockState = worker.BlockState;
-                        WarmupJob job = worker.Jobs[groupIndex];
+                int firstOrdinaryJob = 0;
+                while (firstOrdinaryJob < senderGroups.Count && senderGroups[firstOrdinaryJob].IsHoisted)
+                {
+                    firstOrdinaryJob++;
+                }
 
-                        // Indices are ascending, so if the main thread has started the job's last tx
-                        // it has started them all; the per-tx guard would discard each one, so skip
-                        // before building a scope.
-                        if (blockState.PreWarmer.MainThreadTxIndex >= job.LastIndex) return worker;
-
-                        using IReadOnlyTxProcessingScope scope = worker.Env.Build(blockState.Parent);
-                        BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                        scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                        foreach ((int txIndex, Transaction? tx) in job.Transactions.AsSpan())
-                        {
-                            if (worker.Token.IsCancellationRequested) return worker;
-                            WarmupSingleTransaction(scope, tx, txIndex, blockState, worker.Token);
-                        }
-
-                        return worker;
-                    },
-                    static worker => worker.ReturnEnv());
+                // Keep ordinary speculative work from competing with the exceptional jobs that
+                // need lead time most. Once the heavy prefix drains, use the full worker pool for
+                // the remaining block-order jobs.
+                WarmupJobRange(blockState, senderGroups, parallelOptions, 0, firstOrdinaryJob);
+                WarmupJobRange(blockState, senderGroups, parallelOptions, firstOrdinaryJob, senderGroups.Count);
             }
             finally
             {
@@ -422,6 +400,50 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error pre-warming transactions", ex);
         }
+    }
+
+    private static void WarmupJobRange(
+        BlockState blockState,
+        ArrayPoolList<WarmupJob> jobs,
+        ParallelOptions parallelOptions,
+        int fromInclusive,
+        int toExclusive)
+    {
+        if (fromInclusive >= toExclusive || parallelOptions.CancellationToken.IsCancellationRequested) return;
+
+        // Parallel across jobs; sequential within an unsplit sender group. Each worker
+        // rents one env for its lifetime (the helper runs init only after a worker claims
+        // a job, and the finalizer on success, cancellation, and captured exceptions);
+        // each job still builds and disposes its own scope, so no speculative state
+        // crosses jobs.
+        ParallelUnbalancedWork.For(
+            fromInclusive,
+            toExclusive,
+            parallelOptions,
+            () => new TxWarmupWorker(blockState, jobs, parallelOptions.CancellationToken),
+            static (groupIndex, worker) =>
+            {
+                BlockState blockState = worker.BlockState;
+                WarmupJob job = worker.Jobs[groupIndex];
+
+                // Indices are ascending, so if the main thread has started the job's last tx
+                // it has started them all; the per-tx guard would discard each one, so skip
+                // before building a scope.
+                if (blockState.PreWarmer.MainThreadTxIndex >= job.LastIndex) return worker;
+
+                using IReadOnlyTxProcessingScope scope = worker.Env.Build(blockState.Parent);
+                BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
+                scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                foreach ((int txIndex, Transaction? tx) in job.Transactions.AsSpan())
+                {
+                    if (worker.Token.IsCancellationRequested) return worker;
+                    WarmupSingleTransaction(scope, tx, txIndex, blockState, worker.Token);
+                }
+
+                return worker;
+            },
+            static worker => worker.ReturnEnv());
     }
 
     internal static ArrayPoolList<WarmupJob> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null)
