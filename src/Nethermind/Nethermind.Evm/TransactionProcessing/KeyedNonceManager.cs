@@ -59,4 +59,49 @@ public static class KeyedNonceManager
             state.Set(StorageSlot(sender, nonceKey), nextSeq);
         }
     }
+
+    public static bool AreNonceKeysWellFormed(ReadOnlySpan<UInt256> nonceKeys)
+    {
+        if (nonceKeys.Length < 1 || nonceKeys.Length > Eip8250Constants.MaxNonceKeys)
+        {
+            return false;
+        }
+
+        // Key 0 is valid only as the singleton [0].
+        if (nonceKeys[0].IsZero)
+        {
+            return nonceKeys.Length == 1;
+        }
+
+        // Strictly increasing; as the first key is non-zero this also rejects any later 0.
+        for (int i = 1; i < nonceKeys.Length; i++)
+        {
+            if (nonceKeys[i] <= nonceKeys[i - 1])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static bool IsNonceSetValid(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
+    {
+        Debug.Assert(AreNonceKeysWellFormed(nonceKeys), "nonce_keys must be structurally valid before the stateful check");
+
+        if (nonceSeq >= Eip8250Constants.MaxNonceSeq)
+        {
+            return false;
+        }
+
+        foreach (UInt256 nonceKey in nonceKeys)
+        {
+            if (CurrentNonceSeq(state, sender, nonceKey) != nonceSeq)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

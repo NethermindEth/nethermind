@@ -112,4 +112,76 @@ public class KeyedNonceManagerTests
     [Test]
     public void IsFirstUse_for_key_zero_is_false() =>
         Assert.That(KeyedNonceManager.IsFirstUse(_state, TestItem.AddressA, UInt256.Zero), Is.False);
+
+    [TestCaseSource(nameof(WellFormedKeySets))]
+    public void AreNonceKeysWellFormed_accepts_valid_sets(UInt256[] nonceKeys) =>
+        Assert.That(KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys), Is.True);
+
+    private static UInt256[][] WellFormedKeySets() =>
+    [
+        [UInt256.Zero],
+        [(UInt256)5],
+        [(UInt256)5, (UInt256)9],
+        [(UInt256)1, (UInt256)2, (UInt256)3]
+    ];
+
+    [TestCaseSource(nameof(MalformedKeySets))]
+    public void AreNonceKeysWellFormed_rejects_invalid_sets(UInt256[] nonceKeys) =>
+        Assert.That(KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys), Is.False);
+
+    private static UInt256[][] MalformedKeySets() =>
+    [
+        [],
+        [UInt256.Zero, (UInt256)5],
+        [(UInt256)5, (UInt256)5],
+        [(UInt256)9, (UInt256)5],
+        [(UInt256)5, UInt256.Zero]
+    ];
+
+    [Test]
+    public void IsNonceSetValid_true_when_every_key_matches_seq()
+    {
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: 41);
+
+        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: 42), Is.True);
+    }
+
+    [Test]
+    public void IsNonceSetValid_false_when_a_key_mismatches()
+    {
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: 41);
+
+        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: 42), Is.False);
+    }
+
+    [Test]
+    public void IsNonceSetValid_false_at_max_nonce_seq() =>
+        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
+
+    [Test]
+    public void IsNonceSetValid_for_key_zero_matches_the_account_nonce()
+    {
+        _state.SetNonce(TestItem.AddressA, 4);
+
+        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 4), Is.True);
+        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 5), Is.False);
+    }
+
+    [Test]
+    public void AreNonceKeysWellFormed_accepts_max_keys() =>
+        Assert.That(KeyedNonceManager.AreNonceKeysWellFormed(StrictlyIncreasing(Eip8250Constants.MaxNonceKeys)), Is.True);
+
+    [Test]
+    public void AreNonceKeysWellFormed_rejects_over_max_keys() =>
+        Assert.That(KeyedNonceManager.AreNonceKeysWellFormed(StrictlyIncreasing(Eip8250Constants.MaxNonceKeys + 1)), Is.False);
+
+    private static UInt256[] StrictlyIncreasing(int count)
+    {
+        UInt256[] keys = new UInt256[count];
+        for (int i = 0; i < count; i++)
+        {
+            keys[i] = (UInt256)(i + 1);
+        }
+        return keys;
+    }
 }
