@@ -78,8 +78,8 @@ public class NewPayloadPrefixBenchmarks
     [Benchmark(Description = "WithdrawalTrie root")]
     public Hash256 WithdrawalsRoot() => new WithdrawalTrie(_withdrawals).RootHash;
 
-    [Benchmark(Description = "TryGetBlock (decode memoized)")]
-    public Block TryGetBlockPreDecoded() => _payload.TryGetBlock().Data!;
+    // No decode-memoized TryGetBlock arm: the memoized root task makes any in-loop measurement
+    // either reuse the completed task or re-include decode; derive it as HandlerPrefix minus decode.
 
     [Benchmark(Description = "decode + TryGetBlock (handler order)", Baseline = true)]
     public Block HandlerPrefix()

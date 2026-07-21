@@ -218,7 +218,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns>
     /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
     /// </returns>
-    public Task<Hash256>? StartTxRootComputation()
+    internal Task<Hash256>? StartTxRootComputation()
     {
         byte[][] encodedTransactions = _encodedTransactions;
         return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && Environment.ProcessorCount > 1
