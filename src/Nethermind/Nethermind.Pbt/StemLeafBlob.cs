@@ -398,7 +398,7 @@ public static class StemLeafBlob
             _slot += count;
 
             // a leaf entry holds its value, an internal entry its already-cached hash
-            ReadOnlySpan<byte> root = NodeAt(_slot - 1);
+            ReadOnlySpan<byte> root = _buffer.Slice((_slot - 1) * ValueLength, ValueLength);
             return high - low == 1 ? Blake3Hash.Hash(root) : new ValueHash256(root);
         }
 
@@ -407,7 +407,5 @@ public static class StemLeafBlob
             node.CopyTo(_buffer.Slice(_slot * ValueLength, ValueLength));
             _slot++;
         }
-
-        private readonly ReadOnlySpan<byte> NodeAt(int slot) => _buffer.Slice(slot * ValueLength, ValueLength);
     }
 }

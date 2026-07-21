@@ -16,15 +16,10 @@ namespace Nethermind.State.Pbt;
 /// every fourth merges 4, and so on up to the cap, each level consuming the level below it.
 /// </summary>
 /// <remarks>
-/// The width is recomputed from the block number rather than stored, which is what makes the levels
-/// nest for free: a block divisible by 8 is also divisible by 4 and 2, so the wide merge at it finds
-/// the narrower merges already done and below it.
-/// <para>
 /// A per-node offset shifts the whole schedule. Without it every node on the network would compact
 /// and persist on exactly the same blocks, so the same instant would be expensive everywhere at once.
 /// It is persisted, because a node that regenerated it on restart would compact against boundaries
 /// its own on-disk state was not built around.
-/// </para>
 /// </remarks>
 public sealed class PbtCompactionSchedule
 {
@@ -50,7 +45,11 @@ public sealed class PbtCompactionSchedule
     public ulong GetCompactSize(ulong blockNumber)
     {
         if (_compactSize <= 1 || blockNumber == 0) return 1;
-        return Math.Min(ShiftedAlignment(blockNumber), _compactSize);
+
+        // x & (~x + 1): the two's-complement lowest-set-bit trick, spelled without unary minus because
+        // that is not defined for ulong.
+        ulong shifted = blockNumber + _offset;
+        return Math.Min(shifted & (~shifted + 1UL), _compactSize);
     }
 
     /// <summary>The next block after <paramref name="from"/> that merges a full <see cref="IPbtConfig.CompactSize"/> window, and so is a persistence boundary.</summary>
@@ -68,14 +67,6 @@ public sealed class PbtCompactionSchedule
 
         // a chain never reaches here, but wrapping would return a boundary below the block we started from
         return blockNumber > ulong.MaxValue - distance ? ulong.MaxValue : blockNumber + distance;
-    }
-
-    // x & (~x + 1): the two's-complement lowest-set-bit trick, spelled without unary minus because
-    // that is not defined for ulong. The largest power of two dividing the shifted block number.
-    private ulong ShiftedAlignment(ulong blockNumber)
-    {
-        ulong shifted = blockNumber + _offset;
-        return shifted & (~shifted + 1UL);
     }
 
     private ulong ResolveOffset(IDb metadataDb, IPbtConfig config, ILogger logger)

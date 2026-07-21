@@ -27,11 +27,7 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// Copies an unchanged run's own encoding into memory of its own, for an ancestor to plant. The
-        /// writes left its target group byte-identical, so the run — target hash, path, depths, stats and
-        /// the node hash folded from them all unmoved — encodes to the very same bytes: they are handed up
-        /// verbatim rather than spending the <see cref="PbtNodeChain.Fold"/> <see cref="NewChainNode"/>
-        /// would to reproduce the cached node hash.
+        /// Copies an unchanged run's own encoding into memory of its own, for an ancestor to plant.
         /// </summary>
         private Occupant CopyChainNode(ReadOnlySpan<byte> chainData)
         {
@@ -230,13 +226,10 @@ public static partial class TrieUpdater
             {
                 case ResultKind.Absent:
                 case ResultKind.Stem:
-                    // the run dissolved: the stem (or nothing) hoists on up, and innerKey — holding no
-                    // group any more — is removed if it held one
                     if (innerBlobStored) store.SetTrieNode(innerKey, null);
                     return inner;
                 case ResultKind.Internal:
-                    // the run reaches down to the group at innerKey, which stays there; plant its rebuilt
-                    // encoding when the descent produced one, else the stored blob stands
+                    // plant the rebuilt encoding when the descent produced one, else the stored blob stands
                     using (inner)
                     {
                         if (inner.Blob is { } innerBlob)

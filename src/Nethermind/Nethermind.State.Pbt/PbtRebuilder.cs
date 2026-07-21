@@ -22,16 +22,12 @@ namespace Nethermind.State.Pbt;
 /// blocks. It is the single consumer of the stream; the caller (producer) scans and decodes the source.
 /// </summary>
 /// <remarks>
-/// The rebuild runs in bounded windows to cap memory: leaves accumulate into a
-/// <see cref="PbtWriteBatchBuilder"/>, and every <see cref="FlushEntryInterval"/> entries the window
-/// is drained to a pre-bucketed <see cref="PbtWriteBatch"/>, folded into the tree via
-/// <see cref="TrieUpdater.UpdateRoot"/> and committed. The flat account and slot columns are already
+/// The rebuild runs in bounded windows to cap memory. The flat account and slot columns are already
 /// populated by the caller — this only builds the tree over them. Data windows are
 /// written <see cref="StateId.PreGenesis"/> → <see cref="StateId.PreGenesis"/> with
 /// <see cref="WriteFlags.DisableWAL"/> — the persisted-state pointer stays pre-genesis so a crash
 /// mid-rebuild leaves the state unpopulated and the next run restarts cleanly, which is also what
-/// makes skipping the WAL safe; only a final empty batch, after a flush, atomically advances the
-/// pointer to the rebuilt state.
+/// makes skipping the WAL safe.
 /// Because each window folds against the previously committed windows, a stem split across windows is
 /// merged correctly (the updater reads its prior leaf blob and folds the new leaves in).
 /// </remarks>
@@ -39,7 +35,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 {
     private const int DefaultFlushEntryInterval = 2_000_000;
 
-    /// <summary>Leaves buffered before a window is folded into the tree and committed; from <see cref="IPbtConfig.ImportWindowSize"/>, or <see cref="DefaultFlushEntryInterval"/> when unset.</summary>
+    /// <summary>Leaves buffered before a window is folded into the tree and committed.</summary>
     internal int FlushEntryInterval { get; init; } = config.ImportWindowSize > 0 ? config.ImportWindowSize : DefaultFlushEntryInterval;
 
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
@@ -56,7 +52,6 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
     {
         using CancellationTokenSource pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        // capacity 1 double-buffers: one window commits while the next fills
         Channel<FlushBatch> flushChannel = Channel.CreateBounded<FlushBatch>(new BoundedChannelOptions(1)
         {
             FullMode = BoundedChannelFullMode.Wait,
@@ -67,9 +62,8 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         ValueHash256 root = default; // empty tree is 32 zero bytes
         long stems = 0;
 
-        // The flush worker folds each window on the previous root and commits it, in order, logging
-        // progress off the just-committed window so throughput tracks durable work rather than reads
-        // racing ahead. Rates are measured over each inter-log interval.
+        // Progress is logged off the just-committed window so throughput tracks durable work rather
+        // than reads racing ahead.
         async Task FlushLoop()
         {
             long entries = 0;
@@ -119,7 +113,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             catch { pipelineCts.Cancel(); throw; } // unblock a consumer parked on the full channel
         });
 
-        // never pooled, so a Dispose would be a no-op; the failure path Resets it to return its maps
+        // never pooled, so a Dispose would be a no-op
         PbtWriteBatchBuilder builder = new();
         IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
         int pending = 0;
@@ -164,7 +158,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             writeBatch?.Dispose(); // the un-sealed batch we still own, if any
             builder.Reset(); // return the un-drained maps, if any
             await flusher; // if the flusher faulted, this rethrows its (root-cause) exception
-            throw; // otherwise our own failure
+            throw;
         }
 
         // the data windows skipped the WAL, so make them durable before the pointer that claims them
@@ -177,7 +171,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         return root;
     }
 
-    /// <summary>A full window handed from the consumer to the flush worker: its drained, pre-bucketed leaf changes, the write batch its leaves and nodes are staged in, and the progress counters as of when it was sealed.</summary>
+    /// <summary>A full window handed from the consumer to the flush worker, with the progress counters as of when it was sealed.</summary>
     private readonly record struct FlushBatch(
         PbtWriteBatch Changes,
         IPbtPersistence.IWriteBatch WriteBatch,

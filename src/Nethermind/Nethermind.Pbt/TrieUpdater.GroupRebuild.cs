@@ -113,8 +113,6 @@ public static partial class TrieUpdater
             /// </summary>
             private Boundary ResolveCombinedNodeAtBoundary(int slot)
             {
-                // A changed boundary, and every boundary when there is no existing group to read from, comes
-                // from the sorted span; an unchanged one is read back at its fixed position in the existing.
                 if (_existing.IsEmpty || (_changedMask >> slot & 1) != 0)
                 {
                     Debug.Assert(_cursor < _changed.Length && _changed[_cursor].Slot == slot, "the span's boundaries are consumed in slot order");
@@ -165,9 +163,6 @@ public static partial class TrieUpdater
                         }
                 }
 
-                // An unchanged subtree folds to the nodes already encoded, so the whole of its run — its
-                // cached hashes and every node below them — is copied out of the existing group in one
-                // block, never walked. Mirrors StemLeafBlob.RebuildState's clean-subtree copy.
                 if (IsCleanRange(_existing, _changedMask, range, position, width, _format))
                 {
                     _existing.SubtreeBitmaps(position, width, out uint presence, out uint stems);

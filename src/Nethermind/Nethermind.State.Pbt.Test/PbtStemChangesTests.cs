@@ -12,7 +12,6 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtStemChangesTests
 {
-    // Distinct sub-index count → the variant that count must have promoted to.
     private static object[] TierCases =>
     [
         new object[] { 1, typeof(SingleStemChanges) },
@@ -41,8 +40,8 @@ public class PbtStemChangesTests
         for (int k = distinctKeys - 1; k >= 0; k--) map = map.Set((byte)k, Value(k + 1));
 
         ValueHash256 updated = Value(1000);
-        map = map.Set(0, updated);                          // add-or-update, in place
-        if (distinctKeys >= 2) map = map.Set(1, default);   // clear is retained, not dropped
+        map = map.Set(0, updated);
+        if (distinctKeys >= 2) map = map.Set(1, default);
 
         Assert.That(map, Is.InstanceOf(expectedVariant));
         Assert.That(map.Count, Is.EqualTo(distinctKeys));
@@ -114,8 +113,6 @@ public class PbtStemChangesTests
         PbtStemChanges.Return(map);
     }
 
-    // Sub-indices already in the map → the run's start and length. Each case is named for what it puts
-    // the run's block copies up against.
     private static object[] RunCases =>
     [
         new object[] { Array.Empty<byte>(), (byte)0, 1, "empty map, lone leaf" },

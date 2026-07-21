@@ -46,21 +46,6 @@ internal static class PbtReferenceModel
         }
     }
 
-    public static void RemoveAccountHeader(Dictionary<string, byte[]> model, Address address)
-    {
-        string stemPrefix = PbtKeyDerivation.AccountHeaderStem(address).Bytes.ToHexString();
-        List<string> keys = [];
-        foreach (string key in model.Keys)
-        {
-            if (key.StartsWith(stemPrefix, StringComparison.Ordinal)) keys.Add(key);
-        }
-
-        foreach (string key in keys)
-        {
-            model.Remove(key);
-        }
-    }
-
     public static void SetSlot(Dictionary<string, byte[]> model, Address address, in UInt256 slot, in UInt256 value)
     {
         byte[] value32 = new byte[32];

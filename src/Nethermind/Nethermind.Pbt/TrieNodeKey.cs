@@ -43,7 +43,6 @@ public readonly record struct TrieNodeKey(byte Depth, Stem Path)
         Stem currentPath = Path;
         Span<byte> path = stackalloc byte[Stem.Length];
         currentPath.Bytes.CopyTo(path);
-        // Depth is a multiple of 4, so the four new path bits fill one nibble of the byte at Depth
         Debug.Assert((path[Depth >> 3] & ((Depth & 4) == 0 ? 0xF0 : 0x0F)) == 0, "the path must be zero-padded past Depth for the new nibble to OR into");
         path[Depth >> 3] |= (byte)((Depth & 4) == 0 ? slot << 4 : slot);
         return new TrieNodeKey((byte)(Depth + PbtTrieNodeGroup.LevelsPerGroup), new Stem(path));

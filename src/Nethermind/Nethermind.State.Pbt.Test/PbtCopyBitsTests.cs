@@ -27,7 +27,6 @@ public class PbtCopyBitsTests
         }
     }
 
-    /// <summary>Every offset/length pair that fits a stem, against random sources — including the two the storage stem actually uses.</summary>
     [Test]
     public void MatchesReferenceAcrossOffsetsAndLengths()
     {
@@ -75,7 +74,7 @@ public class PbtCopyBitsTests
         }
     }
 
-    /// <summary>ORs into whatever is already there rather than overwriting it — the two storage-stem copies share a byte.</summary>
+    /// <summary>The two storage-stem copies share a byte, so CopyBits must OR into the destination, not overwrite it.</summary>
     [Test]
     public void PreservesBitsAlreadySet()
     {

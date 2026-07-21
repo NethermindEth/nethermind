@@ -94,7 +94,6 @@ public class PbtSnapshotRepository
                 if (current == StateId.PreGenesis || !TryTakeWidestEdge(current, floorHeight, chain, out current)) return false;
             }
 
-            // the walk runs head-down, so the accumulated chain is newest first
             chain.Reverse();
             return true;
         }
@@ -146,8 +145,7 @@ public class PbtSnapshotRepository
     /// <summary>Removes and releases the compacted layers at exactly <paramref name="blockNumber"/>, leaving the base tier alone.</summary>
     /// <remarks>
     /// A compacted layer is superseded once a wider one spans across it: it costs memory while no walk
-    /// would ever prefer it again. The base layers stay, because a walk aiming between the wide
-    /// boundaries still steps through them.
+    /// would ever prefer it again.
     /// </remarks>
     public void RemoveCompactedAt(ulong blockNumber)
     {
@@ -181,8 +179,7 @@ public class PbtSnapshotRepository
     /// <remarks>
     /// Widest first is the whole of the promotion: a compacted layer is preferred wherever one spans
     /// far enough, so a wide window naturally consumes the narrower merges below it and a read walks
-    /// fewer, wider layers. Falling back to the base edge is what keeps a walk aiming between two wide
-    /// boundaries correct. No backtracking is needed — both edges lie on the same branch, and the base
+    /// fewer, wider layers. No backtracking is needed — both edges lie on the same branch, and the base
     /// layers under a compacted one are never pruned before it.
     /// </remarks>
     private bool TryTakeWidestEdge(in StateId current, long floorHeight, PbtSnapshotPooledList chain, out StateId next)
@@ -205,7 +202,6 @@ public class PbtSnapshotRepository
         return false;
     }
 
-    /// <summary>The state's height as a signed number, so the slot before genesis orders below block 0.</summary>
-    /// <remarks><see cref="StateId.PreGenesis"/> reserves the top of the unsigned range, which reinterprets to -1.</remarks>
+    /// <summary>The state's height as a signed number, so <see cref="StateId.PreGenesis"/> (top of the unsigned range) reinterprets to -1 and orders below block 0.</summary>
     private static long Height(in StateId stateId) => (long)stateId.BlockNumber;
 }

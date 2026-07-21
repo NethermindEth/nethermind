@@ -21,7 +21,6 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtRebuilderTests
 {
-    /// <summary>A fixture covering every leaf kind: an EOA, a contract whose code overflows the header, header and storage-zone slots, and a contract whose code does not overflow.</summary>
     private static List<RebuildEntry> BuildFixture(Dictionary<string, byte[]> model)
     {
         // > 128 chunks (3968 bytes) so overflow chunks land in the content-addressed code zone

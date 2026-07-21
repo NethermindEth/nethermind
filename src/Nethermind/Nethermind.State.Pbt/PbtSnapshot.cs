@@ -17,8 +17,6 @@ namespace Nethermind.State.Pbt;
 /// last lease, because a content returned to a category it was not rented from is never detected —
 /// it just starves one pool and inflates another.
 /// </remarks>
-/// <param name="resourcePool">The pool <paramref name="content"/> was rented from.</param>
-/// <param name="usage">The category <paramref name="content"/> was rented from.</param>
 public class PbtSnapshot(in StateId from, in StateId to, PbtSnapshotContent content, IPbtResourcePool resourcePool, PbtResourcePool.Usage usage)
     : RefCountingDisposable
 {

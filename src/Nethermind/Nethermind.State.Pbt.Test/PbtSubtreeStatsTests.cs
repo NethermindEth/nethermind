@@ -22,11 +22,6 @@ public class PbtSubtreeStatsTests
         Assert.That(PbtSubtreeStats.Read(encoded).StemCount, Is.EqualTo(stemCount));
     }
 
-    /// <summary>
-    /// The statistics a node stores and the delta the updater hoists are one type, so that a statistic
-    /// added later is hoisted with no further plumbing. A delta goes negative — a stem dies when every
-    /// leaf of its blob is zeroed — which is why the count is signed in memory though never encoded so.
-    /// </summary>
     [TestCase(7L, 3L)]
     [TestCase(1L, 1L)]
     [TestCase(0L, 0L)]

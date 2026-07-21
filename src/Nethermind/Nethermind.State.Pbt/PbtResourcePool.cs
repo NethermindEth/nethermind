@@ -11,8 +11,8 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Pbt;
 
 /// <summary>
-/// Pools the per-layer collections, sized per <see cref="Usage"/> so that a wide compacted layer's
-/// content never lands in the pool a per-block scope rents from.
+/// Pool sized per <see cref="Usage"/> so that a wide compacted layer's content never lands in the
+/// pool a per-block scope rents from.
 /// </summary>
 public class PbtResourcePool : IPbtResourcePool
 {
@@ -103,8 +103,6 @@ public class PbtResourcePool : IPbtResourcePool
 
         public bool TryGet([NotNullWhen(true)] out T? item) => _pool.TryPop(out item);
 
-        /// <summary>Resets <paramref name="item"/> and pools it, or disposes it when the pool is full.</summary>
-        /// <returns>Whether the item was pooled.</returns>
         public bool Return(T item)
         {
             // reset before the capacity check: an item dropped on overflow must still release

@@ -9,13 +9,9 @@ using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Steps;
 
-/// <summary>
-/// A one-shot step that reports what the persisted PBT columns hold — the trie's shape by depth and
-/// what each of the store's space optimizations elides — then exits the process.
-/// </summary>
+/// <summary>A one-shot step that reports what the persisted PBT columns hold, then exits the process.</summary>
 /// <remarks>
-/// Runs before the blockchain is initialized, as <see cref="ImportPbtFromPreimageFlat"/> does, so
-/// nothing writes to the columns while the sweep reads them.
+/// Runs before the blockchain is initialized so nothing writes to the columns while the sweep reads them.
 /// </remarks>
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],
@@ -59,7 +55,6 @@ public class ScanPbtTree(
 
         if (_logger.IsInfo) _logger.Info(report.Format());
 
-        // every stored node caches its subtree's stem count, so the root's is an independent check on the sweep
         if (!report.StemCountAgrees && _logger.IsWarn)
         {
             _logger.Warn($"PBT scan counted {report.StemCount:N0} stems, but the root node records {report.RootSubtreeStemCount:N0} for its subtree.");

@@ -11,13 +11,11 @@ namespace Nethermind.State.Pbt;
 
 /// <summary>
 /// The large per-block state a scope accumulates but never commits: the stem leaves dirtied since
-/// the last root update, waiting to be folded into the tree. Pooled purely for performance.
+/// the last root update, waiting to be folded into the tree.
 /// </summary>
 /// <remarks>
-/// Owned by one scope for its whole life. Unlike the layer content it never crosses the commit
-/// boundary — <see cref="DrainToWriteBatch"/> empties it at every fold and <see cref="Dispose"/>
-/// returns it — so it belongs to the scope rather than to the bundle, which also keeps a bundle built
-/// only to read (an <c>eth_call</c> override reader) from renting one at all.
+/// Owned by one scope for its whole life; it never crosses the commit boundary, so it belongs to the
+/// scope rather than to the bundle.
 /// <para>
 /// The stem map is sharded under one lock per shard because the parallel storage batches add stems from
 /// several threads. Both writing methods hold their shard's lock across the change map's own mutation,
@@ -26,7 +24,6 @@ namespace Nethermind.State.Pbt;
 /// </remarks>
 public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 {
-    /// <summary>One shard per value of the shard key, which is a stem's first byte.</summary>
     private const int ShardCount = 256;
 
     private readonly Shard[] _shards = CreateShards();
@@ -59,7 +56,6 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
         return shards;
     }
 
-    /// <summary>The shard <paramref name="stem"/>'s changes live in.</summary>
     /// <remarks>
     /// EIP-8297 puts the 4-bit zone in the first byte, so account stems land in shards 0x00-0x0F and code
     /// stems in 0x10-0x1F, while storage — the only zone written in parallel, and the one that dominates
@@ -68,7 +64,6 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     private Shard ShardFor(in Stem stem) => _shards[stem.Bytes[0]];
 
     /// <summary>Records the pool <see cref="Dispose"/> returns this builder to.</summary>
-    /// <remarks>Called on every rent, since a returned builder has been detached.</remarks>
     internal void RentedFrom(IPbtResourcePool pool, PbtResourcePool.Usage usage)
     {
         _pool = pool;
@@ -78,9 +73,9 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// <summary>Folds one leaf write into its stem's pooled change map.</summary>
     /// <remarks>
     /// <see cref="IPbtStemChanges.Set"/> may promote the map to a larger variant and return the old one
-    /// to the pool, so its result must always be stored back; routing every leaf write through here
-    /// makes forgetting that unrepresentable. The shard's lock is held across the promotion, so the
-    /// map a concurrent writer of the same stem finds is never one already returned to the pool.
+    /// to the pool, so its result must always be stored back. The shard's lock is held across the
+    /// promotion, so the map a concurrent writer of the same stem finds is never one already returned
+    /// to the pool.
     /// </remarks>
     public void SetLeaf(in Stem stem, byte subIndex, in ValueHash256 value)
     {
@@ -97,11 +92,7 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// <see cref="ValueHash256.MemorySize"/>-byte values — onto consecutive sub-indices of one stem,
     /// starting at <paramref name="startSubIndex"/>.
     /// </summary>
-    /// <remarks>
-    /// The batched <see cref="SetLeaf"/>, taking the change map and the shard's lock once per run rather
-    /// than once per leaf. <paramref name="values"/> must fit the stem from
-    /// <paramref name="startSubIndex"/>.
-    /// </remarks>
+    /// <remarks><paramref name="values"/> must fit the stem from <paramref name="startSubIndex"/>.</remarks>
     public void SetLeafRange(in Stem stem, byte startSubIndex, ReadOnlySpan<byte> values)
     {
         Shard shard = ShardFor(stem);
@@ -114,18 +105,16 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 
     /// <summary>Hands every dirtied stem to a fresh write batch, emptying this builder.</summary>
     /// <remarks>
-    /// Ownership of the maps passes to the batch, which returns them to the pool when disposed, so
-    /// the clear is adjacent to the drain and unconditional: leaving a transferred map here as well
-    /// would give one pooled map two owners, and a later block's writes would silently surface under
-    /// an unrelated stem. If a hand-off throws mid-drain the untransferred maps are dropped to the
-    /// GC instead — a lost map costs an allocation, a doubly-returned one costs correctness.
+    /// Ownership of the maps passes to the batch, which returns them to the pool when disposed, so the
+    /// clear is unconditional: leaving a transferred map here as well would give one pooled map two
+    /// owners, and a later block's writes would silently surface under an unrelated stem. If a hand-off
+    /// throws mid-drain the untransferred maps are dropped to the GC instead — a lost map costs an
+    /// allocation, a doubly-returned one costs correctness.
     /// <para>
     /// The shard key being the stem's first byte makes it the two nibbles the tree's first two levels
     /// partition on, so draining the shards in order hands the batch its entries already bucketed for
-    /// those levels — the two that touch every entry. Recording the bounds here, which costs only the
-    /// counts the walk passes anyway, is what lets <see cref="TrieUpdater"/> skip re-deriving them.
-    /// The nesting tracks each nibble's start so its group's ends can be local to it, as the table's
-    /// layout requires.
+    /// those levels, letting <see cref="TrieUpdater"/> skip re-deriving the bounds. The nesting tracks
+    /// each nibble's start so its group's ends can be local to it, as the table's layout requires.
     /// </para>
     /// </remarks>
     public PbtWriteBatch DrainToWriteBatch()
@@ -173,10 +162,6 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     }
 
     /// <summary>Returns every map still held — those a fold never claimed — and empties the builder.</summary>
-    /// <remarks>
-    /// Only maps <see cref="DrainToWriteBatch"/> did not already transfer are here, which is what
-    /// makes this safe to call after any number of folds.
-    /// </remarks>
     public void Reset()
     {
         try
@@ -197,8 +182,7 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 
     /// <remarks>
     /// Lock-free, like the enumeration each caller does first: a fold and a reset both run only once the
-    /// scope's parallel storage batches have been joined. Clearing keeps each shard's capacity, which is
-    /// most of what makes a pooled builder worth pooling.
+    /// scope's parallel storage batches have been joined.
     /// </remarks>
     private void ClearShards()
     {
@@ -208,8 +192,7 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// <summary>Returns this builder to the pool it was rented from, which resets it on the way in.</summary>
     /// <remarks>
     /// Detaching before returning is what keeps this from recursing: the pool discards a builder it has
-    /// no room to hold by disposing it, and that lands back here with nothing left to return. It also
-    /// makes a double dispose — or a dispose of a builder that was never rented — a no-op.
+    /// no room to hold by disposing it, and that lands back here with nothing left to return.
     /// </remarks>
     public void Dispose() => Interlocked.Exchange(ref _pool, null)?.ReturnWriteBatchBuilder(_usage, this);
 }

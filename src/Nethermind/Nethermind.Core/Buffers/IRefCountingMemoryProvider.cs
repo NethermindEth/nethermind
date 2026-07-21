@@ -10,6 +10,5 @@ namespace Nethermind.Core.Buffers;
 /// </summary>
 public interface IRefCountingMemoryProvider
 {
-    /// <summary>Allocates a writable <see cref="RefCountingMemory"/> whose span is <paramref name="length"/> bytes.</summary>
     RefCountingMemory Rent(int length);
 }

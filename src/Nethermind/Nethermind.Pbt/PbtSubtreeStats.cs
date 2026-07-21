@@ -30,10 +30,8 @@ namespace Nethermind.Pbt;
 /// </remarks>
 public readonly struct PbtSubtreeStats(long stemCount) : IEquatable<PbtSubtreeStats>
 {
-    /// <summary>Bytes one statistic takes in a node's encoding: a 48-bit count.</summary>
     private const int StemCountLength = 6;
 
-    /// <summary>The encoded length of the whole set of statistics.</summary>
     public const int EncodedLength = StemCountLength;
 
     /// <summary>The number of stems in the subtree, or the change in it when this is a delta.</summary>
