@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Logging;
 
@@ -65,8 +64,7 @@ namespace Nethermind.TxPool.Filters
                 return false;
             }
 
-            EthereumIntrinsicGas combined = selfTransferGas;
-            return tx.GasLimit >= combined.MinimalGas;
+            return tx.GasLimit >= selfTransferGas.MinRequiredGasLimit;
         }
 
         private AcceptTxResult RejectMalformed(Transaction tx, ValidationResult result)

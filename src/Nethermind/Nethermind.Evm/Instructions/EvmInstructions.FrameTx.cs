@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
@@ -124,8 +125,16 @@ public static unsafe partial class EvmInstructions
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
 
         ReadOnlySpan<byte> data = ctx.Frames[(int)frameIndex.u0].Data.Span;
-        ZeroPaddedSpan word = data.SliceWithZeroPadding(offset, 32);
-        return stack.PushBytes<TTracingInst>(word);
+        if (!offset.IsUint64 || offset.u0 >= (uint)data.Length)
+        {
+            return stack.PushZero<TTracingInst>();
+        }
+
+        uint available = (uint)data.Length - (uint)offset.u0;
+        uint copiedLength = available >= 32 ? 32u : available;
+        return stack.PushRightPaddedBytes<TTracingInst>(
+            ref Unsafe.Add(ref MemoryMarshal.GetReference(data), (nint)offset.u0),
+            copiedLength);
     }
 
     /// <summary>FRAMEDATACOPY (0xb2): copy another frame's data into memory (CALLDATACOPY semantics).</summary>
