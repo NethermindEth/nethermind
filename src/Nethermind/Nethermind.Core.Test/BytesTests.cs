@@ -849,26 +849,23 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase("", true, "00")]
-        [TestCase("00", true, "00")]
-        [TestCase("0000000000", true, "00")]
-        [TestCase("0001", false, "01")]
-        [TestCase("0000000000000000000000000000000000000000000000000000000000000001", false, "01")]
-        [TestCase("0100", false, "0100")]
-        [TestCase("ff", false, "ff")]
-        [TestCase("00000000000000000000000000000000000000000000000000000000000000ff", false, "ff")]
-        [TestCase("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", false, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
-        public void WithoutLeadingZeros_reports_zero_and_trims_in_one_scan(string hex, bool expectedIsZero, string expectedHex)
+        private static IEnumerable<TestCaseData> LeadingZerosCountCases()
         {
-            ReadOnlySpan<byte> bytes = hex.Length == 0 ? [] : Bytes.FromHexString(hex);
-
-            ReadOnlySpan<byte> trimmed = bytes.WithoutLeadingZeros(out bool isZero);
-
-            Assert.That(isZero, Is.EqualTo(expectedIsZero));
-            Assert.That(trimmed.ToHexString(), Is.EqualTo(expectedHex));
-            // The fused overload must agree with the separate helpers it replaces
-            Assert.That(isZero, Is.EqualTo(bytes.IsZero()));
-            Assert.That(trimmed.SequenceEqual(bytes.WithoutLeadingZeros()), Is.True);
+            yield return new TestCaseData(Array.Empty<byte>(), 0).Returns(0).SetName("empty");
+            yield return new TestCaseData(new byte[] { 0 }, 0).Returns(1).SetName("single zero");
+            yield return new TestCaseData(new byte[32], 0).Returns(32).SetName("all-zero word");
+            yield return new TestCaseData(new byte[] { 1 }, 0).Returns(0).SetName("single non-zero");
+            yield return new TestCaseData(new byte[] { 0, 1 }, 0).Returns(1).SetName("one leading zero");
+            yield return new TestCaseData(new byte[] { 1, 0 }, 0).Returns(0).SetName("trailing zero only");
+            byte[] word = new byte[32];
+            word[31] = 0xFF;
+            yield return new TestCaseData(word, 0).Returns(31).SetName("value in last byte of word");
+            yield return new TestCaseData(new byte[] { 0, 0, 1 }, 1).Returns(1).SetName("start index skips first byte");
+            yield return new TestCaseData(new byte[] { 0, 0 }, 1).Returns(1).SetName("start index in all-zero");
         }
+
+        [TestCaseSource(nameof(LeadingZerosCountCases))]
+        public int LeadingZerosCount_cases(byte[] bytes, int startIndex) =>
+            new ReadOnlySpan<byte>(bytes).LeadingZerosCount(startIndex);
     }
 }

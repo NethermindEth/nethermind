@@ -146,24 +146,13 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this Span<byte> bytes) => ((ReadOnlySpan<byte>)bytes).WithoutLeadingZeros();
 
-        public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes) =>
-            bytes.WithoutLeadingZeros(out _);
-
-        /// <summary>
-        /// Strips leading zero bytes and reports whether the value is entirely zero, in one scan.
-        /// </summary>
-        public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes, out bool isZero)
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 0)
-            {
-                isZero = true;
-                return ZeroByteSpan;
-            }
+            if (bytes.Length == 0) return ZeroByteSpan;
 
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
-            isZero = nonZeroIndex < 0;
             // Keep one or it will be interpreted as null
-            return isZero ? bytes[^1..] : bytes[nonZeroIndex..];
+            return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
