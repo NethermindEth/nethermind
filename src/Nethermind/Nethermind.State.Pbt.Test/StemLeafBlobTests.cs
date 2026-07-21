@@ -49,7 +49,6 @@ public class StemLeafBlobTests
         Assert.That(StemLeafBlob.TryGetValue(blob, 200, out ReadOnlySpan<byte> read200) && read200.SequenceEqual(value200));
         Assert.That(StemLeafBlob.TryGetValue(blob, 6, out _), Is.False);
 
-        // an empty value clears, untouched leaves survive
         blob = Apply(blob, new Dictionary<byte, byte[]?> { [5] = null }, out _);
         Assert.That(StemLeafBlob.TryGetValue(blob, 5, out _), Is.False);
         Assert.That(StemLeafBlob.TryGetValue(blob, 200, out read200) && read200.SequenceEqual(value200));
@@ -233,7 +232,6 @@ public class StemLeafBlobTests
         yield return new TestCaseData(new byte[] { 0, 2, 100 }, LegacyThreeMixed).SetName("LegacyThreeMixed");
     }
 
-    /// <summary>A legacy blob is still readable, and any write upgrades it to the current format.</summary>
     [TestCaseSource(nameof(LegacyFixtures))]
     public void LegacyBlobReadsBackAndUpgradesOnWrite(byte[] subIndices, string legacyHex)
     {

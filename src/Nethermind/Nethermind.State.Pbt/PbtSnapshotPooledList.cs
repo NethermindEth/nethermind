@@ -15,9 +15,8 @@ namespace Nethermind.State.Pbt;
 /// is handed to a bundle, and the bundle afterwards. There is deliberately no <c>Clear</c>: the
 /// underlying reset drops the count without releasing the element leases.
 /// <para>
-/// Not thread-safe, and not merely in the usual sense: <see cref="Add"/> rents a larger array and
-/// returns the old one when it grows, so a read racing a growth can touch a pool-returned array.
-/// Ordering is a contract of the holder, not of this type.
+/// Not thread-safe even for readers: <see cref="Add"/> returns the old array to the pool when it
+/// grows, so a read racing a growth can touch a pool-returned array.
 /// </para>
 /// </remarks>
 public sealed class PbtSnapshotPooledList(int initialCapacity) : IDisposable, IReadOnlyList<PbtSnapshot>

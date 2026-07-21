@@ -104,7 +104,6 @@ public class PbtPersistenceCoordinator(
         // per node, and it is where a full-width compaction lands
         ulong nextBoundary = schedule.NextFullCompactionAfter(persisted);
 
-        // Finality-driven trigger: persist up to the next CompactSize boundary along the canonical chain.
         if (finalizedStateProvider.FinalizedBlockNumber >= nextBoundary
             && depth + _compactSize > _minReorgDepth
             && finalizedStateProvider.GetFinalizedStateRootAt(nextBoundary) is Hash256 canonicalRoot
@@ -113,7 +112,6 @@ public class PbtPersistenceCoordinator(
             return true;
         }
 
-        // Force-persist backstop bounding memory when finality stalls, seeded from the committed head.
         if (depth > _backstopReorgDepth)
         {
             if (_logger.IsWarn) _logger.Warn($"In-memory state depth {depth} exceeded the force-persist backstop {_backstopReorgDepth}; forcing persistence to bound memory.");
@@ -167,13 +165,10 @@ public class PbtPersistenceCoordinator(
         }
     }
 
-    /// <summary>
-    /// Writes the merged slot changes, ordered by address and then by slot.
-    /// </summary>
     /// <remarks>
     /// A flat storage key is the slot's tree key, which costs two BLAKE3 hashes to derive from
     /// scratch. <see cref="PbtSnapshotContent.Slots"/> is an unordered map, so writing it as it
-    /// enumerates would pay both per slot; ordering it first lets the batch's
+    /// enumerates would pay both per slot; ordering by address then slot lets the batch's
     /// <see cref="PbtSlotKeyDeriver"/> charge one hash per address plus one per 256-slot run. The
     /// order buys nothing on disk — tree keys are digests, so any enumeration order lands randomly
     /// in the column.

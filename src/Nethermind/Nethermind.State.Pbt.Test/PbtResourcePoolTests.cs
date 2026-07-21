@@ -16,7 +16,6 @@ public class PbtResourcePoolTests
     [SetUp]
     public void SetUp() => _pool = new PbtResourcePool(new PbtConfig());
 
-    /// <summary>A returned content is handed straight back out, rather than a fresh one being allocated.</summary>
     [Test]
     public void ReturnedContent_IsRentedAgain()
     {
@@ -26,7 +25,6 @@ public class PbtResourcePoolTests
         Assert.That(_pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing), Is.SameAs(content));
     }
 
-    /// <summary>A content carries nothing across owners: the pool resets it on the way back in.</summary>
     [Test]
     public void ReturnedContent_IsReset()
     {
@@ -60,7 +58,6 @@ public class PbtResourcePoolTests
         Assert.That(_pool.GetSnapshotContent(PbtResourcePool.Usage.Compact32), Is.SameAs(compacted));
     }
 
-    /// <summary>Returns past the category's capacity are dropped rather than growing the pool without bound.</summary>
     [Test]
     public void Returns_BeyondCapacity_AreDropped()
     {
@@ -101,7 +98,6 @@ public class PbtResourcePoolTests
         Assert.That(_pool.GetWriteBatchBuilder(usage), Is.Not.SameAs(builder), "a double dispose must not pool it twice");
     }
 
-    /// <summary>A sealed layer returns its content to the category it was rented from when its last lease drops.</summary>
     [Test]
     public void Snapshot_ReturnsItsContent_ToTheUsageItWasRentedFrom()
     {

@@ -79,7 +79,6 @@ public static class PbtStemChanges
         return rented;
     }
 
-    /// <summary>Rents the smallest variant that holds <paramref name="count"/> (at least two) writes.</summary>
     private static SeedableStemChanges RentSeedable(int count) => count switch
     {
         <= Search4.Lanes => StaticPool<Length4StemChanges>.Rent(),
@@ -88,7 +87,6 @@ public static class PbtStemChanges
         _ => StaticPool<SortedStemChanges>.Rent(),
     };
 
-    /// <summary>Whether a run of <paramref name="count"/> writes from <paramref name="startSubIndex"/> overwrites <paramref name="subIndex"/>.</summary>
     internal static bool RunCovers(byte startSubIndex, int count, byte subIndex) => subIndex >= startSubIndex && subIndex < startSubIndex + count;
 
     /// <summary>The write at ordinal <paramref name="index"/> of a run, as <see cref="IPbtStemChanges.SetRange"/> lays one out.</summary>
@@ -125,7 +123,6 @@ internal abstract class SeedableStemChanges : IPbtStemChanges, IResettable
     /// <remarks><paramref name="subIndices"/> must be ascending; seeding skips the per-entry insertion a sequence of <see cref="Set"/> calls would incur.</remarks>
     internal abstract void Seed(ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values);
 
-    /// <summary>Returns this map to the pool of its own variant.</summary>
     internal abstract void ReturnSelf();
 }
 
@@ -160,7 +157,6 @@ internal sealed class SingleStemChanges : IPbtStemChanges, IResettable
         int count = values.Length / ValueHash256.MemorySize;
         if (count == 0) return this;
 
-        // this variant's leaf survives the run only if the run does not overwrite it
         int resulting = count + (_hasValue && !PbtStemChanges.RunCovers(startSubIndex, count, _subIndex) ? 1 : 0);
         if (resulting == 1) return Set(startSubIndex, PbtStemChanges.RunValue(values, 0));
 
@@ -331,7 +327,6 @@ internal sealed class Length4StemChanges : FixedStemChanges<Search4>
     internal override void ReturnSelf() => StaticPool<Length4StemChanges>.Return(this);
 }
 
-/// <summary>The up-to-eight-write variant.</summary>
 internal sealed class Length8StemChanges : FixedStemChanges<Search8>
 {
     internal override void ReturnSelf() => StaticPool<Length8StemChanges>.Return(this);

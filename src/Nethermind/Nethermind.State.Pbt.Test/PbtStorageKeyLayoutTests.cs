@@ -51,7 +51,6 @@ public class PbtStorageKeyLayoutTests
             Assert.That(EvmWordSlot.IsZero(reader.GetSlot(TestItem.AddressB, slot)), Is.True);
         }
 
-        // the row is stored under the slot's tree key and nowhere else
         ValueHash256 treeKey = PbtKeyDerivation.StorageKey(TestItem.AddressA, slot);
         Assert.That(db.GetColumnDb(PbtColumns.Storage)[treeKey.Bytes.ToArray()], Is.Not.Null);
 

@@ -34,8 +34,7 @@ public class PbtSnapshotBundleTests
 
     /// <summary>
     /// Each tier shadows the ones below it: the write buffer over this branch's own sealed layers,
-    /// those over the shared view's layers, and those over the disk. A key present at every tier must
-    /// read back from the topmost.
+    /// those over the shared view's layers, and those over the disk.
     /// </summary>
     [Test]
     public void Reads_TakeTheHighestTierHoldingTheKey()
@@ -50,7 +49,6 @@ public class PbtSnapshotBundleTests
         AssertReadsAre(bundle, 0x11);
     }
 
-    /// <summary>A key missing from the upper tiers falls through, tier by tier, down to the disk.</summary>
     [TestCase(0, ExpectedResult = 0x44, TestName = "Reads_FallThrough_ToTheReader")]
     [TestCase(1, ExpectedResult = 0x33, TestName = "Reads_FallThrough_ToTheSharedBundlesLayers")]
     [TestCase(2, ExpectedResult = 0x22, TestName = "Reads_FallThrough_ToThisBranchsLayers")]
@@ -88,7 +86,6 @@ public class PbtSnapshotBundleTests
         Assert.That(bundle.GetTrieNode(NodeA), Is.Null);
     }
 
-    /// <summary>A self-destruct in this branch hides a slot the shared view still holds.</summary>
     [Test]
     public void SelfDestruct_InThisBranch_ShadowsASharedBundleSlot()
     {
@@ -122,7 +119,6 @@ public class PbtSnapshotBundleTests
         Assert.That(_reader.Disposed, "the last release frees the reader");
     }
 
-    /// <summary>Sealing a layer stacks it on this branch only, leaving the shared view untouched for other readers.</summary>
     [Test]
     public void CollectSnapshot_StacksOnThisBranchAndRentsAFreshBuffer()
     {

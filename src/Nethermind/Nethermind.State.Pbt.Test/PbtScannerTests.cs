@@ -182,7 +182,6 @@ public class PbtScannerTests
         });
     }
 
-    /// <summary>An empty database reports nothing rather than throwing.</summary>
     [Test]
     public async Task Scan_EmptyDatabase_CountsNothing()
     {
@@ -198,7 +197,6 @@ public class PbtScannerTests
         });
     }
 
-    /// <summary>The rendered report covers every partition that holds anything, and says so per zone.</summary>
     [Test]
     public async Task Format_ReportsEachPartitionThatHoldsAnything()
     {
@@ -265,7 +263,6 @@ public class PbtScannerTests
         });
     }
 
-    /// <summary>Builds the tree in <paramref name="format"/> and scans the columns it lands in.</summary>
     private static Task<PbtScanReport> ScanTree(PbtGroupFormat format, List<(byte[] Key, byte[]? Value)> writes, int concurrency)
     {
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);

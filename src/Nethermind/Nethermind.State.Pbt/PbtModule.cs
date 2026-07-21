@@ -32,7 +32,6 @@ public class PbtModule(IPbtConfig config) : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            // the pbt components
             .AddColumnDatabase<PbtColumns>(DbNames.Pbt)
             .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
             // singleton: a second pool would silently halve every hit rate
@@ -46,7 +45,6 @@ public class PbtModule(IPbtConfig config) : Module
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()
 
-            // overrides of the decider-selected services
             .Bind<IWorldStateManager, PbtWorldStateManager>()
             .AddSingleton<IStateBoundary, PbtStateBoundary>()
             .AddSingleton<IPruningTrieStateAdminRpcModule, PruningDisabledAdminRpcModule>()
@@ -54,8 +52,7 @@ public class PbtModule(IPbtConfig config) : Module
             .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
             .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>();
 
-        // one-shot rebuild from an existing preimage-flat db: open the flat source directly (its
-        // module is never loaded here) and register the import step
+        // the flat db is opened directly here because its own module is never loaded alongside PBT
         if (config.ImportFromPreimageFlat)
         {
             builder
@@ -65,7 +62,6 @@ public class PbtModule(IPbtConfig config) : Module
                 .AddStep(typeof(ImportPbtFromPreimageFlat));
         }
 
-        // one-shot report over the persisted columns
         if (config.ScanTree)
         {
             builder

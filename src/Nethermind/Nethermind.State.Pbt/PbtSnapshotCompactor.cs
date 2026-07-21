@@ -20,7 +20,7 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
     private readonly ulong _fullCompactSize = (ulong)config.CompactSize;
 
     /// <summary>Runs the compaction the schedule calls for at <paramref name="stateId"/>, if any.</summary>
-    /// <returns>Whether a compacted layer was published, and so whether reads at states above it now walk fewer layers.</returns>
+    /// <returns>Whether a compacted layer was published.</returns>
     /// <remarks>
     /// Called for every committed block; the schedule decides that most of them merge nothing. The
     /// window's inputs stay in the repository afterwards: the compacted layer is a shortcut across
@@ -61,9 +61,7 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
         PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
 
         // First pass: the newest layer that self-destructs each address. A slot written strictly
-        // before that layer is wiped by the destruct, so it is filtered out of the merge below rather
-        // than added and then hunted down — which is what the whole segment's slots used to be
-        // re-scanned for, once per self-destruct in every layer.
+        // before that layer is wiped by the destruct, so it is filtered out of the merge below.
         Dictionary<AddressAsKey, int> slotClearBoundary = [];
         for (int i = 0; i < chainOldestFirst.Count; i++)
         {

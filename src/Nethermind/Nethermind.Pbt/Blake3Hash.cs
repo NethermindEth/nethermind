@@ -8,8 +8,6 @@ namespace Nethermind.Pbt;
 /// <summary>The EIP-8297 hash primitives (draft hash function: BLAKE3).</summary>
 public static class Blake3Hash
 {
-    public static void Hash(ReadOnlySpan<byte> input, Span<byte> output32) => Blake3Managed.Hash(input, output32);
-
     public static ValueHash256 Hash(ReadOnlySpan<byte> input)
     {
         ValueHash256 result = default;

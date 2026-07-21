@@ -52,7 +52,6 @@ public readonly ref struct PbtNodeChain
     private const int StatsOffset = NodeHashOffset + HashLength;
     private const int HashLength = 32;
 
-    /// <summary>Every chain encodes to the same length: only its start depth varies, and that is its key's.</summary>
     public const int EncodedLength = StatsOffset + PbtSubtreeStats.EncodedLength;
 
     private readonly ReadOnlySpan<byte> _data;
@@ -76,7 +75,6 @@ public readonly ref struct PbtNodeChain
     /// <summary>The root hash of the group stored at <see cref="TargetDepth"/> on <see cref="TargetPath"/>.</summary>
     public ValueHash256 TargetHash => new(_data.Slice(TargetHashOffset, HashLength));
 
-    /// <summary>The key of the group this chain lands on.</summary>
     public TrieNodeKey TargetKey => TrieNodeKey.For(TargetDepth, TargetPath);
 
     /// <inheritdoc cref="NodeHashOf"/>

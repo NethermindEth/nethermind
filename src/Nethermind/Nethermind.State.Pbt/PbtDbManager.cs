@@ -41,8 +41,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     // Gathering is on the hot path of every RPC read, and every scope at one state assembles the very
     // same immutable view, so it is shared rather than rebuilt. A cached entry is only ever a lifetime
-    // cost, never a correctness one: it owns its layer leases and its own database snapshot, so it
-    // keeps answering for the state it was built for however far persistence has moved on. What it
+    // cost, never a correctness one: it owns its layer leases and its own database snapshot. What it
     // must not do is keep answering forever — the leases hold layer contents out of the pool and the
     // reader pins SST files on disk — hence the sweeps.
     private readonly ConcurrentDictionary<StateId, PbtReadOnlySnapshotBundle> _readOnlyBundleCache = new();
@@ -106,7 +105,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         return null;
     }
 
-    /// <summary>Releases the cache's lease on every entry, so nothing it holds outlives the states it was built for.</summary>
     /// <remarks>
     /// Removes before releasing, so a concurrent gather either leases the entry while it is still
     /// live or misses it and assembles its own. Bundles a scope is still reading stay alive on that
@@ -144,9 +142,8 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         StateId committed = snapshot.To;
         _repository.TryAdd(snapshot);
 
-        // A dropped compaction job is a level that never merges, so block processing waits for room
-        // rather than losing one. Backing up this far means compaction is not keeping pace with the
-        // chain, which persistence sits downstream of.
+        // Backing up this far means compaction is not keeping pace with the chain, which persistence
+        // sits downstream of.
         if (!_compactionJobs.Writer.TryWrite(committed))
         {
             if (_logger.IsWarn) _logger.Warn("Pbt compaction is not keeping up with block processing; stalling the commit until it does.");

@@ -29,16 +29,6 @@ public class PbtRocksDbPersistence : IPbtPersistence
     /// On-disk layout of the keys this class encodes. Bump it whenever a key encoding changes, so a
     /// database written by an older build is refused rather than silently misread.
     /// </summary>
-    /// <remarks>
-    /// Version 1 keys flat storage by the slot's EIP-8297 tree key. Databases predating the version
-    /// key keyed it by <c>blake3(address32) || slot32BE</c>; every slot in one would read back as
-    /// absent, i.e. zero, and the rebuilt root would be wrong with nothing to signal it — hence the
-    /// refusal rather than a best-effort open.
-    ///
-    /// Version 2 moved the trie node key's depth from the leading byte to the trailing one and split
-    /// the nodes into per-zone columns. A version 1 database read under it would resolve every node
-    /// lookup to a wrong key in a column that no longer holds it.
-    /// </remarks>
     private const int LayoutVersion = 2;
 
     private readonly IColumnsDb<PbtColumns> _db;
@@ -78,7 +68,6 @@ public class PbtRocksDbPersistence : IPbtPersistence
         metadata.PutSpan(LayoutVersionKey, value, WriteFlags.None);
     }
 
-    /// <summary>Maps a stem to its leaf-blob column by zone (the tree layer is column-agnostic, so the routing lives here).</summary>
     private static PbtColumns LeafColumn(in Stem stem) => stem.Zone switch
     {
         0x0 => PbtColumns.AccountLeaves,
@@ -87,7 +76,6 @@ public class PbtRocksDbPersistence : IPbtPersistence
         _ => throw new NotSupportedException($"Zone {stem.Zone} is reserved"),
     };
 
-    /// <summary>Maps a trie node to its column by zone, mirroring <see cref="LeafColumn"/>.</summary>
     /// <remarks>The depth-0 root's path is all zeros, so it falls into the account column.</remarks>
     private static PbtColumns TrieNodeColumn(in TrieNodeKey key) => key.Path.Zone switch
     {
@@ -159,9 +147,8 @@ public class PbtRocksDbPersistence : IPbtPersistence
         }
 
         /// <summary>
-        /// Reads a value into a pooled buffer: copies the store's (native) slice into an
-        /// <see cref="ArrayPool{T}.Shared"/> rental that the caller returns to the pool on disposal.
-        /// PBT never stores an empty value, so an empty/absent slice is treated as absent.
+        /// Copies the store's native slice into an <see cref="ArrayPool{T}.Shared"/> rental that the
+        /// caller returns to the pool on disposal.
         /// </summary>
         private static RefCountingMemory? ReadOwned(IReadOnlyKeyValueStore column, scoped ReadOnlySpan<byte> key)
         {
@@ -193,9 +180,8 @@ public class PbtRocksDbPersistence : IPbtPersistence
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
-        // Storage keys are tree keys, so each one costs two hashes to derive from scratch. Callers that
-        // write an address's slots together — the persistence coordinator and the importer both group
-        // them — collapse that to one hash per address plus one per 256-slot run.
+        // Storage keys are tree keys, so each one costs two hashes to derive from scratch; reusing the
+        // deriver across an address's slots collapses that to one hash per address plus one per 256-slot run.
         private PbtSlotKeyDeriver _deriver;
         private Address? _deriverAddress;
 
@@ -226,7 +212,6 @@ public class PbtRocksDbPersistence : IPbtPersistence
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storage);
             if (EvmWordSlot.IsZero(value))
             {
-                // zero slots are not stored; absence reads back as zero
                 storage.Set(key.Bytes, null, flags);
             }
             else

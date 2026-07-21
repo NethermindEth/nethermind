@@ -37,7 +37,6 @@ public class PbtColumnRoutingTests
             batch.SetLeafBlob(StorageStem, storageBlob);
         }
 
-        // each blob lives in exactly its zone's column and nowhere else
         AssertOnlyIn(db, AccountStem.Bytes.ToArray(), PbtColumns.AccountLeaves, accountBlob, LeafColumns);
         AssertOnlyIn(db, CodeStem.Bytes.ToArray(), PbtColumns.CodeLeaves, codeBlob, LeafColumns);
         AssertOnlyIn(db, StorageStem.Bytes.ToArray(), PbtColumns.StorageLeaves, storageBlob, LeafColumns);

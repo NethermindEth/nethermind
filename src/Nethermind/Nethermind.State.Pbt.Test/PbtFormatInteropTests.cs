@@ -22,7 +22,6 @@ public class PbtFormatInteropTests
     private static readonly byte[] Value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
     private static readonly byte[] Rewritten = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-    /// <summary>The same writes fold to the same root and the same node keys whichever format stores them.</summary>
     [Test]
     public void BothFormats_FoldToTheSameRoot()
     {
@@ -52,7 +51,7 @@ public class PbtFormatInteropTests
         // sixteen stems on the boundary slots of one depth-4 group: it branches sixteen ways, so a
         // single-slot rewrite leaves whole clean subtrees for the copy-verbatim path to take
         List<(byte[], byte[]?)> writes = [];
-        for (byte slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++) writes.Add((BoundaryKey(slot), Value));
+        for (byte slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++) writes.Add((BoundaryKey(0, slot), Value));
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, initial);
         harness.ApplyBatch(writes);
@@ -74,10 +73,6 @@ public class PbtFormatInteropTests
         }
     }
 
-    /// <summary>
-    /// A store written every-level keeps reading after the format flips: further writes fold to the
-    /// reference root, a group a batch rewrites is converted, and one no batch touches is left as it was.
-    /// </summary>
     [Test]
     public void OldFormatStore_ReadsAndConvertsOnlyWhatIsRewritten()
     {
@@ -96,7 +91,6 @@ public class PbtFormatInteropTests
         TrieNodeKey keyB = TrieNodeKey.Root.ChildGroup(1);
         Assert.That(PbtTrieNodeGroup.Decode(harness.Nodes[keyA]).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
 
-        // flip to interleaved and rewrite one slot of group A only
         harness.WriteFormat = PbtGroupFormat.Interleaved;
         groupA[3] = (groupA[3].Item1, Rewritten);
         ValueHash256 root = harness.ApplyBatch([groupA[3]]);
@@ -108,15 +102,12 @@ public class PbtFormatInteropTests
 
     private static long TotalNodeBytes(PbtTreeHarness harness) => harness.Nodes.Values.Sum(blob => (long)blob.Length);
 
-    /// <summary>A key on boundary slot <paramref name="slot"/> of the root's child group <paramref name="rootNibble"/>.</summary>
     private static byte[] BoundaryKey(byte rootNibble, byte slot)
     {
         byte[] key = new byte[Stem.Length + 1];
         key[0] = (byte)((rootNibble << 4) | slot); // depth-0 nibble picks the child group, depth-4 nibble the slot
         return key;
     }
-
-    private static byte[] BoundaryKey(byte slot) => BoundaryKey(0, slot);
 
     private static List<(byte[], byte[]?)> RandomWrites(int seed, int count)
     {

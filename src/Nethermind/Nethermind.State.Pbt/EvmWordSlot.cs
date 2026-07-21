@@ -20,7 +20,7 @@ public static class EvmWordSlot
         if (stripped.Length == 32) return Unsafe.ReadUnaligned<EvmWord>(ref MemoryMarshal.GetReference(stripped));
 
         EvmWord word = default;
-        stripped.CopyTo(AsSpan(ref word)[(32 - stripped.Length)..]);
+        stripped.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref word, 1))[(32 - stripped.Length)..]);
         return word;
     }
 
@@ -30,12 +30,6 @@ public static class EvmWordSlot
     public static ReadOnlySpan<byte> AsReadOnlySpan(in EvmWord word) =>
         MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in word), 1));
 
-    private static Span<byte> AsSpan(ref EvmWord word) =>
-        MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref word, 1));
-
     /// <summary>The stripped (leading-zeros-removed) representation the EVM world state expects; empty for zero.</summary>
     public static byte[] ToStrippedBytes(in EvmWord word) => AsReadOnlySpan(in word).WithoutLeadingZeros().ToArray();
-
-    /// <summary>The full 32-byte representation, e.g. to feed a tree leaf.</summary>
-    public static byte[] ToArray32(in EvmWord word) => AsReadOnlySpan(in word).ToArray();
 }

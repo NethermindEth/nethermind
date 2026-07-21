@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Config;
@@ -69,11 +68,11 @@ public class PbtScopeProviderBenchmark
     [Params(0, 20)]
     public int StorageSlotsPerAccount { get; set; }
 
-    // Storage-zone slot layout (only meaningful when StorageSlotsPerAccount > 0): pack into one stem or fan out.
+    // Only meaningful when StorageSlotsPerAccount > 0.
     [Params(SlotLayout.Dense, SlotLayout.Spread)]
     public SlotLayout StorageLayout { get; set; }
 
-    // Writes are flat in the layer count (established), so pinned to 1 for the layout comparison.
+    // Writes are flat in the layer count, so pinned to 1.
     [Params(1)]
     public int ChainDepth { get; set; }
 
@@ -83,7 +82,7 @@ public class PbtScopeProviderBenchmark
         _provider = StateBackend switch
         {
             Backend.Pbt => CreatePbtProvider(),
-            Backend.Trie => CreateTrieProvider(),
+            Backend.Trie => new TrieStoreScopeProvider(new TestRawTrieStore(new MemDb()), new MemDb(), LimboLogs.Instance),
             _ => throw new ArgumentOutOfRangeException(nameof(StateBackend))
         };
 
@@ -130,9 +129,6 @@ public class PbtScopeProviderBenchmark
             new MemDb(), _pbtManager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
             config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel);
     }
-
-    private static IWorldStateScopeProvider CreateTrieProvider() =>
-        new TrieStoreScopeProvider(new TestRawTrieStore(new MemDb()), new MemDb(), LimboLogs.Instance);
 
     [Benchmark]
     public Hash256 WriteAndUpdateRootHash()
@@ -202,11 +198,9 @@ public class PbtScopeProviderBenchmark
 
     private sealed class BenchFinalizedStateProvider : IFinalizedStateProvider
     {
-        private readonly Dictionary<ulong, Hash256> _roots = [];
+        public ulong FinalizedBlockNumber { get; }
 
-        public ulong FinalizedBlockNumber { get; set; }
-
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => _roots.GetValueOrDefault(blockNumber);
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => null;
     }
 
     private sealed class BenchProcessExitSource(CancellationTokenSource cts) : IProcessExitSource

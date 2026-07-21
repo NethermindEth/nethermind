@@ -88,8 +88,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     /// <summary>
     /// Folds the stems dirtied since the last update into the tree on top of the pre-block state,
-    /// recording the new blobs and nodes in the bundle's write buffer and flushing the dirty set. A
-    /// repeated call with no intervening writes is a no-op; <see cref="Commit"/> seals the buffer.
+    /// recording the new blobs and nodes in the bundle's write buffer and flushing the dirty set.
     /// </summary>
     public void UpdateRootHash()
     {
@@ -99,9 +98,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, out _).ToHash256();
         _rootDirty = false;
     }
-
-    // ---- IPbtStore: the updater's reads and writes both go through the bundle, whose write buffer is
-    // probed ahead of the layer chain, so a fold composes on top of any earlier fold this block ----
 
     RefCountingMemory? IPbtStore.GetTrieNode(in TrieNodeKey key) => Bundle.GetTrieNode(key);
 
@@ -145,7 +141,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     /// Returning the builder hands back the stem-change maps no fold claimed: a scope abandoned with
     /// pending writes — an exception mid-block, or a branch dropped before its final
     /// <see cref="UpdateRootHash"/> — would otherwise lose them to the GC rather than the pool.
-    /// Idempotent, so a double dispose cannot return anything twice.
     /// </remarks>
     public void Dispose()
     {
@@ -164,9 +159,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     /// <summary>
     /// Folds an account's EIP-8297 header leaves straight into the dirty stems: BASIC_DATA,
     /// CODE_HASH and the header code chunks on its header stem, plus any overflow chunks on their
-    /// content-addressed code-zone stems. Runs on the single-threaded account flush, after the storage
-    /// batches, so it merges with any header-region slots already present on the header stem (their
-    /// sub-index bands never overlap).
+    /// own stems.
     /// </summary>
     private void ApplyAccountHeader(Address address, Account account)
     {
@@ -205,28 +198,19 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
     }
 
-
-
-    /// <summary>The <paramref name="count"/> chunks of <paramref name="chunks"/> starting at <paramref name="firstChunk"/>.</summary>
     private static ReadOnlySpan<byte> ChunkRun(byte[] chunks, int firstChunk, int count) =>
         chunks.AsSpan(firstChunk * PbtKeyDerivation.CodeChunkSize, count * PbtKeyDerivation.CodeChunkSize);
 
     private static ValueHash256 SlotLeaf(in EvmWord value) =>
         EvmWordSlot.IsZero(value) ? default : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
 
-    /// <summary>Reads the code size preserved in the account's prior <c>BASIC_DATA</c> leaf (0 if the account is new).</summary>
+    /// <summary>Reads the code size from the account's prior <c>BASIC_DATA</c> leaf; 0 if the account is new.</summary>
     private uint PriorCodeSize(in Stem headerStem)
     {
         using RefCountingMemory? prior = Bundle.GetLeafBlob(headerStem);
         return prior is not null && StemLeafBlob.TryGetValue(prior.GetSpan(), PbtKeyDerivation.BasicDataLeafKey, out ReadOnlySpan<byte> basicData)
             ? PbtKeyDerivation.ReadBasicDataCodeSize(basicData)
             : 0;
-    }
-
-    private void SetSlot(Address address, in UInt256 slot, in EvmWord value)
-    {
-        Bundle.SetSlot(address, slot, value);
-        _rootDirty = true;
     }
 
     // PBT does not support self-destruct; this keeps only the read-side new-account optimization,
@@ -275,14 +259,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
         public void Set(in UInt256 index, byte[] value)
         {
-            // the world state passes a stripped (leading-zeros-removed) value; canonicalize to 32 bytes
             EvmWord word = EvmWordSlot.FromStripped(value);
 
             Stem stem = _deriver.Derive(index, out byte subIndex);
 
             // single-writer per stem: this address's storage is flushed by one worker
             scope._writeBatchBuilder.SetLeaf(stem, subIndex, SlotLeaf(word));
-            scope.SetSlot(address, index, word);
+            scope.Bundle.SetSlot(address, index, word);
+            scope._rootDirty = true;
         }
 
         public void Clear() => scope.SelfDestructStorage(address);

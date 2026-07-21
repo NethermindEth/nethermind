@@ -17,7 +17,6 @@ public class PbtTrieNodeGroupTests
     [TestCase(PbtGroupFormat.Interleaved)]
     public void PositionMath_EncodeDecodeRoundTrip_AndValidation(PbtGroupFormat format)
     {
-        // the boundary position math is self-consistent and marks exactly the 16 boundary slots
         int boundaryCount = 0;
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
         {
@@ -70,7 +69,6 @@ public class PbtTrieNodeGroupTests
             roundTripped[position] = slot;
         }
 
-        // deterministic: re-encoding the decoded group reproduces the bytes exactly
         byte[] reencoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         Assert.That(Encode(roundTripped, decoded.Stats, reencoded, format), Is.EqualTo(length));
         Assert.That(reencoded.AsSpan(0, length).SequenceEqual(encoded.AsSpan(0, length)));
@@ -125,7 +123,6 @@ public class PbtTrieNodeGroupTests
                 Is.False, $"boundary slot {slot}");
         }
 
-        // the every-level format skips nothing, whatever the position
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
         {
             Assert.That(PbtTrieNodeGroup.IsSkippedPosition(PbtGroupFormat.EveryLevel, position), Is.False, $"position {position}");
@@ -197,7 +194,6 @@ public class PbtTrieNodeGroupTests
         PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
 
-        // an internal node stored at the root position is rejected in either format
         slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.InternalSlot(hash);
         foreach (PbtGroupFormat format in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved])
         {
@@ -242,7 +238,6 @@ public class PbtTrieNodeGroupTests
         Assert.That(expected >> PbtTrieNodeGroup.BoundarySlots, Is.Zero, "only the sixteen slot bits are set");
     }
 
-    /// <summary>The empty group — the absence sentinel — has no boundary occupant at all.</summary>
     [Test]
     public void BoundaryShape_EmptyGroup_IsUnoccupied()
     {

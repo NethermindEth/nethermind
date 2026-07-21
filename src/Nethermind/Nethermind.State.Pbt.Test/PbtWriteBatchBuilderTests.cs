@@ -13,10 +13,6 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtWriteBatchBuilderTests
 {
-    /// <summary>
-    /// Leaf and range writes to one stem fold into a single entry carrying all of them, distinct stems
-    /// get an entry each, and the drain empties the builder — a second drain yields nothing.
-    /// </summary>
     [Test]
     public void FoldsPerStemAndDrainEmpties()
     {
@@ -27,7 +23,7 @@ public class PbtWriteBatchBuilderTests
         Assert.That(builder.HasDirtyStems, Is.False);
 
         builder.SetLeaf(first, 40, Value(40));
-        builder.SetLeafRange(first, 10, Run(10, 3));  // sub-indices 10, 11, 12
+        builder.SetLeafRange(first, 10, Run(10, 3));
         builder.SetLeaf(second, 7, Value(7));
 
         Assert.That(builder.HasDirtyStems, Is.True);
@@ -153,7 +149,6 @@ public class PbtWriteBatchBuilderTests
         Assert.That(nibbles[PbtWriteBatch.TouchedMaskIndex], Is.EqualTo(0b1000_0001_0000_0011));
     }
 
-    /// <summary>The mask a level's bounds imply, which its cached one must equal.</summary>
     private static int TouchedMaskOf(ReadOnlySpan<int> level)
     {
         int touched = 0;

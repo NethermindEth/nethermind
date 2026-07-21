@@ -72,7 +72,6 @@ public class PbtStateReaderTests
         Assert.That(accountAt3.Balance, Is.EqualTo((UInt256)300));
         Assert.That(ctx.StateReader.GetStorage(header4, address, 1).ToArray(), Is.EqualTo((byte[])[4]));
 
-        // unknown state and unknown account
         BlockHeader unknown = Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
         Assert.That(ctx.StateReader.HasStateForBlock(unknown), Is.False);
         Assert.That(ctx.StateReader.TryGetAccount(unknown, address, out _), Is.False);

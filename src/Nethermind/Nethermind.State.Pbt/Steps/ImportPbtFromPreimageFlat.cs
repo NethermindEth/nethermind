@@ -32,14 +32,9 @@ namespace Nethermind.State.Pbt.Steps;
 /// </summary>
 /// <remarks>
 /// The import runs in two phases, and the PBT's own flat columns are what carries state between them:
-/// <list type="number">
-/// <item>Copy the source into the PBT flat account and storage columns, in parallel over ranges of the
-/// source's account key space. No stem is derived here beyond the flat keys themselves.</item>
-/// <item>Scan those columns back and derive the tree leaves. This is the phase the flat key layout
-/// buys: a storage row's key <em>is</em> its tree key, and an account row's key is the address hash
-/// the account header stem is a prefix-preserving function of, so both columns enumerate in stem
-/// order and the rebuilder sees contiguous windows without anything having to sort them.</item>
-/// </list>
+/// first the source is copied into the PBT flat account and storage columns, in parallel over ranges of
+/// the source's account key space; then those columns are scanned back to derive the tree leaves, which
+/// the flat key layout hands over in stem order so nothing has to sort them.
 /// The phases cannot overlap: phase one partitions the source by address, which scatters across the
 /// whole address-hash space, so no range of phase two's key space is complete until all of phase one is.
 /// </remarks>
@@ -133,7 +128,6 @@ public class ImportPbtFromPreimageFlat(
         exitSource.Exit(0);
     }
 
-    /// <summary>Drops whatever a previous, interrupted run of this step left behind.</summary>
     /// <remarks>
     /// A pre-genesis state pointer means no state was ever committed, but an interrupted run can still
     /// have written flat rows, leaf blobs and trie nodes, and those are not inert:
@@ -286,11 +280,6 @@ public class ImportPbtFromPreimageFlat(
         if (_logger.IsInfo) _logger.Info($"PBT import copied {accounts:N0} accounts and {slots:N0} slots in {copying.Elapsed:hh\\:mm\\:ss}.");
     }
 
-    /// <summary>
-    /// Copies every account in <c>[<paramref name="start"/>, <paramref name="end"/>]</c>, and each one's
-    /// storage inline, publishing what it copies into the shared <paramref name="accounts"/> and
-    /// <paramref name="slots"/> counters as it goes.
-    /// </summary>
     private static void CopyPartition(
         FlatPersistence.IPersistenceReader reader,
         IPbtPersistence.IWriteBatch batch,
@@ -368,7 +357,6 @@ public class ImportPbtFromPreimageFlat(
         ValueHash256 start = default;
         BinaryPrimitives.WriteUInt16BigEndian(start.BytesAsSpan, (ushort)((long)partition * PartitionPrefixSpace / partitionCount));
 
-        // the last range runs to the top of the key space rather than to a prefix boundary
         if (partition == partitionCount - 1) return (start, ValueKeccak.MaxValue);
 
         ValueHash256 end = default;
@@ -476,7 +464,10 @@ public class ImportPbtFromPreimageFlat(
                 ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for the account hashing to {addressHash} (code hash {account.CodeHash}) in the code database.")
                 : null;
 
-            await sink.Add(new RebuildEntry(headerStem, PbtKeyDerivation.BasicDataLeafKey, BasicDataLeaf(account, code)));
+            ValueHash256 basicData = default;
+            PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, code is null ? 0u : (uint)code.Length, account.Nonce, account.Balance);
+
+            await sink.Add(new RebuildEntry(headerStem, PbtKeyDerivation.BasicDataLeafKey, basicData));
             await sink.Add(new RebuildEntry(headerStem, PbtKeyDerivation.CodeHashLeafKey, account.CodeHash.ValueHash256));
 
             // a zone-0 storage row below this account's stem belongs to no account in the column; it
@@ -613,13 +604,6 @@ public class ImportPbtFromPreimageFlat(
     {
         RlpReader reader = new(slimRlp);
         return AccountDecoder.Slim.Decode(ref reader)!;
-    }
-
-    private static ValueHash256 BasicDataLeaf(Account account, byte[]? code)
-    {
-        ValueHash256 leaf = default;
-        PbtKeyDerivation.PackBasicData(leaf.BytesAsSpan, code is null ? 0u : (uint)code.Length, account.Nonce, account.Balance);
-        return leaf;
     }
 
     /// <summary>A slot's tree leaf: the stored value re-padded to the canonical 32 bytes.</summary>

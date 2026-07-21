@@ -10,7 +10,6 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Pbt.Sync;
 
-/// <summary>The PBT backend has no state sync; construction is cheap and every operation throws.</summary>
 public sealed class PbtUnsupportedSnapTrieFactory : ISnapTrieFactory
 {
     public ISnapTree<PathWithAccount> CreateStateTree() => throw Unsupported();
@@ -20,7 +19,6 @@ public sealed class PbtUnsupportedSnapTrieFactory : ISnapTrieFactory
     private static NotSupportedException Unsupported() => new("Snap sync is not supported by the pbt state backend");
 }
 
-/// <inheritdoc cref="PbtUnsupportedSnapTrieFactory"/>
 public sealed class PbtUnsupportedTreeSyncStore : ITreeSyncStore
 {
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => throw Unsupported();

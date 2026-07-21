@@ -15,7 +15,6 @@ namespace Nethermind.Benchmarks.Core
         private readonly byte[] _pair = new byte[64];
         private readonly byte[] _output = new byte[32];
 
-        /// <summary>Which half of the pair is zeroed: neither, the low 32 bytes, or the high 32 bytes.</summary>
         [Params("none", "low", "high")]
         public string ZeroHalf { get; set; }
 

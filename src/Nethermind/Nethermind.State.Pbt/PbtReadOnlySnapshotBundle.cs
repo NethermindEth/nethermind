@@ -11,22 +11,16 @@ using Nethermind.State.Pbt.Persistence;
 namespace Nethermind.State.Pbt;
 
 /// <summary>
-/// A complete, immutable view of one state: the leased chain of in-memory diff layers (oldest first)
-/// over a leased persistence reader. Shareable — several scopes may read one instance at once, each
-/// holding a lease.
+/// An immutable view of one state: a leased chain of in-memory diff layers (oldest first) over a
+/// leased persistence reader. Several scopes may read one instance at once, each holding a lease.
 /// </summary>
 /// <remarks>
-/// The reader belongs here rather than to the mutable bundle stacked above, and that placement is
-/// what keeps the reads honest: layers spell a deleted stem as an empty blob and a removed node as a
-/// present null, both of which read back as "nothing", indistinguishable from never having been
-/// written. Only a tier that answers from disk itself can tell the difference, so this bundle is the
-/// bottom of every walk — its <see langword="null"/> and zero results are final, and nothing may be
-/// stacked below it.
-/// <para>
-/// Immutable for its whole lifetime, which is what makes it safe to share: the layer chain is never
-/// appended to, so a reader walking it cannot see it shift. Sealed layers accumulate on the mutable
-/// bundle instead.
-/// </para>
+/// The reader belongs here rather than to the mutable bundle stacked above: layers spell a deleted
+/// stem as an empty blob and a removed node as a present null, both indistinguishable from never
+/// having been written, so only a tier answering from disk can tell them apart. This bundle is
+/// therefore the bottom of every walk — its <see langword="null"/> and zero results are final, and
+/// nothing may be stacked below it. The layer chain is never appended to, which is what makes
+/// sharing safe; sealed layers accumulate on the mutable bundle instead.
 /// </remarks>
 /// <param name="snapshots">Leased layer chain, oldest first; the bundle takes ownership of the leases.</param>
 /// <param name="reader">Leased persistence reader; the bundle takes ownership.</param>
@@ -46,7 +40,7 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         return reader.GetAccount(address);
     }
 
-    /// <summary>Returns the slot value (zero when absent or self-destructed). The walk stops at a self-destruct marker.</summary>
+    /// <summary>Returns the slot value; zero when absent or self-destructed.</summary>
     public EvmWord GetSlot(Address address, in UInt256 slot)
     {
         GuardDispose();
@@ -62,9 +56,8 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         return reader.GetSlot(address, slot);
     }
 
-    /// <summary>Returns the complete leaf blob of the stem, or null when the stem does not exist.</summary>
-    /// <remarks>Layer hits are wrapped without copying (their arrays are owned by the layer); the reader
-    /// fallthrough returns a pooled buffer the caller must dispose.</remarks>
+    /// <remarks>Layer hits wrap the layer-owned array without copying; the reader fallthrough returns a
+    /// pooled buffer the caller must dispose.</remarks>
     public RefCountingMemory? GetLeafBlob(in Stem stem)
     {
         GuardDispose();
@@ -91,7 +84,6 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
 
     public bool TryLease() => TryAcquireLease();
 
-    /// <remarks>Runs once the last lease drops, so no reader can be walking the chain or the reader.</remarks>
     protected override void CleanUp()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
