@@ -137,6 +137,67 @@ public sealed class ReadOnlySnapshotBundle(
         return slotResult;
     }
 
+    internal void GetSlots(ReadOnlySpan<SlotRead> reads, Span<SlotValue?> values)
+    {
+        GuardDispose();
+
+        if (reads.Length != values.Length)
+            throw new ArgumentException("Reads and values must have the same length.", nameof(values));
+
+        StorageCell[] missingCells = new StorageCell[reads.Length];
+        int[] missingIndices = new int[reads.Length];
+        int missingCount = 0;
+
+        for (int readIndex = 0; readIndex < reads.Length; readIndex++)
+        {
+            SlotRead read = reads[readIndex];
+            Address address = read.Cell.Address;
+            UInt256 index = read.Cell.Index;
+            HashedKey<(Address, UInt256)> key = new((address, index));
+            bool resolved = false;
+
+            for (int snapshotIndex = snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (snapshots[snapshotIndex].TryGetStorage(key, out SlotValue? slotValue))
+                {
+                    values[readIndex] = slotValue;
+                    resolved = true;
+                    break;
+                }
+
+                if (_persistedSnapshotCount + snapshotIndex <= read.SelfDestructStateIdx)
+                {
+                    values[readIndex] = null;
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if (resolved) continue;
+
+            long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+            if (_persistedSnapshotCount > 0 &&
+                persistedSnapshots.TryGetSlot(address, in index, read.SelfDestructStateIdx, sw, out byte[]? persistedSlot))
+            {
+                values[readIndex] = persistedSlot is null
+                    ? null
+                    : SlotValue.FromSpanWithoutLeadingZero(persistedSlot);
+                continue;
+            }
+
+            missingCells[missingCount] = read.Cell;
+            missingIndices[missingCount] = readIndex;
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        SlotValue?[] missingValues = new SlotValue?[missingCount];
+        persistenceReader.GetSlots(missingCells.AsSpan(0, missingCount), missingValues);
+        for (int i = 0; i < missingCount; i++)
+            values[missingIndices[i]] = missingValues[i];
+    }
+
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStateNodes(path, out node);
 

@@ -12,6 +12,8 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
+internal readonly record struct SlotRead(StorageCell Cell, int SelfDestructStateIdx);
+
 /// <summary>
 /// A mutable bundle wrapping a <see cref="ReadOnlySnapshotBundle"/> with a write buffer backed by <see cref="SnapshotContent"/>.
 /// </summary>
@@ -148,6 +150,68 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+    }
+
+    internal void GetSlots(ReadOnlySpan<SlotRead> reads, Span<SlotValue?> values)
+    {
+        GuardDispose();
+
+        if (reads.Length != values.Length)
+            throw new ArgumentException("Reads and values must have the same length.", nameof(values));
+
+        SlotRead[] missingReads = new SlotRead[reads.Length];
+        int[] missingIndices = new int[reads.Length];
+        int missingCount = 0;
+
+        for (int readIndex = 0; readIndex < reads.Length; readIndex++)
+        {
+            SlotRead read = reads[readIndex];
+            HashedKey<(Address, UInt256)> key = new((read.Cell.Address, read.Cell.Index));
+
+            if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
+            {
+                values[readIndex] = slotValue;
+                continue;
+            }
+
+            if (read.SelfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
+            {
+                values[readIndex] = null;
+                continue;
+            }
+
+            int currentBundleSelfDestructIdx = read.SelfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+            bool resolved = false;
+            for (int snapshotIndex = _snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (_snapshots[snapshotIndex].TryGetStorage(key, out slotValue))
+                {
+                    values[readIndex] = slotValue;
+                    resolved = true;
+                    break;
+                }
+
+                if (snapshotIndex <= currentBundleSelfDestructIdx)
+                {
+                    values[readIndex] = null;
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if (resolved) continue;
+
+            missingReads[missingCount] = read;
+            missingIndices[missingCount] = readIndex;
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        SlotValue?[] missingValues = new SlotValue?[missingCount];
+        _readOnlySnapshotBundle.GetSlots(missingReads.AsSpan(0, missingCount), missingValues);
+        for (int i = 0; i < missingCount; i++)
+            values[missingIndices[i]] = missingValues[i];
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)

@@ -91,6 +91,44 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
+        public void GetStorage(ReadOnlySpan<ValueHash256> addresses, ReadOnlySpan<ValueHash256> slots, Span<SlotValue?> values)
+        {
+            if (addresses.Length != slots.Length || slots.Length != values.Length)
+                throw new ArgumentException("Addresses, slots, and values must have the same length.", nameof(values));
+
+            byte[][] keys = new byte[addresses.Length][];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                byte[] key = new byte[StorageKeyLength];
+                EncodeStorageKeyHashedWithShortPrefix(key, addresses[i], slots[i]);
+                keys[i] = key;
+            }
+
+            byte[]?[] encodedValues = new byte[]?[keys.Length];
+            storage.MultiGet(keys, encodedValues, ReadFlags.HintCacheMiss);
+
+            for (int i = 0; i < encodedValues.Length; i++)
+            {
+                byte[]? encodedValue = encodedValues[i];
+                if (encodedValue is null or { Length: 0 })
+                {
+                    values[i] = null;
+                    continue;
+                }
+
+                ReadOnlySpan<byte> value = encodedValue;
+                if (rlpWrapSlots)
+                {
+                    RlpReader ctx = new(value);
+                    value = ctx.DecodeByteArraySpan();
+                }
+
+                SlotValue slotValue = default;
+                DecodeSlotValue(value, ref slotValue);
+                values[i] = slotValue;
+            }
+        }
+
         [SkipLocalsInit]
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
@@ -107,34 +145,28 @@ public static class BaseFlatPersistence
                 value = ctx.DecodeByteArraySpan();
             }
 
-            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
-            // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
-            // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
+            DecodeSlotValue(value, ref outValue);
+
+            return true;
+        }
+
+        private void DecodeSlotValue(ReadOnlySpan<byte> value, ref SlotValue outValue)
+        {
             int len = value.Length;
             if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
 
-            // len is now guaranteed <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
-            // This writes the variable-length DB value into the end of the 32-byte struct.
             if (len == SlotValue.ByteCount)
             {
                 outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
-            }
-            else
-            {
-                ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
-
-                // Zero-initialize the leading bytes before copying the value
-                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
-
-                ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
-
-                Unsafe.CopyBlockUnaligned(
-                    ref destPtr,
-                    ref MemoryMarshal.GetReference(value),
-                    (uint)len);
+                return;
             }
 
-            return true;
+            ref byte destination = ref Unsafe.As<SlotValue, byte>(ref outValue);
+            Unsafe.InitBlockUnaligned(ref destination, 0, (uint)(SlotValue.ByteCount - len));
+            Unsafe.CopyBlockUnaligned(
+                ref Unsafe.Add(ref destination, SlotValue.ByteCount - len),
+                ref MemoryMarshal.GetReference(value),
+                (uint)len);
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
