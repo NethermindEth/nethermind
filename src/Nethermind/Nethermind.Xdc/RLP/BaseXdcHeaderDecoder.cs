@@ -10,10 +10,9 @@ using System;
 namespace Nethermind.Xdc.RLP;
 
 /// <remarks>
-/// The plain-header fallback (see <see cref="FallbackDecoder"/>) is encode-only. Decoding has no
-/// symmetric fallback: unlike AuRa's seal, which is disambiguated by a single field's length,
-/// distinguishing a foreign header from an XDC one after <c>mixHash</c>/<c>nonce</c> would require
-/// telling XDC's required <c>Validators</c>/<c>Penalties</c> tail apart from Ethereum's optional
+/// The plain-header fallback (see <see cref="FallbackDecoder"/>) is encode-only. 
+/// Distinguishing a foreign header from an XDC one after <c>mixHash</c>/<c>nonce</c> would require
+/// telling XDC's required <c>Validators</c>/<c>Penalties</c> fields apart from Ethereum's optional
 /// post-merge fields (<c>BaseFeePerGas</c>, <c>WithdrawalsRoot</c>, etc.) — both just look like "more
 /// RLP content" at that point, so no reliable byte-shape check exists. This is safe because XDC nodes
 /// only ever decode XDC-shaped chain data through the global registry; it is not safe to decode
