@@ -41,6 +41,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
+    private HeavyWarmupState? _heavyWarmups;
 
     // A session is always joined (under _speculativeLock) before the reactive path touches the shared caches.
     private readonly Lock _speculativeLock = new();
@@ -95,6 +96,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
+        Interlocked.Exchange(ref _heavyWarmups, null)?.CompleteAll();
         if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
 
         CancelAndJoinSpeculative();
@@ -137,9 +139,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, int maxDegreeOfParallelism, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
+        HeavyWarmupState heavyWarmups = new(block);
+        BlockState blockState = new(this, block, parent, spec, heavyWarmups, speculativelyWarmed);
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
+        Volatile.Write(ref _heavyWarmups, heavyWarmups);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
@@ -266,15 +270,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
-    /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
-    /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+    /// <summary>Coordinates an in-flight heavy warmup, then reports main-thread progress so later warming can skip already-started transactions.</summary>
+    /// <remarks>The canonical executor joins only a heavy warmup that has already claimed the transaction. Otherwise it claims the transaction itself, preventing a speculative copy from starting behind it.</remarks>
+    public void OnBeforeTxExecution(Transaction? transaction = null)
+    {
+        int txIndex = _mainThreadTxIndex + 1;
+        if (transaction is not null)
+        {
+            Volatile.Read(ref _heavyWarmups)?.Join(txIndex);
+        }
+        Volatile.Write(ref _mainThreadTxIndex, txIndex);
+    }
 
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CancelAndJoinSpeculative();
         ClearWarmMarker();
+        Interlocked.Exchange(ref _heavyWarmups, null)?.CompleteAll();
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
         cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
@@ -310,6 +323,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         finally
         {
+            blockState.HeavyWarmups.CompleteAll();
             // Don't complete the task until address warmer is also done.
             addressWarmer.Wait();
             addressWarmer.Dispose();
@@ -579,6 +593,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         BlockState blockState,
         CancellationToken cancellationToken)
     {
+        if (!blockState.HeavyWarmups.TryStart(txIndex)) return;
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
@@ -610,6 +625,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (Exception ex)
         {
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
+        }
+        finally
+        {
+            blockState.HeavyWarmups.Complete(txIndex);
         }
     }
 
@@ -797,7 +816,92 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
+    private record BlockState(
+        BlockCachePreWarmer PreWarmer,
+        Block Block,
+        BlockHeader Parent,
+        IReleaseSpec Spec,
+        HeavyWarmupState HeavyWarmups,
+        ISet<Hash256>? SpeculativelyWarmed = null);
+
+    private sealed class HeavyWarmupState
+    {
+        private readonly HeavyWarmupCompletion?[]? _completions;
+
+        public HeavyWarmupState(Block block)
+        {
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Transaction tx = block.Transactions[i];
+                if (tx.SenderAddress is null || tx.GasLimit <= SplitSenderGroupGasThreshold) continue;
+
+                _completions ??= new HeavyWarmupCompletion?[block.Transactions.Length];
+                _completions[i] = new();
+            }
+        }
+
+        public void Join(int txIndex)
+        {
+            if (_completions is not null && (uint)txIndex < (uint)_completions.Length)
+            {
+                _completions[txIndex]?.JoinOrTakeOwnership();
+            }
+        }
+
+        public bool TryStart(int txIndex)
+        {
+            if (_completions is not null && (uint)txIndex < (uint)_completions.Length)
+            {
+                return _completions[txIndex]?.TryStart() ?? true;
+            }
+
+            return true;
+        }
+
+        public void Complete(int txIndex)
+        {
+            if (_completions is not null && (uint)txIndex < (uint)_completions.Length)
+            {
+                _completions[txIndex]?.Complete();
+            }
+        }
+
+        public void CompleteAll()
+        {
+            if (_completions is null) return;
+            foreach (HeavyWarmupCompletion? completion in _completions)
+            {
+                completion?.Complete();
+            }
+        }
+    }
+
+    private sealed class HeavyWarmupCompletion
+    {
+        private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _state;
+
+        public bool TryStart() => Interlocked.CompareExchange(ref _state, Warmup, Available) == Available;
+
+        public void JoinOrTakeOwnership()
+        {
+            if (Interlocked.CompareExchange(ref _state, Main, Available) == Warmup)
+            {
+                _completion.Task.GetAwaiter().GetResult();
+            }
+        }
+
+        public void Complete()
+        {
+            Volatile.Write(ref _state, Completed);
+            _completion.TrySetResult();
+        }
+
+        private const int Available = 0;
+        private const int Warmup = 1;
+        private const int Main = 2;
+        private const int Completed = 3;
+    }
 
     /// <summary>
     /// Per-worker state for the transaction-warming loop: one env rented for the worker's

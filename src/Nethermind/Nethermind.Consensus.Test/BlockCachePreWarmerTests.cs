@@ -773,7 +773,7 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void PreWarmCaches_CompletesHeavyJobsBeforeStartingOrdinaryJobs()
+    public void PreWarmCaches_StagesHeavyJobsAndJoinsInFlightWarmup()
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
@@ -781,6 +781,8 @@ public class BlockCachePreWarmerTests
         using ManualResetEventSlim heavyStarted = new();
         using ManualResetEventSlim releaseHeavy = new();
         using ManualResetEventSlim ordinaryStarted = new();
+        using ManualResetEventSlim mainStarted = new();
+        using ManualResetEventSlim canonicalExecuted = new();
 
         Transaction ordinary = Build.A.Transaction
             .WithNonce(0)
@@ -795,7 +797,7 @@ public class BlockCachePreWarmerTests
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
         Block block = Build.A.Block
-            .WithTransactions(ordinary, heavy)
+            .WithTransactions(heavy, ordinary)
             .WithGasLimit(30_000_000)
             .TestObject;
 
@@ -813,15 +815,28 @@ public class BlockCachePreWarmerTests
             nodeStorageCache,
             preBlockCaches,
             LimboLogs.Instance);
+        PrewarmerTxAdapter adapter = new(
+            new SignallingTxProcessorAdapter(canonicalExecuted),
+            preWarmer,
+            new PrewarmerState(preBlockCaches, isPrewarmer: false));
 
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         using (mainWorldState.BeginScope(BuildParentHeader()))
         {
             Task warming = preWarmer.PreWarmCaches(block, BuildParentHeader(), Osaka.Instance);
+            Task<TransactionResult>? mainExecution = null;
             try
             {
                 Assert.That(heavyStarted.Wait(TimeSpan.FromSeconds(5)), Is.True);
                 Assert.That(ordinaryStarted.IsSet, Is.False);
+                mainExecution = Task.Run(() =>
+                {
+                    mainStarted.Set();
+                    return adapter.Execute(heavy, NullTxTracer.Instance);
+                });
+                Assert.That(mainStarted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(canonicalExecuted.Wait(TimeSpan.FromMilliseconds(100)), Is.False,
+                    "canonical execution must wait for the cache-populating heavy warmup");
             }
             finally
             {
@@ -829,9 +844,11 @@ public class BlockCachePreWarmerTests
             }
 
             warming.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            mainExecution!.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
         }
 
         Assert.That(ordinaryStarted.IsSet, Is.True);
+        Assert.That(canonicalExecuted.IsSet, Is.True);
     }
 
     /// <summary>
@@ -1300,6 +1317,17 @@ public class BlockCachePreWarmerTests
     private sealed class NoopTxProcessorAdapter : ITransactionProcessorAdapter
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) => TransactionResult.Ok;
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
+    }
+
+    private sealed class SignallingTxProcessorAdapter(ManualResetEventSlim executed) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            executed.Set();
+            return TransactionResult.Ok;
+        }
+
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     }
 

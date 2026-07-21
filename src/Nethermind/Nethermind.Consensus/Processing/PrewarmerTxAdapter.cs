@@ -10,22 +10,22 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Reports the main thread's per-transaction progress to the prewarmer so it can skip warming already-started txs.
+/// Coordinates cache handoff and reports the main thread's per-transaction progress to the prewarmer.
 /// The <see cref="IPrewarmerState.IsPrewarmer"/> guard ensures only the main execution reports, not the prewarmer's own scope.
 /// </summary>
 public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockCachePreWarmer preWarmer, IPrewarmerState prewarmerState) : ITransactionProcessorAdapter
 {
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
-        ReportProgress();
+        ReportProgress(transaction);
         return baseAdapter.Execute(transaction, txTracer);
     }
 
-    private void ReportProgress()
+    private void ReportProgress(Transaction transaction)
     {
         if (!prewarmerState.IsPrewarmer)
         {
-            preWarmer.OnBeforeTxExecution();
+            preWarmer.OnBeforeTxExecution(transaction);
         }
     }
 
