@@ -656,9 +656,12 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
-        // Retrieve the persistent storage value and push it onto the stack.
+        // Retrieve the persistent storage value and push it onto the stack. Zero slots come back
+        // as a single zero byte; PushZero writes the word directly instead of packing the byte.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
-        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
+        EvmExceptionType pushResult = value.Length == 1 && value[0] == 0
+            ? stack.PushZero<TTracingInst>()
+            : stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
         if (vm.TxTracer.IsTracingOpLevelStorage)
