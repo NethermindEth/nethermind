@@ -109,6 +109,13 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     {
     }
 
+    // The payload is exactly 9 fields with no envelope signature (the sender is explicit). The base
+    // decoder reads a trailing [v, r, s] whenever elements remain after the payload; reject that so a
+    // padded encoding is not silently accepted with a spurious signature (which strict clients drop,
+    // diverging on the transaction hash).
+    protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        throw new RlpException("frame transaction must not carry a trailing signature");
+
     [DoesNotReturn, StackTraceHidden]
     private static Address ThrowMissingSender() => throw new RlpException("frame transaction sender must be a 20-byte address");
 }

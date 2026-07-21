@@ -119,7 +119,7 @@ public class Eip8141ScenarioTests
     // Spec Gas Accounting: charged gas = FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST
     // + EIP-7623 token cost of frame data and signature fields + per-scheme verification cost
     // + the gas each frame consumed. Pinned against the spec constants with known payload bytes;
-    // ARBITRARY entries cost 0 verification gas but their bytes are still calldata-priced.
+    // ARBITRARY entries cost 100 verification gas, and their bytes are also calldata-priced.
     [Test]
     public void ChargedGas_MatchesSpecIntrinsicFormula()
     {
@@ -144,6 +144,7 @@ public class Eip8141ScenarioTests
         ulong expected = 15_000
                          + 2 * 475UL
                          + (CalldataTokens(frameData) + CalldataTokens(witnessBytes)) * 4
+                         + 100 // ARBITRARY signature verification cost
                          + frameGasUsed;
         Assert.That((ulong)receipt.GasUsed, Is.EqualTo(expected));
         Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),

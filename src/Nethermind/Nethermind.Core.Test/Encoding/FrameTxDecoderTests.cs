@@ -41,6 +41,40 @@ public class FrameTxDecoderTests
     }
 
     [Test]
+    public void Decode_PayloadWithTrailingSignature_Throws()
+    {
+        // The payload is exactly 9 fields with no envelope signature. A padding attack that appends a
+        // [v, r, s] triple must be rejected — otherwise it decodes with a spurious signature while
+        // strict clients read exactly 9 elements and drop it, a decode divergence that also changes
+        // the transaction hash.
+        Rlp sequence = Rlp.Encode(
+            Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
+            Rlp.Encode(0L),                          // nonce
+            Rlp.Encode(TestItem.AddressA.Bytes),     // sender
+            Rlp.Encode(Array.Empty<Rlp>()),          // frames
+            Rlp.Encode(Array.Empty<Rlp>()),          // signatures
+            Rlp.Encode(0L),                          // max_priority_fee_per_gas
+            Rlp.Encode(0L),                          // max_fee_per_gas
+            Rlp.Encode(0L),                          // max_fee_per_blob_gas
+            Rlp.Encode(Array.Empty<Rlp>()),          // blob_versioned_hashes
+            Rlp.Encode(27L),                         // trailing v
+            Rlp.Encode(new byte[32]),                // trailing r
+            Rlp.Encode(new byte[32]));               // trailing s
+
+        byte[] payload = new byte[1 + sequence.Length];
+        payload[0] = (byte)TxType.FrameTx;
+        sequence.Bytes.CopyTo(payload, 1);
+
+        void Decode()
+        {
+            RlpReader reader = new(payload);
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        }
+
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing signature"));
+    }
+
+    [Test]
     public void ComputeSigHash_CanonicalHashSignatureBytesChange_HashUnchanged()
     {
         // Empty msg means the entry signs compute_sig_hash itself, so its raw bytes are elided

@@ -74,7 +74,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
         }
 
-        UInt256 maxCost = (UInt256)txGasLimit * effectiveGasPrice;
+        // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
+        // max_fee_per_gas plus blob cost, not the effective price, so it is not under-reserved.
+        // Settlement below still charges the effective price, so the payer's net cost is unchanged.
+        ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
+        UInt256 maxCost = (UInt256)txGasLimit * tx.DecodedMaxFeePerGas + (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault();
 
         FrameTxContext frameContext = new(
             sender,
@@ -212,7 +216,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 if (!frameSucceeded)
                 {
                     // Unroll the batch: restore state to before it began, drop its logs, and mark
-                    // every remaining frame in the batch as skipped (status 0x3, gas refunded by
+                    // every remaining frame in the batch as skipped (status 0x2, gas refunded by
                     // not being consumed). The failed frame keeps its failure receipt.
                     // EIP8141-ISSUE: the spec does not state the receipt status of frames that ran
                     // successfully earlier in the batch before the rollback; earlier frames keep
@@ -339,6 +343,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 tokens += CountCalldataTokens(signature.Signature.Span, spec);
                 signatureVerificationCost += signature.Scheme switch
                 {
+                    TxFrameSignature.SchemeArbitrary => Eip8141Constants.ArbitraryVerificationGasCost,
                     TxFrameSignature.SchemeSecp256k1 => Eip8141Constants.Secp256k1VerificationGasCost,
                     TxFrameSignature.SchemeP256 => Eip8141Constants.P256VerificationGasCost,
                     _ => 0,
