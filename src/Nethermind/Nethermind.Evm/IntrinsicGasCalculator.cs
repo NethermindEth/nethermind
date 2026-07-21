@@ -94,10 +94,7 @@ public static class IntrinsicGasCalculator
         ulong authCount = (ulong)authList.Length;
         ulong perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
         return spec.IsEip8037Enabled
-            ? (
-                authCount * perAuthRegular,
-                authList.Length * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
-            )
+            ? (authCount * perAuthRegular, 0)
             : (authCount * GasCostOf.NewAccount, 0);
 
         [DoesNotReturn, StackTraceHidden]
@@ -117,15 +114,11 @@ public static class IntrinsicGasCalculator
         return totalZeros + ((ulong)data.Length - totalZeros) * GasCostOf.TxDataNonZeroMultiplierEip2028;
     }
 
-    internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList)
-    {
-        // The floor tracks the reduced EIP-2780 base, else the legacy floor would dominate.
-        ulong floorBase = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
-        return spec switch
+    internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong floorBase, ulong tokensInCallData, ulong floorTokensInAccessList) =>
+        spec switch
         {
             { IsEip7976Enabled: true } => floorBase + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
             { IsEip7623Enabled: true } => floorBase + CalculateEip7623FloorTokensInCallData(transaction, spec, tokensInCallData) * spec.GasCosts.TotalCostFloorPerToken,
             _ => 0
         };
-    }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -76,7 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
             {
-                txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
+                txWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
             }
 
             return ResultWrapper<TransactionForRpcWithProof>.Success(txWithProof);
@@ -123,7 +124,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             if (includeHeader)
             {
-                receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
+                receiptWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
             }
 
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
@@ -153,7 +154,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+            using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 

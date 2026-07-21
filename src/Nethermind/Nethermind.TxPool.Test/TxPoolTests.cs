@@ -20,6 +20,7 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -27,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
@@ -121,6 +123,167 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            }
+        }
+
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        public void should_validate_eip2780_intrinsic_gas_after_sender_recovery(bool selfTransfer, bool valueTransfer)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Amsterdam.Instance));
+            Address sender = TestItem.PrivateKeyA.Address;
+            Transaction tx = Build.A.Transaction
+                .WithTo(selfTransfer ? sender : TestItem.AddressB)
+                .WithValue(valueTransfer ? 1 : 0)
+                .WithGasLimit(GasCostOf.TransactionEip2780)
+                .Signed(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult expected = selfTransfer ? AcceptTxResult.Accepted : AcceptTxResult.Invalid;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tx.SenderAddress, Is.EqualTo(sender));
+                Assert.That(result, Is.EqualTo(expected));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(selfTransfer ? 1 : 0));
+            }
+        }
+
+        [Test]
+        public void should_reject_irrecoverable_eip2780_intrinsic_gas_before_sender_recovery()
+        {
+            Address sender = TestItem.PrivateKeyA.Address;
+            Transaction tx = Build.A.Transaction
+                .WithTo(sender)
+                .WithValue(0)
+                .WithGasLimit(GasCostOf.TransactionEip2780 - 1)
+                .Signed(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            _txPool = CreatePool(
+                specProvider: new TestSpecProvider(Amsterdam.Instance),
+                ethereumEcdsa: NullEthereumEcdsa.Instance);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+        }
+
+        [Test]
+        public void should_reject_wrong_chain_id_before_sender_recovery()
+        {
+            ulong wrongChainId = TestBlockchainIds.ChainId + 1;
+            EthereumEcdsa wrongChainEcdsa = new(wrongChainId);
+            Address sender = TestItem.PrivateKeyA.Address;
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithTo(sender)
+                .WithValue(0)
+                .WithGasLimit(GasCostOf.TransactionEip2780)
+                .Signed(wrongChainEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            _txPool = CreatePool(
+                specProvider: new TestSpecProvider(Amsterdam.Instance),
+                ethereumEcdsa: NullEthereumEcdsa.Instance);
+
+            Assert.That(tx.ChainId, Is.EqualTo(wrongChainId), "precondition: the transaction targets a different chain");
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+        }
+
+        [TestCase(true, GasCostOf.TransactionEip2780)]
+        [TestCase(false, GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess)]
+        public async Task should_build_eip2780_transaction_with_intrinsic_gas_after_txpool_sender_recovery(
+            bool selfTransfer,
+            ulong expectedGasUsed)
+        {
+            TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
+            using BasicTestBlockchain chain = await BasicTestBlockchain.Create(b => b.AddSingleton<ISpecProvider>(specProvider));
+            _txPool = CreatePool(null, specProvider);
+            Address sender = TestItem.PrivateKeyB.Address;
+            ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, sender);
+            Transaction tx = Build.A.Transaction
+                .WithTo(selfTransfer ? sender : TestItem.AddressC)
+                .WithValue(0)
+                .WithNonce(nonce)
+                .WithGasLimit(100_000)
+                .Signed(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            Block block = await chain.AddBlock(_txPool.GetPendingTransactions().Single());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(tx.SenderAddress, Is.EqualTo(sender));
+                Assert.That(chain.ReceiptStorage.Get(block)[0].GasUsed, Is.EqualTo(expectedGasUsed));
+                Assert.That(block.GasUsed, Is.EqualTo(expectedGasUsed));
+            }
+        }
+
+        [Test]
+        public void should_reject_unsigned_eip2780_transaction_before_sender_recovery()
+        {
+            Transaction tx = Build.A.Transaction
+                .WithTo(TestItem.AddressA)
+                .WithValue(0)
+                .WithGasLimit(GasCostOf.TransactionEip2780)
+                .Signed(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            _ = tx.Hash;
+            tx.Signature = null;
+            _txPool = CreatePool(
+                specProvider: new TestSpecProvider(Amsterdam.Instance),
+                ethereumEcdsa: NullEthereumEcdsa.Instance);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+        }
+
+        [Test]
+        public void should_validate_eip2780_intrinsic_cap_after_sender_recovery()
+        {
+            const long maxTxSize = 1_100_000;
+            OverridableReleaseSpec spec = new(Amsterdam.Instance)
+            {
+                IsEip7623Enabled = false,
+                IsEip7976Enabled = false,
+            };
+            ulong dataCostPerByte = GasCostOf.TxDataZero * spec.GasCosts.TxDataNonZeroMultiplier;
+            int dataLength = checked((int)((Eip7825Constants.DefaultTxGasLimitCap - GasCostOf.TransactionEip2780) / dataCostPerByte));
+            byte[] data = new byte[dataLength];
+            data.AsSpan().Fill(1);
+            _txPool = CreatePool(new TxPoolConfig { MaxTxSize = maxTxSize }, new TestSpecProvider(spec));
+            Address sender = TestItem.PrivateKeyA.Address;
+            Transaction tx = Build.A.Transaction
+                .WithTo(sender)
+                .WithValue(0)
+                .WithData(data)
+                .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap)
+                .Signed(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+
+            TxValidator validator = new(_specProvider.ChainId);
+            ValidationResult beforeRecovery = validator.IsWellFormed(tx, spec);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            ValidationResult afterRecovery = validator.IsWellFormed(tx, spec);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(beforeRecovery.AsBool(), Is.False);
+                Assert.That(beforeRecovery.IsIntrinsicGasError, Is.True);
+                Assert.That(tx.SenderAddress, Is.EqualTo(sender));
+                Assert.That(afterRecovery.AsBool(), Is.True);
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
             }
         }
 
@@ -2312,7 +2475,8 @@ namespace Nethermind.TxPool.Test
             ChainHeadInfoProvider chainHeadInfoProvider = null,
             IIncomingTxFilter incomingTxFilter = null,
             IBlobTxStorage txStorage = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            IEthereumEcdsa ethereumEcdsa = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -2326,7 +2490,7 @@ namespace Nethermind.TxPool.Test
                 _stateProvider);
 
             return new TxPool(
-                _ethereumEcdsa,
+                ethereumEcdsa ?? _ethereumEcdsa,
                 txStorage,
                 _headInfo,
                 config ?? new TxPoolConfig() { GasLimit = TxGasLimit },

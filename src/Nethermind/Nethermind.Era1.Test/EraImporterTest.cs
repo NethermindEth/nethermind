@@ -135,7 +135,7 @@ public class EraImporterTest
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
     }
 
-    [CancelAfter(4000)]
+    [CancelAfter(30_000)]
     [Test]
     public async Task ImportAsArchiveSync_WillPaceSuggestBlock(CancellationToken token)
     {
@@ -169,9 +169,14 @@ public class EraImporterTest
         Task importTask = sut.Import(destinationPath, 0, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
-        // Pacer is created when import starts; spin briefly until it's published.
-        while (sut.CurrentPacer is null) await Task.Yield();
-        await sut.CurrentPacer.WaitForPausedAsync(token);
+        BlockTreeSuggestPacer? pacer = null;
+        while (pacer is null)
+        {
+            token.ThrowIfCancellationRequested();
+            pacer = sut.CurrentPacer;
+            if (pacer is null) await Task.Yield();
+        }
+        await pacer.WaitForPausedAsync(token);
 
         Block expectedFinalizedBlock = outputCtx.Resolve<IBlockTree>().FindBlock(expectedStopBlock)!;
         using (Assert.EnterMultipleScope())

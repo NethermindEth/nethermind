@@ -18,11 +18,23 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     protected abstract T DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public virtual Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => new(EncodeAsBytes(item, rlpBehaviors));
+
+    /// <summary>
+    /// Encodes <paramref name="item"/> into a freshly allocated <see cref="byte"/> array.
+    /// </summary>
+    /// <remarks>
+    /// Equivalent to <see cref="Encode(T, RlpBehaviors)"/> without wrapping the result in a
+    /// throwaway <see cref="Rlp"/>; prefer this when only the raw bytes are needed. The buffer is
+    /// allocated uninitialized because <see cref="Encode{TWriter}(ref TWriter, T, RlpBehaviors)"/>
+    /// fills exactly <see cref="GetLength(T, RlpBehaviors)"/> bytes.
+    /// </remarks>
+    public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        byte[] bytes = GC.AllocateUninitializedArray<byte>(GetLength(item, rlpBehaviors));
         RlpWriter writer = new(bytes);
         Encode(ref writer, item, rlpBehaviors);
-        return new Rlp(bytes);
+        return bytes;
     }
 
     public virtual Rlp Encode(T[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

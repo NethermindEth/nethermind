@@ -46,6 +46,15 @@ jobs:
           sudo chown "$(id -u):$(id -g)" /mnt/nm-artifacts
           ln -s /mnt/nm-artifacts src/Nethermind/artifacts
 
+      - name: Free up disk space (Linux)
+        # Checkout + submodules + SDK + NuGet cache still land on the root disk and can
+        # exhaust its remaining free space; the runner worker then dies on ENOSPC mid-build,
+        # leaving a red job with no logs. Drop the unused preinstalled toolchains for headroom.
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
       - name: Free up disk space (macOS)
         # No /mnt on macOS; reclaim disk for the build (a framework-dependent build needs no Xcode).
         if: runner.os == 'macOS'
