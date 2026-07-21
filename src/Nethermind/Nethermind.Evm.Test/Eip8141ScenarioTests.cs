@@ -151,6 +151,35 @@ public class Eip8141ScenarioTests
             "the refund must return exactly max cost minus charged gas at the effective price");
     }
 
+    // EIP-3529 storage refunds (ethereum/EIPs#11940) accumulate into one transaction-scoped counter,
+    // netted once at the transaction total and capped at a fifth of the gross gas, while per-frame
+    // receipts stay gross.
+    [Test]
+    public void StorageRefund_NetsAtTransactionLevel_WhileFrameReceiptsStayGross()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        // The frame target clears a pre-existing storage slot (non-zero -> zero), earning a refund.
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        _stateProvider.Set(new StorageCell(Recipient, UInt256.Zero), new byte[] { 1 });
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDefault, 0, Recipient, gasLimit: 200_000, UInt256.Zero, default));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong grossFrameGas = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong gross = 15_000 + 2 * 475UL + grossFrameGas; // no calldata or signatures
+        ulong applied = gross - (ulong)receipt.GasUsed;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(applied, Is.GreaterThan(0UL), "the storage refund is netted from the transaction total");
+            Assert.That(applied, Is.LessThanOrEqualTo(gross / 5), "the refund is capped at a fifth of the gross gas");
+        }
+    }
+
     // Spec Example 3 core: the payer is a sponsor contract, not the sender — sender approves
     // execution only, the sponsor's VERIFY frame approves payment, and the receipt reports it.
     [Test]

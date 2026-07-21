@@ -21,9 +21,6 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// frame as its own EVM call under the frame-transaction execution context, applying APPROVE effects,
 /// enforcing the payer gate, charging spec gas, and producing per-frame receipts.
 /// https://eips.ethereum.org/EIPS/eip-8141
-///
-/// Remaining slice (marked EIP8141 where stubbed): EIP-3529-style refund netting inside frames
-/// (deliberately deferred — the spec is silent and the accounting is proposed upstream).
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
@@ -94,6 +91,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         List<LogEntry> allLogs = [];
         ulong totalFrameGasUsed = 0;
+        // EIP-3529 storage refunds accumulate into a single transaction-scoped counter (ethereum/EIPs#11940).
+        long refundCounter = 0;
 
         // EIP-2929 warm/cold journal shared across frames (spec: Cross-frame interactions).
         // Frame targets are warmed per frame; the sender and coinbase once per transaction, like
@@ -118,6 +117,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         StackAccessTracker batchTracker = default;
         int batchStartLogCount = 0;
         Address? batchStartPayer = null;
+        long batchStartRefund = 0;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -133,6 +133,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchTracker.TakeSnapshot();
                 batchStartLogCount = allLogs.Count;
                 batchStartPayer = frameContext.Payer;
+                batchStartRefund = refundCounter;
             }
 
             // Transient storage (TSTORE/TLOAD) is discarded between frames (spec: Cross-frame
@@ -163,6 +164,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             if (frameSucceeded)
             {
                 frameContext.MarkFrameSucceeded(i);
+                // A reverted frame's refunds are discarded with its state; only successful frames
+                // contribute (ethereum/EIPs#11940). An in-batch contribution is unwound below.
+                refundCounter += substate.Refund;
             }
 
             int frameLogCount = accessTracker.Logs.Count - frameLogStart;
@@ -224,6 +228,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     WorldState.Restore(batchStartSnapshot);
                     batchTracker.Restore();
                     allLogs.RemoveRange(batchStartLogCount, allLogs.Count - batchStartLogCount);
+                    // Refunds earned by frames unrolled with the batch are discarded (ethereum/EIPs#11940).
+                    refundCounter = batchStartRefund;
 
                     // EIP-8141 (ethereum/EIPs#11955): APPROVE effects that committed inside the
                     // batch survive its unroll. Execution approval is a context flag untouched by
@@ -270,9 +276,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction never set a payer");
         }
 
-        // EIP8141: EIP-3529-style refund netting inside frames is not applied yet; spent gas is
-        // intrinsic plus the gas each frame consumed.
-        ulong spentGas = intrinsicGas + totalFrameGasUsed;
+        // EIP-3529 storage refunds are netted once at the transaction level (ethereum/EIPs#11940):
+        // the accumulated counter is capped at a fifth of the gross gas and subtracted here. Per-frame
+        // receipts stay gross; only this transaction total is netted.
+        ulong grossGas = intrinsicGas + totalFrameGasUsed;
+        ulong spentGas = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec);
         // Block-level gas accounting reads Transaction.BlockGasUsed (its getter falls back to the
         // tx GasLimit, which is 0 for a frame tx). Set it like the regular path so parallel block
         // validation (BlockAccessListManager) accumulates the frame tx's gas into the header.
