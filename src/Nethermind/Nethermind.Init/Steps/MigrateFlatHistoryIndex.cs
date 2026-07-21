@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
