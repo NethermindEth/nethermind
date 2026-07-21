@@ -90,6 +90,9 @@ namespace Nethermind.Facade.Find
             return RunParallelLazy(source, worker, cancellationToken);
         }
 
+        // Must stay a lazy iterator: the lock is acquired on the first MoveNext and released in the finally,
+        // so acquire and release share one enumerator lifetime. An eager version would leak the lock when the
+        // result is never enumerated.
         private IEnumerable<FilterLog> RunParallelLazy<T>(IEnumerable<T> source, Func<T, IEnumerable<FilterLog>> worker, CancellationToken cancellationToken)
         {
             bool canRunParallel = Interlocked.CompareExchange(ref ParallelLock, 1, 0) == 0;
