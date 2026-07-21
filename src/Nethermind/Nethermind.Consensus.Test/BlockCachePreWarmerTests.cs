@@ -1211,6 +1211,29 @@ public class BlockCachePreWarmerTests
             "transactions the main thread has already started must not be speculatively warmed");
     }
 
+    [Test]
+    public void WarmupTxTracer_CancelsOvertakenTransactionAndBlockCancellation()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 1);
+        using (preWarmer)
+        using (CancellationTokenSource cancellation = new())
+        {
+            BlockCachePreWarmer.WarmupTxTracer tracer = new(preWarmer, cancellation.Token);
+            tracer.MoveTo(1);
+
+            Assert.That(tracer.IsCancelled, Is.False);
+            preWarmer.OnBeforeTxExecution();
+            Assert.That(tracer.IsCancelled, Is.False);
+            preWarmer.OnBeforeTxExecution();
+            Assert.That(tracer.IsCancelled, Is.True);
+
+            tracer.MoveTo(2);
+            Assert.That(tracer.IsCancelled, Is.False);
+            cancellation.Cancel();
+            Assert.That(tracer.IsCancelled, Is.True);
+        }
+    }
+
     /// <summary>
     /// Only the main execution reports per-tx progress to the prewarmer; the prewarmer's own speculative envs
     /// must stay silent, otherwise they would advance its view of main-thread progress and suppress warming.

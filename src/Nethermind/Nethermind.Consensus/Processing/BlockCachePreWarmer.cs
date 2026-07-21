@@ -41,6 +41,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
+    private Block? _warmingBlock;
+    private int _stopTransactionWarmup;
 
     // A session is always joined (under _speculativeLock) before the reactive path touches the shared caches.
     private readonly Lock _speculativeLock = new();
@@ -140,6 +142,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
+        Volatile.Write(ref _warmingBlock, block);
+        Volatile.Write(ref _stopTransactionWarmup, 0);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
@@ -268,7 +272,30 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+    public void OnBeforeTxExecution(Transaction? transaction = null)
+    {
+        int txIndex = _mainThreadTxIndex + 1;
+        Volatile.Write(ref _mainThreadTxIndex, txIndex);
+
+        if (transaction is not null && IsHeavySenderBatchStart(transaction, txIndex))
+        {
+            Volatile.Write(ref _stopTransactionWarmup, 1);
+        }
+    }
+
+    private bool IsHeavySenderBatchStart(Transaction transaction, int txIndex)
+    {
+        Block? block = Volatile.Read(ref _warmingBlock);
+        if (block is null || transaction.SenderAddress is not Address sender || transaction.GasLimit <= SplitSenderGroupGasThreshold)
+        {
+            return false;
+        }
+
+        Transaction[] transactions = block.Transactions;
+        return txIndex + 1 < transactions.Length
+            && transactions[txIndex + 1].SenderAddress == sender
+            && transactions[txIndex + 1].GasLimit > SplitSenderGroupGasThreshold;
+    }
 
     public CacheType ClearCaches()
     {
@@ -389,6 +416,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         BlockState blockState = worker.BlockState;
                         WarmupJob job = worker.Jobs[groupIndex];
 
+                        if (blockState.PreWarmer.ShouldStopTransactionWarmup) return worker;
+
                         // Indices are ascending, so if the main thread has started the job's last tx
                         // it has started them all; the per-tx guard would discard each one, so skip
                         // before building a scope.
@@ -400,8 +429,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                         foreach ((int txIndex, Transaction? tx) in job.Transactions.AsSpan())
                         {
-                            if (worker.Token.IsCancellationRequested) return worker;
-                            WarmupSingleTransaction(scope, tx, txIndex, blockState, worker.Token);
+                            if (worker.Token.IsCancellationRequested || blockState.PreWarmer.ShouldStopTransactionWarmup) return worker;
+                            WarmupSingleTransaction(scope, tx, txIndex, blockState, worker.WarmupTracer, worker.Token);
                         }
 
                         return worker;
@@ -555,6 +584,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Transaction tx,
         int txIndex,
         BlockState blockState,
+        WarmupTxTracer warmupTracer,
         CancellationToken cancellationToken)
     {
         try
@@ -577,9 +607,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            warmupTracer.MoveTo(txIndex);
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, warmupTracer);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
@@ -790,8 +824,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly ArrayPoolList<WarmupJob> Jobs = jobs;
         public readonly CancellationToken Token = token;
         public readonly IReadOnlyTxProcessorSource Env = blockState.PreWarmer._envPool.Get();
+        public readonly WarmupTxTracer WarmupTracer = new(blockState.PreWarmer, token);
 
         public void ReturnEnv() => BlockState.PreWarmer._envPool.Return(Env);
+    }
+
+    private bool ShouldStopTransactionWarmup => Volatile.Read(ref _stopTransactionWarmup) != 0;
+
+    internal sealed class WarmupTxTracer(BlockCachePreWarmer preWarmer, CancellationToken cancellationToken) : TxTracer
+    {
+        private int _txIndex = int.MaxValue;
+
+        public bool IsCancelable => true;
+        public bool IsCancelled => cancellationToken.IsCancellationRequested
+            || preWarmer.ShouldStopTransactionWarmup
+            || preWarmer.MainThreadTxIndex >= Volatile.Read(ref _txIndex);
+
+        public void MoveTo(int txIndex) => Volatile.Write(ref _txIndex, txIndex);
     }
 
     private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);

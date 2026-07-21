@@ -17,15 +17,15 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
 {
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
-        ReportProgress();
+        ReportProgress(transaction);
         return baseAdapter.Execute(transaction, txTracer);
     }
 
-    private void ReportProgress()
+    private void ReportProgress(Transaction transaction)
     {
         if (!prewarmerState.IsPrewarmer)
         {
-            preWarmer.OnBeforeTxExecution();
+            preWarmer.OnBeforeTxExecution(transaction);
         }
     }
 
