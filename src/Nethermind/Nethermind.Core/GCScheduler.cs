@@ -48,6 +48,17 @@ public sealed class GCScheduler
     private long _pendingSweepFullBlockingIndex = -1;
     private long _pendingSweepIssuedAtMs;
 
+    // DIAG: env-tunable sweep budget (bytes); 0 disables the sweep. Not for production.
+    private static readonly long _sustainedSweepBudget =
+        long.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_SWEEP_BUDGET_BYTES"), out long bytes)
+            ? bytes
+            : SustainedSweepAllocationBytes;
+
+    // DIAG: last logged gen2 GC indices for the watcher timer.
+    private long _lastBgcIndex;
+    private long _lastFullBlockingIndex;
+    private readonly Timer? _gcDiagTimer;
+
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
 
@@ -60,10 +71,42 @@ public sealed class GCScheduler
     {
         // Initialize the timer without starting it
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
-        if (sustainedSweepEnabled)
+        if (sustainedSweepEnabled && _sustainedSweepBudget > 0)
         {
             _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
+        if (sustainedSweepEnabled)
+        {
+            Console.WriteLine($"[GCDIAG] sweep budget bytes={_sustainedSweepBudget}");
+            _gcDiagTimer = new Timer(_ => LogGen2Collections(), null, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
+        }
+    }
+
+    // DIAG: logs every gen2 GC (scheduler- or runtime-initiated) with its STW pause segments.
+    private void LogGen2Collections()
+    {
+        LogGen2Info(GCKind.Background, ref _lastBgcIndex);
+        LogGen2Info(GCKind.FullBlocking, ref _lastFullBlockingIndex);
+    }
+
+    private static void LogGen2Info(GCKind kind, ref long lastIndex)
+    {
+        GCMemoryInfo info = GC.GetGCMemoryInfo(kind);
+        if (info.Index == 0 || info.Index == lastIndex) return;
+        lastIndex = info.Index;
+
+        System.Text.StringBuilder pauses = new();
+        foreach (TimeSpan pause in info.PauseDurations)
+        {
+            if (pauses.Length > 0) pauses.Append('+');
+            pauses.Append(pause.TotalMilliseconds.ToString("F0"));
+        }
+
+        Console.WriteLine(
+            $"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} gen2 kind={kind} index={info.Index} gen={info.Generation} " +
+            $"pausesMs={pauses} pausePct={info.PauseTimePercentage:F1} heapGB={info.HeapSizeBytes / 1e9:F1} " +
+            $"promotedMB={info.PromotedBytes / 1e6:F0} pinned={info.PinnedObjectsCount} " +
+            $"totalPauseS={GC.GetTotalPauseDuration().TotalSeconds:F1}");
     }
 
     /// <summary>
@@ -216,7 +259,10 @@ public sealed class GCScheduler
         }
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         // Also trim native memory used by Db
+        long trimStart = Environment.TickCount64;
         MallocHelper.Instance.MallocTrim((uint)1.MiB);
+        long trimMs = Environment.TickCount64 - trimStart;
+        if (trimMs > 50) Console.WriteLine($"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} mallocTrim wallMs={trimMs}");
         // Indicate that GC has finished
         MarkGCResumed();
 
@@ -242,16 +288,29 @@ public sealed class GCScheduler
     internal void SweepIfAllocationBudgetExceeded()
     {
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
-        if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
+        long sinceBaseline = allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes);
+        if (sinceBaseline < _sustainedSweepBudget) return;
 
         // An induced gen2 while the previous sweep's background collection is still in flight is
         // escalated by the runtime to a full blocking collection (~1s+ stop-the-world on replay-sized
         // heaps). Stay armed and retry on a later tick instead; the budget check above keeps firing.
-        if (IsLastSweepStillRunning()) return;
+        if (IsLastSweepStillRunning())
+        {
+            Console.WriteLine($"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} sweep deferred: previous still in flight allocGB={sinceBaseline / 1e9:F1}");
+            return;
+        }
 
         long backgroundIndex = GC.GetGCMemoryInfo(GCKind.Background).Index;
         long fullBlockingIndex = GC.GetGCMemoryInfo(GCKind.FullBlocking).Index;
-        if (GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false))
+        long pauseBeforeMs = (long)GC.GetTotalPauseDuration().TotalMilliseconds;
+        long start = Environment.TickCount64;
+        bool fired = GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+        long wallMs = Environment.TickCount64 - start;
+        long pauseDeltaMs = (long)GC.GetTotalPauseDuration().TotalMilliseconds - pauseBeforeMs;
+        Console.WriteLine(
+            $"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} sweep fired={fired} wallMs={wallMs} " +
+            $"pauseDeltaMs={pauseDeltaMs} allocGB={sinceBaseline / 1e9:F1}");
+        if (fired)
         {
             _pendingSweepBackgroundIndex = backgroundIndex;
             _pendingSweepFullBlockingIndex = fullBlockingIndex;
