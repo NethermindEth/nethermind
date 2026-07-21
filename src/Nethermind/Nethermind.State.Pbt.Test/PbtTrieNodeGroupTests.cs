@@ -81,11 +81,11 @@ public class PbtTrieNodeGroupTests
         // and a length that does not match the bitmaps are all rejected
         byte[] valid = encoded[..length];
         byte[] badFormat = (byte[])valid.Clone();
-        badFormat[0] = 0xFF;
+        badFormat[^1] = 0xFF;
         Assert.That(() => PbtTrieNodeGroup.Decode(badFormat), Throws.TypeOf<InvalidDataException>());
 
-        // the bitmaps sit in the trailer: presence, then stems, then the six-byte stats
-        int trailer = length - (4 + 4 + PbtSubtreeStats.EncodedLength);
+        // the whole header sits in the trailer: presence, then stems, then the six-byte stats, then the format byte
+        int trailer = length - (4 + 4 + PbtSubtreeStats.EncodedLength + 1);
 
         byte[] highBit = (byte[])valid.Clone();
         highBit[trailer + 3] |= 0x80;
@@ -165,7 +165,7 @@ public class PbtTrieNodeGroupTests
 
         // relabelling those same bytes interleaved is rejected: position 14 holds an internal node
         byte[] mislabelled = encoded[..length];
-        mislabelled[0] = (byte)PbtGroupFormat.Interleaved;
+        mislabelled[^1] = (byte)PbtGroupFormat.Interleaved;
         Assert.That(() => PbtTrieNodeGroup.Decode(mislabelled), Throws.TypeOf<InvalidDataException>());
 
         // a stem at that very position is legal in both: nothing recomputes a stem

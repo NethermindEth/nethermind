@@ -22,7 +22,11 @@ public class PbtNodeChainTests
     /// <summary>The target group branches, so a run reaches two stems at the least.</summary>
     private static readonly PbtSubtreeStats Stats = new(3);
 
-    private const int StatsOffset = 2 + Stem.Length + 32 + 32;
+    private const int TargetDepthOffset = 0;
+    private const int TargetPathOffset = TargetDepthOffset + sizeof(byte);
+    private const int TargetHashOffset = TargetPathOffset + Stem.Length;
+    private const int StatsOffset = TargetHashOffset + 32 + 32;
+    private const int FormatOffset = StatsOffset + PbtSubtreeStats.EncodedLength;
 
     [Test]
     public void WriteDecodeRoundTrip_AndDiscriminatesFromAGroup()
@@ -43,7 +47,7 @@ public class PbtNodeChainTests
         Assert.That(chain.NodeHash, Is.EqualTo(folded));
         Assert.That(PbtNodeChain.NodeHashOf(encoded), Is.EqualTo(folded));
 
-        // the two blob formats sharing the store's column are told apart by their leading byte alone
+        // the two blob formats sharing the store's column are told apart by their trailing byte alone
         Assert.That(PbtNodeChain.IsChain(encoded));
         Assert.That(() => PbtTrieNodeGroup.Decode(encoded), Throws.TypeOf<InvalidDataException>());
         Assert.That(PbtNodeChain.IsChain(EncodeGroup()), Is.False);
@@ -85,14 +89,14 @@ public class PbtNodeChainTests
 
     private static readonly object[] Rejections =
     [
-        new object[] { "a group's format byte", Corrupt(0, 0x01) },
-        new object[] { "an unknown format byte", Corrupt(0, 0xFF) },
-        new object[] { "a misaligned target depth", Corrupt(1, TargetDepth + 1) },
-        new object[] { "a target at the start depth", Corrupt(1, StartDepth) },
-        new object[] { "a target above the start depth", Corrupt(1, StartDepth - 4) },
-        new object[] { "a target past the deepest group", Corrupt(1, Stem.LengthInBits) },
-        new object[] { "a target path with bits past the target", Corrupt(4, 0x01) },
-        new object[] { "the empty subtree as a target hash", Zero(2 + Stem.Length, 32) },
+        new object[] { "a group's format byte", Corrupt(FormatOffset, 0x01) },
+        new object[] { "an unknown format byte", Corrupt(FormatOffset, 0xFF) },
+        new object[] { "a misaligned target depth", Corrupt(TargetDepthOffset, TargetDepth + 1) },
+        new object[] { "a target at the start depth", Corrupt(TargetDepthOffset, StartDepth) },
+        new object[] { "a target above the start depth", Corrupt(TargetDepthOffset, StartDepth - 4) },
+        new object[] { "a target past the deepest group", Corrupt(TargetDepthOffset, Stem.LengthInBits) },
+        new object[] { "a target path with bits past the target", Corrupt(TargetPathOffset + 2, 0x01) },
+        new object[] { "the empty subtree as a target hash", Zero(TargetHashOffset, 32) },
         // a run reaching one stem would have dissolved: that stem hoists rather than sitting under a spine
         new object[] { "a subtree of no stems", Zero(StatsOffset, PbtSubtreeStats.EncodedLength) },
         new object[] { "a subtree of a lone stem", Corrupt(StatsOffset, 0x01) },

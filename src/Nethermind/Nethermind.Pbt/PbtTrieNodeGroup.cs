@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-/// <summary>Which levels of a <see cref="PbtTrieNodeGroup"/> an encoding stores internal nodes for; the leading byte of every non-empty encoding.</summary>
+/// <summary>Which levels of a <see cref="PbtTrieNodeGroup"/> an encoding stores internal nodes for; the last byte of every non-empty encoding.</summary>
 /// <remarks>
 /// Both encodings describe the same trie and fold to the same root — they differ only in how much of
 /// the fold they write down — so a store may hold either at any key, and a group converts only when a
@@ -37,12 +37,12 @@ public enum PbtGroupFormat : byte
 /// <remarks>
 /// Positions follow the <see cref="StemLeafBlob"/> post-order numbering: boundary slot <c>i</c>
 /// sits at <c>2i - popcount(i)</c>, the group root at 30, and a subtree covering <c>w</c> boundary
-/// slots at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>. The encoding is a
-/// leading format byte, then one entry per present position in ascending position order — a 32-byte
+/// slots at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>. The encoding is one
+/// entry per present position in ascending position order — a 32-byte
 /// cached hash for an internal node, or the 31-byte stem followed by its 32-byte leaf-subtree root
 /// for a stem node (the stem node hash is derived, never stored) — and last a trailer of two
 /// little-endian 32-bit bitmaps over the positions, presence and stem, then the group's
-/// <see cref="PbtSubtreeStats"/>. The internal node at the group root (position 30) is not stored
+/// <see cref="PbtSubtreeStats"/> and the format byte. The internal node at the group root (position 30) is not stored
 /// either: it is folded from its children and already cached in the parent group's boundary slot,
 /// so only a stem may occupy the root position.
 /// A stem position has no present positions below it in the group and no child groups below it.
@@ -159,12 +159,13 @@ public readonly ref struct PbtTrieNodeGroup
     /// <summary>The deepest group root depth; that group's boundary is the 248-bit stem level, where every node is a stem.</summary>
     public const int MaxGroupDepth = Stem.LengthInBits - LevelsPerGroup;
 
-    private const int EntriesOffset = sizeof(byte);
+    private const int EntriesOffset = 0;
 
     private const int PresenceTrailerOffset = 0;
     private const int StemsTrailerOffset = PresenceTrailerOffset + sizeof(uint);
     private const int StatsTrailerOffset = StemsTrailerOffset + sizeof(uint);
-    private const int TrailerLength = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
+    private const int FormatTrailerOffset = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
+    private const int TrailerLength = FormatTrailerOffset + sizeof(byte);
 
     private const int OverheadLength = EntriesOffset + TrailerLength;
     private const int HashLength = 32;
@@ -236,7 +237,7 @@ public readonly ref struct PbtTrieNodeGroup
     /// What the subtree rooted at this group amounts to; the empty group's, an absent subtree's, is
     /// <c>default</c>.
     /// </summary>
-    public PbtSubtreeStats Stats => IsEmpty ? default : PbtSubtreeStats.Read(_data[^PbtSubtreeStats.EncodedLength..]);
+    public PbtSubtreeStats Stats => IsEmpty ? default : PbtSubtreeStats.Read(_data[^TrailerLength..][StatsTrailerOffset..]);
 
     /// <summary>Reads the node at <paramref name="position"/> on demand, borrowing from the wrapped span.</summary>
     /// <param name="position">
@@ -375,13 +376,13 @@ public readonly ref struct PbtTrieNodeGroup
     {
         if (data.Length < OverheadLength) throw new InvalidDataException($"Trie node group too short: {data.Length} bytes");
 
-        PbtGroupFormat format = (PbtGroupFormat)data[0];
+        ReadOnlySpan<byte> trailer = data[^TrailerLength..];
+        PbtGroupFormat format = (PbtGroupFormat)trailer[FormatTrailerOffset];
         if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved))
         {
-            throw new InvalidDataException($"Trie node group: unexpected format byte 0x{data[0]:x2}");
+            throw new InvalidDataException($"Trie node group: unexpected format byte 0x{(byte)format:x2}");
         }
 
-        ReadOnlySpan<byte> trailer = data[^TrailerLength..];
         uint presence = BinaryPrimitives.ReadUInt32LittleEndian(trailer[PresenceTrailerOffset..]);
         uint stems = BinaryPrimitives.ReadUInt32LittleEndian(trailer[StemsTrailerOffset..]);
         if (presence >> PositionCount != 0 || (stems & ~presence) != 0)
@@ -427,7 +428,9 @@ public readonly ref struct PbtTrieNodeGroup
     /// The bitmaps are only known once the walk is done, which is why they sit in the trailer rather
     /// than at the front: <see cref="Finish"/> appends them where the entries ended, leaving the whole
     /// encoding a single forward pass. Backfilling a leading header instead would write back over
-    /// bytes the write has already streamed past, which no prefetcher helps with.
+    /// bytes the write has already streamed past, which no prefetcher helps with. The format byte
+    /// rides along with them so that an encoding ends with its own identifier and its entries start
+    /// at offset zero, which is what lets a container hold one verbatim.
     /// </para>
     /// </remarks>
     public ref struct Builder
@@ -442,7 +445,6 @@ public readonly ref struct PbtTrieNodeGroup
         {
             _destination = destination;
             _format = format;
-            destination[0] = (byte)format;
         }
 
         /// <summary>Appends the internal node at <paramref name="position"/>, returning its entry offset.</summary>
@@ -516,6 +518,7 @@ public readonly ref struct PbtTrieNodeGroup
             BinaryPrimitives.WriteUInt32LittleEndian(trailer[PresenceTrailerOffset..], _presence);
             BinaryPrimitives.WriteUInt32LittleEndian(trailer[StemsTrailerOffset..], _stems);
             stats.Write(trailer[StatsTrailerOffset..]);
+            trailer[FormatTrailerOffset] = (byte)_format;
             return _offset + TrailerLength;
         }
 
