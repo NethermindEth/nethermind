@@ -497,7 +497,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (codeInsertRefunds == 0UL) return 0;
         if (spec.IsEip8037Enabled) return 0;
-        if (spec.IsEip8038Enabled) return Eip8038Constants.AccountWrite * codeInsertRefunds;
         return (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
     }
 

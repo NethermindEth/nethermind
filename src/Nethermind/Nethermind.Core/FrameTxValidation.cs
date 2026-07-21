@@ -19,7 +19,6 @@ public static class FrameTxValidation
     public const string ValueOutsideSenderMode = "frame value is only allowed in SENDER mode";
     public const string ExecutionApprovalWrongTarget = "frames allowed to approve execution must target the sender";
     public const string AtomicBatchOnLastFrame = "the last frame must not have the atomic batch flag set";
-    public const string AtomicBatchOnVerifyFrame = "VERIFY frames must not set the atomic batch flag";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
@@ -81,16 +80,6 @@ public static class FrameTxValidation
             if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0 && i + 1 == frames.Length)
             {
                 error = AtomicBatchOnLastFrame;
-                return false;
-            }
-
-            // EIP-8141 (ethereum/EIPs#11955): atomic batches live only among post-prefix operation
-            // frames, so a VERIFY frame (the validation prefix) must not be a batch member. This
-            // keeps the payer charge in the prefix, before any batch snapshot, so a batch unroll
-            // cannot roll it back.
-            if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0 && frame.Mode == TxFrame.ModeVerify)
-            {
-                error = AtomicBatchOnVerifyFrame;
                 return false;
             }
 

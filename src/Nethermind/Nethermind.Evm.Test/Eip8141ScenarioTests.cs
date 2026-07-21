@@ -317,8 +317,8 @@ public class Eip8141ScenarioTests
 
     // A block mixing a regular transaction with a frame transaction: cumulative gas chains across
     // the type boundary and the frame-aware receipts root computes.
-    // EXPECTED RED until the pending EIP-2780 gas fix lands on master: any regular transaction
-    // currently burns its full gas limit and fails under 2780, which this test surfaces on purpose.
+    // The regular transfer targets a fresh account, so under the EIP-8037/8038 state-gas repricing
+    // its cost (~205k) is well above a pre-repricing transfer; the gas limit is sized accordingly.
     [Test]
     public void MixedBlock_LegacyAndFrameTx_CumulativeGasChainsAndReceiptsRootComputes()
     {
@@ -329,7 +329,7 @@ public class Eip8141ScenarioTests
 
         Transaction legacyTx = Build.A.Transaction
             .WithTo(Recipient)
-            .WithGasLimit(50_000)
+            .WithGasLimit(1_000_000)
             .WithGasPrice(1)
             .SignedAndResolved(TestItem.PrivateKeyD)
             .TestObject;
