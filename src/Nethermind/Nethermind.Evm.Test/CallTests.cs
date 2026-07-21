@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -95,6 +97,36 @@ namespace Nethermind.Evm.Test
 
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(TestState.AccountExists(target), Is.False);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Child_output_copy_preserves_memory_beyond_returned_bytes(bool revert)
+        {
+            Address target = TestItem.AddressC;
+            Prepare childBuilder = Prepare.EvmCode
+                .PushData("0x010203")
+                .PushData(0)
+                .Op(Instruction.MSTORE);
+            byte[] childCode = (revert ? childBuilder.REVERT(29, 3) : childBuilder.RETURN(29, 3)).Done;
+            TestState.CreateAccount(target, UInt256.Zero);
+            TestState.InsertCode(target, childCode, SpecProvider.GenesisSpec);
+
+            byte[] dirtyWord = Enumerable.Repeat((byte)0xff, EvmPooledMemory.WordSize).ToArray();
+            byte[] parentCode = Prepare.EvmCode
+                .MSTORE(0, dirtyWord)
+                .CALL(50_000, target, 0, 0, 0, 0, 8)
+                .Op(Instruction.POP)
+                .RETURN(0, 8)
+                .Done;
+
+            TestAllTracerWithOutput tracer = Execute(parentCode);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.Error, Is.Null);
+                Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[] { 1, 2, 3, 0xff, 0xff, 0xff, 0xff, 0xff }));
+            }
         }
 
         private static byte[] BuildEmptyCodeCall(Instruction instruction, Address target) =>

@@ -80,7 +80,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
     {
         EthereumJsonSerializer serializer = new();
         SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
         Console.WriteLine($"current test: {name}");
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
@@ -130,7 +130,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         EthereumJsonSerializer serializer = new();
         SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
 
-        TestRpcBlockchain chain = await TestRpcBlockchain
+        using TestRpcBlockchain chain = await TestRpcBlockchain
             .ForTest(new TestRpcBlockchain())
             .WithBlocksConfig(new BlocksConfig
             {
