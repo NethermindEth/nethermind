@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History;
 
@@ -20,12 +19,6 @@ public sealed class HistoricalFlatDbManager(
     IResourcePool resourcePool,
     bool enableDetailedMetrics) : IFlatDbManager
 {
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
-    {
-        add => inner.ReorgBoundaryReached += value;
-        remove => inner.ReorgBoundaryReached -= value;
-    }
-
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
     {
         if (!IsBelowBarrier(baseBlock))

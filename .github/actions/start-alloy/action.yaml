@@ -1,0 +1,142 @@
+name: Start Grafana Alloy
+description: >-
+  Launch a Grafana Alloy sidecar that scrapes the sedge-managed Nethermind
+  Prometheus endpoint and tails its container stdout, shipping metrics to
+  Prometheus remote_write and logs to Loki.
+
+inputs:
+  network:
+    description: Sedge network or network prefix (e.g. hoodi, op-sepolia, taiko-alethia). Drives the L1/L2 container mapping.
+    required: true
+  node-name:
+    description: Node name used as the Alloy Instance label (matches Metrics.NodeName).
+    required: true
+  client:
+    description: Execution client, used as the Client label.
+    required: false
+    default: nethermind
+  github-user:
+    description: Value for the Alloy User label.
+    required: false
+    default: ${{ github.actor }}
+  alloy-config:
+    description: Path to the Alloy config file to mount. Defaults to the copy vendored next to this action.
+    required: false
+    default: ""
+  loki-url:
+    description: Loki push endpoint URL.
+    required: true
+  loki-username:
+    description: Loki basic-auth username.
+    required: true
+  loki-password:
+    description: Loki basic-auth password.
+    required: true
+  prometheus-url:
+    description: Prometheus remote_write endpoint URL.
+    required: true
+  prometheus-username:
+    description: Prometheus remote_write basic-auth username.
+    required: true
+  prometheus-password:
+    description: Prometheus remote_write basic-auth password.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Start Grafana Alloy
+      shell: bash
+      env:
+        NETWORK: ${{ inputs.network }}
+        NODE_NAME: ${{ inputs.node-name }}
+        CLIENT: ${{ inputs.client }}
+        GITHUB_USER: ${{ inputs.github-user }}
+        ALLOY_CONFIG: ${{ inputs.alloy-config }}
+        LOKI_URL: ${{ inputs.loki-url }}
+        LOKI_USERNAME: ${{ inputs.loki-username }}
+        LOKI_PASSWORD: ${{ inputs.loki-password }}
+        PROMETHEUS_URL: ${{ inputs.prometheus-url }}
+        PROMETHEUS_USERNAME: ${{ inputs.prometheus-username }}
+        PROMETHEUS_PASSWORD: ${{ inputs.prometheus-password }}
+      run: |
+        set -euo pipefail
+
+        # github.action_path is not available in an input default, so resolve
+        # the vendored config here via the auto-set GITHUB_ACTION_PATH.
+        ALLOY_CONFIG="${ALLOY_CONFIG:-$GITHUB_ACTION_PATH/alloy-config.alloy}"
+
+        # Without an endpoint Alloy scrapes/reads happily but ships nothing, so
+        # surface an empty URL loudly instead of failing silently.
+        [ -n "$LOKI_URL" ] || echo "::warning title=Alloy::LOKI_URL is empty — logs will not be shipped to Loki"
+        [ -n "$PROMETHEUS_URL" ] || echo "::warning title=Alloy::PROMETHEUS_URL is empty — metrics will not be shipped to Prometheus"
+
+        # L1 execution always uses this container name; on L2-only networks the
+        # L1 log/scrape pipelines simply find no target and stay inert.
+        EXECUTION_CONTAINER_NAME="sedge-execution-client"
+
+        # The sentinel matches no container, so the L2 pipelines stay inert on
+        # L1-only networks.
+        L2_EXECUTION_CONTAINER_NAME="sedge-execution-l2-absent"
+        L2_NODE_NAME=""
+        case "$NETWORK" in
+          op-*|base-*|world-*) L2_EXECUTION_CONTAINER_NAME="sedge-execution-op-l2-client"; L2_NODE_NAME="$NODE_NAME" ;;
+          taiko-*)             L2_EXECUTION_CONTAINER_NAME="sedge-execution-taiko-client"; L2_NODE_NAME="$NODE_NAME" ;;
+          arbitrum-*)          L2_EXECUTION_CONTAINER_NAME="sedge-execution-arb-l2-client"; L2_NODE_NAME="$NODE_NAME" ;;
+        esac
+
+        ALLOY_IMAGE="grafana/alloy:v1.18.0"
+
+        # Remove any stale container so reruns/retries on a persistent
+        # (self-hosted) runner don't fail with a name conflict.
+        docker rm -f grafana-alloy 2>/dev/null || true
+
+        docker pull "$ALLOY_IMAGE"
+        docker run -d \
+          --name grafana-alloy \
+          --restart=unless-stopped \
+          --net=host \
+          -e GITHUB_USER="$GITHUB_USER" \
+          -e CLIENT="$CLIENT" \
+          -e NODE_NAME="$NODE_NAME" \
+          -e SEDGE_NETWORK="$NETWORK" \
+          -e EXECUTION_CONTAINER_NAME="$EXECUTION_CONTAINER_NAME" \
+          -e L2_EXECUTION_CONTAINER_NAME="$L2_EXECUTION_CONTAINER_NAME" \
+          -e L2_NODE_NAME="$L2_NODE_NAME" \
+          -e L2_SEDGE_NETWORK="$NETWORK" \
+          -e L2_CLIENT="$CLIENT" \
+          -e LOKI_PUSH_URL="$LOKI_URL" \
+          -e LOKI_USERNAME="$LOKI_USERNAME" \
+          -e LOKI_PASSWORD="$LOKI_PASSWORD" \
+          -e PROMETHEUS_URL="$PROMETHEUS_URL" \
+          -e PROMETHEUS_USERNAME="$PROMETHEUS_USERNAME" \
+          -e PROMETHEUS_PASSWORD="$PROMETHEUS_PASSWORD" \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v "$ALLOY_CONFIG:/etc/alloy/config.alloy:ro" \
+          "$ALLOY_IMAGE" \
+          run --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
+        echo "Grafana Alloy started."
+
+        # Give Alloy a couple of scrape/push cycles, then surface its health so
+        # a silent "running but shipping nothing" state is visible in the logs.
+        sleep 20
+        echo "::group::grafana-alloy status"
+        docker ps -a --filter name=grafana-alloy --format '{{.Names}}: {{.Status}}'
+        echo "::endgroup::"
+        echo "::group::grafana-alloy logs"
+        docker logs --tail 200 grafana-alloy 2>&1 || true
+        echo "::endgroup::"
+        echo "::group::Alloy pipeline metrics (scrape + remote_write + loki)"
+        curl -sf http://localhost:12345/metrics 2>/dev/null \
+          | grep -E 'prometheus_remote_storage_samples_(total|failed_total|pending)|prometheus_remote_write_wal_samples_appended_total|prometheus_target_scrapes_sample|loki_write_(sent_entries|dropped_entries|request_duration)' \
+          || echo "could not read Alloy /metrics"
+        echo "::endgroup::"
+        echo "::group::Nethermind Prometheus endpoint reachability"
+        for port in 8008 8018; do
+          if body=$(curl -sf --max-time 5 "http://localhost:${port}/metrics" 2>/dev/null); then
+            echo "localhost:${port} reachable — $(printf '%s\n' "$body" | head -n 1)"
+          else
+            echo "localhost:${port} NOT reachable"
+          fi
+        done
+        echo "::endgroup::"

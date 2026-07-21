@@ -195,8 +195,21 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);
+            RecoverSenderBeforeIntrinsicGas(tx, spec);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
+        }
+
+        // EIP-2780 self-transfer pricing depends on the signer, so resolve it before computing intrinsic gas.
+        private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec)
+        {
+            if (spec.IsEip2780Enabled
+                && tx.IsMessageCall
+                && tx.Signature is not null
+                && (tx.SenderAddress is null || !WorldState.AccountExists(tx.SenderAddress)))
+            {
+                tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            }
         }
 
         [SkipLocalsInit]
@@ -307,7 +320,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // EIP-8037 top-frame charges. At most one applies: a delegated recipient has code and is
             // therefore never a dead account, hence the if/else-if.
-            bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
+            bool recipientIsDelegated = spec.IsEip8037Enabled && spec.IsEip7702Enabled && tx.To is not null
                 && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
 
             // The flag defers the halt to ExecuteEvmCall so the value transfer rolls back and the
@@ -606,13 +619,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? substate.Output.ToArray() : [];
+                    byte[] output = substate.ShouldRevert ? substate.Output.AsReadOnlyArray() : [];
                     tracer.MarkAsFailed(executingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.LogsToArray() : [];
-                    tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
+                    tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.AsReadOnlyArray(), logs, stateRoot);
                 }
             }
 
@@ -1010,8 +1023,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
-                // hacky fix for the potential recovery issue
-                if (tx.Signature is not null)
+                // EIP-2780 message calls were already recovered before intrinsic gas.
+                if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall))
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
                 if (sender != tx.SenderAddress)

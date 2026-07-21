@@ -529,6 +529,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
+                OnAccountUpdated = null;
+
                 // The per-account flat writes above (scope._snapshotBundle.SetAccount) already carry intra-block state
                 // for subsequent txs; normal scopes additionally bulk-apply the dirty accounts into the state trie.
                 // Trie-less scopes keep the known root on _stateTree and never touch trie nodes, so they skip this.

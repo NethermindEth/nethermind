@@ -84,7 +84,7 @@ public class XdcBlockHeader(
         internal set
         {
             _extraFieldsV2 = value;
-            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(value).Bytes];
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.EncodeAsBytes(value)];
         }
     }
 

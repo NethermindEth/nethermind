@@ -10,7 +10,6 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -56,8 +55,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
-
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     public FlatDbManager(
         IResourcePool resourcePool,
@@ -167,7 +164,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
         ClearReadOnlyBundleCache();
-        ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
