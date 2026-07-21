@@ -47,11 +47,12 @@ public class PbtNodeChainTests
         Assert.That(chain.NodeHash, Is.EqualTo(folded));
         Assert.That(PbtNodeChain.NodeHashOf(encoded), Is.EqualTo(folded));
 
-        // the two blob formats sharing the store's column are told apart by their trailing byte alone
+        // a run's encoding says what it is wherever it is read, which is what tells it from the group
+        // holding it — or from one it might be mistaken for
         Assert.That(PbtNodeChain.IsChain(encoded));
         Assert.That(() => PbtTrieNodeGroup.Decode(encoded), Throws.TypeOf<InvalidDataException>());
         Assert.That(PbtNodeChain.IsChain(EncodeGroup()), Is.False);
-        Assert.That(PbtNodeChain.IsChain([]), Is.False, "an absent blob is neither");
+        Assert.That(PbtNodeChain.IsChain([]), Is.False, "an absent node is neither");
     }
 
     /// <summary>

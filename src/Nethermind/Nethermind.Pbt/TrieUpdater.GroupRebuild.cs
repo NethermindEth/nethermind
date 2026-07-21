@@ -22,15 +22,15 @@ public static partial class TrieUpdater
         /// entry for the parent to read the hash back out of; it takes the hash the fold hands up instead.
         /// The offset alone tells a stored node from such an unstored one (<see cref="IsStored"/>).
         /// </remarks>
-        private readonly record struct FoldedNode(ResultKind Kind, int Offset)
+        private readonly record struct FoldedNode(NodeKind Kind, int Offset)
         {
             private const int NoEntry = -1;
 
-            public static FoldedNode Absent => new(ResultKind.Absent, NoEntry);
+            public static FoldedNode Absent => new(NodeKind.Absent, NoEntry);
 
-            public static FoldedNode Stored(ResultKind kind, int offset) => new(kind, offset);
+            public static FoldedNode Stored(NodeKind kind, int offset) => new(kind, offset);
 
-            public static FoldedNode Unstored => new(ResultKind.Internal, NoEntry);
+            public static FoldedNode Unstored => new(NodeKind.Internal, NoEntry);
 
             public bool IsStored => Offset != NoEntry;
         }
@@ -48,18 +48,17 @@ public static partial class TrieUpdater
         /// touched one that reports unchanged came back the same node — the same kind, hash and stem —
         /// since a change of any of them moves the node hash <c>changed</c> is decided on.
         /// <para>
-        /// Whether the slot's blob is a group or a run does not enter into it: a run's cached node hash
-        /// is a boundary internal's hash, so the entry either way is the same 32 bytes, and the blob
-        /// itself is settled outside the encoding. A frame with no existing encoding — a pushed-stem
-        /// subtree or a run — has nothing to copy, and a single slot is one entry either way.
+        /// A slot holding a run is no different: its entry is the run's own encoding, which an unchanged
+        /// slot's is byte for byte. A frame with no existing encoding — a pushed-stem subtree or a run —
+        /// has nothing to copy, and a single slot is one entry either way.
         /// </para>
         /// </remarks>
         /// <param name="format">
-        /// The encoding being written. A run is only ever what a fold in that very format produced, so a
-        /// group in the other one is refolded in full instead — which is what converts it on the way
-        /// past. A skipped position heads no run either: it has no entry, and
-        /// <see cref="PbtTrieNodeGroup.Builder.AppendSubtree"/> takes a run's last entry for its root.
-        /// Its children are stored, so they are copied in its place and it is folded from them.
+        /// The encoding being written. A clean range is only ever what a fold in that very format
+        /// produced, so a group in the other one is refolded in full instead — which is what converts it
+        /// on the way past. A skipped position heads no such range either: it has no entry, and
+        /// <see cref="PbtTrieNodeGroup.Builder.AppendSubtree"/> takes the last entry of a range for its
+        /// root. Its children are stored, so they are copied in its place and it is folded from them.
         /// </param>
         private static bool IsCleanRange(
             PbtTrieNodeGroup existing, uint changed, uint range, int position, int width, PbtGroupFormat format) =>
@@ -95,16 +94,21 @@ public static partial class TrieUpdater
         /// </remarks>
         private ref struct GroupRebuild(
             ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
-            uint occupied, uint stems, uint changedMask, Span<byte> destination, PbtGroupFormat format)
+            NodeGroupBitmasks boundary, uint changedMask, Span<byte> destination, PbtGroupFormat format)
         {
             private readonly ReadOnlySpan<(int Slot, Boundary Node)> _changed = changed;
             private readonly PbtTrieNodeGroup _existing = existing;
-            private readonly uint _occupied = occupied;
-            private readonly uint _stems = stems;
+            private readonly NodeGroupBitmasks _boundary = boundary;
             private readonly uint _changedMask = changedMask;
             private readonly PbtGroupFormat _format = format;
             private PbtTrieNodeGroup.Builder _builder = new(destination, format);
             private int _cursor;
+
+            /// <summary>
+            /// Whether boundary <paramref name="slot"/>'s value comes from the descent rather than from the
+            /// encoding being replaced, which has none to give when the frame was seeded.
+            /// </summary>
+            private readonly bool IsResolvedFromResults(int slot) => _existing.IsEmpty || (_changedMask >> slot & 1) != 0;
 
             /// <summary>
             /// The value at boundary <paramref name="slot"/>, taken from the sorted changed span when the
@@ -113,14 +117,14 @@ public static partial class TrieUpdater
             /// </summary>
             private Boundary ResolveCombinedNodeAtBoundary(int slot)
             {
-                if (_existing.IsEmpty || (_changedMask >> slot & 1) != 0)
+                if (IsResolvedFromResults(slot))
                 {
                     Debug.Assert(_cursor < _changed.Length && _changed[_cursor].Slot == slot, "the span's boundaries are consumed in slot order");
                     return _changed[_cursor++].Node;
                 }
 
                 PbtTrieNodeGroup.Slot slotNode = _existing[PbtTrieNodeGroup.BoundaryPosition(slot)];
-                return new Boundary(slotNode.Hash, (_stems >> slot & 1) != 0 ? slotNode.Stem : default);
+                return new Boundary(slotNode.Hash, (_boundary.Stems >> slot & 1) != 0 ? slotNode.Stem : default, Chain: null);
             }
 
             /// <summary>
@@ -136,8 +140,8 @@ public static partial class TrieUpdater
             public FoldedNode Fold(int position, int firstSlot, int width, out ValueHash256 hash)
             {
                 uint range = ((1u << width) - 1) << firstSlot;
-                uint occupied = _occupied & range;
-                switch (KindOf(occupied, _stems))
+                uint occupied = _boundary.Presence & range;
+                switch (KindOf(occupied, _boundary.Stems))
                 {
                     case NodeKind.Absent:
                         hash = default;
@@ -153,7 +157,7 @@ public static partial class TrieUpdater
                             {
                                 Boundary stem = ResolveCombinedNodeAtBoundary(firstSlot);
                                 hash = StemLeafBlob.ComputeStemNodeHash(stem.Stem, stem.Hash);
-                                return FoldedNode.Stored(ResultKind.Stem, _builder.AppendStem(position, stem.Stem, stem.Hash));
+                                return FoldedNode.Stored(NodeKind.Stem, _builder.AppendStem(position, stem.Stem, stem.Hash));
                             }
 
                             int stemHalf = width / 2;
@@ -165,20 +169,30 @@ public static partial class TrieUpdater
 
                 if (IsCleanRange(_existing, _changedMask, range, position, width, _format))
                 {
-                    _existing.SubtreeBitmaps(position, width, out uint presence, out uint stems);
+                    NodeGroupBitmasks clean = _existing.SubtreeBitmaps(position, width);
                     hash = _existing[position].NodeHash();
                     return FoldedNode.Stored(
-                        ResultKind.Internal,
-                        _builder.AppendSubtree(presence, stems, _existing.SubtreeEntries(position, width, presence, stems)));
+                        NodeKind.Internal,
+                        _builder.AppendSubtree(clean, _existing.SubtreeEntries(position, width, clean)));
                 }
 
-                // a boundary slot: its internal node is the cached pointer to the child blob, which for a
-                // run is the run's own cached node hash — so a run reads here exactly as a group does
+                // a boundary slot: its internal node is the cached pointer to the child blob
                 if (width == 1)
                 {
                     Boundary boundary = ResolveCombinedNodeAtBoundary(firstSlot);
                     hash = boundary.Hash;
-                    return FoldedNode.Stored(ResultKind.Internal, _builder.AppendInternal(position, boundary.Hash));
+                    if ((_boundary.Chains >> firstSlot & 1) == 0)
+                    {
+                        return FoldedNode.Stored(NodeKind.Internal, _builder.AppendInternal(position, boundary.Hash));
+                    }
+
+                    // A run is held outright rather than pointed at, so its entry is its whole encoding —
+                    // copied from wherever this frame has it: the one the descent produced, or the one the
+                    // group being replaced already holds. What it contributes above is its cached node
+                    // hash, which is what a pointer's entry is, so the fold reads the two alike.
+                    Debug.Assert(!IsResolvedFromResults(firstSlot) || boundary.Chain is not null, "a run the descent settled rides in with its own encoding");
+                    ReadOnlySpan<byte> chain = boundary.Chain is { } rebuilt ? rebuilt.GetSpan() : _existing[position].ChainData;
+                    return FoldedNode.Stored(NodeKind.Chain, _builder.AppendChain(position, chain));
                 }
 
                 int half = width / 2;
@@ -191,7 +205,7 @@ public static partial class TrieUpdater
                 // boundary slot), simply does not write it down, handing it to the parent instead.
                 bool storeHere = PbtTrieNodeGroup.StoresInternalAtWidth(_format, width) && width != PbtTrieNodeGroup.BoundarySlots;
                 return storeHere
-                    ? FoldedNode.Stored(ResultKind.Internal, _builder.AppendInternal(position, hash))
+                    ? FoldedNode.Stored(NodeKind.Internal, _builder.AppendInternal(position, hash))
                     : FoldedNode.Unstored;
             }
 

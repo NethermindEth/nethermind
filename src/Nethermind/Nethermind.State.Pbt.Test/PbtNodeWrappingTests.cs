@@ -119,6 +119,67 @@ public class PbtNodeWrappingTests
     }
 
     /// <summary>
+    /// A run is a hundred-odd bytes, far too little to be worth a key: the boundary slot it hangs from
+    /// holds its whole encoding, whether or not that group also wraps its child groups — which a run is
+    /// none of, being no blob of the store's at all.
+    /// </summary>
+    [TestCase(0, TestName = "ARunUnderTheRoot_IsHeldByIt")]
+    [TestCase(PbtTrieNodeGroup.LevelsPerGroup, TestName = "ARunUnderAWrappingGroup_IsHeldBesideTheChildrenItWraps")]
+    public void ARunHasNoKeyOfItsOwn(int parentDepth)
+    {
+        List<(byte[], byte[]?)> writes = RunUnder(parentDepth);
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.Interleaved);
+        harness.ApplyBatch(writes);
+
+        // the corridor is the all-zero path, so the run hangs from its parent's first slot
+        TrieNodeKey parent = TrieNodeKey.For(parentDepth, default);
+        TrieNodeKey runKey = parent.ChildGroup(0);
+        byte[] parentBlob = harness.Nodes[parent];
+        PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(parentBlob, out PbtTrieNodeGroup group);
+
+        Assert.That(harness.Nodes.ContainsKey(runKey), Is.False, "a run is no blob of the store's");
+        Assert.That(PbtNodeChain.IsChain(harness.FlattenedNodes()[runKey]), "yet the trie holds it, one group below its parent");
+        Assert.That(group.KindAt(PbtTrieNodeGroup.BoundaryPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Chain));
+        Assert.That(parentBlob[wrapper.Child(0, group)], Is.Empty, "a run is the group's own entry, never one of the children it wraps");
+        Assert.That(
+            PbtTrieNodeWrapper.IsWrapper(parentBlob), Is.EqualTo(PbtTrieNodeWrapper.WrapsChildren(parentDepth)),
+            "the group beside it is wrapped or keyed by depth, as it would be with no run there");
+        Assert.That(harness.Nodes.Keys, Does.Contain(TrieNodeKey.For(RunTargetDepth, default)), "the run's target keeps a key of its own");
+
+        AssertMatchesFreshRebuild(harness, writes);
+    }
+
+    /// <summary>The bit two stems part at, which is where every run these build lands.</summary>
+    private const int RunTargetDepth = 24;
+
+    /// <summary>
+    /// Writes whose trie branches at every group depth down to <paramref name="parentDepth"/> — each of
+    /// those groups also rooting a child group beside the branch — and then runs single-child from one
+    /// group below it to <see cref="RunTargetDepth"/>, where two stems part.
+    /// </summary>
+    private static List<(byte[], byte[]?)> RunUnder(int parentDepth)
+    {
+        byte[] corridor = new byte[Stem.Length];
+        byte[] parted = new byte[Stem.Length];
+        SetBit(parted, RunTargetDepth);
+
+        List<(byte[], byte[]?)> writes = [([.. corridor, 5], Value), ([.. parted, 5], Value)];
+        for (int depth = 0; depth <= parentDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
+        {
+            // a pair parting one group below the branch, so the slot beside the run roots a group
+            byte[] sibling = new byte[Stem.Length];
+            SetBit(sibling, depth + PbtTrieNodeGroup.LevelsPerGroup - 1);
+            byte[] partner = (byte[])sibling.Clone();
+            SetBit(partner, depth + 2 * PbtTrieNodeGroup.LevelsPerGroup - 1);
+            writes.Add(([.. sibling, 5], Value));
+            writes.Add(([.. partner, 5], Value));
+        }
+
+        return writes;
+    }
+
+    /// <summary>
     /// Stems sharing every bit above <paramref name="branchDepth"/>, branching into two boundary slots
     /// there and into two more one group below, so a run reaches the group at that depth and that group
     /// roots a child group of its own.
