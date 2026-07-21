@@ -47,6 +47,7 @@ public class VmState<TGasPolicy> : IDisposable
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
     public bool IsContinuation { get; set; } // TODO: move to CallEnv
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
+    public bool IsCreateStateGasCharged { get; private set; } // TODO: move to CallEnv
 
     /// <summary>
     /// EIP-8037: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for this (dead)
@@ -80,6 +81,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: true,
             isStatic: false,
             isCreateOnPreExistingAccount: false,
+            isCreateStateGasCharged: false,
             newAccountCharged: false,
             env: env,
             stateForAccessLists: accessedItems,
@@ -101,7 +103,8 @@ public class VmState<TGasPolicy> : IDisposable
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
         bool isTopLevel = false,
-        bool newAccountCharged = false)
+        bool newAccountCharged = false,
+        bool isCreateStateGasCharged = false)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -112,6 +115,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: isTopLevel,
             isStatic: isStatic,
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            isCreateStateGasCharged: isCreateStateGasCharged,
             newAccountCharged: newAccountCharged,
             env: env,
             stateForAccessLists: stateForAccessLists,
@@ -134,6 +138,7 @@ public class VmState<TGasPolicy> : IDisposable
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        bool isCreateStateGasCharged,
         bool newAccountCharged,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
@@ -168,6 +173,7 @@ public class VmState<TGasPolicy> : IDisposable
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+        IsCreateStateGasCharged = isCreateStateGasCharged;
         NewAccountCharged = newAccountCharged;
 
         if (!_isDisposed)
