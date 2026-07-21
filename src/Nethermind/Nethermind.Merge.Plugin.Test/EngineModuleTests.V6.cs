@@ -487,7 +487,11 @@ public partial class EngineModuleTests
 
         using PayloadBodiesV2DirectResponse response = new(items);
 
-        await AssertStreamedJsonMatchesSerializer(response);
+        string streamedJson = await AssertStreamedJsonMatchesSerializer(response);
+
+        // V2 bodies must always carry the key, with a literal null when the block has no access list.
+        Assert.That(streamedJson, Does.Contain("\"blockAccessList\":\"0x010203\""));
+        Assert.That(streamedJson, Does.Contain("\"blockAccessList\":null"));
     }
 
     [Test]
