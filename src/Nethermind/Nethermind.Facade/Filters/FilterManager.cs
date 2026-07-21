@@ -302,7 +302,7 @@ namespace Nethermind.Facade.Filters
                 return new FilterLog(index, txReceipt, logEntry, blockTimestamp, removed);
             }
 
-            return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
+            return new FilterLog(index, txReceipt, logEntry, blockTimestamp, removed);
         }
 
         private sealed class Option<T>(T value)

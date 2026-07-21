@@ -331,10 +331,15 @@ public class FilterManagerTests
         Assert.That(totalPolled, Is.EqualTo(blockCount));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void reorg_removed_logs_are_polled_as_removed()
+    [TestCase(false)]
+    [TestCase(true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void reorg_removed_logs_are_polled_as_removed(bool explicitNumericRange)
     {
-        LogFilter filter = BuildFilter(static f => f.FromBlock(1L));
+        Action<FilterBuilder> filterShape = explicitNumericRange
+            ? f => f.FromBlock(1L).ToBlock(10L)
+            : f => f.FromBlock(1L);
+        LogFilter filter = BuildFilter(filterShape);
         _filterStore.SaveFilter(filter);
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
