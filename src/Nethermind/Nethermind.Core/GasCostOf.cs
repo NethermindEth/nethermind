@@ -86,6 +86,8 @@ namespace Nethermind.Core
         public const long PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const long BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 
+        public const long SetCodeFromBase = 3_000; // eip-8298 (base cost; source account access charged on top per eip-2929)
+
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
 

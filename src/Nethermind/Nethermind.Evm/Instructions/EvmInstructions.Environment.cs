@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -625,6 +626,50 @@ public static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Implements the SETCODEFROM opcode (EIP-8298): adopts the code hash of a deployed source account.
+    /// </summary>
+    /// <remarks>
+    /// Valid source pushes 1 and updates the executing account's code hash; invalid source pushes 0 with no
+    /// state change. Initcode or static context halts exceptionally. The running frame keeps its loaded code.
+    /// </remarks>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSetCodeFrom<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        VmState<TGasPolicy> vmState = vm.VmState;
+        // Runtime-only, never static: preserves the creation invariant and read-only guarantees.
+        if (vmState.ExecutionType.IsAnyCreate()) goto BadInstruction;
+        if (vmState.IsStatic) goto StaticCallViolation;
+
+        IReleaseSpec spec = vm.Spec;
+        TGasPolicy.Consume(ref gas, GasCostOf.SetCodeFromBase);
+
+        Address source = stack.PopAddress();
+        if (source is null) goto StackUnderflow;
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, source)) goto OutOfGas;
+
+        // Valid source: not a precompile, non-empty code, and regular deployed code (not 0xEF-prefixed per EIP-3541/7702).
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(source, spec);
+        if (spec.IsPrecompile(source) || codeInfo.IsEmpty || CodeDepositHandler.CodeIsInvalid(spec, codeInfo.Code))
+        {
+            return stack.PushZero<TTracingInst>();
+        }
+
+        vm.CodeInfoRepository.InsertCode(codeInfo.Code, vmState.Env.ExecutingAccount, spec);
+        return stack.PushOne<TTracingInst>();
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    StaticCallViolation:
+        return EvmExceptionType.StaticCallViolation;
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     /// <summary>
