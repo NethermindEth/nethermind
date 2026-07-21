@@ -201,6 +201,24 @@ public class RecentRootStoreTests
         }
     }
 
+    [Test]
+    public void AreReferencesValid_true_at_the_reference_cap()
+    {
+        IWorldState state = CreateState(out IDisposable scope);
+        using (scope)
+        {
+            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            (ValueHash256, ulong, ValueHash256)[] references = new (ValueHash256, ulong, ValueHash256)[Eip8272Constants.MaxRecentRootReferences];
+            for (int i = 0; i < references.Length; i++)
+            {
+                ulong slot = (ulong)(100 + i);
+                RecentRootStore.Write(state, Source, Salt, Root, slot, Spec);
+                references[i] = (sourceId, slot, Root);
+            }
+            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 500), Is.True);
+        }
+    }
+
     private static IWorldState CreateState(out IDisposable scope)
     {
         IWorldState state = TestWorldStateFactory.CreateForTest();
