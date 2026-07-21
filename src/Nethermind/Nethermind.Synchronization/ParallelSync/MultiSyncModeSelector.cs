@@ -610,7 +610,15 @@ namespace Nethermind.Synchronization.ParallelSync
             UInt256 chainDifficulty = _syncProgressResolver.ChainDifficulty;
             ulong pivotNumber = _syncProgressResolver.SyncPivot.BlockNumber;
 
-            return new(processed, state, block, header, chainDifficulty, peerBlock, peerDifficulty, inBeaconControl, targetBlock, pivotNumber);
+            if (state <= header)
+            {
+                return new Snapshot(processed, state, block, header, chainDifficulty, peerBlock, peerDifficulty, inBeaconControl,
+                    targetBlock, pivotNumber);
+            }
+            if (_logger.IsDebug) _logger.Debug($"Best full state {state} is ahead of best header {header}; clamping for sync mode selection.");
+            state = header;
+
+            return new Snapshot(processed, state, block, header, chainDifficulty, peerBlock, peerDifficulty, inBeaconControl, targetBlock, pivotNumber);
         }
 
         private static bool IsSnapshotInvalid(Snapshot best) =>

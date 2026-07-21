@@ -97,6 +97,18 @@ public class BloomFilterTests
         Assert.DoesNotThrow(() => bloom.Dispose());
     }
 
+    [TestCase(0UL)]
+    [TestCase(1UL)]
+    [TestCase(0xDEADBEEFCAFEBABEUL)]
+    [TestCase(ulong.MaxValue)]
+    public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue(ulong key)
+    {
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
+            Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
+
+        Assert.That(bloom.MightContain(key), Is.True, "AlwaysTrue sentinel must match every probe");
+    }
+
     [Test]
     public void MightContain_BeforeAnyAdds_ShouldReturnFalse()
     {

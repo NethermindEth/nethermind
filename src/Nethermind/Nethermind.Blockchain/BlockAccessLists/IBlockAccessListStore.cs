@@ -32,6 +32,10 @@ public interface IBlockAccessListStore
         block.EncodedBlockAccessList = null;
     }
 
+    /// <summary>Defers the block-access-list write off the block-suggestion path, freeing the live BAL
+    /// immediately; falls back to <see cref="InsertFromBlock"/> when deferral is disabled. See IStatePersistenceBarrier.</summary>
+    void InsertFromBlockDeferred(Block block) => InsertFromBlock(block);
+
     void Insert(ulong blockNumber, Hash256 blockHash, byte[] bal);
     void Insert(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> bal);
     void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal);

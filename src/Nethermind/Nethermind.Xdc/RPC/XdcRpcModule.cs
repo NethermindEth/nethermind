@@ -19,19 +19,19 @@ namespace Nethermind.Xdc.RPC;
 
 internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
 {
-    public ResultWrapper<EpochNumInfo> CalculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
+    public ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
 
-    public ResultWrapper<EpochNumInfo> GetBlockInfoByEpochNum(ulong epochNumber)
+    public ResultWrapper<EpochNumInfo> XDPoS_getBlockInfoByEpochNum(ulong epochNumber)
     {
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
 
-        return epochNumber < spec.SwitchEpoch ?
-            CalculateBlockInfoByV1EpochNum(epochNumber) :
-            GetBlockInfoByV2EpochNum(epochNumber);
+        return epochNumber < (ulong)spec.SwitchEpoch ?
+            XDPoS_calculateBlockInfoByV1EpochNum(epochNumber) :
+            XDPoS_getBlockInfoByV2EpochNum(epochNumber);
     }
 
-    public ResultWrapper<EpochNumInfo> GetBlockInfoByV2EpochNum(ulong epochNumber)
+    public ResultWrapper<EpochNumInfo> XDPoS_getBlockInfoByV2EpochNum(ulong epochNumber)
     {
         BlockRoundInfo? thisEpoch = epochSwitchManager.GetBlockByEpochNumber(epochNumber);
         if (thisEpoch is null)
@@ -56,7 +56,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<EpochNumInfo>.Success(info);
     }
 
-    public ResultWrapper<ulong[]> GetEpochNumbersBetween(ulong begin, ulong end)
+    public ResultWrapper<ulong[]> XDPoS_getEpochNumbersBetween(ulong begin, ulong end)
     {
         BlockHeader beginHeader = tree.FindHeader(begin);
         if (beginHeader is null)
@@ -129,7 +129,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return message;
     }
 
-    public ResultWrapper<PoolStatus> GetLatestPoolStatus()
+    public ResultWrapper<PoolStatus> XDPoS_getLatestPoolStatus()
     {
         BlockHeader? header = tree.Head?.Header;
         if (header is null)
@@ -161,7 +161,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         return ResultWrapper<PoolStatus>.Success(info);
     }
-    public ResultWrapper<MasternodesStatus> GetMasternodesByNumber(BlockParameter blockNumber)
+    public ResultWrapper<MasternodesStatus> XDPoS_getMasternodesByNumber(BlockParameter blockNumber)
     {
         BlockHeader? header;
 
@@ -236,7 +236,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<MasternodesStatus>.Success(info);
     }
 
-    public ResultWrapper<PublicApiMissedRoundsMetadata> GetMissedRoundsInEpochByBlockNum(BlockParameter blockNumber)
+    public ResultWrapper<PublicApiMissedRoundsMetadata> XDPoS_getMissedRoundsInEpochByBlockNum(BlockParameter blockNumber)
     {
         BlockHeader? header;
 
@@ -274,7 +274,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
     }
 
-    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, ulong begin, ulong end)
+    public ResultWrapper<AccountRewardResponse> XDPoS_getRewardByAccount(Address account, ulong begin, ulong end)
     {
         BlockHeader? beginHeader = tree.FindHeader(begin);
         if (beginHeader is null)
@@ -309,43 +309,33 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<AccountRewardResponse>.Fail("Failed to get epoch switch info");
         }
 
-        if (epochSwitchInfos.Length != 0 && rewardsStore.TryGetRetainedRange(out ulong oldestRetainedEpochBlockNumber, out _))
-        {
-            ulong requestedOldestEpoch = (ulong)epochSwitchInfos[0].EpochSwitchBlockInfo.BlockNumber;
-            if (requestedOldestEpoch < oldestRetainedEpochBlockNumber)
-            {
-                return ResultWrapper<AccountRewardResponse>.Fail(
-                    $"Cannot return pruned historical reward data before epoch block {oldestRetainedEpochBlockNumber}.",
-                    ErrorCodes.PrunedHistoryUnavailable);
-            }
-        }
-
         List<AccountEpochReward> epochRewards = new(epochSwitchInfos.Length);
-        UInt256 totalReward = UInt256.Zero;
+        UInt256 totalAccountReward = UInt256.Zero;
+        Dictionary<string, UInt256> totalDelegatedReward = [];
 
-        // No epoch switches in the requested range means no rewards to aggregate.
         foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
         {
             ulong epochBlockNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-            if (!rewardsStore.HasEpochRewards(epochBlockNumber))
+            Hash256 epochBlockHash = epochSwitchInfo.EpochSwitchBlockInfo.Hash;
+            if (!rewardsStore.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? epochRewardData)
+                || epochRewardData is null)
             {
                 return ResultWrapper<AccountRewardResponse>.Fail($"Reward data not available for epoch block {epochBlockNumber}");
             }
 
-            if (!rewardsStore.TryGetAccountReward(account, epochBlockNumber, out UInt256 accountReward))
+            AccountEpochReward epochReward = epochRewardData.BuildAccountEpochReward(account, epochBlockNumber);
+            epochRewards.Add(epochReward);
+
+            if (epochReward.AccountReward is UInt256 accountReward)
             {
-                continue;
+                totalAccountReward += accountReward;
             }
 
-            totalReward += accountReward;
-            epochRewards.Add(new AccountEpochReward
+            foreach ((string holder, UInt256 amount) in epochReward.DelegatedReward ?? [])
             {
-                EpochBlockNum = epochBlockNumber,
-                Address = account,
-                AccountStatus = "owner",
-                AccountReward = accountReward,
-                DelegatedReward = []
-            });
+                totalDelegatedReward.TryGetValue(holder, out UInt256 existing);
+                totalDelegatedReward[holder] = existing + amount;
+            }
         }
 
         return ResultWrapper<AccountRewardResponse>.Success(new AccountRewardResponse
@@ -356,13 +346,13 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 Address = account,
                 StartBlockNum = (ulong)begin,
                 EndBlockNum = (ulong)end,
-                TotalAccountReward = totalReward,
-                TotalDelegatedReward = []
+                TotalAccountReward = totalAccountReward,
+                TotalDelegatedReward = totalDelegatedReward
             }
         });
     }
 
-    public ResultWrapper<Address[]> GetSigners(BlockParameter blockParam)
+    public ResultWrapper<Address[]> XDPoS_getSigners(BlockParameter blockParam)
     {
         BlockHeader header;
 
@@ -400,7 +390,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<Address[]>.Success(snapshot.NextEpochCandidates);
     }
 
-    public ResultWrapper<Address[]> GetSignersAtHash(BlockParameter blockParam)
+    public ResultWrapper<Address[]> XDPoS_getSignersAtHash(BlockParameter blockParam)
     {
         BlockHeader header;
         if (blockParam is null || blockParam.Type == BlockParameterType.Latest)
@@ -435,7 +425,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<Address[]>.Success(snapshot.NextEpochCandidates);
     }
 
-    public ResultWrapper<PublicApiSnapshot> GetSnapshot(BlockParameter blockParam)
+    public ResultWrapper<PublicApiSnapshot> XDPoS_getSnapshot(BlockParameter blockParam)
     {
         BlockHeader header;
 
@@ -464,7 +454,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
-        if (header is not XdcBlockHeader xdcHeader)
+        if (header is not XdcBlockHeader)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Header is not an XDC block header");
         }
@@ -474,10 +464,10 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
         }
-        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot(xdcHeader));
+        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot());
     }
 
-    public ResultWrapper<PublicApiSnapshot> GetSnapshotAtHash(BlockParameter blockParam)
+    public ResultWrapper<PublicApiSnapshot> XDPoS_getSnapshotAtHash(BlockParameter blockParam)
     {
         BlockHeader header;
         if (blockParam is null || blockParam.Type == BlockParameterType.Latest)
@@ -503,7 +493,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
-        if (header is not XdcBlockHeader xdcHeader)
+        if (header is not XdcBlockHeader)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Header is not an XDC block header");
         }
@@ -513,10 +503,10 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
         }
-        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot(xdcHeader));
+        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot());
     }
 
-    public ResultWrapper<V2BlockInfo> GetV2BlockByHash(BlockParameter blockParam)
+    public ResultWrapper<V2BlockInfo> XDPoS_getV2BlockByHash(BlockParameter blockParam)
     {
         BlockHeader header;
         if (blockParam is null || blockParam.Type == BlockParameterType.Latest)
@@ -604,7 +594,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         });
     }
 
-    public ResultWrapper<V2BlockInfo> GetV2BlockByNumber(BlockParameter blockNumber)
+    public ResultWrapper<V2BlockInfo> XDPoS_getV2BlockByNumber(BlockParameter blockNumber)
     {
         BlockHeader header;
         if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
@@ -624,7 +614,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             BuildV2BlockInfo(header);
     }
 
-    public ResultWrapper<NetworkInformation> NetworkInformation()
+    public ResultWrapper<NetworkInformation> XDPoS_networkInformation()
     {
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
 

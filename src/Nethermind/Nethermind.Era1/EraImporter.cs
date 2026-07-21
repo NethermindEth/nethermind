@@ -205,6 +205,7 @@ public class EraImporter(
             {
                 await pacer.WaitForQueue(block.Number, cancellation);
                 await SuggestAndProcessBlock(block);
+                blockTree.ForkChoiceUpdated(block.Hash, blockTree.SafeHash);
             }
             else
                 InsertBlockAndReceipts(block, receipt, to);

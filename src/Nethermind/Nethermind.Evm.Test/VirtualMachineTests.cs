@@ -6,9 +6,11 @@ using System.Numerics;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Evm.Test.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -19,11 +21,84 @@ namespace Nethermind.Evm.Test;
 [Parallelizable(ParallelScope.Self)]
 public class VirtualMachineTests : VirtualMachineTestsBase
 {
+    private static readonly TestCaseData[] JumpCompletionCases =
+    [
+        new TestCaseData("600456005b00", 21012UL, 4).SetName("Jump_taken"),
+        new TestCaseData("6001600657005b00", 21017UL, 5).SetName("JumpI_taken"),
+        new TestCaseData("6000600657005b00", 21016UL, 4).SetName("JumpI_not_taken"),
+        new TestCaseData("6003565b00", 21012UL, 4).SetName("Jump_to_next_instruction"),
+        new TestCaseData("600456fe5b5b00", 21013UL, 5).SetName("Jump_to_consecutive_markers"),
+        new TestCaseData("6003565b", 21012UL, 3).SetName("Jump_to_final_byte"),
+    ];
+
+    private static readonly TestCaseData[] JumpFailureCases =
+    [
+        new TestCaseData("56", 100000UL, 1).SetName("Jump_stack_underflow"),
+        new TestCaseData("600056", 100000UL, 2).SetName("Jump_invalid_destination"),
+        new TestCaseData("6003565b", 21010UL, 2).SetName("Jump_charge_out_of_gas"),
+        new TestCaseData("6003565b", 21011UL, 3).SetName("JumpDest_charge_out_of_gas_after_Jump"),
+        new TestCaseData("60016005575b", 21015UL, 3).SetName("JumpI_charge_out_of_gas"),
+        new TestCaseData("60016005575b", 21016UL, 4).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
+    ];
+
+    private sealed class NoInstructionTracer : TestAllTracerWithOutput
+    {
+        public override bool IsTracingInstructions => false;
+    }
+
     [Test]
     public void Stop()
     {
         TestAllTracerWithOutput receipt = Execute((byte)Instruction.STOP);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
+    }
+
+    [TestCaseSource(nameof(JumpCompletionCases))]
+    public void Untraced_jump_completion_preserves_semantics(string bytecode, ulong expectedGas, int expectedOpCodeCount)
+    {
+        TestAllTracerWithOutput receipt = ExecuteUntraced(100000UL, Bytes.FromHexString(bytecode));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "status");
+            Assert.That(receipt.GasSpent, Is.EqualTo(expectedGas), "gas");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(expectedOpCodeCount), "opcode count");
+        }
+    }
+
+    [TestCaseSource(nameof(JumpFailureCases))]
+    public void Untraced_jump_completion_preserves_failure_ordering(string bytecode, ulong gasLimit, int expectedOpCodeCount)
+    {
+        TestAllTracerWithOutput receipt = ExecuteUntraced(gasLimit, Bytes.FromHexString(bytecode));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure), "status");
+            Assert.That(receipt.GasSpent, Is.EqualTo(gasLimit), "gas");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(expectedOpCodeCount), "opcode count");
+        }
+    }
+
+    [TestCase(Instruction.JUMP, "600456005b00", 4)]
+    [TestCase(Instruction.JUMPI, "6001600657005b00", 6)]
+    public void Traced_taken_jump_keeps_jumpdest_visible(Instruction instruction, string bytecode, int target)
+    {
+        GethLikeTxTrace trace = ExecuteAndTrace(Bytes.FromHexString(bytecode));
+        GethTxTraceEntry jumpDest = trace.Entries.Single(static entry => entry.Opcode == nameof(Instruction.JUMPDEST));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(jumpDest.ProgramCounter, Is.EqualTo(target), $"{instruction} target");
+            Assert.That(jumpDest.GasCost, Is.EqualTo(GasCostOf.JumpDest), $"{instruction} gas");
+        }
+    }
+
+    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        NoInstructionTracer tracer = new();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return tracer;
     }
 
     [Test]

@@ -392,11 +392,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Estimate_gas_uses_block_gas_limit_when_not_specified()
     {
-        using Context ctx = await Context.Create(configurer: builder => builder
-            .WithGenesisPostProcessor((block, worldState) =>
-            {
-                block.Header.GasLimit = 100000;
-            }));
+        using Context ctx = await Context.Create();
 
         string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
         string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
@@ -404,7 +400,7 @@ public partial class EthRpcModuleTests
         ulong blockGasLimit = Convert.ToUInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
         // gasCap above blockGasLimit — estimate should be bounded by blockGasLimit, not gasCap (matches Geth)
-        ctx.Test.RpcConfig.GasCap = blockGasLimit + 100000;
+        ctx.Test.RpcConfig.GasCap = blockGasLimit + 1_000_000;
 
         await TestEstimateGasOutOfGas(ctx, null, blockGasLimit, $"gas required exceeds allowance ({blockGasLimit})");
     }
@@ -455,20 +451,16 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Estimate_gas_uses_specified_gas_limit()
     {
-        using Context ctx = await Context.Create(configurer: builder => builder
-            .WithGenesisPostProcessor((block, worldState) =>
-            {
-                block.Header.GasLimit = 100000;
-            }));
-        await TestEstimateGasOutOfGas(ctx, 100000, 100000, $"gas required exceeds allowance ({100000})");
+        using Context ctx = await Context.Create();
+        await TestEstimateGasOutOfGas(ctx, 30000000, 30000000, $"gas required exceeds allowance ({30000000})");
     }
 
     [Test]
     public async Task Estimate_gas_cannot_exceed_gas_cap()
     {
         using Context ctx = await Context.Create();
-        ctx.Test.RpcConfig.GasCap = 100000;
-        await TestEstimateGasOutOfGas(ctx, 300000000, 100000, $"gas required exceeds allowance ({100000})");
+        ctx.Test.RpcConfig.GasCap = 50000000;
+        await TestEstimateGasOutOfGas(ctx, 300000000, 50000000, $"gas required exceeds allowance ({50000000})");
     }
 
     [Test]
@@ -641,21 +633,22 @@ public partial class EthRpcModuleTests
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: mixed calldata returns floor");
 
-        // EIP-7981: access list with 1 address, no calldata — standard wins
-        ulong eip7981Standard = GasCostOf.Transaction + GasCostOf.AccessAccountListEntry
+        // EIP-7981: access list with 1 address, no calldata — standard wins.
+        ulong eip7981Standard = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
             + 80UL * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, Array.Empty<byte>(), 100_000UL,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Standard.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7981: standard wins with access list");
 
-        // EIP-7981: 100 zero bytes + 1 address — floor wins
-        ulong eip7981Floor = GasCostOf.Transaction
-            + (100UL * Eip7981Spec.GasCosts.TxDataNonZeroMultiplier + 80UL) * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
+        // Modest calldata: standard still exceeds the floor (floor-wins covered by data-heavy cases).
+        ulong eip7981StandardWithCalldata = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
+            + 100UL * GasCostOf.TxDataZero
+            + 80UL * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7981Spec, new byte[100], 100_000UL,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
-                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Floor.ToHexString(true)}\",\"id\":67}}")
-            .SetName("EIP-7981: floor wins with calldata and access list");
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981StandardWithCalldata.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-7981: standard wins with calldata and access list");
     }
 
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]

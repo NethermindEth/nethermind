@@ -90,6 +90,8 @@ public class XdcBlockHeader(
 
     public bool IsSelfMined { get; } = isSelfMined;
 
+    internal XdcProcessedRewards? ProcessedRewards { get; set; }
+
     public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
         KeccakRlpWriter writer = new();
@@ -155,6 +157,7 @@ public class XdcBlockHeader(
         header.Validator = Validator;
         header.Validators = Validators;
         header.Penalties = Penalties;
+        header.ProcessedRewards = ProcessedRewards;
     }
 
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)

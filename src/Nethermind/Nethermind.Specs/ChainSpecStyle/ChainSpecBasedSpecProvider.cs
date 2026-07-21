@@ -307,11 +307,13 @@ namespace Nethermind.Specs.ChainSpecStyle
                                            (chainSpec.Parameters.Eip6780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip4788Enabled = (chainSpec.Parameters.Eip4788TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4788ContractAddress = chainSpec.Parameters.Eip4788ContractAddress;
-            releaseSpec.IsEip2935Enabled = (chainSpec.Parameters.Eip2935TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip2935Enabled = BlockOf(chainSpec.Parameters.Eip2935Transition) <= block ||
+                                           (chainSpec.Parameters.Eip2935TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip2935ContractAddress = chainSpec.Parameters.Eip2935ContractAddress;
             releaseSpec.Eip2935RingBufferSize = chainSpec.Parameters.Eip2935RingBufferSize;
 
-            releaseSpec.IsEip7702Enabled = (chainSpec.Parameters.Eip7702TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7702Enabled = BlockOf(chainSpec.Parameters.Eip7702Transition) <= block ||
+                                           (chainSpec.Parameters.Eip7702TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7823Enabled = (chainSpec.Parameters.Eip7823TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip6110Enabled = (chainSpec.Parameters.Eip6110TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -322,7 +324,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7251Enabled = (chainSpec.Parameters.Eip7251TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
-            releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7623Enabled = BlockOf(chainSpec.Parameters.Eip7623Transition) <= block ||
+                                           (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7976Enabled = (chainSpec.Parameters.Eip7976TransitionTimestamp ?? chainSpec.AmsterdamTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7981Enabled = (chainSpec.Parameters.Eip7981TransitionTimestamp ?? chainSpec.AmsterdamTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7883Enabled = (chainSpec.Parameters.Eip7883TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -331,6 +334,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7825Enabled = (chainSpec.Parameters.Eip7825TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7918Enabled = (chainSpec.Parameters.Eip7918TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8024Enabled = (chainSpec.Parameters.Eip8024TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip8246Enabled = (chainSpec.Parameters.Eip8246TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip8038Enabled = (chainSpec.Parameters.Eip8038TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip8282Enabled = (chainSpec.Parameters.Eip8282TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && BlockOf(chainSpec.Parameters.Eip1559FeeCollectorTransition) <= block;
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -351,10 +357,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7708Enabled = (chainSpec.Parameters.Eip7708TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip7954Enabled = (chainSpec.Parameters.Eip7954TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
             if (releaseSpec.IsEip7954Enabled)
             {
                 releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
             }
+
+            releaseSpec.IsEip2780Enabled = (chainSpec.Parameters.Eip2780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)

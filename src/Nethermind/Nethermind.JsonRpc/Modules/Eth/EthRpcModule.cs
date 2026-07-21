@@ -345,7 +345,7 @@ public partial class EthRpcModule(
         return ResultWrapper<Signature>.Success(sig);
     }
 
-    public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
+    public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
     {
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
         if (!txResult.Success(out Transaction tx, out string error))
@@ -375,7 +375,7 @@ public partial class EthRpcModule(
         }
     }
 
-    public virtual ResultWrapper<SignTransactionResult> eth_signTransaction(TransactionForRpc rpcTx)
+    public virtual ResultWrapper<SignTransactionResult> eth_signTransaction(SignableTransactionForRpc rpcTx)
     {
         if (!_rpcConfig.EnableEthSignTransaction)
             return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
@@ -456,6 +456,71 @@ public partial class EthRpcModule(
         return ResultWrapper<SignTransactionResult>.Fail(message, ErrorCodes.InvalidInput);
     }
 
+    public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(SignableTransactionForRpc rpcTx)
+    {
+        BlockHeader? head = _blockFinder.Head?.Header;
+        if (head is null)
+            return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
+
+        IReleaseSpec spec = _specProvider.GetSpec(head);
+        ulong chainId = _blockchainBridge.GetChainId();
+
+        LegacyTransactionForRpc legacyTx = (LegacyTransactionForRpc)rpcTx;
+        if (legacyTx.From is not { } from)
+            return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
+
+        if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
+            return ResultWrapper<FillTransactionResult>.Fail($"invalid chain id (have={chainId}, want={requestedChainId})", ErrorCodes.InvalidInput);
+
+        legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
+
+        UInt256? blobBaseFee = head.ExcessBlobGas is { } excessBlobGas
+            && BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
+            ? feePerBlobGas
+            : null;
+
+        TxFillContext fillContext = new()
+        {
+            GasPrice = await _gasPriceOracle.GetGasPriceEstimate(),
+            MaxPriorityFeePerGas = _gasPriceOracle.GetMaxPriorityGasFeeEstimate(),
+            BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)),
+            BlobBaseFee = blobBaseFee,
+            Spec = spec,
+        };
+
+        Result fillResult = rpcTx.FillDefaults(fillContext);
+        if (!fillResult)
+            return ResultWrapper<FillTransactionResult>.Fail(fillResult.Error!, ErrorCodes.InvalidInput);
+
+        if (rpcTx.Gas is null)
+        {
+            ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(rpcTx, BlockParameter.Latest);
+            if (gasEstimate.Result.ResultType != ResultType.Success)
+                return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
+
+            rpcTx.Gas = (ulong)gasEstimate.Data!.Value;
+        }
+
+        legacyTx.ChainId ??= chainId;
+
+        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+        if (!txResult.Success(out Transaction tx, out string error))
+            return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
+
+        tx.ChainId = chainId;
+
+        if (rpcTx is BlobTransactionForRpc { Blobs: not null } withSidecar
+            && withSidecar.TryAttachSidecar(tx, spec.BlobProofVersion) is { } attachError)
+        {
+            return ResultWrapper<FillTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
+        }
+
+        return ResultWrapper<FillTransactionResult>.Success(new FillTransactionResult
+        {
+            Tx = TransactionForRpc.FromTransaction(tx)
+        });
+    }
+
     public async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
     {
         int waitMs = ResolveSyncTimeoutMs(timeoutMs);
@@ -530,7 +595,7 @@ public partial class EthRpcModule(
         }
     }
 
-    public virtual ResultWrapper<HexBytes> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
+    public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
             .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
 
@@ -538,11 +603,11 @@ public partial class EthRpcModule(
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
-    public virtual ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
+    public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
             .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
 
-    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true) =>
+    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true) =>
         new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, optimize)
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
@@ -570,7 +635,12 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc blockForRpc = _blockForRpcFactory.Create(block, returnFullTransactionObjects, _specProvider);
+        BlockForRpc? blockForRpc = _blockForRpcFactory.Create(block, returnFullTransactionObjects, _specProvider);
+        if (blockForRpc is null)
+        {
+            return ResultWrapper<BlockForRpc?>.Success(null);
+        }
+
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             blockForRpc.Hash = null;
