@@ -1486,6 +1486,31 @@ public class RetryCacheTests
     }
 
     [Test]
+    public async Task Constructor_AcceptsTokenInOriginalPositionalSignatures()
+    {
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cacheWithDefaultHandlerLimit = new(
+            TestLogManager.Instance,
+            CacheTimeoutMs,
+            1_024,
+            100,
+            4,
+            cancellationTokenSource.Token);
+        RetryCache<ResourceRequestMessage, ResourceId> cacheWithExplicitHandlerLimit = new(
+            TestLogManager.Instance,
+            CacheTimeoutMs,
+            1_024,
+            100,
+            4,
+            cancellationTokenSource.Token,
+            32);
+
+        await cancellationTokenSource.CancelAsync();
+        await cacheWithDefaultHandlerLimit.DisposeAsync();
+        await cacheWithExplicitHandlerLimit.DisposeAsync();
+    }
+
+    [Test]
     public async Task Dispose_WaitsForActiveReceiptBeforeDisposingLock()
     {
         using BlockingHashState state = new();
