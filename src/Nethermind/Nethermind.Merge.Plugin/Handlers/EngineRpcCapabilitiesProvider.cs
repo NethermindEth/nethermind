@@ -114,6 +114,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         // Prague
         Configure(nameof(IEngineRpcModule.engine_getPayloadV4), SszRestPaths.GetPayloads, GateWithWarn(v4));
         Configure(nameof(IEngineRpcModule.engine_newPayloadV4), SszRestPaths.PostPayloads, GateWithWarn(v4));
+        jsonLocal[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4)] = Gate(v4);
 
         // Osaka
         Configure(nameof(IEngineRpcModule.engine_getPayloadV5), SszRestPaths.GetPayloads, GateWithWarn(spec.IsEip7594Enabled));
@@ -127,7 +128,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7843Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
-        Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitness), SszRestPaths.PostPayloadsWitness, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7928Enabled));
 
         json = jsonLocal;
         ssz = sszLocal;

@@ -309,6 +309,9 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
 
+    public ulong StandardGas => TGasPolicy.GetRemainingGas(Standard) + (ulong)TGasPolicy.GetStateReservoir(Standard);
+    public ulong MinRequiredGasLimit => Math.Max(StandardGas, TGasPolicy.GetRemainingGas(FloorGas));
+
     /// <summary>
     /// EIP-8037: rejects a transaction whose intrinsic regular or floor gas exceeds <paramref name="cap"/>.
     /// </summary>

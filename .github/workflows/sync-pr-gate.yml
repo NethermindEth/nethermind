@@ -16,8 +16,40 @@ permissions:
   contents: read
 
 jobs:
+  build-image:
+    name: Build PR image
+    if: github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-arm64-8-core
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Build Docker image
+        run: |
+          docker build -t nethermind:pr-local \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=true \
+            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
+            .
+
+      - name: Save image
+        run: docker save nethermind:pr-local | gzip > /tmp/nethermind-pr-local.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nethermind-pr-local-image
+          path: /tmp/nethermind-pr-local.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }})"
+    needs: build-image
     if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
@@ -87,13 +119,14 @@ jobs:
           cd sedge
           make compile
 
-      - name: Build Docker image locally
-        run: |
-          docker build -t nethermind:pr-local \
-            --build-arg BUILD_CONFIG=release \
-            --build-arg CI=true \
-            --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
-            .
+      - name: Download PR image
+        uses: actions/download-artifact@v4
+        with:
+          name: nethermind-pr-local-image
+          path: /tmp
+
+      - name: Load PR image
+        run: docker load < /tmp/nethermind-pr-local.tar.gz
 
       - name: Generate and run Sedge
         working-directory: sedge
