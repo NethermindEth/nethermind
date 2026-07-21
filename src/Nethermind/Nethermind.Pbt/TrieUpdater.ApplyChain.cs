@@ -106,7 +106,7 @@ public static partial class TrieUpdater
             {
                 using RefCountingMemory? targetData = store.GetTrieNode(chain.TargetKey);
                 NodeResult inner = default;
-                ApplyStored(chain.TargetKey, entries, targetData, chain.TargetHash, plan.AfterJump(), ref inner, out bool targetChanged, out delta);
+                ApplyStored(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref inner, out bool targetChanged, out delta);
 
                 // The run points at one group and one only (invariant 2). When the writes leave that group
                 // byte-identical, the run above it is unchanged too — its node hash folds from the target's,
@@ -174,9 +174,18 @@ public static partial class TrieUpdater
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
             uint occupantsOccupied = 1u << targetSlot;
 
+            // The group this split makes real wraps its children where its depth says so, and the target
+            // is one of them: its blob moves out of the key the run left it under and into the wrapper
+            // this frame is about to write. A run below the child depth is not stored anywhere to begin
+            // with, and rides in the seed as it always has.
+            using RefCountingMemory? adopted = directChild && PbtTrieNodeWrapper.WrapsChildren(depth)
+                ? store.GetTrieNode(chain.TargetKey)
+                : null;
+            if (adopted is not null) store.SetTrieNode(chain.TargetKey, null);
+
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
-            SeededOccupant occupants = new(seed, targetSlot);
+            SeededOccupant occupants = new(seed, targetSlot, StoredBlob.Of(adopted));
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 

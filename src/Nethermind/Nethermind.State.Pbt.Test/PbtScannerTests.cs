@@ -182,6 +182,39 @@ public class PbtScannerTests
         });
     }
 
+    /// <summary>
+    /// A blob holding its children counts as the nodes it holds, at the depths they sit at, so the
+    /// shape reads exactly as it would had they been stored apart — and the sharing itself is counted
+    /// beside it, one lookup and one key saved per child.
+    /// </summary>
+    [TestCase(PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.Interleaved)]
+    public async Task Scan_ReadsAWrapperAsTheNodesItHolds(PbtGroupFormat format)
+    {
+        // three account stems: two parting at nibble 2, so their group at depth 8 hangs under the
+        // depth-4 group that the third one branches — and depth 4 holds its children
+        List<(byte[], byte[]?)> writes = [];
+        foreach (byte[] prefix in (byte[][])[[0x00, 0x00], [0x00, 0x10], [0x01, 0x00]])
+        {
+            byte[] stem = new byte[Stem.Length];
+            prefix.CopyTo(stem, 0);
+            AddLeaves(writes, stem, 1);
+        }
+
+        PbtScanReport report = await ScanTree(format, writes, concurrency: 1);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(report.GroupCount, Is.EqualTo(3), "groups at depths 0, 4 and 8");
+            Assert.That(report.AccountNodes.GroupsByDepth[4], Is.EqualTo(1));
+            Assert.That(report.AccountNodes.GroupsByDepth[8], Is.EqualTo(1), "the wrapped child is counted at its own depth");
+            Assert.That(report.WrapperCount, Is.EqualTo(1), "the depth-4 blob holds the depth-8 group");
+            Assert.That(report.WrappedChildCount, Is.EqualTo(1));
+            Assert.That(report.StemCount, Is.EqualTo(3));
+            Assert.That(report.StemCountAgrees, Is.True);
+        });
+    }
+
     [Test]
     public async Task Scan_EmptyDatabase_CountsNothing()
     {
