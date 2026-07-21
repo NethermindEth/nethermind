@@ -21,8 +21,6 @@ public sealed class GCScheduler
     private const int MinSecondsBetweenForcedGC = 120;
     // Keeps concurrent gen2 ahead of allocation bursts during sustained heavy-block processing.
     internal const long SustainedSweepAllocationBytes = 512L * 1024 * 1024;
-    // Far above any observed background gen2 duration; only guards against a missed completion.
-    private const long PendingSweepTimeoutMs = 60_000;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -41,9 +39,6 @@ public sealed class GCScheduler
     private bool _skipNextGC = false;
     private long _sweepBaselineAllocatedBytes;
     private int _forcedGCExclusions;
-    private long _pendingSweepBackgroundIndex = -1;
-    private long _pendingSweepFullBlockingIndex = -1;
-    private long _pendingSweepIssuedAtMs;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -241,44 +236,12 @@ public sealed class GCScheduler
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 
-        // Reissuing while a background gen2 is in flight makes the runtime escalate to a full blocking collection.
-        if (IsLastSweepStillRunning()) return;
-
-        long backgroundIndex = GC.GetGCMemoryInfo(GCKind.Background).Index;
-        long fullBlockingIndex = GC.GetGCMemoryInfo(GCKind.FullBlocking).Index;
-        if (GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false))
-        {
-            _pendingSweepBackgroundIndex = backgroundIndex;
-            _pendingSweepFullBlockingIndex = fullBlockingIndex;
-            _pendingSweepIssuedAtMs = Environment.TickCount64;
-        }
-    }
-
-    private bool IsLastSweepStillRunning()
-    {
-        if (_pendingSweepBackgroundIndex < 0) return false;
-
-        if (GC.GetGCMemoryInfo(GCKind.Background).Index > _pendingSweepBackgroundIndex
-            || GC.GetGCMemoryInfo(GCKind.FullBlocking).Index > _pendingSweepFullBlockingIndex
-            || Environment.TickCount64 - _pendingSweepIssuedAtMs > PendingSweepTimeoutMs)
-        {
-            _pendingSweepBackgroundIndex = -1;
-            return false;
-        }
-
-        return true;
+        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
     }
 
     internal long SweepBaselineAllocatedBytes
     {
         get => Volatile.Read(ref _sweepBaselineAllocatedBytes);
         set => Volatile.Write(ref _sweepBaselineAllocatedBytes, value);
-    }
-
-    internal void SetPendingSweep(long backgroundIndex, long fullBlockingIndex, long issuedAtMs)
-    {
-        _pendingSweepBackgroundIndex = backgroundIndex;
-        _pendingSweepFullBlockingIndex = fullBlockingIndex;
-        _pendingSweepIssuedAtMs = issuedAtMs;
     }
 }
