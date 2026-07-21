@@ -2,12 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.PortfolioViewer.Plugin;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -19,7 +13,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Runner.Test;
+namespace Nethermind.PortfolioViewer.Plugin.Test;
 
 [TestFixture]
 public class DetectionScannerTests

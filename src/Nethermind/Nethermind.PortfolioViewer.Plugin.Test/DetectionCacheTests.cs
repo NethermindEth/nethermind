@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
-using System.IO;
-using Nethermind.PortfolioViewer.Plugin;
 using Nethermind.Logging;
 using NUnit.Framework;
 
-namespace Nethermind.Runner.Test;
+namespace Nethermind.PortfolioViewer.Plugin.Test;
 
 [TestFixture]
 public class DetectionCacheTests

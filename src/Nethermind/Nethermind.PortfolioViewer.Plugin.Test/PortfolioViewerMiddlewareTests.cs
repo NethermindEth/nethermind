@@ -2,21 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
-using System.Collections.Generic;
-using System.IO;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Nethermind.PortfolioViewer.Plugin;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Runner.Test;
+namespace Nethermind.PortfolioViewer.Plugin.Test;
 
 [TestFixture]
 public class PortfolioViewerMiddlewareTests

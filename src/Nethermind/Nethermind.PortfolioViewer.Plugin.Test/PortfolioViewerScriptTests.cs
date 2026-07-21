@@ -2,14 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
-using System;
-using System.IO;
 using Microsoft.ClearScript.V8;
 using Microsoft.Extensions.FileProviders;
-using Nethermind.PortfolioViewer.Plugin;
 using NUnit.Framework;
 
-namespace Nethermind.Runner.Test;
+namespace Nethermind.PortfolioViewer.Plugin.Test;
 
 /// <summary>
 /// Exercises the pure JavaScript logic embedded in the portfolio viewer page (keccak-256,
