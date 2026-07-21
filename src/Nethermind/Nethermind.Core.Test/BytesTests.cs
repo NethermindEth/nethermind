@@ -848,5 +848,27 @@ namespace Nethermind.Core.Test
                 Assert.That(data.AsSpan().CountZeros(), Is.EqualTo(1), $"single zero at position {pos} should be counted");
             }
         }
+
+        [TestCase("", true, "00")]
+        [TestCase("00", true, "00")]
+        [TestCase("0000000000", true, "00")]
+        [TestCase("0001", false, "01")]
+        [TestCase("0000000000000000000000000000000000000000000000000000000000000001", false, "01")]
+        [TestCase("0100", false, "0100")]
+        [TestCase("ff", false, "ff")]
+        [TestCase("00000000000000000000000000000000000000000000000000000000000000ff", false, "ff")]
+        [TestCase("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", false, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+        public void WithoutLeadingZeros_reports_zero_and_trims_in_one_scan(string hex, bool expectedIsZero, string expectedHex)
+        {
+            ReadOnlySpan<byte> bytes = hex.Length == 0 ? [] : Bytes.FromHexString(hex);
+
+            ReadOnlySpan<byte> trimmed = bytes.WithoutLeadingZeros(out bool isZero);
+
+            Assert.That(isZero, Is.EqualTo(expectedIsZero));
+            Assert.That(trimmed.ToHexString(), Is.EqualTo(expectedHex));
+            // The fused overload must agree with the separate helpers it replaces
+            Assert.That(isZero, Is.EqualTo(bytes.IsZero()));
+            Assert.That(trimmed.SequenceEqual(bytes.WithoutLeadingZeros()), Is.True);
+        }
     }
 }

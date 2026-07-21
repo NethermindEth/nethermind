@@ -364,9 +364,9 @@ public static partial class EvmInstructions
         if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
         ReadOnlySpan<byte> bytes = bytesSpan;
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        // Strips to a single zero byte when the value is all-zero; the newIsZero-guarded
+        // paths below still substitute the shared BytesZero where an array is stored.
+        bytes = bytes.WithoutLeadingZeros(out bool newIsZero);
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
@@ -477,9 +477,9 @@ public static partial class EvmInstructions
         if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
         ReadOnlySpan<byte> bytes = bytesSpan;
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        // Strips to a single zero byte when the value is all-zero; the newIsZero-guarded
+        // paths below still substitute the shared BytesZero where an array is stored.
+        bytes = bytes.WithoutLeadingZeros(out bool newIsZero);
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
