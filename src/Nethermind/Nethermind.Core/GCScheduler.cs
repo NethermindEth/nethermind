@@ -55,6 +55,11 @@ public sealed class GCScheduler
             ? bytes
             : SustainedSweepAllocationBytes;
 
+    // DIAG: NETHERMIND_SWEEP_SLL=1 runs the sweep under SustainedLowLatency, which suppresses the
+    // gen2-fragmentation blocking escalation (gc.cpp dt_high_frag_p) while still allowing background GC.
+    private static readonly bool _sweepSllEnabled =
+        Environment.GetEnvironmentVariable("NETHERMIND_SWEEP_SLL") == "1";
+
     // DIAG: last logged gen2 GC indices for the watcher timer.
     private long _lastBgcIndex;
     private long _lastFullBlockingIndex;
@@ -110,6 +115,7 @@ public sealed class GCScheduler
             $"promotedMB={info.PromotedBytes / 1e6:F0} pinned={info.PinnedObjectsCount} " +
             $"compacted={info.Compacted} memLoadGB={info.MemoryLoadBytes / 1e9:F1} " +
             $"highThreshGB={info.HighMemoryLoadThresholdBytes / 1e9:F1} availGB={info.TotalAvailableMemoryBytes / 1e9:F1} " +
+            $"fragGB={info.FragmentedBytes / 1e9:F2} latency={GCSettings.LatencyMode} " +
             $"totalPauseS={GC.GetTotalPauseDuration().TotalSeconds:F1}");
     }
 
@@ -364,13 +370,29 @@ public sealed class GCScheduler
         GCMemoryInfo before = GC.GetGCMemoryInfo();
         long pauseBeforeMs = (long)GC.GetTotalPauseDuration().TotalMilliseconds;
         long start = Environment.TickCount64;
-        bool fired = GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+
+        bool useSll = _sweepSllEnabled && GCSettings.LatencyMode == GCLatencyMode.Interactive;
+        if (useSll) GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        bool fired;
+        try
+        {
+            fired = GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+        }
+        finally
+        {
+            if (useSll && GCSettings.LatencyMode == GCLatencyMode.SustainedLowLatency)
+            {
+                GCSettings.LatencyMode = GCLatencyMode.Interactive;
+            }
+        }
+
         long wallMs = Environment.TickCount64 - start;
         long pauseDeltaMs = (long)GC.GetTotalPauseDuration().TotalMilliseconds - pauseBeforeMs;
         Console.WriteLine(
             $"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} sweep fired={fired} wallMs={wallMs} " +
-            $"pauseDeltaMs={pauseDeltaMs} allocGB={sinceBaseline / 1e9:F1} " +
+            $"pauseDeltaMs={pauseDeltaMs} allocGB={sinceBaseline / 1e9:F1} sll={useSll} " +
             $"memLoadGB={before.MemoryLoadBytes / 1e9:F1} highThreshGB={before.HighMemoryLoadThresholdBytes / 1e9:F1} " +
+            $"fragGB={before.FragmentedBytes / 1e9:F2} heapGB={before.HeapSizeBytes / 1e9:F2} " +
             $"lohMode={GCSettings.LargeObjectHeapCompactionMode}");
     }
 
