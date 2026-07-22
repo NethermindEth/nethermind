@@ -205,7 +205,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
-                Parallel.For(0, accountCount, parallelOptions, (i) =>
+                void WarmAccount(int i)
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
@@ -219,9 +219,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
 
-                    Account? account = sink is null && storageChangeCount == 0
-                        ? null
-                        : _snapshotBundle.GetAccount(address);
+                    Account? account = _snapshotBundle.GetAccount(address);
 
                     if (sink is not null && sink.StillNeeded(address, out _))
                         sink.OnAccountRead(address, account);
@@ -256,7 +254,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         accounts[i] = account;
                         selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
                     }
-                });
+                }
+
+                // The shared ThreadPool is saturated by the parallel EVM executor
+                // during newPayload, so Parallel.For here gets starved exactly when
+                // warmup matters. The dedicated reader pool is idle at that point.
+                if (_warmReadPool is not null)
+                {
+                    WarmReadPool pool = _warmReadPool.Value;
+                    int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, accountCount / 64));
+                    pool.Run(accountCount, workers, WarmAccount, token);
+                }
+                else
+                {
+                    Parallel.For(0, accountCount, parallelOptions, WarmAccount);
+                }
 
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }

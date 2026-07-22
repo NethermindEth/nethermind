@@ -731,7 +731,7 @@
           "BouncyCastle.Cryptography": "[2.6.2, )",
           "Ckzg.Bindings": "[2.1.8.1641, )",
           "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto.Bls": "[1.0.5, )",
+          "Nethermind.Crypto.Bls": "[1.1.0, )",
           "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.10, )"
         }
@@ -824,7 +824,7 @@
         "dependencies": {
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Crypto.Bls": "[1.0.5, )",
+          "Nethermind.Crypto.Bls": "[1.1.0, )",
           "Nethermind.Crypto.SecP256r1": "[1.1.0, )",
           "Nethermind.Evm": "[1.40.0-unstable, )",
           "Nethermind.GmpBindings": "[1.0.3, )",
@@ -1521,9 +1521,9 @@
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "SYdQOFVVcC3R3VAm9Dv+u4Mc1yqHZETxt4tN3a+AFeOnEtUmpcjwVwYkkiiUIIrr6vQVVOUuwsDmaa9l3u45IQ=="
+        "requested": "[1.1.0, )",
+        "resolved": "1.1.0",
+        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -1796,9 +1796,9 @@
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "SYdQOFVVcC3R3VAm9Dv+u4Mc1yqHZETxt4tN3a+AFeOnEtUmpcjwVwYkkiiUIIrr6vQVVOUuwsDmaa9l3u45IQ=="
+        "requested": "[1.1.0, )",
+        "resolved": "1.1.0",
+        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -1897,9 +1897,9 @@
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "SYdQOFVVcC3R3VAm9Dv+u4Mc1yqHZETxt4tN3a+AFeOnEtUmpcjwVwYkkiiUIIrr6vQVVOUuwsDmaa9l3u45IQ=="
+        "requested": "[1.1.0, )",
+        "resolved": "1.1.0",
+        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -1998,9 +1998,9 @@
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "SYdQOFVVcC3R3VAm9Dv+u4Mc1yqHZETxt4tN3a+AFeOnEtUmpcjwVwYkkiiUIIrr6vQVVOUuwsDmaa9l3u45IQ=="
+        "requested": "[1.1.0, )",
+        "resolved": "1.1.0",
+        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -2099,9 +2099,9 @@
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "SYdQOFVVcC3R3VAm9Dv+u4Mc1yqHZETxt4tN3a+AFeOnEtUmpcjwVwYkkiiUIIrr6vQVVOUuwsDmaa9l3u45IQ=="
+        "requested": "[1.1.0, )",
+        "resolved": "1.1.0",
+        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -2200,9 +2200,9 @@
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "SYdQOFVVcC3R3VAm9Dv+u4Mc1yqHZETxt4tN3a+AFeOnEtUmpcjwVwYkkiiUIIrr6vQVVOUuwsDmaa9l3u45IQ=="
+        "requested": "[1.1.0, )",
+        "resolved": "1.1.0",
+        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
