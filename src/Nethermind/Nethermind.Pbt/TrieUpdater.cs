@@ -746,7 +746,7 @@ public static partial class TrieUpdater
             // What lets the wrapper's offsets be the writer's own count: a group holding its children is
             // one no group above holds, so its bytes are the whole of the buffer rather than a slice of it.
             Debug.Assert(!isInWrapper || mark == 0, "a wrapping group's bytes must start the buffer for its child offsets to be absolute");
-            NodeKind rootKind = GroupRebuild.KindOf(occupiedBitmask, stemsBitmask);
+            NodeKind rootKind = boundary.RootKind;
 
             // Every stem of this subtree sits under one of the sixteen slots, so what they hoisted is the
             // whole of what changed here. This holds however the nodes are settled below: the statistics
@@ -923,28 +923,26 @@ public static partial class TrieUpdater
         /// </returns>
         /// <param name="writer">
         /// Where the encoding goes, once every child the group holds is in: the fold takes its room off
-        /// this, and what it wrote is committed here before returning.
+        /// this and commits what it wrote to it.
         /// </param>
         /// <param name="stats">What the whole subtree amounts to, for the group's header; see <see cref="GroupRebuild.Finish"/>.</param>
         private (NodeResult Root, ValueHash256 RootHash, int Length) RebuildGroup(
             ref BufferWriter writer, ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
             NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 beforeHash, in PbtSubtreeStats stats)
         {
-            GroupRebuild rebuild = new(changed, existing, boundary, changedBitmask, beforeHash, ref writer, writeFormat);
+            GroupRebuild rebuild = new(changed, existing, boundary, changedBitmask, beforeHash, writeFormat);
             // an internal group root is folded to a by-value hash and never stored, the parent caching it
-            // in its boundary slot; only a stem root is written, and is read back here while the fold's
-            // span still points at it — whatever the caller writes next may move the buffer
-            FoldedNode root = rebuild.Fold(PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, out ValueHash256 rootHash);
+            // in its boundary slot; only a stem root is written, and is read back before the fold commits,
+            // after which the writer hands out the room past the encoding rather than the encoding itself
+            FoldedNode root = rebuild.Fold(ref writer, PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, out ValueHash256 rootHash);
             NodeResult rootNode = NodeResult.Internal(rootHash);
             if (root.IsStored)
             {
-                PbtTrieNodeGroup.Slot rootSlot = rebuild.SlotAt(root);
-                rootNode = NodeResult.StemNode(rootSlot.Stem, rootSlot.Hash);
+                (Stem rootStem, ValueHash256 rootSubtreeRoot) = rebuild.StemAt(ref writer, root);
+                rootNode = NodeResult.StemNode(rootStem, rootSubtreeRoot);
             }
 
-            int length = rebuild.Finish(stats);
-            writer.Advance(length);
-            return (rootNode, rootHash, length);
+            return (rootNode, rootHash, rebuild.Finish(ref writer, stats));
         }
 
         private readonly record struct NodeRef(NodeKind Kind, int Offset);
