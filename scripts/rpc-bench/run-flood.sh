@@ -124,10 +124,13 @@ if [[ -n "$REFERENCE_RPC_URL" ]]; then
   assert_same_head "$RPC_URL" "$REFERENCE_RPC_URL"
 fi
 
-# Non-zero invocations are only warned about here so the remaining tests and the
-# summary still run — they are tallied and fail the script AFTER the summary is
-# written. Exception: equality mode, where the exit code may merely signal
-# response differences (reported in the summary, not a tool failure).
+# Non-zero invocations are tallied for a warning but do NOT fail the step on
+# their own: the fork's report/print stage is known to crash AFTER results.json
+# is written (toolstr API drift — the reason the summary renders from
+# results.json), so the exit code is not a reliable failure signal. What gates
+# the step is results completeness: every test must produce a parseable
+# results.json. Equality mode likewise gates on captured output, since its exit
+# code may merely signal response differences.
 run_failures=0
 for t in "${test_list[@]}"; do
   [[ -z "$t" ]] && continue
@@ -234,10 +237,12 @@ for t in "${test_list[@]}"; do
 done
 
 log "flood summary written to $summary"
-# A partial/failed benchmark must not publish as success — fail (after the
-# summary is written) on ANY invocation, missing-result, or parse failure.
+if (( run_failures > 0 )); then
+  log "::warning::${run_failures} flood invocation(s) exited non-zero — expected (post-results reporter crash); results.json completeness is what gates the step"
+fi
+# A partial benchmark must not publish as success — fail (after the summary is
+# written) when any test's results are missing or unparseable.
 fail_msgs=()
-(( run_failures > 0 ))   && fail_msgs+=("${run_failures} invocation(s) exited non-zero")
 (( missing > 0 ))        && fail_msgs+=("${missing} of ${#test_list[@]} test(s) produced no results.json")
 (( parse_failures > 0 )) && fail_msgs+=("${parse_failures} results.json failed to render")
 if (( ${#fail_msgs[@]} > 0 )); then
