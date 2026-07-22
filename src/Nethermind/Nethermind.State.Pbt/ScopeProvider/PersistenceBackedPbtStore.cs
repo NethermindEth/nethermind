@@ -17,14 +17,28 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// once and before writing it — including the two reads the descent makes off its own recursion: a
 /// chain's target lies below the frame reading it, and a group collapsing onto an untouched child reads
 /// one nothing descended into.
+/// <para>
+/// Reads are a snapshot's and need nothing of this; the writes take a lock, the batch underneath being
+/// one RocksDB structure that several threads of a fold would otherwise write at once.
+/// </para>
 /// </remarks>
 internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, IPbtPersistence.IWriteBatch batch) : IPbtStore
 {
+    private readonly Lock _writeLock = new();
+
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => reader.GetTrieNode(key);
 
     public RefCountingMemory? GetLeafBlob(in Stem stem) => reader.GetLeafBlob(stem);
 
-    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) => batch.SetTrieNode(key, node?.ToArrayAndRelease());
+    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
+    {
+        byte[]? value = node?.ToArrayAndRelease();
+        lock (_writeLock) batch.SetTrieNode(key, value);
+    }
 
-    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob) => batch.SetLeafBlob(stem, blob?.ToArrayAndRelease());
+    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
+    {
+        byte[]? value = blob?.ToArrayAndRelease();
+        lock (_writeLock) batch.SetLeafBlob(stem, value);
+    }
 }
