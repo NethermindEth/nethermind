@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -89,8 +90,8 @@ public class AccountChangesAtIndex(Address address)
         CodeChange = null;
         PreTxBalance = null;
         PreTxCode = null;
-        _preTxStorage?.Clear();
-        _storageChanges.Clear();
-        _storageReads.Clear();
+        _preTxStorage?.ClearAndTrim();
+        _storageChanges.ClearAndTrim();
+        _storageReads.ClearAndTrim();
     }
 }

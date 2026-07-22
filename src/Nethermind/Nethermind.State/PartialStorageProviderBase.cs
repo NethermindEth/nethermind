@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
@@ -161,7 +162,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
-            _intraBlockCache.Clear();
+            _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
         }
 
