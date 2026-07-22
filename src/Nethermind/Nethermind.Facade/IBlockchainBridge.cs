@@ -46,6 +46,7 @@ namespace Nethermind.Facade
         Hash256[] GetPendingTransactionFilterChanges(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
         FilterType GetFilterType(int filterId);
+        LogFilter? GetLogFilter(int filterId);
         LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null);
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);

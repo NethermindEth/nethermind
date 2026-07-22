@@ -475,6 +475,7 @@ namespace Nethermind.Facade
 
         public bool FilterExists(int filterId) => filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => filterStore.GetFilterType(filterId);
+        public LogFilter? GetLogFilter(int filterId) => filterStore.GetFilter<LogFilter>(filterId);
 
         public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
