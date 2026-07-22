@@ -90,6 +90,17 @@ public class PreBlockCaches
         return capture.SkipBackingReads;
     }
 
+    /// <summary>Whether the current thread is running a speculative storage-discovery pass for this cache.</summary>
+    public bool IsStorageDiscoveryActive
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            StorageReadCapture? capture = _currentStorageReadCapture;
+            return capture is not null && ReferenceEquals(capture.Owner, this) && capture.SkipBackingReads;
+        }
+    }
+
     public CacheType ClearCaches()
     {
         CacheType isDirty = CacheType.None;

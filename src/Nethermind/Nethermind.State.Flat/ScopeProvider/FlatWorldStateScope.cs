@@ -184,6 +184,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
         int snapshot = _hintSequenceId;
+        bool shouldWarmTrie = sink?.ShouldWarmTrie ?? true;
 
         return _hintBalTask = Task.Run(() =>
         {
@@ -203,7 +204,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                    if (shouldWarmTrie && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -221,7 +222,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                    if (storageChangeCount > 0)
+                    if (shouldWarmTrie && storageChangeCount > 0)
                     {
                         FlatStorageTree storageWarmer = new(
                             this,
