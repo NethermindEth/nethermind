@@ -632,9 +632,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         InvalidateFrontCache();
         _changes.Clear();
-        _committedThisRound.Clear();
-        _nullAccountReads.Clear();
-        _intraTxCache.Clear();
+        _committedThisRound.ClearAndTrim();
+        _nullAccountReads.ClearAndTrim();
+        _intraTxCache.ClearAndTrim();
 
         codeFlushTask.GetAwaiter().GetResult();
 
