@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
@@ -24,10 +25,21 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     private readonly Dictionary<TrieNodeKey, byte[]> _nodes = [];
     private readonly Dictionary<Stem, byte[]> _blobs = [];
     private readonly List<RefCountingMemory> _handedOut = [];
+    private readonly HashSet<int> _readThreads = [];
+
+    // a parallel fold reads from several threads at once; it writes from the calling thread alone, and
+    // only once every reader is through, so the lock covers the reads and the counters they keep
+    private readonly Lock _lock = new();
     private ValueHash256 _root;
 
     /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtGroupFormat)" path="/param[@name='writeFormat']"/>
     public PbtGroupFormat WriteFormat { get; set; } = writeFormat;
+
+    /// <summary>
+    /// <inheritdoc cref="TrieUpdater.UpdateRoot" path="/param[@name='concurrency']"/> Serial by default,
+    /// so that a test measuring what the descent read or wrote sees one thread's worth of it.
+    /// </summary>
+    public int RootFoldConcurrency { get; set; } = 1;
 
     /// <summary>The blobs as the store keeps them, a run or a clustered child having no entry of its own.</summary>
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
@@ -43,6 +55,18 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
 
     /// <summary>Count of <see cref="SetTrieNode"/> calls, to pin which groups a batch really rebuilds.</summary>
     public int NodeWrites { get; private set; }
+
+    /// <summary>
+    /// The threads that have read the store, so a test can tell that a fold it asked to run in
+    /// parallel really did — an assertion over a fold that quietly stayed on one thread proves nothing.
+    /// </summary>
+    public int ReadThreadCount
+    {
+        get
+        {
+            lock (_lock) return _readThreads.Count;
+        }
+    }
 
     /// <summary>
     /// Every node the store holds, keyed by where it sits in the trie — the children inside a cluster
@@ -81,31 +105,37 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
     }
 
-    public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => Track(RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key)));
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
+    {
+        lock (_lock) return Track(RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key)));
+    }
 
-    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
+    public void SetTrieNode(in TrieNodeKey key, byte[]? node)
     {
         NodeWrites++;
-        byte[]? value = node?.ToArrayAndRelease();
-        if (value is null) _nodes.Remove(key);
-        else _nodes[key] = value;
+        if (node is null) _nodes.Remove(key);
+        else _nodes[key] = node;
     }
 
     public RefCountingMemory? GetLeafBlob(in Stem stem)
     {
-        LeafReads++;
-        return Track(RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem)));
+        lock (_lock)
+        {
+            LeafReads++;
+            return Track(RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem)));
+        }
     }
 
-    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
+    public void SetLeafBlob(in Stem stem, byte[]? blob)
     {
-        byte[]? value = blob?.ToArrayAndRelease();
-        if (value is null) _blobs.Remove(stem);
-        else _blobs[stem] = value;
+        if (blob is null) _blobs.Remove(stem);
+        else _blobs[stem] = blob;
     }
 
+    /// <remarks>Called under <see cref="_lock"/>, as everything it keeps is read from every worker.</remarks>
     private RefCountingMemory? Track(RefCountingMemory? memory)
     {
+        _readThreads.Add(Environment.CurrentManagedThreadId);
         if (memory is not null) _handedOut.Add(memory);
         return memory;
     }
@@ -127,7 +157,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         using PbtWriteBatch batch = new(estimatedStems: grouped.Count, buckets: null);
         foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, out _);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, RootFoldConcurrency, out _);
         return _root;
     }
 
@@ -150,7 +180,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
 
         using PbtWriteBatch batch = builder.DrainToWriteBatch();
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, out _);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, RootFoldConcurrency, out _);
         return _root;
     }
 }

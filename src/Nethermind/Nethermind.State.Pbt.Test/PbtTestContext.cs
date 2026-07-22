@@ -58,7 +58,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
         new(CodeDb, Manager, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
-            Config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel);
+            Config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel, Config.RootFoldConcurrency);
 
     public async ValueTask DisposeAsync()
     {

@@ -76,6 +76,11 @@ public class PbtScopeProviderBenchmark
     [Params(1)]
     public int ChainDepth { get; set; }
 
+    // Only meaningful for the Pbt backend: 1 folds the root on the calling thread, 0 takes the
+    // processor count. A batch below the 128-stem threshold folds serially either way.
+    [Params(1, 0)]
+    public int RootFoldConcurrency { get; set; }
+
     [GlobalSetup]
     public void GlobalSetup()
     {
@@ -127,7 +132,7 @@ public class PbtScopeProviderBenchmark
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel);
+            config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel, RootFoldConcurrency);
     }
 
     [Benchmark]

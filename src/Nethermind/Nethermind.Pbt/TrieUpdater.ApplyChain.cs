@@ -11,7 +11,7 @@ namespace Nethermind.Pbt;
 
 public static partial class TrieUpdater
 {
-    private sealed partial class Updater
+    private sealed partial class Worker
     {
         /// <summary>
         /// Builds the run of single-child levels from <paramref name="startDepth"/> down to the group at
@@ -21,7 +21,7 @@ public static partial class TrieUpdater
         private Occupant NewChainNode(
             int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats)
         {
-            RefCountingMemory memory = memoryProvider.Rent(PbtNodeChain.EncodedLength);
+            RefCountingMemory memory = updater.MemoryProvider.Rent(PbtNodeChain.EncodedLength);
             PbtNodeChain.Write(memory.GetSpan(), startDepth, targetDepth, targetPath, targetHash, stats);
             return new Occupant(new NodeRef(NodeKind.Chain, 0), memory);
         }
@@ -33,7 +33,7 @@ public static partial class TrieUpdater
         private NodeResult CopyChainNode(ReadOnlySpan<byte> chainData)
         {
             Debug.Assert(chainData.Length == PbtNodeChain.EncodedLength);
-            RefCountingMemory memory = memoryProvider.Rent(PbtNodeChain.EncodedLength);
+            RefCountingMemory memory = updater.MemoryProvider.Rent(PbtNodeChain.EncodedLength);
             chainData.CopyTo(memory.GetSpan());
             return NodeResult.Chain(memory);
         }
@@ -44,7 +44,7 @@ public static partial class TrieUpdater
         /// </summary>
         private Occupant NewInternalNode(in ValueHash256 hash)
         {
-            RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.Slot.InternalLength);
+            RefCountingMemory memory = updater.MemoryProvider.Rent(PbtTrieNodeGroup.Slot.InternalLength);
             hash.Bytes.CopyTo(memory.GetSpan());
             return new Occupant(new NodeRef(NodeKind.Internal, 0), memory);
         }
@@ -107,8 +107,8 @@ public static partial class TrieUpdater
             // starting here.
             if (splitDepth == targetDepth)
             {
-                using RefCountingMemory? targetData = store.GetTrieNode(chain.TargetKey);
-                BufferWriter targetWriter = new(memoryProvider, targetData?.GetSpan().Length ?? 0);
+                using RefCountingMemory? targetData = updater.Store.GetTrieNode(chain.TargetKey);
+                BufferWriter targetWriter = new(updater.MemoryProvider, targetData?.GetSpan().Length ?? 0);
                 NodeResult inner;
                 bool targetChanged;
                 if (PbtLayout.IsClusteringDepth(targetDepth))
@@ -159,7 +159,7 @@ public static partial class TrieUpdater
             // prefix reaching down to it, which holds no node of its own (invariant 3). That prefixed run's
             // hash — not the split group's — is what changed against the run this frame replaced.
             TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, targetPath);
-            BufferWriter splitWriter = new(memoryProvider);
+            BufferWriter splitWriter = new(updater.MemoryProvider);
             NodeResult split = ApplyChainSplit(branchKey, entries, chain, plan.AfterJump(), ref splitWriter, out _, out delta);
             if (splitWriter.Detach() is { } splitBlob) split = split.WithBlob(splitBlob);
             result = WrapIntoChain(depth, branchKey, split, innerBlobStored: false, chain.Stats + delta);
@@ -202,9 +202,9 @@ public static partial class TrieUpdater
             // this frame is about to write. A run below the child depth is not stored anywhere to begin
             // with, and rides in the seed as it always has.
             using RefCountingMemory? adopted = directChild && PbtLayout.IsClusteringDepth(depth)
-                ? store.GetTrieNode(chain.TargetKey)
+                ? updater.Store.GetTrieNode(chain.TargetKey)
                 : null;
-            if (adopted is not null) store.SetTrieNode(chain.TargetKey, null);
+            if (adopted is not null) SetTrieNode(chain.TargetKey, null);
 
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
@@ -256,7 +256,7 @@ public static partial class TrieUpdater
             {
                 case NodeKind.Absent:
                 case NodeKind.Stem:
-                    if (innerBlobStored) store.SetTrieNode(innerKey, null);
+                    if (innerBlobStored) SetTrieNode(innerKey, null);
                     return inner;
                 case NodeKind.Internal:
                     // plant the rebuilt encoding when the descent produced one, else the stored blob stands
@@ -265,7 +265,7 @@ public static partial class TrieUpdater
                         if (inner.Blob is { } innerBlob)
                         {
                             innerBlob.AcquireLease();
-                            store.SetTrieNode(innerKey, innerBlob);
+                            SetTrieNode(innerKey, innerBlob);
                         }
                         return NewChainNode(startDepth, innerKey.Depth, innerKey.Path, inner.Hash, stats);
                     }
@@ -275,7 +275,7 @@ public static partial class TrieUpdater
                     Stem targetPath = absorbed.TargetPath;
                     ValueHash256 targetHash = absorbed.TargetHash;
                     Debug.Assert(absorbed.Stats == stats, "an absorbed run reaches the same subtree the run absorbing it does");
-                    if (innerBlobStored) store.SetTrieNode(innerKey, null);
+                    if (innerBlobStored) SetTrieNode(innerKey, null);
                     using (inner) return NewChainNode(startDepth, targetDepth, targetPath, targetHash, stats);
             }
         }

@@ -24,6 +24,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly IPbtDbManager _manager;
     private readonly IPbtResourcePool _resourcePool;
     private readonly PbtGroupFormat _writeFormat;
+    private readonly int _rootFoldConcurrency;
     private bool _isDisposed;
 
     public PbtOverridableWorldScope([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager manager, IPbtResourcePool resourcePool, IPbtConfig config)
@@ -31,6 +32,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         _manager = manager;
         _resourcePool = resourcePool;
         _writeFormat = config.TrieNodeWriteFormat();
+        _rootFoldConcurrency = config.RootFoldConcurrency;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
         WorldState = new OverridableScopeProvider(this);
@@ -114,7 +116,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
         {
             StateId stateId = new(baseBlock);
-            return new PbtWorldStateScope(stateId, outer.GatherBundle(stateId), _codeDb, outer, outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, outer._writeFormat);
+            return new PbtWorldStateScope(stateId, outer.GatherBundle(stateId), _codeDb, outer, outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, outer._writeFormat, outer._rootFoldConcurrency);
         }
     }
 

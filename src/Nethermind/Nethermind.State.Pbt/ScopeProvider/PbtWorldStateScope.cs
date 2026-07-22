@@ -26,6 +26,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly IPbtCommitTarget _commitTarget;
     private readonly bool _isReadOnly;
     private readonly PbtGroupFormat _writeFormat;
+    private readonly int _rootFoldConcurrency;
 
     // stem leaves dirtied since the last root update: storage slots from the parallel storage batches
     // and account/code header leaves from the single-threaded account flush both land here (their
@@ -51,7 +52,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         IPbtResourcePool resourcePool,
         PbtResourcePool.Usage usage,
         bool isReadOnly,
-        PbtGroupFormat writeFormat)
+        PbtGroupFormat writeFormat,
+        int rootFoldConcurrency)
     {
         _currentStateId = currentStateId;
         Bundle = bundle;
@@ -59,6 +61,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
         _isReadOnly = isReadOnly;
         _writeFormat = writeFormat;
+        _rootFoldConcurrency = rootFoldConcurrency;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, _pendingCode);
     }
@@ -95,7 +98,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         if (!_rootDirty) return;
 
         using PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch();
-        _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, out _).ToHash256();
+        _rootHash = TrieUpdater.UpdateRoot(
+            this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat,
+            _rootFoldConcurrency, out _).ToHash256();
         _rootDirty = false;
     }
 
@@ -103,10 +108,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     RefCountingMemory? IPbtStore.GetLeafBlob(in Stem stem) => Bundle.GetLeafBlob(stem);
 
-    void IPbtStore.SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) => Bundle.SetTrieNode(key, node?.ToArrayAndRelease());
+    void IPbtStore.SetTrieNode(in TrieNodeKey key, byte[]? node) => Bundle.SetTrieNode(key, node);
 
     // an emptied stem is buffered as an empty blob: the tombstone that shadows the layer chain's blob
-    void IPbtStore.SetLeafBlob(in Stem stem, RefCountingMemory? blob) => Bundle.SetLeafBlob(stem, blob?.ToArrayAndRelease() ?? []);
+    void IPbtStore.SetLeafBlob(in Stem stem, byte[]? blob) => Bundle.SetLeafBlob(stem, blob ?? []);
 
     public void Commit(ulong blockNumber)
     {
