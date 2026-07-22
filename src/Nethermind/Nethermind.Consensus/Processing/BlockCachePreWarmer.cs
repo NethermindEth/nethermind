@@ -43,7 +43,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private const int StorageHeavyMissThreshold = 128;
     private const int LargeCalldataThreshold = 1024;
+    private const ulong VeryHighGasDiscoveryThreshold = 10_000_000;
     private const int MaxDiscoveryCandidates = 16;
+    private const int MaxDiscoveryRounds = 6;
+    private const int MaxDiscoveredCells = 8192;
     private const int MaxStorageHeavyDestinations = 1024;
 
     private int _mainThreadTxIndex = -1;
@@ -159,7 +162,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             bool knownStorageHeavy = _storageHeavyDestinations.ContainsKey(destination);
             bool repeatedDestination = destinationCounts[destination] > 1;
-            if (knownStorageHeavy || repeatedDestination || tx.DataLength >= LargeCalldataThreshold)
+            if (knownStorageHeavy || repeatedDestination || tx.DataLength >= LargeCalldataThreshold || tx.GasLimit >= VeryHighGasDiscoveryThreshold)
             {
                 candidates.Add(tx);
             }
@@ -167,82 +170,108 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         if (candidates.Count == 0) return;
 
-        HashSet<StorageCell> discoveredCells = [];
-        Lock discoveredCellsLock = new();
-        ParallelOptions parallelOptions = new()
-        {
-            MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, candidates.Count),
-            CancellationToken = cancellationToken
-        };
+        HashSet<StorageCell> allDiscoveredCells = [];
+        ConcurrentDictionary<AddressAsKey, int> discoveredByDestination = new();
 
-        try
+        for (int round = 0; round < MaxDiscoveryRounds && candidates.Count > 0; round++)
         {
-            Parallel.ForEach(candidates, parallelOptions, tx =>
+            HashSet<StorageCell> roundCells = [];
+            Lock roundCellsLock = new();
+            ConcurrentBag<Transaction> nextRoundCandidates = [];
+            ParallelOptions parallelOptions = new()
             {
-                IReadOnlyTxProcessorSource env = _envPool.Get();
-                try
-                {
-                    using IReadOnlyTxProcessingScope scope = env.Build(parent);
-                    BlockExecutionContext context = new(block.Header, spec);
-                    scope.TransactionProcessor.SetBlockExecutionContext(context);
+                MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, candidates.Count),
+                CancellationToken = cancellationToken
+            };
 
-                    using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(skipBackingReads: true);
+            try
+            {
+                Parallel.ForEach(candidates, parallelOptions, tx =>
+                {
+                    IReadOnlyTxProcessorSource env = _envPool.Get();
                     try
                     {
-                        IWorldState worldState = scope.WorldState;
-                        Address senderAddress = tx.SenderAddress!;
-                        if (!worldState.AccountExists(senderAddress))
+                        using IReadOnlyTxProcessingScope scope = env.Build(parent);
+                        BlockExecutionContext context = new(block.Header, spec);
+                        scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                        using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(skipBackingReads: true);
+                        try
                         {
-                            worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                            IWorldState worldState = scope.WorldState;
+                            Address senderAddress = tx.SenderAddress!;
+                            if (!worldState.AccountExists(senderAddress))
+                            {
+                                worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                            }
+
+                            if (spec.UseTxAccessLists)
+                            {
+                                worldState.WarmUp(tx.AccessList, cancellationToken);
+                            }
+
+                            scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                        }
+                        catch (Exception ex) when (ex is EvmException or OverflowException)
+                        {
                         }
 
-                        if (spec.UseTxAccessLists)
+                        if (capture.Cells.Count == 0) return;
+
+                        nextRoundCandidates.Add(tx);
+                        using (roundCellsLock.EnterScope())
                         {
-                            worldState.WarmUp(tx.AccessList, cancellationToken);
+                            roundCells.UnionWith(capture.Cells);
                         }
 
-                        scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                        AddressAsKey destination = tx.To!;
+                        int destinationCount = discoveredByDestination.AddOrUpdate(destination, capture.Cells.Count,
+                            (_, count) => count + capture.Cells.Count);
+                        if (destinationCount >= StorageHeavyMissThreshold) RegisterStorageHeavy(tx);
                     }
-                    catch (Exception ex) when (ex is EvmException or OverflowException)
+                    catch (Exception ex)
                     {
+                        _logger.DebugError($"Error discovering storage reads for {tx.Hash}", ex);
                     }
-
-                    if (capture.Cells.Count < StorageHeavyMissThreshold) return;
-
-                    RegisterStorageHeavy(tx);
-                    using (discoveredCellsLock.EnterScope())
+                    finally
                     {
-                        discoveredCells.UnionWith(capture.Cells);
+                        _envPool.Return(env);
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.DebugError($"Error discovering storage reads for {tx.Hash}", ex);
-                }
-                finally
-                {
-                    _envPool.Return(env);
-                }
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
 
-        if (discoveredCells.Count == 0 || cancellationToken.IsCancellationRequested) return;
+            roundCells.ExceptWith(allDiscoveredCells);
+            if (roundCells.Count == 0 || cancellationToken.IsCancellationRequested) return;
 
+            allDiscoveredCells.UnionWith(roundCells);
+            if (!WarmDiscoveredStorage(mainScope, roundCells)) return;
+            if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
+
+            candidates = new List<Transaction>(nextRoundCandidates.Count);
+            while (nextRoundCandidates.TryTake(out Transaction? candidate)) candidates.Add(candidate);
+        }
+    }
+
+    private bool WarmDiscoveredStorage(IWorldStateScopeProvider.IScope mainScope, HashSet<StorageCell> discoveredCells)
+    {
         ReadOnlyBlockAccessList accessList = BuildStorageReadList(discoveredCells);
         try
         {
             mainScope.HintBal(accessList, new StorageDiscoverySink(_preBlockCaches)).GetAwaiter().GetResult();
+            return true;
         }
         catch (OperationCanceledException)
         {
+            return false;
         }
         catch (Exception ex)
         {
             _logger.DebugError("Error warming discovered storage reads", ex);
+            return false;
         }
     }
 
@@ -280,6 +309,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private sealed class StorageDiscoverySink(PreBlockCaches caches) : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
+        public bool ShouldWarmTrie => false;
+
         public void OnAccountRead(Address address, Account? account)
         {
             AddressAsKey key = address;
