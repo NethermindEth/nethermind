@@ -843,14 +843,14 @@ public static partial class TrieUpdater
             if (holdsChildren) wrapper.WriteOffsets(ref writer);
 
             GroupRebuild rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, writeFormat);
-            (PbtTrieNodeGroup.ValueSlot rootSlot, ValueHash256 rootHash, int groupLength) = rebuild.Rebuild(ref writer, afterStats);
+            (Stem? rootStem, ValueHash256 rootHash) = rebuild.Rebuild(ref writer, afterStats);
+            NodeResult rootNode = rootStem is { } stem ? NodeResult.StemNode(stem, rootHash) : NodeResult.Internal(rootHash);
 
-            if (holdsChildren) wrapper.Finish(ref writer, groupLength);
+            if (holdsChildren) wrapper.Finish(ref writer);
 
             // Unchanged root => the encoding is byte-identical to what is stored (an internal root whose
-            // hash matches implies the same subtree, hence the same cached boundary hashes). rootHash is the
-            // node hash the fold produced: a stem root's stem-node hash, or an internal root's folded hash.
-            changed = rootHash != beforeHash;
+            // hash matches implies the same subtree, hence the same cached boundary hashes).
+            changed = rootNode.NodeHash() != beforeHash;
 
             // Plant each child group's blob at its key. The frame that built it never wrote it; this one,
             // its parent, does. A wrapping frame plants none of them: it has just written their bytes into
@@ -870,9 +870,7 @@ public static partial class TrieUpdater
 
             Release(results, handedUp: -1);
 
-            return rootSlot.Kind == NodeKind.Stem
-                ? NodeResult.StemNode(rootSlot.Stem, rootSlot.Hash)
-                : NodeResult.Internal(rootSlot.Hash);
+            return rootNode;
         }
 
         /// <summary>
