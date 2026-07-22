@@ -31,6 +31,17 @@ public interface IPersistence
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+        void GetSlots(ReadOnlySpan<StorageCell> cells, Span<SlotValue?> values)
+        {
+            if (cells.Length != values.Length)
+                throw new ArgumentException("Cells and values must have the same length.", nameof(values));
+
+            for (int i = 0; i < cells.Length; i++)
+            {
+                SlotValue value = default;
+                values[i] = TryGetSlot(cells[i].Address, cells[i].Index, ref value) ? value : null;
+            }
+        }
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);

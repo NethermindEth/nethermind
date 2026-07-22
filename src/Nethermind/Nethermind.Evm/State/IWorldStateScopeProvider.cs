@@ -105,6 +105,12 @@ public interface IWorldStateScopeProvider
     public interface IAsyncBalReaderSink
     {
         /// <summary>
+        /// Whether the BAL scan should also enqueue trie warm-up hints. Storage-only consumers can disable this
+        /// when they only need backing values and will not consume the speculative trie paths.
+        /// </summary>
+        bool ShouldWarmTrie => true;
+
+        /// <summary>
         /// Called when an account has been read for the given address.
         /// </summary>
         /// <param name="address">The account address from the BAL.</param>

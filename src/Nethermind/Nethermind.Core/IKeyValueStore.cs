@@ -23,6 +23,15 @@ namespace Nethermind.Core
 
         byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
 
+        void MultiGet(byte[][] keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+        {
+            if (keys.Length != values.Length)
+                throw new ArgumentException("Keys and values must have the same length.", nameof(values));
+
+            for (int i = 0; i < keys.Length; i++)
+                values[i] = Get(keys[i], flags);
+        }
+
         /// <summary>
         /// Return span. Must call <see cref="DangerousReleaseMemory"/> after use to avoid memory leaks.
         /// Prefer using <see cref="GetOwnedMemory"/> which handles release automatically via disposal.

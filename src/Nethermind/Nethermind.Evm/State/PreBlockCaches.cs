@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -28,6 +29,11 @@ public class PreBlockCaches
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
     private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _survivingPrecompileCache;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
+
+    [ThreadStatic]
+    private static StorageReadCapture? _currentStorageReadCapture;
+
+    private int _activeStorageReadCaptures;
 
     public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
 
@@ -59,6 +65,50 @@ public class PreBlockCaches
         set => _mainScope = value;
     }
 
+    /// <summary>
+    /// Starts a thread-local capture of backing-store storage misses made through this block cache.
+    /// </summary>
+    /// <param name="skipBackingReads">
+    /// When <see langword="true"/>, callers record the storage cell and use a speculative placeholder instead of
+    /// reading the backing store. The speculative execution result must not be consumed.
+    /// </param>
+    public StorageReadCapture BeginStorageReadCapture(bool skipBackingReads)
+    {
+        StorageReadCapture capture = new(this, _currentStorageReadCapture, skipBackingReads);
+        _currentStorageReadCapture = capture;
+        Interlocked.Increment(ref _activeStorageReadCaptures);
+        return capture;
+    }
+
+    /// <summary>
+    /// Records a backing-store storage miss in the capture active on the current thread.
+    /// </summary>
+    /// <returns><see langword="true"/> when the backing read should be skipped.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool CaptureStorageMiss(in StorageCell storageCell)
+    {
+        if (Volatile.Read(ref _activeStorageReadCaptures) == 0) return false;
+
+        StorageReadCapture? capture = _currentStorageReadCapture;
+        if (capture is null || !ReferenceEquals(capture.Owner, this)) return false;
+
+        capture.Record(in storageCell);
+        return capture.SkipBackingReads;
+    }
+
+    /// <summary>Whether this thread currently has a storage-read capture for this cache.</summary>
+    public bool IsStorageReadCaptureActive
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            if (Volatile.Read(ref _activeStorageReadCaptures) == 0) return false;
+
+            StorageReadCapture? capture = _currentStorageReadCapture;
+            return capture is not null && ReferenceEquals(capture.Owner, this);
+        }
+    }
+
     public CacheType ClearCaches()
     {
         CacheType isDirty = CacheType.None;
@@ -68,6 +118,53 @@ public class PreBlockCaches
         }
 
         return isDirty;
+    }
+
+    /// <summary>
+    /// A synchronous, thread-local storage-read capture. Dispose it on the thread where it was created.
+    /// </summary>
+    public sealed class StorageReadCapture : IDisposable
+    {
+        private readonly StorageReadCapture? _previous;
+        private readonly HashSet<StorageCell>? _cells;
+        private bool _disposed;
+
+        internal StorageReadCapture(PreBlockCaches owner, StorageReadCapture? previous, bool skipBackingReads)
+        {
+            Owner = owner;
+            _previous = previous;
+            SkipBackingReads = skipBackingReads;
+            if (skipBackingReads) _cells = [];
+        }
+
+        internal PreBlockCaches Owner { get; }
+        internal bool SkipBackingReads { get; }
+
+        /// <summary>Number of backing-store misses observed, including repeated cells.</summary>
+        public int MissCount { get; private set; }
+
+        /// <summary>Distinct cells encountered while backing reads were skipped.</summary>
+        public IReadOnlyCollection<StorageCell> Cells => _cells ?? (IReadOnlyCollection<StorageCell>)Array.Empty<StorageCell>();
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Record(in StorageCell storageCell)
+        {
+            MissCount++;
+            _cells?.Add(storageCell);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            if (ReferenceEquals(_currentStorageReadCapture, this))
+            {
+                _currentStorageReadCapture = _previous;
+            }
+
+            Interlocked.Decrement(ref Owner._activeStorageReadCaptures);
+        }
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec) : IEquatable<PrecompileCacheKey>

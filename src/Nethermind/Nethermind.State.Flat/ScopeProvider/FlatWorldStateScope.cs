@@ -20,6 +20,8 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
+    private const int StorageReadBatchSize = 256;
+
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -182,6 +184,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
         int snapshot = _hintSequenceId;
+        bool shouldWarmTrie = sink?.ShouldWarmTrie ?? true;
 
         return _hintBalTask = Task.Run(() =>
         {
@@ -201,7 +204,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                    if (shouldWarmTrie && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -217,7 +220,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                    if (storageChangeCount > 0)
+                    if (shouldWarmTrie && storageChangeCount > 0)
                     {
                         FlatStorageTree storageWarmer = new(
                             this,
@@ -306,13 +309,48 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
         // that never see a BAL never allocate the dedicated reader threads.
         WarmReadPool pool = _warmReadPool.Value;
-        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
 
-        pool.Run(idx, workers, j =>
+        if (sink.ShouldWarmTrie)
+        {
+            int individualWorkers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
+            pool.Run(idx, individualWorkers, j =>
+            {
+                if (_pausePrewarmer) return;
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+            }, parallelOptions.CancellationToken);
+            return;
+        }
+
+        int batchCount = (idx + StorageReadBatchSize - 1) / StorageReadBatchSize;
+        int batchWorkers = Math.Min(pool.MaxConcurrency, batchCount);
+
+        pool.Run(batchCount, batchWorkers, batchIndex =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+
+            int start = batchIndex * StorageReadBatchSize;
+            int end = Math.Min(start + StorageReadBatchSize, idx);
+            SlotRead[] reads = new SlotRead[end - start];
+            int readCount = 0;
+
+            for (int j = start; j < end; j++)
+            {
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                StorageCell cell = new(address, in slot);
+                if (!sink.StillNeeded(in cell)) continue;
+                reads[readCount++] = new SlotRead(cell, selfDestructIdx);
+            }
+
+            if (readCount == 0) return;
+
+            SlotValue?[] values = new SlotValue?[readCount];
+            _snapshotBundle.GetSlots(reads.AsSpan(0, readCount), values);
+            for (int j = 0; j < readCount; j++)
+            {
+                StorageCell cell = reads[j].Cell;
+                sink.OnStorageRead(in cell, values[j]?.ToEvmBytes() ?? StorageTree.ZeroBytes);
+            }
         }, parallelOptions.CancellationToken);
     }
 

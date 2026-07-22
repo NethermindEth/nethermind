@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
@@ -13,6 +14,37 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class BaseFlatPersistenceReaderTests
 {
+    [Test]
+    public void GetStorage_UsesSingleMultiGetAndPreservesMissingValues()
+    {
+        byte[] firstAddressBytes = new byte[ValueHash256.MemorySize];
+        byte[] secondAddressBytes = new byte[ValueHash256.MemorySize];
+        byte[] firstSlotBytes = new byte[ValueHash256.MemorySize];
+        byte[] secondSlotBytes = new byte[ValueHash256.MemorySize];
+        firstAddressBytes[0] = 0x11;
+        secondAddressBytes[0] = 0x22;
+        firstSlotBytes[0] = 0x33;
+        secondSlotBytes[0] = 0x44;
+
+        TrackingMultiGetStore store = new([[0x12, 0x34], null]);
+        BaseFlatPersistence.Reader reader = new(store, store);
+        SlotValue?[] values = new SlotValue?[2];
+
+        reader.GetStorage(
+            [new ValueHash256(firstAddressBytes), new ValueHash256(secondAddressBytes)],
+            [new ValueHash256(firstSlotBytes), new ValueHash256(secondSlotBytes)],
+            values);
+
+        Assert.That(store.MultiGetCalls, Is.EqualTo(1));
+        Assert.That(store.Flags, Is.EqualTo(ReadFlags.HintCacheMiss));
+        Assert.That(store.Keys, Has.Length.EqualTo(2));
+        Assert.That(store.Keys![0], Has.Length.EqualTo(52));
+        Assert.That(store.Keys[0][0], Is.EqualTo(0x11));
+        Assert.That(store.Keys[0][4], Is.EqualTo(0x33));
+        Assert.That(values[0]!.Value.ToEvmBytes(), Is.EqualTo(new byte[] { 0x12, 0x34 }));
+        Assert.That(values[1], Is.Null);
+    }
+
     // Regression: a slot value longer than SlotValue.ByteCount must fail loudly instead of underflowing
     // the unchecked Unsafe.InitBlockUnaligned in TryGetStorage (which produced a wild memset / SIGSEGV).
     // Shorter values are right-aligned into the 32-byte slot with leading zeros.
@@ -74,6 +106,29 @@ public class BaseFlatPersistenceReaderTests
     private sealed class FixedValueStore(byte[] value) : ISortedKeyValueStore
     {
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => value;
+        public byte[]? FirstKey => null;
+        public byte[]? LastKey => null;
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class TrackingMultiGetStore(byte[]?[] results) : ISortedKeyValueStore
+    {
+        public int MultiGetCalls { get; private set; }
+        public byte[][]? Keys { get; private set; }
+        public ReadFlags Flags { get; private set; }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+            throw new AssertionException("Point reads are not expected.");
+
+        public void MultiGet(byte[][] keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+        {
+            MultiGetCalls++;
+            Keys = keys;
+            Flags = flags;
+            results.CopyTo(values);
+        }
+
         public byte[]? FirstKey => null;
         public byte[]? LastKey => null;
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>

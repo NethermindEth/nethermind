@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,6 +39,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly ConcurrentDictionary<AddressAsKey, byte> _batchedHeavyDestinations = new();
+
+    private const int MaxDiscoveryCandidates = 16;
+    private const int MaxDiscoveryRounds = 6;
+    private const int MaxDiscoveredCells = 8192;
+    private const int MaxBatchedHeavyDestinations = 1024;
+    // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
+    private const ulong StorageDiscoveryGasThreshold = 10_000_000;
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
@@ -121,11 +130,250 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
+        List<Transaction>? discoveryCandidates = SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, systemAccessLists);
-        // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+
+        if (discoveryCandidates is null)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+            return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        }
+
+        if (discoveryCandidates.Count == 1)
+        {
+            // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
+            return Task.Run(() =>
+            {
+                DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, parent, spec, cancellationToken);
+                ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+                PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken);
+            });
+        }
+
         ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        Task normalWarmTask = Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
         // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-        return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        Task discoveryTask = Task.Run(() => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, parent, spec, cancellationToken));
+
+        return Task.WhenAll(normalWarmTask, discoveryTask);
+    }
+
+    private void DiscoverAndWarmStorageSafely(List<Transaction> candidates, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken)
+    {
+        try
+        {
+            DiscoverAndWarmStorage(candidates, block, parent, spec, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugWarn($"Error discovering storage reads for block {block.Number}. {ex}");
+        }
+    }
+
+    internal List<Transaction>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
+    {
+        List<(AddressAsKey Destination, Transaction Transaction)>? firstHeavyTransactions = null;
+        List<Transaction>? candidates = null;
+
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.GasLimit <= StorageDiscoveryGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
+
+            if (_batchedHeavyDestinations.ContainsKey(destination))
+            {
+                AddCandidate(tx);
+                continue;
+            }
+
+            int firstIndex = -1;
+            if (firstHeavyTransactions is not null)
+            {
+                for (int i = 0; i < firstHeavyTransactions.Count; i++)
+                {
+                    if (firstHeavyTransactions[i].Destination.Equals(destination))
+                    {
+                        firstIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (firstIndex < 0)
+            {
+                (firstHeavyTransactions ??= []).Add((destination, tx));
+                continue;
+            }
+
+            RegisterBatchedHeavy(destination);
+            AddCandidate(firstHeavyTransactions![firstIndex].Transaction);
+            AddCandidate(tx);
+        }
+
+        return candidates;
+
+        void AddCandidate(Transaction tx)
+        {
+            if (candidates?.Count == MaxDiscoveryCandidates) return;
+            if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) return;
+
+            (candidates ??= new(MaxDiscoveryCandidates)).Add(tx);
+        }
+    }
+
+    private void RegisterBatchedHeavy(AddressAsKey destination)
+    {
+        if (_batchedHeavyDestinations.Count >= MaxBatchedHeavyDestinations) _batchedHeavyDestinations.Clear();
+        _batchedHeavyDestinations.TryAdd(destination, 0);
+    }
+
+    private void DiscoverAndWarmStorage(List<Transaction> candidates, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken)
+    {
+        IWorldStateScopeProvider.IScope? mainScope = _preBlockCaches.MainScope;
+        if (mainScope is null || cancellationToken.IsCancellationRequested) return;
+
+        HashSet<StorageCell> allDiscoveredCells = [];
+
+        for (int round = 0; round < MaxDiscoveryRounds && candidates.Count > 0; round++)
+        {
+            HashSet<StorageCell> roundCells = [];
+            Lock roundCellsLock = new();
+            ConcurrentBag<Transaction> nextRoundCandidates = [];
+            ParallelOptions parallelOptions = new()
+            {
+                MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, candidates.Count),
+                CancellationToken = cancellationToken
+            };
+
+            try
+            {
+                Parallel.ForEach(candidates, parallelOptions, tx =>
+                {
+                    IReadOnlyTxProcessorSource env = _envPool.Get();
+                    try
+                    {
+                        using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(skipBackingReads: true);
+                        using IReadOnlyTxProcessingScope scope = env.Build(parent);
+                        BlockExecutionContext context = new(block.Header, spec);
+                        scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                        try
+                        {
+                            IWorldState worldState = scope.WorldState;
+                            Address senderAddress = tx.SenderAddress!;
+                            if (!worldState.AccountExists(senderAddress))
+                            {
+                                worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                            }
+
+                            if (spec.UseTxAccessLists)
+                            {
+                                worldState.WarmUp(tx.AccessList, cancellationToken);
+                            }
+
+                            scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                        }
+                        catch (Exception ex) when (ex is EvmException or OverflowException)
+                        {
+                        }
+
+                        if (capture.Cells.Count == 0) return;
+
+                        nextRoundCandidates.Add(tx);
+                        using (roundCellsLock.EnterScope())
+                        {
+                            roundCells.UnionWith(capture.Cells);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.DebugError($"Error discovering storage reads for {tx.Hash}", ex);
+                    }
+                    finally
+                    {
+                        _envPool.Return(env);
+                    }
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            roundCells.ExceptWith(allDiscoveredCells);
+            if (roundCells.Count == 0 || cancellationToken.IsCancellationRequested) return;
+
+            allDiscoveredCells.UnionWith(roundCells);
+            if (!WarmDiscoveredStorage(mainScope, roundCells)) return;
+            if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
+
+            candidates = new List<Transaction>(nextRoundCandidates.Count);
+            while (nextRoundCandidates.TryTake(out Transaction? candidate)) candidates.Add(candidate);
+        }
+    }
+
+    private bool WarmDiscoveredStorage(IWorldStateScopeProvider.IScope mainScope, HashSet<StorageCell> discoveredCells)
+    {
+        ReadOnlyBlockAccessList accessList = BuildStorageReadList(discoveredCells);
+        try
+        {
+            mainScope.HintBal(accessList, new StorageDiscoverySink(_preBlockCaches)).GetAwaiter().GetResult();
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError("Error warming discovered storage reads", ex);
+            return false;
+        }
+    }
+
+    private static ReadOnlyBlockAccessList BuildStorageReadList(HashSet<StorageCell> cells)
+    {
+        Dictionary<AddressAsKey, List<UInt256>> slotsByAddress = [];
+        foreach (StorageCell cell in cells)
+        {
+            if (!slotsByAddress.TryGetValue(cell.Address, out List<UInt256>? slots))
+            {
+                slots = [];
+                slotsByAddress[cell.Address] = slots;
+            }
+            slots.Add(cell.Index);
+        }
+
+        ReadOnlyAccountChanges[] accounts = new ReadOnlyAccountChanges[slotsByAddress.Count];
+        int accountIndex = 0;
+        foreach ((AddressAsKey address, List<UInt256> slots) in slotsByAddress)
+        {
+            slots.Sort();
+            accounts[accountIndex++] = new ReadOnlyAccountChanges(address.Value, [], slots.ToArray(), [], [], []);
+        }
+        Array.Sort(accounts, static (left, right) => left.Address.CompareTo(right.Address));
+
+        return new ReadOnlyBlockAccessList(accounts, cells.Count + accounts.Length);
+    }
+
+    private sealed class StorageDiscoverySink(PreBlockCaches caches) : IWorldStateScopeProvider.IAsyncBalReaderSink
+    {
+        public bool ShouldWarmTrie => false;
+
+        public void OnAccountRead(Address address, Account? account)
+        {
+            AddressAsKey key = address;
+            caches.StateCache.Set(in key, account);
+        }
+
+        public void OnStorageRead(in StorageCell storageCell, byte[] value) => caches.StorageCache.Set(in storageCell, value);
+
+        public bool StillNeeded(Address address, out Account? account)
+        {
+            AddressAsKey key = address;
+            return !caches.StateCache.TryGetValue(in key, out account);
+        }
+
+        public bool StillNeeded(in StorageCell storageCell) => !caches.StorageCache.TryGetValue(in storageCell, out _);
     }
 
     private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)

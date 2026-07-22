@@ -225,9 +225,11 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(10)]
-    [TestCase(1500)]
-    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
+    [TestCase(10, true)]
+    [TestCase(10, false)]
+    [TestCase(1500, true)]
+    [TestCase(1500, false)]
+    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount, bool shouldWarmTrie)
     {
         using Context ctx = new(useFlat);
 
@@ -256,7 +258,7 @@ public class ScopeProviderTests(bool useFlat)
             .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(readKeys).TestObject)
             .TestObject;
 
-        CollectingBalSink sink = new();
+        CollectingBalSink sink = new(shouldWarmTrie);
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             scope.HintBal(bal, sink).Wait();
@@ -490,6 +492,46 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_PopulatorStorageCapture_SkipsBackingReadWithoutCachingSpeculativeValue()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storage.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        using (PreBlockCaches.StorageReadCapture capture = caches.BeginStorageReadCapture(skipBackingReads: true))
+        {
+            using IWorldStateScopeProvider.IScope readScope = populator.BeginScope(baseBlock);
+            IWorldStateScopeProvider.IStorageTree capturedStorageTree = readScope.CreateStorageTree(TestItem.AddressA);
+            Assert.That(capturedStorageTree.Get(1), Is.EqualTo(new byte[] { 1 }));
+            Assert.That(capture.Cells, Does.Contain(cell));
+        }
+
+        Assert.That(caches.StorageCache.TryGetValue(in cell, out _), Is.False);
+        using IWorldStateScopeProvider.IScope uncapturedReadScope = populator.BeginScope(baseBlock);
+        IWorldStateScopeProvider.IStorageTree uncapturedStorageTree = uncapturedReadScope.CreateStorageTree(TestItem.AddressA);
+        Assert.That(uncapturedStorageTree.Get(1), Is.EqualTo(new byte[] { 10, 20 }));
+        Assert.That(caches.StorageCache.TryGetValue(in cell, out byte[] cached), Is.True);
+        Assert.That(cached, Is.EqualTo(new byte[] { 10, 20 }));
+    }
+
+    [Test]
     public void Test_FlatScope_TrieWarmHints_Smoke()
     {
         Assume.That(useFlat, Is.True);
@@ -533,11 +575,12 @@ public class ScopeProviderTests(bool useFlat)
     }
 
 #nullable enable
-    private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    private class CollectingBalSink(bool shouldWarmTrie = true) : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
         public ConcurrentDictionary<Address, Account> Accounts { get; } = new();
         public ConcurrentDictionary<Address, byte> NullAccounts { get; } = new();
         public ConcurrentDictionary<StorageCell, byte[]> Storage { get; } = new();
+        public bool ShouldWarmTrie => shouldWarmTrie;
 
         public void OnAccountRead(Address address, Account? account)
         {

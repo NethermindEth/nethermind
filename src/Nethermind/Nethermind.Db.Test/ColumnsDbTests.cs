@@ -125,6 +125,31 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void Snapshot_MultiGet_UsesPointInTimeColumnView()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[][] keys =
+        [
+            TestItem.KeccakA.BytesToArray(),
+            TestItem.KeccakB.BytesToArray(),
+            TestItem.KeccakC.BytesToArray(),
+        ];
+        column.Set(keys[0], [0x10]);
+        column.Set(keys[1], [0x20]);
+
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+        column.Set(keys[0], [0x11]);
+        column.Set(keys[1], null);
+        column.Set(keys[2], [0x30]);
+        byte[]?[] values = new byte[]?[keys.Length];
+
+        snapshot.GetColumn(ReceiptsColumns.Blocks).MultiGet(keys, values, ReadFlags.HintCacheMiss);
+
+        Assert.That(values, Is.EqualTo(new byte[]?[] { [0x10], [0x20], null }));
+    }
+
+    [Test]
     public void Snapshot_DoubleDispose_DoesNotThrow()
     {
         IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
