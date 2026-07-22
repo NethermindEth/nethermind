@@ -25,7 +25,7 @@ public class WorkStealingExecutorTests
     /// visible, and a count only this thread writes.
     /// </summary>
     internal sealed class ThreadState(int[] runs)
-        : IJobRunner<ThreadState, Job>, IJobStateProvider<ThreadState>, IJobWorkerState
+        : Executor.IJobRunner, Executor.IJobStateProvider, Executor.IJobWorkerState
     {
         /// <summary>How often the executor told this state the run was through, and disposed it.</summary>
         public int Completions { get; private set; }
