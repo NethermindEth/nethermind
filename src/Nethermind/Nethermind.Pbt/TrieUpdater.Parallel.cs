@@ -166,6 +166,12 @@ public static partial class TrieUpdater
         /// </summary>
         private const int QueueCapacity = 64;
 
+        /// <summary>How many jobs a thread may take on while waiting, one nested inside the next.</summary>
+        private const int MaxHelpDepth = 8;
+
+        /// <summary>How many helped jobs this thread is inside; see <see cref="WaitFor"/>.</summary>
+        private int _helpDepth;
+
         /// <summary>The jobs this worker hands out, which any other may take; <c>null</c> for a fold on the calling thread alone.</summary>
         private readonly WorkStealingDeque<Job>? _queue = updater.IsParallel ? new WorkStealingDeque<Job>(QueueCapacity) : null;
 
@@ -216,7 +222,8 @@ public static partial class TrieUpdater
 
         /// <summary>
         /// Waits out the jobs <paramref name="spawned"/> chains — running what nothing else has started,
-        /// newest first — and settles each one's result into the frame's boundary.
+        /// newest first, and helping with what other workers have queued while the rest come back — and
+        /// settles each one's result into the frame's boundary.
         /// </summary>
         /// <param name="queueMark">Where this worker's queue stood before the frame spawned anything.</param>
         private void Join(
@@ -241,7 +248,7 @@ public static partial class TrieUpdater
             Exception? error = null;
             for (Job? job = spawned; job is not null; job = job.Next)
             {
-                job.Wait();
+                WaitFor(job);
                 if (job.Error is not null)
                 {
                     error ??= job.Error;
@@ -261,6 +268,37 @@ public static partial class TrieUpdater
             }
 
             if (error is not null) ExceptionDispatchInfo.Throw(error);
+        }
+
+        /// <summary>
+        /// Waits for whichever thread claimed <paramref name="job"/> to finish it, folding what other
+        /// workers have queued in the meantime rather than spinning through it.
+        /// </summary>
+        /// <remarks>
+        /// Helping is what keeps a frame that handed every one of its buckets out from idling until they
+        /// come back. It is bounded by <see cref="MaxHelpDepth"/>: each helped job descends and joins on
+        /// this thread's stack, so an unbounded chain of them — a thread that keeps taking on new work
+        /// every time it waits — would run the stack down.
+        /// </remarks>
+        private void WaitFor(Job job)
+        {
+            SpinWait spin = default;
+            while (!job.IsDone)
+            {
+                if (_helpDepth < MaxHelpDepth)
+                {
+                    _helpDepth++;
+                    bool helped = TryRunStolen();
+                    _helpDepth--;
+                    if (helped)
+                    {
+                        spin = default;
+                        continue;
+                    }
+                }
+
+                spin.SpinOnce(sleep1Threshold: -1);
+            }
         }
 
         /// <summary>Folds one queued bucket, whichever thread got to it.</summary>
@@ -441,12 +479,8 @@ public static partial class TrieUpdater
                 Volatile.Write(ref _state, Done);
             }
 
-            /// <summary>Waits for the thread that claimed this job to finish it.</summary>
-            public void Wait()
-            {
-                SpinWait spin = default;
-                while (Volatile.Read(ref _state) != Done) spin.SpinOnce(sleep1Threshold: -1);
-            }
+            /// <summary>Whether the thread that claimed this job has finished it, results and all.</summary>
+            public bool IsDone => Volatile.Read(ref _state) == Done;
         }
     }
 }
