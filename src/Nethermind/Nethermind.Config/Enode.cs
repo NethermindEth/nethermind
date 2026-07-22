@@ -19,7 +19,7 @@ namespace Nethermind.Config
         public Enode(PublicKey nodeKey, IPAddress hostIp, int port, int? discoveryPort = null)
         {
             _nodeKey = nodeKey;
-            HostIp = hostIp;
+            HostIp = hostIp.IsIPv4MappedToIPv6 ? hostIp.MapToIPv4() : hostIp;
             Port = port;
             DiscoveryPort = discoveryPort ?? port;
         }
