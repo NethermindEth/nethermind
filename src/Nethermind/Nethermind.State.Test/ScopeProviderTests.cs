@@ -225,9 +225,11 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(10)]
-    [TestCase(1500)]
-    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
+    [TestCase(10, true)]
+    [TestCase(10, false)]
+    [TestCase(1500, true)]
+    [TestCase(1500, false)]
+    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount, bool shouldWarmTrie)
     {
         using Context ctx = new(useFlat);
 
@@ -256,7 +258,7 @@ public class ScopeProviderTests(bool useFlat)
             .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(readKeys).TestObject)
             .TestObject;
 
-        CollectingBalSink sink = new();
+        CollectingBalSink sink = new(shouldWarmTrie);
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             scope.HintBal(bal, sink).Wait();
@@ -571,11 +573,12 @@ public class ScopeProviderTests(bool useFlat)
     }
 
 #nullable enable
-    private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    private class CollectingBalSink(bool shouldWarmTrie = true) : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
         public ConcurrentDictionary<Address, Account> Accounts { get; } = new();
         public ConcurrentDictionary<Address, byte> NullAccounts { get; } = new();
         public ConcurrentDictionary<StorageCell, byte[]> Storage { get; } = new();
+        public bool ShouldWarmTrie => shouldWarmTrie;
 
         public void OnAccountRead(Address address, Account? account)
         {

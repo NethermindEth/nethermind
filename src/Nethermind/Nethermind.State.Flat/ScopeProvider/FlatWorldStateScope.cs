@@ -297,10 +297,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
         // that never see a BAL never allocate the dedicated reader threads.
         WarmReadPool pool = _warmReadPool.Value;
-        int batchCount = (idx + StorageReadBatchSize - 1) / StorageReadBatchSize;
-        int workers = Math.Min(pool.MaxConcurrency, batchCount);
 
-        pool.Run(batchCount, workers, batchIndex =>
+        if (sink.ShouldWarmTrie)
+        {
+            int individualWorkers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
+            pool.Run(idx, individualWorkers, j =>
+            {
+                if (_pausePrewarmer) return;
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+            }, parallelOptions.CancellationToken);
+            return;
+        }
+
+        int batchCount = (idx + StorageReadBatchSize - 1) / StorageReadBatchSize;
+        int batchWorkers = Math.Min(pool.MaxConcurrency, batchCount);
+
+        pool.Run(batchCount, batchWorkers, batchIndex =>
         {
             if (_pausePrewarmer) return;
 
@@ -327,6 +340,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 sink.OnStorageRead(in cell, values[j]?.ToEvmBytes() ?? StorageTree.ZeroBytes);
             }
         }, parallelOptions.CancellationToken);
+    }
+
+    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
+    {
+        StorageCell cell = new(address, in slot);
+        if (!sink.StillNeeded(in cell)) return;
+        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
+        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
