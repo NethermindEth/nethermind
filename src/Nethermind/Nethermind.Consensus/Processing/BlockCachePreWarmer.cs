@@ -43,7 +43,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private const int StorageHeavyMissThreshold = 128;
     private const int MaxDiscoveryCandidates = 16;
-    private const int MaxDiscoveryRounds = 6;
+    private const int MaxDiscoveryRounds = 1;
     private const int MaxDiscoveredCells = 8192;
     private const int MaxStorageHeavyDestinations = 1024;
 
