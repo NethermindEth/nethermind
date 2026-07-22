@@ -58,16 +58,19 @@ public class PbtScannerTests
 
     private static void AddLeaves(List<(byte[], byte[]?)> writes, byte[] stem, int leafCount)
     {
-        for (int leaf = 0; leaf < leafCount; leaf++)
-        {
-            byte[] key = new byte[Stem.Length + 1];
-            stem.CopyTo(key, 0);
-            key[Stem.Length] = (byte)leaf;   // sub-index; the leaves' placement does not affect the counts
+        // the leaves' placement does not affect the counts, so they take the lowest sub-indices
+        for (int leaf = 0; leaf < leafCount; leaf++) AddLeaf(writes, stem, leaf);
+    }
 
-            byte[] value = new byte[StemLeafBlob.ValueLength];
-            value[0] = (byte)(leaf + 1);     // non-zero, or the write would clear the leaf
-            writes.Add((key, value));
-        }
+    private static void AddLeaf(List<(byte[], byte[]?)> writes, byte[] stem, int subIndex)
+    {
+        byte[] key = new byte[Stem.Length + 1];
+        stem.CopyTo(key, 0);
+        key[Stem.Length] = (byte)subIndex;
+
+        byte[] value = new byte[StemLeafBlob.ValueLength];
+        value[0] = 1;   // non-zero, or the write would clear the leaf
+        writes.Add((key, value));
     }
 
     /// <summary>
@@ -91,6 +94,12 @@ public class PbtScannerTests
             Assert.That(report.StemCount, Is.EqualTo(6), "four account stems and two storage stems");
             Assert.That(report.AccountNodes.StemsByDepth[8], Is.EqualTo(4), "the account stems sit on the depth-4 group's boundary");
             Assert.That(report.StorageNodes.StemsByDepth[44], Is.EqualTo(2), "and the storage stems on the depth-40 group's");
+
+            // the internal nodes the groups root, at every level of every occupied path but the stems'
+            Assert.That(report.Root.IntermediateNodeCount, Is.EqualTo(7), "the root branches at once, so both its paths hold a node per level");
+            Assert.That(report.AccountNodes.IntermediateNodeCount, Is.EqualTo(5), "one per level of the depth-4 group, which branches on its last");
+            Assert.That(report.StorageNodes.IntermediateNodeCount, Is.EqualTo(36 + 4), "the levels the chain stands for, then the depth-40 group's");
+            Assert.That(report.IntermediateNodeCount, Is.EqualTo(7 + 5 + 40));
 
             // every stored node caches its subtree's stem count, so the root's is an independent check
             Assert.That(report.RootSubtreeStemCount, Is.EqualTo(report.StemCount));
@@ -185,6 +194,54 @@ public class PbtScannerTests
 
             Assert.That(report.CodeLeaves.BlobCount, Is.EqualTo(0), "no code overflows into its own zone here");
             Assert.That(report.AccountLeaves.LegacyBlobCount, Is.EqualTo(0), "the updater only ever writes the current layout");
+
+            Assert.That(report.AccountSections.Fields.LeafCount, Is.EqualTo(report.AccountLeaves.LeafCount), "every leaf written here is a header field");
+            Assert.That(report.AccountSections.Storage.LeafCount, Is.EqualTo(0), "and the storage column's leaves belong to no section of an account stem");
+        });
+    }
+
+    /// <summary>
+    /// An account's stem embeds three things — the account's own fields, its first 64 storage slots and
+    /// its first 128 code chunks — and each of them costs the entries of its own subtree: its leaves and
+    /// the internals branching between them.
+    /// </summary>
+    [Test]
+    public async Task Scan_SplitsAccountLeavesByWhatTheStemEmbeds()
+    {
+        List<(byte[], byte[]?)> writes = [];
+
+        // one account holding fields, embedded storage and embedded code, and one holding a field alone
+        byte[] wholeHeader = new byte[Stem.Length];
+        foreach (int subIndex in (int[])[0, 1, 64, 65, 66, 128, 200]) AddLeaf(writes, wholeHeader, subIndex);
+
+        byte[] fieldsOnly = new byte[Stem.Length];
+        fieldsOnly[0] = 0x01;
+        AddLeaf(writes, fieldsOnly, 0);
+
+        PbtScanReport report = await ScanTree(PbtGroupFormat.Interleaved, writes, concurrency: 1);
+        PbtScanReport.AccountLeafSections sections = report.AccountSections;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sections.Fields.BlobCount, Is.EqualTo(2), "both accounts hold a field");
+            Assert.That(sections.Fields.LeafCount, Is.EqualTo(3));
+            Assert.That(sections.Fields.EntryBytes, Is.EqualTo((3 + 1) * StemLeafBlob.ValueLength), "three leaves over two stems, and one internal in the stem holding two");
+
+            Assert.That(sections.Storage.BlobCount, Is.EqualTo(1));
+            Assert.That(sections.Storage.LeafCount, Is.EqualTo(3));
+            Assert.That(sections.Storage.EntryBytes, Is.EqualTo(5 * StemLeafBlob.ValueLength));
+
+            Assert.That(sections.Code.BlobCount, Is.EqualTo(1));
+            Assert.That(sections.Code.LeafCount, Is.EqualTo(2));
+            Assert.That(sections.Code.EntryBytes, Is.EqualTo(3 * StemLeafBlob.ValueLength));
+
+            Assert.That(report.AccountLeaves.LeafCount, Is.EqualTo(8), "the sections cover every leaf of the column");
+            Assert.That(
+                report.AccountLeaves.Bytes,
+                Is.GreaterThan(sections.Fields.EntryBytes + sections.Storage.EntryBytes + sections.Code.EntryBytes),
+                "the nodes joining the sections, and the bitmap footer, belong to no one of them");
+
+            Assert.That(report.Format(), Does.Contain("Account leaf blobs by what the stem embeds"));
         });
     }
 
