@@ -60,7 +60,7 @@ build: dotnet-build
 run:
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
-		nethermindeth/zisk:1.0.0-alpha \
+		nethermindeth/zisk@sha256:bad3982b10861adb452c90906ce8e93907ae6095205c89c1377a960c767b4e7a \
 		ziskemu -e /n/nethermind -i /n/$(INPUT)
 
 build-run: build run
