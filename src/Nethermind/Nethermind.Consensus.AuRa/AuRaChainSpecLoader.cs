@@ -38,7 +38,7 @@ public static class AuRaChainSpecLoader
         chainSpec.Genesis = chainSpec.Genesis.WithReplacedHeader(upgraded);
     }
 
-    internal static bool IsPostMergeGenesis(ChainSpec chainSpec) =>
+    private static bool IsPostMergeGenesis(ChainSpec chainSpec) =>
         chainSpec.Parameters?.TerminalTotalDifficulty?.IsZero == true;
 
     private sealed class AuRaGenesisSealJson
