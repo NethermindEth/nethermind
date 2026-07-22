@@ -210,7 +210,7 @@ public static class StemLeafBlob
     /// <see cref="CountInterleavedNodes"/> instead. Only the legacy layout, which nothing writes, is
     /// walked.
     /// </remarks>
-    private static int CountStoredNodes(ReadOnlySpan<byte> bitmap, int low, int high, PbtLeafFormat format)
+    internal static int CountStoredNodes(ReadOnlySpan<byte> bitmap, int low, int high, PbtLeafFormat format)
     {
         if (format == PbtLeafFormat.EveryLevel)
         {
