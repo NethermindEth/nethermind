@@ -25,8 +25,13 @@ public class WorkStealingExecutorTests
     /// visible, and a count only this thread writes.
     /// </summary>
     internal sealed class ThreadState(int[] runs)
-        : IJobRunner<ThreadState, Job>, IJobStateProvider<ThreadState>
+        : IJobRunner<ThreadState, Job>, IJobStateProvider<ThreadState>, IDisposable
     {
+        /// <summary>What a thread's state is disposed with, which here is only a count of how often.</summary>
+        public int Disposals { get; private set; }
+
+        public void Dispose() => Disposals++;
+
         /// <summary>Shared with every other thread: what they have in common, they hold in common.</summary>
         public int[] Runs => runs;
 
@@ -141,7 +146,7 @@ public class WorkStealingExecutorTests
             }
             finally
             {
-                executor.Complete();
+                executor.Dispose();
             }
 
             for (int index = 0; index < jobs; index++)
@@ -177,7 +182,7 @@ public class WorkStealingExecutorTests
         }
         finally
         {
-            executor.Complete();
+            executor.Dispose();
         }
 
         int ran = 0;
@@ -214,8 +219,23 @@ public class WorkStealingExecutorTests
         }
         finally
         {
-            executor.Complete();
+            executor.Dispose();
         }
+    }
+
+    /// <summary>Disposing the executor disposes every thread's state, the calling thread's included.</summary>
+    [Test]
+    public void DisposingTheExecutor_DisposesEveryThreadsState()
+    {
+        int[] runs = new int[1];
+        Executor executor = Create(runs, Threads);
+
+        foreach (ThreadState state in executor.States) Assert.That(state.Disposals, Is.Zero);
+
+        executor.Dispose();
+
+        Assert.That(executor.States, Has.Length.EqualTo(Threads));
+        foreach (ThreadState state in executor.States) Assert.That(state.Disposals, Is.EqualTo(1));
     }
 
     /// <summary>A job may queue and wait on jobs of its own, which is what a recursive descent does.</summary>
@@ -253,7 +273,7 @@ public class WorkStealingExecutorTests
         }
         finally
         {
-            executor.Complete();
+            executor.Dispose();
         }
 
         foreach (int ran in runs) Assert.That(ran, Is.LessThanOrEqualTo(1), "a job ran twice");

@@ -110,11 +110,12 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         lock (_lock) return Track(RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key)));
     }
 
-    public void SetTrieNode(in TrieNodeKey key, byte[]? node)
+    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
     {
         NodeWrites++;
-        if (node is null) _nodes.Remove(key);
-        else _nodes[key] = node;
+        byte[]? value = node?.ToArrayAndRelease();
+        if (value is null) _nodes.Remove(key);
+        else _nodes[key] = value;
     }
 
     public RefCountingMemory? GetLeafBlob(in Stem stem)
@@ -126,10 +127,11 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
     }
 
-    public void SetLeafBlob(in Stem stem, byte[]? blob)
+    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
     {
-        if (blob is null) _blobs.Remove(stem);
-        else _blobs[stem] = blob;
+        byte[]? value = blob?.ToArrayAndRelease();
+        if (value is null) _blobs.Remove(stem);
+        else _blobs[stem] = value;
     }
 
     /// <remarks>Called under <see cref="_lock"/>, as everything it keeps is read from every worker.</remarks>

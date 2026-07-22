@@ -12,21 +12,21 @@ namespace Nethermind.Pbt;
 
 /// <summary>
 /// Backing store for the PBT tree: the stem trie node groups and the per-stem 256-leaf blobs. Reads
-/// return a poolable, disposable wrapper (null = absent); writes hand over the value's own array
-/// (null removes the group / deletes the stem).
+/// return a poolable, disposable wrapper (null = absent); writes hand over one (null removes the group
+/// / deletes the stem).
 /// </summary>
 /// <remarks>
-/// A read hands the caller a lease, which it releases once done; the value a write hands over is the
-/// store's from that point. The two are asymmetric because a read is served from wherever the value
-/// already sits — a pooled buffer, a layer's array — while a write is a value the store keeps, so
-/// there is nothing to pool: the array is exactly the value, sized to it.
+/// A write transfers the caller's lease on the value: the store owns it from that point and must
+/// release it once done — by disposing it after copying, or, if it retains the memory, when it drops
+/// the value. It never acquires a lease of its own to do so, and the caller must not use the memory
+/// afterwards; a caller that needs to keep reading it acquires its own lease first.
 /// </remarks>
 public interface IPbtStore
 {
     RefCountingMemory? GetTrieNode(in TrieNodeKey key);
-    void SetTrieNode(in TrieNodeKey key, byte[]? node);
+    void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node);
     RefCountingMemory? GetLeafBlob(in Stem stem);
-    void SetLeafBlob(in Stem stem, byte[]? blob);
+    void SetLeafBlob(in Stem stem, RefCountingMemory? blob);
 }
 
 /// <summary>

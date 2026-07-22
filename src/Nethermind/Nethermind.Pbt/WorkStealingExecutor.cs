@@ -5,7 +5,7 @@ namespace Nethermind.Pbt;
 
 /// <summary>Runs the jobs an executor hands out, on whichever thread took them.</summary>
 internal interface IJobRunner<TWorkerState, TJob>
-    where TWorkerState : class
+    where TWorkerState : class, IDisposable
     where TJob : struct
 {
     /// <summary>Runs one job, reading and writing it in place.</summary>
@@ -17,9 +17,10 @@ internal interface IJobRunner<TWorkerState, TJob>
 /// <summary>Builds the state one thread runs with.</summary>
 /// <remarks>
 /// The state is given nothing of the executor's: where to queue work arrives with each job, so what a
-/// thread holds is the caller's business alone.
+/// thread holds is the caller's business alone. What it is built holding, though, the executor
+/// disposes — see <see cref="WorkStealingExecutor{TWorkerState, TJob}.Dispose"/>.
 /// </remarks>
-internal interface IJobStateProvider<TWorkerState>
+internal interface IJobStateProvider<TWorkerState> where TWorkerState : IDisposable
 {
     TWorkerState Create();
 }
@@ -48,14 +49,15 @@ internal interface IJobStateProvider<TWorkerState>
 /// <typeparam name="TWorkerState">
 /// What one thread runs with: built once per thread by the caller's
 /// <see cref="IJobStateProvider{TWorkerState}"/> and handed back to the runner with every job that
-/// thread takes. Whatever the threads share, they share through it.
+/// thread takes. Whatever the threads share, they share through it. Disposing the executor disposes
+/// every one of them, since it is what built all but the first.
 /// </typeparam>
 /// <typeparam name="TJob">
 /// One job's inputs and outputs, held by value in the node carrying it: the thread that queues a job
 /// fills the inputs, the thread that runs it writes the outputs back through <see cref="Node.Job"/>.
 /// </typeparam>
-internal sealed class WorkStealingExecutor<TWorkerState, TJob>
-    where TWorkerState : class
+internal sealed class WorkStealingExecutor<TWorkerState, TJob> : IDisposable
+    where TWorkerState : class, IDisposable
     where TJob : struct
 {
     /// <summary>Jobs one queue holds before <see cref="JobQueue.TryQueue"/> starts refusing them.</summary>
@@ -109,6 +111,18 @@ internal sealed class WorkStealingExecutor<TWorkerState, TJob>
 
     /// <summary>Tells the threads the run is over; they exit as they notice, and nothing waits for them.</summary>
     public void Complete() => Volatile.Write(ref _done, true);
+
+    /// <summary>Ends the run, if it has not been ended already, and disposes every thread's state.</summary>
+    /// <remarks>
+    /// The calling thread's state included: it was handed over to be run with, and the states are what
+    /// the executor has of the caller's. Whatever a state does with what it holds — replay it, release
+    /// it — belongs before this.
+    /// </remarks>
+    public void Dispose()
+    {
+        Complete();
+        foreach (TWorkerState state in States) state?.Dispose();
+    }
 
     /// <summary>Runs <paramref name="node"/>'s job here and now, leaving what it produced — or threw — on the node.</summary>
     private void Run(TWorkerState state, JobQueue queue, Node node)
@@ -164,9 +178,19 @@ internal sealed class WorkStealingExecutor<TWorkerState, TJob>
         /// back.
         /// </summary>
         /// <remarks>
+        /// Three passes, and the order of them matters: everything this thread can still claim is
+        /// claimed before anything is waited on, because waiting per node as it goes would leave this
+        /// thread idle on one stolen job while the siblings behind it sat unstarted.
+        /// <para>
+        /// A node this thread loses the claim on is already running on the thread that won it, and that
+        /// thread waits in turn only on jobs it queued itself — which are strictly further down the
+        /// caller's own recursion — so every wait here ends.
+        /// </para>
+        /// <para>
         /// Whether a job succeeded is the caller's to read off <see cref="Node.Error"/> as it walks the
         /// handle: a job that threw is not this type's to interpret, and the caller may have results of
         /// its own to unwind before it rethrows.
+        /// </para>
         /// </remarks>
         public void Wait(in Handle handle)
         {
@@ -182,13 +206,16 @@ internal sealed class WorkStealingExecutor<TWorkerState, TJob>
                 if (popped.TryClaim()) executor.Run(State, this, popped);
             }
 
-            // A node a thief took off the queue but has not claimed is still the caller's to run: the
-            // claim settles which of the two threads it falls to, and the loser leaves it alone.
+            // A node a thief took off the queue but has not claimed is still this thread's to run: the
+            // claim settles which of the two it falls to. This is the last moment this thread can help.
             for (Node? node = queued; node is not null; node = node.Next)
             {
                 if (node.TryClaim()) executor.Run(State, this, node);
             }
 
+            // Whatever the claims above lost is running on the thread that won it, and a node counts as
+            // done only once that thread has written its outputs onto it. This is where that is waited
+            // out — helping with other threads' queues rather than spinning, while it is.
             for (Node? node = queued; node is not null; node = node.Next) WaitFor(node);
         }
 
