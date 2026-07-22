@@ -16,7 +16,7 @@ public static partial class TrieUpdater
 {
     /// <summary>
     /// What every thread folding one batch shares — the store, the batch, the encoding to write — and
-    /// the <see cref="Worker"/>s that do the folding.
+    /// the <see cref="Descent"/>s that do the folding.
     /// </summary>
     /// <remarks>
     /// The batch is held as its arrays rather than as spans: a bucket is a range of entry indices, which
@@ -50,7 +50,7 @@ public static partial class TrieUpdater
         /// <inheritdoc cref="MinWriteBufferCapacity"/>
         private const int MaxWriteBufferCapacity = 4096;
 
-        private readonly WorkStealingExecutor<Updater, Worker, Worker.BucketJob> _executor;
+        private readonly WorkStealingExecutor<Updater, Descent, Descent.BucketJob> _executor;
 
         public Updater(
             IPbtStore store, IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat,
@@ -71,11 +71,11 @@ public static partial class TrieUpdater
 
             WriteBufferCapacity = Math.Clamp(changes.Count / workerCount, MinWriteBufferCapacity, MaxWriteBufferCapacity);
 
-            // settled before the executor builds the workers, which read it to decide whether they need
-            // a write buffer at all
+            // settled before the executor builds the descents, which read it to decide whether they
+            // need a write buffer at all
             IsParallel = workerCount > 1;
-            _executor = new WorkStealingExecutor<Updater, Worker, Worker.BucketJob>(
-                workerCount, this, static (updater, lane) => new Worker(updater, lane), Worker.Fold);
+            _executor = new WorkStealingExecutor<Updater, Descent, Descent.BucketJob>(
+                workerCount, this, static (updater, lane) => new Descent(updater, lane), Descent.Fold);
         }
 
         public IPbtStore Store { get; }
@@ -99,8 +99,8 @@ public static partial class TrieUpdater
         public bool IsParallel { get; }
 
         /// <summary>
-        /// What one worker's buffered writes start out sized for: an even share of the batch, since a
-        /// fold buffers a leaf blob per stem it touches. A worker handed more than its share grows into
+        /// What one descent's buffered writes start out sized for: an even share of the batch, since a
+        /// fold buffers a leaf blob per stem it touches. A descent handed more than its share grows into
         /// the pool rather than out of it.
         /// </summary>
         public int WriteBufferCapacity { get; }
@@ -143,38 +143,38 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// Hands the store what the workers buffered, on the calling thread and in each worker's own
+        /// Hands the store what the descents buffered, on the calling thread and in each descent's own
         /// order, or drops it where the fold threw and the writes are not to be kept.
         /// </summary>
         /// <remarks>
-        /// Every worker is quiescent by now: the root frame's join settled the last job before
+        /// Every descent is quiescent by now: the root frame's join settled the last job before
         /// <see cref="Run"/> reached here, and a job's completion publishes its writes to whoever waits
         /// on it.
         /// </remarks>
         private void FlushWrites(bool commit)
         {
-            foreach (Worker worker in _executor.Workers) worker.FlushWrites(commit);
+            foreach (Descent descent in _executor.Workers) descent.FlushWrites(commit);
         }
     }
 
-    private sealed partial class Worker
+    private sealed partial class Descent
     {
-        /// <summary>The lane this worker spawns and joins on; a serial fold's lane cannot spawn at all.</summary>
-        private readonly WorkStealingExecutor<Updater, Worker, BucketJob>.Lane _lane = lane;
+        /// <summary>The lane this descent spawns and joins on; a serial fold's lane cannot spawn at all.</summary>
+        private readonly WorkStealingExecutor<Updater, Descent, BucketJob>.Lane _lane = lane;
 
         /// <summary>
-        /// The store writes this worker made, replayed by the calling thread once the fold is through;
+        /// The store writes this descent made, replayed by the calling thread once the fold is through;
         /// <c>null</c> for a fold on the calling thread alone, which writes straight through.
         /// </summary>
         /// <remarks>
         /// Buffering is what keeps <see cref="IPbtStore"/> a single-threaded interface: only the reads
         /// run concurrently, and nothing writes the store while they do. The two lists need no order
-        /// between them — a node key and a stem name different things — and the writes of two workers
+        /// between them — a node key and a stem name different things — and the writes of two descents
         /// need none either, their key ranges being disjoint. What is buffered is the value's own array
         /// rather than the buffer it was folded in, which goes back to the pool at the write: holding
-        /// a fold's worth of rentals to the end of it would leave every worker renting fresh ones.
+        /// a fold's worth of rentals to the end of it would leave every descent renting fresh ones.
         /// <para>
-        /// Pooled, and sized for the share of the batch this worker can expect: a fold buffers one entry
+        /// Pooled, and sized for the share of the batch this descent can expect: a fold buffers one entry
         /// per stem it touches, so the lists are the largest thing it allocates.
         /// </para>
         /// </remarks>
@@ -198,9 +198,9 @@ public static partial class TrieUpdater
         /// itself.
         /// </summary>
         /// <param name="next">The node this frame spawned before it, which this one is chained ahead of.</param>
-        private WorkStealingExecutor<Updater, Worker, BucketJob>.Node? TrySpawn(
+        private WorkStealingExecutor<Updater, Descent, BucketJob>.Node? TrySpawn(
             int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in Occupant occupant,
-            scoped BucketPlan childPlan, WorkStealingExecutor<Updater, Worker, BucketJob>.Node? next)
+            scoped BucketPlan childPlan, WorkStealingExecutor<Updater, Descent, BucketJob>.Node? next)
         {
             ReadOnlySpan<int> precalculated = childPlan.Precalculated;
             BucketJob job = new()
@@ -222,15 +222,15 @@ public static partial class TrieUpdater
         /// Waits out the jobs <paramref name="spawned"/> chains and settles each one's result into the
         /// frame's boundary.
         /// </summary>
-        /// <param name="queueMark">Where this worker's lane stood before the frame spawned anything.</param>
+        /// <param name="queueMark">Where this descent's lane stood before the frame spawned anything.</param>
         private void Join(
-            WorkStealingExecutor<Updater, Worker, BucketJob>.Node spawned, long queueMark,
+            WorkStealingExecutor<Updater, Descent, BucketJob>.Node spawned, long queueMark,
             Span<NodeResult> results, ref BoundaryScan scan, ref uint storedChildBitmask)
         {
             _lane.Join(spawned, queueMark);
 
             Exception? error = null;
-            for (WorkStealingExecutor<Updater, Worker, BucketJob>.Node? node = spawned; node is not null; node = node.Next)
+            for (WorkStealingExecutor<Updater, Descent, BucketJob>.Node? node = spawned; node is not null; node = node.Next)
             {
                 if (node.Error is not null)
                 {
@@ -255,12 +255,12 @@ public static partial class TrieUpdater
         }
 
         /// <summary>Folds one queued bucket, whichever thread got to it.</summary>
-        public static void Fold(Updater updater, Worker worker, ref BucketJob job)
+        public static void Fold(Updater updater, Descent descent, ref BucketJob job)
         {
             BucketPlan plan = new(
                 job.BucketLength == 0 ? default : updater.Buckets!.AsSpan(job.BucketStart, job.BucketLength),
                 job.BranchDepth);
-            worker.ApplyKeyedChild(
+            descent.ApplyKeyedChild(
                 job.Key, updater.Entries.AsSpan(job.EntryStart, job.EntryCount), job.Occupant, plan,
                 out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
 

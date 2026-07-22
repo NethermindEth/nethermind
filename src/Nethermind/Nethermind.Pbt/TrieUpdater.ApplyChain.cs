@@ -11,7 +11,7 @@ namespace Nethermind.Pbt;
 
 public static partial class TrieUpdater
 {
-    private sealed partial class Worker
+    private sealed partial class Descent
     {
         /// <summary>
         /// Builds the run of single-child levels from <paramref name="startDepth"/> down to the group at
