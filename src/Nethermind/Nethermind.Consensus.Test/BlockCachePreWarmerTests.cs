@@ -740,6 +740,38 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public void SelectDiscoveryCandidates_LearnsRepeatedHeavyDestination()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 1);
+        using (preWarmer)
+        {
+            Transaction first = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressD)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction second = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressD)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Block repeatedBlock = Build.A.Block.WithTransactions(first, second).TestObject;
+
+            List<Transaction>? repeatedCandidates = preWarmer.SelectDiscoveryCandidates(repeatedBlock, speculativelyWarmed: null);
+
+            Assert.That(repeatedCandidates, Has.Count.EqualTo(2));
+
+            Transaction learned = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressD)
+                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+            Block learnedBlock = Build.A.Block.WithTransactions(learned).TestObject;
+            List<Transaction>? learnedCandidates = preWarmer.SelectDiscoveryCandidates(learnedBlock, speculativelyWarmed: null);
+
+            Assert.That(learnedCandidates, Has.Count.EqualTo(1));
+            Assert.That(learnedCandidates![0], Is.SameAs(learned));
+
+            Transaction unknown = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
+                .SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+            Block unknownBlock = Build.A.Block.WithTransactions(unknown).TestObject;
+
+            Assert.That(preWarmer.SelectDiscoveryCandidates(unknownBlock, speculativelyWarmed: null), Is.Null);
+        }
+    }
+
+    [Test]
     public void GroupTransactionsBySender_PrunesWarmedGroupsAndSplitChildren()
     {
         Transaction[] heavyChain =
