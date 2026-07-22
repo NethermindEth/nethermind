@@ -13,6 +13,9 @@ namespace Nethermind.State.Pbt.Test;
 
 public class StemLeafBlobTests
 {
+    /// <summary>The layouts a rebuild writes; the legacy one is only ever read.</summary>
+    private static readonly PbtLeafFormat[] Formats = [PbtLeafFormat.EveryLevel, PbtLeafFormat.Interleaved];
+
     /// <summary>The leaf values the <see cref="LegacyFixtures"/> blobs were written with, in ascending sub-index order.</summary>
     private static readonly byte[][] FixtureValues =
     [
@@ -35,34 +38,168 @@ public class StemLeafBlobTests
     private const string LegacyThreeMixed =
         "0x111111111111111111111111111111111111111111111111111111111111111100cb4bb82263b23f0e7ccf04a6168c1877536fb1e676850759517c266daa00212222222222222222222222222222222222222222222222222222222222222222430196e75e30b577c2762d5fb44808b3f380eced1e332adc5bad0c41e94b2c8076e242fbe9c821ef3363ff57cf7a0d7fa125c3b9d90320e7e34f445818fbd5f93c85b930d24d312cf33fd9a73eb97a52e0fd4e3a34ee3dfbc04f38c051dd6a4335815a31f02ef746e808833308518cf4bbe497b4bcc56acf7378abd138d319aa310c950f0240f64a1e49d708aed30324f860c5c10d54b321953c016ab35bb37f1b8597403029b510fe6d95de2692fa973af693cebc1786bad7f2e7727d5dd8fa3333333333333333333333333333333333333333333333333333333333333333b8603d374dbfa80b0740b12d8f151ad5cb49c4ff3b6bf23c700f7b1888b36f916d7289fbab085984e666ade1d5889933395ce77bbabfb843e0483e48d8fceae4cbf320df7fe385e229790a052b5fa070b363fc7d56fd0ebe0cea0007a87fd24b80675baffa049261b130b4115c4e0de32d5352ce8f0029e8bbb31683b1e4c7b1e769e23a6d83943f0926d65c701f4cbc97fde1ac1f2b8ec04584cb34f5466d92db5f994d46af357850d50b3d693c633af7ef4702520777ffca3423f0a2d3635aa05e20b090b290c54aa69d531300fb75a677394d81ef5aa7f95d60c63391a5589bbe43d5871b3222dd2b2f1ed2bf14a7ea78e51a390e876594b6f80d61f12b6ca0000800410001";
 
-    [Test]
-    public void ApplyReadBackClearAndDeletionSignal()
+    [TestCase(PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.Interleaved)]
+    public void ApplyReadBackClearAndDeletionSignal(PbtLeafFormat format)
     {
         byte[] value5 = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] value200 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-        byte[] blob = Apply([], new Dictionary<byte, byte[]?> { [5] = value5, [200] = value200 }, out _);
-        // S=3 stored nodes (2 leaves + the branching root; every other internal is single-child),
-        // groups {0, 12} occupied => entries + subwords(G=2) + top + format byte
-        Assert.That(blob, Has.Length.EqualTo(3 * 32 + 2 * 2 + 2 + 1));
+        byte[] blob = Apply([], new Dictionary<byte, byte[]?> { [5] = value5, [200] = value200 }, format, out _);
         Assert.That(StemLeafBlob.TryGetValue(blob, 5, out ReadOnlySpan<byte> read5) && read5.SequenceEqual(value5));
         Assert.That(StemLeafBlob.TryGetValue(blob, 200, out ReadOnlySpan<byte> read200) && read200.SequenceEqual(value200));
         Assert.That(StemLeafBlob.TryGetValue(blob, 6, out _), Is.False);
 
-        blob = Apply(blob, new Dictionary<byte, byte[]?> { [5] = null }, out _);
+        blob = Apply(blob, new Dictionary<byte, byte[]?> { [5] = null }, format, out _);
         Assert.That(StemLeafBlob.TryGetValue(blob, 5, out _), Is.False);
         Assert.That(StemLeafBlob.TryGetValue(blob, 200, out read200) && read200.SequenceEqual(value200));
 
         // an all-zero value clears too, and an empty blob signals stem deletion with a zero root
-        blob = Apply(blob, new Dictionary<byte, byte[]?> { [200] = new byte[32] }, out ValueHash256 emptyRoot);
+        blob = Apply(blob, new Dictionary<byte, byte[]?> { [200] = new byte[32] }, format, out ValueHash256 emptyRoot);
         Assert.That(blob, Is.Empty);
         Assert.That(emptyRoot, Is.EqualTo(default(ValueHash256)));
     }
 
-    [TestCase(1, 1)]
-    [TestCase(7, 40)]
-    [TestCase(99, 256)]
-    public void SubtreeRootAndStemNodeHashMatchEipReference(int seed, int leafCount)
+    /// <summary>
+    /// Which levels the interleaved layout keeps, pinned because its entry counter unrolls exactly these
+    /// three: a level added to or taken off the mask has to be added there as well.
+    /// </summary>
+    [TestCase(PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.Interleaved)]
+    public void KeptLevels(PbtLeafFormat format)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            for (int width = 2; width <= 256; width *= 2)
+            {
+                Assert.That(
+                    PbtLayout.StemLeafStoresInternalAtWidth(format, width),
+                    Is.EqualTo(format == PbtLeafFormat.EveryLevel || width is 4 or 16 or 64),
+                    $"width {width}");
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> EntryCounts()
+    {
+        byte[] adjacent = [0, 1];
+        byte[] scattered = [5, 200];
+        byte[] dense = new byte[256];
+        for (int i = 0; i < dense.Length; i++) dense[i] = (byte)i;
+
+        // n leaves cost 2n-1 entries at every level. Interleaving keeps only the branching nodes of the
+        // 4-, 16- and 64-wide levels and no root at all, so a pair of leaves — branching one level above
+        // themselves, and single-child all the way up from there — costs nothing but the leaves, and a
+        // full stem costs 64 + 16 + 4.
+        yield return new TestCaseData(adjacent, PbtLeafFormat.EveryLevel, 3).SetName("AdjacentPairEveryLevel");
+        yield return new TestCaseData(adjacent, PbtLeafFormat.Interleaved, 2).SetName("AdjacentPairInterleaved");
+        yield return new TestCaseData(scattered, PbtLeafFormat.EveryLevel, 3).SetName("ScatteredPairEveryLevel");
+        yield return new TestCaseData(scattered, PbtLeafFormat.Interleaved, 2).SetName("ScatteredPairInterleaved");
+        yield return new TestCaseData(dense, PbtLeafFormat.EveryLevel, 511).SetName("DenseEveryLevel");
+        yield return new TestCaseData(dense, PbtLeafFormat.Interleaved, 256 + 64 + 16 + 4).SetName("DenseInterleaved");
+    }
+
+    /// <remarks>
+    /// A leaf's entry is found by counting the entries before it rather than by an offset of its own, so
+    /// the read back is what proves the count the layout implies is the count the fold emitted.
+    /// </remarks>
+    [TestCaseSource(nameof(EntryCounts))]
+    public void StoredEntryCountAndReadBack(byte[] subIndices, PbtLeafFormat format, int expectedEntries)
+    {
+        Random rng = new(subIndices.Length);
+        Dictionary<byte, byte[]?> values = [];
+        foreach (byte subIndex in subIndices) values[subIndex] = RandomValue(rng);
+
+        byte[] blob = Apply([], values, format, out _);
+
+        bool[] occupied = new bool[16];
+        foreach (byte subIndex in subIndices) occupied[subIndex >> 4] = true;
+        int occupiedGroups = 0;
+        foreach (bool group in occupied)
+        {
+            if (group) occupiedGroups++;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            // entries + subwords(G) + top + format byte
+            Assert.That(blob, Has.Length.EqualTo(expectedEntries * 32 + 2 * occupiedGroups + 2 + 1));
+            foreach ((byte subIndex, byte[]? expected) in values)
+            {
+                Assert.That(
+                    StemLeafBlob.TryGetValue(blob, subIndex, out ReadOnlySpan<byte> actual) && actual.SequenceEqual(expected!),
+                    Is.True,
+                    $"sub-index {subIndex}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A leaf's entry is located by counting the entries of the subtrees to its left, which the
+    /// interleaved layout counts by a level-at-a-time bit fold rather than by walking. That is only
+    /// exercised by reading a leaf out of a shape whose levels differ, so this sweeps the whole density
+    /// range: a count right for a dense stem alone would pass every fixed shape above.
+    /// </summary>
+    [TestCase(PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.Interleaved)]
+    public void EveryLeafReadsBackAcrossRandomShapes(PbtLeafFormat format)
+    {
+        Random rng = new(4242);
+        for (int leafCount = 1; leafCount <= 256; leafCount++)
+        {
+            Dictionary<byte, byte[]?> values = [];
+            for (int i = 0; i < leafCount; i++) values[(byte)rng.Next(256)] = RandomValue(rng);
+
+            byte[] blob = Apply([], values, format, out _);
+            foreach ((byte subIndex, byte[]? expected) in values)
+            {
+                Assert.That(
+                    StemLeafBlob.TryGetValue(blob, subIndex, out ReadOnlySpan<byte> actual) && actual.SequenceEqual(expected!),
+                    Is.True,
+                    $"{values.Count} leaves, sub-index {subIndex}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The layouts describe the same subtree, so they interoperate: a blob written in one and rewritten
+    /// in the other must come out byte-identical to a fresh fold in the new one — the copy-verbatim path
+    /// has to refold across the change rather than splice the old run into the new blob.
+    /// </summary>
+    [TestCase(PbtLeafFormat.EveryLevel, PbtLeafFormat.Interleaved)]
+    [TestCase(PbtLeafFormat.Interleaved, PbtLeafFormat.EveryLevel)]
+    public void MixedFormatRewriteMatchesAFreshFoldInTheNewFormat(PbtLeafFormat initial, PbtLeafFormat then)
+    {
+        Random rng = new(2027);
+        Stem stem = new(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddee"));
+
+        // scattered enough that the rewrite below leaves whole clean subtrees for the copy path to take
+        Dictionary<byte, byte[]?> values = [];
+        for (int i = 0; i < 40; i++) values[(byte)rng.Next(256)] = RandomValue(rng);
+
+        byte[] blob = Apply([], values, initial, out _);
+        Assert.That(blob[^1], Is.EqualTo((byte)initial));
+
+        byte[] changed = RandomValue(rng);
+        values[117] = changed;
+        byte[] rewritten = Apply(blob, new Dictionary<byte, byte[]?> { [117] = changed }, then, out ValueHash256 root);
+        byte[] fresh = Apply([], values, then, out ValueHash256 freshRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewritten, Is.EqualTo(fresh), $"a rewrite must match a fresh {then} fold, not splice {initial} bytes");
+            Assert.That(root, Is.EqualTo(freshRoot));
+            Assert.That(StemLeafBlob.ComputeStemNodeHash(stem, root), Is.EqualTo(BuildOracleRoot(stem, values)));
+        }
+    }
+
+    [TestCase(1, 1, PbtLeafFormat.EveryLevel)]
+    [TestCase(1, 1, PbtLeafFormat.Interleaved)]
+    [TestCase(7, 40, PbtLeafFormat.EveryLevel)]
+    [TestCase(7, 40, PbtLeafFormat.Interleaved)]
+    [TestCase(99, 256, PbtLeafFormat.EveryLevel)]
+    [TestCase(99, 256, PbtLeafFormat.Interleaved)]
+    public void SubtreeRootAndStemNodeHashMatchEipReference(int seed, int leafCount, PbtLeafFormat format)
     {
         Random rng = new(seed);
         Stem stem = new(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddee"));
@@ -82,17 +219,20 @@ public class StemLeafBlobTests
             reference.Insert([.. stem.Bytes, subIndex], value!);
         }
 
-        Apply([], changes, out ValueHash256 subtreeRoot);
+        Apply([], changes, format, out ValueHash256 subtreeRoot);
 
         // a single-stem reference tree's root is exactly the stem node hash
         ValueHash256 stemNodeHash = StemLeafBlob.ComputeStemNodeHash(stem, subtreeRoot);
         Assert.That(stemNodeHash, Is.EqualTo(new ValueHash256(reference.Merkelize())));
     }
 
-    [TestCase(3)]
-    [TestCase(17)]
-    [TestCase(101)]
-    public void IncrementalApplyMatchesFromScratchAndEipReference(int seed)
+    [TestCase(3, PbtLeafFormat.EveryLevel)]
+    [TestCase(3, PbtLeafFormat.Interleaved)]
+    [TestCase(17, PbtLeafFormat.EveryLevel)]
+    [TestCase(17, PbtLeafFormat.Interleaved)]
+    [TestCase(101, PbtLeafFormat.EveryLevel)]
+    [TestCase(101, PbtLeafFormat.Interleaved)]
+    public void IncrementalApplyMatchesFromScratchAndEipReference(int seed, PbtLeafFormat format)
     {
         Random rng = new(seed);
         Stem stem = new(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddee"));
@@ -112,7 +252,7 @@ public class StemLeafBlobTests
             if (batchIndex == 0) batch[0] = RandomValue(rng);
             if (batchIndex == 1) batch[0] = null;
             batch[255] = RandomValue(rng);
-            incrementalBlob = Apply(incrementalBlob, batch, out incrementalRoot);
+            incrementalBlob = Apply(incrementalBlob, batch, format, out incrementalRoot);
             foreach ((byte subIndex, byte[]? value) in batch)
             {
                 if (value is null)
@@ -126,7 +266,7 @@ public class StemLeafBlobTests
             }
         }
 
-        byte[] fromScratchBlob = Apply([], finalValues, out ValueHash256 fromScratchRoot);
+        byte[] fromScratchBlob = Apply([], finalValues, format, out ValueHash256 fromScratchRoot);
         ValueHash256 oracleRoot = BuildOracleRoot(stem, finalValues);
 
         using (Assert.EnterMultipleScope())
@@ -145,8 +285,9 @@ public class StemLeafBlobTests
         }
     }
 
-    [Test]
-    public void SingleLeafChangeOnDenseStemMatchesEipReference()
+    [TestCase(PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.Interleaved)]
+    public void SingleLeafChangeOnDenseStemMatchesEipReference(PbtLeafFormat format)
     {
         Random rng = new(2026);
         Stem stem = new(Bytes.FromHexString("0xff112233445566778899aabbccddeeff00112233445566778899aabbccddee"));
@@ -156,10 +297,10 @@ public class StemLeafBlobTests
             values[(byte)subIndex] = RandomValue(rng);
         }
 
-        byte[] blob = Apply([], values, out _);
+        byte[] blob = Apply([], values, format, out _);
         byte[] changedValue = RandomValue(rng);
         values[117] = changedValue;
-        blob = Apply(blob, new Dictionary<byte, byte[]?> { [117] = changedValue }, out ValueHash256 subtreeRoot);
+        blob = Apply(blob, new Dictionary<byte, byte[]?> { [117] = changedValue }, format, out ValueHash256 subtreeRoot);
 
         using (Assert.EnterMultipleScope())
         {
@@ -170,10 +311,13 @@ public class StemLeafBlobTests
 
     private static IEnumerable<TestCaseData> SparseLeafSets()
     {
-        yield return new TestCaseData(new byte[] { 0, 255 }, (byte)255).SetName("WidestChains");
-        yield return new TestCaseData(new byte[] { 0, 1 }, (byte)1).SetName("BranchingAtTheDeepestInternal");
-        yield return new TestCaseData(new byte[] { 5, 200 }, (byte)5).SetName("BranchingRoot");
-        yield return new TestCaseData(new byte[] { 0, 2, 100 }, (byte)2).SetName("CleanSingleChildSibling");
+        foreach (PbtLeafFormat format in Formats)
+        {
+            yield return new TestCaseData(new byte[] { 0, 255 }, (byte)255, format).SetName($"WidestChains{format}");
+            yield return new TestCaseData(new byte[] { 0, 1 }, (byte)1, format).SetName($"BranchingAtTheDeepestInternal{format}");
+            yield return new TestCaseData(new byte[] { 5, 200 }, (byte)5, format).SetName($"BranchingRoot{format}");
+            yield return new TestCaseData(new byte[] { 0, 2, 100 }, (byte)2, format).SetName($"CleanSingleChildSibling{format}");
+        }
     }
 
     /// <summary>
@@ -186,7 +330,7 @@ public class StemLeafBlobTests
     /// and single-child, and copying it wholesale would hand leaf 0's raw value up as a cached internal hash.
     /// </remarks>
     [TestCaseSource(nameof(SparseLeafSets))]
-    public void SparseStemsSurviveDeletionAndReinsertion(byte[] subIndices, byte deleted)
+    public void SparseStemsSurviveDeletionAndReinsertion(byte[] subIndices, byte deleted, PbtLeafFormat format)
     {
         Random rng = new(subIndices.Length * 31 + deleted);
         Stem stem = new(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddee"));
@@ -197,17 +341,17 @@ public class StemLeafBlobTests
             values[subIndex] = RandomValue(rng);
         }
 
-        byte[] original = Apply([], values, out ValueHash256 originalRoot);
+        byte[] original = Apply([], values, format, out ValueHash256 originalRoot);
         Assert.That(StemLeafBlob.ComputeStemNodeHash(stem, originalRoot), Is.EqualTo(BuildOracleRoot(stem, values)), "from scratch");
 
         byte[]? deletedValue = values[deleted];
         values.Remove(deleted);
-        byte[] blob = Apply(original, new Dictionary<byte, byte[]?> { [deleted] = null }, out ValueHash256 root);
+        byte[] blob = Apply(original, new Dictionary<byte, byte[]?> { [deleted] = null }, format, out ValueHash256 root);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(StemLeafBlob.ComputeStemNodeHash(stem, root), Is.EqualTo(BuildOracleRoot(stem, values)), "after deletion");
-            Assert.That(blob, Is.EqualTo(Apply([], values, out _)), "after deletion, incremental matches from scratch");
+            Assert.That(blob, Is.EqualTo(Apply([], values, format, out _)), "after deletion, incremental matches from scratch");
             foreach ((byte subIndex, byte[]? expected) in values)
             {
                 Assert.That(
@@ -217,7 +361,7 @@ public class StemLeafBlobTests
             }
         }
 
-        blob = Apply(blob, new Dictionary<byte, byte[]?> { [deleted] = deletedValue }, out root);
+        blob = Apply(blob, new Dictionary<byte, byte[]?> { [deleted] = deletedValue }, format, out root);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blob, Is.EqualTo(original), "re-inserting restores the blob the deletion collapsed");
@@ -227,13 +371,16 @@ public class StemLeafBlobTests
 
     private static IEnumerable<TestCaseData> LegacyFixtures()
     {
-        yield return new TestCaseData(new byte[] { 0 }, LegacySingleLeaf).SetName("LegacySingleLeaf");
-        yield return new TestCaseData(new byte[] { 5, 200 }, LegacyTwoScattered).SetName("LegacyTwoScattered");
-        yield return new TestCaseData(new byte[] { 0, 2, 100 }, LegacyThreeMixed).SetName("LegacyThreeMixed");
+        foreach (PbtLeafFormat format in Formats)
+        {
+            yield return new TestCaseData(new byte[] { 0 }, LegacySingleLeaf, format).SetName($"LegacySingleLeaf{format}");
+            yield return new TestCaseData(new byte[] { 5, 200 }, LegacyTwoScattered, format).SetName($"LegacyTwoScattered{format}");
+            yield return new TestCaseData(new byte[] { 0, 2, 100 }, LegacyThreeMixed, format).SetName($"LegacyThreeMixed{format}");
+        }
     }
 
     [TestCaseSource(nameof(LegacyFixtures))]
-    public void LegacyBlobReadsBackAndUpgradesOnWrite(byte[] subIndices, string legacyHex)
+    public void LegacyBlobReadsBackAndUpgradesOnWrite(byte[] subIndices, string legacyHex, PbtLeafFormat format)
     {
         Stem stem = new(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddee"));
         byte[] legacyBlob = Bytes.FromHexString(legacyHex);
@@ -244,7 +391,7 @@ public class StemLeafBlobTests
             values[subIndices[i]] = FixtureValues[i];
         }
 
-        Assert.That(legacyBlob[^1], Is.EqualTo(TwoLevelBitmapReader.LegacyFormatByte), "the fixture must be in the legacy format");
+        Assert.That(TwoLevelBitmapReader.FormatOf(legacyBlob), Is.EqualTo(PbtLeafFormat.Legacy), "the fixture must be in the legacy format");
         foreach ((byte subIndex, byte[]? expected) in values)
         {
             Assert.That(
@@ -253,21 +400,21 @@ public class StemLeafBlobTests
                 $"legacy read of sub-index {subIndex}");
         }
 
-        // an unchanged rebuild is a pure upgrade; a changed one rebuilds against the upgraded prior
-        byte[] upgraded = Apply(legacyBlob, [], out ValueHash256 upgradedRoot);
-        byte[] fromScratch = Apply([], values, out ValueHash256 fromScratchRoot);
+        // an unchanged rebuild is a pure conversion; a changed one rebuilds the legacy prior as it converts
+        byte[] upgraded = Apply(legacyBlob, [], format, out ValueHash256 upgradedRoot);
+        byte[] fromScratch = Apply([], values, format, out ValueHash256 fromScratchRoot);
 
         Dictionary<byte, byte[]?> extended = new(values) { [7] = FixtureValues[^1] };
-        byte[] added = Apply(legacyBlob, new Dictionary<byte, byte[]?> { [7] = FixtureValues[^1] }, out ValueHash256 addedRoot);
+        byte[] added = Apply(legacyBlob, new Dictionary<byte, byte[]?> { [7] = FixtureValues[^1] }, format, out ValueHash256 addedRoot);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(upgraded[^1], Is.EqualTo(TwoLevelBitmapReader.FormatByte), "a rebuild always writes the current format");
+            Assert.That(upgraded[^1], Is.EqualTo((byte)format), "a rebuild always writes the format it was handed");
             Assert.That(upgraded, Is.EqualTo(fromScratch), "the upgrade matches a from-scratch build");
             Assert.That(upgradedRoot, Is.EqualTo(fromScratchRoot));
             Assert.That(StemLeafBlob.ComputeStemNodeHash(stem, upgradedRoot), Is.EqualTo(BuildOracleRoot(stem, values)));
 
-            Assert.That(added, Is.EqualTo(Apply([], extended, out _)), "a write against a legacy prior matches a from-scratch build");
+            Assert.That(added, Is.EqualTo(Apply([], extended, format, out _)), "a write against a legacy prior matches a from-scratch build");
             Assert.That(StemLeafBlob.ComputeStemNodeHash(stem, addedRoot), Is.EqualTo(BuildOracleRoot(stem, extended)));
         }
     }
@@ -292,7 +439,8 @@ public class StemLeafBlobTests
     }
 
     /// <summary>Maps the byte[] changes to 32-byte leaf values (null/empty = clear) and applies them.</summary>
-    private static byte[] Apply(ReadOnlySpan<byte> prior, Dictionary<byte, byte[]?> changes, out ValueHash256 subtreeRoot)
+    private static byte[] Apply(
+        ReadOnlySpan<byte> prior, Dictionary<byte, byte[]?> changes, PbtLeafFormat format, out ValueHash256 subtreeRoot)
     {
         IPbtStemChanges mapped = PbtStemChanges.Rent();
         foreach ((byte subIndex, byte[]? value) in changes)
@@ -302,7 +450,7 @@ public class StemLeafBlobTests
             mapped = mapped.Set(subIndex, leaf);
         }
 
-        using StemLeafBlob.RebuildState rebuilt = StemLeafBlob.Apply(prior, mapped, PooledRefCountingMemoryProvider.Instance);
+        using StemLeafBlob.RebuildState rebuilt = StemLeafBlob.Apply(prior, mapped, PooledRefCountingMemoryProvider.Instance, format);
         subtreeRoot = rebuilt.SubtreeRoot;
         byte[] result = rebuilt.Blob.ToArray();
         PbtStemChanges.Return(mapped);

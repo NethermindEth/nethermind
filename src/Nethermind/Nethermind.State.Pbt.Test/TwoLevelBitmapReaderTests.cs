@@ -31,8 +31,9 @@ public class TwoLevelBitmapReaderTests
         int expectedGroups = OccupiedGroups(flat);
 
         Span<byte> footer = stackalloc byte[TwoLevelBitmapReader.BitmapLength + 3];
-        int footerLength = TwoLevelBitmapReader.Encode(flat, footer);
+        int footerLength = TwoLevelBitmapReader.Encode(flat, footer, PbtLeafFormat.Interleaved);
         Assert.That(footerLength, Is.EqualTo(expectedGroups * 2 + 2 + 1));
+        Assert.That(TwoLevelBitmapReader.FormatOf(footer[..footerLength]), Is.EqualTo(PbtLeafFormat.Interleaved));
 
         // Prepend a dummy entries region to exercise footer-from-the-tail parsing.
         byte[] entriesPrefix = new byte[64];

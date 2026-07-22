@@ -41,6 +41,16 @@ public static class PbtLayout
     /// <summary>The widths whose level <see cref="PbtGroupFormat.Interleaved"/> stores an internal node at: 16, 4 and 1.</summary>
     private const int KeptWidthsBitmask = 0b10101;
 
+    /// <summary>The widths whose level <see cref="PbtLeafFormat.Interleaved"/> stores an internal node at: 64, 16 and 4.</summary>
+    /// <remarks>
+    /// Anchored at the leaves, as the group's is at its boundary, so that the level just above a stored
+    /// node is always a skipped one. Width 1 is a leaf, which holds a value rather than a hash and is
+    /// stored whatever the format, and the 256-wide root is left out for the same reason a group's is:
+    /// the stem node holding the blob caches that hash already. <see cref="StemLeafBlob"/> counts a
+    /// blob's entries by a fold that unrolls these three levels, so a change here belongs there too.
+    /// </remarks>
+    private const int StemLeafKeptWidthsBitmask = 0b1010100;
+
     /// <summary>
     /// Whether the group at <paramref name="depth"/> holds its children's blobs inside its own, which
     /// alternates by group so that every other level is reached without a lookup of its own.
@@ -71,6 +81,14 @@ public static class PbtLayout
     /// </summary>
     public static bool TrieNodeGroupStoresInternalAtWidth(PbtGroupFormat format, int width) =>
         format == PbtGroupFormat.EveryLevel || (width & KeptWidthsBitmask) != 0;
+
+    /// <summary>
+    /// Whether <paramref name="format"/> stores an internal node at the level of a
+    /// <see cref="StemLeafBlob"/> covering <paramref name="width"/> leaves.
+    /// </summary>
+    /// <remarks>Says nothing about whether that node branches, which is the other half of what a blob stores.</remarks>
+    public static bool StemLeafStoresInternalAtWidth(PbtLeafFormat format, int width) =>
+        format != PbtLeafFormat.Interleaved || (width & StemLeafKeptWidthsBitmask) != 0;
 
     /// <summary>The post-order position of boundary slot <paramref name="slot"/>.</summary>
     public static int TrieNodeGroupBoundarySlotPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
