@@ -66,7 +66,7 @@ public class PreBlockCaches
     /// Starts a thread-local capture of backing-store storage misses made through this block cache.
     /// </summary>
     /// <param name="skipBackingReads">
-    /// When <see langword="true"/>, callers record the storage cell and use a speculative zero value instead of
+    /// When <see langword="true"/>, callers record the storage cell and use a speculative placeholder instead of
     /// reading the backing store. The speculative execution result must not be consumed.
     /// </param>
     public StorageReadCapture BeginStorageReadCapture(bool skipBackingReads)

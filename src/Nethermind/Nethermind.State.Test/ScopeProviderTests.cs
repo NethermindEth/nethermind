@@ -490,7 +490,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_PopulatorStorageCapture_SkipsBackingReadWithoutCachingZero()
+    public void Test_PopulatorStorageCapture_SkipsBackingReadWithoutCachingSpeculativeValue()
     {
         using Context ctx = new(useFlat);
 
@@ -517,7 +517,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider.IStorageTree storageTree = readScope.CreateStorageTree(TestItem.AddressA);
         using (PreBlockCaches.StorageReadCapture capture = caches.BeginStorageReadCapture(skipBackingReads: true))
         {
-            Assert.That(storageTree.Get(1), Is.EqualTo(StorageTree.ZeroBytes));
+            Assert.That(storageTree.Get(1), Is.EqualTo(new byte[] { 1 }));
             Assert.That(capture.Cells, Does.Contain(cell));
         }
 

@@ -222,6 +222,8 @@ public class PrewarmerScopeProvider(
         bool isPrewarmer,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
+        private static readonly byte[] SpeculativeStorageValue = [1];
+
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
@@ -248,7 +250,8 @@ public class PrewarmerScopeProvider(
             {
                 if (isPrewarmer && preBlockCaches.CaptureStorageMiss(in storageCell))
                 {
-                    return StorageTree.ZeroBytes;
+                    // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
+                    return SpeculativeStorageValue;
                 }
 
                 value = LoadFromTreeStorage(in storageCell);
