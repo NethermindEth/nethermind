@@ -224,7 +224,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException x)
         {
-            CreateMarkerIfCorrupt(x);
+            HandleFatalDbError(x);
             throw;
         }
     }
@@ -308,21 +308,38 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)
+    private void HandleFatalDbError(RocksDbSharpException rocksDbException)
     {
-        if (rocksDbException.Message.Contains("Corruption:") || rocksDbException.Message.Contains("IO error"))
+        bool corruption = rocksDbException.Message.Contains("Corruption:", StringComparison.Ordinal);
+        bool ioError = rocksDbException.Message.Contains("IO error", StringComparison.Ordinal);
+        if (!corruption && !ioError)
+        {
+            return;
+        }
+
+        // Only genuine on-disk corruption (RocksDB reports it as "Corruption:") gets the marker,
+        // which schedules the lossy rocksdb_repair_db on the next start. A transient/environmental
+        // "IO error" (fd exhaustion, a full disk, revoked permissions) is not on-disk corruption:
+        // repair cannot fix it and running it against an otherwise-healthy DB destroys data, so we
+        // never write the marker for it. Either way we fast-shutdown, because continuing past a
+        // failed write would apply later writes as if it had succeeded and corrupt state at the
+        // application layer even when the DB files themselves are intact.
+        if (corruption)
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
-
-            // Don't kill tests checking corruption response
-            if (!rocksDbException.Message.Equals("Corruption: test corruption", StringComparison.Ordinal))
-            {
-                _logger.Error($"Fast shutdown due to {Name} DB corruption. Please restart.");
-                Environment.Exit(ExitCodes.DbCorruption);
-            }
         }
+        else if (_logger.IsWarn)
+        {
+            _logger.Warn($"IO error on DB path {_fullPath}. Shutting down without repair; please restart Nethermind.");
+        }
+
+        _logger.Error($"Fast shutdown due to {Name} DB {(corruption ? "corruption" : "IO error")}. Please restart.");
+        FatalShutdown();
     }
+
+    /// <summary>Terminates the process after a fatal DB error. Overridden in tests to observe the call without exiting.</summary>
+    protected virtual void FatalShutdown() => Environment.Exit(ExitCodes.DbCorruption);
 
     private void RepairIfCorrupted(DbOptions dbOptions)
     {
@@ -882,7 +899,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -906,7 +923,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             catch (RocksDbSharpException e)
             {
-                CreateMarkerIfCorrupt(e);
+                HandleFatalDbError(e);
                 throw;
             }
         }
@@ -931,7 +948,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -998,7 +1015,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1015,7 +1032,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1093,7 +1110,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1121,7 +1138,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1150,7 +1167,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1163,7 +1180,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1176,7 +1193,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1247,7 +1264,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1332,7 +1349,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             catch (RocksDbSharpException e)
             {
-                _dbOnTheRocks.CreateMarkerIfCorrupt(e);
+                _dbOnTheRocks.HandleFatalDbError(e);
                 throw;
             }
         }
@@ -1393,7 +1410,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             catch (RocksDbSharpException e)
             {
-                _dbOnTheRocks.CreateMarkerIfCorrupt(e);
+                _dbOnTheRocks.HandleFatalDbError(e);
                 throw;
             }
         }
@@ -1428,7 +1445,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            // Fast-shuts down on corruption or IO error; anything else falls through, so log it
+            // rather than swallowing the flush failure silently.
+            HandleFatalDbError(e);
+            if (_logger.IsWarn) _logger.Warn($"Failed to flush {Name} DB: {e.Message}");
         }
     }
 
@@ -1440,7 +1460,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
+            if (_logger.IsWarn) _logger.Warn($"Failed to flush {Name} DB: {e.Message}");
         }
     }
 
