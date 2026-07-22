@@ -1036,10 +1036,34 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(enteredWaitLoop, Is.False);
     }
 
+    [TestCase(true, TestName = "SlotWarmup_UsesExecutionStorageTree_WhenExecutionTreeExistsFirst")]
+    [TestCase(false, TestName = "SlotWarmup_UsesExecutionStorageTree_WhenHintTreeExistsFirst")]
+    public void SlotWarmup_UsesExecutionStorageTree(bool createStorageTreeFirst)
+    {
+        RecordingTrieWarmer warmer = new(acceptSlotJob: false, acceptMpmcSlotJob: true);
+        using TestContext ctx = new(trieWarmer: warmer);
+        Address address = TestItem.AddressA;
+        ctx.AddSnapshot(content =>
+            content.Accounts[address] = new Account(0).WithChangedStorageRoot(TestItem.KeccakA));
+
+        FlatWorldStateScope scope = ctx.Scope;
+        IWorldStateScopeProvider.IStorageTree? storageTree = createStorageTreeFirst
+            ? scope.CreateStorageTree(address)
+            : null;
+
+        ValueAddress valueAddress = new(address.Bytes);
+        scope.HintWarmSlot(valueAddress, (UInt256)1);
+        storageTree ??= scope.CreateStorageTree(address);
+
+        scope.DecrementOutstandingWarmups();
+        Assert.That(warmer.LastMpmcStorageTree, Is.SameAs(storageTree));
+    }
+
     private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
     {
         public int SlotJobPushes { get; private set; }
         public int MpmcSlotJobPushes { get; private set; }
+        public ITrieWarmer.IStorageWarmer? LastMpmcStorageTree { get; private set; }
 
         public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
         {
@@ -1050,6 +1074,7 @@ public class FlatWorldStateScopeProviderTests
         public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
         {
             MpmcSlotJobPushes++;
+            LastMpmcStorageTree = storageTree;
             return acceptMpmcSlotJob;
         }
 

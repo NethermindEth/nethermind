@@ -405,6 +405,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (exists) return storage!;
 
         Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+        ConcurrentDictionary<AddressAsKey, FlatStorageTree?> hintWarmStorages = GetHintWarmStorages();
+        if (hintWarmStorages.TryGetValue(address, out FlatStorageTree? hintWarmStorage)
+            && hintWarmStorage is not null
+            && hintWarmStorage.RootHash == storageRoot)
+        {
+            storage = hintWarmStorage;
+            return storage;
+        }
+
         storage = new FlatStorageTree(
             this,
             _warmer,
@@ -415,6 +424,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             address,
             _logManager);
 
+        hintWarmStorages[address] = storage;
         return storage;
     }
 
