@@ -41,10 +41,9 @@ REFERENCE_CLIENT_TYPE="${REFERENCE_CLIENT_TYPE:-$REFERENCE_LABEL}"
 JB_REPO="${JB_REPO:-https://github.com/NethermindEth/json-bench.git}"
 # Pin to a specific commit so a push to the repo's default branch cannot
 # silently change benchmark results (or run unreviewed code on the runner).
-# Override JB_REF (sha/tag/branch) or JB_REPO to move it.
-# Pinned so a push to json-bench's default branch cannot silently change results
-# or run unreviewed code. This commit makes --prometheus optional (metrics built
-# from summary.json) and drops the invalid eth_getStorageAt corpus entry.
+# Override JB_REF (sha/tag/branch) or JB_REPO to move it. This commit makes
+# --prometheus optional (metrics built from summary.json) and drops the
+# invalid eth_getStorageAt corpus entry.
 JB_REF="${JB_REF:-89c65c73f4325e8b6e1de2c520690bf468eb6c52}"
 JB_MODE="${JB_MODE:-}"                       # benchmark | compare; empty = auto
 # Benchmark workload: a bare name resolves to config/benchmark/<name>.yaml, a
@@ -63,6 +62,10 @@ JB_HTML_REPORT="${JB_HTML_REPORT:-true}"
 # Response differences are reported (and warned about) by default; opt in to
 # failing the step on any diff once the method set is curated for the clients.
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
+# Benchmark gate: k6 exits 0 even at a 100% HTTP failure rate (the injected
+# per-call thresholds are loose by design), so the step fails itself when the
+# summary.json http fail rate exceeds this percentage.
+JB_MAX_FAIL_RATE_PCT="${JB_MAX_FAIL_RATE_PCT:-1}"
 JB_EXTRA_ARGS="${JB_EXTRA_ARGS:-}"
 CONTAINER_NAME="${JB_CONTAINER_NAME:-jsonbench-bench}"
 
@@ -361,10 +364,16 @@ else
   disp_vus="$(sed -nE 's/^vus:[[:space:]]*([0-9]+).*/\1/p' "$bench_meta" 2>/dev/null | head -1)"
 
   # Parse k6's summary.json into overall + per-method tables (stdlib json only).
+  # The parser also emits the http fail rate (percent) for the gate below, and
+  # a parse failure is remembered — a present-but-unparseable summary.json must
+  # fail the step, not silently degrade to a "NO RESULTS" summary that passes.
   perf_md="$OUT_DIR/.jsonbench-perf.md"
+  fail_pct_file="$OUT_DIR/.jsonbench-failrate"
   : > "$perf_md"
+  summary_parse_failed=0
+  fail_pct=""
   if [[ -s "$OUT_DIR/summary.json" ]]; then
-    python3 - "$OUT_DIR/summary.json" "$perf_md" <<'PY' || true
+    python3 - "$OUT_DIR/summary.json" "$perf_md" "$fail_pct_file" <<'PY' || summary_parse_failed=1
 import json, re, sys
 with open(sys.argv[1]) as f:
     metrics = (json.load(f) or {}).get("metrics", {}) or {}
@@ -416,7 +425,11 @@ if rows:
             r2(num(val, "p(95)")), r2(num(val, "p(99)")), r2(num(val, "max"))))
 with open(sys.argv[2], "w") as f:
     f.write("\n".join(out) + "\n")
+with open(sys.argv[3], "w") as f:
+    f.write("%.4f\n" % (fail_rate * 100))
 PY
+    fail_pct="$(head -n 1 "$fail_pct_file" 2>/dev/null || true)"
+    rm -f "$fail_pct_file"
   fi
 
   {
@@ -456,6 +469,13 @@ if [[ "$tool_failed" == "1" ]]; then
 fi
 if [[ "$JB_MODE" == "benchmark" && ! -s "$OUT_DIR/summary.json" && ! -s "$OUT_DIR/results.csv" ]]; then
   die "json-bench benchmark produced no summary.json or results.csv — failing the benchmark step"
+fi
+if [[ "$JB_MODE" == "benchmark" && -s "$OUT_DIR/summary.json" && "${summary_parse_failed:-0}" == "1" ]]; then
+  die "summary.json exists but could not be parsed — failing the benchmark step (file is in the artifact)"
+fi
+if [[ "$JB_MODE" == "benchmark" && -n "${fail_pct:-}" ]] \
+    && awk -v f="${fail_pct:-0}" -v m="$JB_MAX_FAIL_RATE_PCT" 'BEGIN { exit !(f > m) }'; then
+  die "http fail rate ${fail_pct}% exceeds max_fail_rate_pct=${JB_MAX_FAIL_RATE_PCT}% — failing the benchmark step"
 fi
 if [[ "$JB_MODE" == "compare" && -z "$diff_count" ]]; then
   die "json-bench compare produced no parseable results — failing the benchmark step"

@@ -82,7 +82,7 @@ on:
         description: >-
           Tool-specific config as JSON. flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30,"deep_check":false,"label":"","extra_args":""}.
           ethcallchaos: {"ref":"","corpus_db":"","rate":50,"parallel":8,"duration":300,"leaderboard_top":50,"api_port":5000} (empty ref = pinned commit default).
-          jsonbench: {"ref":"","mode":"","benchmark_config":"","compare_config":"config/compare/defaults.yaml","rps":"","duration":"","vus":"","concurrency":5,"timeout":30,"validate_schema":false,"html_report":true,"fail_on_diff":false,"extra_args":""}.
+          jsonbench: {"ref":"","mode":"","benchmark_config":"","compare_config":"config/compare/defaults.yaml","rps":"","duration":"","vus":"","concurrency":5,"timeout":30,"validate_schema":false,"html_report":true,"fail_on_diff":false,"max_fail_rate_pct":1,"extra_args":""}.
           jsonbench benchmark_config: a curated workload — realistic-mix-head | ethcall-contracts-head | new-state-methods-head (bare name or repo-relative path); empty = a generated read mix. Its client list is rewritten to the node(s) here; rps/vus/duration override the workload when set (else the config's own values apply). Benchmarks report from k6's summary.json (no Prometheus).
           Leave empty for defaults.
         required: false
@@ -588,6 +588,8 @@ jobs:
           export JB_VALIDATE_SCHEMA="$(getb '.validate_schema')"
           jb_html="$(getb '.html_report')";              [[ -n "${jb_html}" ]] && export JB_HTML_REPORT="${jb_html}"
           export JB_FAIL_ON_DIFF="$(getb '.fail_on_diff')"
+          # getb: '// empty' would swallow an explicit 0 (jq treats it as truthy-false).
+          jb_mfr="$(getb '.max_fail_rate_pct')";         [[ -n "${jb_mfr}" ]] && export JB_MAX_FAIL_RATE_PCT="${jb_mfr}"
           export JB_EXTRA_ARGS="$(get '.extra_args')"
           if [[ "${COMPARISON}" == "true" ]]; then
             export REFERENCE_RPC_URL="http://localhost:${REF_RPC_PORT}"

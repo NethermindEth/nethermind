@@ -218,6 +218,7 @@ from `reference_client` and overridable via `mode`:
   "validate_schema": false,                        // compare: also validate against the OpenRPC schema
   "html_report": true,
   "fail_on_diff": false,                           // compare: fail the job on any response difference
+  "max_fail_rate_pct": 1,                          // benchmark: fail when summary.json's http fail rate exceeds this % (k6 itself exits 0 even at 100%)
   "extra_args": ""
 }
 ```
