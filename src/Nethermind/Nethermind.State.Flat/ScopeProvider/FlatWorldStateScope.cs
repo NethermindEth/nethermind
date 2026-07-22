@@ -221,15 +221,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     if (storageChangeCount > 0)
                     {
-                        FlatStorageTree storageWarmer = new(
-                            this,
-                            _warmer,
-                            _snapshotBundle,
-                            _configuration,
-                            _concurrencyQuota,
-                            storageRoot,
-                            address,
-                            _logManager);
+                        FlatStorageTree storageWarmer = GetOrCreateHintWarmStorageTree(address, storageRoot);
 
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
@@ -366,22 +358,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Interlocked.Increment(ref _outstandingWarmups);
     }
 
-    private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
-        GetHintWarmStorages().GetOrAdd(address, static (key, scope) =>
-        {
-            Hash256 storageRoot = scope._snapshotBundle.GetAccount(key.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
-            return storageRoot == Keccak.EmptyTreeHash
-                ? null
-                : new FlatStorageTree(
-                    scope,
-                    scope._warmer,
-                    scope._snapshotBundle,
-                    scope._configuration,
-                    scope._concurrencyQuota,
-                    storageRoot,
-                    key.Value,
-                    scope._logManager);
-        }, this);
+    private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address)
+    {
+        Hash256 storageRoot = _snapshotBundle.GetAccount(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+        return storageRoot == Keccak.EmptyTreeHash
+            ? null
+            : GetOrCreateHintWarmStorageTree(address, storageRoot);
+    }
+
+    private FlatStorageTree GetOrCreateHintWarmStorageTree(Address address, Hash256 storageRoot) =>
+        GetHintWarmStorages().GetOrAdd(address, static (key, state) =>
+            new FlatStorageTree(
+                state.Scope,
+                state.Scope._warmer,
+                state.Scope._snapshotBundle,
+                state.Scope._configuration,
+                state.Scope._concurrencyQuota,
+                state.StorageRoot,
+                key.Value,
+                state.Scope._logManager),
+            (Scope: this, StorageRoot: storageRoot))!;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?> GetHintWarmStorages()
@@ -405,8 +401,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (exists) return storage!;
 
         Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-        ConcurrentDictionary<AddressAsKey, FlatStorageTree?> hintWarmStorages = GetHintWarmStorages();
-        if (hintWarmStorages.TryGetValue(address, out FlatStorageTree? hintWarmStorage)
+        ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? hintWarmStorages = storageRoot == Keccak.EmptyTreeHash
+            ? null
+            : GetHintWarmStorages();
+        if (hintWarmStorages is not null
+            && hintWarmStorages.TryGetValue(address, out FlatStorageTree? hintWarmStorage)
             && hintWarmStorage is not null
             && hintWarmStorage.RootHash == storageRoot)
         {
@@ -424,7 +423,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             address,
             _logManager);
 
-        hintWarmStorages[address] = storage;
+        if (hintWarmStorages is not null) hintWarmStorages[address] = storage;
         return storage;
     }
 

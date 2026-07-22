@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -1054,6 +1055,44 @@ public class FlatWorldStateScopeProviderTests
         ValueAddress valueAddress = new(address.Bytes);
         scope.HintWarmSlot(valueAddress, (UInt256)1);
         storageTree ??= scope.CreateStorageTree(address);
+
+        scope.DecrementOutstandingWarmups();
+        Assert.That(warmer.LastMpmcStorageTree, Is.SameAs(storageTree));
+    }
+
+    [Test]
+    public void SlotWarmup_DoesNotQueueForEmptyStorageTree()
+    {
+        RecordingTrieWarmer warmer = new(acceptSlotJob: false, acceptMpmcSlotJob: true);
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        scope.CreateStorageTree(address);
+
+        ValueAddress valueAddress = new(address.Bytes);
+        scope.HintWarmSlot(valueAddress, (UInt256)1);
+
+        Assert.That(warmer.LastMpmcStorageTree, Is.Null);
+    }
+
+    [Test]
+    public async Task BalSlotWarmup_UsesExecutionStorageTree()
+    {
+        RecordingTrieWarmer warmer = new(acceptSlotJob: false, acceptMpmcSlotJob: true);
+        using TestContext ctx = new(trieWarmer: warmer);
+        Address address = TestItem.AddressA;
+        ctx.AddSnapshot(content =>
+            content.Accounts[address] = new Account(0).WithChangedStorageRoot(TestItem.KeccakA));
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(address)
+                .WithStorageChanges(1, new StorageChange(0, 1))
+                .TestObject)
+            .TestObject;
+
+        FlatWorldStateScope scope = ctx.Scope;
+        await scope.HintBal(bal);
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(address);
 
         scope.DecrementOutstandingWarmups();
         Assert.That(warmer.LastMpmcStorageTree, Is.SameAs(storageTree));
