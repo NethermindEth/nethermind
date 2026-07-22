@@ -88,6 +88,7 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
+                preBlockCaches,
                 storageCache,
                 address,
                 isPrewarmer,
@@ -212,12 +213,14 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
+        PreBlockCaches preBlockCaches,
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
+        private readonly PreBlockCaches preBlockCaches = preBlockCaches;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
@@ -240,6 +243,11 @@ public class PrewarmerScopeProvider(
             }
             else
             {
+                if (isPrewarmer && preBlockCaches.CaptureStorageMiss(in storageCell))
+                {
+                    return StorageTree.ZeroBytes;
+                }
+
                 value = LoadFromTreeStorage(in storageCell);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in storageCell, value);
