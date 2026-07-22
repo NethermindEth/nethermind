@@ -53,7 +53,7 @@ internal class XdcProtocolHandler(
 
         int packetType = message.PacketType;
 
-        (bool isSyncing, _, _) = blockTree.IsSyncing();
+        (bool isSyncing, _, _) = blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus);
         if (isSyncing && XdcMessageCode.IsXdcMessage(packetType))
         {
             const string ignored = $"XDC message ignored, syncing";
