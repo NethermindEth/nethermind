@@ -173,6 +173,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         catch (TrieNodeException) { }
         // Because it runs in parallel, it could happen that the bundle changed, which causes this.
         catch (NodeHashMismatchException) { }
+        // Storage warmups are cancelled when their write-batch generation ends.
+        catch (OperationCanceledException) { }
         // Because it runs in parallel, it could be that the scope is disposed of early.
         catch (ObjectDisposedException) { }
         // Scope disposal can null pooled snapshot maps while a queued warmup is already inside trie traversal.

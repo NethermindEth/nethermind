@@ -316,6 +316,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
+    internal bool IsWarmupGenerationCurrent(int sequenceId) =>
+        !IsDisposed && !_pausePrewarmer && _hintSequenceId == sequenceId;
+
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         try

@@ -96,15 +96,27 @@ internal sealed class StorageTrieStoreAdapter(
 
 internal sealed class StorageTrieStoreWarmerAdapter(
     SnapshotBundle bundle,
-    Hash256AsKey addressHash
+    Hash256AsKey addressHash,
+    FlatWorldStateScope? scope = null,
+    int sequenceId = 0
 ) : AbstractMinimalTrieStore
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
+        ThrowIfStale();
         TrieNode node = bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hash);
         return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
     }
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        ThrowIfStale();
+        return bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+    }
+
+    private void ThrowIfStale()
+    {
+        if (scope is not null && !scope.IsWarmupGenerationCurrent(sequenceId))
+            throw new OperationCanceledException();
+    }
 }

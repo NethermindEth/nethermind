@@ -973,6 +973,24 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void StorageTrieWarmerAdapter_CancelsAfterWriteBatchGenerationEnds()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        StorageTrieStoreWarmerAdapter adapter = new(
+            ctx.SnapshotBundle,
+            TestItem.KeccakA,
+            scope,
+            scope.HintSequenceId);
+
+        using (scope.StartWriteBatch(0)) { }
+
+        Assert.That(
+            () => adapter.FindCachedOrUnknown(TreePath.Empty, TestItem.KeccakB),
+            Throws.TypeOf<OperationCanceledException>());
+    }
+
+    [Test]
     public async Task Dispose_GivesUpWaiting_ReaderOutlivesInFlightWarmup()
     {
         BlockingPersistenceReader reader = new();

@@ -46,7 +46,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
+        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(
+            bundle,
+            _addressHash,
+            scope,
+            scope.HintSequenceId);
 
         _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
         {
