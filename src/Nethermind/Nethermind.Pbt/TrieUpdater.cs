@@ -12,21 +12,21 @@ namespace Nethermind.Pbt;
 
 /// <summary>
 /// Backing store for the PBT tree: the stem trie node groups and the per-stem 256-leaf blobs. Reads
-/// return a poolable, disposable wrapper (null = absent); writes hand over one (null removes the group
-/// / deletes the stem).
+/// return a poolable, disposable wrapper (null = absent); writes hand over the value's own array
+/// (null removes the group / deletes the stem).
 /// </summary>
 /// <remarks>
-/// A write transfers the caller's lease on the value: the store owns it from that point and must
-/// release it once done — by disposing it after copying, or, if it retains the memory, when it drops
-/// the value. It never acquires a lease of its own to do so, and the caller must not use the memory
-/// afterwards; a caller that needs to keep reading it acquires its own lease first.
+/// A read hands the caller a lease, which it releases once done; the value a write hands over is the
+/// store's from that point. The two are asymmetric because a read is served from wherever the value
+/// already sits — a pooled buffer, a layer's array — while a write is a value the store keeps, so
+/// there is nothing to pool: the array is exactly the value, sized to it.
 /// </remarks>
 public interface IPbtStore
 {
     RefCountingMemory? GetTrieNode(in TrieNodeKey key);
-    void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node);
+    void SetTrieNode(in TrieNodeKey key, byte[]? node);
     RefCountingMemory? GetLeafBlob(in Stem stem);
-    void SetLeafBlob(in Stem stem, RefCountingMemory? blob);
+    void SetLeafBlob(in Stem stem, byte[]? blob);
 }
 
 /// <summary>
@@ -71,9 +71,14 @@ public static partial class TrieUpdater
     /// converted only by a change that rewrites it anyway.
     /// </param>
     /// <param name="delta">The change this batch makes to the whole tree's stem count — positive as stems are added, negative as their leaves are zeroed away.</param>
+    /// <param name="concurrency">
+    /// How many threads may fold the batch: <c>0</c> for the processor count, <c>1</c> to fold on the
+    /// calling thread alone. A batch too small to be worth splitting folds on the calling thread
+    /// whatever this says — see <see cref="Updater"/>.
+    /// </param>
     public static ValueHash256 UpdateRoot(
         IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider,
-        PbtGroupFormat writeFormat, out PbtSubtreeStats delta)
+        PbtGroupFormat writeFormat, int concurrency, out PbtSubtreeStats delta)
     {
         if (changes.Count == 0)
         {
@@ -81,10 +86,16 @@ public static partial class TrieUpdater
             return currentRoot;
         }
 
-        return new Updater(store, memoryProvider, writeFormat).Run(currentRoot, changes, out delta);
+        return new Updater(store, memoryProvider, writeFormat, changes, concurrency).Run(currentRoot, changes, out delta);
     }
 
-    private sealed partial class Updater(IPbtStore store, IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat)
+    /// <summary>One thread's share of a fold: the descent itself, and the queue other threads take work from.</summary>
+    /// <remarks>
+    /// The descent's state is the thread's, so the frames are this type's instance methods and nothing
+    /// is threaded through them; what every thread shares — the store, the batch, the spawn threshold —
+    /// sits on the <see cref="Updater"/> behind them.
+    /// </remarks>
+    private sealed partial class Worker(Updater updater, int index)
     {
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
@@ -122,8 +133,8 @@ public static partial class TrieUpdater
 
         public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
-            using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
-            BufferWriter writer = new(memoryProvider);
+            using RefCountingMemory? rootData = updater.Store.GetTrieNode(TrieNodeKey.Root);
+            BufferWriter writer = new(updater.MemoryProvider);
             ApplyGroup(
                 TrieNodeKey.Root, changes.Entries, StoredBlob.Of(rootData), currentRoot,
                 new BucketPlan(changes.Buckets, branchDepth: 0), ref writer, out NodeResult root, out bool changed, out delta);
@@ -136,11 +147,11 @@ public static partial class TrieUpdater
                 if (changed && root.Blob is { } rootBlob)
                 {
                     rootBlob.AcquireLease();
-                    store.SetTrieNode(TrieNodeKey.Root, rootBlob);
+                    SetTrieNode(TrieNodeKey.Root, rootBlob);
                 }
                 else if (changed && root.Kind == NodeKind.Absent && rootData is not null)
                 {
-                    store.SetTrieNode(TrieNodeKey.Root, null);
+                    SetTrieNode(TrieNodeKey.Root, null);
                 }
 
                 return root.NodeHash();
@@ -415,7 +426,7 @@ public static partial class TrieUpdater
                 // there rather than here, and the entries' own branch depth with it, which still stands
                 // where the pushed stem is what cut the run short. A run is about to be minted above that
                 // group, so it is one no blob of this frame's can hold: it owns its own.
-                BufferWriter branchWriter = new(memoryProvider);
+                BufferWriter branchWriter = new(updater.MemoryProvider);
                 ApplyPushedStem(
                     branchKey, entries, pushed, new BucketPlan(default, entriesBranch), ref branchWriter,
                     out NodeResult inner, out _, out delta);
@@ -604,6 +615,13 @@ public static partial class TrieUpdater
         /// <inheritdoc cref="ResolveBoundaries" path="/summary"/> For a frame whose children are stored
         /// under their own keys, each folding into a buffer of its own that this frame plants or removes.
         /// </summary>
+        /// <remarks>
+        /// The one frame that hands work to another thread, its children being the only ones that fold
+        /// into a buffer of their own: a clustered frame's go straight into the blob it is assembling, in
+        /// an order only it can keep. A bucket big enough to be worth the hand-off
+        /// (<see cref="Updater.MinSpawnEntries"/>) is queued for whichever thread reaches it first;
+        /// everything else is folded here and now.
+        /// </remarks>
         private GroupShape ResolveKeyedChildren<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
             scoped BucketPlan plan, Span<NodeResult> results, scoped ReadOnlySpan<int> level, int branchDepth)
@@ -614,49 +632,81 @@ public static partial class TrieUpdater
             uint storedChildBitmask = 0;
             BoundaryScan scan = default;
 
+            // The jobs this frame spawned, newest first, and where its own queue stood before the first of
+            // them: what the join hands back the work it can still do itself.
+            Job? spawned = null;
+            long queueMark = QueueMark;
+            bool maySpawn = MaySpawn(touchedBitmask);
+
             for (uint remainingBitmask = touchedBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(remainingBitmask);
                 Occupant occupant = occupants[slot];
-                ref NodeResult result = ref results[slot];
                 Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
                 TrieNodeKey childKey = key.ChildGroup(slot);
                 BucketPlan childPlan = plan.ForChild(slot, branchDepth);
-                BufferWriter owned = new(memoryProvider);
-                bool childChanged;
-                PbtSubtreeStats childDelta;
-                if (occupant.Kind == NodeKind.Internal)
-                {
-                    // a stored child group descends with its own content; the boundary internal caches its
-                    // old root hash, which the child no longer stores itself
-                    using RefCountingMemory? childData = store.GetTrieNode(childKey);
-                    if (childData is not null) storedChildBitmask |= 1u << slot;
-                    ApplyClustered(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, ref owned, out result, out childChanged, out childDelta);
-                    if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
 
-                    // No frame writes its own key; this one, the parent, settles each child's: a stored one
-                    // the writes emptied to nothing, or collapsed into a run this frame now holds, is
-                    // removed here (a child that produced a blob of its own is planted by the rebuild below).
-                    if (childData is not null && childChanged && result.KeyedBlob is null) store.SetTrieNode(childKey, null);
-                }
-                else
+                if (maySpawn && bucket.Length >= updater.MinSpawnEntries
+                    && TrySpawn(slot, childKey, bucket, occupant, childPlan, spawned) is { } job)
                 {
-                    if (occupant.Kind == NodeKind.Chain)
-                    {
-                        ApplyChain(childKey, bucket, occupant.ChainData, childPlan, ref owned, out result, out childChanged, out childDelta);
-                    }
-                    else
-                    {
-                        ApplyPushedStem(childKey, bucket, occupant, childPlan, ref owned, out result, out childChanged, out childDelta);
-                    }
-
-                    if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
+                    spawned = job;
+                    continue;
                 }
 
+                ref NodeResult result = ref results[slot];
+                ApplyKeyedChild(childKey, bucket, occupant, childPlan, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
+                if (storedChild) storedChildBitmask |= 1u << slot;
                 scan.Add(slot, result, childChanged, childDelta);
             }
 
+            if (spawned is not null) Join(spawned, queueMark, results, ref scan, ref storedChildBitmask);
+
             return scan.ToShape(touchedBitmask, storedChildBitmask);
+        }
+
+        /// <summary>
+        /// Applies <paramref name="bucket"/> to the child group at <paramref name="childKey"/>, whose
+        /// boundary slot holds <paramref name="occupant"/>, and settles the node now at that key into
+        /// <paramref name="result"/> — with the encoding to plant, where the fold produced one.
+        /// </summary>
+        /// <remarks>
+        /// One frame of the descent, and the unit of work another thread may take over: everything it
+        /// touches is under <paramref name="childKey"/>, bar the removal of that key itself, which no
+        /// other range can reach either.
+        /// </remarks>
+        /// <param name="storedChild">Whether the store held a blob at <paramref name="childKey"/>, which the parent's rebuild needs to know to settle a collapse onto it.</param>
+        private void ApplyKeyedChild(
+            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in Occupant occupant, scoped BucketPlan childPlan,
+            out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild)
+        {
+            BufferWriter owned = new(updater.MemoryProvider);
+            storedChild = false;
+            if (occupant.Kind == NodeKind.Internal)
+            {
+                // a stored child group descends with its own content; the boundary internal caches its
+                // old root hash, which the child no longer stores itself
+                using RefCountingMemory? childData = updater.Store.GetTrieNode(childKey);
+                storedChild = childData is not null;
+                ApplyClustered(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, ref owned, out result, out changed, out delta);
+                if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
+
+                // No frame writes its own key; the parent settles each child's: a stored one the writes
+                // emptied to nothing, or collapsed into a run the parent now holds, is removed here (a
+                // child that produced a blob of its own is planted by the parent's rebuild).
+                if (storedChild && changed && result.KeyedBlob is null) SetTrieNode(childKey, null);
+                return;
+            }
+
+            if (occupant.Kind == NodeKind.Chain)
+            {
+                ApplyChain(childKey, bucket, occupant.ChainData, childPlan, ref owned, out result, out changed, out delta);
+            }
+            else
+            {
+                ApplyPushedStem(childKey, bucket, occupant, childPlan, ref owned, out result, out changed, out delta);
+            }
+
+            if (owned.Detach() is { } blob) result = result.WithBlob(blob);
         }
 
         /// <summary>What the boundary walk adds up as it settles each slot, for the shape it hands the rebuild.</summary>
@@ -842,7 +892,7 @@ public static partial class TrieUpdater
             bool holdsChildren = headsCluster && boundary.ChildSlots != 0;
             if (holdsChildren) cluster.WriteOffsets(ref writer);
 
-            GroupRebuild rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, writeFormat);
+            GroupRebuild rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, updater.WriteFormat);
             (Stem? rootStem, ValueHash256 rootHash) = rebuild.Rebuild(ref writer, afterStats);
             NodeResult rootNode = rootStem is { } stem ? NodeResult.StemNode(stem, rootHash) : NodeResult.Internal(rootHash);
 
@@ -863,7 +913,7 @@ public static partial class TrieUpdater
                     if ((changedBitmask >> slot & 1) != 0 && results[slot].KeyedBlob is { } childBlob)
                     {
                         childBlob.AcquireLease();
-                        store.SetTrieNode(key.ChildGroup(slot), childBlob);
+                        SetTrieNode(key.ChildGroup(slot), childBlob);
                     }
                 }
             }
@@ -882,7 +932,7 @@ public static partial class TrieUpdater
         {
             Debug.Assert(!childBlob.IsEmpty, "a boundary internal roots a blob, which a clustering frame holds itself");
 
-            RefCountingMemory memory = memoryProvider.Rent(childBlob.Length);
+            RefCountingMemory memory = updater.MemoryProvider.Rent(childBlob.Length);
             childBlob.CopyTo(memory.GetSpan());
             return NodeResult.Internal(node.Hash, memory);
         }
@@ -1069,11 +1119,11 @@ public static partial class TrieUpdater
         /// </param>
         private bool ComputeBlob(in Stem stem, IPbtStemChanges changes, bool knownAbsent, out ValueHash256 subtreeRoot)
         {
-            using RefCountingMemory? prior = knownAbsent ? null : store.GetLeafBlob(stem);
-            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, memoryProvider);
+            using RefCountingMemory? prior = knownAbsent ? null : updater.Store.GetLeafBlob(stem);
+            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, updater.MemoryProvider);
             subtreeRoot = newBlob.SubtreeRoot;
             bool isEmpty = newBlob.IsEmpty;
-            store.SetLeafBlob(stem, newBlob.Take());
+            SetLeafBlob(stem, newBlob.Take());
             return isEmpty;
         }
 

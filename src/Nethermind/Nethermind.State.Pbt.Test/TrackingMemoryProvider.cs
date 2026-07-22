@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core.Buffers;
 
 namespace Nethermind.State.Pbt.Test;
@@ -11,13 +12,15 @@ namespace Nethermind.State.Pbt.Test;
 public sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
 {
     private readonly List<RefCountingMemory> _rented = [];
+    private readonly Lock _lock = new();
 
     public IReadOnlyList<RefCountingMemory> Rented => _rented;
 
+    /// <remarks>Locked: a parallel fold rents from every one of its worker threads.</remarks>
     public RefCountingMemory Rent(int length)
     {
         RefCountingMemory memory = PooledRefCountingMemoryProvider.Instance.Rent(length);
-        _rented.Add(memory);
+        lock (_lock) _rented.Add(memory);
         return memory;
     }
 

@@ -16,4 +16,5 @@ public class PbtConfig : IPbtConfig
     public bool ScanTree { get; set; }
     public int ScanTreeConcurrency { get; set; }
     public bool InterleaveTrieNodeLevels { get; set; } = true;
+    public int RootFoldConcurrency { get; set; }
 }

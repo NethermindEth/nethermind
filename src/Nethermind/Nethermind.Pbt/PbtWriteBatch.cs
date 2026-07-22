@@ -68,6 +68,16 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
 
     internal ReadOnlySpan<int> Buckets => buckets is null ? default : buckets.AsSpan();
 
+    /// <summary>
+    /// The array <see cref="Entries"/> spans, so that a range of it can be named by index rather than
+    /// by a span: what lets <see cref="TrieUpdater"/> hand one bucket to another thread, a span being
+    /// unable to leave the stack.
+    /// </summary>
+    internal StemEntry[] EntriesArray => _entries.UnsafeGetInternalArray();
+
+    /// <inheritdoc cref="EntriesArray" path="/summary"/>
+    internal int[]? BucketsArray => buckets?.UnsafeGetInternalArray();
+
     public void Dispose()
     {
         foreach (StemEntry entry in _entries.AsSpan()) PbtStemChanges.Return(entry.Changes);
