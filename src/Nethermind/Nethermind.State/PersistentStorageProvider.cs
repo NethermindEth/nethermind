@@ -48,9 +48,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void Reset(bool resetBlockChanges = true)
     {
         base.Reset();
-        _originalValues.Clear();
-        _committedThisRound.Clear();
-        _destroyedThisRound.Clear();
+        _originalValues.ClearAndTrim();
+        _committedThisRound.ClearAndTrim();
+        _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -123,7 +123,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         int currentPosition = _changes.Count - 1;
         if (currentPosition < 0)
         {
-            _destroyedThisRound.Clear();
+            _destroyedThisRound.ClearAndTrim();
             return;
         }
         if (_changes[currentPosition].IsNull)
@@ -233,9 +233,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         base.CommitCore(tracer);
-        _originalValues.Clear();
-        _committedThisRound.Clear();
-        _destroyedThisRound.Clear();
+        _originalValues.ClearAndTrim();
+        _committedThisRound.ClearAndTrim();
+        _destroyedThisRound.ClearAndTrim();
 
         if (isTracing)
         {
@@ -374,10 +374,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                 }
 
-                _originalValues.Clear();
+                _originalValues.ClearAndTrim();
             }
 
-            _destroyedThisRound.Clear();
+            _destroyedThisRound.ClearAndTrim();
             return;
         }
 

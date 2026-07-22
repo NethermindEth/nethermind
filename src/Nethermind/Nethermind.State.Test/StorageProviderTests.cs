@@ -23,6 +23,7 @@ using Nethermind.State;
 using Nethermind.Evm.Tracing.State;
 using NSubstitute;
 using NUnit.Framework;
+using CoreCollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.Store.Test;
 
@@ -88,6 +89,42 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public void Reset_trims_oversized_round_collections()
+    {
+        const int OversizedCapacity = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        object[] collections =
+        [
+            GetPrivateField(provider._stateProvider, "_intraTxCache"),
+            GetPrivateField(provider._stateProvider, "_committedThisRound"),
+            GetPrivateField(provider._stateProvider, "_nullAccountReads"),
+            GetPrivateField(provider._persistentStorageProvider, "_originalValues"),
+            GetPrivateField(provider._persistentStorageProvider, "_committedThisRound"),
+            GetPrivateField(provider._persistentStorageProvider, "_destroyedThisRound"),
+        ];
+        int[] capacitiesBeforeReset = new int[collections.Length];
+        for (int i = 0; i < collections.Length; i++)
+        {
+            EnsureCapacity(collections[i], OversizedCapacity);
+            capacitiesBeforeReset[i] = GetCollectionCapacity(collections[i]);
+        }
+
+        provider.Reset();
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < collections.Length; i++)
+            {
+                Assert.That(capacitiesBeforeReset[i], Is.GreaterThan(CoreCollectionExtensions.DefaultTrimAboveCapacity));
+                Assert.That(GetCollectionCapacity(collections[i]), Is.GreaterThan(0));
+                Assert.That(GetCollectionCapacity(collections[i]), Is.LessThan(capacitiesBeforeReset[i]));
+            }
+        }
+    }
+
     private static object GetBlockChange(WorldState provider, Address address)
     {
         FieldInfo storagesField = typeof(PersistentStorageProvider).GetField(
@@ -110,6 +147,15 @@ public class StorageProviderTests(bool useFlat)
         object dictionary = dictionaryField.GetValue(collection)!;
         return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(dictionary)!;
     }
+
+    private static object GetPrivateField(object owner, string fieldName) =>
+        owner.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+
+    private static void EnsureCapacity(object collection, int capacity) =>
+        collection.GetType().GetMethod(nameof(System.Collections.Generic.Dictionary<int, int>.EnsureCapacity), [typeof(int)])!.Invoke(collection, [capacity]);
+
+    private static int GetCollectionCapacity(object collection) =>
+        (int)collection.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(collection)!;
 
     [TestCase(-1)]
     [TestCase(0)]

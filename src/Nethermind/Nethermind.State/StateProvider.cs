@@ -879,9 +879,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _blockChanges.Clear();
             _codeBatch?.Clear();
         }
-        _intraTxCache.Clear();
-        _committedThisRound.Clear();
-        _nullAccountReads.Clear();
+        _intraTxCache.ClearAndTrim();
+        _committedThisRound.ClearAndTrim();
+        _nullAccountReads.ClearAndTrim();
         InvalidateFrontCache();
         _changes.Clear();
         _needsStateRootUpdate = false;
