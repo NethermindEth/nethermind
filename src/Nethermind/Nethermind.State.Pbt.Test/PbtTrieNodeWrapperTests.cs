@@ -119,7 +119,7 @@ public class PbtTrieNodeWrapperTests
         builder.AppendChild(ref writer, child);
         builder.WriteOffsets(ref writer);
         writer.Write(group);
-        builder.Finish(ref writer, group.Length);
+        builder.Finish(ref writer);
 
         Assert.That(() => PbtTrieNodeWrapper.Decode(encoded, out _), Throws.TypeOf<InvalidDataException>());
     }
@@ -152,7 +152,7 @@ public class PbtTrieNodeWrapperTests
         foreach (byte[] child in children) builder.AppendChild(ref writer, child);
         builder.WriteOffsets(ref writer);
         writer.Write(group);
-        builder.Finish(ref writer, group.Length);
+        builder.Finish(ref writer);
         Assert.That(writer.WrittenCount, Is.EqualTo(encoded.Length));
         return encoded;
     }

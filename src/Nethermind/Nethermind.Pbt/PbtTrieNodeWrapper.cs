@@ -207,11 +207,12 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
             writer.Advance(length);
         }
 
-        /// <summary>Stamps the group's length and the format byte, closing the encoding.</summary>
-        public readonly void Finish(ref BufferWriter writer, int groupLength)
+        /// <summary>Stamps the group's length — what the writer has taken since the offset table — and the format byte, closing the encoding.</summary>
+        public readonly void Finish(ref BufferWriter writer)
         {
             Debug.Assert(_ends.Count != 0, "a wrapper holds a group that roots at least one child blob");
 
+            int groupLength = writer.WrittenCount - _ends[_ends.Count - 1] - _ends.Count * OffsetLength;
             Span<byte> trailer = writer.GetSpan(TrailerLength);
             BinaryPrimitives.WriteUInt16LittleEndian(trailer, (ushort)groupLength);
             trailer[sizeof(ushort)] = FormatByte;

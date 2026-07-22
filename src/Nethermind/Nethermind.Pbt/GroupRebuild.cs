@@ -94,14 +94,6 @@ internal ref struct GroupRebuild(
     private readonly ValueHash256 _rootHash = rootHash;
     private readonly PbtGroupFormat _format = format;
 
-    /// <summary>The room the whole encoding may need, which each write asks the rest of.</summary>
-    /// <remarks>
-    /// Asking for what is left of the bound rather than for the entry about to be added is what has the
-    /// buffer grown once for the group instead of a step at a time: the first write sizes it for the
-    /// whole encoding, and no later one can outrun what that left.
-    /// </remarks>
-    private readonly int _room = PbtTrieNodeGroup.EncodedLengthBound(boundary);
-
     private uint _presence;
     private uint _stems;
     private uint _chains;
@@ -169,27 +161,34 @@ internal ref struct GroupRebuild(
     /// Folds the whole group into <paramref name="writer"/> and closes the encoding off.
     /// </summary>
     /// <returns>
-    /// What the group folds to, as its parent holds it — a stem root read back out of the fresh
-    /// encoding, or, the usual case, an internal root the encoding stores no entry for — that root's
-    /// node hash, and the length written.
+    /// The stem the group's root folds to, where it folds to one and the encoding therefore stores it,
+    /// and no stem where — as it usually does — it folds to an internal node the encoding stores no
+    /// entry for; with the hash that root contributes to the parent holding it, which for a stem is its
+    /// 256-leaf subtree root and for an internal node its own.
     /// </returns>
     /// <param name="stats">What the whole subtree amounts to, for the group's trailer; see <see cref="Finish"/>.</param>
-    public (PbtTrieNodeGroup.ValueSlot Root, ValueHash256 RootHash, int Length) Rebuild(
-        ref BufferWriter writer, in PbtSubtreeStats stats)
+    public (Stem? RootStem, ValueHash256 Hash) Rebuild(ref BufferWriter writer, in PbtSubtreeStats stats)
     {
+        // sized for the whole encoding up front so the buffer grows once rather than once an entry,
+        // nothing else writing to it until the fold is done
+        _ = writer.GetSpan(PbtTrieNodeGroup.EncodedLengthBound(_boundary));
+
         // an internal group root is folded to a by-value hash and never stored, the parent caching it in
         // its boundary slot; only a stem root is written, and is read back out of the entries — the last
         // bytes the writer holds — before the trailer joins them
-        FoldedNode root = Fold(ref writer, PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, out ValueHash256 rootHash);
-        PbtTrieNodeGroup.ValueSlot rootSlot = PbtTrieNodeGroup.InternalSlot(rootHash);
+        FoldedNode root = Fold(ref writer, PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, out ValueHash256 hash);
+        Stem? rootStem = null;
         if (root.IsStored)
         {
             Debug.Assert(root.Kind == NodeKind.Stem, "an internal root is folded, never stored");
 
-            rootSlot = PbtTrieNodeGroup.SlotAt(writer.WrittenSpan[^_offset..], root.Kind, root.Offset).ToValue();
+            PbtTrieNodeGroup.Slot rootSlot = PbtTrieNodeGroup.SlotAt(writer.WrittenSpan[^_offset..], root.Kind, root.Offset);
+            rootStem = rootSlot.Stem;
+            hash = rootSlot.Hash;
         }
 
-        return (rootSlot, rootHash, Finish(ref writer, stats));
+        Finish(ref writer, stats);
+        return (rootStem, hash);
     }
 
     /// <summary>
@@ -328,33 +327,30 @@ internal ref struct GroupRebuild(
     private int Write(ref BufferWriter writer, ReadOnlySpan<byte> bytes)
     {
         int offset = _offset;
-        bytes.CopyTo(writer.GetSpan(_room - offset));
-        writer.Advance(bytes.Length);
+        writer.Write(bytes);
         _offset = offset + bytes.Length;
         return offset;
     }
 
     /// <summary>
     /// Appends the trailer — the bitmaps, and the <paramref name="stats"/> of the subtree the group
-    /// roots — commits the encoding to <paramref name="writer"/> and returns its length; 0 when nothing
-    /// was appended, which the caller stores as a removal and the writer never sees.
+    /// roots — and commits it, closing the encoding. An empty group encodes to nothing, which the
+    /// caller stores as a removal and the writer never sees.
     /// </summary>
     /// <param name="stats">
     /// The whole subtree's, which the walk that appended the nodes cannot know: the stems below a
     /// boundary slot the walk left alone are never read. The producer hoists it instead.
     /// </param>
-    private readonly int Finish(ref BufferWriter writer, in PbtSubtreeStats stats)
+    private readonly void Finish(ref BufferWriter writer, in PbtSubtreeStats stats)
     {
-        if (_presence == 0) return 0;
+        if (_presence == 0) return;
 
-        Span<byte> trailer = writer.GetSpan(_room - _offset);
+        Span<byte> trailer = writer.GetSpan(PbtTrieNodeGroup.TrailerLength);
         BinaryPrimitives.WriteUInt32LittleEndian(trailer[PbtTrieNodeGroup.PresenceTrailerOffset..], _presence);
         BinaryPrimitives.WriteUInt32LittleEndian(trailer[PbtTrieNodeGroup.StemsTrailerOffset..], _stems);
         BinaryPrimitives.WriteUInt16LittleEndian(trailer[PbtTrieNodeGroup.ChainsTrailerOffset..], (ushort)_chains);
         stats.Write(trailer[PbtTrieNodeGroup.StatsTrailerOffset..]);
         trailer[PbtTrieNodeGroup.FormatTrailerOffset] = (byte)_format;
         writer.Advance(PbtTrieNodeGroup.TrailerLength);
-
-        return _offset + PbtTrieNodeGroup.TrailerLength;
     }
 }
