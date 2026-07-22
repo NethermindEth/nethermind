@@ -174,9 +174,12 @@ public class FrameTxSignatureValidatorTests
     public void Validate_P256SignerMismatchesPublicKey_ReturnsFalse()
     {
         // The signer address must be keccak256(qx || qy)[12:] — checked even while verification
-        // itself is deferred.
+        // itself is deferred. r/s are in canonical low-s range so the check reached is the signer one.
         Transaction tx = CreateFrameTx();
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressB, default, new byte[TxFrameSignature.P256SignatureLength])];
+        byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
+        raw[31] = 1; // r = 1
+        raw[63] = 1; // s = 1
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressB, default, raw)];
 
         Assert.That(Validate(tx, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidP256Signer));
@@ -187,6 +190,8 @@ public class FrameTxSignatureValidatorTests
     {
         Transaction tx = CreateFrameTx();
         byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
+        raw[31] = 1; // r = 1 (canonical low-s range)
+        raw[63] = 1; // s = 1
         raw.AsSpan(64).Fill(0x42); // qx || qy — a matching signer over non-verifying signature bytes
         Address derivedSigner = new(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, derivedSigner, default, raw)];
@@ -265,6 +270,8 @@ public class FrameTxSignatureValidatorTests
     {
         Transaction tx = CreateFrameTx();
         byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
+        raw[31] = 1; // r = 1 (canonical low-s range, so the missing-precompile path is reached)
+        raw[63] = 1; // s = 1
         raw.AsSpan(64).Fill(0x42);
         Address derivedSigner = new(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, derivedSigner, default, raw)];
