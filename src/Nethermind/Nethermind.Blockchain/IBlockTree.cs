@@ -161,7 +161,7 @@ namespace Nethermind.Blockchain
 
         ChainLevelInfo? FindLevel(ulong number);
 
-        BlockInfo FindCanonicalBlockInfo(ulong blockNumber);
+        BlockInfo? FindCanonicalBlockInfo(ulong blockNumber);
 
         Hash256? FindHash(ulong blockNumber);
 
