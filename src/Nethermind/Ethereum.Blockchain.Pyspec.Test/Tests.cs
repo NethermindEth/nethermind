@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
@@ -49,6 +50,9 @@ public class Bpo2ToBpo3AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTe
 public class Bpo3ToBpo4AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo3ToBpo4AtTime15kEngineBlockchainTests>;
 
 // EIP-7805 (FOCIL) — Bogota fork. Loads `for_bogota` from the tests-focil release.
+// Ignored: tests-focil@v0.1.0 predates the Amsterdam BAL/deposit/gas semantics master now implements.
+// Drop [Ignore] and bump Constants.FOCIL_ARCHIVE_VERSION once an Amsterdam-matching FOCIL release ships.
+[Ignore("tests-focil@v0.1.0 predates current Amsterdam semantics; re-enable on an Amsterdam-matching FOCIL release")]
 public class BogotaEngineBlockchainTests : PyspecBogotaEngineBlockchainTestFixture;
 
 // Sync blockchain tests - exercise sync-mode payload validation alongside the standard engine flow.
