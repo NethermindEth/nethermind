@@ -214,9 +214,50 @@ public class FrameTxSignatureValidatorTests
         rs.CopyTo(raw.AsSpan(0));
         qx.CopyTo(raw.AsSpan(64));
         qy.CopyTo(raw.AsSpan(96));
+        // .NET does not guarantee low-s; the spec requires it, so normalize before validating.
+        NormalizeP256LowS(raw);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, raw)];
 
         Assert.That(Validate(tx, out string? error), Is.True, error);
+    }
+
+    [Test]
+    public void Validate_P256WithHighS_RejectedAsNonCanonical()
+    {
+        // P256VERIFY accepts both s and N - s; the low-s gate must reject the high-s encoding so each
+        // signature has a single valid encoding (no tx-hash malleability).
+        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        ECParameters pub = key.ExportParameters(includePrivateParameters: false);
+        byte[] qx = Pad32(pub.Q.X!);
+        byte[] qy = Pad32(pub.Q.Y!);
+        Address signer = new(Keccak.Compute([.. qx, .. qy]).Bytes[12..]);
+
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+
+        byte[] rs = key.SignHash(sigHash.Bytes);
+        byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
+        rs.CopyTo(raw.AsSpan(0));
+        qx.CopyTo(raw.AsSpan(64));
+        qy.CopyTo(raw.AsSpan(96));
+        NormalizeP256LowS(raw);
+        // Flip the (now low) s to its high-s counterpart N - s.
+        UInt256 lowS = new(raw.AsSpan(32, 32), isBigEndian: true);
+        (SecP256r1Curve.N - lowS).ToBigEndian(raw.AsSpan(32, 32));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, raw)];
+
+        Assert.That(Validate(tx, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalP256Signature));
+    }
+
+    private static void NormalizeP256LowS(byte[] raw)
+    {
+        UInt256 s = new(raw.AsSpan(32, 32), isBigEndian: true);
+        if (s > SecP256r1Curve.HalfN)
+        {
+            (SecP256r1Curve.N - s).ToBigEndian(raw.AsSpan(32, 32));
+        }
     }
 
     [Test]

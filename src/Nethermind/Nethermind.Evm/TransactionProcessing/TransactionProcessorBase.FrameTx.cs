@@ -74,6 +74,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
         // max_fee_per_gas plus blob cost, not the effective price, so it is not under-reserved.
         // Settlement below still charges the effective price, so the payer's net cost is unchanged.
+        // EIP8141-DEVIATION: blob gas is reserved here but never settled — a blob-carrying frame tx
+        // would have its blob reservation fully refunded (blobs go uncharged) and BlobGasUsed is not
+        // set. Blob support is deferred pending the upstream blob-semantics spec; devnets do not send
+        // blob frame txs. Charge blob gas (and reject or account it) once that lands.
         ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
         UInt256 maxCost = (UInt256)txGasLimit * tx.DecodedMaxFeePerGas + (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault();
 
@@ -117,6 +121,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         StackAccessTracker batchTracker = default;
         int batchStartLogCount = 0;
         Address? batchStartPayer = null;
+        bool batchStartSenderApproved = false;
         long batchStartRefund = 0;
 
         for (int i = 0; i < frames.Length; i++)
@@ -133,6 +138,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchTracker.TakeSnapshot();
                 batchStartLogCount = allLogs.Count;
                 batchStartPayer = frameContext.Payer;
+                batchStartSenderApproved = frameContext.SenderApproved;
                 batchStartRefund = refundCounter;
             }
 
@@ -228,28 +234,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     WorldState.Restore(batchStartSnapshot);
                     batchTracker.Restore();
                     allLogs.RemoveRange(batchStartLogCount, allLogs.Count - batchStartLogCount);
-                    // Refunds earned by frames unrolled with the batch are discarded (ethereum/EIPs#11940).
+                    // EIP-8141 (ethereum/EIPs#11955): a failed batch unrolls ALL effects of any APPROVE
+                    // it contained. Restore reverts the payer debit and sender nonce (world state); the
+                    // approval context (payer, sender_approved) and refund counter are not world state,
+                    // so roll them back to their pre-batch values too. Without this, the payer field
+                    // would survive a reverted charge and the terminal gate would refund uncollected
+                    // funds. If the payer was only set inside the batch, it is now unset again and the
+                    // gate below rejects the transaction.
+                    frameContext.Payer = batchStartPayer;
+                    frameContext.SenderApproved = batchStartSenderApproved;
                     refundCounter = batchStartRefund;
-
-                    // EIP-8141 (ethereum/EIPs#11955): APPROVE effects that committed inside the
-                    // batch survive its unroll. Execution approval is a context flag untouched by
-                    // Restore; a payment approved inside the batch had its payer debit and sender
-                    // nonce rolled back, so re-apply them. If the pre-batch balance can no longer
-                    // cover the max cost, void the payer so the terminal payer gate rejects the
-                    // transaction instead of refunding funds that were never collected.
-                    Address? batchPayer = frameContext.Payer;
-                    if (batchStartPayer is null && batchPayer is not null)
-                    {
-                        if (WorldState.GetBalance(batchPayer) >= frameContext.MaxCost)
-                        {
-                            WorldState.SubtractFromBalance(batchPayer, frameContext.MaxCost, spec);
-                            WorldState.IncrementNonce(frameContext.Sender);
-                        }
-                        else
-                        {
-                            frameContext.Payer = null;
-                        }
-                    }
 
                     int terminal = i;
                     while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
@@ -281,9 +275,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // receipts stay gross; only this transaction total is netted.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
         ulong spentGas = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec);
-        // Block-level gas accounting reads Transaction.BlockGasUsed (its getter falls back to the
-        // tx GasLimit, which is 0 for a frame tx). Set it like the regular path so parallel block
-        // validation (BlockAccessListManager) accumulates the frame tx's gas into the header.
+        // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
+        // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
+        // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
+        // tx's real spent gas into the header.
         tx.BlockGasUsed = spentGas;
         Address payer = frameContext.Payer;
 

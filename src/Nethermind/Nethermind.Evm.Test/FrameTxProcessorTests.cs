@@ -459,12 +459,13 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_AtomicBatch_PaymentApprovalInsideFailedBatch_PayerRemainsChargedAndNonceConsumed()
+    public void Execute_AtomicBatch_PaymentApprovalInsideFailedBatch_UnrollsPayerAndInvalidatesTransaction()
     {
-        // ethereum/EIPs#11955: approval effects (payer debit, sender nonce) survive an atomic-batch
-        // unroll. A batch rollback implemented as a plain snapshot restore silently reverts them
-        // while the payer variable survives — the transaction then passes the payer gate and the
-        // final refund pays the payer funds that were never collected.
+        // ethereum/EIPs#11955: a failed batch unrolls ALL effects of an APPROVE it contained. The
+        // payer debit and sender nonce are reverted by Restore, and the payer/sender_approved context
+        // is rolled back to its pre-batch value too, so the payer never survives an uncollected charge.
+        // Payment was only approved inside the batch, so after the unroll payer == None and the
+        // terminal payer gate rejects the whole transaction — the sponsor is not charged.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
         DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
@@ -476,9 +477,10 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True, "payer was set inside the batch");
-        Assert.That(_stateProvider.GetBalance(Observer), Is.LessThan(1.Ether), "payer stays charged across the batch unroll");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL), "sender nonce stays consumed across the batch unroll");
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged when the batch unrolls its payment approval");
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "the sender nonce is not consumed");
     }
 
     [Test]

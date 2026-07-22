@@ -46,6 +46,16 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+
+        // A frame transaction has no gas_limit field; expose the sum of frame gas limits as GasLimit
+        // so pre-execution consumers (GasLimitTxFilter, block-production selection, pre-warming) that
+        // read it do not treat the transaction as ~0 gas. The processor derives the real tx_gas_limit.
+        ulong gasLimit = 0;
+        foreach (TxFrame frame in transaction.Frames)
+        {
+            gasLimit = frame.GasLimit > ulong.MaxValue - gasLimit ? ulong.MaxValue : gasLimit + frame.GasLimit;
+        }
+        transaction.GasLimit = gasLimit;
     }
 
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,

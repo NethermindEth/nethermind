@@ -24,6 +24,7 @@ public static class FrameTxSignatureValidator
     public const string InvalidSignatureLength = "frame transaction signature has the wrong length";
     public const string InvalidMsgLength = "frame transaction signature msg must be empty or a 32-byte digest";
     public const string NonCanonicalSignature = "frame transaction signature must use a 0/1 recovery id and a canonical low s value";
+    public const string NonCanonicalP256Signature = "frame transaction P256 signature must be canonical with a low s value";
     public const string InvalidP256Signer = "frame transaction P256 signer does not match the public key";
     public const string P256NotSupported = "frame transaction P256 signatures require the secp256r1 precompile";
 
@@ -100,6 +101,15 @@ public static class FrameTxSignatureValidator
         error = null;
         ReadOnlySpan<byte> raw = signature.Signature.Span;
         if (raw.Length != TxFrameSignature.P256SignatureLength) return Fail(InvalidSignatureLength, out error);
+
+        // P256VERIFY itself accepts a high-s signature, so the canonicality gate must run here: r and s
+        // must be in range with low-s, giving each signature exactly one encoding (no tx-hash malleability).
+        UInt256 r = new(raw.Slice(0, 32), isBigEndian: true);
+        UInt256 s = new(raw.Slice(32, 32), isBigEndian: true);
+        if (r.IsZero || r >= SecP256r1Curve.N || s.IsZero || s > SecP256r1Curve.HalfN)
+        {
+            return Fail(NonCanonicalP256Signature, out error);
+        }
 
         ReadOnlySpan<byte> publicKey = raw.Slice(64, 64); // qx || qy
         Address derived = new(Keccak.Compute(publicKey).Bytes[12..]);

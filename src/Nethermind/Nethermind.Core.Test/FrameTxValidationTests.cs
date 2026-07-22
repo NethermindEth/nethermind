@@ -83,6 +83,14 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
             null);
 
+        // ethereum/EIPs#11955: atomic batches contain only non-VERIFY frames.
+        yield return Case("AtomicBatchFlagOnVerifyFrame_AtomicBatchOnVerifyFrame",
+            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
+            FrameTxValidation.AtomicBatchOnVerifyFrame);
+        yield return Case("AtomicBatchFollowedByVerifyFrame_AtomicBatchFollowedByVerifyFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModeVerify)],
+            FrameTxValidation.AtomicBatchFollowedByVerifyFrame);
+
         // total_frame_gas accumulated across frames must not overflow 2^64 - 1
         yield return Case("TotalFrameGasOverflows_FrameGasOverflow",
             static tx => tx.Frames = [Frame(gasLimit: ulong.MaxValue), Frame(gasLimit: 1)],
