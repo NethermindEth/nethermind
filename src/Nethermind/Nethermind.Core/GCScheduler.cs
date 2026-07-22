@@ -258,9 +258,13 @@ public sealed class GCScheduler
         // an induced non-blocking gen2 to a full blocking compacting collection (1-2s stop-the-world
         // on replay-sized heaps; coreclr gc.cpp dt_high_frag_p). SustainedLowLatency suppresses
         // exactly that escalation while still allowing the background collection.
+        // A no-GC region may still be closing right after the guard was released (Dispose resumes
+        // the guard before EndNoGCRegion); firing then would skip the low-latency protection below.
+        // Stay armed and retry on a later tick instead.
         GCLatencyMode entryMode = GCSettings.LatencyMode;
-        bool useLowLatency = entryMode == GCLatencyMode.Interactive;
-        if (useLowLatency) GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        if (entryMode != GCLatencyMode.Interactive) return;
+
+        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
         try
         {
             GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
@@ -268,7 +272,7 @@ public sealed class GCScheduler
         finally
         {
             // Restore only if nothing else (e.g. a no-GC region) changed the mode meanwhile.
-            if (useLowLatency && GCSettings.LatencyMode == GCLatencyMode.SustainedLowLatency)
+            if (GCSettings.LatencyMode == GCLatencyMode.SustainedLowLatency)
             {
                 GCSettings.LatencyMode = entryMode;
             }
