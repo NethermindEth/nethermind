@@ -45,6 +45,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private const int MaxDiscoveryRounds = 6;
     private const int MaxDiscoveredCells = 8192;
     private const int MaxBatchedHeavyDestinations = 1024;
+    // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
+    private const ulong StorageDiscoveryGasThreshold = 10_000_000;
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
@@ -175,7 +177,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         foreach (Transaction tx in block.Transactions)
         {
-            if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
+            if (tx.GasLimit <= StorageDiscoveryGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
 
             if (_batchedHeavyDestinations.ContainsKey(destination))
             {

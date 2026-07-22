@@ -745,9 +745,17 @@ public class BlockCachePreWarmerTests
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 1);
         using (preWarmer)
         {
-            Transaction first = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressD)
+            Transaction belowThresholdFirst = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction second = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressD)
+            Transaction belowThresholdSecond = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Block belowThresholdBlock = Build.A.Block.WithTransactions(belowThresholdFirst, belowThresholdSecond).TestObject;
+
+            Assert.That(preWarmer.SelectDiscoveryCandidates(belowThresholdBlock, speculativelyWarmed: null), Is.Null);
+
+            Transaction first = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction second = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Block repeatedBlock = Build.A.Block.WithTransactions(first, second).TestObject;
 
@@ -755,7 +763,7 @@ public class BlockCachePreWarmerTests
 
             Assert.That(repeatedCandidates, Has.Count.EqualTo(2));
 
-            Transaction learned = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressD)
+            Transaction learned = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
                 .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             Block learnedBlock = Build.A.Block.WithTransactions(learned).TestObject;
             List<Transaction>? learnedCandidates = preWarmer.SelectDiscoveryCandidates(learnedBlock, speculativelyWarmed: null);
