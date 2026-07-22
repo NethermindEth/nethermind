@@ -21,11 +21,10 @@ public sealed class GCScheduler
     private const int MinSecondsBetweenForcedGC = 120;
     // 4 GiB ≈ 256 typical 30 MGas mainnet blocks
     internal const long SustainedSweepAllocationBytes = 4L * 1024 * 1024 * 1024;
-    // Background gen2 duration scales with heap size (~150ms/GB measured on replay heaps),
-    // bounded so tiny heaps still get a meaningful window and huge heaps don't starve regions.
-    private const long NoGCRegionBlackoutMsPerGB = 150;
-    private const long MinNoGCRegionBlackoutMs = 2_000;
-    private const long MaxNoGCRegionBlackoutMs = 15_000;
+    // Concurrent sweeps never compact, so gen2 fragmentation accumulates during sustained
+    // processing; past this bound the sweep compacts instead (blocking, guard-aligned).
+    internal const long MinFragmentationCompactionBytes = 4L * 1024 * 1024 * 1024;
+    private const long FragmentationCompactionAvailableMemoryDivisor = 6;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -45,10 +44,6 @@ public sealed class GCScheduler
     private long _sweepBaselineAllocatedBytes;
     private int _forcedGCExclusions;
 
-    // TickCount64 until which GCKeeper must not enter a no-GC region: entering one while the
-    // sweep's background collection is still running blocks the caller until the collection completes.
-    private static long _noGCRegionBlackoutUntilMs;
-
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
 
@@ -66,18 +61,6 @@ public sealed class GCScheduler
             _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
     }
-
-    /// <summary>
-    /// True while a sweep-issued background gen2 collection is likely still running.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="GC.TryStartNoGCRegion(long)"/> blocks until an in-flight background collection
-    /// completes (~1s measured on replay-sized heaps), so <c>GCKeeper</c> skips the region while
-    /// this is set instead of stalling the engine API request that asked for it. The window is a
-    /// heap-size-scaled estimate because the runtime exposes no background-GC-completed signal
-    /// (EventSource is disabled in the published runner).
-    /// </remarks>
-    public static bool IsNoGCRegionBlackoutActive => Environment.TickCount64 < Volatile.Read(ref _noGCRegionBlackoutUntilMs);
 
     /// <summary>
     /// Activates background garbage collection when the processing queue is idle.
@@ -257,6 +240,19 @@ public sealed class GCScheduler
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 
+        // Concurrent sweeps only free, never compact, so fragmentation grows during sustained
+        // processing and plateaus far above the compacted size. Past the bound, compact instead;
+        // the guard aligns the pause with the gap between payloads, exactly like the idle-window GCs.
+        GCMemoryInfo memoryInfo = GC.GetGCMemoryInfo();
+        long fragmentationBound = Math.Max(
+            memoryInfo.TotalAvailableMemoryBytes / FragmentationCompactionAvailableMemoryDivisor,
+            MinFragmentationCompactionBytes);
+        if (memoryInfo.FragmentedBytes > fragmentationBound)
+        {
+            GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            return;
+        }
+
         // When any heap's gen2 unusable fragmentation exceeds half its size, the runtime escalates
         // an induced non-blocking gen2 to a full blocking compacting collection (1-2s stop-the-world
         // on replay-sized heaps; coreclr gc.cpp dt_high_frag_p). SustainedLowLatency suppresses
@@ -264,10 +260,9 @@ public sealed class GCScheduler
         GCLatencyMode entryMode = GCSettings.LatencyMode;
         bool useLowLatency = entryMode == GCLatencyMode.Interactive;
         if (useLowLatency) GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
-        bool fired;
         try
         {
-            fired = GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+            GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
         }
         finally
         {
@@ -277,13 +272,6 @@ public sealed class GCScheduler
                 GCSettings.LatencyMode = entryMode;
             }
         }
-
-        if (fired)
-        {
-            long heapBytes = GC.GetGCMemoryInfo().HeapSizeBytes;
-            long blackoutMs = Math.Clamp(heapBytes / 1_000_000_000 * NoGCRegionBlackoutMsPerGB, MinNoGCRegionBlackoutMs, MaxNoGCRegionBlackoutMs);
-            Volatile.Write(ref _noGCRegionBlackoutUntilMs, Environment.TickCount64 + blackoutMs);
-        }
     }
 
     internal long SweepBaselineAllocatedBytes
@@ -292,9 +280,4 @@ public sealed class GCScheduler
         set => Volatile.Write(ref _sweepBaselineAllocatedBytes, value);
     }
 
-    internal static long NoGCRegionBlackoutUntilMs
-    {
-        get => Volatile.Read(ref _noGCRegionBlackoutUntilMs);
-        set => Volatile.Write(ref _noGCRegionBlackoutUntilMs, value);
-    }
 }

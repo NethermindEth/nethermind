@@ -33,10 +33,7 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     {
         long size = _defaultSize;
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
-        // Entering a no-GC region while the sustained sweep's background collection is still
-        // running blocks here until that collection completes (~1s on replay-sized heaps),
-        // stalling the engine API request; processing without the region is far cheaper.
-        if (_gcStrategy.CanStartNoGCRegion() && !GCScheduler.IsNoGCRegionBlackoutActive)
+        if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
             try
