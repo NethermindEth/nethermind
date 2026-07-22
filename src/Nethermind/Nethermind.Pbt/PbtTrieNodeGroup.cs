@@ -154,14 +154,14 @@ public readonly ref partial struct PbtTrieNodeGroup
         };
     }
 
-    private const int EntriesOffset = 0;
+    internal const int EntriesOffset = 0;
 
-    private const int PresenceTrailerOffset = 0;
-    private const int StemsTrailerOffset = PresenceTrailerOffset + sizeof(uint);
-    private const int ChainsTrailerOffset = StemsTrailerOffset + sizeof(uint);
-    private const int StatsTrailerOffset = ChainsTrailerOffset + sizeof(ushort);
-    private const int FormatTrailerOffset = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
-    private const int TrailerLength = FormatTrailerOffset + sizeof(byte);
+    internal const int PresenceTrailerOffset = 0;
+    internal const int StemsTrailerOffset = PresenceTrailerOffset + sizeof(uint);
+    internal const int ChainsTrailerOffset = StemsTrailerOffset + sizeof(uint);
+    internal const int StatsTrailerOffset = ChainsTrailerOffset + sizeof(ushort);
+    internal const int FormatTrailerOffset = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
+    internal const int TrailerLength = FormatTrailerOffset + sizeof(byte);
 
     private const int OverheadLength = EntriesOffset + TrailerLength;
     private const int HashLength = 32;
