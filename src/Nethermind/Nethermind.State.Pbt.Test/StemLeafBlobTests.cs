@@ -14,7 +14,8 @@ namespace Nethermind.State.Pbt.Test;
 public class StemLeafBlobTests
 {
     /// <summary>The layouts a rebuild writes; the legacy one is only ever read.</summary>
-    private static readonly PbtLeafFormat[] Formats = [PbtLeafFormat.EveryLevel, PbtLeafFormat.Interleaved];
+    private static readonly PbtLeafFormat[] Formats =
+        [PbtLeafFormat.EveryLevel, PbtLeafFormat.Interleaved, PbtLeafFormat.LeavesOnly];
 
     /// <summary>The leaf values the <see cref="LegacyFixtures"/> blobs were written with, in ascending sub-index order.</summary>
     private static readonly byte[][] FixtureValues =
@@ -40,6 +41,7 @@ public class StemLeafBlobTests
 
     [TestCase(PbtLeafFormat.EveryLevel)]
     [TestCase(PbtLeafFormat.Interleaved)]
+    [TestCase(PbtLeafFormat.LeavesOnly)]
     public void ApplyReadBackClearAndDeletionSignal(PbtLeafFormat format)
     {
         byte[] value5 = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
@@ -61,11 +63,12 @@ public class StemLeafBlobTests
     }
 
     /// <summary>
-    /// Which levels the interleaved layout keeps, pinned because its entry counter unrolls exactly these
-    /// three: a level added to or taken off the mask has to be added there as well.
+    /// Which levels each layout keeps, pinned because the interleaved counter unrolls exactly its
+    /// three: a level added to or taken off that mask has to be added there as well.
     /// </summary>
     [TestCase(PbtLeafFormat.EveryLevel)]
     [TestCase(PbtLeafFormat.Interleaved)]
+    [TestCase(PbtLeafFormat.LeavesOnly)]
     public void KeptLevels(PbtLeafFormat format)
     {
         using (Assert.EnterMultipleScope())
@@ -74,7 +77,12 @@ public class StemLeafBlobTests
             {
                 Assert.That(
                     PbtLayout.StemLeafStoresInternalAtWidth(format, width),
-                    Is.EqualTo(format == PbtLeafFormat.EveryLevel || width is 4 or 16 or 64),
+                    Is.EqualTo(format switch
+                    {
+                        PbtLeafFormat.Interleaved => width is 4 or 16 or 64,
+                        PbtLeafFormat.LeavesOnly => false,
+                        _ => true,
+                    }),
                     $"width {width}");
             }
         }
@@ -90,13 +98,17 @@ public class StemLeafBlobTests
         // n leaves cost 2n-1 entries at every level. Interleaving keeps only the branching nodes of the
         // 4-, 16- and 64-wide levels and no root at all, so a pair of leaves — branching one level above
         // themselves, and single-child all the way up from there — costs nothing but the leaves, and a
-        // full stem costs 64 + 16 + 4.
+        // full stem costs 64 + 16 + 4. The leaves-only layout costs the leaves and nothing else, whatever
+        // their shape.
         yield return new TestCaseData(adjacent, PbtLeafFormat.EveryLevel, 3).SetName("AdjacentPairEveryLevel");
         yield return new TestCaseData(adjacent, PbtLeafFormat.Interleaved, 2).SetName("AdjacentPairInterleaved");
         yield return new TestCaseData(scattered, PbtLeafFormat.EveryLevel, 3).SetName("ScatteredPairEveryLevel");
         yield return new TestCaseData(scattered, PbtLeafFormat.Interleaved, 2).SetName("ScatteredPairInterleaved");
         yield return new TestCaseData(dense, PbtLeafFormat.EveryLevel, 511).SetName("DenseEveryLevel");
         yield return new TestCaseData(dense, PbtLeafFormat.Interleaved, 256 + 64 + 16 + 4).SetName("DenseInterleaved");
+        yield return new TestCaseData(adjacent, PbtLeafFormat.LeavesOnly, 2).SetName("AdjacentPairLeavesOnly");
+        yield return new TestCaseData(scattered, PbtLeafFormat.LeavesOnly, 2).SetName("ScatteredPairLeavesOnly");
+        yield return new TestCaseData(dense, PbtLeafFormat.LeavesOnly, 256).SetName("DenseLeavesOnly");
     }
 
     /// <remarks>
@@ -142,6 +154,7 @@ public class StemLeafBlobTests
     /// </summary>
     [TestCase(PbtLeafFormat.EveryLevel)]
     [TestCase(PbtLeafFormat.Interleaved)]
+    [TestCase(PbtLeafFormat.LeavesOnly)]
     public void EveryLeafReadsBackAcrossRandomShapes(PbtLeafFormat format)
     {
         Random rng = new(4242);
@@ -168,6 +181,10 @@ public class StemLeafBlobTests
     /// </summary>
     [TestCase(PbtLeafFormat.EveryLevel, PbtLeafFormat.Interleaved)]
     [TestCase(PbtLeafFormat.Interleaved, PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.EveryLevel, PbtLeafFormat.LeavesOnly)]
+    [TestCase(PbtLeafFormat.LeavesOnly, PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.Interleaved, PbtLeafFormat.LeavesOnly)]
+    [TestCase(PbtLeafFormat.LeavesOnly, PbtLeafFormat.Interleaved)]
     public void MixedFormatRewriteMatchesAFreshFoldInTheNewFormat(PbtLeafFormat initial, PbtLeafFormat then)
     {
         Random rng = new(2027);
@@ -195,10 +212,13 @@ public class StemLeafBlobTests
 
     [TestCase(1, 1, PbtLeafFormat.EveryLevel)]
     [TestCase(1, 1, PbtLeafFormat.Interleaved)]
+    [TestCase(1, 1, PbtLeafFormat.LeavesOnly)]
     [TestCase(7, 40, PbtLeafFormat.EveryLevel)]
     [TestCase(7, 40, PbtLeafFormat.Interleaved)]
+    [TestCase(7, 40, PbtLeafFormat.LeavesOnly)]
     [TestCase(99, 256, PbtLeafFormat.EveryLevel)]
     [TestCase(99, 256, PbtLeafFormat.Interleaved)]
+    [TestCase(99, 256, PbtLeafFormat.LeavesOnly)]
     public void SubtreeRootAndStemNodeHashMatchEipReference(int seed, int leafCount, PbtLeafFormat format)
     {
         Random rng = new(seed);
@@ -228,10 +248,13 @@ public class StemLeafBlobTests
 
     [TestCase(3, PbtLeafFormat.EveryLevel)]
     [TestCase(3, PbtLeafFormat.Interleaved)]
+    [TestCase(3, PbtLeafFormat.LeavesOnly)]
     [TestCase(17, PbtLeafFormat.EveryLevel)]
     [TestCase(17, PbtLeafFormat.Interleaved)]
+    [TestCase(17, PbtLeafFormat.LeavesOnly)]
     [TestCase(101, PbtLeafFormat.EveryLevel)]
     [TestCase(101, PbtLeafFormat.Interleaved)]
+    [TestCase(101, PbtLeafFormat.LeavesOnly)]
     public void IncrementalApplyMatchesFromScratchAndEipReference(int seed, PbtLeafFormat format)
     {
         Random rng = new(seed);
@@ -287,6 +310,7 @@ public class StemLeafBlobTests
 
     [TestCase(PbtLeafFormat.EveryLevel)]
     [TestCase(PbtLeafFormat.Interleaved)]
+    [TestCase(PbtLeafFormat.LeavesOnly)]
     public void SingleLeafChangeOnDenseStemMatchesEipReference(PbtLeafFormat format)
     {
         Random rng = new(2026);

@@ -10,10 +10,10 @@ namespace Nethermind.Pbt;
 
 /// <summary>Which levels of a <see cref="PbtTrieNodeGroup"/> an encoding stores internal nodes for; the last byte of every non-empty encoding.</summary>
 /// <remarks>
-/// Both encodings describe the same trie and fold to the same root — they differ only in how much of
-/// the fold they write down — so a store may hold either at any key, and a group converts only when a
-/// change rewrites it. The values are disjoint from <see cref="PbtNodeChain"/>'s, so an encoding of
-/// either kind says which it is.
+/// All of them describe the same trie and fold to the same root — they differ only in how much of
+/// the fold they write down — so a store may hold any of them at any key, and a group converts only
+/// when a change rewrites it. The values are disjoint from <see cref="PbtNodeChain"/>'s and from
+/// <see cref="PbtNodeCluster"/>'s, so an encoding of any of the three says which it is.
 /// </remarks>
 public enum PbtGroupFormat : byte
 {
@@ -27,6 +27,15 @@ public enum PbtGroupFormat : byte
     /// are stored wherever they land, skipped level or not.
     /// </summary>
     Interleaved = 0x03,
+
+    /// <summary>
+    /// The boundary alone: no internal node of the tile is stored, the whole of it being folded from
+    /// the sixteen boundary entries on demand. Those cannot go the same way — a boundary entry is the
+    /// link to the child group, stem or run below it, which no fold recovers without a lookup of its
+    /// own.
+    /// </summary>
+    /// <remarks>0x04 is <see cref="PbtNodeCluster"/>'s, whose encoding a group's has to be told from.</remarks>
+    BoundaryOnly = 0x05,
 }
 
 /// <summary>
@@ -350,7 +359,7 @@ public readonly ref partial struct PbtTrieNodeGroup
 
         ReadOnlySpan<byte> trailer = data[^TrailerLength..];
         PbtGroupFormat format = (PbtGroupFormat)trailer[FormatTrailerOffset];
-        if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved))
+        if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved or PbtGroupFormat.BoundaryOnly))
         {
             throw new InvalidDataException($"Trie node group: unexpected format byte 0x{(byte)format:x2}");
         }
@@ -379,11 +388,11 @@ public readonly ref partial struct PbtTrieNodeGroup
             throw new InvalidDataException("Trie node group stores an internal node at the root position");
         }
 
-        // An interleaved group folds its odd levels' internal nodes rather than storing them, so a
-        // present skipped position is a stem.
+        // A format that skips a level folds its internal nodes rather than storing them, so a present
+        // skipped position is a stem.
         if (PbtLayout.TrieNodeGroupHoldsSkippedInternal(format, presence, stems))
         {
-            throw new InvalidDataException("Interleaved trie node group holds an internal node at a skipped level");
+            throw new InvalidDataException($"{format} trie node group holds an internal node at a skipped level");
         }
 
         int expectedLength = EncodedLength(masks);

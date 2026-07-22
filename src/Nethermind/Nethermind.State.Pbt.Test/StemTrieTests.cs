@@ -16,12 +16,14 @@ using NUnit.Framework;
 namespace Nethermind.State.Pbt.Test;
 
 /// <param name="format">
-/// Both encodings describe the same trie and must fold to the same root, so every scenario here runs
-/// twice — and since each asserts against <see cref="EipReferenceTree"/>, running it under
-/// <see cref="PbtGroupFormat.Interleaved"/> is what pins that skipping levels changes only the bytes.
+/// Every encoding describes the same trie and must fold to the same root, so every scenario here runs
+/// once per format — and since each asserts against <see cref="EipReferenceTree"/>, running it under
+/// <see cref="PbtGroupFormat.Interleaved"/> and <see cref="PbtGroupFormat.BoundaryOnly"/> is what pins
+/// that skipping levels, up to skipping every one of them, changes only the bytes.
 /// </param>
 [TestFixture(PbtGroupFormat.EveryLevel)]
 [TestFixture(PbtGroupFormat.Interleaved)]
+[TestFixture(PbtGroupFormat.BoundaryOnly)]
 public class StemTrieTests(PbtGroupFormat format)
 {
     // The store after the split is the root group, the group holding the divergence, and — once they are

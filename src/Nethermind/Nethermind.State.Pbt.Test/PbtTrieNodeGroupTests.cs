@@ -17,6 +17,10 @@ public class PbtTrieNodeGroupTests
     /// <summary>The whole header: the presence and stem bitmaps, the run one, the stats and the format byte.</summary>
     private const int TrailerLength = 4 + 4 + 2 + PbtSubtreeStats.EncodedLength + 1;
 
+    /// <summary>Every encoding a group may be in; the root and stem rules hold across all of them.</summary>
+    private static readonly PbtGroupFormat[] Formats =
+        [PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved, PbtGroupFormat.BoundaryOnly];
+
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
     public void PositionMath_EncodeDecodeRoundTrip_AndValidation(PbtGroupFormat format)
@@ -105,41 +109,51 @@ public class PbtTrieNodeGroupTests
     }
 
     /// <summary>
-    /// The skip mask marks exactly the odd group-relative levels, derived here from the fold's own
-    /// recursion rather than restated — the two parameterisations of it must agree.
+    /// The skip mask marks exactly the levels the format folds — the odd ones, or every one but the
+    /// boundary — derived here from the fold's own recursion rather than restated, so that the two
+    /// parameterisations of it must agree.
     /// </summary>
-    [Test]
-    public void SkippedPositions_AreExactlyTheOddLevels()
+    /// <param name="skippedCount">
+    /// Positions with no stored internal node: none at every level, levels 1 and 3's two and eight when
+    /// interleaved, and all fifteen inner ones — the folded root included — at the boundary alone.
+    /// </param>
+    [TestCase(PbtGroupFormat.EveryLevel, 0)]
+    [TestCase(PbtGroupFormat.Interleaved, 10)]
+    [TestCase(PbtGroupFormat.BoundaryOnly, 15)]
+    public void SkippedPositions_AreExactlyTheLevelsTheFormatFolds(PbtGroupFormat format, int skippedCount)
     {
         uint skipped = 0;
         uint kept = 0;
         Walk(PbtLayout.TrieNodeGroupRootPosition, PbtLayout.TrieNodeGroupBoundarySlots, 0);
 
-        Assert.That(BitOperations.PopCount(skipped), Is.EqualTo(10), "levels 1 and 3 hold two and eight positions");
-        Assert.That(BitOperations.PopCount(kept), Is.EqualTo(PbtLayout.TrieNodeGroupPositionCount - 10));
+        Assert.That(BitOperations.PopCount(skipped), Is.EqualTo(skippedCount));
+        Assert.That(BitOperations.PopCount(kept), Is.EqualTo(PbtLayout.TrieNodeGroupPositionCount - skippedCount));
         Assert.That(skipped & kept, Is.Zero, "a position is either stored or folded, never both");
         Assert.That(kept | skipped, Is.EqualTo((1u << PbtLayout.TrieNodeGroupPositionCount) - 1), "every position is accounted for");
 
-        // a boundary slot is a level of its own and is always stored
+        // a boundary slot is a level of its own and is always stored, whatever the format
         for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
         {
             Assert.That(
-                PbtLayout.TrieNodeGroupIsSkippedPosition(PbtGroupFormat.Interleaved, PbtLayout.TrieNodeGroupBoundarySlotPosition(slot)),
+                PbtLayout.TrieNodeGroupIsSkippedPosition(format, PbtLayout.TrieNodeGroupBoundarySlotPosition(slot)),
                 Is.False, $"boundary slot {slot}");
-        }
-
-        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
-        {
-            Assert.That(PbtLayout.TrieNodeGroupIsSkippedPosition(PbtGroupFormat.EveryLevel, position), Is.False, $"position {position}");
         }
 
         void Walk(int position, int width, int level)
         {
-            bool storesInternal = PbtLayout.TrieNodeGroupStoresInternalAtWidth(PbtGroupFormat.Interleaved, width);
+            bool storesInternal = PbtLayout.TrieNodeGroupStoresInternalAtWidth(format, width);
             Assert.That(
-                PbtLayout.TrieNodeGroupIsSkippedPosition(PbtGroupFormat.Interleaved, position), Is.EqualTo(!storesInternal),
+                PbtLayout.TrieNodeGroupIsSkippedPosition(format, position), Is.EqualTo(!storesInternal),
                 $"position {position} at level {level} (width {width}): the by-position and by-width answers must agree");
-            Assert.That(storesInternal, Is.EqualTo(level % 2 == 0), $"level {level} is {(level % 2 == 0 ? "kept" : "skipped")}");
+            Assert.That(
+                storesInternal,
+                Is.EqualTo(format switch
+                {
+                    PbtGroupFormat.Interleaved => level % 2 == 0,
+                    PbtGroupFormat.BoundaryOnly => width == 1,
+                    _ => true,
+                }),
+                $"level {level} is {(storesInternal ? "kept" : "skipped")}");
 
             if (storesInternal) kept |= 1u << position; else skipped |= 1u << position;
             if (width == 1) return;
@@ -150,37 +164,61 @@ public class PbtTrieNodeGroupTests
     }
 
     /// <summary>
-    /// An interleaved group folds its odd levels rather than storing them, so an internal node at one
+    /// A group's encoding is told from a run's and from a cluster's by the byte it ends with, so no
+    /// format may take one of theirs — a group whose last byte reads as a cluster is parsed as one, and
+    /// what it says its group's length is is then whatever those bytes happen to hold.
+    /// </summary>
+    [TestCase(PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.Interleaved)]
+    [TestCase(PbtGroupFormat.BoundaryOnly)]
+    public void FormatByte_IsNeitherARunsNorAClusters(PbtGroupFormat format)
+    {
+        byte[] encoding = [(byte)format];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PbtNodeChain.IsChain(encoding), Is.False);
+            Assert.That(PbtNodeCluster.HoldsChildren(encoding), Is.False);
+        }
+    }
+
+    /// <summary>
+    /// A group folds the levels its format skips rather than storing them, so an internal node at one
     /// is not a thing the encoding can say — while a stem there is, and must survive.
     /// </summary>
-    [Test]
-    public void Interleaved_RejectsAnInternalNodeAtASkippedLevel()
+    /// <param name="position">
+    /// An inner position <paramref name="format"/> folds and the every-level encoding stores: level 1
+    /// for the interleaved format, and a level-2 one — which that format keeps — for the boundary-only
+    /// format, which keeps no inner level at all.
+    /// </param>
+    [TestCase(PbtGroupFormat.Interleaved, 14)]
+    [TestCase(PbtGroupFormat.BoundaryOnly, 13)]
+    public void RejectsAnInternalNodeAtASkippedLevel(PbtGroupFormat format, int position)
     {
         ValueHash256 hash = new(Bytes.FromHexString("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
         Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
         PbtSubtreeStats stats = new(2);
 
         PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
-        slots[14] = PbtTrieNodeGroup.InternalSlot(hash); // level 1: skipped
+        slots[position] = PbtTrieNodeGroup.InternalSlot(hash);
 
         // the every-level format is what such an encoding can only be, and it still decodes
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         int length = Encode(slots, stats, encoded, PbtGroupFormat.EveryLevel);
         Assert.That(PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length)).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
 
-        // relabelling those same bytes interleaved is rejected: position 14 holds an internal node
+        // relabelling those same bytes is rejected: the position holds an internal node
         byte[] mislabelled = encoded[..length];
-        mislabelled[^1] = (byte)PbtGroupFormat.Interleaved;
+        mislabelled[^1] = (byte)format;
         Assert.That(() => PbtTrieNodeGroup.Decode(mislabelled), Throws.TypeOf<InvalidDataException>());
 
         // a stem at that very position is legal in both: nothing recomputes a stem
-        slots[14] = PbtTrieNodeGroup.StemSlot(stem, hash);
-        foreach (PbtGroupFormat format in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved])
+        slots[position] = PbtTrieNodeGroup.StemSlot(stem, hash);
+        foreach (PbtGroupFormat stemFormat in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, format])
         {
-            int stemLength = Encode(slots, stats, encoded, format);
+            int stemLength = Encode(slots, stats, encoded, stemFormat);
             PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, stemLength));
-            Assert.That(decoded.KindAt(14), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{format}");
-            Assert.That(decoded[14].Stem, Is.EqualTo(stem), $"{format}");
+            Assert.That(decoded.KindAt(position), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{stemFormat}");
+            Assert.That(decoded[position].Stem, Is.EqualTo(stem), $"{stemFormat}");
         }
     }
 
@@ -200,7 +238,7 @@ public class PbtTrieNodeGroupTests
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
 
         slots[PbtLayout.TrieNodeGroupRootPosition] = PbtTrieNodeGroup.InternalSlot(hash);
-        foreach (PbtGroupFormat format in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved])
+        foreach (PbtGroupFormat format in Formats)
         {
             int length = Encode(slots, stats, encoded, format);
             Assert.That(() => PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length)), Throws.TypeOf<InvalidDataException>(), $"{format}");
@@ -208,7 +246,7 @@ public class PbtTrieNodeGroupTests
 
         // a stem at the root position is legal in both and round-trips: nothing recomputes a stem
         slots[PbtLayout.TrieNodeGroupRootPosition] = PbtTrieNodeGroup.StemSlot(stem, hash);
-        foreach (PbtGroupFormat format in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved])
+        foreach (PbtGroupFormat format in Formats)
         {
             int length = Encode(slots, stats, encoded, format);
             PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
@@ -255,6 +293,7 @@ public class PbtTrieNodeGroupTests
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
+    [TestCase(PbtGroupFormat.BoundaryOnly)]
     public void ABoundaryRun_IsHeldWholeAndShiftsWhatFollowsIt(PbtGroupFormat format)
     {
         const int chainSlot = 1;

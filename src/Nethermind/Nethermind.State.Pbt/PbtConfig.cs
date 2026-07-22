@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Pbt;
+
 namespace Nethermind.State.Pbt;
 
 public class PbtConfig : IPbtConfig
@@ -15,6 +17,6 @@ public class PbtConfig : IPbtConfig
     public int ImportWindowSize { get; set; }
     public bool ScanTree { get; set; }
     public int ScanTreeConcurrency { get; set; }
-    public bool InterleaveTrieNodeLevels { get; set; } = true;
+    public PbtGroupFormat TrieNodeLevels { get; set; } = PbtGroupFormat.Interleaved;
     public int RootFoldConcurrency { get; set; }
 }

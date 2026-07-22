@@ -67,9 +67,9 @@ public static partial class TrieUpdater
     /// </summary>
     /// <param name="writeFormat">
     /// Which encoding to write the groups this batch rebuilds in, and with them the leaf blobs (see
-    /// <see cref="PbtLeafFormat"/>). Both fold to the same root and both are read whatever this says, so
-    /// it may change between batches over one store: a group is converted only by a change that rewrites
-    /// it anyway.
+    /// <see cref="PbtLeafFormat"/>). They all fold to the same root and are all read whatever this says,
+    /// so it may change between batches over one store: a group is converted only by a change that
+    /// rewrites it anyway.
     /// </param>
     /// <param name="delta">The change this batch makes to the whole tree's stem count — positive as stems are added, negative as their leaves are zeroed away.</param>
     /// <param name="concurrency">
@@ -1114,8 +1114,12 @@ public static partial class TrieUpdater
         }
 
         /// <summary>The leaf blob layout that goes with <see cref="Updater.WriteFormat"/>; one setting picks how far both skip.</summary>
-        private PbtLeafFormat LeafFormat =>
-            updater.WriteFormat == PbtGroupFormat.Interleaved ? PbtLeafFormat.Interleaved : PbtLeafFormat.EveryLevel;
+        private PbtLeafFormat LeafFormat => updater.WriteFormat switch
+        {
+            PbtGroupFormat.Interleaved => PbtLeafFormat.Interleaved,
+            PbtGroupFormat.BoundaryOnly => PbtLeafFormat.LeavesOnly,
+            _ => PbtLeafFormat.EveryLevel,
+        };
 
         /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and reports whether the stem is now empty.</summary>
         /// <param name="knownAbsent">
