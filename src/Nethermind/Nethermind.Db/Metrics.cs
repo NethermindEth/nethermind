@@ -146,8 +146,11 @@ namespace Nethermind.Db
         public static Dictionary<string, long> DbMemtableSize { get; } = [];
         public static Dictionary<string, long> DbBlockCacheSize { get; } = [];
         public static Dictionary<string, long> DbIndexFilterSize { get; } = [];
-        public static Dictionary<(string, string), double> DbStats { get; } = [];
-        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = [];
+        // DbStats / DbCompactionStats deliberately omitted in the zkEVM guest:
+        // their only writer is Nethermind.Db.Rocks (not in the guest closure),
+        // and the double-valued Dictionary instantiations alone drag
+        // floating-point code (TryInsert, Double.Equals/CompareTo/GetHashCode)
+        // into the rv64ima image.
 #else
         [GaugeMetric]
         [Description("Database reads per database")]
