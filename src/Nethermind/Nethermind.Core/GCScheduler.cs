@@ -59,6 +59,7 @@ public sealed class GCScheduler
         if (sustainedSweepEnabled)
         {
             _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+            StartGen2DiagWatcher();
         }
     }
 
@@ -272,6 +273,44 @@ public sealed class GCScheduler
                 GCSettings.LatencyMode = entryMode;
             }
         }
+
+        // DIAG (validation only)
+        GCMemoryInfo mi = GC.GetGCMemoryInfo();
+        Console.WriteLine(
+            $"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} sweep heapGB={mi.HeapSizeBytes / 1e9:F2} " +
+            $"fragGB={mi.FragmentedBytes / 1e9:F2} memLoadGB={mi.MemoryLoadBytes / 1e9:F1} " +
+            $"totalPauseS={GC.GetTotalPauseDuration().TotalSeconds:F1}");
+    }
+
+    // DIAG (validation only): logs every completed gen2 with STW segments.
+    private long _lastBgcIndex;
+    private long _lastFullBlockingIndex;
+    private Timer? _gcDiagTimer;
+
+    internal void StartGen2DiagWatcher() =>
+        _gcDiagTimer ??= new Timer(_ =>
+        {
+            LogGen2Info(GCKind.Background, ref _lastBgcIndex);
+            LogGen2Info(GCKind.FullBlocking, ref _lastFullBlockingIndex);
+        }, null, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
+
+    private static void LogGen2Info(GCKind kind, ref long lastIndex)
+    {
+        GCMemoryInfo info = GC.GetGCMemoryInfo(kind);
+        if (info.Index == 0 || info.Index == lastIndex) return;
+        lastIndex = info.Index;
+
+        System.Text.StringBuilder pauses = new();
+        foreach (TimeSpan pause in info.PauseDurations)
+        {
+            if (pauses.Length > 0) pauses.Append('+');
+            pauses.Append(pause.TotalMilliseconds.ToString("F0"));
+        }
+
+        Console.WriteLine(
+            $"[GCDIAG] {DateTime.UtcNow:HH:mm:ss.fff} gen2 kind={kind} index={info.Index} pausesMs={pauses} " +
+            $"heapGB={info.HeapSizeBytes / 1e9:F2} fragGB={info.FragmentedBytes / 1e9:F2} compacted={info.Compacted} " +
+            $"memLoadGB={info.MemoryLoadBytes / 1e9:F1} totalPauseS={GC.GetTotalPauseDuration().TotalSeconds:F1}");
     }
 
     internal long SweepBaselineAllocatedBytes
