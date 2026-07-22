@@ -71,8 +71,13 @@ public static partial class TrieUpdater
 
         /// <summary>
         /// Rebuilds a group's nodes from its sixteen boundary values directly into the group's final
-        /// encoding.
+        /// encoding, taking the room for it off <paramref name="writer"/> as it is built.
         /// </summary>
+        /// <param name="writer">
+        /// Where the encoding goes. Room for the whole of it is reserved up front, off what the boundary
+        /// alone bounds it by, so that the fold appends into a span nothing can move under it;
+        /// <see cref="Finish"/> gives the caller what to commit of that room.
+        /// </param>
         /// <remarks>
         /// Mirrors <see cref="StemLeafBlob.RebuildState"/>: a single post-order walk appends each node
         /// to the blob as it is folded, with no intermediate set of nodes and no separate encoding
@@ -94,7 +99,7 @@ public static partial class TrieUpdater
         /// </remarks>
         private ref struct GroupRebuild(
             ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
-            NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 rootHash, Span<byte> destination,
+            NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 rootHash, scoped ref BufferWriter writer,
             PbtGroupFormat format)
         {
             private readonly ReadOnlySpan<(int Slot, Boundary Node)> _changed = changed;
@@ -103,7 +108,7 @@ public static partial class TrieUpdater
             private readonly uint _changedBitmask = changedBitmask;
             private readonly ValueHash256 _rootHash = rootHash;
             private readonly PbtGroupFormat _format = format;
-            private PbtTrieNodeGroup.Builder _builder = new(destination, format);
+            private PbtTrieNodeGroup.Builder _builder = new(writer.Reserve(PbtTrieNodeGroup.EncodedLengthBound(boundary)), format);
             private int _cursor;
 
             /// <summary>
@@ -214,7 +219,14 @@ public static partial class TrieUpdater
                     : FoldedNode.Unstored;
             }
 
+            /// <summary>The node <paramref name="node"/> points at, read back out of the encoding being built.</summary>
+            public readonly PbtTrieNodeGroup.Slot SlotAt(FoldedNode node) => _builder.SlotAt(node.Kind, node.Offset);
+
             /// <inheritdoc cref="PbtTrieNodeGroup.Builder.Finish"/>
+            /// <remarks>
+            /// The caller commits this to the writer the room came off: a ref struct holding spans of the
+            /// writer's cannot also take it by <c>ref</c>, the two lifetimes being irreconcilable.
+            /// </remarks>
             public readonly int Finish(in PbtSubtreeStats stats) => _builder.Finish(stats);
         }
     }

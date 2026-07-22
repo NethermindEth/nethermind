@@ -842,23 +842,8 @@ public static partial class TrieUpdater
             bool holdsChildren = isInWrapper && boundary.ChildSlots != 0;
             if (holdsChildren) wrapper.WriteOffsets(ref writer);
 
-            int reservedLength = PbtTrieNodeGroup.EncodedLengthBound(boundary);
-            Span<byte> groupDestination = writer.GetSpan(reservedLength)[..reservedLength];
-            (FoldedNode rootFold, ValueHash256 rootHash, int groupLength) =
-                RebuildGroup(groupDestination, changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, afterStats);
-            writer.Advance(groupLength);
-
-            // A stem root's stem and subtree root are read out of the fresh encoding while the span still
-            // points at it — the trailer below may move the buffer. An internal root has no entry, its hash
-            // coming from the fold via rootHash instead.
-            Stem rootStem = default;
-            ValueHash256 rootSubtreeRoot = default;
-            if (rootFold.IsStored)
-            {
-                PbtTrieNodeGroup.Slot rootSlot = PbtTrieNodeGroup.SlotAt(groupDestination, rootFold.Kind, rootFold.Offset);
-                rootStem = rootSlot.Stem;
-                rootSubtreeRoot = rootSlot.Hash;
-            }
+            (NodeResult rootNode, ValueHash256 rootHash, int groupLength) =
+                RebuildGroup(ref writer, changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, afterStats);
 
             if (holdsChildren) wrapper.Finish(ref writer, groupLength);
 
@@ -885,9 +870,7 @@ public static partial class TrieUpdater
 
             Release(results, handedUp: -1);
 
-            return rootFold.IsStored
-                ? NodeResult.StemNode(rootStem, rootSubtreeRoot)
-                : NodeResult.Internal(rootHash);
+            return rootNode;
         }
 
         /// <summary>
@@ -950,25 +933,34 @@ public static partial class TrieUpdater
         /// siblings shift.
         /// </param>
         /// <returns>
-        /// The folded root — a stem root as an offset into the encoding to read back, or — the
-        /// usual case — an internal root the encoding stores no entry for, the parent caching it in its
-        /// boundary slot — that root's node hash, and the length the fold wrote.
+        /// What the group folds to, as its parent holds it — a stem root read back out of the fresh
+        /// encoding, or, the usual case, an internal root the encoding stores no entry for — that root's
+        /// node hash, and the length the fold wrote.
         /// </returns>
-        /// <param name="destination">
-        /// At least <see cref="PbtTrieNodeGroup.EncodedLengthBound"/> bytes, which the caller takes off its
-        /// writer once every child it holds is in and commits the returned length of.
+        /// <param name="writer">
+        /// Where the encoding goes, once every child the group holds is in: the fold takes its room off
+        /// this, and what it wrote is committed here before returning.
         /// </param>
         /// <param name="stats">What the whole subtree amounts to, for the group's header; see <see cref="PbtTrieNodeGroup.Builder.Finish"/>.</param>
-        private (FoldedNode Root, ValueHash256 RootHash, int Length) RebuildGroup(
-            Span<byte> destination, ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
+        private (NodeResult Root, ValueHash256 RootHash, int Length) RebuildGroup(
+            ref BufferWriter writer, ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
             NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 beforeHash, in PbtSubtreeStats stats)
         {
-            GroupRebuild rebuild = new(changed, existing, boundary, changedBitmask, beforeHash, destination, writeFormat);
+            GroupRebuild rebuild = new(changed, existing, boundary, changedBitmask, beforeHash, ref writer, writeFormat);
             // an internal group root is folded to a by-value hash and never stored, the parent caching it
-            // in its boundary slot; only a stem root is written, which the caller reads back
+            // in its boundary slot; only a stem root is written, and is read back here while the fold's
+            // span still points at it — whatever the caller writes next may move the buffer
             FoldedNode root = rebuild.Fold(PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, out ValueHash256 rootHash);
+            NodeResult rootNode = NodeResult.Internal(rootHash);
+            if (root.IsStored)
+            {
+                PbtTrieNodeGroup.Slot rootSlot = rebuild.SlotAt(root);
+                rootNode = NodeResult.StemNode(rootSlot.Stem, rootSlot.Hash);
+            }
 
-            return (root, rootHash, rebuild.Finish(stats));
+            int length = rebuild.Finish(stats);
+            writer.Advance(length);
+            return (rootNode, rootHash, length);
         }
 
         private readonly record struct NodeRef(NodeKind Kind, int Offset);
