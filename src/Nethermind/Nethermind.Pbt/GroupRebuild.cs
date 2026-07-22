@@ -58,12 +58,11 @@ internal readonly record struct FoldedNode(NodeKind Kind, int Offset)
 /// where its parent needs it rather than copied by value up the stack — bar a node the format
 /// stores no entry for, whose hash has nowhere else to live.
 /// <para>
-/// The writer is passed per call rather than held, as <see cref="PbtTrieNodeWrapper.Builder"/>'s is:
-/// a ref struct that held spans of the writer's could not also take it by <c>ref</c>, which is what
-/// lets <see cref="Finish"/> commit the encoding itself rather than leaving that to its caller. What
-/// the rebuild carries between calls is the append cursor and the bitmaps, nothing borrowed — which
-/// is also why <paramref name="rootHash"/> comes by value, a construction from a reference being
-/// bounded by that reference's scope however plainly the reference is copied.
+/// The writer is passed per call rather than held, as <see cref="PbtTrieNodeWrapper.Builder"/>'s is,
+/// and every entry is committed to it as it is written. What the rebuild carries between calls is the
+/// append cursor and the bitmaps, nothing borrowed — which is what lets it take the writer by
+/// <c>ref</c> at all, and why <paramref name="rootHash"/> comes by value: a ref struct constructed
+/// from a reference is bounded by that reference's scope, however plainly the reference is copied.
 /// </para>
 /// <para>
 /// Node kinds come from <see cref="NodeGroupBitmasks.KindOf"/> rather than from the walk, which is what lets a
@@ -95,13 +94,11 @@ internal ref struct GroupRebuild(
     private readonly ValueHash256 _rootHash = rootHash;
     private readonly PbtGroupFormat _format = format;
 
-    /// <summary>The room the whole encoding may need, which every write asks the writer for.</summary>
+    /// <summary>The room the whole encoding may need, which each write asks the rest of.</summary>
     /// <remarks>
-    /// Asking for the whole of it each time, rather than for the entry about to be added, is what holds
-    /// the buffer still under the fold: a writer that grows carries over only the bytes it has
-    /// committed, and the fold commits nothing until <see cref="Finish"/>, so a growth part-way through
-    /// would drop every entry appended so far. Asking for the bound means the first write grows it —
-    /// with nothing yet to lose — and no later one can.
+    /// Asking for what is left of the bound rather than for the entry about to be added is what has the
+    /// buffer grown once for the group instead of a step at a time: the first write sizes it for the
+    /// whole encoding, and no later one can outrun what that left.
     /// </remarks>
     private readonly int _room = PbtTrieNodeGroup.EncodedLengthBound(boundary);
 
@@ -267,11 +264,8 @@ internal ref struct GroupRebuild(
     {
         MarkPresent(position);
         _stems |= 1u << position;
-        int offset = _offset;
-        Span<byte> entry = writer.GetSpan(_room)[offset..];
-        stem.Bytes.CopyTo(entry);
-        leafSubtreeRoot.Bytes.CopyTo(entry[Stem.Length..]);
-        _offset = offset + PbtTrieNodeGroup.Slot.StemLength;
+        int offset = Write(ref writer, stem.Bytes);
+        Write(ref writer, leafSubtreeRoot.Bytes);
         return offset;
     }
 
@@ -327,10 +321,12 @@ internal ref struct GroupRebuild(
         _presence |= 1u << position;
     }
 
+    /// <summary>Appends <paramref name="bytes"/> to the encoding and commits them, returning the offset they went to.</summary>
     private int Write(ref BufferWriter writer, ReadOnlySpan<byte> bytes)
     {
         int offset = _offset;
-        bytes.CopyTo(writer.GetSpan(_room)[offset..]);
+        bytes.CopyTo(writer.GetSpan(_room - offset));
+        writer.Advance(bytes.Length);
         _offset = offset + bytes.Length;
         return offset;
     }
@@ -341,15 +337,16 @@ internal ref struct GroupRebuild(
     /// </summary>
     /// <remarks>
     /// An appended entry keeps its offset, so a stem the fold stored is read back rather than carried up
-    /// by value. Only before <see cref="Finish"/>, which commits the encoding: past that the writer hands
-    /// out the room after it rather than the room it is in. Copied out rather than handed back as a
-    /// <see cref="PbtTrieNodeGroup.Slot"/>, which would borrow the writer's buffer beyond this call.
+    /// by value: the entries are the last bytes the writer holds, this group having written nothing else.
+    /// Before <see cref="Finish"/> only, past which the trailer is the last of them. Copied out rather
+    /// than handed back as a <see cref="PbtTrieNodeGroup.Slot"/>, which would borrow the writer's buffer
+    /// beyond this call.
     /// </remarks>
-    public readonly (Stem Stem, ValueHash256 SubtreeRoot) StemAt(ref BufferWriter writer, FoldedNode node)
+    public readonly (Stem Stem, ValueHash256 SubtreeRoot) StemAt(scoped ref BufferWriter writer, FoldedNode node)
     {
         Debug.Assert(node.Kind == NodeKind.Stem, "only a stem node carries a stem");
 
-        PbtTrieNodeGroup.Slot slot = PbtTrieNodeGroup.SlotAt(writer.GetSpan(_room), node.Kind, node.Offset);
+        PbtTrieNodeGroup.Slot slot = PbtTrieNodeGroup.SlotAt(writer.WrittenSpan[^_offset..], node.Kind, node.Offset);
         return (slot.Stem, slot.Hash);
     }
 
@@ -366,15 +363,14 @@ internal ref struct GroupRebuild(
     {
         if (_presence == 0) return 0;
 
-        Span<byte> trailer = writer.GetSpan(_room).Slice(_offset, PbtTrieNodeGroup.TrailerLength);
+        Span<byte> trailer = writer.GetSpan(_room - _offset);
         BinaryPrimitives.WriteUInt32LittleEndian(trailer[PbtTrieNodeGroup.PresenceTrailerOffset..], _presence);
         BinaryPrimitives.WriteUInt32LittleEndian(trailer[PbtTrieNodeGroup.StemsTrailerOffset..], _stems);
         BinaryPrimitives.WriteUInt16LittleEndian(trailer[PbtTrieNodeGroup.ChainsTrailerOffset..], (ushort)_chains);
         stats.Write(trailer[PbtTrieNodeGroup.StatsTrailerOffset..]);
         trailer[PbtTrieNodeGroup.FormatTrailerOffset] = (byte)_format;
+        writer.Advance(PbtTrieNodeGroup.TrailerLength);
 
-        int length = _offset + PbtTrieNodeGroup.TrailerLength;
-        writer.Advance(length);
-        return length;
+        return _offset + PbtTrieNodeGroup.TrailerLength;
     }
 }
