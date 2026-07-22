@@ -41,14 +41,11 @@ public sealed class HistoryReader
     {
         ArgumentNullException.ThrowIfNull(history);
         _rlpWrapSlots = rlpWrapSlots;
-        _accountHistory = new HistoryStore(
-            history.GetColumnDb(FlatHistoryColumns.AccountHistory),
-            history.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
-        _storageHistory = new HistoryStore(
-            history.GetColumnDb(FlatHistoryColumns.StorageHistory),
-            history.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
+        _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory));
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
         _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        _availability.VerifyFormat();
     }
 
     /// <summary>Whether contiguous history has been captured up to and including <paramref name="block"/>.</summary>

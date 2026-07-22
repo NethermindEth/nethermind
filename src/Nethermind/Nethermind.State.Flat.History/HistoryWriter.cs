@@ -31,9 +31,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private readonly bool _enabled;
     private readonly ILogger _logger;
 
-    // Guards the "stopped early" warning so a node with a permanent gap doesn't log it on every persist; reset once
-    // a capture connects again. Only touched under the persistence lock that serializes CaptureUpTo.
-    private bool _gapWarningLogged;
+    // Set when a capture walk cannot connect to the captured range. Under the persistence lock that serializes
+    // captures, conversions and pruning, a failed lease means the range below is gone for good (history enabled
+    // mid-life), so further captures would only write rows above a gap no read can ever cross — skip them until
+    // restart. Only touched under that lock.
+    private bool _permanentGapDetected;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
         : this(history, BasePersistence.ResolveSlotEncoding(
@@ -50,14 +52,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         _history = history;
         _rlpWrapSlots = rlpWrapSlots;
         _logger = logger;
-        _accountHistory = new HistoryStore(
-            history.GetColumnDb(FlatHistoryColumns.AccountHistory),
-            history.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
-        _storageHistory = new HistoryStore(
-            history.GetColumnDb(FlatHistoryColumns.StorageHistory),
-            history.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
+        _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory));
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
         _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        if (enabled) _availability.VerifyFormat();
     }
 
     /// <summary>The contiguous-from-genesis watermark: the highest block a read is served for; 0 when none captured.</summary>
@@ -65,18 +64,20 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 
     /// <summary>
     /// Captures the changeset of every not-yet-captured block on <paramref name="persistedHead"/>'s chain, up to and
-    /// including it, then advances the contiguous watermark. Must run before the per-block snapshots are pruned.
+    /// including it, advances the contiguous watermark, and makes both crash-durable before returning.
     /// </summary>
     /// <remarks>
     /// Walks backwards through each base's <see cref="Snapshot.From"/> link (one base == one block's changeset),
     /// leasing from the persisted tier when long-finality Phase 2 converted the in-memory copy away, until it connects
     /// to the block just below the existing watermark (or to genesis). The watermark — which gates reads — is advanced
-    /// only on a connect, so a partial capture (a lease miss leaving a gap, or a crash mid-walk) never advances it and
-    /// reads above the gap fail closed. The watermark is persisted, so a resume after restart continues from it.
+    /// only on a connect, so a partial capture (or a crash mid-walk) never advances it and reads above the gap fail
+    /// closed; a restart re-captures the same range idempotently. On a connect the history WAL is synced before
+    /// returning: the caller commits the flat persist only after this returns, and the flat head must never get ahead
+    /// of durable history — a power loss reordering the two WALs would otherwise leave a permanent, silent gap.
     /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
-        if (!_enabled) return;
+        if (!_enabled || _permanentGapDetected) return;
 
         ulong target = persistedHead.BlockNumber;
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
@@ -119,18 +120,22 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 
         if (connected)
         {
-            // [watermark+1 .. target] (or [0 .. target]) is now durable and contiguous with what came before.
+            // [watermark+1 .. target] (or [0 .. target]) is contiguous with what came before. Publish, then
+            // WAL-sync so the range and the watermark are crash-durable before the caller persists the flat state.
             _availability.PublishWatermark(target);
-            _gapWarningLogged = false;
+            _history.Flush(onlyWal: true);
         }
-        else if (!_gapWarningLogged)
+        else
         {
-            // Warn once per unconnected episode: a permanent gap (e.g. history enabled mid-life, with the middle range
-            // already pruned) can never connect, so warning on every persist would spam the log.
-            _gapWarningLogged = true;
+            // The range below `current` was pruned before it could be captured — with capture ordered before every
+            // persist/prune this only happens when history was enabled mid-life, and it can never connect. Stop
+            // capturing (rows above the gap are unreadable: the watermark cannot cross it) instead of stalling
+            // persistence or rewriting dead rows every round.
+            _permanentGapDetected = true;
             if (_logger.IsWarn)
-                _logger.Warn($"History capture stopped early at {current} without connecting to the captured range; " +
-                    $"the watermark stays at {(hasWatermark ? watermark.ToString() : "none")} and as-of reads above it report no history until the gap is filled.");
+                _logger.Warn($"History capture stopped at {current} without connecting to the captured range - " +
+                    $"the blocks below were pruned before history was enabled. The watermark stays at " +
+                    $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture is disabled until restart.");
         }
     }
 
@@ -161,6 +166,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         // Publish only after the block-0 batch is durable; the seed runs only when nothing was captured yet, so this
         // establishes the genesis floor a later capture walk connects to.
         _availability.PublishWatermark(0);
+        _history.Flush(onlyWal: true);
     }
 
     [SkipLocalsInit]
@@ -238,12 +244,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 
         if (account is null)
         {
-            _accountHistory.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, columns.AccountHistory, columns.AccountChangeMarkers);
+            _accountHistory.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, columns.AccountHistory);
             return;
         }
 
         using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        _accountHistory.RecordChange(block, flatKey, value, columns.AccountHistory, columns.AccountChangeMarkers);
+        _accountHistory.RecordChange(block, flatKey, value, columns.AccountHistory);
     }
 
     private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
@@ -257,15 +263,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         int written = value is SlotValue slotValue
             ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
             : 0;
-        _storageHistory.RecordChange(block, flatKey, valueBuffer[..written], columns.StorageHistory, columns.StorageChangeMarkers);
+        _storageHistory.RecordChange(block, flatKey, valueBuffer[..written], columns.StorageHistory);
     }
 
     private readonly ref struct HistoryColumnBatches(IColumnsWriteBatch<FlatHistoryColumns> batch)
     {
         public readonly IWriteBatch AccountHistory = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
-        public readonly IWriteBatch AccountChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
         public readonly IWriteBatch StorageHistory = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
-        public readonly IWriteBatch StorageChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets);
         public readonly IWriteBatch StorageClears = batch.GetColumnBatch(FlatHistoryColumns.StorageClears);
         public readonly IWriteBatch AvailableBlocks = batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks);
     }

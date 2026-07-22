@@ -925,9 +925,12 @@ public class PersistenceManagerTests
         }
     }
 
+    // The crash-gap guarantee: the flat head must never advance past durable history. A capture failure aborts the
+    // whole persist iteration — nothing persisted, nothing pruned — and the same range is retried next invocation.
     [Test]
-    public async Task AddToPersistence_WhenCaptureHookThrows_StillPersists()
+    public async Task AddToPersistence_WhenCaptureHookThrows_DoesNotAdvancePersistence()
     {
+        FlakyCaptureHook hook = new(failures: 1);
         using PersistenceManager manager = new(
             _config,
             ScheduleHelper.CreateWithOffset(_config, 0),
@@ -939,7 +942,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             Substitute.For<IProcessExitSource>(),
-            new ThrowingCaptureHook());
+            hook);
 
         StateId from = Block0;
         StateId to = CreateStateId(16);
@@ -949,9 +952,20 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
 
-        await manager.AddToPersistence(latest);
+        Assert.ThrowsAsync<System.InvalidOperationException>(() => manager.AddToPersistence(latest));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "the barrier must not advance past a failed capture");
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+        }
 
-        Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+        // The aborted range is retried and completes once the hook recovers.
+        await manager.AddToPersistence(latest);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+            Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
+        }
     }
 
     [Test]
@@ -1220,10 +1234,17 @@ public class PersistenceManagerTests
             CapturedUpTo = persistedHead;
     }
 
-    private sealed class ThrowingCaptureHook : IFlatPersistenceCaptureHook
+    private sealed class FlakyCaptureHook(int failures) : IFlatPersistenceCaptureHook
     {
-        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository) =>
-            throw new System.InvalidOperationException("simulated history capture failure");
+        private int _remainingFailures = failures;
+
+        public StateId? CapturedUpTo { get; private set; }
+
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
+        {
+            if (_remainingFailures-- > 0) throw new System.InvalidOperationException("simulated history capture failure");
+            CapturedUpTo = persistedHead;
+        }
     }
 
     private sealed class BarrierObservingCaptureHook(System.Func<StateId> readBarrier) : IFlatPersistenceCaptureHook

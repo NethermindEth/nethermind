@@ -20,32 +20,27 @@ internal static class HistoryColumnsWriter
 {
     public static void RecordAccount(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, Account? account)
     {
-        HistoryStore store = new(
-            columns.GetColumnDb(FlatHistoryColumns.AccountHistory),
-            columns.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
+        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory));
 
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
-        IWriteBatch changeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
 
         if (account is null)
         {
-            store.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, history, changeMarkers);
+            store.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, history);
             return;
         }
 
         using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        store.RecordChange(block, flatKey, rlp, history, changeMarkers);
+        store.RecordChange(block, flatKey, rlp, history);
     }
 
     public static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, Address address, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawValue)
     {
-        HistoryStore store = new(
-            columns.GetColumnDb(FlatHistoryColumns.StorageHistory),
-            columns.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
+        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory));
 
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
@@ -58,10 +53,7 @@ internal static class HistoryColumnsWriter
             : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
-        store.RecordChange(
-            block, flatKey, value[..written],
-            batch.GetColumnBatch(FlatHistoryColumns.StorageHistory),
-            batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets));
+        store.RecordChange(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
     }
 
     /// <summary>Records the per-block availability marker (<c>block -> captured state root</c>).</summary>

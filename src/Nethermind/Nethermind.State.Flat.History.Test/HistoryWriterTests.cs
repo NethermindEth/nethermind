@@ -48,12 +48,8 @@ public class HistoryWriterTests
         _repository = _tier.Repository;
         _writer = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
         _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
-        _accountHistory = new HistoryStore(
-            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
-            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
-        _storageHistory = new HistoryStore(
-            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory),
-            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
+        _accountHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        _storageHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory));
     }
 
     [TearDown]
@@ -354,6 +350,58 @@ public class HistoryWriterTests
             Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL));
             Assert.That(_reader.HasHistoryForBlock(1), Is.False);
             Assert.That(_reader.HasHistoryForBlock(2), Is.False);
+        }
+    }
+
+    // Crash-recovery contract: after a crash between the history commit and the flat persist, restart replay
+    // re-runs the capture. A fresh writer (as after restart) must treat the already-captured range as a no-op and
+    // connect a new range to the persisted watermark, with reads staying byte-identical.
+    [Test]
+    public void Recapture_after_restart_is_idempotent_and_extends_from_watermark()
+    {
+        SeedGenesisFloor();
+        Account atBlock1 = new(1, 11);
+        Account atBlock2 = new(2, 22);
+        CommitBlock(0, 1, accountChanges: [(AddrA, atBlock1)]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, atBlock2)]);
+        _writer.CaptureUpTo(StateAt(2), _repository);
+
+        // "Restart": a fresh writer over the same columns, replay re-captures the same head, then extends.
+        HistoryWriter restarted = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+        restarted.CaptureUpTo(StateAt(2), _repository);
+
+        Account atBlock3 = new(3, 33);
+        CommitBlock(2, 3, accountChanges: [(AddrA, atBlock3)]);
+        restarted.CaptureUpTo(StateAt(3), _repository);
+
+        Span<byte> buffer = stackalloc byte[256];
+        ReadOnlySpan<byte> flatKey = AccountKey(AddrA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restarted.LastCapturedBlock, Is.EqualTo(3));
+            Assert.That(buffer[.._accountHistory.TryGetAt(1, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock1)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(2, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock2)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(3, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock3)));
+        }
+    }
+
+    // Once a walk fails to connect (history enabled mid-life), the gap is permanent: the watermark can never cross
+    // it, so rows above it would be dead weight. Capture must disable itself instead of writing them.
+    [Test]
+    public void Permanent_gap_disables_further_capture()
+    {
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        _writer.CaptureUpTo(StateAt(1), _repository); // cannot connect: no genesis floor
+
+        CommitBlock(1, 2, accountChanges: [(AddrB, new Account(2, 2))]);
+        _writer.CaptureUpTo(StateAt(2), _repository);
+
+        Span<byte> buffer = stackalloc byte[256];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL));
+            Assert.That(_accountHistory.TryGetAt(2, AccountKey(AddrB), buffer), Is.EqualTo(-1),
+                "no rows may be written above a permanent gap");
         }
     }
 

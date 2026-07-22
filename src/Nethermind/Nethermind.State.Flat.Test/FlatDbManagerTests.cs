@@ -64,12 +64,8 @@ public class FlatDbManagerTests
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _historyReader = new HistoryReader(_historyDb, _historyColumns, LimboLogs.Instance);
-        _accountStore = new HistoryStore(
-            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
-            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
-        _storageStore = new HistoryStore(
-            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory),
-            _historyColumns.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
+        _accountStore = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        _storageStore = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory));
     }
 
     [TearDown]
@@ -407,16 +403,15 @@ public class FlatDbManagerTests
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
-        IWriteBatch changeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
 
         if (account is null)
         {
-            _accountStore.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, history, changeMarkers);
+            _accountStore.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, history);
             return;
         }
 
         using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        _accountStore.RecordChange(block, flatKey, rlp, history, changeMarkers);
+        _accountStore.RecordChange(block, flatKey, rlp, history);
     }
 
     private void RecordStorage(ulong block, ReadOnlySpan<byte> rawValue)
@@ -432,9 +427,6 @@ public class FlatDbManagerTests
             : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
-        _storageStore.RecordChange(
-            block, flatKey, value[..written],
-            batch.GetColumnBatch(FlatHistoryColumns.StorageHistory),
-            batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets));
+        _storageStore.RecordChange(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
     }
 }

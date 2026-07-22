@@ -19,9 +19,7 @@ public class HistoryStoreTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _store = new HistoryStore(
-            _columnsDb.GetColumnDb(FlatHistoryColumns.AccountHistory),
-            _columnsDb.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
+        _store = new HistoryStore(_columnsDb.GetColumnDb(FlatHistoryColumns.AccountHistory));
     }
 
     [TearDown]
@@ -70,12 +68,36 @@ public class HistoryStoreTests
         }
     }
 
+    // The descending block suffix puts block 0 at the key's last slot ([key | 0xFF..FF]), right at the seek
+    // range's upper edge — a genesis version must not be cut off by the bound.
+    [TestCase(0ul, 1)]
+    [TestCase(7ul, 1)]
+    public void Resolves_genesis_version(ulong block, int expectedLength)
+    {
+        Record(0, KeyA, [0xAA]);
+
+        Span<byte> buffer = stackalloc byte[64];
+        Assert.That(_store.TryGetAt(block, KeyA, buffer, out ulong foundAtBlock), Is.EqualTo(expectedLength));
+        Assert.That(foundAtBlock, Is.EqualTo(0ul));
+    }
+
+    [TestCase(5ul, 5ul)]
+    [TestCase(19ul, 5ul)]
+    [TestCase(20ul, 20ul)]
+    [TestCase(1000ul, 20ul)]
+    public void Reports_block_of_resolved_change(ulong block, ulong expectedFoundAt)
+    {
+        Record(5, KeyA, [0xAA]);
+        Record(20, KeyA, [0xBB, 0xCC]);
+
+        Span<byte> buffer = stackalloc byte[64];
+        _store.TryGetAt(block, KeyA, buffer, out ulong foundAtBlock);
+        Assert.That(foundAtBlock, Is.EqualTo(expectedFoundAt));
+    }
+
     private void Record(ulong block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> value)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _columnsDb.StartWriteBatch();
-        _store.RecordChange(
-            block, flatKey, value,
-            batch.GetColumnBatch(FlatHistoryColumns.AccountHistory),
-            batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets));
+        _store.RecordChange(block, flatKey, value, batch.GetColumnBatch(FlatHistoryColumns.AccountHistory));
     }
 }

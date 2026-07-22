@@ -17,7 +17,9 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 internal sealed class HistoryAvailability
 {
-    internal const byte FormatVersion = 1;
+    // v2: ChangeSets columns dropped, descending block suffix in history keys. v1 (pre-release) data is
+    // unreadable under v2 seeks, so a v1 layout is refused at startup rather than silently misread.
+    internal const byte FormatVersion = 2;
 
     private const int BlockBytes = sizeof(ulong);
     private const int RootBytes = 32;
@@ -32,6 +34,36 @@ internal sealed class HistoryAvailability
     {
         ArgumentNullException.ThrowIfNull(availableBlocks);
         _availableBlocks = availableBlocks;
+    }
+
+    /// <summary>
+    /// Refuses to operate on a history index written by an incompatible (pre-release) format. A fresh/empty index
+    /// passes; the current version is stamped on the first <see cref="PublishWatermark"/>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The on-disk index uses a different format version.</exception>
+    public void VerifyFormat()
+    {
+        byte[]? version = _availableBlocks.Get(FormatVersionKey);
+        if (version is [FormatVersion]) return;
+
+        bool hasLegacyData = version is not null;
+        if (!hasLegacyData)
+        {
+            // Pre-versioning v1 stamped no format key; any existing marker means captured data in an old layout.
+            foreach (KeyValuePair<byte[], byte[]?> _ in _availableBlocks.GetAll())
+            {
+                hasLegacyData = true;
+                break;
+            }
+        }
+
+        if (hasLegacyData)
+        {
+            throw new InvalidOperationException(
+                $"The flat history database was written by an incompatible pre-release format " +
+                $"(found version {(version is { Length: 1 } ? version[0].ToString() : "none")}, expected {FormatVersion}). " +
+                "Delete the flatHistory database directory to re-capture history, or resync the node.");
+        }
     }
 
     /// <summary>The highest block H such that every block in <c>[0, H]</c> has been captured; <c>false</c> when none has.</summary>

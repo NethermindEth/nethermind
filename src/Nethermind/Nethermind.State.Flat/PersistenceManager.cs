@@ -247,8 +247,8 @@ public class PersistenceManager(
                 {
                     using Snapshot _ = toPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
-                    PersistSnapshot(toPersist);
                     CaptureHistory(toPersist.To);
+                    PersistSnapshot(toPersist);
                     CurrentPersistedStateId = toPersist.To;
                     snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
                 }
@@ -256,8 +256,8 @@ public class PersistenceManager(
                 {
                     using PersistedSnapshot _ = persistedToPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
-                    PersistPersistedSnapshot(persistedToPersist);
                     CaptureHistory(persistedToPersist.To);
+                    PersistPersistedSnapshot(persistedToPersist);
                     CurrentPersistedStateId = persistedToPersist.To;
                     snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
                 }
@@ -281,22 +281,17 @@ public class PersistenceManager(
         }
     }
 
-    // Captures the just-finalized per-block changesets before RemoveStatesUntil prunes them, and before
-    // CurrentPersistedStateId is published so a reader never sees the barrier ahead of the history markers that
-    // gate below-barrier routing. Failures are logged and swallowed: history is opt-in archival, an uncaptured
-    // block just reports no history, and a capture error must not stall persistence.
+    // Captures the just-finalized per-block changesets BEFORE the flat state is persisted and the snapshots pruned:
+    // the flat head must never advance past durable history, or a crash in between leaves a permanently
+    // uncapturable range (restart replay resumes from the flat head, above the missed blocks). A capture failure
+    // therefore propagates and aborts this persist iteration — nothing is persisted or pruned — and the same range
+    // is retried on the next invocation. A permanent-gap node (history enabled mid-life) does not throw: the hook
+    // detects the gap, warns once and disables itself, so it never stalls persistence.
     private void CaptureHistory(in StateId persistedHead)
     {
         if (captureHook is null || persistedHead == StateId.PreGenesis) return;
 
-        try
-        {
-            captureHook.CaptureUpTo(persistedHead, snapshotRepository);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error($"History capture up to {persistedHead} failed; archival history for this range may be incomplete.", e);
-        }
+        captureHook.CaptureUpTo(persistedHead, snapshotRepository);
     }
 
     /// <summary>

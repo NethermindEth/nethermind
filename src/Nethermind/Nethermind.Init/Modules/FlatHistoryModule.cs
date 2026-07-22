@@ -31,7 +31,5 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<ITrieNodeCache>(),
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
-            .AddStep(typeof(SeedFlatHistoryGenesis))
-            // Throwaway: migrates pre-watermark-format indexes; remove once all nodes have started on the new format.
-            .AddStep(typeof(MigrateFlatHistoryIndex));
+            .AddStep(typeof(SeedFlatHistoryGenesis));
 }

@@ -20,13 +20,7 @@ public class FlatStateReader(
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
-        if (reader is null)
-        {
-            account = default;
-            return false;
-        }
-
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         if (reader.GetAccount(address) is { } accountCls)
         {
             account = accountCls.ToStruct();
@@ -39,12 +33,7 @@ public class FlatStateReader(
 
     public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
     {
-        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
-        if (reader is null)
-        {
-            return Array.Empty<byte>();
-        }
-
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         return reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address)) ?? [];
     }
 
@@ -56,8 +45,14 @@ public class FlatStateReader(
     {
         StateId stateId = new(baseBlock);
 
-        using ReadOnlySnapshotBundle reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId)
-            ?? throw new InvalidOperationException($"State at {baseBlock} not found");
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+
+        // A historical bundle serves flat values only — there is no trie to walk at that block, so proof/visit
+        // requests surface as state-unavailable instead of failing mid-walk with an internal error.
+        if (reader.IsHistorical)
+        {
+            throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
+        }
 
         ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
 
@@ -66,4 +61,24 @@ public class FlatStateReader(
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
+
+    /// <summary>
+    /// Gathers a read bundle, translating "state unavailable" (pruned, orphaned, or gather timeout) into
+    /// <see cref="MissingTrieNodeException"/> — the same contract the hash-based reader exposes — which JSON-RPC
+    /// maps to a clean resource-not-found response instead of an internal error.
+    /// </summary>
+    private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
+    {
+        try
+        {
+            return flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
+        }
+        catch (InvalidOperationException e)
+        {
+            throw StateUnavailable(baseBlock, $"State for block {baseBlock?.Number} is unavailable", e);
+        }
+    }
+
+    private static MissingTrieNodeException StateUnavailable(BlockHeader? baseBlock, string message, Exception? innerException = null) =>
+        new(message, null, TreePath.Empty, baseBlock?.StateRoot ?? Keccak.EmptyTreeHash, innerException);
 }

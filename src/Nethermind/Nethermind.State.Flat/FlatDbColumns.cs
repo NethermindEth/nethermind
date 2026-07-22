@@ -17,9 +17,7 @@ public enum FlatDbColumns
 public enum FlatHistoryColumns
 {
     AccountHistory,
-    AccountChangeSets,
     StorageHistory,
-    StorageChangeSets,
     AvailableBlocks,
     StorageClears,
 }

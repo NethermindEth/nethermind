@@ -11,32 +11,34 @@ namespace Nethermind.State.Flat.History;
 
 /// <summary>
 /// Finalized-only historical state for one flat domain (account or storage), over already-encoded byte keys.
-/// History is key-major (<c>[key | block BE] -> value</c>, contiguous per key) and holds the values: an as-of read
-/// is a single floor-seek that yields the value directly. ChangeMarkers is block-major
-/// (<c>[block BE | key] -> empty</c>, contiguous per block) and holds no values; it drives block-range operations —
-/// sliding-window pruning (R3) and segment export (R4) — that the key-major History cannot answer contiguously.
+/// History is key-major with a descending block suffix (<c>[key | ~block BE] -> value</c>), so each key's versions
+/// sit contiguously newest-first: an as-of read is a single ceiling-seek that yields the value directly.
 /// </summary>
+/// <remarks>
+/// The block suffix is stored bitwise-complemented so that within a key the newest version sorts first. Besides
+/// making the as-of read a plain forward seek, this lets a future sliding-window prune run as a purely sequential
+/// compaction filter — "first version at/below the cutoff → keep (it is the value in force at the window edge),
+/// every later entry of the same key → drop" — with no lookahead. Block-range operations (pruning, segment export)
+/// derive their block view from this column or from the capture stream; there is no separate block-major index.
+/// </remarks>
 public sealed class HistoryStore
 {
     private const int BlockBytes = sizeof(ulong);
 
     private readonly ISortedKeyValueStore _history;
-    private readonly IDb _changeMarkers;
 
-    public HistoryStore(IDb history, IDb changeMarkers)
+    public HistoryStore(IDb history)
     {
         ArgumentNullException.ThrowIfNull(history);
-        ArgumentNullException.ThrowIfNull(changeMarkers);
         if (history is not ISortedKeyValueStore sortedHistory)
             throw new ArgumentException($"History column must be a {nameof(ISortedKeyValueStore)}.", nameof(history));
 
         _history = sortedHistory;
-        _changeMarkers = changeMarkers;
     }
 
     /// <summary>Records the post-change value at <paramref name="block"/>; an empty value is a deletion tombstone.</summary>
     [SkipLocalsInit]
-    public void RecordChange(ulong block, scoped ReadOnlySpan<byte> flatKey, scoped ReadOnlySpan<byte> value, IWriteBatch historyBatch, IWriteBatch changeMarkerBatch)
+    public void RecordChange(ulong block, scoped ReadOnlySpan<byte> flatKey, scoped ReadOnlySpan<byte> value, IWriteBatch historyBatch)
     {
         Span<byte> historyKey = stackalloc byte[flatKey.Length + BlockBytes];
         WriteHistoryKey(historyKey, flatKey, block);
@@ -44,10 +46,6 @@ public sealed class HistoryStore
             historyBatch.Set(historyKey, Array.Empty<byte>());
         else
             historyBatch.PutSpan(historyKey, value);
-
-        Span<byte> markerKey = stackalloc byte[BlockBytes + flatKey.Length];
-        WriteMarkerKey(markerKey, block, flatKey);
-        changeMarkerBatch.Set(markerKey, Array.Empty<byte>());
     }
 
     /// <summary>
@@ -67,23 +65,25 @@ public sealed class HistoryStore
     {
         foundAtBlock = 0;
 
-        // StartBefore is strictly-below, so an exclusive upper bound of block + 1 folds the exact-block change and
-        // the latest-before change into one seek.
-        Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes];
-        WriteHistoryKey(upperBound, flatKey, block + 1);
+        // With the descending suffix, the newest version at/below block is the first entry at/after [key | ~block].
+        Span<byte> seekKey = stackalloc byte[flatKey.Length + BlockBytes];
+        WriteHistoryKey(seekKey, flatKey, block);
 
-        Span<byte> lowerBound = stackalloc byte[flatKey.Length + BlockBytes];
-        flatKey.CopyTo(lowerBound);
-        lowerBound[flatKey.Length..].Clear();
+        // One byte past the key's last possible entry [key | 0xFF..FF] (block 0): the view's exclusive upper bound
+        // must not cut off the genesis version.
+        Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes + 1];
+        flatKey.CopyTo(upperBound);
+        upperBound[flatKey.Length..].Fill(0xFF);
+        upperBound[^1] = 0x00;
 
-        using ISortedView view = _history.GetViewBetween(lowerBound, upperBound);
-        if (!view.StartBefore(upperBound)) return -1;
+        using ISortedView view = _history.GetViewBetween(seekKey, upperBound);
+        if (!view.MoveNext()) return -1; // first call positions at the first entry of the bounded view
 
         ReadOnlySpan<byte> foundKey = view.CurrentKey;
         if (foundKey.Length != flatKey.Length + BlockBytes || !foundKey[..flatKey.Length].SequenceEqual(flatKey))
             return -1;
 
-        foundAtBlock = BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
+        foundAtBlock = ~BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
         ReadOnlySpan<byte> value = view.CurrentValue;
         Debug.Assert(value.Length <= outBuffer.Length, "history value exceeds caller buffer; a value encoder outgrew its buffer size constant");
         value.CopyTo(outBuffer);
@@ -94,13 +94,6 @@ public sealed class HistoryStore
     private static void WriteHistoryKey(Span<byte> destination, scoped ReadOnlySpan<byte> flatKey, ulong block)
     {
         flatKey.CopyTo(destination[..flatKey.Length]);
-        BinaryPrimitives.WriteUInt64BigEndian(destination[flatKey.Length..], block);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteMarkerKey(Span<byte> destination, ulong block, scoped ReadOnlySpan<byte> flatKey)
-    {
-        BinaryPrimitives.WriteUInt64BigEndian(destination[..BlockBytes], block);
-        flatKey.CopyTo(destination[BlockBytes..]);
+        BinaryPrimitives.WriteUInt64BigEndian(destination[flatKey.Length..], ~block);
     }
 }
