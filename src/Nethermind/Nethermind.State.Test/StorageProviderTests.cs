@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -58,6 +60,56 @@ public class StorageProviderTests(bool useFlat)
     }
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
+
+    [Test]
+    [NonParallelizable]
+    public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned()
+    {
+        const int ChangeCount = 1_024;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        for (int i = 0; i < ChangeCount; i++)
+        {
+            provider.Set(new StorageCell(ctx.Address1, (UInt256)i), _values[1]);
+        }
+
+        provider.Commit(Frontier.Instance);
+        object blockChange = GetBlockChange(provider, ctx.Address1);
+        int capacityBeforeReturn = GetCapacity(blockChange);
+
+        provider.Reset();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capacityBeforeReturn, Is.GreaterThan(512));
+            Assert.That(GetCapacity(blockChange), Is.GreaterThan(0));
+            Assert.That(GetCapacity(blockChange), Is.LessThan(capacityBeforeReturn));
+        }
+    }
+
+    private static object GetBlockChange(WorldState provider, Address address)
+    {
+        FieldInfo storagesField = typeof(PersistentStorageProvider).GetField(
+            "_storages",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        IDictionary storages = (IDictionary)storagesField.GetValue(provider._persistentStorageProvider)!;
+        object contractState = storages[new AddressAsKey(address)]
+            ?? throw new InvalidOperationException("Contract state was not created.");
+        FieldInfo blockChangeField = contractState.GetType().GetField(
+            "BlockChange",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return blockChangeField.GetValue(contractState)!;
+    }
+
+    private static int GetCapacity(object collection)
+    {
+        FieldInfo dictionaryField = collection.GetType().GetField(
+            "_dictionary",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object dictionary = dictionaryField.GetValue(collection)!;
+        return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(dictionary)!;
+    }
 
     [TestCase(-1)]
     [TestCase(0)]
