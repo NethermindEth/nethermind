@@ -42,10 +42,10 @@ public static class BaseFlatPersistence
 {
     private const int AccountKeyLength = 20;
 
-    private const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
-    private const int StorageSlotKeySize = 32;
+    internal const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
+    internal const int StorageSlotKeySize = 32;
     private const int StoragePostfixPortion = 16;
-    private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
+    internal const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
     private const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;

@@ -140,6 +140,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
         }
+
+        if (flatDbConfig.ScanStoragePrefixes)
+        {
+            builder.AddStep(typeof(ScanFlatStoragePrefixes));
+        }
     }
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule

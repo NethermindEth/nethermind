@@ -55,6 +55,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
+    [ConfigItem(Description = "Diagnostic: scan the flat storage column for addresses sharing the 4-byte key prefix, log a report, then exit without syncing.", DefaultValue = "false")]
+    bool ScanStoragePrefixes { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 
