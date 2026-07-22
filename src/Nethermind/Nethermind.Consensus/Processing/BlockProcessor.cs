@@ -165,9 +165,12 @@ public partial class BlockProcessor(
 
             if (options.ContainsFlag(ProcessingOptions.ProducingBlock))
             {
-                // EIP8288-DEVIATION: the builder produces the proof off-chain; a stub stands in until
-                // Lean Ethereum tooling / AGGREGATED_VK are defined.
-                header.RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)));
+                // EIP8288-DEVIATION: the builder produces the proof off-chain; a deterministic
+                // placeholder stands in (verifiable by PlaceholderLeanProofVerifier) until Lean
+                // Ethereum tooling / AGGREGATED_VK are defined.
+                ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+                byte[] proof = PlaceholderLeanProofVerifier.ProveRecursive(in depsHash, Eip8288Constants.AggregatedVk);
+                header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
             }
         }
 

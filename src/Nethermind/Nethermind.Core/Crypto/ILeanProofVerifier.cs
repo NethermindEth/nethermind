@@ -9,7 +9,8 @@ namespace Nethermind.Core.Crypto;
 /// Verifier seam for the EIP-8288 Lean Ethereum primitives (leanSPHINCS signatures, leanSTARK proofs,
 /// and the recursive STARK that aggregates them), shared by block, mempool-wrapper, and FOCIL validation.
 /// EIP8288-DEVIATION: no C# Lean Ethereum backend exists and <c>AGGREGATED_VK</c> / proof formats are
-/// TBD, so the prototype ships a stub; a real verifier belongs in a dedicated FFI module behind this seam.
+/// TBD, so the prototype ships a deterministic placeholder; a real verifier belongs in a dedicated FFI
+/// module behind this seam.
 /// </summary>
 public interface ILeanProofVerifier
 {

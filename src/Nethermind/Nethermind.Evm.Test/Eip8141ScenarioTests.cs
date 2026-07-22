@@ -289,6 +289,44 @@ public class Eip8141ScenarioTests
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000), "later operation frames still run");
     }
 
+    // EIP-8288 Test Case 1/2: a VERIFY frame introspects the transaction's declared dependency — it
+    // reads the dependency frame's verification_key with FRAMEDATALOAD and only approves when it
+    // matches (spec "Transaction Execution Visibility"). A non-matching dependency yields scope 0,
+    // so APPROVE reverts the VERIFY frame and the whole transaction is invalid.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void DependencyFrame_VerifyFrameIntrospectsDeclaredDependency(bool dependencyMatches)
+    {
+        const int expectedVk = 0xBB;
+        byte[] verifierCode = Prepare.EvmCode
+            .PushData(1).PushData(64).Op(Instruction.FRAMEDATALOAD)          // dependency frame (index 1) verification_key word
+            .PushData(expectedVk).Op(Instruction.EQ)                          // 1 when it matches, else 0
+            .PushData(TxFrame.ApproveExecutionAndPayment).Op(Instruction.MUL) // scope = match ? EXECUTION_AND_PAYMENT : 0
+            .PushData(0).PushData(0).Op(Instruction.APPROVE)
+            .Done;
+        DeployContract(Sender, verifierCode, 1.Ether);
+
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
+        depData[31] = Eip8288Constants.LeanSphincsScheme;
+        depData[95] = (byte)(dependencyMatches ? expectedVk : 0xCC); // least-significant byte of verification_key
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData));
+
+        if (dependencyMatches)
+        {
+            TxReceipt receipt = ProcessBlock(tx)[0];
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.Payer, Is.EqualTo(Sender), "the VERIFY frame approved after reading the matching dependency");
+        }
+        else
+        {
+            TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(BuildBlock(tx).Header, Spec), NullTxTracer.Instance);
+            Assert.That(result.TransactionExecuted, Is.False, "a non-matching dependency must not approve, invalidating the transaction");
+        }
+    }
+
     // Spec Cross-frame interactions: the EIP-2929 warm/cold journal is shared across frames — a
     // slot touched by one frame is warm for the next.
     [Test]

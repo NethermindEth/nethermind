@@ -34,8 +34,8 @@ public class BlockValidator(
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    // EIP-8288: defaults to the stub until a real Lean Ethereum verifier module is registered.
-    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? StubLeanProofVerifier.Instance;
+    // EIP-8288: defaults to the placeholder until a real Lean Ethereum verifier module is registered.
+    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? PlaceholderLeanProofVerifier.Instance;
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);

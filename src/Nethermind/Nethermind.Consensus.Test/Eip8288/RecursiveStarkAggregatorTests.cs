@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Eip8288;
@@ -83,5 +84,18 @@ public class RecursiveStarkAggregatorTests
         AggregationInput input = new() { Deps = [Sphincs("a")], Witnesses = [[1]] };
 
         Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, out _, out _), Is.False);
+    }
+
+    [Test]
+    public void Aggregate_with_placeholder_verifier_accepts_valid_witness_and_rejects_wrong_one()
+    {
+        FrameDependency a = Sphincs("a");
+        byte[] witness = PlaceholderLeanProofVerifier.ProveLeanSphincs(a.DataHash, a.VerificationKey);
+
+        AggregationInput valid = new() { Deps = [a], Witnesses = [witness] };
+        Assert.That(RecursiveStarkAggregator.TryAggregate(valid, PlaceholderLeanProofVerifier.Instance, out _, out _), Is.True);
+
+        AggregationInput wrong = new() { Deps = [a], Witnesses = [[9]] };
+        Assert.That(RecursiveStarkAggregator.TryAggregate(wrong, PlaceholderLeanProofVerifier.Instance, out _, out _), Is.False);
     }
 }

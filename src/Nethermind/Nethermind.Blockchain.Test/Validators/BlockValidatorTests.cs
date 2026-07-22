@@ -130,6 +130,31 @@ public class BlockValidatorTests
         Assert.That(result, Is.True, error);
     }
 
+    [Test]
+    public void Eip8288_accepts_block_with_valid_placeholder_proof_via_default_verifier()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        byte[] proof = PlaceholderLeanProofVerifier.ProveRecursive(in depsHash, Eip8288Constants.AggregatedVk);
+        block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+
+        bool result = CreateEip8288Validator(PlaceholderLeanProofVerifier.Instance).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(result, Is.True, error);
+    }
+
+    [Test]
+    public void Eip8288_rejects_block_with_tampered_placeholder_proof_via_default_verifier()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        block.Header.RecursiveStark = new RecursiveStark([1], new Hash256(depsHash)); // correct hash, wrong proof
+
+        CreateEip8288Validator(PlaceholderLeanProofVerifier.Instance).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+    }
+
     private static (Block Block, BlockHeader Parent) Eip8288Block()
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;

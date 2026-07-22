@@ -8,6 +8,7 @@ using System.Linq;
 using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -152,6 +153,61 @@ public class MempoolWrapperTests
 
         Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TooManyStarkDeps));
+    }
+
+    [Test]
+    public void Recursive_wrapper_accepts_valid_placeholder_proof_and_rejects_tampering()
+    {
+        List<FrameDependency> deps = [Sphincs("a")];
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+        byte[] proof = PlaceholderLeanProofVerifier.ProveRecursive(in depsHash, Eip8288Constants.AggregatedVk);
+
+        MempoolWrapper valid = new()
+        {
+            Transactions = [new WrapperTransaction(Keccak.Compute("tx1"))],
+            Mode = MempoolWrapper.ModeRecursive,
+            Deps = deps,
+            RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash)),
+        };
+        Assert.That(MempoolWrapperValidator.Validate(valid, PlaceholderLeanProofVerifier.Instance, out string? error), Is.True, error);
+
+        MempoolWrapper tampered = new()
+        {
+            Transactions = valid.Transactions,
+            Mode = MempoolWrapper.ModeRecursive,
+            Deps = deps,
+            RecursiveStark = new RecursiveStark([9], new Hash256(depsHash)),
+        };
+        Assert.That(MempoolWrapperValidator.Validate(tampered, PlaceholderLeanProofVerifier.Instance, out error), Is.False);
+        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.InvalidProof));
+    }
+
+    [Test]
+    public void Direct_wrapper_accepts_valid_placeholder_proofs_and_rejects_tampering()
+    {
+        FrameDependency a = Sphincs("a");
+        FrameDependency b = Stark("b");
+        byte[] proofA = PlaceholderLeanProofVerifier.ProveLeanSphincs(a.DataHash, a.VerificationKey);
+        byte[] proofB = PlaceholderLeanProofVerifier.ProveLeanStark(b.DataHash, b.VerificationKey);
+
+        MempoolWrapper valid = new()
+        {
+            Transactions = [new WrapperTransaction(Keccak.Compute("tx1"))],
+            Mode = MempoolWrapper.ModeDirect,
+            Deps = [a, b],
+            Proofs = [proofA, proofB],
+        };
+        Assert.That(MempoolWrapperValidator.Validate(valid, PlaceholderLeanProofVerifier.Instance, out string? error), Is.True, error);
+
+        MempoolWrapper tampered = new()
+        {
+            Transactions = valid.Transactions,
+            Mode = MempoolWrapper.ModeDirect,
+            Deps = [a, b],
+            Proofs = [proofA, [9]],
+        };
+        Assert.That(MempoolWrapperValidator.Validate(tampered, PlaceholderLeanProofVerifier.Instance, out error), Is.False);
+        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.InvalidProof));
     }
 
     private static MempoolWrapper RoundTrip(MempoolWrapper wrapper)
