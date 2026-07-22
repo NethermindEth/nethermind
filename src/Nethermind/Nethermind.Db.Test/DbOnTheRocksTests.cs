@@ -238,7 +238,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Corrupted_exception_on_open_would_create_marker()
+        public void Corrupted_exception_on_open_writes_marker_and_shuts_down()
         {
             IDbConfig config = new DbConfig();
 
@@ -247,12 +247,14 @@ namespace Nethermind.Db.Test
             fileSystem.File.Returns(file);
 
             bool exceptionThrown = false;
+            bool didShutDown = false;
             try
             {
                 _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
                     _rocksdbConfigFactory,
                     LimboLogs.Instance,
-                    fileSystem: fileSystem);
+                    fileSystem: fileSystem,
+                    onFatalShutdown: () => didShutDown = true);
             }
             catch (RocksDbSharpException)
             {
@@ -260,16 +262,18 @@ namespace Nethermind.Db.Test
             }
 
             Assert.That(exceptionThrown, Is.True);
+            // Genuine "Corruption:" writes the marker (schedules repair on restart) and shuts down.
             file.Received().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+            Assert.That(didShutDown, Is.True);
         }
 
-        // An "IO error" (fd exhaustion, full disk, permissions) is not on-disk corruption and
-        // must not create the marker, otherwise the next start runs the lossy repair on a
-        // healthy DB. Only "Corruption:" is treated as corruption.
+        // An "IO error" (fd exhaustion, full disk, permissions) is not on-disk corruption, so it
+        // must NOT write the marker (that would run the lossy repair on a healthy DB on restart),
+        // but it must still fast-shut down so partial writes aren't built upon.
         [TestCase("IO error: While open a file for random read: /db/000123.sst: Too many open files")]
         [TestCase("IO error: No space left on device")]
         [TestCase("IO error: While fsync: /db/000123.sst: Permission denied")]
-        public void Io_error_on_open_does_not_create_marker(string exceptionMessage)
+        public void Io_error_on_open_shuts_down_without_writing_marker(string exceptionMessage)
         {
             IDbConfig config = new DbConfig();
 
@@ -278,13 +282,15 @@ namespace Nethermind.Db.Test
             fileSystem.File.Returns(file);
 
             bool exceptionThrown = false;
+            bool didShutDown = false;
             try
             {
                 _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
                     _rocksdbConfigFactory,
                     LimboLogs.Instance,
                     fileSystem: fileSystem,
-                    openExceptionMessage: exceptionMessage);
+                    openExceptionMessage: exceptionMessage,
+                    onFatalShutdown: () => didShutDown = true);
             }
             catch (RocksDbSharpException)
             {
@@ -293,6 +299,7 @@ namespace Nethermind.Db.Test
 
             Assert.That(exceptionThrown, Is.True);
             file.DidNotReceive().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+            Assert.That(didShutDown, Is.True);
         }
 
         [Test]
@@ -690,9 +697,14 @@ namespace Nethermind.Db.Test
         IList<string>? columnFamilies = null,
         RocksDbSharp.Native? rocksDbNative = null,
         IFileSystem? fileSystem = null,
-        string openExceptionMessage = "Corruption: test corruption"
+        string openExceptionMessage = "Corruption: test corruption",
+        Action? onFatalShutdown = null
         ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
     {
         protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException(openExceptionMessage);
+
+        // The open path throws from the base constructor, so the caller never gets a reference to
+        // observe FatalShutdown on; report it through the injected callback instead of exiting.
+        protected override void FatalShutdown() => onFatalShutdown?.Invoke();
     }
 }
