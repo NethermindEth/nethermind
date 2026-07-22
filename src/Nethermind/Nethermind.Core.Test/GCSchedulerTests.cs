@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -67,6 +68,18 @@ public class GCSchedulerTests
 
         _scheduler.SweepIfAllocationBudgetExceeded();
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
+    }
+
+    [Test]
+    public void Sweep_restores_latency_mode()
+    {
+        GCLatencyMode entryMode = GCSettings.LatencyMode;
+        long armed = ArmBudget();
+
+        _scheduler.SweepIfAllocationBudgetExceeded();
+
+        Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
+        Assert.That(GCSettings.LatencyMode, Is.EqualTo(entryMode));
     }
 
     private long ArmBudget()
