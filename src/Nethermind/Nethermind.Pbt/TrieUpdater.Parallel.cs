@@ -15,7 +15,10 @@ public static partial class TrieUpdater
 {
     // The updater as the executor sees it: the state one thread folds with, the queue it hands its
     // buckets to, and the job it is asked to run. The descent itself is in TrieUpdater.cs.
-    private sealed partial class Updater : IJobRunner<Updater, Updater.BucketJob>, IJobStateProvider<Updater>, IJobWorkerState
+    private sealed partial class Updater :
+        WorkStealingExecutor<Updater, Updater.BucketJob>.IJobRunner,
+        WorkStealingExecutor<Updater, Updater.BucketJob>.IJobStateProvider,
+        WorkStealingExecutor<Updater, Updater.BucketJob>.IJobWorkerState
     {
         /// <summary>Below this many stems a batch folds on the calling thread, whatever the concurrency says.</summary>
         /// <remarks>
@@ -80,10 +83,10 @@ public static partial class TrieUpdater
             _minQueueEntries = main._minQueueEntries;
         }
 
-        /// <inheritdoc cref="IJobStateProvider{TWorkerState}.Create"/>
+        /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.IJobStateProvider.Create"/>
         public Updater Create() => new(this);
 
-        /// <inheritdoc cref="IJobRunner{TWorkerState, TJob}.Execute"/>
+        /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.IJobRunner.Execute"/>
         /// <remarks>One bucket of one frame, folded on whichever thread got to it.</remarks>
         public void Execute(ref BucketJob job, Updater state, WorkStealingExecutor<Updater, BucketJob>.JobQueue queue)
         {
@@ -207,7 +210,7 @@ public static partial class TrieUpdater
             if (error is not null) ExceptionDispatchInfo.Throw(error);
         }
 
-        /// <inheritdoc cref="IJobWorkerState.Complete"/>
+        /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.IJobWorkerState.Complete"/>
         /// <remarks>Nothing: a thread's writes went to the store as it made them, the store bearing them all.</remarks>
         public void Complete()
         {
