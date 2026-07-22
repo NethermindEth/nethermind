@@ -166,7 +166,7 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         if (spec.IsEip8141Enabled && !block.IsGenesis)
         {
-            _systemContractHandler.InstallExpiryVerifierCode(spec);
+            _systemContractHandler.InstallPredeploys(spec);
         }
         CommitState(spec);
 

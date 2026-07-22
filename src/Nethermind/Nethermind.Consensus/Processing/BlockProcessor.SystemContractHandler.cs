@@ -21,7 +21,7 @@ public partial class BlockProcessor
     {
         /// <summary>Installs the EIP-8141 expiry-verifier predeploy so its code + nonce are captured
         /// in the computed state root (and, on the BAL path, the block-level access list).</summary>
-        void InstallExpiryVerifierCode(IReleaseSpec spec);
+        void InstallPredeploys(IReleaseSpec spec);
     }
 
     public sealed class SystemContractHandler(
@@ -52,7 +52,7 @@ public partial class BlockProcessor
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        public void InstallExpiryVerifierCode(IReleaseSpec spec)
-            => ExpiryVerifierInstaller.Install(stateProvider, stateProvider, spec);
+        public void InstallPredeploys(IReleaseSpec spec)
+            => PredeployInstaller.Install(stateProvider, stateProvider, spec);
     }
 }

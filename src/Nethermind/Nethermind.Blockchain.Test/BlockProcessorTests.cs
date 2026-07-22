@@ -1466,7 +1466,7 @@ public class BlockProcessorTests
         {
         }
 
-        public void InstallExpiryVerifierCode(IReleaseSpec spec)
+        public void InstallPredeploys(IReleaseSpec spec)
         {
         }
 
