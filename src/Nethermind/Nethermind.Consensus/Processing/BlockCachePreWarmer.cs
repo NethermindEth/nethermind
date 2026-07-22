@@ -39,13 +39,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
-    private readonly ConcurrentDictionary<AddressAsKey, byte> _storageHeavyDestinations = new();
+    private readonly ConcurrentDictionary<AddressAsKey, byte> _batchedHeavyDestinations = new();
 
-    private const int StorageHeavyMissThreshold = 128;
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
     private const int MaxDiscoveredCells = 8192;
-    private const int MaxStorageHeavyDestinations = 1024;
+    private const int MaxBatchedHeavyDestinations = 1024;
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
@@ -138,55 +137,70 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
         }
 
-        // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-        return Task.Run(() =>
+        if (discoveryCandidates.Count == 1)
         {
-            try
+            // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
+            return Task.Run(() =>
             {
-                DiscoverAndWarmStorage(discoveryCandidates, suggestedBlock, parent, spec, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.DebugWarn($"Error discovering storage reads for block {suggestedBlock.Number}. {ex}");
-            }
-            finally
-            {
-                // Prioritize the discovered batch, then let account and ordinary transaction warming run concurrently.
+                DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, parent, spec, cancellationToken);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
-            }
-            PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken);
-        });
+                PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken);
+            });
+        }
+
+        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        Task normalWarmTask = Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
+        Task discoveryTask = Task.Run(() => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, parent, spec, cancellationToken));
+
+        return Task.WhenAll(normalWarmTask, discoveryTask);
     }
 
-    private List<Transaction>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
+    private void DiscoverAndWarmStorageSafely(List<Transaction> candidates, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken)
     {
+        try
+        {
+            DiscoverAndWarmStorage(candidates, block, parent, spec, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugWarn($"Error discovering storage reads for block {block.Number}. {ex}");
+        }
+    }
+
+    internal List<Transaction>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
+    {
+        Dictionary<AddressAsKey, int> destinationCounts = [];
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
+            destinationCounts.TryGetValue(destination, out int count);
+            destinationCounts[destination] = count + 1;
+        }
+
+        foreach ((AddressAsKey destination, int count) in destinationCounts)
+        {
+            if (count > 1) RegisterBatchedHeavy(destination);
+        }
+
         List<Transaction>? candidates = null;
         foreach (Transaction tx in block.Transactions)
         {
             if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
             if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
-            if (!_storageHeavyDestinations.ContainsKey(destination)) continue;
-
-            bool destinationSelected = false;
-            if (candidates is not null)
-            {
-                foreach (Transaction candidate in candidates)
-                {
-                    if (candidate.To == destination)
-                    {
-                        destinationSelected = true;
-                        break;
-                    }
-                }
-            }
-
-            if (destinationSelected) continue;
+            if (!_batchedHeavyDestinations.ContainsKey(destination)) continue;
 
             (candidates ??= new(MaxDiscoveryCandidates)).Add(tx);
             if (candidates.Count == MaxDiscoveryCandidates) break;
         }
 
         return candidates;
+    }
+
+    private void RegisterBatchedHeavy(AddressAsKey destination)
+    {
+        if (_batchedHeavyDestinations.Count >= MaxBatchedHeavyDestinations) _batchedHeavyDestinations.Clear();
+        _batchedHeavyDestinations.TryAdd(destination, 0);
     }
 
     private void DiscoverAndWarmStorage(List<Transaction> candidates, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken)
@@ -316,13 +330,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Array.Sort(accounts, static (left, right) => left.Address.CompareTo(right.Address));
 
         return new ReadOnlyBlockAccessList(accounts, cells.Count + accounts.Length);
-    }
-
-    private void RegisterStorageHeavy(Transaction tx)
-    {
-        if (tx.To is not Address destination) return;
-        if (_storageHeavyDestinations.Count >= MaxStorageHeavyDestinations) _storageHeavyDestinations.Clear();
-        _storageHeavyDestinations.TryAdd(destination, 0);
     }
 
     private sealed class StorageDiscoverySink(PreBlockCaches caches) : IWorldStateScopeProvider.IAsyncBalReaderSink
@@ -775,9 +782,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         BlockState blockState,
         CancellationToken cancellationToken)
     {
-        PreBlockCaches.StorageReadCapture? capture = tx.GasLimit > SplitSenderGroupGasThreshold
-            ? blockState.PreWarmer._preBlockCaches.BeginStorageReadCapture(skipBackingReads: false)
-            : null;
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
@@ -809,14 +813,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (Exception ex)
         {
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
-        }
-        finally
-        {
-            if (capture?.MissCount >= StorageHeavyMissThreshold)
-            {
-                blockState.PreWarmer.RegisterStorageHeavy(tx);
-            }
-            capture?.Dispose();
         }
     }
 
