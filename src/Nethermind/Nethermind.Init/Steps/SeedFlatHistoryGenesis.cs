@@ -19,7 +19,10 @@ namespace Nethermind.Init.Steps;
 /// could not capture genesis (history enabled after the genesis snapshot left memory). Without it, an allocation
 /// never touched since genesis reads as absent at every height. Idempotent: skipped when block 0 is already present.
 /// </summary>
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependencies(
+    dependencies: [typeof(InitializeBlockTree)],
+    dependents: [typeof(InitializeBlockchain)]
+)]
 public class SeedFlatHistoryGenesis(
     ChainSpec chainSpec,
     IBlockTree blockTree,

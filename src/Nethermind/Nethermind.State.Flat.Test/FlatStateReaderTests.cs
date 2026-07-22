@@ -48,7 +48,7 @@ public class FlatStateReaderTests
     private class ThrowingFlatDbManager : IFlatDbManager
     {
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-            throw new InvalidOperationException($"State {baseBlock} no longer exists; concurrently removed.");
+            throw new StateUnavailableException($"State {baseBlock} no longer exists; concurrently removed.");
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }

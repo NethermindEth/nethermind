@@ -94,11 +94,15 @@ internal sealed class HistoryAvailability
     }
 
     /// <summary>Records the per-block marker (<c>block -> captured state root</c>) into <paramref name="batch"/>.</summary>
+    /// <remarks>Also stamps the format version atomically with the marker: capture batches commit before any
+    /// watermark publish, so a marker without a format key must never be an observable on-disk state — it would
+    /// read as a pre-release layout on restart.</remarks>
     public static void MarkBlock(IWriteBatch batch, ulong block, in ValueHash256 stateRoot)
     {
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
         batch.PutSpan(key, stateRoot.Bytes);
+        batch.PutSpan(FormatVersionKey, [FormatVersion]);
     }
 
     /// <summary>

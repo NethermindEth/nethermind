@@ -26,7 +26,7 @@ public class HistoryStoreTests
     public void TearDown() => _columnsDb.Dispose();
 
     // KeyA: 0xAA at block 5, 0xBBCC at block 20, deleted at block 30.
-    [TestCase(3ul, null)]   // before the first change -> caller falls back to the tip
+    [TestCase(3ul, null)]   // before the first change -> absent at that height
     [TestCase(5ul, "aa")]
     [TestCase(10ul, "aa")]
     [TestCase(19ul, "aa")]

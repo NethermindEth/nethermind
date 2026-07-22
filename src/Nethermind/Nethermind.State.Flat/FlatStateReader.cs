@@ -70,7 +70,7 @@ public class FlatStateReader(
         {
             return flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
         }
-        catch (InvalidOperationException e)
+        catch (StateUnavailableException e)
         {
             throw StateUnavailable(baseBlock, $"State for block {baseBlock?.Number} is unavailable", e);
         }

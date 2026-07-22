@@ -62,7 +62,7 @@ public class HistoryWriterTests
 
     // AddrA: (nonce 1, balance 100) @ b1, overwritten to (nonce 2, balance 200) @ b2, deleted @ b3.
     // Nonce == block number for the committed values, so the expected account is reconstructible from readBlock.
-    [TestCase(0ul, 0ul, ExpectedKind.Absent)]   // before the first change -> caller falls back to the tip
+    [TestCase(0ul, 0ul, ExpectedKind.Absent)]   // before the first change -> absent at that height
     [TestCase(1ul, 100ul, ExpectedKind.Value)]
     [TestCase(2ul, 200ul, ExpectedKind.Value)]
     [TestCase(3ul, 0ul, ExpectedKind.Tombstone)] // deleted
@@ -380,6 +380,17 @@ public class HistoryWriterTests
             Assert.That(buffer[.._accountHistory.TryGetAt(2, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock2)));
             Assert.That(buffer[.._accountHistory.TryGetAt(3, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock3)));
         }
+    }
+
+    // Capture batches commit markers before any watermark publish; the format stamp must ride the same batch or a
+    // restart in between reads the index as pre-release v1 and refuses startup.
+    [Test]
+    public void Capture_without_publish_still_stamps_format()
+    {
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        _writer.CaptureUpTo(StateAt(1), _repository); // unconnected: markers written, watermark never published
+
+        Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, LimboLogs.Instance));
     }
 
     [Test]

@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.History;
 /// ("first version at/below the cutoff → keep, every later entry of the key → drop" — no lookahead). There is no
 /// block-major index; block-range operations derive their view from this column or from the capture stream.
 /// </remarks>
-public sealed class HistoryStore
+internal sealed class HistoryStore
 {
     private const int BlockBytes = sizeof(ulong);
 

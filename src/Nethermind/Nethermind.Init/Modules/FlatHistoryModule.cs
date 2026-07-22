@@ -23,7 +23,7 @@ public class FlatHistoryModule : Module
             .AddColumnDatabase<FlatHistoryColumns>(DbNames.FlatHistory)
             .AddSingleton<HistoryReader>()
             .AddSingleton<HistoryWriter>()
-            .AddSingleton<IFlatPersistenceCaptureHook>(ctx => ctx.Resolve<HistoryWriter>())
+            .Bind<IFlatPersistenceCaptureHook, HistoryWriter>()
             .AddDecorator<IFlatDbManager>((ctx, inner) => new HistoricalFlatDbManager(
                 inner,
                 ctx.Resolve<IPersistenceManager>(),

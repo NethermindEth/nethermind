@@ -19,7 +19,7 @@ public interface IFlatPersistenceCaptureHook
     /// Captures every not-yet-captured block on <paramref name="persistedHead"/>'s chain, up to and including it,
     /// leasing the per-block snapshots from <paramref name="snapshotRepository"/>.
     /// </summary>
-    /// <param name="persistedHead">The state just persisted; capture proceeds down its <see cref="Snapshot.From"/> chain.</param>
+    /// <param name="persistedHead">The state about to be persisted; capture proceeds down its <see cref="Snapshot.From"/> chain.</param>
     /// <param name="snapshotRepository">Source of the per-block snapshots to capture; leases must be disposed.</param>
     void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository);
 }

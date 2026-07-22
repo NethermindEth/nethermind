@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.History;
 /// which leaves no per-slot tombstones in <see cref="HistoryStore"/>; this column records the event so an as-of
 /// read can tell that a slot value written before the destruct is dead.
 /// </summary>
-public sealed class StorageClearStore
+internal sealed class StorageClearStore
 {
     private const int BlockBytes = sizeof(ulong);
 

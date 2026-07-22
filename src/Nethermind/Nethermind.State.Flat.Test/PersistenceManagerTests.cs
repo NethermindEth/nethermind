@@ -925,6 +925,37 @@ public class PersistenceManagerTests
         }
     }
 
+    // The flush path (genesis-loader / shutdown) must uphold the same capture-before-persist invariant.
+    [Test]
+    public void FlushToPersistence_WhenCaptureHookThrows_DoesNotPersist()
+    {
+        using PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            new FlakyCaptureHook(failures: 1));
+
+        StateId to = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        CreateSnapshot(Block0, to, compacted: true);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        Assert.Throws<System.InvalidOperationException>(() => manager.FlushToPersistence());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+        }
+    }
+
     [Test]
     public async Task AddToPersistence_WhenCaptureHookThrows_DoesNotAdvancePersistence()
     {
