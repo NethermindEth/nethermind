@@ -842,8 +842,8 @@ public static partial class TrieUpdater
             bool holdsChildren = isInWrapper && boundary.ChildSlots != 0;
             if (holdsChildren) wrapper.WriteOffsets(ref writer);
 
-            (NodeResult rootNode, ValueHash256 rootHash, int groupLength) =
-                RebuildGroup(ref writer, changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, afterStats);
+            GroupRebuild rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, writeFormat);
+            (PbtTrieNodeGroup.ValueSlot rootSlot, ValueHash256 rootHash, int groupLength) = rebuild.Rebuild(ref writer, afterStats);
 
             if (holdsChildren) wrapper.Finish(ref writer, groupLength);
 
@@ -870,7 +870,9 @@ public static partial class TrieUpdater
 
             Release(results, handedUp: -1);
 
-            return rootNode;
+            return rootSlot.Kind == NodeKind.Stem
+                ? NodeResult.StemNode(rootSlot.Stem, rootSlot.Hash)
+                : NodeResult.Internal(rootSlot.Hash);
         }
 
         /// <summary>
@@ -905,44 +907,6 @@ public static partial class TrieUpdater
             {
                 if (slot != handedUp) nodes[slot].Dispose();
             }
-        }
-
-        /// <summary>
-        /// Rebuilds a group straight into a fresh encoding, folding its <paramref name="changed"/> boundary
-        /// values and reading every unchanged one back out of <paramref name="existing"/>.
-        /// </summary>
-        /// <param name="changed">
-        /// The changed boundary values in ascending slot order — the only ones the fold cannot recover from
-        /// <paramref name="existing"/>, since an unchanged boundary sits at a fixed position however its
-        /// siblings shift.
-        /// </param>
-        /// <returns>
-        /// What the group folds to, as its parent holds it — a stem root read back out of the fresh
-        /// encoding, or, the usual case, an internal root the encoding stores no entry for — that root's
-        /// node hash, and the length the fold wrote.
-        /// </returns>
-        /// <param name="writer">
-        /// Where the encoding goes, once every child the group holds is in: the fold takes its room off
-        /// this and commits what it wrote to it.
-        /// </param>
-        /// <param name="stats">What the whole subtree amounts to, for the group's header; see <see cref="GroupRebuild.Finish"/>.</param>
-        private (NodeResult Root, ValueHash256 RootHash, int Length) RebuildGroup(
-            ref BufferWriter writer, ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
-            NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 beforeHash, in PbtSubtreeStats stats)
-        {
-            GroupRebuild rebuild = new(changed, existing, boundary, changedBitmask, beforeHash, writeFormat);
-            // an internal group root is folded to a by-value hash and never stored, the parent caching it
-            // in its boundary slot; only a stem root is written, and is read back before the fold commits,
-            // after which the writer hands out the room past the encoding rather than the encoding itself
-            FoldedNode root = rebuild.Fold(ref writer, PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, out ValueHash256 rootHash);
-            NodeResult rootNode = NodeResult.Internal(rootHash);
-            if (root.IsStored)
-            {
-                (Stem rootStem, ValueHash256 rootSubtreeRoot) = rebuild.StemAt(ref writer, root);
-                rootNode = NodeResult.StemNode(rootStem, rootSubtreeRoot);
-            }
-
-            return (rootNode, rootHash, rebuild.Finish(ref writer, stats));
         }
 
         private readonly record struct NodeRef(NodeKind Kind, int Offset);
