@@ -129,13 +129,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
-        DiscoverAndWarmStorage(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
-
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, systemAccessLists);
-        // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
         // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-        return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        return Task.Run(() =>
+        {
+            try
+            {
+                DiscoverAndWarmStorage(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.DebugWarn($"Error discovering storage reads for block {suggestedBlock.Number}. {ex}");
+            }
+            finally
+            {
+                // Prioritize the discovered batch, then let account and ordinary transaction warming run concurrently.
+                ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+            }
+            PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken);
+        });
     }
 
     private void DiscoverAndWarmStorage(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken)
