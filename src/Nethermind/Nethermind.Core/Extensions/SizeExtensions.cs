@@ -23,9 +23,21 @@ public static class SizeExtensions
             {
                 return "0" + suf[0];
             }
+
+            // Integer/decimal arithmetic only (no Math.Log/Pow over double):
+            // this assembly is linked into the zkEVM guest, which targets a
+            // core without an FPU, and System.Decimal is software integer math.
             long bytes = Math.Abs(@this);
-            int place = Math.Min(suf.Length - 1, Convert.ToInt32(Math.Floor(Math.Log(bytes, useSi ? 1000 : 1024))));
-            double num = Math.Round(bytes / Math.Pow(useSi ? 1000 : 1024, place), precision);
+            long unit = useSi ? 1000L : 1024L;
+            int place = 0;
+            long divisor = 1;
+            while (place < suf.Length - 1 && bytes >= divisor * unit)
+            {
+                divisor *= unit;
+                place++;
+            }
+
+            decimal num = Math.Round((decimal)bytes / divisor, precision);
             return string.Concat(Math.Sign(@this) * num, addSpace ? " " : "", suf[place]);
         }
     }
