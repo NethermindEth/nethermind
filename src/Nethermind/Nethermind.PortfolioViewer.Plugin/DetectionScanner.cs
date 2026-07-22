@@ -39,7 +39,7 @@ public sealed class DetectionScanner(
     private const int BaseChunkBlocks = 5_000;
     private const int MinChunkBlocks = 250;
     private const int MaxChunkBlocks = 250_000;
-    private const int MaxContracts = 2_000;  // safety cap on distinct contracts discovered per account
+    private const int MaxContractsPerScan = 2_000;  // combined erc20+nft cap that ends a scan (distinct from the cache's per-list cap)
     private static readonly TimeSpan ChunkTimeout = TimeSpan.FromSeconds(15);
 
     private readonly ILogger _logger = logManager.GetClassLogger<DetectionScanner>();
@@ -139,7 +139,7 @@ public sealed class DetectionScanner(
                 return Task.CompletedTask;
             }
 
-            bool complete = lo <= 0 || erc20.Count + nfts.Count >= MaxContracts;
+            bool complete = lo <= 0 || erc20.Count + nfts.Count >= MaxContractsPerScan;
             Persist(chainId, account, erc20, nfts, complete ? 0 : lo, head, complete);
             if (complete) _active.TryRemove(key, out _);
             else { Grow(key); Schedule(req); } // chunk finished within the gap — go wider next time

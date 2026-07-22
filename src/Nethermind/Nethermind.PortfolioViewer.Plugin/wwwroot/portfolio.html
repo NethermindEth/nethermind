@@ -994,7 +994,7 @@
             },
             10200: { name: 'Chiado', ticker: 'xDAI', ens: false, tag: 'CHI', logo: 'logos/gnosis.png' },
             10: {
-                name: 'Optimism', ticker: 'ETH', ens: false, tag: 'OP', logo: 'logos/optimism-logo.svg',
+                name: 'Optimism', ticker: 'ETH', ens: false, tag: 'OP',
                 feeds: OP_FEEDS,
                 currencies: ['USD', 'EUR'],
                 // Uniswap V3 (canonical factory, also deployed on Optimism) for tokens without a standalone feed
@@ -3857,12 +3857,17 @@
             box.replaceChildren();
             for (const node of nodes) {
                 const btn = el('button', node.enabled ? 'chain-btn on' : 'chain-btn');
-                const logo = el('img');
-                logo.src = node.meta.logo;
-                logo.alt = node.meta.name;
-                // when the logo isn't served (static files off) fall back to a text label
-                logo.onerror = () => logo.replaceWith(el('span', 'number', node.meta.tag || node.meta.name));
-                btn.append(logo);
+                if (node.meta.logo) {
+                    const logo = el('img');
+                    logo.src = node.meta.logo;
+                    logo.alt = node.meta.name;
+                    // when the logo isn't served (static files off) fall back to a text label
+                    logo.onerror = () => logo.replaceWith(el('span', 'number', node.meta.tag || node.meta.name));
+                    btn.append(logo);
+                } else {
+                    // chains without a bundled logo (e.g. to avoid shipping a third-party mark) show a text label
+                    btn.append(el('span', 'number', node.meta.tag || node.meta.name));
+                }
                 if (node.meta.tag) {
                     const dot = el('span', 'chain-dot');
                     dot.style.background = chainColor(node);
