@@ -34,4 +34,13 @@ public class SimulateDictionaryBlockStoreTests
 
         Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
     }
+
+    [Test]
+    public void HasBlock_returns_false_when_block_is_in_neither_store()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        SimulateDictionaryBlockStore store = new(new BlockStore(new MemDb()));
+
+        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
+    }
 }
