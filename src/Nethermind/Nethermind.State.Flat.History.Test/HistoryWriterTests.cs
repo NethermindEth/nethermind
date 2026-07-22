@@ -506,7 +506,7 @@ public class HistoryWriterTests
                 storageChanges: [(AddrA, Slot1, RegressionSlotFor(block))]);
         }
 
-        Assert.DoesNotThrow(() => _writer.CaptureUpTo(StateAt(blockCount), _repository));
+        Assert.DoesNotThrow(() => _writer.CaptureUpTo(StateAt(blockCount), _repository, CancellationToken.None));
 
         Account? tipAccount;
         byte[]? tipSlot;
