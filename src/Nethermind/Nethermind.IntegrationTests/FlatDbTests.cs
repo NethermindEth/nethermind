@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Containers;
+using Nethermind.Core;
+using Nethermind.Crypto;
 using NUnit.Framework;
 
 namespace Nethermind.IntegrationTests;
@@ -14,38 +17,137 @@ namespace Nethermind.IntegrationTests;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class FlatDbTests
 {
+    private const ulong SepoliaChainId = 11155111UL;
+    private const string TestAccountPrivateKeyHex = "4646464646464646464646464646464646464646464646464646464646464646";
+    private const string RecipientAddress = "0x0000000000000000000000000000000000001234";
+
     [Test]
-    public async Task FlatDb_EnabledNode_PersistsAndRestoresEngineBlocks()
+    public async Task FlatDb_EnabledNode_PersistsAndRestoresAccountState()
     {
         string databasePath = Path.Combine(Path.GetTempPath(), $"nethermind-flatdb-{Guid.NewGuid():N}");
+        string chainspecPath = Utils.ExtractEmbeddedChainspec("sepolia-with-test-account.json");
         Directory.CreateDirectory(databasePath);
 
         try
         {
-            IContainer firstNode = await StartNodeAsync(databasePath);
+            IContainer firstNode = await StartNodeAsync(databasePath, chainspecPath: chainspecPath);
             try
             {
                 string firstStartupLogs = await firstNode.GetCleanStdoutAsync();
                 Assert.That(firstStartupLogs, Does.Contain("State backend: flat (fresh node, flat DB enabled)."));
 
+                string transactionHash = await SendTransferAsync(firstNode);
                 await ProduceBlocksAsync(firstNode, 2);
-                Assert.That(await GetBlockNumberAsync(firstNode), Is.EqualTo("0x2"));
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(await GetBlockNumberAsync(firstNode), Is.EqualTo("0x2"));
+                    Assert.That(await GetTransactionReceiptAsync(firstNode, transactionHash), Is.Not.Null);
+                    Assert.That(await GetBalanceAsync(firstNode, RecipientAddress), Is.EqualTo("0x2a"));
+                }
             }
             finally
             {
                 await firstNode.DisposeAsync();
             }
 
-            IContainer restartedNode = await StartNodeAsync(databasePath);
+            IContainer restartedNode = await StartNodeAsync(databasePath, chainspecPath: chainspecPath);
             try
             {
                 string restartLogs = await restartedNode.GetCleanStdoutAsync();
-                Assert.That(restartLogs, Does.Contain("State backend: flat (existing flat DB detected)."));
-                Assert.That(await GetBlockNumberAsync(restartedNode), Is.EqualTo("0x2"));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(restartLogs, Does.Contain("State backend: flat (existing flat DB detected)."));
+                    Assert.That(await GetBlockNumberAsync(restartedNode), Is.EqualTo("0x2"));
+                    Assert.That(await GetBalanceAsync(restartedNode, RecipientAddress), Is.EqualTo("0x2a"));
+                }
             }
             finally
             {
                 await restartedNode.DisposeAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(databasePath, recursive: true);
+            File.Delete(chainspecPath);
+        }
+    }
+
+    [Test]
+    public async Task FlatDb_DoesNotReplaceAnExistingPatriciaStateDatabase()
+    {
+        string databasePath = Path.Combine(Path.GetTempPath(), $"nethermind-flatdb-patricia-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(databasePath);
+
+        try
+        {
+            IContainer patriciaNode = await StartNodeAsync(databasePath, ["--FlatDb.Enabled", "false"]);
+            try
+            {
+                Assert.That(await patriciaNode.GetCleanStdoutAsync(), Does.Contain("State backend: patricia (flat DB disabled)."));
+                await ProduceBlocksAsync(patriciaNode, 1);
+            }
+            finally
+            {
+                await patriciaNode.DisposeAsync();
+            }
+
+            IContainer restartedNode = await StartNodeAsync(databasePath);
+            try
+            {
+                string restartLogs = await restartedNode.GetCleanStdoutAsync();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(restartLogs, Does.Contain("State backend: patricia (existing patricia state detected)."));
+                    Assert.That(await GetBlockNumberAsync(restartedNode), Is.EqualTo("0x1"));
+                }
+            }
+            finally
+            {
+                await restartedNode.DisposeAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(databasePath, recursive: true);
+        }
+    }
+
+    [TestCase("3", "1048576", "Compact size must be a power of 2")]
+    [TestCase("4", "2", "Persisted snapshot max compact size must not be smaller than CompactSize")]
+    [TestCase("2", "3", "Persisted snapshot max compact size must be a power of 2")]
+    public async Task FlatDb_InvalidCompactionConfiguration_PreventsStartup(
+        string compactSize,
+        string persistedSnapshotMaxCompactSize,
+        string expectedDiagnostic)
+    {
+        string databasePath = Path.Combine(Path.GetTempPath(), $"nethermind-flatdb-invalid-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(databasePath);
+
+        try
+        {
+            IContainer node = await StartNodeAsync(
+                databasePath,
+                [
+                    "--FlatDb.CompactSize", compactSize,
+                    "--FlatDb.PersistedSnapshotMaxCompactSize", persistedSnapshotMaxCompactSize
+                ],
+                waitForInit: false,
+                suppressStartFailures: true);
+            try
+            {
+                string logs = await WaitForLogAsync(node, expectedDiagnostic, TimeSpan.FromSeconds(60));
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(logs, Does.Contain(expectedDiagnostic));
+                    Assert.That(logs, Does.Not.Contain("Initialization Completed"));
+                }
+            }
+            finally
+            {
+                await node.DisposeAsync();
             }
         }
         finally
@@ -106,7 +208,12 @@ public class FlatDbTests
         }
     }
 
-    private static async Task<IContainer> StartNodeAsync(string databasePath, string[] flatDbOptions = null)
+    private static async Task<IContainer> StartNodeAsync(
+        string databasePath,
+        string[] flatDbOptions = null,
+        string chainspecPath = null,
+        bool waitForInit = true,
+        bool suppressStartFailures = false)
     {
         List<string> command =
         [
@@ -123,19 +230,98 @@ public class FlatDbTests
             "--Sync.NetworkingEnabled", "false",
             "--Sync.SynchronizationEnabled", "false",
             "--Sync.FastSync", "false",
-            "--Sync.SnapSync", "false",
-            "--FlatDb.Enabled", "true",
-            "--FlatDb.Layout", "Flat"
+            "--Sync.SnapSync", "false"
         ];
 
+        if (flatDbOptions?.Contains("--FlatDb.Enabled") != true)
+        {
+            command.AddRange(["--FlatDb.Enabled", "true"]);
+        }
+        if (flatDbOptions?.Contains("--FlatDb.Layout") != true)
+        {
+            command.AddRange(["--FlatDb.Layout", "Flat"]);
+        }
         if (flatDbOptions is not null)
         {
             command.AddRange(flatDbOptions);
         }
 
-        IContainer container = (await Utils.BuildNethermindContainerAsync(command.ToArray(), bindMount: (databasePath, "/nethermind/nethermind_db"))).Build();
-        await container.StartAsync();
+        List<(string HostPath, string ContainerPath)> bindMounts =
+        [
+            (databasePath, "/nethermind/nethermind_db")
+        ];
+        if (chainspecPath is not null)
+        {
+            const string containerChainspecPath = "/test-sepolia.json";
+            bindMounts.Add((chainspecPath, containerChainspecPath));
+            command.AddRange(["--Init.ChainSpecPath", containerChainspecPath]);
+        }
+
+        IContainer container = (await Utils.BuildNethermindContainerAsync(command.ToArray(), waitForInit, bindMounts: bindMounts)).Build();
+        try
+        {
+            await container.StartAsync();
+        }
+        catch when (suppressStartFailures)
+        {
+        }
         return container;
+    }
+
+    private static async Task<string> WaitForLogAsync(IContainer container, string expectedLog, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        string logs = string.Empty;
+        while (DateTime.UtcNow < deadline)
+        {
+            logs = await container.GetCleanStdoutAsync() + await container.GetCleanStderrAsync();
+            if (logs.Contains(expectedLog, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            await Task.Delay(200);
+        }
+
+        return logs;
+    }
+
+    private static async Task<string> SendTransferAsync(IContainer container)
+    {
+        using HttpClient client = CreateJsonRpcClient(container);
+        PrivateKey signer = new(TestAccountPrivateKeyHex);
+        Transaction transaction = new()
+        {
+            Type = TxType.Legacy,
+            Nonce = 0,
+            GasLimit = 21000,
+            GasPrice = 20_000_000_000UL,
+            To = new Address(RecipientAddress),
+            Value = 42,
+        };
+
+        return await Utils.SignAndSendTransactionAsync(client, signer, transaction, SepoliaChainId);
+    }
+
+    private static async Task<JsonNode> GetTransactionReceiptAsync(IContainer container, string transactionHash)
+    {
+        using HttpClient client = CreateJsonRpcClient(container);
+        return await Utils.SendJsonRpcRequestAsync(client, "eth_getTransactionReceipt", transactionHash);
+    }
+
+    private static async Task<string> GetBalanceAsync(IContainer container, string address)
+    {
+        using HttpClient client = CreateJsonRpcClient(container);
+        JsonNode result = await Utils.SendJsonRpcRequestAsync(client, "eth_getBalance", address, "latest");
+        return result.GetValue<string>();
+    }
+
+    private static HttpClient CreateJsonRpcClient(IContainer container)
+    {
+        Uri jsonRpcUrl = new($"http://{container.Hostname}:{container.GetMappedPublicPort(8545)}");
+        HttpClient client = new() { BaseAddress = jsonRpcUrl };
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        return client;
     }
 
     private static async Task ProduceBlocksAsync(IContainer container, int count)
