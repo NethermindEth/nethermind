@@ -6,6 +6,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Pbt;
 
+/// <summary>Identifies one world state across the repository, the bundle cache and the persisted pointer.</summary>
+/// <param name="StateRoot">
+/// The root the block's header claims, which on a Patricia-rooted chain is not the EIP-8297 root PBT
+/// folds. The header's root is what the rest of the node addresses a state by, so it is what keys a
+/// state here; the tree's own root travels beside it on <see cref="PbtSnapshot.TreeRoot"/> and in the
+/// persisted metadata.
+/// </param>
 public readonly record struct StateId(ulong BlockNumber, in ValueHash256 StateRoot)
 {
     public StateId(BlockHeader? header) : this(header is null ? ulong.MaxValue : header.Number, header?.StateRoot ?? default)

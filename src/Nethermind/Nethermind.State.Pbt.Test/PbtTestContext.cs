@@ -37,10 +37,14 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtStateReader StateReader { get; }
     public PbtWorldStateManager WorldStateManager { get; }
 
-    public PbtTestContext(SnapshotableMemColumnsDb<PbtColumns>? db = null, PbtConfig? config = null)
+    /// <summary>Resolves nothing unless a test supplies one, so scopes report their own EIP-8297 root.</summary>
+    public IPbtChildHeaderSource ChildHeaders { get; }
+
+    public PbtTestContext(SnapshotableMemColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null)
     {
         Db = db ?? new SnapshotableMemColumnsDb<PbtColumns>("pbt");
         Config = config ?? new PbtConfig();
+        ChildHeaders = childHeaders ?? NullPbtChildHeaderSource.Instance;
 
         // A node rolls its compaction offset at random so the network does not all compact on the
         // same blocks. A test that inherited that would have its boundaries — and so what persists,
@@ -53,11 +57,11 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, Compactor, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, Config), Config, CodeDb);
+        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, Config), Config, CodeDb);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
-        new(CodeDb, Manager, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
+        new(CodeDb, Manager, ChildHeaders, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
             Config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel);
 
     public async ValueTask DisposeAsync()

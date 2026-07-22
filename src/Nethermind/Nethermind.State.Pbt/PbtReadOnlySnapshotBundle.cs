@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -27,6 +28,16 @@ namespace Nethermind.State.Pbt;
 public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, IPbtPersistence.IReader reader) : RefCountingDisposable
 {
     private bool _isDisposed;
+
+    /// <summary>The EIP-8297 root of the state this bundle views, which the header root it was gathered by does not carry.</summary>
+    public ValueHash256 TreeRoot
+    {
+        get
+        {
+            GuardDispose();
+            return snapshots.Count > 0 ? snapshots[^1].TreeRoot : reader.CurrentTreeRoot;
+        }
+    }
 
     public Account? GetAccount(Address address)
     {

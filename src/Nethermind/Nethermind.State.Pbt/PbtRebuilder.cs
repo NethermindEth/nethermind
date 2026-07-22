@@ -40,7 +40,13 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
 
-    /// <summary>Rebuilds the tree from <paramref name="source"/> and returns the EIP-8297 root at <paramref name="blockNumber"/>.</summary>
+    /// <summary>Rebuilds the tree from <paramref name="source"/> and returns the EIP-8297 root it folded to.</summary>
+    /// <param name="targetState">
+    /// The state the rebuilt tree represents, keyed as the rest of the node addresses it: by the root
+    /// its block's header claims, which is the source database's. The tree's own root — this method's
+    /// return value — is recorded beside it, so a node starting on the result finds its state by header
+    /// and still folds the next block on the right root.
+    /// </param>
     /// <remarks>
     /// Reading and folding run as a pipeline: this consumer accumulates each window and hands the full
     /// one to a single flush worker over a bounded (capacity-1) channel, so the next window fills while
@@ -48,7 +54,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
     /// the previous root — so exactly one worker drains the channel in order, and it alone touches the
     /// target database.
     /// </remarks>
-    public async Task<ValueHash256> Rebuild(ChannelReader<ArrayPoolList<RebuildEntry>> source, ulong blockNumber, CancellationToken cancellationToken)
+    public async Task<ValueHash256> Rebuild(ChannelReader<ArrayPoolList<RebuildEntry>> source, StateId targetState, CancellationToken cancellationToken)
     {
         using CancellationTokenSource pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -115,7 +121,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
         // never pooled, so a Dispose would be a no-op
         PbtWriteBatchBuilder builder = new();
-        IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
+        IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
         int pending = 0;
         long entries = 0;
         Stem lastStem = default;
@@ -139,7 +145,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                             // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
                             // drained batch lost to a faulting flusher only drops its pooled maps to the GC
                             await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, entries, lastStem), pipelineCts.Token);
-                            writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
+                            writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
                             pending = 0;
                         }
                     }
@@ -165,9 +171,9 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         target.Flush();
 
         // atomically advance the persisted-state pointer to the rebuilt state
-        using (target.CreateWriteBatch(StateId.PreGenesis, new StateId(blockNumber, root), WriteFlags.None)) { }
+        using (target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None)) { }
 
-        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at block {blockNumber}: {entries} leaves, {stems} stems, root {root}");
+        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {entries} leaves, {stems} stems, tree root {root}");
         return root;
     }
 

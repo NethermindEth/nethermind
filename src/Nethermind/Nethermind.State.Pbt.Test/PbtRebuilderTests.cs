@@ -56,7 +56,7 @@ public class PbtRebuilderTests
         return leaves;
     }
 
-    private static async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, ulong blockNumber, PbtRocksDbPersistence target)
+    private static async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, StateId targetState, PbtRocksDbPersistence target)
     {
         ArrayPoolList<RebuildEntry> entries = new(leaves.Count); // ownership passes to Rebuild, which disposes it
         foreach (RebuildEntry leaf in leaves) entries.Add(leaf);
@@ -66,7 +66,7 @@ public class PbtRebuilderTests
         channel.Writer.TryWrite(entries);
         channel.Writer.Complete();
 
-        return await rebuilder.Rebuild(channel.Reader, blockNumber, CancellationToken.None);
+        return await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None);
     }
 
     // A flush interval of 1 forces one committed window per leaf, exercising the cross-window merge
@@ -84,13 +84,16 @@ public class PbtRebuilderTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db);
 
-        const ulong blockNumber = 7;
-        ValueHash256 root = await Fold(leaves, flushEntryInterval, blockNumber, target);
+        // the header root the source claims is unrelated to the tree root the fold produces, so the
+        // two must be recorded separately rather than one standing in for the other
+        StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = await Fold(leaves, flushEntryInterval, targetState, target);
 
         Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
 
         using IPbtPersistence.IReader reader = target.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(blockNumber, root)), "persisted state pointer must advance to the rebuilt state");
+        Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
+        Assert.That(reader.CurrentTreeRoot, Is.EqualTo(root), "and record the tree root beside it");
     }
 
     /// <summary>
@@ -116,7 +119,7 @@ public class PbtRebuilderTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db);
 
-        ValueHash256 root = await Fold(leaves, flushEntryInterval, blockNumber: 7, target);
+        ValueHash256 root = await Fold(leaves, flushEntryInterval, new StateId(7, TestItem.KeccakA.ValueHash256), target);
 
         Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
@@ -131,10 +134,11 @@ public class PbtRebuilderTests
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         channel.Writer.Complete();
 
-        ValueHash256 root = await rebuilder.Rebuild(channel.Reader, blockNumber: 3, CancellationToken.None);
+        StateId targetState = new(3, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None);
 
         Assert.That(root, Is.EqualTo(default(ValueHash256)), "an empty tree is 32 zero bytes");
         using IPbtPersistence.IReader reader = target.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(3, default)));
+        Assert.That(reader.CurrentState, Is.EqualTo(targetState));
     }
 }

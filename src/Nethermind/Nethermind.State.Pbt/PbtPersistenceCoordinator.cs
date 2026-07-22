@@ -145,7 +145,7 @@ public class PbtPersistenceCoordinator(
     private void Persist(PbtSnapshot merged)
     {
         PbtSnapshotContent content = merged.Content;
-        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, WriteFlags.None);
+        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, merged.TreeRoot, WriteFlags.None);
 
         foreach ((AddressAsKey address, Account? account) in content.Accounts)
         {
