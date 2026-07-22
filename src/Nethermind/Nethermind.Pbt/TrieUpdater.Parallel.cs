@@ -50,8 +50,7 @@ public static partial class TrieUpdater
         /// <inheritdoc cref="MinWriteBufferCapacity"/>
         private const int MaxWriteBufferCapacity = 4096;
 
-        private readonly Worker[] _workers;
-        private bool _done;
+        private readonly WorkStealingExecutor<Updater, Worker, Worker.BucketJob> _executor;
 
         public Updater(
             IPbtStore store, IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat,
@@ -72,8 +71,11 @@ public static partial class TrieUpdater
 
             WriteBufferCapacity = Math.Clamp(changes.Count / workerCount, MinWriteBufferCapacity, MaxWriteBufferCapacity);
 
-            _workers = new Worker[workerCount];
-            for (int index = 0; index < workerCount; index++) _workers[index] = new Worker(this, index);
+            // settled before the executor builds the workers, which read it to decide whether they need
+            // a write buffer at all
+            IsParallel = workerCount > 1;
+            _executor = new WorkStealingExecutor<Updater, Worker, Worker.BucketJob>(
+                workerCount, this, static (updater, lane) => new Worker(updater, lane), Worker.Fold);
         }
 
         public IPbtStore Store { get; }
@@ -94,7 +96,7 @@ public static partial class TrieUpdater
         /// </summary>
         public int MinSpawnEntries { get; }
 
-        public bool IsParallel => _workers.Length > 1;
+        public bool IsParallel { get; }
 
         /// <summary>
         /// What one worker's buffered writes start out sized for: an even share of the batch, since a
@@ -103,35 +105,25 @@ public static partial class TrieUpdater
         /// </summary>
         public int WriteBufferCapacity { get; }
 
-        /// <summary>Whether the fold has finished, which is what the stealing workers exit on.</summary>
-        public bool IsDone => Volatile.Read(ref _done);
-
-        public int WorkerCount => _workers.Length;
-
-        public Worker WorkerAt(int index) => _workers[index];
-
         /// <summary>Folds <paramref name="changes"/> into the tree at <paramref name="currentRoot"/> and returns the new root.</summary>
         /// <remarks>
-        /// The calling thread is worker 0 and runs the root frame; the rest only ever run what it and its
-        /// descendants hand out. It returns without waiting for them: once the root frame's join is
-        /// through, every job is finished, so a worker still to be scheduled can find nothing left to
-        /// claim and exits on <see cref="IsDone"/> — which is what keeps a fold from waiting on the thread
-        /// pool to schedule anything at all.
+        /// The calling thread runs the root frame on the executor's main lane; the rest of the threads
+        /// only ever run what it and its descendants hand out.
         /// </remarks>
         public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
-            StartWorkers();
+            _executor.Start();
 
             bool folded = false;
             try
             {
-                ValueHash256 root = _workers[0].Run(currentRoot, changes, out delta);
+                ValueHash256 root = _executor.Workers[0].Run(currentRoot, changes, out delta);
                 folded = true;
                 return root;
             }
             finally
             {
-                Volatile.Write(ref _done, true);
+                _executor.Complete();
                 FlushWrites(folded);
             }
         }
@@ -150,14 +142,6 @@ public static partial class TrieUpdater
             return Math.Clamp(Math.Min(requested, affordable), 1, Environment.ProcessorCount);
         }
 
-        private void StartWorkers()
-        {
-            for (int index = 1; index < _workers.Length; index++)
-            {
-                Task.Run(_workers[index].StealLoop);
-            }
-        }
-
         /// <summary>
         /// Hands the store what the workers buffered, on the calling thread and in each worker's own
         /// order, or drops it where the fold threw and the writes are not to be kept.
@@ -169,27 +153,14 @@ public static partial class TrieUpdater
         /// </remarks>
         private void FlushWrites(bool commit)
         {
-            foreach (Worker worker in _workers) worker.FlushWrites(commit);
+            foreach (Worker worker in _executor.Workers) worker.FlushWrites(commit);
         }
     }
 
     private sealed partial class Worker
     {
-        /// <summary>
-        /// Jobs one worker's queue holds before a frame folds its buckets itself instead. A frame spawns
-        /// at most fifteen, and a frame under one is joined before the frame above it moves on, so this
-        /// only fills where the stealing has fallen far behind.
-        /// </summary>
-        private const int QueueCapacity = 64;
-
-        /// <summary>How many jobs a thread may take on while waiting, one nested inside the next.</summary>
-        private const int MaxHelpDepth = 8;
-
-        /// <summary>How many helped jobs this thread is inside; see <see cref="WaitFor"/>.</summary>
-        private int _helpDepth;
-
-        /// <summary>The jobs this worker hands out, which any other may take; <c>null</c> for a fold on the calling thread alone.</summary>
-        private readonly WorkStealingDeque<Job>? _queue = updater.IsParallel ? new WorkStealingDeque<Job>(QueueCapacity) : null;
+        /// <summary>The lane this worker spawns and joins on; a serial fold's lane cannot spawn at all.</summary>
+        private readonly WorkStealingExecutor<Updater, Worker, BucketJob>.Lane _lane = lane;
 
         /// <summary>
         /// The store writes this worker made, replayed by the calling thread once the fold is through;
@@ -214,69 +185,60 @@ public static partial class TrieUpdater
         private readonly ArrayPoolList<(Stem Stem, byte[]? Blob)>? _blobWrites =
             updater.IsParallel ? new ArrayPoolList<(Stem, byte[]?)>(updater.WriteBufferCapacity) : null;
 
-        /// <summary>Where this worker's queue stands, which a frame takes as a mark before spawning.</summary>
-        private long QueueMark => _queue?.Head ?? 0;
-
         /// <summary>
         /// Whether this frame may hand any of its buckets out at all: the fold is a parallel one, and the
         /// frame branches. A frame whose entries all fall in one bucket would be handing its whole range
         /// over and then waiting on it, which buys nothing.
         /// </summary>
-        private bool MaySpawn(uint touchedBitmask) => _queue is not null && !BitOperations.IsPow2(touchedBitmask);
+        private bool MaySpawn(uint touchedBitmask) => _lane.CanSpawn && !BitOperations.IsPow2(touchedBitmask);
 
         /// <summary>
         /// Queues <paramref name="bucket"/> as a job for whichever thread reaches it first, and returns
-        /// it; <c>null</c> when the queue is full, leaving the frame to fold the bucket itself.
+        /// the node holding it; <c>null</c> when the queue is full, leaving the frame to fold the bucket
+        /// itself.
         /// </summary>
-        /// <param name="next">The job this frame spawned before it, which this one is chained ahead of.</param>
-        private Job? TrySpawn(
+        /// <param name="next">The node this frame spawned before it, which this one is chained ahead of.</param>
+        private WorkStealingExecutor<Updater, Worker, BucketJob>.Node? TrySpawn(
             int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in Occupant occupant,
-            scoped BucketPlan childPlan, Job? next)
+            scoped BucketPlan childPlan, WorkStealingExecutor<Updater, Worker, BucketJob>.Node? next)
         {
             ReadOnlySpan<int> precalculated = childPlan.Precalculated;
-            Job job = new(
-                slot, childKey, IndexOf(updater.Entries, bucket), bucket.Length,
-                precalculated.IsEmpty ? 0 : IndexOf(updater.Buckets!, precalculated), precalculated.Length,
-                childPlan.BranchDepth, occupant, next);
+            BucketJob job = new()
+            {
+                Slot = slot,
+                Key = childKey,
+                EntryStart = IndexOf(updater.Entries, bucket),
+                EntryCount = bucket.Length,
+                BucketStart = precalculated.IsEmpty ? 0 : IndexOf(updater.Buckets!, precalculated),
+                BucketLength = precalculated.Length,
+                BranchDepth = childPlan.BranchDepth,
+                Occupant = occupant,
+            };
 
-            return _queue!.TryPushHead(job) ? job : null;
+            return _lane.TrySpawn(in job, next);
         }
 
         /// <summary>
-        /// Waits out the jobs <paramref name="spawned"/> chains — running what nothing else has started,
-        /// newest first, and helping with what other workers have queued while the rest come back — and
-        /// settles each one's result into the frame's boundary.
+        /// Waits out the jobs <paramref name="spawned"/> chains and settles each one's result into the
+        /// frame's boundary.
         /// </summary>
-        /// <param name="queueMark">Where this worker's queue stood before the frame spawned anything.</param>
+        /// <param name="queueMark">Where this worker's lane stood before the frame spawned anything.</param>
         private void Join(
-            Job spawned, long queueMark, Span<NodeResult> results, ref BoundaryScan scan, ref uint storedChildBitmask)
+            WorkStealingExecutor<Updater, Worker, BucketJob>.Node spawned, long queueMark,
+            Span<NodeResult> results, ref BoundaryScan scan, ref uint storedChildBitmask)
         {
-            // Take back what no thread has started yet, which the queue hands over newest first — the
-            // order this frame pushed them in, and the one whose entries are likeliest still cached.
-            while (QueueMark > queueMark)
-            {
-                Job? queued = _queue!.TryPopHead();
-                if (queued is null) break;
-                if (queued.TryClaim()) Execute(queued);
-            }
-
-            // A job a thief took off the queue but has not claimed is still this frame's to run: the claim
-            // settles which of the two threads it falls to, and the loser leaves it alone.
-            for (Job? job = spawned; job is not null; job = job.Next)
-            {
-                if (job.TryClaim()) Execute(job);
-            }
+            _lane.Join(spawned, queueMark);
 
             Exception? error = null;
-            for (Job? job = spawned; job is not null; job = job.Next)
+            for (WorkStealingExecutor<Updater, Worker, BucketJob>.Node? node = spawned; node is not null; node = node.Next)
             {
-                WaitFor(job);
-                if (job.Error is not null)
+                if (node.Error is not null)
                 {
-                    error ??= job.Error;
+                    error ??= node.Error;
                     continue;
                 }
 
+                ref BucketJob job = ref node.Job;
                 if (error is not null)
                 {
                     // a sibling threw, so this frame is being abandoned: release what this one folded
@@ -292,95 +254,20 @@ public static partial class TrieUpdater
             if (error is not null) ExceptionDispatchInfo.Throw(error);
         }
 
-        /// <summary>
-        /// Waits for whichever thread claimed <paramref name="job"/> to finish it, folding what other
-        /// workers have queued in the meantime rather than spinning through it.
-        /// </summary>
-        /// <remarks>
-        /// Helping is what keeps a frame that handed every one of its buckets out from idling until they
-        /// come back. It is bounded by <see cref="MaxHelpDepth"/>: each helped job descends and joins on
-        /// this thread's stack, so an unbounded chain of them — a thread that keeps taking on new work
-        /// every time it waits — would run the stack down.
-        /// </remarks>
-        private void WaitFor(Job job)
-        {
-            SpinWait spin = default;
-            while (!job.IsDone)
-            {
-                if (_helpDepth < MaxHelpDepth)
-                {
-                    _helpDepth++;
-                    bool helped = TryRunStolen();
-                    _helpDepth--;
-                    if (helped)
-                    {
-                        spin = default;
-                        continue;
-                    }
-                }
-
-                spin.SpinOnce(sleep1Threshold: -1);
-            }
-        }
-
         /// <summary>Folds one queued bucket, whichever thread got to it.</summary>
-        private void Execute(Job job)
+        public static void Fold(Updater updater, Worker worker, ref BucketJob job)
         {
-            try
-            {
-                BucketPlan plan = new(
-                    job.BucketLength == 0 ? default : updater.Buckets!.AsSpan(job.BucketStart, job.BucketLength),
-                    job.BranchDepth);
-                ApplyKeyedChild(
-                    job.Key, updater.Entries.AsSpan(job.EntryStart, job.EntryCount), job.Occupant, plan,
-                    out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
-                job.Settle(result, changed, delta, storedChild);
-            }
-            catch (Exception exception)
-            {
-                job.Fail(exception);
-            }
-        }
+            BucketPlan plan = new(
+                job.BucketLength == 0 ? default : updater.Buckets!.AsSpan(job.BucketStart, job.BucketLength),
+                job.BranchDepth);
+            worker.ApplyKeyedChild(
+                job.Key, updater.Entries.AsSpan(job.EntryStart, job.EntryCount), job.Occupant, plan,
+                out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
 
-        /// <summary>
-        /// Runs whatever the other workers hand out until the fold is through. One of these per worker
-        /// past the calling thread's own.
-        /// </summary>
-        /// <remarks>
-        /// It spins rather than parking: a fold lasts a few milliseconds, and nothing else is waiting on
-        /// its result, so the wake-up latency of a park would cost more than the spin does. The spin
-        /// never sleeps for the same reason, and yields so that a machine with fewer cores than workers
-        /// still makes progress.
-        /// </remarks>
-        public void StealLoop()
-        {
-            SpinWait spin = default;
-            while (!updater.IsDone)
-            {
-                if (TryRunStolen())
-                {
-                    spin = default;
-                    continue;
-                }
-
-                spin.SpinOnce(sleep1Threshold: -1);
-            }
-        }
-
-        /// <summary>Takes one job off another worker's queue and runs it; <c>false</c> when nothing was there to take.</summary>
-        private bool TryRunStolen()
-        {
-            int workerCount = updater.WorkerCount;
-            for (int offset = 1; offset < workerCount; offset++)
-            {
-                Job? stolen = updater.WorkerAt((index + offset) % workerCount)._queue!.TrySteal();
-                if (stolen is null || !stolen.TryClaim()) continue;
-
-                Execute(stolen);
-                return true;
-            }
-
-            return false;
+            job.Result = result;
+            job.Changed = changed;
+            job.Delta = delta;
+            job.StoredChild = storedChild;
         }
 
         /// <summary>
@@ -433,76 +320,34 @@ public static partial class TrieUpdater
         /// One bucket of one frame, waiting for a thread to fold it: the range of entries, where they go,
         /// and what the fold made of them.
         /// </summary>
-        /// <remarks>
-        /// The state is what makes the queue no more than a hint: a job is run by whichever thread claims
-        /// it, and the frame that spawned it claims whatever is left when it comes to join, so a job that
-        /// is never stolen — or whose queue slot was refused, popped or lost to a race — is folded by the
-        /// spawning thread all the same. Jobs are not pooled: a recycled one could be claimed a second
-        /// time by a thread still holding the stale reference the queue handed it.
-        /// </remarks>
-        private sealed class Job(
-            int slot, TrieNodeKey key, int entryStart, int entryCount, int bucketStart, int bucketLength,
-            int branchDepth, Occupant occupant, Job? next)
+        internal struct BucketJob
         {
-            private const int Pending = 0;
-            private const int Claimed = 1;
-            private const int Done = 2;
-
-            private int _state;
-
-            /// <summary>The job the same frame spawned before this one; the frame walks the chain to join them.</summary>
-            public Job? Next => next;
-
             /// <summary>The boundary slot of the parent frame this job's result settles into.</summary>
-            public int Slot => slot;
+            public int Slot { get; init; }
 
-            public TrieNodeKey Key => key;
+            public TrieNodeKey Key { get; init; }
 
-            public int EntryStart => entryStart;
+            public int EntryStart { get; init; }
 
-            public int EntryCount => entryCount;
+            public int EntryCount { get; init; }
 
-            public int BucketStart => bucketStart;
+            public int BucketStart { get; init; }
 
-            public int BucketLength => bucketLength;
+            public int BucketLength { get; init; }
 
-            public int BranchDepth => branchDepth;
+            public int BranchDepth { get; init; }
 
             /// <summary>The node the parent's boundary slot holds, borrowed from the encoding the parent frame is reading.</summary>
-            public Occupant Occupant => occupant;
+            public Occupant Occupant { get; init; }
 
-            public NodeResult Result { get; private set; }
+            public NodeResult Result { get; set; }
 
-            public bool Changed { get; private set; }
+            public bool Changed { get; set; }
 
-            public PbtSubtreeStats Delta { get; private set; }
+            public PbtSubtreeStats Delta { get; set; }
 
             /// <inheritdoc cref="ApplyKeyedChild" path="/param[@name='storedChild']"/>
-            public bool StoredChild { get; private set; }
-
-            /// <summary>What the fold threw, to be rethrown by the frame that spawned this job.</summary>
-            public Exception? Error { get; private set; }
-
-            /// <summary>Takes the job for this thread to run; <c>false</c> when another thread has it.</summary>
-            public bool TryClaim() => Interlocked.CompareExchange(ref _state, Claimed, Pending) == Pending;
-
-            public void Settle(in NodeResult result, bool changed, in PbtSubtreeStats delta, bool storedChild)
-            {
-                Result = result;
-                Changed = changed;
-                Delta = delta;
-                StoredChild = storedChild;
-                Volatile.Write(ref _state, Done);
-            }
-
-            public void Fail(Exception exception)
-            {
-                Error = exception;
-                Volatile.Write(ref _state, Done);
-            }
-
-            /// <summary>Whether the thread that claimed this job has finished it, results and all.</summary>
-            public bool IsDone => Volatile.Read(ref _state) == Done;
+            public bool StoredChild { get; set; }
         }
     }
 }

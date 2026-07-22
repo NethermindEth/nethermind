@@ -96,7 +96,7 @@ public static partial class TrieUpdater
     /// is threaded through them; what every thread shares — the store, the batch, the spawn threshold —
     /// sits on the <see cref="Updater"/> behind them.
     /// </remarks>
-    private sealed partial class Worker(Updater updater, int index)
+    private sealed partial class Worker(Updater updater, WorkStealingExecutor<Updater, Worker, Worker.BucketJob>.Lane lane)
     {
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
@@ -635,8 +635,8 @@ public static partial class TrieUpdater
 
             // The jobs this frame spawned, newest first, and where its own queue stood before the first of
             // them: what the join hands back the work it can still do itself.
-            Job? spawned = null;
-            long queueMark = QueueMark;
+            WorkStealingExecutor<Updater, Worker, BucketJob>.Node? spawned = null;
+            long queueMark = _lane.QueueMark;
             bool maySpawn = MaySpawn(touchedBitmask);
 
             for (uint remainingBitmask = touchedBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
@@ -958,7 +958,10 @@ public static partial class TrieUpdater
             }
         }
 
-        private readonly record struct NodeRef(NodeKind Kind, int Offset);
+        // Internal rather than private, this and the two structs below, only so that BucketJob — which
+        // Updater has to name, and so cannot be private — may carry them. Naming any of them still means
+        // naming Worker, which is private, so nothing outside this class sees them either way.
+        internal readonly record struct NodeRef(NodeKind Kind, int Offset);
 
         /// <summary>
         /// A node already sitting in a boundary slot as the descent begins: a reference into its encoding
@@ -970,7 +973,7 @@ public static partial class TrieUpdater
         /// backed by an encoding, so it never carries a by-value hash; it promotes to a result — a stored
         /// node is a valid one — through the implicit conversion below.
         /// </remarks>
-        private readonly struct Occupant(NodeRef node, RefCountingMemory? memory) : IDisposable
+        internal readonly struct Occupant(NodeRef node, RefCountingMemory? memory) : IDisposable
         {
             private readonly NodeRef _node = node;
             private readonly RefCountingMemory? _memory = memory;
@@ -1036,7 +1039,7 @@ public static partial class TrieUpdater
         /// <see cref="FoldedNode.Unstored"/> does for a skipped odd level one frame down. An absent result
         /// holds nothing, so <c>default</c> is one.
         /// </remarks>
-        private readonly struct NodeResult : IDisposable
+        internal readonly struct NodeResult : IDisposable
         {
             private readonly NodeKind _kind;
             private readonly ValueHash256 _hash;
