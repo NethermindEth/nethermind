@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Diagnostics.Tracing;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,8 +21,11 @@ public sealed class GCScheduler
     private const int MinSecondsBetweenForcedGC = 120;
     // 4 GiB ≈ 256 typical 30 MGas mainnet blocks
     internal const long SustainedSweepAllocationBytes = 4L * 1024 * 1024 * 1024;
-    // Far above any observed background gen2 duration; only guards against a missed GCEnd event.
-    private const long BackgroundGCTimeoutMs = 300_000;
+    // Background gen2 duration scales with heap size (~150ms/GB measured on replay heaps),
+    // bounded so tiny heaps still get a meaningful window and huge heaps don't starve regions.
+    private const long NoGCRegionBlackoutMsPerGB = 150;
+    private const long MinNoGCRegionBlackoutMs = 2_000;
+    private const long MaxNoGCRegionBlackoutMs = 15_000;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -43,11 +45,9 @@ public sealed class GCScheduler
     private long _sweepBaselineAllocatedBytes;
     private int _forcedGCExclusions;
 
-    // TickCount64 when the in-flight background gen2 started; -1 = none. Written by the tracker.
-    private static long _backgroundGCStartedAtMs = -1;
-
-    // Rooted for the process lifetime; keeps _backgroundGCStartedAtMs current.
-    private readonly BackgroundGCTracker? _backgroundGCTracker;
+    // TickCount64 until which GCKeeper must not enter a no-GC region: entering one while the
+    // sweep's background collection is still running blocks the caller until the collection completes.
+    private static long _noGCRegionBlackoutUntilMs;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -63,59 +63,21 @@ public sealed class GCScheduler
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
         if (sustainedSweepEnabled)
         {
-            _backgroundGCTracker = new BackgroundGCTracker();
             _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
     }
 
     /// <summary>
-    /// Tracks whether a background gen2 collection is currently running via runtime GCStart/GCEnd events.
+    /// True while a sweep-issued background gen2 collection is likely still running.
     /// </summary>
     /// <remarks>
-    /// <see cref="GC.GetGCMemoryInfo(GCKind)"/> cannot provide this: its background record is published
-    /// at the final-mark pause while the concurrent sweep phase keeps running for tens of seconds.
-    /// The GCEnd event for the background collection's count fires only at true completion.
+    /// <see cref="GC.TryStartNoGCRegion(long)"/> blocks until an in-flight background collection
+    /// completes (~1s measured on replay-sized heaps), so <c>GCKeeper</c> skips the region while
+    /// this is set instead of stalling the engine API request that asked for it. The window is a
+    /// heap-size-scaled estimate because the runtime exposes no background-GC-completed signal
+    /// (EventSource is disabled in the published runner).
     /// </remarks>
-    private sealed class BackgroundGCTracker : EventListener
-    {
-        private const EventKeywords GCKeyword = (EventKeywords)0x1;
-        private const int GCStartEventId = 1;
-        private const int GCEndEventId = 2;
-        private const uint BackgroundGCType = 1;
-
-        private long _backgroundGCCount = -1;
-
-        protected override void OnEventSourceCreated(EventSource eventSource)
-        {
-            if (eventSource.Name == "Microsoft-Windows-DotNETRuntime")
-            {
-                EnableEvents(eventSource, EventLevel.Informational, GCKeyword);
-            }
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            // GCStart payload: Count, Depth, Reason, Type; GCEnd payload: Count, Depth
-            if (eventData.EventId == GCStartEventId)
-            {
-                if (eventData.Payload is { Count: >= 4 } payload
-                    && payload[3] is uint type && type == BackgroundGCType
-                    && payload[0] is uint count)
-                {
-                    _backgroundGCCount = count;
-                    Volatile.Write(ref _backgroundGCStartedAtMs, Environment.TickCount64);
-                }
-            }
-            else if (eventData.EventId == GCEndEventId)
-            {
-                if (eventData.Payload is { Count: >= 1 } payload
-                    && payload[0] is uint count && count == _backgroundGCCount)
-                {
-                    Volatile.Write(ref _backgroundGCStartedAtMs, -1);
-                }
-            }
-        }
-    }
+    public static bool IsNoGCRegionBlackoutActive => Environment.TickCount64 < Volatile.Read(ref _noGCRegionBlackoutUntilMs);
 
     /// <summary>
     /// Activates background garbage collection when the processing queue is idle.
@@ -295,18 +257,33 @@ public sealed class GCScheduler
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 
-        // An induced gen2 while a background collection is still in flight is escalated by the
-        // runtime to a full blocking collection (observed 1-2s stop-the-world on replay-sized
-        // heaps). Stay armed and retry on a later tick instead; the budget check above keeps firing.
-        if (IsBackgroundGCInFlight()) return;
+        // When any heap's gen2 unusable fragmentation exceeds half its size, the runtime escalates
+        // an induced non-blocking gen2 to a full blocking compacting collection (1-2s stop-the-world
+        // on replay-sized heaps; coreclr gc.cpp dt_high_frag_p). SustainedLowLatency suppresses
+        // exactly that escalation while still allowing the background collection.
+        GCLatencyMode entryMode = GCSettings.LatencyMode;
+        bool useLowLatency = entryMode == GCLatencyMode.Interactive;
+        if (useLowLatency) GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        bool fired;
+        try
+        {
+            fired = GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+        }
+        finally
+        {
+            // Restore only if nothing else (e.g. a no-GC region) changed the mode meanwhile.
+            if (useLowLatency && GCSettings.LatencyMode == GCLatencyMode.SustainedLowLatency)
+            {
+                GCSettings.LatencyMode = entryMode;
+            }
+        }
 
-        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
-    }
-
-    private static bool IsBackgroundGCInFlight()
-    {
-        long startedAt = Volatile.Read(ref _backgroundGCStartedAtMs);
-        return startedAt >= 0 && Environment.TickCount64 - startedAt <= BackgroundGCTimeoutMs;
+        if (fired)
+        {
+            long heapBytes = GC.GetGCMemoryInfo().HeapSizeBytes;
+            long blackoutMs = Math.Clamp(heapBytes / 1_000_000_000 * NoGCRegionBlackoutMsPerGB, MinNoGCRegionBlackoutMs, MaxNoGCRegionBlackoutMs);
+            Volatile.Write(ref _noGCRegionBlackoutUntilMs, Environment.TickCount64 + blackoutMs);
+        }
     }
 
     internal long SweepBaselineAllocatedBytes
@@ -315,9 +292,9 @@ public sealed class GCScheduler
         set => Volatile.Write(ref _sweepBaselineAllocatedBytes, value);
     }
 
-    internal static long BackgroundGCStartedAtMs
+    internal static long NoGCRegionBlackoutUntilMs
     {
-        get => Volatile.Read(ref _backgroundGCStartedAtMs);
-        set => Volatile.Write(ref _backgroundGCStartedAtMs, value);
+        get => Volatile.Read(ref _noGCRegionBlackoutUntilMs);
+        set => Volatile.Write(ref _noGCRegionBlackoutUntilMs, value);
     }
 }

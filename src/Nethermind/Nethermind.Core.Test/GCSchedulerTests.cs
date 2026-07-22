@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -14,12 +15,12 @@ public class GCSchedulerTests
     private readonly GCScheduler _scheduler = new(sustainedSweepEnabled: false);
 
     // Disarm the singleton's sweep so its timer cannot hold the shared static guard mid-test,
-    // and clear background-GC tracking state that the singleton's tracker may have recorded.
+    // and clear blackout state left by a previous test.
     [SetUp]
     public void SetUp()
     {
         GCScheduler.Instance.SweepBaselineAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
-        GCScheduler.BackgroundGCStartedAtMs = -1;
+        GCScheduler.NoGCRegionBlackoutUntilMs = 0;
     }
 
     [Test]
@@ -75,28 +76,46 @@ public class GCSchedulerTests
     }
 
     [Test]
-    public void Sweep_stays_armed_while_background_gc_is_in_flight_then_fires_after_completion()
+    public void Sweep_restores_latency_mode_and_starts_region_blackout()
     {
+        GCLatencyMode entryMode = GCSettings.LatencyMode;
         long armed = ArmBudget();
-        GCScheduler.BackgroundGCStartedAtMs = Environment.TickCount64;
 
         _scheduler.SweepIfAllocationBudgetExceeded();
-        Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.EqualTo(armed));
 
-        GCScheduler.BackgroundGCStartedAtMs = -1;
-
-        _scheduler.SweepIfAllocationBudgetExceeded();
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
+        Assert.That(GCSettings.LatencyMode, Is.EqualTo(entryMode));
+        Assert.That(GCScheduler.IsNoGCRegionBlackoutActive, Is.True);
     }
 
     [Test]
-    public void Sweep_in_flight_state_expires_after_timeout()
+    public void Region_blackout_expires()
     {
-        long armed = ArmBudget();
-        GCScheduler.BackgroundGCStartedAtMs = Environment.TickCount64 - 301_000;
+        GCScheduler.NoGCRegionBlackoutUntilMs = Environment.TickCount64 - 1;
+        Assert.That(GCScheduler.IsNoGCRegionBlackoutActive, Is.False);
 
-        _scheduler.SweepIfAllocationBudgetExceeded();
-        Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
+        GCScheduler.NoGCRegionBlackoutUntilMs = Environment.TickCount64 + 10_000;
+        Assert.That(GCScheduler.IsNoGCRegionBlackoutActive, Is.True);
+    }
+
+    [Test]
+    public void Skipped_sweep_does_not_start_region_blackout()
+    {
+        GCScheduler.NoGCRegionBlackoutUntilMs = 0;
+        long armed = ArmBudget();
+
+        Assert.That(GCScheduler.MarkGCPaused(), Is.True);
+        try
+        {
+            _scheduler.SweepIfAllocationBudgetExceeded();
+        }
+        finally
+        {
+            GCScheduler.MarkGCResumed();
+        }
+
+        Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.EqualTo(armed));
+        Assert.That(GCScheduler.IsNoGCRegionBlackoutActive, Is.False);
     }
 
     private long ArmBudget()
