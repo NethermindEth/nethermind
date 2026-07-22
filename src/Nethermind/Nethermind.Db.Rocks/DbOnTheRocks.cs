@@ -1433,7 +1433,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
+            // CreateMarkerIfCorrupt shuts down on genuine corruption; otherwise (e.g. a
+            // transient IO error) it returns and the flush is retried later, but log it so
+            // the failure isn't silent.
             CreateMarkerIfCorrupt(e);
+            if (_logger.IsWarn) _logger.Warn($"Failed to flush {Name} DB: {e.Message}");
         }
     }
 
@@ -1446,6 +1450,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         catch (RocksDbSharpException e)
         {
             CreateMarkerIfCorrupt(e);
+            if (_logger.IsWarn) _logger.Warn($"Failed to flush {Name} DB: {e.Message}");
         }
     }
 
