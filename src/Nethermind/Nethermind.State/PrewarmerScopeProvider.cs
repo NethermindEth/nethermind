@@ -87,14 +87,18 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTreeWrapper(
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
+        {
+            StorageTreeWrapper storageTree = new(
                 baseScope.CreateStorageTree(address),
-                preBlockCaches,
                 storageCache,
                 address,
                 isPrewarmer,
-                captureStorageMisses,
                 _metrics);
+            return captureStorageMisses
+                ? new CapturingStorageTreeWrapper(storageTree, preBlockCaches, storageCache, address)
+                : storageTree;
+        }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -215,21 +219,15 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        PreBlockCaches preBlockCaches,
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool isPrewarmer,
-        bool captureStorageMisses,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
-        private static readonly byte[] SpeculativeStorageValue = [1];
-
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
-        private readonly PreBlockCaches preBlockCaches = preBlockCaches;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
-        private readonly bool captureStorageMisses = captureStorageMisses;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
@@ -249,12 +247,6 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (captureStorageMisses && preBlockCaches.CaptureStorageMiss(in storageCell))
-                {
-                    // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
-                    return SpeculativeStorageValue;
-                }
-
                 value = LoadFromTreeStorage(in storageCell);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in storageCell, value);
@@ -274,6 +266,31 @@ public class PrewarmerScopeProvider(
 
             return baseStorageTree.Get(storageCell.Index);
         }
+    }
+
+    private sealed class CapturingStorageTreeWrapper(
+        IWorldStateScopeProvider.IStorageTree baseStorageTree,
+        PreBlockCaches preBlockCaches,
+        SeqlockCache<StorageCell, byte[]> preBlockCache,
+        Address address) : IWorldStateScopeProvider.IStorageTree
+    {
+        private static readonly byte[] SpeculativeStorageValue = [1];
+
+        public Hash256 RootHash => baseStorageTree.RootHash;
+
+        public byte[] Get(in UInt256 index)
+        {
+            StorageCell storageCell = new(address, in index);
+            if (!preBlockCache.TryGetValue(in storageCell, out _) && preBlockCaches.CaptureStorageMiss(in storageCell))
+            {
+                // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
+                return SpeculativeStorageValue;
+            }
+
+            return baseStorageTree.Get(in index);
+        }
+
+        public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
     }
 
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool isPrewarmer) : IWorldStateScopeProvider.IWorldStateWriteBatch
