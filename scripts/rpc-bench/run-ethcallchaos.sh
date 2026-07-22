@@ -28,7 +28,10 @@ ECC_REPO="${ECC_REPO:-https://github.com/kamilchodola/EthCallChaos.git}"
 # Pin to a specific commit so a push to the repo's default branch cannot silently
 # change benchmark results (or run unreviewed code on the runner). Override
 # ECC_REF (sha/tag/branch) or ECC_REPO to move it.
-ECC_REF="${ECC_REF:-6c31f78097545cc2ec3265ce187a2c777a75b1d7}"
+# NB: the repo's DEFAULT branch (main) is a LICENSE-only placeholder — the tool
+# lives on 'master'. This pin is master's HEAD (the configurable-thresholds
+# commit used by the validated 2026-06-10 run).
+ECC_REF="${ECC_REF:-a431c1758ad9763e9aa4eae4dd6de0d8bba60298}"
 ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"          # optional path on the runner to a pristine corpus DB
 ECC_CORPUS_URL="${ECC_CORPUS_URL:-https://github.com/kamilchodola/EthCallChaos/releases/download/corpus-v1/ethcallchaos.db}"
 ECC_RATE="${ECC_RATE:-50}"                  # -> Rpc__MaxCallsPerSecond

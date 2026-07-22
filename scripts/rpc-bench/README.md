@@ -212,7 +212,7 @@ from `reference_client` and overridable via `mode`:
   "ref": "",                                       // json-bench commit/tag; empty = pinned default
   "mode": "",                                      // benchmark | compare; empty = auto
   "benchmark_config": "",                          // workload: bare name | repo-relative path; empty = generated read mix
-  "compare_config": "config/compare/defaults.yaml",// repo-relative or absolute runner path
+  "compare_config": "config/compare/defaults.yaml",// repo-relative (absolute host paths are copied into the checkout — the loader rejects absolute paths)
   "rps": "", "duration": "", "vus": "",            // override the workload; empty = keep its values (generated default: 100/60s/10)
   "concurrency": 5, "timeout": 30,                 // compare mode
   "validate_schema": false,                        // compare: also validate against the OpenRPC schema

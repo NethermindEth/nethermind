@@ -655,6 +655,7 @@ jobs:
         if: always()
         env:
           CLIENT: ${{ needs.resolve.outputs.client }}
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
         shell: bash
         run: |
           set -euo pipefail
@@ -706,8 +707,11 @@ jobs:
           # grace period — a missing marker means docker SIGKILLed a hung node
           # (or shutdown crashed), so the run cannot be trusted end-to-end.
           # The marker is Nethermind-specific; geth/reth are not gated on it.
+          # Under dotTrace the marker cannot be required either: the CLI's
+          # Ctrl+C flow finalizes the .dtp and terminates the child without
+          # Nethermind's graceful-shutdown log line.
           clean_shutdown="true"
-          if [[ "${CLIENT}" == "nethermind" ]] && ! grep -q "Nethermind is shut down" "${clean}"; then
+          if [[ "${CLIENT}" == "nethermind" && "${DOTTRACE}" != "true" ]] && ! grep -q "Nethermind is shut down" "${clean}"; then
             clean_shutdown="false"
             echo "::warning::'Nethermind is shut down' marker not found in node log — the node did not shut down cleanly."
           fi

@@ -36,7 +36,8 @@ CLIENT_TYPE="${CLIENT_TYPE:-$LABEL}"
 REFERENCE_LABEL="${REFERENCE_LABEL:-${REFERENCE_CLIENT_TYPE:-reference}}"
 REFERENCE_CLIENT_TYPE="${REFERENCE_CLIENT_TYPE:-$REFERENCE_LABEL}"
 # json-bench addresses nodes by registry name — keep them distinct (NM-vs-NM).
-[[ -n "$REFERENCE_RPC_URL" && "$REFERENCE_LABEL" == "$LABEL" ]] && REFERENCE_LABEL="${REFERENCE_LABEL}-ref"
+# Underscore, not dash: the registry validator rejects dashes in client names.
+[[ -n "$REFERENCE_RPC_URL" && "$REFERENCE_LABEL" == "$LABEL" ]] && REFERENCE_LABEL="${REFERENCE_LABEL}_ref"
 
 JB_REPO="${JB_REPO:-https://github.com/NethermindEth/json-bench.git}"
 # Pin to a specific commit so a push to the repo's default branch cannot
@@ -131,17 +132,21 @@ clients_yaml="$work/io/clients.yaml"
 log "Client registry:"
 sed 's/^/  /' "$clients_yaml"
 
-# Resolve a config path into an in-container path. Absolute host paths are
-# copied into the io mount; repo-relative paths resolve against the checkout.
+# Resolve a compare-config path. The compare loader runs it through
+# SafeReadPath, which rejects absolute paths and '..' — so the value passed to
+# --config must stay RELATIVE to the container's /jb working directory (the
+# checkout). Repo-relative paths pass through unchanged; an absolute host path
+# is copied into the checkout host-side (the /jb mount is ro only in the
+# container) and passed by its relative name.
 resolve_config() {
   local cfg="$1"
   if [[ "$cfg" == /* ]]; then
     [[ -f "$cfg" ]] || die "config '$cfg' not found"
-    cp "$cfg" "$work/io/$(basename "$cfg")"
-    echo "/io/$(basename "$cfg")"
+    cp "$cfg" "$work/src/rpc-bench-custom.yaml"
+    echo "rpc-bench-custom.yaml"
   else
     [[ -f "$work/src/$cfg" ]] || die "config '$cfg' not found in the json-bench checkout"
-    echo "/jb/$cfg"
+    echo "$cfg"
   fi
 }
 
