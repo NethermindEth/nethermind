@@ -6,7 +6,6 @@ using System.Threading;
 using Nethermind.Pbt;
 using NUnit.Framework;
 using Executor = Nethermind.Pbt.WorkStealingExecutor<
-    Nethermind.State.Pbt.Test.WorkStealingExecutorTests.Shared,
     Nethermind.State.Pbt.Test.WorkStealingExecutorTests.LaneState,
     Nethermind.State.Pbt.Test.WorkStealingExecutorTests.Job>;
 
@@ -20,16 +19,16 @@ public class WorkStealingExecutorTests
 {
     private const int Lanes = 8;
 
-    /// <summary>What every lane shares: a tally per job, so a job run twice or never is visible.</summary>
-    internal sealed class Shared(int jobCount)
-    {
-        public int[] Runs { get; } = new int[jobCount];
-    }
-
-    /// <summary>One lane's own state, which is the lane itself plus what only that thread writes.</summary>
-    internal sealed class LaneState(Executor.Lane lane)
+    /// <summary>
+    /// One lane's own state: the lane itself, the tally every lane shares — so a job run twice or never
+    /// is visible — and a count only this thread writes.
+    /// </summary>
+    internal sealed class LaneState(Executor.Lane lane, int[] runs)
     {
         public Executor.Lane Lane => lane;
+
+        /// <summary>Shared with every other lane: what the lanes have in common, they hold in common.</summary>
+        public int[] Runs => runs;
 
         public int Ran { get; set; }
     }
@@ -49,9 +48,9 @@ public class WorkStealingExecutorTests
         public bool Throw { get; init; }
     }
 
-    private static void Run(Shared shared, LaneState lane, ref Job job)
+    private static void Run(LaneState lane, ref Job job)
     {
-        Interlocked.Increment(ref shared.Runs[job.Index]);
+        Interlocked.Increment(ref lane.Runs[job.Index]);
         lane.Ran++;
 
         if (job.Throw) throw new InvalidOperationException($"job {job.Index}");
@@ -65,7 +64,7 @@ public class WorkStealingExecutorTests
             {
                 Job childJob = new() { Index = job.Index + child, Input = job.Input + child };
                 Executor.Node? node = lane.Lane.TrySpawn(in childJob, spawned);
-                if (node is null) RunHere(shared, lane, in childJob, ref fromChildren);
+                if (node is null) RunHere(lane, in childJob, ref fromChildren);
                 else spawned = node;
             }
 
@@ -83,15 +82,15 @@ public class WorkStealingExecutorTests
     }
 
     /// <summary>Folds a job the queue refused, as a caller must be free to do.</summary>
-    private static void RunHere(Shared shared, LaneState lane, in Job job, ref long total)
+    private static void RunHere(LaneState lane, in Job job, ref long total)
     {
         Job copy = job;
-        Run(shared, lane, ref copy);
+        Run(lane, ref copy);
         total += copy.Output;
     }
 
-    private static Executor Create(Shared shared, int lanes) =>
-        new(lanes, shared, static (_, lane) => new LaneState(lane), Run);
+    private static Executor Create(int[] runs, int lanes) =>
+        new(lanes, lane => new LaneState(lane, runs), Run);
 
     [TestCase(1)]
     [TestCase(2)]
@@ -103,8 +102,8 @@ public class WorkStealingExecutorTests
 
         for (int round = 0; round < rounds; round++)
         {
-            Shared shared = new(jobs);
-            Executor executor = Create(shared, lanes);
+            int[] runs = new int[jobs];
+            Executor executor = Create(runs, lanes);
             Executor.Lane main = executor.MainLane;
             executor.Start();
             try
@@ -123,7 +122,7 @@ public class WorkStealingExecutorTests
                 {
                     Job job = new() { Index = index, Input = index };
                     Executor.Node? node = main.TrySpawn(in job, spawned);
-                    if (node is null) RunHere(shared, executor.Workers[0], in job, ref folded);
+                    if (node is null) RunHere(executor.Workers[0], in job, ref folded);
                     else spawned = node;
                 }
 
@@ -142,7 +141,7 @@ public class WorkStealingExecutorTests
 
             for (int index = 0; index < jobs; index++)
             {
-                Assert.That(shared.Runs[index], Is.EqualTo(1), $"job {index} ran {shared.Runs[index]} times");
+                Assert.That(runs[index], Is.EqualTo(1), $"job {index} ran {runs[index]} times");
             }
         }
     }
@@ -153,8 +152,8 @@ public class WorkStealingExecutorTests
     {
         const int jobs = 4096;
 
-        Shared shared = new(jobs);
-        Executor executor = Create(shared, Lanes);
+        int[] runs = new int[jobs];
+        Executor executor = Create(runs, Lanes);
         Executor.Lane main = executor.MainLane;
 
         // deliberately not started: with no thief draining it, the queue fills and stays full
@@ -180,7 +179,7 @@ public class WorkStealingExecutorTests
         }
 
         int ran = 0;
-        for (int index = 0; index < jobs; index++) ran += shared.Runs[index];
+        for (int index = 0; index < jobs; index++) ran += runs[index];
         Assert.That(ran, Is.EqualTo(jobs - refused), "every job the queue took must have run, and only those");
     }
 
@@ -190,8 +189,8 @@ public class WorkStealingExecutorTests
     {
         const int jobs = 64;
 
-        Shared shared = new(jobs);
-        Executor executor = Create(shared, Lanes);
+        int[] runs = new int[jobs];
+        Executor executor = Create(runs, Lanes);
         Executor.Lane main = executor.MainLane;
         executor.Start();
         try
@@ -226,8 +225,8 @@ public class WorkStealingExecutorTests
         const int parents = 32;
         const int stride = children + 1;
 
-        Shared shared = new(parents * stride);
-        Executor executor = Create(shared, Lanes);
+        int[] runs = new int[parents * stride];
+        Executor executor = Create(runs, Lanes);
         Executor.Lane main = executor.MainLane;
         executor.Start();
         try
@@ -257,6 +256,6 @@ public class WorkStealingExecutorTests
             executor.Complete();
         }
 
-        foreach (int runs in shared.Runs) Assert.That(runs, Is.LessThanOrEqualTo(1), "a job ran twice");
+        foreach (int ran in runs) Assert.That(ran, Is.LessThanOrEqualTo(1), "a job ran twice");
     }
 }
