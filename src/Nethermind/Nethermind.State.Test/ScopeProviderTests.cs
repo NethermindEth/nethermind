@@ -515,16 +515,18 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         StorageCell cell = new(TestItem.AddressA, 1);
 
-        using IWorldStateScopeProvider.IScope readScope = populator.BeginScope(baseBlock);
-        IWorldStateScopeProvider.IStorageTree storageTree = readScope.CreateStorageTree(TestItem.AddressA);
         using (PreBlockCaches.StorageReadCapture capture = caches.BeginStorageReadCapture(skipBackingReads: true))
         {
-            Assert.That(storageTree.Get(1), Is.EqualTo(new byte[] { 1 }));
+            using IWorldStateScopeProvider.IScope readScope = populator.BeginScope(baseBlock);
+            IWorldStateScopeProvider.IStorageTree capturedStorageTree = readScope.CreateStorageTree(TestItem.AddressA);
+            Assert.That(capturedStorageTree.Get(1), Is.EqualTo(new byte[] { 1 }));
             Assert.That(capture.Cells, Does.Contain(cell));
         }
 
         Assert.That(caches.StorageCache.TryGetValue(in cell, out _), Is.False);
-        Assert.That(storageTree.Get(1), Is.EqualTo(new byte[] { 10, 20 }));
+        using IWorldStateScopeProvider.IScope uncapturedReadScope = populator.BeginScope(baseBlock);
+        IWorldStateScopeProvider.IStorageTree uncapturedStorageTree = uncapturedReadScope.CreateStorageTree(TestItem.AddressA);
+        Assert.That(uncapturedStorageTree.Get(1), Is.EqualTo(new byte[] { 10, 20 }));
         Assert.That(caches.StorageCache.TryGetValue(in cell, out byte[] cached), Is.True);
         Assert.That(cached, Is.EqualTo(new byte[] { 10, 20 }));
     }

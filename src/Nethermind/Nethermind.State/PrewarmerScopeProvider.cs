@@ -55,10 +55,11 @@ public class PrewarmerScopeProvider(
     {
         IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
         if (!isPrewarmer) preBlockCaches.MainScope = scope;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, metrics);
+        bool captureStorageMisses = isPrewarmer && preBlockCaches.IsStorageReadCaptureActive;
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, captureStorageMisses, metrics);
     }
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, bool captureStorageMisses, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
@@ -92,6 +93,7 @@ public class PrewarmerScopeProvider(
                 storageCache,
                 address,
                 isPrewarmer,
+                captureStorageMisses,
                 _metrics);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -217,6 +219,7 @@ public class PrewarmerScopeProvider(
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool isPrewarmer,
+        bool captureStorageMisses,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
         private static readonly byte[] SpeculativeStorageValue = [1];
@@ -226,6 +229,7 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
+        private readonly bool captureStorageMisses = captureStorageMisses;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Db.Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Db.Metrics.DetailedMetricsEnabled;
@@ -245,7 +249,7 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                if (isPrewarmer && preBlockCaches.CaptureStorageMiss(in storageCell))
+                if (captureStorageMisses && preBlockCaches.CaptureStorageMiss(in storageCell))
                 {
                     // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
                     return SpeculativeStorageValue;

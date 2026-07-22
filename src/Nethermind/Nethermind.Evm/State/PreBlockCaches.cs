@@ -96,6 +96,19 @@ public class PreBlockCaches
         return capture.SkipBackingReads;
     }
 
+    /// <summary>Whether this thread currently has a storage-read capture for this cache.</summary>
+    public bool IsStorageReadCaptureActive
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            if (Volatile.Read(ref _activeStorageReadCaptures) == 0) return false;
+
+            StorageReadCapture? capture = _currentStorageReadCapture;
+            return capture is not null && ReferenceEquals(capture.Owner, this);
+        }
+    }
+
     public CacheType ClearCaches()
     {
         CacheType isDirty = CacheType.None;

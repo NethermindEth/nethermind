@@ -249,11 +249,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IReadOnlyTxProcessorSource env = _envPool.Get();
                     try
                     {
+                        using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(skipBackingReads: true);
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
                         BlockExecutionContext context = new(block.Header, spec);
                         scope.TransactionProcessor.SetBlockExecutionContext(context);
 
-                        using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(skipBackingReads: true);
                         try
                         {
                             IWorldState worldState = scope.WorldState;
