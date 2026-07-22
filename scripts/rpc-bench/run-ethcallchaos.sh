@@ -134,8 +134,14 @@ log "API up after ${elapsed}s. Generating load for ${ECC_DURATION}s..."
 sleep "$ECC_DURATION"
 
 log "Scraping results..."
-curl -sf "$api/api/stats" -o "$OUT_DIR/stats.json" || log "::warning::failed to scrape /api/stats"
-curl -sf "$api/api/leaderboard?top=${ECC_LEADERBOARD_TOP}&sortBy=mean_ms" -o "$OUT_DIR/leaderboard.json" || log "::warning::failed to scrape /api/leaderboard"
+# Scrape failures are only warned about here so the container logs and summary
+# are still collected — they fail the script at the end (a run without usable
+# stats must not publish as success).
+scrape_failed=0
+curl -sf "$api/api/stats" -o "$OUT_DIR/stats.json" \
+  || { log "::warning::failed to scrape /api/stats"; scrape_failed=1; }
+curl -sf "$api/api/leaderboard?top=${ECC_LEADERBOARD_TOP}&sortBy=mean_ms" -o "$OUT_DIR/leaderboard.json" \
+  || { log "::warning::failed to scrape /api/leaderboard"; scrape_failed=1; }
 
 docker logs "$CONTAINER_NAME" > "$OUT_DIR/ethcallchaos.log" 2>&1 || true
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -168,3 +174,14 @@ summary="$OUT_DIR/ethcallchaos-summary.md"
 } > "$summary"
 
 log "EthCallChaos summary written to $summary"
+
+# Enforce usable results only after the logs and summary are collected: the
+# quality gate must not pass on a run whose stats never materialized (e.g. the
+# container died mid-load or the API stopped responding).
+if [[ "$scrape_failed" == "1" ]]; then
+  die "EthCallChaos results could not be scraped — failing the benchmark step (container log is in the artifact)"
+fi
+jq -e . "$OUT_DIR/stats.json" >/dev/null 2>&1 \
+  || die "EthCallChaos /api/stats response is empty or not valid JSON — failing the benchmark step"
+jq -e . "$OUT_DIR/leaderboard.json" >/dev/null 2>&1 \
+  || die "EthCallChaos /api/leaderboard response is empty or not valid JSON — failing the benchmark step"
