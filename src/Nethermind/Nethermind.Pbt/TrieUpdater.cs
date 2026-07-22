@@ -75,7 +75,7 @@ public static partial class TrieUpdater
     /// <param name="concurrency">
     /// How many threads may fold the batch: <c>0</c> for the processor count, <c>1</c> to fold on the
     /// calling thread alone. A batch too small to be worth splitting folds on the calling thread
-    /// whatever this says — see <see cref="Updater"/>.
+    /// whatever this says — see <see cref="Fold"/>.
     /// </param>
     public static ValueHash256 UpdateRoot(
         IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider,
@@ -87,21 +87,33 @@ public static partial class TrieUpdater
             return currentRoot;
         }
 
-        return new Updater(store, memoryProvider, writeFormat, changes, concurrency).Run(currentRoot, changes, out delta);
+        return Fold(store, currentRoot, changes, memoryProvider, writeFormat, concurrency, out delta);
     }
 
     /// <summary>
-    /// The walk down the tree as one thread runs it: the frames themselves, the store writes they
-    /// buffer, and the lane they hand the buckets worth splitting out through.
+    /// The walk down the tree, as one thread runs it: the frames, the store writes they buffer, and the
+    /// lane they hand the buckets worth splitting out through.
     /// </summary>
     /// <remarks>
-    /// A descent's state is its thread's, which is what lets the frames be this type's instance methods
-    /// with nothing threaded through them; what every thread shares — the store, the batch, the spawn
-    /// threshold — sits on the <see cref="Updater"/> behind them. One of these exists per lane, so it is
-    /// what the executor keeps as its per-thread state; the threads themselves are the executor's
-    /// business, not this type's.
+    /// One of these per thread, which is what lets every frame be an instance method with nothing
+    /// threaded through it. What the threads have in common — the store, the batch, the threshold — each
+    /// of them simply holds, there being nothing mutable among it; the threads themselves are the
+    /// executor's business, not this type's.
     /// </remarks>
-    private sealed partial class Descent(Updater updater, WorkStealingExecutor<Updater, Descent, Descent.BucketJob>.Lane lane)
+    /// <param name="entries">The batch's entries, which the frames permute in place — each job over its own range of them.</param>
+    /// <param name="buckets"><inheritdoc cref="PbtWriteBatch.Buckets" path="/summary"/></param>
+    /// <param name="minSpawnEntries">The smallest bucket worth handing to another thread; <see cref="int.MaxValue"/> on a fold that stays on the calling thread.</param>
+    /// <param name="writeBufferCapacity">What this thread's buffered writes start out sized for.</param>
+    /// <param name="lane">Where this thread hands its buckets out, and takes other threads' back.</param>
+    private sealed partial class Updater(
+        IPbtStore store,
+        IRefCountingMemoryProvider memoryProvider,
+        PbtGroupFormat writeFormat,
+        PbtWriteBatch.StemEntry[] entries,
+        int[]? buckets,
+        int minSpawnEntries,
+        int writeBufferCapacity,
+        WorkStealingExecutor<Updater, Updater.BucketJob>.Lane lane)
     {
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
@@ -139,8 +151,8 @@ public static partial class TrieUpdater
 
         public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
-            using RefCountingMemory? rootData = updater.Store.GetTrieNode(TrieNodeKey.Root);
-            BufferWriter writer = new(updater.MemoryProvider);
+            using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
+            BufferWriter writer = new(memoryProvider);
             ApplyGroup(
                 TrieNodeKey.Root, changes.Entries, StoredBlob.Of(rootData), currentRoot,
                 new BucketPlan(changes.Buckets, branchDepth: 0), ref writer, out NodeResult root, out bool changed, out delta);
@@ -432,7 +444,7 @@ public static partial class TrieUpdater
                 // there rather than here, and the entries' own branch depth with it, which still stands
                 // where the pushed stem is what cut the run short. A run is about to be minted above that
                 // group, so it is one no blob of this frame's can hold: it owns its own.
-                BufferWriter branchWriter = new(updater.MemoryProvider);
+                BufferWriter branchWriter = new(memoryProvider);
                 ApplyPushedStem(
                     branchKey, entries, pushed, new BucketPlan(default, entriesBranch), ref branchWriter,
                     out NodeResult inner, out _, out delta);
@@ -625,7 +637,7 @@ public static partial class TrieUpdater
         /// The one frame that hands work to another thread, its children being the only ones that fold
         /// into a buffer of their own: a clustered frame's go straight into the blob it is assembling, in
         /// an order only it can keep. A bucket big enough to be worth the hand-off
-        /// (<see cref="Updater.MinSpawnEntries"/>) is queued for whichever thread reaches it first;
+        /// (<see cref="Fold"/>'s spawn threshold) is queued for whichever thread reaches it first;
         /// everything else is folded here and now.
         /// </remarks>
         private GroupShape ResolveKeyedChildren<TOccupants>(
@@ -640,7 +652,7 @@ public static partial class TrieUpdater
 
             // The jobs this frame spawned, newest first, and where its own queue stood before the first of
             // them: what the join hands back the work it can still do itself.
-            WorkStealingExecutor<Updater, Descent, BucketJob>.Node? spawned = null;
+            WorkStealingExecutor<Updater, BucketJob>.Node? spawned = null;
             long queueMark = _lane.QueueMark;
             bool maySpawn = MaySpawn(touchedBitmask);
 
@@ -652,7 +664,7 @@ public static partial class TrieUpdater
                 TrieNodeKey childKey = key.ChildGroup(slot);
                 BucketPlan childPlan = plan.ForChild(slot, branchDepth);
 
-                if (maySpawn && bucket.Length >= updater.MinSpawnEntries
+                if (maySpawn && bucket.Length >= minSpawnEntries
                     && TrySpawn(slot, childKey, bucket, occupant, childPlan, spawned) is { } job)
                 {
                     spawned = job;
@@ -665,7 +677,12 @@ public static partial class TrieUpdater
                 scan.Add(slot, result, childChanged, childDelta);
             }
 
-            if (spawned is not null) Join(spawned, queueMark, results, ref scan, ref storedChildBitmask);
+            if (spawned is not null)
+            {
+                // the lane sees the jobs through, then the frame makes what it will of them
+                _lane.Join(spawned, queueMark);
+                Settle(spawned, results, ref scan, ref storedChildBitmask);
+            }
 
             return scan.ToShape(touchedBitmask, storedChildBitmask);
         }
@@ -685,13 +702,13 @@ public static partial class TrieUpdater
             in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in Occupant occupant, scoped BucketPlan childPlan,
             out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild)
         {
-            BufferWriter owned = new(updater.MemoryProvider);
+            BufferWriter owned = new(memoryProvider);
             storedChild = false;
             if (occupant.Kind == NodeKind.Internal)
             {
                 // a stored child group descends with its own content; the boundary internal caches its
                 // old root hash, which the child no longer stores itself
-                using RefCountingMemory? childData = updater.Store.GetTrieNode(childKey);
+                using RefCountingMemory? childData = store.GetTrieNode(childKey);
                 storedChild = childData is not null;
                 ApplyClustered(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, ref owned, out result, out changed, out delta);
                 if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
@@ -898,7 +915,7 @@ public static partial class TrieUpdater
             bool holdsChildren = headsCluster && boundary.ChildSlots != 0;
             if (holdsChildren) cluster.WriteOffsets(ref writer);
 
-            GroupRebuild rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, updater.WriteFormat);
+            GroupRebuild rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, writeFormat);
             (Stem? rootStem, ValueHash256 rootHash) = rebuild.Rebuild(ref writer, afterStats);
             NodeResult rootNode = rootStem is { } stem ? NodeResult.StemNode(stem, rootHash) : NodeResult.Internal(rootHash);
 
@@ -938,7 +955,7 @@ public static partial class TrieUpdater
         {
             Debug.Assert(!childBlob.IsEmpty, "a boundary internal roots a blob, which a clustering frame holds itself");
 
-            RefCountingMemory memory = updater.MemoryProvider.Rent(childBlob.Length);
+            RefCountingMemory memory = memoryProvider.Rent(childBlob.Length);
             childBlob.CopyTo(memory.GetSpan());
             return NodeResult.Internal(node.Hash, memory);
         }
@@ -965,7 +982,7 @@ public static partial class TrieUpdater
 
         // Internal rather than private, this and the two structs below, only so that BucketJob — which
         // Updater has to name, and so cannot be private — may carry them. Naming any of them still means
-        // naming Descent, which is private, so nothing outside this class sees them either way.
+        // naming Updater, which is private, so nothing outside this class sees them either way.
         internal readonly record struct NodeRef(NodeKind Kind, int Offset);
 
         /// <summary>
@@ -1121,8 +1138,8 @@ public static partial class TrieUpdater
             public void Dispose() => ((IDisposable?)_blob)?.Dispose();
         }
 
-        /// <summary>The leaf blob layout that goes with <see cref="Updater.WriteFormat"/>; one setting picks how far both skip.</summary>
-        private PbtLeafFormat LeafFormat => updater.WriteFormat switch
+        /// <summary>The leaf blob layout that goes with the group format; one setting picks how far both skip.</summary>
+        private PbtLeafFormat LeafFormat => writeFormat switch
         {
             PbtGroupFormat.Interleaved => PbtLeafFormat.Interleaved,
             PbtGroupFormat.BoundaryOnly => PbtLeafFormat.LeavesOnly,
@@ -1136,8 +1153,8 @@ public static partial class TrieUpdater
         /// </param>
         private bool ComputeBlob(in Stem stem, IPbtStemChanges changes, bool knownAbsent, out ValueHash256 subtreeRoot)
         {
-            using RefCountingMemory? prior = knownAbsent ? null : updater.Store.GetLeafBlob(stem);
-            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, updater.MemoryProvider, LeafFormat);
+            using RefCountingMemory? prior = knownAbsent ? null : store.GetLeafBlob(stem);
+            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, memoryProvider, LeafFormat);
             subtreeRoot = newBlob.SubtreeRoot;
             bool isEmpty = newBlob.IsEmpty;
             SetLeafBlob(stem, newBlob.Take());

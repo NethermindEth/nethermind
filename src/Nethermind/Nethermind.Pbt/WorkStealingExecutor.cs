@@ -23,22 +23,20 @@ namespace Nethermind.Pbt;
 /// array outright: a pooled one would still be scanned after the run that rented it had ended.
 /// </para>
 /// <para>
-/// State comes in two kinds and the split is the point: <typeparamref name="TState"/> is the one
-/// instance every thread shares, <typeparamref name="TWorkerState"/> is a thread's own, built once
-/// per lane and handed back to every job that lane runs.
+/// <typeparamref name="TWorkerState"/> is a thread's own, built once per lane and handed back to
+/// every job that lane runs; anything the lanes share, they share through it.
 /// </para>
 /// </remarks>
 /// <typeparam name="TJob">
 /// One job's inputs and outputs, held by value in the node carrying it: the spawning lane fills the
 /// inputs, the running thread writes the outputs back through <see cref="Node.Job"/>.
 /// </typeparam>
-internal sealed class WorkStealingExecutor<TState, TWorkerState, TJob>
-    where TState : class
+internal sealed class WorkStealingExecutor<TWorkerState, TJob>
     where TWorkerState : class
     where TJob : struct
 {
     /// <summary>Runs one job, reading and writing it in place.</summary>
-    public delegate void JobRunner(TState state, TWorkerState worker, ref TJob job);
+    public delegate void JobRunner(TWorkerState worker, ref TJob job);
 
     /// <summary>Jobs one lane's queue holds before <see cref="Lane.TrySpawn"/> starts refusing them.</summary>
     /// <remarks>
@@ -50,28 +48,23 @@ internal sealed class WorkStealingExecutor<TState, TWorkerState, TJob>
     /// <summary>How many jobs a thread may take on while waiting, one nested inside the next.</summary>
     private const int MaxHelpDepth = 8;
 
-    private readonly TState _state;
     private readonly JobRunner _runner;
     private readonly Lane[] _lanes;
     private bool _done;
 
     /// <param name="workerCount">Threads to run across, the caller's own included; 1 leaves every job to the caller.</param>
-    /// <param name="state">The state every lane shares.</param>
     /// <param name="createWorker">Builds one lane's own state; called once per lane, on this thread.</param>
     /// <param name="runner">Runs one job. Whatever it throws is caught and left on the job's node.</param>
-    public WorkStealingExecutor(
-        int workerCount, TState state, Func<TState, Lane, TWorkerState> createWorker, JobRunner runner)
+    public WorkStealingExecutor(int workerCount, Func<Lane, TWorkerState> createWorker, JobRunner runner)
     {
-        _state = state;
         _runner = runner;
         _lanes = new Lane[workerCount];
         Workers = new TWorkerState[workerCount];
 
-        // The lanes come first: a lane's state is built from the lane, and reads its way back to the
-        // state through this executor rather than being handed it, so neither has to be patched in
-        // after the other.
+        // The lanes come first: a lane's state is built from the lane, and a lane reads its own state
+        // back off this executor rather than holding it, so neither has to be patched in after the other.
         for (int index = 0; index < workerCount; index++) _lanes[index] = new Lane(this, index, workerCount > 1 ? QueueCapacity : 0);
-        for (int index = 0; index < workerCount; index++) Workers[index] = createWorker(state, _lanes[index]);
+        for (int index = 0; index < workerCount; index++) Workers[index] = createWorker(_lanes[index]);
     }
 
     /// <summary>Whether there is any thread but the caller's, which is what makes a spawn worth anything.</summary>
@@ -101,7 +94,7 @@ internal sealed class WorkStealingExecutor<TState, TWorkerState, TJob>
     {
         try
         {
-            _runner(_state, worker, ref node.Job);
+            _runner(worker, ref node.Job);
             node.Complete(error: null);
         }
         catch (Exception exception)
@@ -115,7 +108,7 @@ internal sealed class WorkStealingExecutor<TState, TWorkerState, TJob>
     /// Everything but <see cref="WorkStealingDeque{T}.TrySteal"/> is the owning thread's alone. A lane
     /// is also its own thread-pool work item, which is what <see cref="Start"/> queues.
     /// </remarks>
-    internal sealed class Lane(WorkStealingExecutor<TState, TWorkerState, TJob> executor, int index, int queueCapacity)
+    internal sealed class Lane(WorkStealingExecutor<TWorkerState, TJob> executor, int index, int queueCapacity)
         : IThreadPoolWorkItem
     {
         private readonly WorkStealingDeque<Node>? _queue = queueCapacity == 0 ? null : new WorkStealingDeque<Node>(queueCapacity);
