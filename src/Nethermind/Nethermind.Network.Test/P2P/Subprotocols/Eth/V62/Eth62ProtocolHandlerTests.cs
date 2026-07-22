@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -774,8 +775,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 byte[] s = new byte[32];
                 s.AsSpan().Fill(0x22);
-                s[30] = (byte)(i >> 8);
-                s[31] = (byte)i;
+                BinaryPrimitives.WriteInt32BigEndian(s.AsSpan(28), i);
                 txs[i] = Build.A.Transaction
                     .WithData(new byte[dataSize])
                     .WithSignature(new Signature(r, s, TestBlockchainIds.ChainId * 2 + 35))
