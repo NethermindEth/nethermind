@@ -49,7 +49,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
-    private StorageDiscoveryGate? _storageDiscoveryGate;
 
     // A session is always joined (under _speculativeLock) before the reactive path touches the shared caches.
     private readonly Lock _speculativeLock = new();
@@ -128,25 +127,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested)
-        {
-            Volatile.Write(ref _storageDiscoveryGate, null);
-            return Task.CompletedTask;
-        }
+        if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
-        StorageDiscoveryPlan? discoveryPlan = CreateStorageDiscoveryPlan(suggestedBlock, speculativelyWarmed);
-        StorageDiscoveryGate? discoveryGate = discoveryPlan is null ? null : new(discoveryPlan.FirstTxIndex);
-        Volatile.Write(ref _storageDiscoveryGate, discoveryGate);
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, systemAccessLists);
         // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
         return Task.Run(() =>
         {
             try
             {
-                if (discoveryPlan is not null)
-                {
-                    DiscoverAndWarmStorage(suggestedBlock, parent, spec, discoveryPlan.Candidates, cancellationToken);
-                }
+                DiscoverAndWarmStorage(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -154,8 +143,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             finally
             {
-                discoveryGate?.Complete();
-                Interlocked.CompareExchange(ref _storageDiscoveryGate, null, discoveryGate);
                 // Prioritize the discovered batch, then let account and ordinary transaction warming run concurrently.
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
             }
@@ -163,8 +150,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         });
     }
 
-    private StorageDiscoveryPlan? CreateStorageDiscoveryPlan(Block block, ISet<Hash256>? speculativelyWarmed)
+    private void DiscoverAndWarmStorage(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken)
     {
+        IWorldStateScopeProvider.IScope? mainScope = _preBlockCaches.MainScope;
+        if (mainScope is null || cancellationToken.IsCancellationRequested) return;
+
         Dictionary<AddressAsKey, int> destinationCounts = [];
         foreach (Transaction tx in block.Transactions)
         {
@@ -174,10 +164,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         List<Transaction> candidates = new(Math.Min(MaxDiscoveryCandidates, destinationCounts.Count));
-        int firstTxIndex = -1;
-        for (int txIndex = 0; txIndex < block.Transactions.Length; txIndex++)
+        foreach (Transaction tx in block.Transactions)
         {
-            Transaction tx = block.Transactions[txIndex];
             if (candidates.Count == MaxDiscoveryCandidates) break;
             if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
             if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
@@ -186,18 +174,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             bool repeatedDestination = destinationCounts[destination] > 1;
             if (knownStorageHeavy || repeatedDestination)
             {
-                if (firstTxIndex < 0) firstTxIndex = txIndex;
                 candidates.Add(tx);
             }
         }
 
-        return candidates.Count == 0 ? null : new StorageDiscoveryPlan(candidates, firstTxIndex);
-    }
-
-    private void DiscoverAndWarmStorage(Block block, BlockHeader parent, IReleaseSpec spec, List<Transaction> candidates, CancellationToken cancellationToken)
-    {
-        IWorldStateScopeProvider.IScope? mainScope = _preBlockCaches.MainScope;
-        if (mainScope is null || cancellationToken.IsCancellationRequested) return;
+        if (candidates.Count == 0) return;
 
         HashSet<StorageCell> allDiscoveredCells = [];
         ConcurrentDictionary<AddressAsKey, int> discoveredByDestination = new();
@@ -497,17 +478,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution()
-    {
-        int txIndex = Volatile.Read(ref _mainThreadTxIndex) + 1;
-        Volatile.Write(ref _mainThreadTxIndex, txIndex);
-
-        StorageDiscoveryGate? discoveryGate = Volatile.Read(ref _storageDiscoveryGate);
-        if (discoveryGate is not null && txIndex >= discoveryGate.FirstTxIndex)
-        {
-            discoveryGate.Wait();
-        }
-    }
+    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
 
     public CacheType ClearCaches()
     {
@@ -1026,18 +997,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
-
-    private sealed record StorageDiscoveryPlan(List<Transaction> Candidates, int FirstTxIndex);
-
-    private sealed class StorageDiscoveryGate(int firstTxIndex)
-    {
-        private readonly TaskCompletionSource<bool> _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public int FirstTxIndex { get; } = firstTxIndex;
-
-        public void Complete() => _completed.TrySetResult(true);
-        public void Wait() => _completed.Task.GetAwaiter().GetResult();
-    }
 
     /// <summary>
     /// Per-worker state for the transaction-warming loop: one env rented for the worker's
