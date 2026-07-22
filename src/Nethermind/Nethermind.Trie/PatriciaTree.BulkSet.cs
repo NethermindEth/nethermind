@@ -247,7 +247,7 @@ public partial class PatriciaTree
                         ref childPath,
                         child,
                         flipCount,
-                        flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
+                        flags | Flags.DoNotParallelize); // Only parallelize at top level.
 
                     jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
 
