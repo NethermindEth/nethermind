@@ -42,8 +42,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly ConcurrentDictionary<AddressAsKey, byte> _storageHeavyDestinations = new();
 
     private const int StorageHeavyMissThreshold = 128;
-    private const int LargeCalldataThreshold = 1024;
-    private const ulong VeryHighGasDiscoveryThreshold = 10_000_000;
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
     private const int MaxDiscoveredCells = 8192;
@@ -162,7 +160,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             bool knownStorageHeavy = _storageHeavyDestinations.ContainsKey(destination);
             bool repeatedDestination = destinationCounts[destination] > 1;
-            if (knownStorageHeavy || repeatedDestination || tx.DataLength >= LargeCalldataThreshold || tx.GasLimit >= VeryHighGasDiscoveryThreshold)
+            if (knownStorageHeavy || repeatedDestination)
             {
                 candidates.Add(tx);
             }
