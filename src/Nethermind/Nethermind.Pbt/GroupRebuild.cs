@@ -44,13 +44,8 @@ internal readonly record struct FoldedNode(NodeKind Kind, int Offset)
 
 /// <summary>
 /// Rebuilds a group's nodes from its sixteen boundary values directly into the group's final
-/// encoding, taking the room for it off <paramref name="writer"/> as it is built.
+/// encoding, on the writer each of its calls is handed.
 /// </summary>
-/// <param name="writer">
-/// Where the encoding goes. Room for the whole of it is reserved up front, off what the boundary
-/// alone bounds it by, so that the fold appends into a span nothing can move under it;
-/// <see cref="Finish"/> gives the caller what to commit of that room.
-/// </param>
 /// <remarks>
 /// Mirrors <see cref="StemLeafBlob.RebuildState"/>: a single post-order walk appends each node
 /// to the blob as it is folded, with no intermediate set of nodes and no separate encoding
@@ -63,7 +58,15 @@ internal readonly record struct FoldedNode(NodeKind Kind, int Offset)
 /// where its parent needs it rather than copied by value up the stack — bar a node the format
 /// stores no entry for, whose hash has nowhere else to live.
 /// <para>
-/// Node kinds come from <see cref="KindOf"/> rather than from the walk, which is what lets a
+/// The writer is passed per call rather than held, as <see cref="PbtTrieNodeWrapper.Builder"/>'s is:
+/// a ref struct that held spans of the writer's could not also take it by <c>ref</c>, which is what
+/// lets <see cref="Finish"/> commit the encoding itself rather than leaving that to its caller. What
+/// the rebuild carries between calls is the append cursor and the bitmaps, nothing borrowed — which
+/// is also why <paramref name="rootHash"/> comes by value, a construction from a reference being
+/// bounded by that reference's scope however plainly the reference is copied.
+/// </para>
+/// <para>
+/// Node kinds come from <see cref="NodeGroupBitmasks.KindOf"/> rather than from the walk, which is what lets a
 /// node be appended at its own position instead of by its parent: a stem never recurses, so
 /// every node reached below the root has an internal parent and is therefore materialized.
 /// The two shapes that are not — an empty group and a stem hoisting out of a non-root group —
@@ -83,8 +86,7 @@ internal readonly record struct FoldedNode(NodeKind Kind, int Offset)
 /// </remarks>
 internal ref struct GroupRebuild(
     ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
-    NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 rootHash, scoped ref BufferWriter writer,
-    PbtGroupFormat format)
+    NodeGroupBitmasks boundary, uint changedBitmask, ValueHash256 rootHash, PbtGroupFormat format)
 {
     private readonly ReadOnlySpan<(int Slot, Boundary Node)> _changed = changed;
     private readonly PbtTrieNodeGroup _existing = existing;
@@ -92,28 +94,22 @@ internal ref struct GroupRebuild(
     private readonly uint _changedBitmask = changedBitmask;
     private readonly ValueHash256 _rootHash = rootHash;
     private readonly PbtGroupFormat _format = format;
-    private readonly Span<byte> _destination = writer.Reserve(PbtTrieNodeGroup.EncodedLengthBound(boundary));
+
+    /// <summary>The room the whole encoding may need, which every write asks the writer for.</summary>
+    /// <remarks>
+    /// Asking for the whole of it each time, rather than for the entry about to be added, is what holds
+    /// the buffer still under the fold: a writer that grows carries over only the bytes it has
+    /// committed, and the fold commits nothing until <see cref="Finish"/>, so a growth part-way through
+    /// would drop every entry appended so far. Asking for the bound means the first write grows it —
+    /// with nothing yet to lose — and no later one can.
+    /// </remarks>
+    private readonly int _room = PbtTrieNodeGroup.EncodedLengthBound(boundary);
+
     private uint _presence;
     private uint _stems;
     private uint _chains;
     private int _offset = PbtTrieNodeGroup.EntriesOffset;
     private int _cursor;
-
-    /// <summary>
-    /// The kind of the node a boundary range folds to, given the range's occupied slots
-    /// <paramref name="occupiedBitmask"/> and which of the group's slots hold stems
-    /// <paramref name="stemsBitmask"/>: an unoccupied range is absent, a lone stem stays a stem —
-    /// hoisting to its shortest unique prefix higher up — and anything else roots an internal node.
-    /// </summary>
-    /// <remarks>
-    /// This is the fold's whole kind algebra, and it needs only the boundary results: it lets a
-    /// node's shape be decided without walking below it, which is what allows the rebuild to
-    /// emit nodes in encoding order.
-    /// </remarks>
-    internal static NodeKind KindOf(uint occupiedBitmask, uint stemsBitmask) =>
-        occupiedBitmask == 0 ? NodeKind.Absent
-        : BitOperations.PopCount(occupiedBitmask) == 1 && (stemsBitmask & occupiedBitmask) != 0 ? NodeKind.Stem
-        : NodeKind.Internal;
 
     /// <summary>
     /// Whether the internal node at <paramref name="position"/>, over the boundary slots
@@ -182,11 +178,11 @@ internal ref struct GroupRebuild(
     /// <see cref="PbtLayout.TrieNodeGroupRootPosition"/>, and every other call is this recursing into its
     /// own halves. Post-order, so a node is appended only once all of its children are.
     /// </remarks>
-    public FoldedNode Fold(int position, int firstSlot, int width, out ValueHash256 hash)
+    public FoldedNode Fold(ref BufferWriter writer, int position, int firstSlot, int width, out ValueHash256 hash)
     {
         uint rangeBitmask = ((1u << width) - 1) << firstSlot;
         uint occupiedBitmask = _boundary.Presence & rangeBitmask;
-        switch (KindOf(occupiedBitmask, _boundary.Stems))
+        switch (_boundary.KindOf(rangeBitmask))
         {
             case NodeKind.Absent:
                 hash = default;
@@ -202,13 +198,13 @@ internal ref struct GroupRebuild(
                     {
                         Boundary stem = ResolveCombinedNodeAtBoundary(firstSlot);
                         hash = StemLeafBlob.ComputeStemNodeHash(stem.Stem, stem.Hash);
-                        return FoldedNode.Stored(NodeKind.Stem, AppendStem(position, stem.Stem, stem.Hash));
+                        return FoldedNode.Stored(NodeKind.Stem, AppendStem(ref writer, position, stem.Stem, stem.Hash));
                     }
 
                     int stemHalf = width / 2;
                     return (occupiedBitmask & (((1u << stemHalf) - 1) << firstSlot)) != 0
-                        ? Fold(position - width, firstSlot, stemHalf, out hash)
-                        : Fold(position - 1, firstSlot + stemHalf, stemHalf, out hash);
+                        ? Fold(ref writer, position - width, firstSlot, stemHalf, out hash)
+                        : Fold(ref writer, position - 1, firstSlot + stemHalf, stemHalf, out hash);
                 }
         }
 
@@ -220,7 +216,7 @@ internal ref struct GroupRebuild(
             bool isGroupRoot = position == PbtLayout.TrieNodeGroupRootPosition;
             NodeGroupBitmasks clean = _existing.SubtreeBitmaps(position, width);
             hash = isGroupRoot ? _rootHash : _existing[position].NodeHash();
-            int offset = AppendSubtree(clean, _existing.SubtreeEntries(position, width, clean));
+            int offset = AppendSubtree(ref writer, clean, _existing.SubtreeEntries(position, width, clean));
             return isGroupRoot ? FoldedNode.Unstored : FoldedNode.Stored(NodeKind.Internal, offset);
         }
 
@@ -231,7 +227,7 @@ internal ref struct GroupRebuild(
             hash = boundary.Hash;
             if ((_boundary.Chains >> firstSlot & 1) == 0)
             {
-                return FoldedNode.Stored(NodeKind.Internal, AppendInternal(position, boundary.Hash));
+                return FoldedNode.Stored(NodeKind.Internal, AppendInternal(ref writer, position, boundary.Hash));
             }
 
             // A run is held outright rather than pointed at, so its entry is its whole encoding —
@@ -240,12 +236,12 @@ internal ref struct GroupRebuild(
             // hash, which is what a pointer's entry is, so the fold reads the two alike.
             Debug.Assert(!IsResolvedFromResults(firstSlot) || boundary.Chain is not null, "a run the descent settled rides in with its own encoding");
             ReadOnlySpan<byte> chain = boundary.Chain is { } rebuilt ? rebuilt.GetSpan() : _existing[position].ChainData;
-            return FoldedNode.Stored(NodeKind.Chain, AppendChain(position, chain));
+            return FoldedNode.Stored(NodeKind.Chain, AppendChain(ref writer, position, chain));
         }
 
         int half = width / 2;
-        Fold(position - width, firstSlot, half, out ValueHash256 leftHash);
-        Fold(position - 1, firstSlot + half, half, out ValueHash256 rightHash);
+        Fold(ref writer, position - width, firstSlot, half, out ValueHash256 leftHash);
+        Fold(ref writer, position - 1, firstSlot + half, half, out ValueHash256 rightHash);
         hash = Blake3Hash.HashPairOrZero(leftHash, rightHash);
 
         // The hash is folded either way — the root depends on every level of it. A format that
@@ -253,26 +249,26 @@ internal ref struct GroupRebuild(
         // boundary slot), simply does not write it down, handing it to the parent instead.
         bool storeHere = PbtLayout.TrieNodeGroupStoresInternalAtWidth(_format, width) && width != PbtLayout.TrieNodeGroupBoundarySlots;
         return storeHere
-            ? FoldedNode.Stored(NodeKind.Internal, AppendInternal(position, hash))
+            ? FoldedNode.Stored(NodeKind.Internal, AppendInternal(ref writer, position, hash))
             : FoldedNode.Unstored;
     }
 
     /// <summary>Appends the internal node at <paramref name="position"/>, returning its entry offset.</summary>
-    private int AppendInternal(int position, in ValueHash256 hash)
+    private int AppendInternal(ref BufferWriter writer, int position, in ValueHash256 hash)
     {
         Debug.Assert(hash != default, "internal nodes never cache a zero hash");
         Debug.Assert(!PbtLayout.TrieNodeGroupIsSkippedPosition(_format, position), "an interleaved group stores no internal node at a skipped level");
         MarkPresent(position);
-        return Write(hash.Bytes);
+        return Write(ref writer, hash.Bytes);
     }
 
     /// <summary>Appends the stem node at <paramref name="position"/>, returning its entry offset.</summary>
-    private int AppendStem(int position, in Stem stem, in ValueHash256 leafSubtreeRoot)
+    private int AppendStem(ref BufferWriter writer, int position, in Stem stem, in ValueHash256 leafSubtreeRoot)
     {
         MarkPresent(position);
         _stems |= 1u << position;
         int offset = _offset;
-        Span<byte> entry = _destination[offset..];
+        Span<byte> entry = writer.GetSpan(_room)[offset..];
         stem.Bytes.CopyTo(entry);
         leafSubtreeRoot.Bytes.CopyTo(entry[Stem.Length..]);
         _offset = offset + PbtTrieNodeGroup.Slot.StemLength;
@@ -280,13 +276,13 @@ internal ref struct GroupRebuild(
     }
 
     /// <summary>Appends the run at <paramref name="position"/>, a boundary slot's, whose whole encoding <paramref name="chain"/> is, returning its entry offset.</summary>
-    private int AppendChain(int position, ReadOnlySpan<byte> chain)
+    private int AppendChain(ref BufferWriter writer, int position, ReadOnlySpan<byte> chain)
     {
         Debug.Assert(PbtLayout.TrieNodeGroupIsBoundaryPosition(position), "a run hangs from a boundary slot and nowhere else");
         Debug.Assert(chain.Length == PbtTrieNodeGroup.Slot.ChainLength);
         MarkPresent(position);
         _chains |= 1u << PbtLayout.TrieNodeGroupBoundarySlot(position);
-        return Write(chain);
+        return Write(ref writer, chain);
     }
 
     /// <summary>
@@ -299,7 +295,7 @@ internal ref struct GroupRebuild(
     /// nodes one at a time would produce, so a range no write changed is copied rather than
     /// folded. Its root is its highest position, hence the last entry of the run.
     /// </remarks>
-    private int AppendSubtree(NodeGroupBitmasks masks, ReadOnlySpan<byte> entries)
+    private int AppendSubtree(ref BufferWriter writer, NodeGroupBitmasks masks, ReadOnlySpan<byte> entries)
     {
         (uint presence, uint stems, uint chains) = masks;
         Debug.Assert(presence != 0, "an absent subtree has no entries to append");
@@ -314,7 +310,7 @@ internal ref struct GroupRebuild(
         _chains |= chains;
 
         int rootOffset = _offset + entries.Length - RootEntryLength(BitOperations.Log2(presence), masks);
-        Write(entries);
+        Write(ref writer, entries);
         return rootOffset;
     }
 
@@ -331,41 +327,54 @@ internal ref struct GroupRebuild(
         _presence |= 1u << position;
     }
 
-    private int Write(ReadOnlySpan<byte> bytes)
+    private int Write(ref BufferWriter writer, ReadOnlySpan<byte> bytes)
     {
         int offset = _offset;
-        bytes.CopyTo(_destination[offset..]);
+        bytes.CopyTo(writer.GetSpan(_room)[offset..]);
         _offset = offset + bytes.Length;
         return offset;
     }
 
-    /// <summary>The node <paramref name="node"/> points at, read back out of the encoding being built.</summary>
-    /// <remarks>An appended entry keeps its offset, so the fold reads a node back rather than carrying it up by value.</remarks>
-    public readonly PbtTrieNodeGroup.Slot SlotAt(FoldedNode node) => PbtTrieNodeGroup.SlotAt(_destination, node.Kind, node.Offset);
+    /// <summary>
+    /// The stem <paramref name="node"/> holds and the root of its 256-leaf subtree, read back out of the
+    /// entry the fold appended for it.
+    /// </summary>
+    /// <remarks>
+    /// An appended entry keeps its offset, so a stem the fold stored is read back rather than carried up
+    /// by value. Only before <see cref="Finish"/>, which commits the encoding: past that the writer hands
+    /// out the room after it rather than the room it is in. Copied out rather than handed back as a
+    /// <see cref="PbtTrieNodeGroup.Slot"/>, which would borrow the writer's buffer beyond this call.
+    /// </remarks>
+    public readonly (Stem Stem, ValueHash256 SubtreeRoot) StemAt(ref BufferWriter writer, FoldedNode node)
+    {
+        Debug.Assert(node.Kind == NodeKind.Stem, "only a stem node carries a stem");
+
+        PbtTrieNodeGroup.Slot slot = PbtTrieNodeGroup.SlotAt(writer.GetSpan(_room), node.Kind, node.Offset);
+        return (slot.Stem, slot.Hash);
+    }
 
     /// <summary>
     /// Appends the trailer — the bitmaps, and the <paramref name="stats"/> of the subtree the group
-    /// roots — and returns the encoded length; 0 when nothing was appended, which the caller stores
-    /// as a removal.
+    /// roots — commits the encoding to <paramref name="writer"/> and returns its length; 0 when nothing
+    /// was appended, which the caller stores as a removal and the writer never sees.
     /// </summary>
-    /// <remarks>
-    /// The caller commits that length to the writer the room came off: a ref struct holding spans of
-    /// the writer's cannot also take it by <c>ref</c>, the two lifetimes being irreconcilable.
-    /// </remarks>
     /// <param name="stats">
     /// The whole subtree's, which the walk that appended the nodes cannot know: the stems below a
     /// boundary slot the walk left alone are never read. The producer hoists it instead.
     /// </param>
-    public readonly int Finish(in PbtSubtreeStats stats)
+    public readonly int Finish(ref BufferWriter writer, in PbtSubtreeStats stats)
     {
         if (_presence == 0) return 0;
 
-        Span<byte> trailer = _destination.Slice(_offset, PbtTrieNodeGroup.TrailerLength);
+        Span<byte> trailer = writer.GetSpan(_room).Slice(_offset, PbtTrieNodeGroup.TrailerLength);
         BinaryPrimitives.WriteUInt32LittleEndian(trailer[PbtTrieNodeGroup.PresenceTrailerOffset..], _presence);
         BinaryPrimitives.WriteUInt32LittleEndian(trailer[PbtTrieNodeGroup.StemsTrailerOffset..], _stems);
         BinaryPrimitives.WriteUInt16LittleEndian(trailer[PbtTrieNodeGroup.ChainsTrailerOffset..], (ushort)_chains);
         stats.Write(trailer[PbtTrieNodeGroup.StatsTrailerOffset..]);
         trailer[PbtTrieNodeGroup.FormatTrailerOffset] = (byte)_format;
-        return _offset + PbtTrieNodeGroup.TrailerLength;
+
+        int length = _offset + PbtTrieNodeGroup.TrailerLength;
+        writer.Advance(length);
+        return length;
     }
 }

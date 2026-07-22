@@ -65,17 +65,6 @@ public ref struct BufferWriter
         return _buffer[_written..];
     }
 
-    /// <summary>
-    /// Room for exactly <paramref name="length"/> more bytes, which <see cref="Advance"/> commits as much
-    /// of as was used.
-    /// </summary>
-    /// <remarks>
-    /// What <see cref="GetSpan"/> hands out for a producer that knows an upper bound on what it will
-    /// write and wants no more than that: writing past the bound overruns the span it was given, rather
-    /// than running on into room the writer happened to have spare.
-    /// </remarks>
-    public Span<byte> Reserve(int length) => GetSpan(length)[..length];
-
     /// <summary>Commits <paramref name="count"/> of the bytes <see cref="GetSpan"/> last handed out.</summary>
     public void Advance(int count)
     {
