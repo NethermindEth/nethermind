@@ -95,14 +95,34 @@ namespace Nethermind.Trie
                 ulong writing = (seq | 1) << 32;
                 if (Interlocked.CompareExchange(ref _rlpSeqAndLength, writing, current) == current)
                 {
-                    Volatile.Write(ref _rlpArray, value.UnderlyingArray);
-                    // Advance sequence by 2 and clear lock bit (even), store final length
-                    ulong doneSeq = (seq + 2) & 0xFFFFFFFE;
-                    Volatile.Write(ref _rlpSeqAndLength, doneSeq << 32 | (uint)value.Length);
+                    CompleteRlpWrite(value, seq);
                     return;
                 }
                 spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
             }
+        }
+
+        private bool TryBeginRlpWriteWhenEmpty(out ulong sequence)
+        {
+            ulong current = Volatile.Read(ref _rlpSeqAndLength);
+            sequence = current >> 32;
+            if ((sequence & 1) != 0 || Volatile.Read(ref _rlpArray) is not null) return false;
+
+            ulong writing = (sequence | 1) << 32;
+            return Interlocked.CompareExchange(ref _rlpSeqAndLength, writing, current) == current;
+        }
+
+        private void CompleteRlpWrite(CappedArray<byte> value, ulong sequence)
+        {
+            Volatile.Write(ref _rlpArray, value.UnderlyingArray);
+            ulong doneSequence = (sequence + 2) & 0xFFFFFFFE;
+            Volatile.Write(ref _rlpSeqAndLength, doneSequence << 32 | (uint)value.Length);
+        }
+
+        private void CancelRlpWrite(ulong sequence)
+        {
+            ulong doneSequence = (sequence + 2) & 0xFFFFFFFE;
+            Volatile.Write(ref _rlpSeqAndLength, doneSequence << 32);
         }
 
         /// <summary>
@@ -410,15 +430,29 @@ namespace Nethermind.Trie
                     ThrowMissingKeccak();
                 }
 
-                byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
-
-                if (fullRlp == null)
+                while (rlp.IsNull)
                 {
-                    ThrowNullRlp();
-                }
+                    if (!TryBeginRlpWriteWhenEmpty(out ulong sequence))
+                    {
+                        rlp = ReadRlp();
+                        continue;
+                    }
 
-                WriteRlp(rlp = new CappedArray<byte>(fullRlp));
-                IsPersisted = true;
+                    try
+                    {
+                        byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
+                        if (fullRlp is null) ThrowNullRlp();
+
+                        rlp = new CappedArray<byte>(fullRlp);
+                        IsPersisted = true;
+                        CompleteRlpWrite(rlp, sequence);
+                    }
+                    catch
+                    {
+                        CancelRlpWrite(sequence);
+                        throw;
+                    }
+                }
             }
 
             if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int numberOfItems))

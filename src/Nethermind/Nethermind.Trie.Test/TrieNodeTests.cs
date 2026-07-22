@@ -79,6 +79,64 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Concurrent_resolve_loads_rlp_once()
+    {
+        byte[] fullRlp = [0xc2, 0x20, 0x01];
+        Hash256 hash = Keccak.Compute(fullRlp);
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        using ManualResetEventSlim firstLoadEntered = new();
+        using ManualResetEventSlim releaseLoad = new();
+        int loadCount = 0;
+        resolver.LoadRlp(Arg.Any<TreePath>(), hash, ReadFlags.None).Returns(_ =>
+        {
+            Interlocked.Increment(ref loadCount);
+            firstLoadEntered.Set();
+            releaseLoad.Wait();
+            return fullRlp;
+        });
+
+        TrieNode node = new(NodeType.Unknown, hash);
+        const int workerCount = 8;
+        using Barrier start = new(workerCount + 1);
+        ConcurrentQueue<Exception> exceptions = new();
+        Thread[] workers = new Thread[workerCount];
+        for (int i = 0; i < workers.Length; i++)
+        {
+            workers[i] = new Thread(() =>
+            {
+                try
+                {
+                    start.SignalAndWait();
+                    node.ResolveNode(resolver, TreePath.Empty);
+                }
+                catch (Exception exception)
+                {
+                    exceptions.Enqueue(exception);
+                }
+            });
+            workers[i].Start();
+        }
+
+        start.SignalAndWait();
+        bool firstLoadObserved = firstLoadEntered.Wait(TimeSpan.FromSeconds(5));
+        // Give contenders time to enter a duplicate load while the first resolver is blocked.
+        if (firstLoadObserved)
+        {
+            SpinWait.SpinUntil(() => Volatile.Read(ref loadCount) > 1, TimeSpan.FromMilliseconds(250));
+        }
+        releaseLoad.Set();
+
+        foreach (Thread worker in workers)
+        {
+            Assert.That(worker.Join(TimeSpan.FromSeconds(5)), Is.True);
+        }
+
+        Assert.That(firstLoadObserved, Is.True);
+        Assert.That(exceptions, Is.Empty);
+        Assert.That(loadCount, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Throws_trie_exception_on_unexpected_format()
     {
         TrieNode trieNode = new(NodeType.Unknown, new byte[42]);
