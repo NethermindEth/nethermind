@@ -111,9 +111,9 @@ public static partial class TrieUpdater
                 BufferWriter targetWriter = new(memoryProvider, targetData?.GetSpan().Length ?? 0);
                 NodeResult inner;
                 bool targetChanged;
-                if (PbtLayout.IsWrappingDepth(targetDepth))
+                if (PbtLayout.IsClusteringDepth(targetDepth))
                 {
-                    ApplyWrapped(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref targetWriter, out inner, out targetChanged, out delta);
+                    ApplyClustered(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref targetWriter, out inner, out targetChanged, out delta);
                 }
                 else
                 {
@@ -197,11 +197,11 @@ public static partial class TrieUpdater
             uint occupantsOccupied = 1u << targetSlot;
             NodeGroupBitmasks occupantsShape = new(occupantsOccupied, Stems: 0, directChild ? 0 : occupantsOccupied);
 
-            // The group this split makes real wraps its children where its depth says so, and the target
-            // is one of them: its blob moves out of the key the run left it under and into the wrapper
+            // The group this split makes real clusters its children where its depth says so, and the target
+            // is one of them: its blob moves out of the key the run left it under and into the cluster
             // this frame is about to write. A run below the child depth is not stored anywhere to begin
             // with, and rides in the seed as it always has.
-            using RefCountingMemory? adopted = directChild && PbtLayout.IsWrappingDepth(depth)
+            using RefCountingMemory? adopted = directChild && PbtLayout.IsClusteringDepth(depth)
                 ? store.GetTrieNode(chain.TargetKey)
                 : null;
             if (adopted is not null) store.SetTrieNode(chain.TargetKey, null);
@@ -212,7 +212,7 @@ public static partial class TrieUpdater
             RefList16<NodeResult> resultBuffer = new(PbtLayout.TrieNodeGroupBoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            PbtTrieNodeWrapper.Builder builder = default;
+            PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results, ref writer, ref builder)

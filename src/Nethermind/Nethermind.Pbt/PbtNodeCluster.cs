@@ -35,13 +35,13 @@ namespace Nethermind.Pbt;
 /// neither a count nor a slot mask is stored, and a view of one is the bytes and nothing else.
 /// </para>
 /// <para>
-/// Which groups wrap is fixed by <see cref="PbtLayout.IsWrappingDepth"/> — absolute depth, so that a run
+/// Which groups cluster is fixed by <see cref="PbtLayout.IsClusteringDepth"/> — absolute depth, so that a run
 /// appearing or splitting somewhere above never re-parities the subtree below it, and so that the
-/// wrapped level is always the level that does not itself wrap: a child pulled into a wrapper or
-/// pushed back out of one is a bare group, never another wrapper.
+/// clustered level is always the level that does not itself cluster: a child pulled into a cluster or
+/// pushed back out of one is a bare group, never another cluster.
 /// </para>
 /// </remarks>
-public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
+public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
 {
     /// <summary>Version sentinel ending every encoding; distinct from those of the two blob formats it holds.</summary>
     private const byte FormatByte = 0x04;
@@ -54,23 +54,23 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
     private readonly ReadOnlySpan<byte> _data = data;
 
     /// <summary>True for an encoding ending in this type's format byte rather than a group's.</summary>
-    public static bool IsWrapper(ReadOnlySpan<byte> data) => data.Length > 0 && data[^1] == FormatByte;
+    public static bool HoldsChildren(ReadOnlySpan<byte> data) => data.Length > 0 && data[^1] == FormatByte;
 
-    /// <summary>The length of a wrapper of <paramref name="childCount"/> children totalling <paramref name="childBytes"/> over a group of <paramref name="groupLength"/> bytes.</summary>
+    /// <summary>The length of a cluster of <paramref name="childCount"/> children totalling <paramref name="childBytes"/> over a group of <paramref name="groupLength"/> bytes.</summary>
     public static int EncodedLength(int childBytes, int groupLength, int childCount) =>
         childBytes + childCount * OffsetLength + groupLength + TrailerLength;
 
     /// <summary>True where no child is held: a bare group blob, or the absent blob.</summary>
-    public bool IsEmpty => !IsWrapper(_data);
+    public bool IsBare => !HoldsChildren(_data);
 
     /// <summary>Where the group's own encoding sits in the blob, which is the whole of a bare one.</summary>
-    public Range Group => IsEmpty ? 0.._data.Length : GroupOffset..^TrailerLength;
+    public Range Group => IsBare ? 0.._data.Length : GroupOffset..^TrailerLength;
 
     /// <summary>
     /// Where the group's own encoding starts, which for a bare group blob is zero. Entry offsets into
     /// the group are relative to it, so a consumer holding one adds this.
     /// </summary>
-    public int GroupOffset => IsEmpty ? 0 : _data.Length - TrailerLength - GroupLength(_data);
+    public int GroupOffset => IsBare ? 0 : _data.Length - TrailerLength - GroupLength(_data);
 
     /// <summary>
     /// Where the blob of the child group under boundary slot <paramref name="slot"/> sits, empty where
@@ -82,10 +82,10 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
     /// descent, which reads it out of the memory the store handed over — needs where it starts as much
     /// as what it says.
     /// </remarks>
-    /// <param name="group">The group this wraps, whose bitmaps say which slots root a blob and how many do.</param>
+    /// <param name="group">The group this holds, whose bitmaps say which slots root a blob and how many do.</param>
     public Range Child(int slot, in PbtTrieNodeGroup group)
     {
-        if (IsEmpty) return default;
+        if (IsBare) return default;
 
         uint bit = 1u << slot;
         uint childSlotsBitmask = ChildSlotsBitmask(group);
@@ -97,34 +97,34 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
     }
 
     /// <summary>
-    /// Reads a stored blob as the group it holds and, where it wraps them, that group's children; a
-    /// bare group blob reads as a wrapper holding none, whose <see cref="Group"/> is the whole blob.
+    /// Reads a stored blob as the group it holds and, where it holds them too, that group's children; a
+    /// bare group blob reads as a cluster holding none, whose <see cref="Group"/> is the whole blob.
     /// </summary>
     /// <param name="group">The decoded group, which either way borrows <paramref name="data"/>.</param>
-    /// <exception cref="InvalidDataException">The blob is not a well-formed wrapper or group.</exception>
-    public static PbtTrieNodeWrapper Decode(ReadOnlySpan<byte> data, out PbtTrieNodeGroup group)
+    /// <exception cref="InvalidDataException">The blob is not a well-formed cluster or group.</exception>
+    public static PbtNodeCluster Decode(ReadOnlySpan<byte> data, out PbtTrieNodeGroup group)
     {
-        PbtTrieNodeWrapper wrapper = new(data);
-        if (wrapper.IsEmpty)
+        PbtNodeCluster cluster = new(data);
+        if (cluster.IsBare)
         {
             group = PbtTrieNodeGroup.Decode(data);
-            return wrapper;
+            return cluster;
         }
 
-        if (data.Length <= TrailerLength) throw new InvalidDataException($"Trie node wrapper too short: {data.Length} bytes");
+        if (data.Length <= TrailerLength) throw new InvalidDataException($"Trie node cluster too short: {data.Length} bytes");
 
         // the trailing length pins the group, whose bitmaps then say how many children there are and
         // which slots they belong to — so everything below it follows from the group
         int groupOffset = data.Length - TrailerLength - GroupLength(data);
-        if (groupOffset <= 0) throw new InvalidDataException($"Trie node wrapper of {data.Length} bytes says its group is {GroupLength(data)}");
+        if (groupOffset <= 0) throw new InvalidDataException($"Trie node cluster of {data.Length} bytes says its group is {GroupLength(data)}");
 
         group = PbtTrieNodeGroup.Decode(data[groupOffset..^TrailerLength]);
         uint childSlotsBitmask = ChildSlotsBitmask(group);
         int count = BitOperations.PopCount(childSlotsBitmask);
-        if (count == 0) throw new InvalidDataException("Trie node wrapper holds a group that roots no child blob");
+        if (count == 0) throw new InvalidDataException("Trie node cluster holds a group that roots no child blob");
 
         int tableOffset = groupOffset - count * OffsetLength;
-        if (tableOffset <= 0) throw new InvalidDataException($"Trie node wrapper of {data.Length} bytes leaves no room for {count} children");
+        if (tableOffset <= 0) throw new InvalidDataException($"Trie node cluster of {data.Length} bytes leaves no room for {count} children");
 
         // The offsets partition the bytes ahead of them, so they ascend and the last ends exactly where
         // they begin. None may be empty: an empty group encodes to zero bytes, which is the store's
@@ -133,13 +133,13 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
         for (int index = 0; index < count; index++)
         {
             int childEnd = ReadOffset(data, tableOffset, index);
-            if (childEnd <= end || childEnd > tableOffset) throw new InvalidDataException($"Trie node wrapper child {index} ends at {childEnd}");
+            if (childEnd <= end || childEnd > tableOffset) throw new InvalidDataException($"Trie node cluster child {index} ends at {childEnd}");
             end = childEnd;
         }
 
-        if (end != tableOffset) throw new InvalidDataException($"Trie node wrapper children end at {end}, not {tableOffset}");
+        if (end != tableOffset) throw new InvalidDataException($"Trie node cluster children end at {end}, not {tableOffset}");
 
-        return wrapper;
+        return cluster;
     }
 
     /// <summary>
@@ -156,7 +156,7 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
         BinaryPrimitives.ReadUInt16LittleEndian(data[(tableOffset + index * OffsetLength)..]);
 
     /// <summary>
-    /// Writes a wrapper through a <see cref="BufferWriter"/>, in the order the encoding lays it out:
+    /// Writes a cluster through a <see cref="BufferWriter"/>, in the order the encoding lays it out:
     /// the children in ascending slot order, then their offset table, then the group, then the
     /// trailer.
     /// </summary>
@@ -169,8 +169,8 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
     /// <para>
     /// The builder carries the children's ends and nothing else: the writer is passed per call rather
     /// than held, a <c>ref</c> field being unable to point at a ref struct. Those ends are the writer's
-    /// own count, which is the same thing because a wrapper is always the whole of the blob it is
-    /// written into — <see cref="PbtLayout.IsWrappingDepth"/> alternates, so the group above one never holds it.
+    /// own count, which is the same thing because a cluster is always the whole of the blob it is
+    /// written into — <see cref="PbtLayout.IsClusteringDepth"/> alternates, so the group above one never holds it.
     /// </para>
     /// </remarks>
     public ref struct Builder
@@ -195,7 +195,7 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
         /// <summary>Writes the offset table, which closes the children and precedes the group.</summary>
         public readonly void WriteOffsets(ref BufferWriter writer)
         {
-            Debug.Assert(_ends.Count != 0, "a wrapper holds a group that roots at least one child blob");
+            Debug.Assert(_ends.Count != 0, "a cluster holds a group that roots at least one child blob");
 
             int length = _ends.Count * OffsetLength;
             Span<byte> table = writer.GetSpan(length);
@@ -210,7 +210,7 @@ public readonly ref struct PbtTrieNodeWrapper(ReadOnlySpan<byte> data)
         /// <summary>Stamps the group's length — what the writer has taken since the offset table — and the format byte, closing the encoding.</summary>
         public readonly void Finish(ref BufferWriter writer)
         {
-            Debug.Assert(_ends.Count != 0, "a wrapper holds a group that roots at least one child blob");
+            Debug.Assert(_ends.Count != 0, "a cluster holds a group that roots at least one child blob");
 
             int groupLength = writer.WrittenCount - _ends[_ends.Count - 1] - _ends.Count * OffsetLength;
             Span<byte> trailer = writer.GetSpan(TrailerLength);

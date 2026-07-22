@@ -964,7 +964,7 @@ public class StemTrieTests(PbtGroupFormat format)
 
     /// <summary>
     /// The nodes the store holds, counted as nodes rather than as blobs: one blob holds a group, the
-    /// runs hanging off it and — where it wraps them (see <see cref="PbtLayout.IsWrappingDepth"/>)
+    /// runs hanging off it and — where it clusters them (see <see cref="PbtLayout.IsClusteringDepth"/>)
     /// — its child groups, and it is the shape of the trie these tests are about.
     /// </summary>
     private static int NodeCount(PbtTreeHarness harness) => harness.FlattenedNodes().Count;
@@ -987,7 +987,7 @@ public class StemTrieTests(PbtGroupFormat format)
 
         // A stem sits at whichever position is its shortest unique prefix, boundary or inner, so every
         // position is visited; a boundary internal roots a subtree to descend into, and so does a run.
-        PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
+        PbtNodeCluster.Decode(blob, out PbtTrieNodeGroup group);
         long counted = 0;
         for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {

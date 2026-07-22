@@ -195,7 +195,7 @@ public class PbtScannerTests
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
-    public async Task Scan_ReadsAWrapperAsTheNodesItHolds(PbtGroupFormat format)
+    public async Task Scan_ReadsAClusterAsTheNodesItHolds(PbtGroupFormat format)
     {
         // three account stems: two parting at nibble 2, so their group at depth 8 hangs under the
         // depth-4 group that the third one branches — and depth 4 holds its children
@@ -213,22 +213,22 @@ public class PbtScannerTests
         {
             Assert.That(report.GroupCount, Is.EqualTo(3), "groups at depths 0, 4 and 8");
             Assert.That(report.AccountNodes.GroupsByDepth[4], Is.EqualTo(1));
-            Assert.That(report.AccountNodes.GroupsByDepth[8], Is.EqualTo(1), "the wrapped child is counted at its own depth");
-            Assert.That(report.WrapperCount, Is.EqualTo(1), "the depth-4 blob holds the depth-8 group");
-            Assert.That(report.WrappedChildCount, Is.EqualTo(1));
-            Assert.That(report.TrieNodeBlobCount, Is.EqualTo(2), "the wrapped child is stored under no key of its own");
+            Assert.That(report.AccountNodes.GroupsByDepth[8], Is.EqualTo(1), "the clustered child is counted at its own depth");
+            Assert.That(report.ClusterCount, Is.EqualTo(1), "the depth-4 blob holds the depth-8 group");
+            Assert.That(report.ClusteredGroupCount, Is.EqualTo(1));
+            Assert.That(report.TrieNodeBlobCount, Is.EqualTo(2), "the clustered child is stored under no key of its own");
             Assert.That(report.AccountNodes.KeyBytes, Is.EqualTo(TrieNodeKey.Length), "so zone 0 pays for the depth-4 blob alone");
-            Assert.That(report.AccountNodes.WrappersByDepth[4], Is.EqualTo(1), "a wrapper counts at the depth of the group it holds");
-            Assert.That(report.AccountNodes.WrappedChildrenByDepth[4], Is.EqualTo(1), "and its children beside it, not at their own depth");
+            Assert.That(report.AccountNodes.ClustersByDepth[4], Is.EqualTo(1), "a cluster counts at the depth of the group it holds");
+            Assert.That(report.AccountNodes.ClusteredGroupsByDepth[4], Is.EqualTo(1), "and its children beside it, not at their own depth");
             Assert.That(report.ChainCount, Is.EqualTo(0), "nothing here collapses, so the blob is its two groups and the framing");
             Assert.That(
-                report.AccountNodes.WrapperBlobBytesByDepth[4],
-                Is.EqualTo(report.AccountNodes.GroupBytesByDepth[4] + report.AccountNodes.GroupBytesByDepth[8] + report.AccountNodes.WrapperBytes),
-                "the wrapper's size is the whole stored value, child blob and framing included");
+                report.AccountNodes.ClusterBytesByDepth[4],
+                Is.EqualTo(report.AccountNodes.GroupBytesByDepth[4] + report.AccountNodes.GroupBytesByDepth[8] + report.AccountNodes.ClusterFramingBytes),
+                "the cluster's size is the whole stored value, child blob and framing included");
             Assert.That(report.StemCount, Is.EqualTo(3));
             Assert.That(report.StemCountAgrees, Is.True);
-            Assert.That(report.Format(), Does.Contain("Wrappers by depth"));
-            Assert.That(report.Format(), Does.Contain("Wrapper blobs by depth"));
+            Assert.That(report.Format(), Does.Contain("Clusters by depth"));
+            Assert.That(report.Format(), Does.Contain("Cluster blobs by depth"));
         });
     }
 
@@ -260,7 +260,7 @@ public class PbtScannerTests
             Assert.That(report, Does.Not.Contain("--- Code ---"), "an empty partition is left out");
             Assert.That(report, Does.Contain("Account leaf blobs"));
             Assert.That(report, Does.Contain("Storage leaf blobs"));
-            Assert.That(report, Does.Not.Contain("Wrappers by depth"), "no group of this tree holds its children");
+            Assert.That(report, Does.Not.Contain("Clusters by depth"), "no group of this tree holds its children");
         });
     }
 
