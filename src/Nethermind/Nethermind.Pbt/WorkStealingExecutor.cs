@@ -4,97 +4,117 @@
 namespace Nethermind.Pbt;
 
 /// <summary>
-/// Runs a recursive fork/join across a fixed set of threads, each holding a queue the others steal
-/// from: a caller descending its own work hands the parts it thinks worth splitting to
-/// <see cref="Lane.TrySpawn"/>, carries on with the rest, and picks the results up at
-/// <see cref="Lane.Join"/>.
+/// A thread's own state, which runs the jobs that thread takes: the executor hands a job back to the
+/// state rather than to a callback of its own, so that what runs a job and what it runs with are one
+/// thing.
 /// </summary>
-/// <remarks>
-/// The queues are a hint and nothing more. A job is run by whichever thread claims it, and the lane
-/// that spawned it claims whatever is left when it comes to join, so a job that is never stolen — or
-/// whose push was refused, or that was popped by a thief that then lost the claim — is run by the
-/// spawning thread all the same. Nothing is therefore lost to a queue that is full, empty-looking or
-/// racing, which is what lets the queue itself stay lock-free and approximate.
-/// <para>
-/// <see cref="Complete"/> does not wait for the lanes. A caller reaches it only once its outermost
-/// join is through, by which point every job is finished, so a lane the thread pool has yet to
-/// schedule can do no more than pop a stale hint and fail to claim it. That is what keeps a run from
-/// waiting on the pool to schedule anything at all — and it is also why a lane's queue must own its
-/// array outright: a pooled one would still be scanned after the run that rented it had ended.
-/// </para>
-/// <para>
-/// <typeparamref name="TWorkerState"/> is a thread's own, built once per lane and handed back to
-/// every job that lane runs; anything the lanes share, they share through it.
-/// </para>
-/// </remarks>
-/// <typeparam name="TJob">
-/// One job's inputs and outputs, held by value in the node carrying it: the spawning lane fills the
-/// inputs, the running thread writes the outputs back through <see cref="Node.Job"/>.
-/// </typeparam>
-internal sealed class WorkStealingExecutor<TWorkerState, TJob>
-    where TWorkerState : class
-    where TJob : struct
+internal interface IJobRunner<TJob> where TJob : struct
 {
     /// <summary>Runs one job, reading and writing it in place.</summary>
-    public delegate void JobRunner(TWorkerState worker, ref TJob job);
+    void Execute(ref TJob job);
+}
 
-    /// <summary>Jobs one lane's queue holds before <see cref="Lane.TrySpawn"/> starts refusing them.</summary>
+/// <summary>Builds the state one thread runs with, around the queue it hands its own work to.</summary>
+internal interface IJobStateProvider<TState, TJob>
+    where TState : class, IJobRunner<TJob>
+    where TJob : struct
+{
+    /// <param name="queue">Where the state being built queues work for the other threads, and waits for it.</param>
+    TState Create(WorkStealingExecutor<TState, TJob>.JobQueue queue);
+}
+
+/// <summary>
+/// Runs a recursive fork/join across a fixed set of threads, each with a queue the others steal from:
+/// a caller descending its own work hands the parts it thinks worth splitting to
+/// <see cref="JobQueue.TryQueue"/>, carries on with the rest, and picks the results up once
+/// <see cref="JobQueue.Wait"/> has seen them through.
+/// </summary>
+/// <remarks>
+/// The queues are a hint and nothing more. A job is run by whichever thread claims it, and the thread
+/// that queued it claims whatever is left when it comes to wait — so a job that is never stolen, or
+/// that a thief popped and then lost the claim to, is run by the thread that queued it all the same,
+/// and one the queue refuses was never taken off that thread to begin with. Nothing is therefore lost
+/// to a queue that is full, empty-looking or racing, which is what lets the queues stay lock-free and
+/// approximate.
+/// <para>
+/// <see cref="Complete"/> does not wait for the threads. A caller reaches it only once its outermost
+/// wait is through, by which point every job is finished, so a thread the pool has yet to schedule
+/// can do no more than pop a stale hint and fail to claim it. That is what keeps a run from waiting
+/// on the pool to schedule anything at all — and it is also why a queue must own its array outright:
+/// a pooled one would still be scanned after the run that rented it had ended.
+/// </para>
+/// </remarks>
+/// <typeparam name="TState">
+/// What one thread runs with and through: built once per thread by the caller's
+/// <see cref="IJobStateProvider{TState, TJob}"/>, and asked to run every job that thread takes.
+/// Whatever the threads share, they share through it.
+/// </typeparam>
+/// <typeparam name="TJob">
+/// One job's inputs and outputs, held by value in the node carrying it: the thread that queues a job
+/// fills the inputs, the thread that runs it writes the outputs back through <see cref="Node.Job"/>.
+/// </typeparam>
+internal sealed class WorkStealingExecutor<TState, TJob>
+    where TState : class, IJobRunner<TJob>
+    where TJob : struct
+{
+    /// <summary>Jobs one queue holds before <see cref="JobQueue.TryQueue"/> starts refusing them.</summary>
     /// <remarks>
-    /// A queue only fills where the stealing has fallen far behind: a caller spawns a handful per
-    /// frame of its own descent and joins them before the frame above it moves on.
+    /// A queue only fills where the stealing has fallen far behind: a caller queues a handful per
+    /// frame of its own descent and waits them out before the frame above it moves on.
     /// </remarks>
     private const int QueueCapacity = 64;
 
     /// <summary>How many jobs a thread may take on while waiting, one nested inside the next.</summary>
     private const int MaxHelpDepth = 8;
 
-    private readonly JobRunner _runner;
-    private readonly Lane[] _lanes;
+    private readonly JobQueue[] _queues;
     private bool _done;
 
-    /// <param name="workerCount">Threads to run across, the caller's own included; 1 leaves every job to the caller.</param>
-    /// <param name="createWorker">Builds one lane's own state; called once per lane, on this thread.</param>
-    /// <param name="runner">Runs one job. Whatever it throws is caught and left on the job's node.</param>
-    public WorkStealingExecutor(int workerCount, Func<Lane, TWorkerState> createWorker, JobRunner runner)
+    /// <param name="threadCount">Threads to run across, the calling one included; 1 leaves every job to the caller.</param>
+    /// <param name="main">The calling thread's state, which exists already — it is what builds this.</param>
+    /// <param name="provider">Builds the state for every other thread; called here, on the calling thread.</param>
+    public WorkStealingExecutor(int threadCount, TState main, IJobStateProvider<TState, TJob> provider)
     {
-        _runner = runner;
-        _lanes = new Lane[workerCount];
-        Workers = new TWorkerState[workerCount];
+        _queues = new JobQueue[threadCount];
+        States = new TState[threadCount];
 
-        // The lanes come first: a lane's state is built from the lane, and a lane reads its own state
-        // back off this executor rather than holding it, so neither has to be patched in after the other.
-        for (int index = 0; index < workerCount; index++) _lanes[index] = new Lane(this, index, workerCount > 1 ? QueueCapacity : 0);
-        for (int index = 0; index < workerCount; index++) Workers[index] = createWorker(_lanes[index]);
+        // The queues come first: a state is built around the queue it will hand work to, and a queue
+        // reads its own state back off this executor rather than holding it, so neither has to be
+        // patched into the other afterwards.
+        for (int index = 0; index < threadCount; index++) _queues[index] = new JobQueue(this, index, threadCount > 1 ? QueueCapacity : 0);
+
+        States[0] = main;
+        for (int index = 1; index < threadCount; index++) States[index] = provider.Create(_queues[index]);
     }
 
-    /// <summary>Whether there is any thread but the caller's, which is what makes a spawn worth anything.</summary>
-    public bool IsParallel => _lanes.Length > 1;
+    /// <summary>Whether there is any thread but the caller's, which is what makes queueing a job worth anything.</summary>
+    public bool IsParallel => _queues.Length > 1;
 
-    /// <summary>Each lane's own state, the calling thread's first, for the caller's own teardown.</summary>
-    public TWorkerState[] Workers { get; }
+    /// <summary>Each thread's state, the calling thread's first, for the caller's own teardown.</summary>
+    public TState[] States { get; }
 
-    /// <summary>The calling thread's lane, which the outermost work descends on.</summary>
-    public Lane MainLane => _lanes[0];
+    /// <summary>The calling thread's queue, which its own work is handed out through.</summary>
+    public JobQueue MainQueue => _queues[0];
 
-    /// <summary>Queues every lane but the caller's onto the thread pool.</summary>
+    /// <summary>Puts every thread but the caller's onto the thread pool.</summary>
     public void Start()
     {
-        for (int index = 1; index < _lanes.Length; index++)
+        for (int index = 1; index < _queues.Length; index++)
         {
-            // no Task: a lane is its own work item, so a run queues no delegate and no continuation
-            ThreadPool.UnsafeQueueUserWorkItem(_lanes[index], preferLocal: false);
+            // no Task: a queue is its own work item, so a run queues no delegate and no continuation
+            ThreadPool.UnsafeQueueUserWorkItem(_queues[index], preferLocal: false);
         }
     }
 
-    /// <summary>Tells the lanes the run is over; they exit as they notice, and nothing waits for them.</summary>
+    /// <summary>Tells the threads the run is over; they exit as they notice, and nothing waits for them.</summary>
     public void Complete() => Volatile.Write(ref _done, true);
 
-    /// <summary>Runs <paramref name="node"/>'s job on this thread, leaving what it produced — or threw — on the node.</summary>
-    private void Run(TWorkerState worker, Node node)
+    /// <summary>Runs <paramref name="node"/>'s job here and now, leaving what it produced — or threw — on the node.</summary>
+    private static void Run(TState state, Node node)
     {
         try
         {
-            _runner(worker, ref node.Job);
+            state.Execute(ref node.Job);
             node.Complete(error: null);
         }
         catch (Exception exception)
@@ -103,73 +123,79 @@ internal sealed class WorkStealingExecutor<TWorkerState, TJob>
         }
     }
 
-    /// <summary>One thread's share of a run: the queue it hands work out through, and the state it runs with.</summary>
-    /// <remarks>
-    /// Everything but <see cref="WorkStealingDeque{T}.TrySteal"/> is the owning thread's alone. A lane
-    /// is also its own thread-pool work item, which is what <see cref="Start"/> queues.
-    /// </remarks>
-    internal sealed class Lane(WorkStealingExecutor<TWorkerState, TJob> executor, int index, int queueCapacity)
+    /// <summary>
+    /// Where one thread hands work to the others and waits for it back — and, behind an explicit
+    /// interface the caller never sees, the loop by which that thread takes work from the rest.
+    /// </summary>
+    /// <remarks>Everything but <see cref="WorkStealingDeque{T}.TrySteal"/> is the owning thread's alone.</remarks>
+    internal sealed class JobQueue(WorkStealingExecutor<TState, TJob> executor, int index, int capacity)
         : IThreadPoolWorkItem
     {
-        private readonly WorkStealingDeque<Node>? _queue = queueCapacity == 0 ? null : new WorkStealingDeque<Node>(queueCapacity);
+        private readonly WorkStealingDeque<Node>? _deque = capacity == 0 ? null : new WorkStealingDeque<Node>(capacity);
         private int _helpDepth;
 
-        /// <summary>Whether a spawn can reach another thread at all; on a single-lane run it cannot.</summary>
-        public bool CanSpawn => _queue is not null;
+        /// <summary>Whether a queued job can reach another thread at all; on a single-threaded run it cannot.</summary>
+        public bool CanQueue => _deque is not null;
 
-        /// <summary>Where this lane's queue stands, which a caller takes as a mark before spawning a batch of its own.</summary>
-        public long QueueMark => _queue?.Head ?? 0;
-
-        /// <remarks>Read back rather than held, so that a lane and its state need not be built in one go.</remarks>
-        private TWorkerState Worker => executor.Workers[index];
+        /// <remarks>Read back rather than held, so that a queue and its state need not be built in one go.</remarks>
+        private TState State => executor.States[index];
 
         /// <summary>
-        /// Offers <paramref name="job"/> to whichever thread reaches it first and returns the node
-        /// holding it; <c>null</c> when the queue is full, leaving the work to the caller.
+        /// Offers <paramref name="job"/> to whichever thread reaches it first, adding it to
+        /// <paramref name="handle"/>; <c>false</c> when the queue is full, which leaves the job with the
+        /// caller and the handle untouched.
         /// </summary>
-        /// <param name="next">The node this lane spawned before it, which this one is chained ahead of.</param>
-        public Node? TrySpawn(in TJob job, Node? next)
+        public bool TryQueue(in TJob job, ref Handle handle)
         {
-            Node node = new(job, next);
-            return _queue!.TryPushHead(node) ? node : null;
+            Node node = new(job, handle.Head);
+            if (!_deque!.TryPushHead(node)) return false;
+
+            // Where the queue stood before this batch's first job went on, which is how far Wait may
+            // take work back: anything below that mark belongs to an enclosing batch of the caller's.
+            if (handle.Head is null) handle.Mark = _deque.Head - 1;
+            handle.Head = node;
+            return true;
         }
 
         /// <summary>
-        /// Returns once every node <paramref name="spawned"/> chains has been run: taking back what no
-        /// thread has started, then helping with what the other lanes have queued while the rest come back.
+        /// Returns once every job <paramref name="handle"/> holds has been run: taking back what no
+        /// thread has started, then helping with what the other threads have queued while the rest come
+        /// back.
         /// </summary>
-        /// <param name="queueMark">Where <see cref="QueueMark"/> stood before the caller spawned any of them.</param>
         /// <remarks>
-        /// Whether a job succeeded is the caller's to read off <see cref="Node.Error"/>: a job that
-        /// threw is not this type's to interpret, and the caller may have results of its own to unwind
-        /// before it rethrows.
+        /// Whether a job succeeded is the caller's to read off <see cref="Node.Error"/> as it walks the
+        /// handle: a job that threw is not this type's to interpret, and the caller may have results of
+        /// its own to unwind before it rethrows.
         /// </remarks>
-        public void Join(Node spawned, long queueMark)
+        public void Wait(in Handle handle)
         {
+            Node? queued = handle.Head;
+            if (queued is null) return;
+
             // Take back what no thread has started yet, which the queue hands over newest first — the
-            // order the caller pushed them in, and the one whose work is likeliest still cached.
-            while (QueueMark > queueMark)
+            // order the caller queued them in, and the one whose work is likeliest still cached.
+            while (_deque!.Head > handle.Mark)
             {
-                Node? queued = _queue!.TryPopHead();
-                if (queued is null) break;
-                if (queued.TryClaim()) executor.Run(Worker, queued);
+                Node? popped = _deque.TryPopHead();
+                if (popped is null) break;
+                if (popped.TryClaim()) Run(State, popped);
             }
 
             // A node a thief took off the queue but has not claimed is still the caller's to run: the
             // claim settles which of the two threads it falls to, and the loser leaves it alone.
-            for (Node? node = spawned; node is not null; node = node.Next)
+            for (Node? node = queued; node is not null; node = node.Next)
             {
-                if (node.TryClaim()) executor.Run(Worker, node);
+                if (node.TryClaim()) Run(State, node);
             }
 
-            for (Node? node = spawned; node is not null; node = node.Next) WaitFor(node);
+            for (Node? node = queued; node is not null; node = node.Next) WaitFor(node);
         }
 
-        /// <summary>Runs whatever the other lanes hand out until the run is through.</summary>
+        /// <summary>Runs whatever the other threads hand out until the run is through.</summary>
         /// <remarks>
         /// It spins rather than parking: a run lasts a few milliseconds, and nothing else is waiting on
         /// its result, so the wake-up latency of a park would cost more than the spin does. The spin
-        /// never sleeps for the same reason, and yields so that a machine with fewer cores than lanes
+        /// never sleeps for the same reason, and yields so that a machine with fewer cores than threads
         /// still makes progress.
         /// </remarks>
         void IThreadPoolWorkItem.Execute()
@@ -189,11 +215,11 @@ internal sealed class WorkStealingExecutor<TWorkerState, TJob>
 
         /// <summary>
         /// Waits for whichever thread claimed <paramref name="node"/> to finish it, running what the
-        /// other lanes have queued in the meantime rather than spinning through it.
+        /// other threads have queued in the meantime rather than spinning through it.
         /// </summary>
         /// <remarks>
         /// Helping is what keeps a caller that handed all of its work out from idling until it comes
-        /// back. It is bounded by <see cref="MaxHelpDepth"/>: each helped job runs and joins on this
+        /// back. It is bounded by <see cref="MaxHelpDepth"/>: each helped job runs and waits on this
         /// thread's stack, so an unbounded chain of them — a thread that keeps taking on new work every
         /// time it waits — would run the stack down.
         /// </remarks>
@@ -218,20 +244,60 @@ internal sealed class WorkStealingExecutor<TWorkerState, TJob>
             }
         }
 
-        /// <summary>Takes one job off another lane's queue and runs it; <c>false</c> when nothing was there to take.</summary>
+        /// <summary>Takes one job off another thread's queue and runs it; <c>false</c> when there was none to take.</summary>
         private bool TryRunStolen()
         {
-            Lane[] lanes = executor._lanes;
-            for (int offset = 1; offset < lanes.Length; offset++)
+            JobQueue[] queues = executor._queues;
+            for (int offset = 1; offset < queues.Length; offset++)
             {
-                Node? stolen = lanes[(index + offset) % lanes.Length]._queue!.TrySteal();
+                Node? stolen = queues[(index + offset) % queues.Length]._deque!.TrySteal();
                 if (stolen is null || !stolen.TryClaim()) continue;
 
-                executor.Run(Worker, stolen);
+                Run(State, stolen);
                 return true;
             }
 
             return false;
+        }
+    }
+
+    /// <summary>
+    /// The jobs one caller has queued and not yet waited on, which it walks for their outputs once
+    /// <see cref="JobQueue.Wait"/> is through.
+    /// </summary>
+    /// <remarks>
+    /// A caller starts with <c>default</c> and hands the same handle to every
+    /// <see cref="JobQueue.TryQueue"/> of that batch; the chaining, and the queue mark the wait needs,
+    /// are the queue's to keep rather than the caller's. Handles nest: a job that queues jobs of its
+    /// own holds a handle of its own, and waiting on that one takes back only what it queued.
+    /// </remarks>
+    internal struct Handle
+    {
+        /// <summary>The most recently queued job, from which the rest chain backwards.</summary>
+        internal Node? Head;
+
+        /// <summary>Where the queue stood before the first of them went on.</summary>
+        internal long Mark;
+
+        public readonly bool IsEmpty => Head is null;
+
+        public readonly Enumerator GetEnumerator() => new(Head);
+
+        /// <summary>Walks the jobs, most recently queued first.</summary>
+        internal struct Enumerator(Node? head)
+        {
+            private Node? _next = head;
+
+            public Node Current { get; private set; } = null!;
+
+            public bool MoveNext()
+            {
+                if (_next is null) return false;
+
+                Current = _next;
+                _next = _next.Next;
+                return true;
+            }
         }
     }
 
@@ -249,13 +315,13 @@ internal sealed class WorkStealingExecutor<TWorkerState, TJob>
         private TJob _job = job;
         private int _state;
 
-        /// <summary>The job itself: the caller's inputs going in, the runner's outputs coming back.</summary>
+        /// <summary>The job itself: the caller's inputs going in, the outputs coming back.</summary>
         public ref TJob Job => ref _job;
 
-        /// <summary>The node the same caller spawned before this one, which it walks to join them all.</summary>
-        public Node? Next => next;
+        /// <summary>The job queued before this one, which the handle chains back through.</summary>
+        internal Node? Next => next;
 
-        /// <summary>What the runner threw, for the caller to make of what it will.</summary>
+        /// <summary>What running the job threw, for the caller to make of what it will.</summary>
         public Exception? Error { get; private set; }
 
         /// <summary>Whether the thread that claimed this node has finished it, outputs and all.</summary>

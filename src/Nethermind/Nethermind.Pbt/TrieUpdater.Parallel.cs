@@ -14,110 +14,41 @@ namespace Nethermind.Pbt;
 
 public static partial class TrieUpdater
 {
-    /// <summary>Below this many stems a batch folds on the calling thread, whatever the concurrency says.</summary>
-    /// <remarks>
-    /// Measured: a fold of a few hundred stems is a few tens of microseconds, which the hand-offs and
-    /// the buffered writes cost more than the threads save; from about a thousand it pays, and by ten
-    /// thousand it is worth several times over.
-    /// </remarks>
-    private const int MinEntriesToParallelize = 1024;
-
-    /// <summary>The smallest bucket worth handing to another thread, whatever the batch's size says.</summary>
-    private const int HardMinimumStems = 8;
-
-    /// <summary>
-    /// How many jobs the threshold aims to leave per thread: enough for the stealing to even out an
-    /// unbalanced batch, few enough that the hand-offs stay a rounding error.
-    /// </summary>
-    private const int TargetJobsPerThread = 16;
-
-    /// <summary>
-    /// Bounds on a thread's buffered writes: enough that a small fold never grows, capped so a huge one
-    /// does not rent per thread what only one of them will fill.
-    /// </summary>
-    private const int MinWriteBufferCapacity = 64;
-
-    /// <inheritdoc cref="MinWriteBufferCapacity"/>
-    private const int MaxWriteBufferCapacity = 4096;
-
-    /// <summary>
-    /// Folds <paramref name="changes"/> into the tree at <paramref name="currentRoot"/> across as many
-    /// threads as the batch and <paramref name="concurrency"/> between them allow, and returns the new root.
-    /// </summary>
-    /// <remarks>
-    /// One <see cref="Updater"/> per thread, each holding its own buffered writes and the lane it hands
-    /// buckets out through. The calling thread runs the root frame on the first of them, and the rest
-    /// only ever run what it and its descendants hand out. Every write they buffered is replayed here,
-    /// on the calling thread, which is what keeps <see cref="IPbtStore"/> a single-threaded interface.
-    /// </remarks>
-    /// <param name="concurrency"><inheritdoc cref="UpdateRoot" path="/param[@name='concurrency']"/></param>
-    private static ValueHash256 Fold(
-        IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes,
-        IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat, int concurrency,
-        out PbtSubtreeStats delta)
+    // The updater as the executor sees it: the state one thread folds with, the queue it hands its
+    // buckets to, and the job it is asked to run. The descent itself is in TrieUpdater.cs.
+    private sealed partial class Updater : IJobRunner<Updater.BucketJob>, IJobStateProvider<Updater, Updater.BucketJob>
     {
-        int threadCount = ResolveThreadCount(concurrency, changes.Count);
+        /// <summary>Below this many stems a batch folds on the calling thread, whatever the concurrency says.</summary>
+        /// <remarks>
+        /// Measured: a fold of a few hundred stems is a few tens of microseconds, which the hand-offs and
+        /// the buffered writes cost more than the threads save; from about a thousand it pays, and by ten
+        /// thousand it is worth several times over.
+        /// </remarks>
+        private const int MinEntriesToParallelize = 1024;
 
-        // The threshold splits the batch into about TargetJobsPerThread jobs per thread, so that the
-        // queues hold enough to steal from without the descent stopping to spawn every other frame; a
-        // fold on the calling thread alone takes the spawn out of the descent entirely.
-        int minSpawnEntries = threadCount == 1
-            ? int.MaxValue
-            : Math.Max(HardMinimumStems, changes.Count / threadCount / TargetJobsPerThread);
-        int writeBufferCapacity = Math.Clamp(changes.Count / threadCount, MinWriteBufferCapacity, MaxWriteBufferCapacity);
+        /// <summary>The smallest bucket worth handing to another thread, whatever the batch's size says.</summary>
+        private const int HardMinimumStems = 8;
 
-        // held as arrays rather than as the batch: a bucket is a range of entry indices, which is what
-        // lets one thread hand it to another
-        PbtWriteBatch.StemEntry[] entries = changes.EntriesArray;
-        int[]? buckets = changes.BucketsArray;
+        /// <summary>
+        /// How many jobs the threshold aims to leave per thread: enough for the stealing to even out an
+        /// unbalanced batch, few enough that the hand-offs stay a rounding error.
+        /// </summary>
+        private const int TargetJobsPerThread = 16;
 
-        WorkStealingExecutor<Updater, Updater.BucketJob> executor = new(
-            threadCount,
-            lane => new Updater(store, memoryProvider, writeFormat, entries, buckets, minSpawnEntries, writeBufferCapacity, lane),
-            Updater.RunJob);
+        /// <summary>
+        /// Bounds on a thread's buffered writes: enough that a small fold never grows, capped so a huge
+        /// one does not rent per thread what only one of them will fill.
+        /// </summary>
+        private const int MinWriteBufferCapacity = 64;
 
-        executor.Start();
+        /// <inheritdoc cref="MinWriteBufferCapacity"/>
+        private const int MaxWriteBufferCapacity = 4096;
 
-        bool folded = false;
-        try
-        {
-            ValueHash256 root = executor.Workers[0].Run(currentRoot, changes, out delta);
-            folded = true;
-            return root;
-        }
-        finally
-        {
-            executor.Complete();
+        /// <summary>The threads this fold runs across; the calling thread's own updater owns it.</summary>
+        private readonly WorkStealingExecutor<Updater, BucketJob>? _executor;
 
-            // Every thread is quiescent by now: the root frame's join settled the last job before this
-            // was reached, and a job's completion publishes its writes to whoever waits on it. A fold
-            // that threw keeps none of them.
-            foreach (Updater updater in executor.Workers) updater.FlushWrites(folded);
-        }
-    }
-
-    /// <remarks>
-    /// Bounded by the work as well as by the machine: a batch that cannot be cut into
-    /// <see cref="TargetJobsPerThread"/> jobs of <see cref="HardMinimumStems"/> stems for each thread
-    /// asked for would leave the rest of them with nothing to steal, spinning through the fold.
-    /// </remarks>
-    private static int ResolveThreadCount(int concurrency, int stems)
-    {
-        if (stems < MinEntriesToParallelize) return 1;
-
-        int requested = concurrency <= 0 ? Environment.ProcessorCount : concurrency;
-        int affordable = stems / (HardMinimumStems * TargetJobsPerThread);
-        return Math.Clamp(Math.Min(requested, affordable), 1, Environment.ProcessorCount);
-    }
-
-    private sealed partial class Updater
-    {
-        /// <summary>What the executor runs a queued job through, which is the fold of one bucket.</summary>
-        internal static readonly WorkStealingExecutor<Updater, BucketJob>.JobRunner RunJob =
-            static (Updater updater, ref BucketJob job) => updater.FoldBucket(ref job);
-
-        /// <summary>The lane this thread spawns and joins on; a serial fold's lane cannot spawn at all.</summary>
-        private readonly WorkStealingExecutor<Updater, BucketJob>.Lane _lane = lane;
+        /// <summary>Where this thread queues its buckets; a fold on the calling thread alone takes none.</summary>
+        private readonly WorkStealingExecutor<Updater, BucketJob>.JobQueue _queue;
 
         /// <summary>
         /// The store writes this thread made, replayed by the calling thread once the fold is through;
@@ -135,56 +66,176 @@ public static partial class TrieUpdater
         /// per stem it touches, so the lists are the largest thing it allocates.
         /// </para>
         /// </remarks>
-        private readonly ArrayPoolList<(TrieNodeKey Key, byte[]? Node)>? _nodeWrites =
-            lane.CanSpawn ? new ArrayPoolList<(TrieNodeKey, byte[]?)>(writeBufferCapacity) : null;
+        private readonly ArrayPoolList<(TrieNodeKey Key, byte[]? Node)>? _nodeWrites;
 
         /// <inheritdoc cref="_nodeWrites"/>
-        private readonly ArrayPoolList<(Stem Stem, byte[]? Blob)>? _blobWrites =
-            lane.CanSpawn ? new ArrayPoolList<(Stem, byte[]?)>(writeBufferCapacity) : null;
+        private readonly ArrayPoolList<(Stem Stem, byte[]? Blob)>? _blobWrites;
+
+        /// <summary>
+        /// The calling thread's updater, which settles what the fold costs — how many threads, how big a
+        /// bucket is worth handing over, how much each thread buffers — and builds the threads to run it.
+        /// </summary>
+        /// <remarks>
+        /// Everything <see cref="Create"/> copies must be settled before the executor is built, since
+        /// building it is what calls <see cref="Create"/> for every other thread.
+        /// </remarks>
+        public Updater(
+            IPbtStore store, IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat,
+            PbtWriteBatch changes, int concurrency)
+        {
+            _store = store;
+            _memoryProvider = memoryProvider;
+            _writeFormat = writeFormat;
+
+            // held as arrays rather than as the batch: a bucket is a range of entry indices, which is
+            // what lets one thread hand it to another
+            _entries = changes.EntriesArray;
+            _buckets = changes.BucketsArray;
+
+            int threadCount = ResolveThreadCount(concurrency, changes.Count);
+
+            // The threshold splits the batch into about TargetJobsPerThread jobs per thread, so that the
+            // queues hold enough to steal from without the descent stopping to queue at every other
+            // frame; a fold on the calling thread alone takes the queueing out of the descent entirely.
+            _minQueueEntries = threadCount == 1
+                ? int.MaxValue
+                : Math.Max(HardMinimumStems, changes.Count / threadCount / TargetJobsPerThread);
+            _writeBufferCapacity = Math.Clamp(changes.Count / threadCount, MinWriteBufferCapacity, MaxWriteBufferCapacity);
+
+            _executor = new WorkStealingExecutor<Updater, BucketJob>(threadCount, this, this);
+            _queue = _executor.MainQueue;
+            (_nodeWrites, _blobWrites) = WriteBuffers(_queue, _writeBufferCapacity);
+        }
+
+        /// <summary>One more thread's updater, folding the same batch with the same settings.</summary>
+        private Updater(Updater main, WorkStealingExecutor<Updater, BucketJob>.JobQueue queue)
+        {
+            _store = main._store;
+            _memoryProvider = main._memoryProvider;
+            _writeFormat = main._writeFormat;
+            _entries = main._entries;
+            _buckets = main._buckets;
+            _minQueueEntries = main._minQueueEntries;
+            _writeBufferCapacity = main._writeBufferCapacity;
+
+            _queue = queue;
+            (_nodeWrites, _blobWrites) = WriteBuffers(queue, _writeBufferCapacity);
+        }
+
+        /// <inheritdoc cref="IJobStateProvider{TState, TJob}.Create"/>
+        public Updater Create(WorkStealingExecutor<Updater, BucketJob>.JobQueue queue) => new(this, queue);
+
+        /// <inheritdoc cref="IJobRunner{TJob}.Execute"/>
+        /// <remarks>One bucket of one frame, folded on whichever thread got to it.</remarks>
+        public void Execute(ref BucketJob job)
+        {
+            BucketPlan plan = new(
+                job.BucketLength == 0 ? default : _buckets!.AsSpan(job.BucketStart, job.BucketLength),
+                job.BranchDepth);
+            ApplyKeyedChild(
+                job.Key, _entries.AsSpan(job.EntryStart, job.EntryCount), job.Occupant, plan,
+                out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
+
+            job.Result = result;
+            job.Changed = changed;
+            job.Delta = delta;
+            job.StoredChild = storedChild;
+        }
+
+        /// <summary>
+        /// Folds <paramref name="changes"/> into the tree at <paramref name="currentRoot"/> and returns
+        /// the new root, across every thread this updater built.
+        /// </summary>
+        /// <remarks>
+        /// The calling thread runs the root frame, and the rest only ever run what it and its
+        /// descendants hand out. Every write they buffered is replayed here, on the calling thread,
+        /// which is what keeps <see cref="IPbtStore"/> a single-threaded interface.
+        /// </remarks>
+        public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
+        {
+            _executor!.Start();
+
+            bool folded = false;
+            try
+            {
+                ValueHash256 root = Descend(currentRoot, changes, out delta);
+                folded = true;
+                return root;
+            }
+            finally
+            {
+                _executor.Complete();
+
+                // Every thread is quiescent by now: the root frame's wait settled the last job before
+                // this was reached, and a job's completion publishes its writes to whoever waits on it.
+                // A fold that threw keeps none of them.
+                foreach (Updater updater in _executor.States) updater.FlushWrites(folded);
+            }
+        }
+
+        /// <remarks>
+        /// Bounded by the work as well as by the machine: a batch that cannot be cut into
+        /// <see cref="TargetJobsPerThread"/> jobs of <see cref="HardMinimumStems"/> stems for each thread
+        /// asked for would leave the rest of them with nothing to steal, spinning through the fold.
+        /// </remarks>
+        private static int ResolveThreadCount(int concurrency, int stems)
+        {
+            if (stems < MinEntriesToParallelize) return 1;
+
+            int requested = concurrency <= 0 ? Environment.ProcessorCount : concurrency;
+            int affordable = stems / (HardMinimumStems * TargetJobsPerThread);
+            return Math.Clamp(Math.Min(requested, affordable), 1, Environment.ProcessorCount);
+        }
+
+        private static (ArrayPoolList<(TrieNodeKey, byte[]?)>?, ArrayPoolList<(Stem, byte[]?)>?) WriteBuffers(
+            WorkStealingExecutor<Updater, BucketJob>.JobQueue queue, int capacity) =>
+            queue.CanQueue
+                ? (new ArrayPoolList<(TrieNodeKey, byte[]?)>(capacity), new ArrayPoolList<(Stem, byte[]?)>(capacity))
+                : (null, null);
 
         /// <summary>
         /// Whether this frame may hand any of its buckets out at all: the fold is a parallel one, and the
         /// frame branches. A frame whose entries all fall in one bucket would be handing its whole range
         /// over and then waiting on it, which buys nothing.
         /// </summary>
-        private bool MaySpawn(uint touchedBitmask) => _lane.CanSpawn && !BitOperations.IsPow2(touchedBitmask);
+        private bool MayQueue(uint touchedBitmask) => _queue.CanQueue && !BitOperations.IsPow2(touchedBitmask);
 
         /// <summary>
-        /// Queues <paramref name="bucket"/> as a job for whichever thread reaches it first, and returns
-        /// the node holding it; <c>null</c> when the queue is full, leaving the frame to fold the bucket
-        /// itself.
+        /// Queues <paramref name="bucket"/> as a job for whichever thread reaches it first, adding it to
+        /// <paramref name="queued"/>; <c>false</c> when the queue is full, leaving the frame to fold the
+        /// bucket itself.
         /// </summary>
-        /// <param name="next">The node this frame spawned before it, which this one is chained ahead of.</param>
-        private WorkStealingExecutor<Updater, BucketJob>.Node? TrySpawn(
+        private bool TryQueue(
             int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in Occupant occupant,
-            scoped BucketPlan childPlan, WorkStealingExecutor<Updater, BucketJob>.Node? next)
+            scoped BucketPlan childPlan, ref QueuedBuckets queued)
         {
             ReadOnlySpan<int> precalculated = childPlan.Precalculated;
             BucketJob job = new()
             {
                 Slot = slot,
                 Key = childKey,
-                EntryStart = IndexOf(entries, bucket),
+                EntryStart = IndexOf(_entries, bucket),
                 EntryCount = bucket.Length,
-                BucketStart = precalculated.IsEmpty ? 0 : IndexOf(buckets!, precalculated),
+                BucketStart = precalculated.IsEmpty ? 0 : IndexOf(_buckets!, precalculated),
                 BucketLength = precalculated.Length,
                 BranchDepth = childPlan.BranchDepth,
                 Occupant = occupant,
             };
 
-            return _lane.TrySpawn(in job, next);
+            return _queue.TryQueue(in job, ref queued.Jobs);
         }
 
         /// <summary>
-        /// Settles the jobs <paramref name="spawned"/> chains, which the lane has seen through, into the
-        /// frame's boundary — and rethrows on this thread whatever one of them threw on another.
+        /// Sees the buckets <paramref name="queued"/> holds through and settles each one's result into
+        /// the frame's boundary — rethrowing on this thread whatever one of them threw on another.
         /// </summary>
         private void Settle(
-            WorkStealingExecutor<Updater, BucketJob>.Node spawned, Span<NodeResult> results,
-            ref BoundaryScan scan, ref uint storedChildBitmask)
+            ref QueuedBuckets queued, Span<NodeResult> results, ref BoundaryScan scan, ref uint storedChildBitmask)
         {
+            _queue.Wait(in queued.Jobs);
+
             Exception? error = null;
-            for (WorkStealingExecutor<Updater, BucketJob>.Node? node = spawned; node is not null; node = node.Next)
+            foreach (WorkStealingExecutor<Updater, BucketJob>.Node node in queued.Jobs)
             {
                 if (node.Error is not null)
                 {
@@ -208,22 +259,6 @@ public static partial class TrieUpdater
             if (error is not null) ExceptionDispatchInfo.Throw(error);
         }
 
-        /// <summary>Folds one queued bucket, on whichever thread got to it.</summary>
-        private void FoldBucket(ref BucketJob job)
-        {
-            BucketPlan plan = new(
-                job.BucketLength == 0 ? default : buckets!.AsSpan(job.BucketStart, job.BucketLength),
-                job.BranchDepth);
-            ApplyKeyedChild(
-                job.Key, entries.AsSpan(job.EntryStart, job.EntryCount), job.Occupant, plan,
-                out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
-
-            job.Result = result;
-            job.Changed = changed;
-            job.Delta = delta;
-            job.StoredChild = storedChild;
-        }
-
         /// <summary>
         /// <inheritdoc cref="IPbtStore.SetTrieNode" path="/summary"/> Takes <paramref name="node"/>'s
         /// lease, copying the value out of it as the store would.
@@ -232,7 +267,7 @@ public static partial class TrieUpdater
         private void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
         {
             byte[]? value = node?.ToArrayAndRelease();
-            if (_nodeWrites is null) store.SetTrieNode(key, value);
+            if (_nodeWrites is null) _store.SetTrieNode(key, value);
             else _nodeWrites.Add((key, value));
         }
 
@@ -241,19 +276,19 @@ public static partial class TrieUpdater
         private void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
         {
             byte[]? value = blob?.ToArrayAndRelease();
-            if (_blobWrites is null) store.SetLeafBlob(stem, value);
+            if (_blobWrites is null) _store.SetLeafBlob(stem, value);
             else _blobWrites.Add((stem, value));
         }
 
         /// <summary>Hands the store what this thread buffered, in the order it made the writes, or drops it.</summary>
-        public void FlushWrites(bool commit)
+        private void FlushWrites(bool commit)
         {
             if (_nodeWrites is null) return;
 
             if (commit)
             {
-                foreach ((TrieNodeKey key, byte[]? node) in _nodeWrites.AsSpan()) store.SetTrieNode(key, node);
-                foreach ((Stem stem, byte[]? blob) in _blobWrites!.AsSpan()) store.SetLeafBlob(stem, blob);
+                foreach ((TrieNodeKey key, byte[]? node) in _nodeWrites.AsSpan()) _store.SetTrieNode(key, node);
+                foreach ((Stem stem, byte[]? blob) in _blobWrites!.AsSpan()) _store.SetLeafBlob(stem, blob);
             }
 
             _nodeWrites.Dispose();
@@ -268,6 +303,19 @@ public static partial class TrieUpdater
             nint index = Unsafe.ByteOffset(ref start, ref at) / Unsafe.SizeOf<T>();
             Debug.Assert((nuint)index + (nuint)span.Length <= (nuint)array.Length, "the span must be a range of the array");
             return (int)index;
+        }
+
+        /// <summary>The buckets one frame has handed out and not yet settled.</summary>
+        /// <remarks>
+        /// A frame starts with <c>default</c>, hands the same one to every <see cref="TryQueue"/> of that
+        /// frame, and settles it once; the jobs themselves, and how they are waited for, are the queue's
+        /// business.
+        /// </remarks>
+        internal struct QueuedBuckets
+        {
+            internal WorkStealingExecutor<Updater, BucketJob>.Handle Jobs;
+
+            public readonly bool IsEmpty => Jobs.IsEmpty;
         }
 
         /// <summary>
