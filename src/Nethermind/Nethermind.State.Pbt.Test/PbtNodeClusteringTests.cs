@@ -12,7 +12,7 @@ namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
 /// Where the updater puts each blob, as against what the trie holds: a group at a
-/// <see cref="PbtLayout.IsWrappingDepth"/> depth holds its children's blobs, so their keys hold
+/// <see cref="PbtLayout.IsClusteringDepth"/> depth holds its children's blobs, so their keys hold
 /// nothing, and a node moving across that boundary has to move its bytes with it.
 /// </summary>
 /// <remarks>
@@ -20,7 +20,7 @@ namespace Nethermind.State.Pbt.Test;
 /// here goes through <c>AssertStoreMatchesFreshRebuild</c> there too by construction; what these pin
 /// is the placement alone, which a byte-identical store would agree on however wrong it was.
 /// </remarks>
-public class PbtNodeWrappingTests
+public class PbtNodeClusteringTests
 {
     private static readonly byte[] Value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
     private static readonly byte[] Other = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
@@ -28,7 +28,7 @@ public class PbtNodeWrappingTests
     /// <summary>
     /// Every other group level is reached without a lookup of its own. A spine of stems parting one
     /// nibble deeper each time puts a branching group at every group depth, and half of them — the
-    /// odd ones, depth 0 not wrapping — have no key at all.
+    /// odd ones, depth 0 not clustering — have no key at all.
     /// </summary>
     [Test]
     public void EveryOtherGroupLevelIsHeldByTheOneAboveIt()
@@ -53,14 +53,14 @@ public class PbtNodeWrappingTests
         Assert.That(nodeDepths, Is.EqualTo(Enumerable.Range(0, Levels).Select(level => level * PbtLayout.TrieNodeGroupLevelsPerGroup)));
         Assert.That(
             harness.Nodes.Keys.Select(key => (int)key.Depth).Order(),
-            Is.EqualTo(nodeDepths.Where(depth => depth == 0 || !PbtLayout.IsWrappingDepth(depth - PbtLayout.TrieNodeGroupLevelsPerGroup))),
-            "a group whose parent wraps has no key of its own; the root has no parent");
+            Is.EqualTo(nodeDepths.Where(depth => depth == 0 || !PbtLayout.IsClusteringDepth(depth - PbtLayout.TrieNodeGroupLevelsPerGroup))),
+            "a group whose parent clusters has no key of its own; the root has no parent");
 
         // and the bytes at the key that does hold it are the child's own encoding, verbatim
-        TrieNodeKey wrapped = new TrieNodeKey(PbtLayout.TrieNodeGroupLevelsPerGroup, default).ChildGroup(0);
+        TrieNodeKey clusteredChildKey = new TrieNodeKey(PbtLayout.TrieNodeGroupLevelsPerGroup, default).ChildGroup(0);
         byte[] blob = harness.Nodes[new TrieNodeKey(PbtLayout.TrieNodeGroupLevelsPerGroup, default)];
-        PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
-        Assert.That(blob[wrapper.Child(0, group)], Is.EqualTo(harness.FlattenedNodes()[wrapped]));
+        PbtNodeCluster cluster = PbtNodeCluster.Decode(blob, out PbtTrieNodeGroup group);
+        Assert.That(blob[cluster.Child(0, group)], Is.EqualTo(harness.FlattenedNodes()[clusteredChildKey]));
     }
 
     /// <summary>
@@ -68,9 +68,9 @@ public class PbtNodeWrappingTests
     /// that group holds its own children — which is the whole reason the parity is the depth's rather
     /// than the descent's.
     /// </summary>
-    [TestCase(20, false, TestName = "ChainTargetAtAWrappingDepth_HoldsItsChild")]
+    [TestCase(20, false, TestName = "ChainTargetAtAClusteringDepth_HoldsItsChild")]
     [TestCase(24, true, TestName = "ChainTargetBelowOne_LeavesItsChildAKey")]
-    public void ChainTarget_WrapsByItsOwnDepth(int targetDepth, bool childHasKey)
+    public void ChainTarget_ClustersByItsOwnDepth(int targetDepth, bool childHasKey)
     {
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.Interleaved);
         harness.ApplyBatch(BranchingUnder(targetDepth));
@@ -83,13 +83,13 @@ public class PbtNodeWrappingTests
 
     /// <summary>
     /// A run splitting onto its own target makes a group where there was none, and where that group
-    /// wraps, the target must move out of the key the run left it under and into the new blob — then
+    /// clusters, the target must move out of the key the run left it under and into the new blob — then
     /// back out again when deleting the stem collapses the group back into the run.
     /// </summary>
     [Test]
     public void ARunSplittingOntoItsTarget_AdoptsItAndGivesItBack()
     {
-        // the run reaches depth 24, so a stem parting at bit 20 makes a wrapping group at depth 20
+        // the run reaches depth 24, so a stem parting at bit 20 makes a clustering group at depth 20
         // whose direct child the target is
         List<(byte[], byte[]?)> writes = BranchingUnder(24);
         byte[] splitStem = new byte[Stem.Length];
@@ -121,11 +121,11 @@ public class PbtNodeWrappingTests
 
     /// <summary>
     /// A run is a hundred-odd bytes, far too little to be worth a key: the boundary slot it hangs from
-    /// holds its whole encoding, whether or not that group also wraps its child groups — which a run is
+    /// holds its whole encoding, whether or not that group also clusters its child groups — which a run is
     /// none of, being no blob of the store's at all.
     /// </summary>
     [TestCase(0, TestName = "ARunUnderTheRoot_IsHeldByIt")]
-    [TestCase(PbtLayout.TrieNodeGroupLevelsPerGroup, TestName = "ARunUnderAWrappingGroup_IsHeldBesideTheChildrenItWraps")]
+    [TestCase(PbtLayout.TrieNodeGroupLevelsPerGroup, TestName = "ARunUnderAClusteringGroup_IsHeldBesideTheChildrenItClusters")]
     public void ARunHasNoKeyOfItsOwn(int parentDepth)
     {
         List<(byte[], byte[]?)> writes = RunUnder(parentDepth);
@@ -137,29 +137,29 @@ public class PbtNodeWrappingTests
         TrieNodeKey parent = TrieNodeKey.For(parentDepth, default);
         TrieNodeKey runKey = parent.ChildGroup(0);
         byte[] parentBlob = harness.Nodes[parent];
-        PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(parentBlob, out PbtTrieNodeGroup group);
+        PbtNodeCluster cluster = PbtNodeCluster.Decode(parentBlob, out PbtTrieNodeGroup group);
 
         Assert.That(harness.Nodes.ContainsKey(runKey), Is.False, "a run is no blob of the store's");
         Assert.That(PbtNodeChain.IsChain(harness.FlattenedNodes()[runKey]), "yet the trie holds it, one group below its parent");
         Assert.That(group.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Chain));
-        Assert.That(parentBlob[wrapper.Child(0, group)], Is.Empty, "a run is the group's own entry, never one of the children it wraps");
+        Assert.That(parentBlob[cluster.Child(0, group)], Is.Empty, "a run is the group's own entry, never one of the children it clusters");
         Assert.That(
-            PbtTrieNodeWrapper.IsWrapper(parentBlob), Is.EqualTo(PbtLayout.IsWrappingDepth(parentDepth)),
-            "the group beside it is wrapped or keyed by depth, as it would be with no run there");
+            PbtNodeCluster.HoldsChildren(parentBlob), Is.EqualTo(PbtLayout.IsClusteringDepth(parentDepth)),
+            "the group beside it is clustered or keyed by depth, as it would be with no run there");
         Assert.That(harness.Nodes.Keys, Does.Contain(TrieNodeKey.For(RunTargetDepth, default)), "the run's target keeps a key of its own");
 
         AssertMatchesFreshRebuild(harness, writes);
     }
 
     /// <summary>
-    /// A wrapping group collapses into a run once one boundary is left, and the survivor's bytes go
+    /// A clustering group collapses into a run once one boundary is left, and the survivor's bytes go
     /// with it: they move out into a blob of their own under the survivor's key. The bytes are in the
     /// group's own blob either way, but which copy is live depends on whether the same batch rebuilt
     /// them — here it did, the other survivor being covered by
     /// <see cref="ARunSplittingOntoItsTarget_AdoptsItAndGivesItBack"/>.
     /// </summary>
     [Test]
-    public void AWrapperCollapsing_HandsOverTheSurvivorItJustRebuilt()
+    public void AClusterCollapsing_HandsOverTheSurvivorItJustRebuilt()
     {
         // two stems apiece under the depth-4 group's slots 0 and 1, each pair parting at depth 8 so the
         // slot roots a group there; one more stem parts at depth 0, so the group at depth 4 is real
@@ -177,18 +177,18 @@ public class PbtNodeWrappingTests
         PbtTreeHarness harness = new(provider, PbtGroupFormat.Interleaved);
         harness.ApplyBatch(writes);
 
-        TrieNodeKey wrapping = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, default);
-        Assert.That(PbtTrieNodeWrapper.IsWrapper(harness.Nodes[wrapping]), "the depth-4 group holds both its children");
+        TrieNodeKey clusterKey = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, default);
+        Assert.That(PbtNodeCluster.HoldsChildren(harness.Nodes[clusterKey]), "the depth-4 group holds both its children");
 
         // empty slot 0 and rewrite under slot 1 in one batch: the group is left with the one boundary,
         // and its bytes are the ones this very batch folded rather than the ones it read
         List<(byte[], byte[]?)> survivors = [rightLow with { Value = Other }, .. writes[3..]];
         harness.ApplyBatch([(leftLow.Key, null), (leftHigh.Key, null), .. survivors[..1]]);
 
-        Assert.That(harness.Nodes.ContainsKey(wrapping), Is.False, "the collapsed group leaves no blob behind");
+        Assert.That(harness.Nodes.ContainsKey(clusterKey), Is.False, "the collapsed group leaves no blob behind");
         Assert.That(
-            harness.Nodes.Keys, Does.Contain(wrapping.ChildGroup(1)),
-            "the survivor takes back the key the wrapper was holding its bytes instead of");
+            harness.Nodes.Keys, Does.Contain(clusterKey.ChildGroup(1)),
+            "the survivor takes back the key the cluster was holding its bytes instead of");
         AssertMatchesFreshRebuild(harness, survivors);
 
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero, "every rented buffer must end up fully released");

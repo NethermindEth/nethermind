@@ -29,7 +29,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtGroupFormat)" path="/param[@name='writeFormat']"/>
     public PbtGroupFormat WriteFormat { get; set; } = writeFormat;
 
-    /// <summary>The blobs as the store keeps them, a run or a wrapped child having no entry of its own.</summary>
+    /// <summary>The blobs as the store keeps them, a run or a clustered child having no entry of its own.</summary>
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
     /// <summary>The leaf blobs, one per stem the trie holds — an emptied one is removed, not stored empty.</summary>
@@ -45,12 +45,12 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     public int NodeWrites { get; private set; }
 
     /// <summary>
-    /// Every node the store holds, keyed by where it sits in the trie — the children inside a wrapper
+    /// Every node the store holds, keyed by where it sits in the trie — the children inside a cluster
     /// and the runs inside a group flattened back out to the keys they would have had of their own.
     /// </summary>
     /// <remarks>
     /// What a walk of the trie wants, as against <see cref="Nodes"/>, which is what the store wants: a
-    /// blob's key says where its node is, and a wrapped child's or a run's is its parent's plus its
+    /// blob's key says where its node is, and a clustered child's or a run's is its parent's plus its
     /// boundary slot.
     /// </remarks>
     public Dictionary<TrieNodeKey, byte[]> FlattenedNodes()
@@ -60,12 +60,12 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         return flattened;
     }
 
-    /// <summary>Adds the blob at <paramref name="key"/> and every node it holds: its runs, and the children it wraps with theirs.</summary>
+    /// <summary>Adds the blob at <paramref name="key"/> and every node it holds: its runs, and the children it clusters with theirs.</summary>
     private static void Flatten(Dictionary<TrieNodeKey, byte[]> flattened, in TrieNodeKey key, byte[] blob)
     {
         flattened.Add(key, blob);
 
-        PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(blob, out PbtTrieNodeGroup group);
+        PbtNodeCluster cluster = PbtNodeCluster.Decode(blob, out PbtTrieNodeGroup group);
         for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
         {
             int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
@@ -75,8 +75,8 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
                 continue;
             }
 
-            // a wrapped child is a bare group, which may hold runs of its own
-            byte[] child = blob[wrapper.Child(slot, group)];
+            // a clustered child is a bare group, which may hold runs of its own
+            byte[] child = blob[cluster.Child(slot, group)];
             if (child.Length != 0) Flatten(flattened, key.ChildGroup(slot), child);
         }
     }

@@ -49,9 +49,9 @@ public static class PbtLayout
     /// Absolute rather than relative to the root or to the nearest run, which is what keeps a blob's
     /// placement a function of its depth alone: a run splitting at an intermediate depth would
     /// otherwise flip the parity of everything below it, re-keying a whole subtree. Depth 0 does not
-    /// wrap, so the zone roots at depth 4 keep the keys their columns are routed by.
+    /// cluster, so the zone roots at depth 4 keep the keys their columns are routed by.
     /// </remarks>
-    public static bool IsWrappingDepth(int depth) => (depth & TrieNodeGroupLevelsPerGroup) != 0;
+    public static bool IsClusteringDepth(int depth) => (depth & TrieNodeGroupLevelsPerGroup) != 0;
 
     /// <summary>Whether <paramref name="format"/> stores no internal node at <paramref name="position"/>.</summary>
     /// <remarks>A stem node is stored at every position; only an internal node's hash is recomputable.</remarks>

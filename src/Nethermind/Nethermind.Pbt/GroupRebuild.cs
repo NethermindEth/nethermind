@@ -58,7 +58,7 @@ internal readonly record struct FoldedNode(NodeKind Kind, int Offset)
 /// where its parent needs it rather than copied by value up the stack — bar a node the format
 /// stores no entry for, whose hash has nowhere else to live.
 /// <para>
-/// The writer is passed per call rather than held, as <see cref="PbtTrieNodeWrapper.Builder"/>'s is,
+/// The writer is passed per call rather than held, as <see cref="PbtNodeCluster.Builder"/>'s is,
 /// and every entry is committed to it as it is written. What the rebuild carries between calls is the
 /// append cursor and the bitmaps, nothing borrowed — which is what lets it take the writer by
 /// <c>ref</c> at all, and why <paramref name="rootHash"/> comes by value: a ref struct constructed
