@@ -399,6 +399,7 @@ public class DbConfig : IDbConfig
     // Most writes
     public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
         FlatDbCommonTrieOptions +
+        "block_based_table_factory.block_size=4096;" +
         // Slight increase to account for high writes
         "max_bytes_for_level_base=350000000;" +
         "write_buffer_size=64000000;" +
