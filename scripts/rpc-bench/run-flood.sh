@@ -124,6 +124,11 @@ if [[ -n "$REFERENCE_RPC_URL" ]]; then
   assert_same_head "$RPC_URL" "$REFERENCE_RPC_URL"
 fi
 
+# Non-zero invocations are only warned about here so the remaining tests and the
+# summary still run — they are tallied and fail the script AFTER the summary is
+# written. Exception: equality mode, where the exit code may merely signal
+# response differences (reported in the summary, not a tool failure).
+run_failures=0
 for t in "${test_list[@]}"; do
   [[ -z "$t" ]] && continue
   od="$OUT_DIR/$t"
@@ -132,7 +137,7 @@ for t in "${test_list[@]}"; do
     flood "$t" "${LABEL}=$RPC_URL" "${REFERENCE_LABEL}=$REFERENCE_RPC_URL" \
       --equality \
       ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/${t}.log" \
-      || log "::warning::flood equality test '$t' exited non-zero (continuing)"
+      || log "::warning::flood equality test '$t' exited non-zero (may just signal differences — see the summary)"
   else
     log "flood $t ${LABEL}=$RPC_URL --rates $RATES --duration $DURATION $deep --output $od"
     # $RATES and $deep are intentionally word-split (SC2086); EXTRA_ARGS is passed
@@ -144,7 +149,7 @@ for t in "${test_list[@]}"; do
       $deep \
       --output "$od" \
       ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/${t}.log" \
-      || log "::warning::flood test '$t' exited non-zero (continuing)"
+      || { log "::warning::flood test '$t' exited non-zero (continuing)"; run_failures=$((run_failures + 1)); }
   fi
 done
 
@@ -190,8 +195,8 @@ if [[ -n "$REFERENCE_RPC_URL" ]]; then
     } >> "$summary"
   done
   log "flood equality summary written to $summary"
-  if (( missing == ${#test_list[@]} )); then
-    die "flood produced no output for any equality test — failing the benchmark step"
+  if (( missing > 0 )); then
+    die "flood produced no output for ${missing} of ${#test_list[@]} equality tests — failing the benchmark step"
   fi
   exit 0
 fi
@@ -204,6 +209,7 @@ fi
 } > "$summary"
 
 missing=0
+parse_failures=0
 for t in "${test_list[@]}"; do
   od="$OUT_DIR/$t"
   {
@@ -218,7 +224,7 @@ for t in "${test_list[@]}"; do
         | range($r.target_rate | length) as $i
         | "| \($node) | \($r.target_rate[$i]) | \(($r.actual_rate[$i] * 100 | round) / 100) | \(($r.success[$i] * 100) | round)% | \(ms($r.mean[$i])) | \(ms($r.p50[$i])) | \(ms($r.p90[$i])) | \(ms($r.p99[$i])) | \(ms($r.max[$i])) | \($r.requests[$i]) |"
       ' "$od/results.json" 2>/dev/null \
-        || { echo; echo "Failed to render $od/results.json"; }
+        || { echo; echo "Failed to render $od/results.json"; parse_failures=$((parse_failures + 1)); }
     else
       echo "**NO RESULTS** — flood did not write \`results.json\` (see \`${t}.log\` in the artifact)."
       missing=$((missing + 1))
@@ -228,8 +234,12 @@ for t in "${test_list[@]}"; do
 done
 
 log "flood summary written to $summary"
-if (( missing == ${#test_list[@]} )); then
-  die "flood produced no results for any test — failing the benchmark step"
-elif (( missing > 0 )); then
-  log "::warning::flood produced no results for ${missing} of ${#test_list[@]} tests"
+# A partial/failed benchmark must not publish as success — fail (after the
+# summary is written) on ANY invocation, missing-result, or parse failure.
+fail_msgs=()
+(( run_failures > 0 ))   && fail_msgs+=("${run_failures} invocation(s) exited non-zero")
+(( missing > 0 ))        && fail_msgs+=("${missing} of ${#test_list[@]} test(s) produced no results.json")
+(( parse_failures > 0 )) && fail_msgs+=("${parse_failures} results.json failed to render")
+if (( ${#fail_msgs[@]} > 0 )); then
+  die "flood benchmark incomplete: ${fail_msgs[*]} — failing the benchmark step"
 fi

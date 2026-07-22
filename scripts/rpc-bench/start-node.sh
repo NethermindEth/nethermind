@@ -50,8 +50,10 @@ DOTTRACE="${DOTTRACE:-false}"
 DOTTRACE_HOST_PATH="${DOTTRACE_HOST_PATH:-/opt/dottrace}"
 DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
-JSONRPC_MODULES="${JSONRPC_MODULES:-Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin}"
-GETH_HTTP_API="${GETH_HTTP_API:-eth,net,web3,debug,txpool,admin}"
+# No Personal/Admin (or geth admin) by default — the RPC port is only ever
+# served for the local load generator; administrative modules are not benchmarked.
+JSONRPC_MODULES="${JSONRPC_MODULES:-Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug}"
+GETH_HTTP_API="${GETH_HTTP_API:-eth,net,web3,debug,txpool}"
 RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
@@ -257,7 +259,9 @@ docker_args=(
   -d --name "$CONTAINER_NAME"
   --restart no
   --stop-signal SIGINT
-  -p "${RPC_PORT}:8545"
+  # Loopback-only: the load generators run on this host; publishing on all
+  # interfaces would let other network hosts hit the node mid-benchmark.
+  -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
 if [[ "$CLIENT" == "nethermind" ]]; then
@@ -280,6 +284,10 @@ if [[ "$DOTTRACE" == "true" ]]; then
       || as_root dotnet tool install --tool-path "$DOTTRACE_HOST_PATH" JetBrains.dotTrace.GlobalTools \
       || die "failed to install dotTrace CLI (is the .NET SDK on the runner?)"
   fi
+  # A hard-interrupted previous run can leave snapshots here that the collector
+  # would archive as if they came from THIS run — always start from an empty dir.
+  assert_no_mounts_under "$DIAG_DIR/dottrace"
+  as_root rm -rf "$DIAG_DIR/dottrace"
   mkdir -p "$DIAG_DIR/dottrace"
   docker_args+=(
     -v "$DOTTRACE_HOST_PATH:/opt/dottrace:ro"

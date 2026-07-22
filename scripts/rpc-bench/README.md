@@ -11,8 +11,8 @@ sets, and a **comparison mode** runs two clients side by side and diffs their
 responses.
 
 It can drive three load tools and, optionally, capture a JetBrains dotTrace
-timeline of the node (Nethermind only) and post-process it to XML — the same
-flow the EXPB workflow uses.
+performance snapshot of the node (Nethermind only) and post-process it to XML —
+the same flow the EXPB workflow uses.
 
 ## Goals
 
@@ -152,7 +152,7 @@ images (see the table above).
   "db_isolation": "overlay",       // overlay | copy | readonly-bind
   "scratch_root": "/mnt/sda/expb-data/rpc-bench-scratch",
   "network": "mainnet",
-  "jsonrpc_modules": "Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin",
+  "jsonrpc_modules": "Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug",
   "health_timeout_minutes": 30,
   "cpuset": "",                    // e.g. "2-7,10-15" to pin the node like expb does
   "memory": "",                    // e.g. "64g"
@@ -269,9 +269,12 @@ Nethermind image (no special diag build):
 4. The `dottrace-summary` job runs [`scripts/dottrace-report.sh`](../dottrace-report.sh)
    `top` over each XML and writes the hot functions into the job summary.
 
-> The timeline snapshot spans the node's whole lifetime, including DB load and
-> warmup. Keep the benchmark `duration` the dominant phase, or analyze by time
-> window, so RPC-call frames dominate the captured `OwnTime`.
+> The capture runs in dotTrace's default **sampling** mode (no
+> `--profiling-type` is passed) — deliberately, since JetBrains' Reporter.exe
+> cannot post-process Timeline snapshots into XML. The snapshot spans the
+> node's whole lifetime, including DB load and warmup. Keep the benchmark
+> `duration` the dominant phase, or analyze by time window, so RPC-call frames
+> dominate the captured `OwnTime`.
 
 Download the `dottrace-reports` artifact and inspect locally:
 
