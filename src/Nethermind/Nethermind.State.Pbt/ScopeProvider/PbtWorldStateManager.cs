@@ -14,6 +14,7 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 
 public class PbtWorldStateManager(
     IPbtDbManager manager,
+    IPbtChildHeaderSource childHeaders,
     IPbtResourcePool resourcePool,
     PbtStateReader stateReader,
     Func<PbtOverridableWorldScope> overridableWorldScopeFactory,
@@ -21,7 +22,7 @@ public class PbtWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
 {
     private readonly PbtGroupFormat _writeFormat = config.TrieNodeWriteFormat();
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeWriteFormat());
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeWriteFormat());
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
@@ -31,7 +32,9 @@ public class PbtWorldStateManager(
 
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _writeFormat);
+    // the child header source is kept here too: this env re-executes real, already-suggested blocks
+    // (tracing, re-processing), which still have to validate against the root their header claims
+    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _writeFormat);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();
 
