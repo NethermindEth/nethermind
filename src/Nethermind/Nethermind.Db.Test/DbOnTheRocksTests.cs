@@ -263,6 +263,38 @@ namespace Nethermind.Db.Test
             file.Received().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
         }
 
+        // An "IO error" (fd exhaustion, full disk, permissions) is not on-disk corruption and
+        // must not create the marker, otherwise the next start runs the lossy repair on a
+        // healthy DB. Only "Corruption:" is treated as corruption.
+        [TestCase("IO error: While open a file for random read: /db/000123.sst: Too many open files")]
+        [TestCase("IO error: No space left on device")]
+        [TestCase("IO error: While fsync: /db/000123.sst: Permission denied")]
+        public void Io_error_on_open_does_not_create_marker(string exceptionMessage)
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            bool exceptionThrown = false;
+            try
+            {
+                _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
+                    _rocksdbConfigFactory,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem,
+                    openExceptionMessage: exceptionMessage);
+            }
+            catch (RocksDbSharpException)
+            {
+                exceptionThrown = true;
+            }
+
+            Assert.That(exceptionThrown, Is.True);
+            file.DidNotReceive().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+        }
+
         [Test]
         public void If_marker_exists_on_open_then_repair_before_open()
         {
@@ -657,9 +689,10 @@ namespace Nethermind.Db.Test
         ILogManager logManager,
         IList<string>? columnFamilies = null,
         RocksDbSharp.Native? rocksDbNative = null,
-        IFileSystem? fileSystem = null
+        IFileSystem? fileSystem = null,
+        string openExceptionMessage = "Corruption: test corruption"
         ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
     {
-        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException("Corruption: test corruption");
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException(openExceptionMessage);
     }
 }

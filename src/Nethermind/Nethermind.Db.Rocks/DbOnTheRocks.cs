@@ -310,7 +310,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)
     {
-        if (rocksDbException.Message.Contains("Corruption:") || rocksDbException.Message.Contains("IO error"))
+        // Only genuine on-disk corruption (RocksDB reports it as "Corruption:") warrants the
+        // marker, since the marker triggers the lossy rocksdb_repair_db on the next start.
+        // Transient/environmental failures — fd exhaustion, a full disk, revoked permissions —
+        // are surfaced by RocksDB as "IO error"; repair cannot fix them and running it against
+        // an otherwise-healthy DB destroys data, so those must not be treated as corruption.
+        if (rocksDbException.Message.Contains("Corruption:", StringComparison.Ordinal))
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
