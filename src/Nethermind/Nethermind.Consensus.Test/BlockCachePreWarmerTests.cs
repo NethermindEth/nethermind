@@ -1166,6 +1166,48 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public void PreWarmCaches_WaitsAtFirstDiscoveryCandidateUntilBatchIsReady()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(0).WithGasLimit(5_000_000).WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithGasLimit(5_000_000).WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        ];
+        Block block = Build.A.Block.WithTransactions(transactions).WithGasLimit(30_000_000).TestObject;
+
+        using ManualResetEventSlim discoveryGate = new(initialState: false);
+        using CountdownEvent discoveryStarted = new(1);
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, discoveryGate, discoveryStarted, static () => { }, static () => { });
+        using BlockCachePreWarmer preWarmer = new(policy, maxPoolSize: 10, concurrency: 2,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        using (mainWorldState.BeginScope(BuildParentHeader()))
+        {
+            Task preWarmTask = preWarmer.PreWarmCaches(block, BuildParentHeader(), Osaka.Instance);
+            Task? handoff = null;
+            bool completedBeforeDiscovery;
+            try
+            {
+                Assert.That(discoveryStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                handoff = Task.Run(preWarmer.OnBeforeTxExecution);
+                completedBeforeDiscovery = handoff.Wait(TimeSpan.FromMilliseconds(100));
+            }
+            finally
+            {
+                discoveryGate.Set();
+                handoff?.GetAwaiter().GetResult();
+                preWarmTask.GetAwaiter().GetResult();
+            }
+
+            Assert.That(completedBeforeDiscovery, Is.False);
+        }
+    }
+
+    [Test]
     public async Task PreWarmCaches_SkipStarted_SkipsTransactionsMainThreadHasStarted()
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
