@@ -13,39 +13,59 @@ using NUnit.Framework;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
-/// The two group encodings describe the same trie, so they interoperate: either reads either, both
-/// fold to the same root, and a store written across a format switch stays correct — the guarantee
-/// that lets the <c>InterleaveTrieNodeLevels</c> config flip without a migration.
+/// The group encodings all describe the same trie, so they interoperate: any of them reads any other,
+/// they fold to the same root, and a store written across a format switch stays correct — the
+/// guarantee that lets the <c>TrieNodeLevels</c> config change without a migration.
 /// </summary>
 public class PbtFormatInteropTests
 {
     private static readonly byte[] Value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
     private static readonly byte[] Rewritten = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
+    /// <remarks>
+    /// The formats are listed in the order they skip more, which is what the byte totals must come out
+    /// in: each stores a subset of the levels the one before it does.
+    /// </remarks>
     [Test]
-    public void BothFormats_FoldToTheSameRoot()
+    public void EveryFormat_FoldsToTheSameRoot_AndSkippingMoreStoresFewerBytes()
     {
         List<(byte[], byte[]?)> writes = RandomWrites(seed: 7, count: 400);
 
-        PbtTreeHarness everyLevel = new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel);
-        PbtTreeHarness interleaved = new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.Interleaved);
+        PbtTreeHarness[] harnesses =
+        [
+            new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel),
+            new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.Interleaved),
+            new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.BoundaryOnly),
+        ];
 
-        ValueHash256 rootA = everyLevel.ApplyBatch(writes);
-        ValueHash256 rootB = interleaved.ApplyBatch(writes);
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (PbtTreeHarness harness in harnesses)
+            {
+                Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)), $"{harness.WriteFormat} folds to the EIP-8297 reference root");
+                Assert.That(harness.Nodes.Keys, Is.EquivalentTo(harnesses[0].Nodes.Keys), $"{harness.WriteFormat} changes bytes, not the node set");
+            }
 
-        Assert.That(rootB, Is.EqualTo(rootA), "both formats fold to the same root");
-        Assert.That(rootB, Is.EqualTo(ReferenceRoot(writes)), "and it is the EIP-8297 reference root");
-        Assert.That(interleaved.Nodes.Keys, Is.EquivalentTo(everyLevel.Nodes.Keys), "interleaving changes bytes, not the node set");
-        Assert.That(TotalNodeBytes(interleaved), Is.LessThan(TotalNodeBytes(everyLevel)), "and it stores fewer of them");
+            for (int i = 1; i < harnesses.Length; i++)
+            {
+                Assert.That(
+                    TotalNodeBytes(harnesses[i]), Is.LessThan(TotalNodeBytes(harnesses[i - 1])),
+                    $"{harnesses[i].WriteFormat} stores fewer bytes than {harnesses[i - 1].WriteFormat}");
+            }
+        }
     }
 
     /// <summary>
-    /// A group first written every-level and then rewritten interleaved must come out byte-identical to
-    /// one folded interleaved from scratch — the copy-verbatim path must refold across the format
+    /// A group first written in one format and then rewritten in another must come out byte-identical
+    /// to one folded in that format from scratch — the copy-verbatim path must refold across the format
     /// change rather than splice old bytes into the new encoding.
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved)]
     [TestCase(PbtGroupFormat.Interleaved, PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.EveryLevel, PbtGroupFormat.BoundaryOnly)]
+    [TestCase(PbtGroupFormat.BoundaryOnly, PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.Interleaved, PbtGroupFormat.BoundaryOnly)]
+    [TestCase(PbtGroupFormat.BoundaryOnly, PbtGroupFormat.Interleaved)]
     public void MixedFormatRewrite_MatchesAFreshFoldInTheNewFormat(PbtGroupFormat initial, PbtGroupFormat then)
     {
         // sixteen stems on the boundary slots of one depth-4 group: it branches sixteen ways, so a

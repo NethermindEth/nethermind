@@ -200,7 +200,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                 // and blobs and writes the new ones into this window's still-open batch
                 using IPbtPersistence.IReader reader = target.CreateReader();
                 PersistenceBackedPbtStore store = new(reader, writeBatch);
-                currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeWriteFormat(), out stemDelta);
+                currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeLevels, out stemDelta);
             }
         }
 

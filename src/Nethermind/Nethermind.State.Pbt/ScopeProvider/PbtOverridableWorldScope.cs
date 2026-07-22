@@ -36,7 +36,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     {
         _manager = manager;
         _resourcePool = resourcePool;
-        _writeFormat = config.TrieNodeWriteFormat();
+        _writeFormat = config.TrieNodeLevels;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
         WorldState = new OverridableScopeProvider(this);

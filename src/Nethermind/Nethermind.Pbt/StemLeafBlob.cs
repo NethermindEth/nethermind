@@ -11,7 +11,7 @@ namespace Nethermind.Pbt;
 
 /// <summary>Which of its internal nodes a <see cref="StemLeafBlob"/> stores an entry for; the last byte of every non-empty blob.</summary>
 /// <remarks>
-/// All three describe the same 256-leaf subtree and fold to the same root — they differ only in how
+/// All of them describe the same 256-leaf subtree and fold to the same root — they differ only in how
 /// much of the fold they write down — so a store may hold any of them at any stem, and a blob converts
 /// only when a change rewrites it.
 /// </remarks>
@@ -29,6 +29,13 @@ public enum PbtLeafFormat : byte
     /// well, the stem node holding the blob having cached it already.
     /// </summary>
     Interleaved = 0x03,
+
+    /// <summary>
+    /// The leaves alone: no internal node is stored, the whole subtree being folded from them on
+    /// demand. A leaf holds a value rather than a hash, so nothing here is recomputable and nothing
+    /// more can go.
+    /// </summary>
+    LeavesOnly = 0x04,
 }
 
 /// <summary>
@@ -121,7 +128,9 @@ public static class StemLeafBlob
         if (leafCount == 0) return default;
 
         int groupCount = TwoLevelBitmapReader.OccupiedGroupsOf(newBitmap);
-        RebuildState state = new(previousEntries, previousFormat, changes, 2 * leafCount - 1, groupCount, provider, format);
+        // the leaves alone are the whole of a LeavesOnly blob, so there its bound is its exact size
+        int storedCountBound = format == PbtLeafFormat.LeavesOnly ? leafCount : 2 * leafCount - 1;
+        RebuildState state = new(previousEntries, previousFormat, changes, storedCountBound, groupCount, provider, format);
         state.Build(previousBitmap, newBitmap);
         return state;
     }
@@ -131,9 +140,10 @@ public static class StemLeafBlob
     /// <paramref name="width"/> leaves, given whether each of its halves holds one.
     /// </summary>
     /// <remarks>
-    /// A single-child internal is left out of both written formats: it is recomputed from the child
+    /// A single-child internal is left out of every written format: it is recomputed from the child
     /// below it, which is one hash away, where a branching node's would cost a walk of both its halves.
-    /// <see cref="PbtLeafFormat.Interleaved"/> leaves out whole levels on top of that.
+    /// <see cref="PbtLeafFormat.Interleaved"/> leaves out whole levels on top of that, and
+    /// <see cref="PbtLeafFormat.LeavesOnly"/> all of them.
     /// </remarks>
     private static bool StoresInternal(PbtLeafFormat format, int width, bool leftHasLeaf, bool rightHasLeaf) =>
         format == PbtLeafFormat.Legacy
@@ -206,12 +216,15 @@ public static class StemLeafBlob
     /// rebuild copies: a walk of the nodes costs more than the copy it is sizing.
     /// <see cref="PbtLeafFormat.EveryLevel"/> has a closed form — a binary tree with <c>m</c> leaves has
     /// exactly <c>m - 1</c> branching nodes, so the count is <c>2m - 1</c> however the leaves are placed
-    /// — and <see cref="PbtLeafFormat.Interleaved"/>, which has none, is counted by
+    /// — as does <see cref="PbtLeafFormat.LeavesOnly"/>, whose entries are the leaves themselves, and
+    /// <see cref="PbtLeafFormat.Interleaved"/>, which has none, is counted by
     /// <see cref="CountInterleavedNodes"/> instead. Only the legacy layout, which nothing writes, is
     /// walked.
     /// </remarks>
     internal static int CountStoredNodes(ReadOnlySpan<byte> bitmap, int low, int high, PbtLeafFormat format)
     {
+        if (format == PbtLeafFormat.LeavesOnly) return PopCountRange(bitmap, low, high);
+
         if (format == PbtLeafFormat.EveryLevel)
         {
             int leafCount = PopCountRange(bitmap, low, high);

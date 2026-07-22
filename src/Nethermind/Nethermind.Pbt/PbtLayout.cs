@@ -26,30 +26,63 @@ public static class PbtLayout
     /// <summary>Bit set at <see cref="TrieNodeGroupBoundarySlotPosition"/>(i) for each boundary slot i.</summary>
     private const uint BoundaryPositionsBitmask = 0x06CD8D9Bu;
 
+    /// <summary>Every position of a tile, which is what a format that skips them all skips.</summary>
+    private const uint AllPositionsBitmask = (1u << TrieNodeGroupPositionCount) - 1;
+
+    /// <summary>The widths a tile's levels cover: 16 at the root, then 8, 4, 2 and 1 at the boundary.</summary>
+    private const int AllWidthsBitmask = 0b11111;
+
+    /// <summary>The widths a <see cref="StemLeafBlob"/>'s levels cover: 256 at the root down to 1 at a leaf.</summary>
+    private const int StemLeafAllWidthsBitmask = 0b1_1111_1111;
+
+    /// <summary>The widths whose level <paramref name="format"/> stores an internal node at.</summary>
+    /// <remarks>
+    /// <see cref="PbtGroupFormat.Interleaved"/> keeps 16, 4 and 1, and
+    /// <see cref="PbtGroupFormat.BoundaryOnly"/> the boundary alone — a boundary entry being the link
+    /// to what hangs below it, which nothing recomputes without a lookup of its own.
+    /// </remarks>
+    private static int TrieNodeGroupKeptWidths(PbtGroupFormat format) => format switch
+    {
+        PbtGroupFormat.Interleaved => 0b10101,
+        PbtGroupFormat.BoundaryOnly => 0b00001,
+        _ => AllWidthsBitmask,
+    };
+
     /// <summary>
-    /// Bit set at each position <see cref="PbtGroupFormat.Interleaved"/> stores no internal node at: the odd
-    /// group-relative levels, 14 and 29 (level 1) and 2, 5, 9, 12, 17, 20, 24 and 27 (level 3).
+    /// Bit set at each position <paramref name="format"/> stores no internal node at: for
+    /// <see cref="PbtGroupFormat.Interleaved"/> the odd group-relative levels, 14 and 29 (level 1) and
+    /// 2, 5, 9, 12, 17, 20, 24 and 27 (level 3), and for <see cref="PbtGroupFormat.BoundaryOnly"/>
+    /// every position but the sixteen boundary slots.
     /// </summary>
     /// <remarks>
-    /// A position's level follows from the boundary slots its subtree covers — 16 at the root, then 8,
-    /// 4, 2 and 1 at the boundary — so the levels alternate with the width halving, and
-    /// <see cref="TrieNodeGroupStoresInternalAtWidth"/> says the same thing by width where a walk has one to hand.
-    /// Disjoint from <see cref="BoundaryPositionsBitmask"/>: a boundary slot is a level of its own.
+    /// A position's level follows from the boundary slots its subtree covers, so
+    /// <see cref="TrieNodeGroupStoresInternalAtWidth"/> says the same thing by width where a walk has
+    /// one to hand. Both masks are disjoint from <see cref="BoundaryPositionsBitmask"/>: a boundary
+    /// slot is a level of its own.
     /// </remarks>
-    private const uint SkippedPositionsBitmask = 0x29125224u;
+    private static uint TrieNodeGroupSkippedPositions(PbtGroupFormat format) => format switch
+    {
+        PbtGroupFormat.Interleaved => 0x29125224u,
+        PbtGroupFormat.BoundaryOnly => AllPositionsBitmask & ~BoundaryPositionsBitmask,
+        _ => 0,
+    };
 
-    /// <summary>The widths whose level <see cref="PbtGroupFormat.Interleaved"/> stores an internal node at: 16, 4 and 1.</summary>
-    private const int KeptWidthsBitmask = 0b10101;
-
-    /// <summary>The widths whose level <see cref="PbtLeafFormat.Interleaved"/> stores an internal node at: 64, 16 and 4.</summary>
+    /// <summary>The widths whose level <paramref name="format"/> stores an internal node of a <see cref="StemLeafBlob"/> at.</summary>
     /// <remarks>
-    /// Anchored at the leaves, as the group's is at its boundary, so that the level just above a stored
-    /// node is always a skipped one. Width 1 is a leaf, which holds a value rather than a hash and is
-    /// stored whatever the format, and the 256-wide root is left out for the same reason a group's is:
-    /// the stem node holding the blob caches that hash already. <see cref="StemLeafBlob"/> counts a
-    /// blob's entries by a fold that unrolls these three levels, so a change here belongs there too.
+    /// <see cref="PbtLeafFormat.Interleaved"/> keeps 64, 16 and 4, anchored at the leaves as the
+    /// group's is at its boundary, so that the level just above a stored node is always a skipped one;
+    /// <see cref="PbtLeafFormat.LeavesOnly"/> keeps none of them. Width 1 is a leaf, which holds a
+    /// value rather than a hash and is stored whatever the format, and the 256-wide root is left out
+    /// wherever a level is for the same reason a group's is: the stem node holding the blob caches
+    /// that hash already. <see cref="StemLeafBlob"/> counts an interleaved blob's entries by a fold
+    /// that unrolls its three levels, so a change to them belongs there too.
     /// </remarks>
-    private const int StemLeafKeptWidthsBitmask = 0b1010100;
+    private static int StemLeafKeptWidths(PbtLeafFormat format) => format switch
+    {
+        PbtLeafFormat.Interleaved => 0b1010100,
+        PbtLeafFormat.LeavesOnly => 0b0000001,
+        _ => StemLeafAllWidthsBitmask,
+    };
 
     /// <summary>
     /// Whether the group at <paramref name="depth"/> holds its children's blobs inside its own, which
@@ -66,21 +99,21 @@ public static class PbtLayout
     /// <summary>Whether <paramref name="format"/> stores no internal node at <paramref name="position"/>.</summary>
     /// <remarks>A stem node is stored at every position; only an internal node's hash is recomputable.</remarks>
     public static bool TrieNodeGroupIsSkippedPosition(PbtGroupFormat format, int position) =>
-        format == PbtGroupFormat.Interleaved && (SkippedPositionsBitmask & (1u << position)) != 0;
+        (TrieNodeGroupSkippedPositions(format) & (1u << position)) != 0;
 
     /// <summary>
     /// Whether <paramref name="presenceBitmask"/> holds an internal node at a level <paramref name="format"/>
     /// skips, which is what a group in that format must never encode.
     /// </summary>
     internal static bool TrieNodeGroupHoldsSkippedInternal(PbtGroupFormat format, uint presenceBitmask, uint stemsBitmask) =>
-        format == PbtGroupFormat.Interleaved && (presenceBitmask & SkippedPositionsBitmask & ~stemsBitmask) != 0;
+        (presenceBitmask & TrieNodeGroupSkippedPositions(format) & ~stemsBitmask) != 0;
 
     /// <summary>
     /// Whether <paramref name="format"/> stores an internal node at the position whose subtree covers
     /// <paramref name="width"/> boundary slots.
     /// </summary>
     public static bool TrieNodeGroupStoresInternalAtWidth(PbtGroupFormat format, int width) =>
-        format == PbtGroupFormat.EveryLevel || (width & KeptWidthsBitmask) != 0;
+        (width & TrieNodeGroupKeptWidths(format)) != 0;
 
     /// <summary>
     /// Whether <paramref name="format"/> stores an internal node at the level of a
@@ -88,7 +121,7 @@ public static class PbtLayout
     /// </summary>
     /// <remarks>Says nothing about whether that node branches, which is the other half of what a blob stores.</remarks>
     public static bool StemLeafStoresInternalAtWidth(PbtLeafFormat format, int width) =>
-        format != PbtLeafFormat.Interleaved || (width & StemLeafKeptWidthsBitmask) != 0;
+        (width & StemLeafKeptWidths(format)) != 0;
 
     /// <summary>The post-order position of boundary slot <paramref name="slot"/>.</summary>
     public static int TrieNodeGroupBoundarySlotPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);

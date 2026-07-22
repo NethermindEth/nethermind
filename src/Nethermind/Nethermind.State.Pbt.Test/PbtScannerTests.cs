@@ -75,10 +75,11 @@ public class PbtScannerTests
 
     /// <summary>
     /// The shape counts are what the tree holds, not how it is encoded, so every one of them but the
-    /// skipped-level count must read the same under either format.
+    /// skipped-level count must read the same under every format.
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
+    [TestCase(PbtGroupFormat.BoundaryOnly)]
     public async Task Scan_CountsTheTreesShape(PbtGroupFormat format)
     {
         PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
@@ -118,21 +119,24 @@ public class PbtScannerTests
     /// <summary>
     /// The interleaved encoding leaves an internal node unstored at every odd group-relative level
     /// whose subtree is occupied — four such positions in the root group, three in the account group
-    /// and two in the storage group — and the every-level encoding leaves none.
+    /// and two in the storage group — the boundary-only encoding at every level of the tile, which is
+    /// every level those groups hold an intermediate node at, and the every-level encoding at none.
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel, 0, 0, 0)]
     [TestCase(PbtGroupFormat.Interleaved, 4, 3, 2)]
-    public async Task Scan_CountsInterleavedLevelsPerPartition(PbtGroupFormat format, long root, long account, long storage)
+    [TestCase(PbtGroupFormat.BoundaryOnly, 7, 5, 4)]
+    public async Task Scan_CountsSkippedLevelsPerPartition(PbtGroupFormat format, long root, long account, long storage)
     {
         PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
 
         Assert.Multiple(() =>
         {
-            Assert.That(report.Root.InterleaveSkippedNodes, Is.EqualTo(root));
-            Assert.That(report.AccountNodes.InterleaveSkippedNodes, Is.EqualTo(account));
-            Assert.That(report.StorageNodes.InterleaveSkippedNodes, Is.EqualTo(storage));
-            Assert.That(report.InterleaveSkippedNodes, Is.EqualTo(root + account + storage));
+            Assert.That(report.Root.SkippedLevelNodes, Is.EqualTo(root));
+            Assert.That(report.AccountNodes.SkippedLevelNodes, Is.EqualTo(account));
+            Assert.That(report.StorageNodes.SkippedLevelNodes, Is.EqualTo(storage));
+            Assert.That(report.SkippedLevelNodes, Is.EqualTo(root + account + storage));
             Assert.That(report.Root.InterleavedGroupCount, Is.EqualTo(format == PbtGroupFormat.Interleaved ? 1 : 0));
+            Assert.That(report.Root.BoundaryOnlyGroupCount, Is.EqualTo(format == PbtGroupFormat.BoundaryOnly ? 1 : 0));
         });
     }
 
@@ -143,6 +147,7 @@ public class PbtScannerTests
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
+    [TestCase(PbtGroupFormat.BoundaryOnly)]
     public async Task Scan_CountsChainsAndWhatTheyElide(PbtGroupFormat format)
     {
         PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
@@ -169,22 +174,29 @@ public class PbtScannerTests
     /// <summary>
     /// A blob stores its present leaves plus its branching internals, so a stem holding n leaves
     /// contributes n - 1 of them whatever the placement — bar the interleaved layout, which keeps only
-    /// those of the 4-, 16- and 64-wide levels: of these stems, whose leaves run from sub-index 0, that
-    /// is the one node over <c>[0, 4)</c> wherever a stem holds three leaves or more.
+    /// those of the 4-, 16- and 64-wide levels (of these stems, whose leaves run from sub-index 0, that
+    /// is the one node over <c>[0, 4)</c> wherever a stem holds three leaves or more), and the
+    /// leaves-only layout, which keeps none.
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel, 0 + 1 + 2 + 4, 0 + 3)]
     [TestCase(PbtGroupFormat.Interleaved, 0 + 0 + 1 + 1, 0 + 1)]
+    [TestCase(PbtGroupFormat.BoundaryOnly, 0, 0)]
     public async Task Scan_CountsLeafBlobsPerColumn(PbtGroupFormat format, int accountIntermediates, int storageIntermediates)
     {
         PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
-        long interleavedAccountBlobs = format == PbtGroupFormat.Interleaved ? AccountLeafCounts.Length : 0;
 
         Assert.Multiple(() =>
         {
             Assert.That(report.AccountLeaves.BlobCount, Is.EqualTo(AccountLeafCounts.Length));
             Assert.That(report.AccountLeaves.LeafCount, Is.EqualTo(1 + 2 + 3 + 5));
             Assert.That(report.AccountLeaves.IntermediateNodeCount, Is.EqualTo(accountIntermediates));
-            Assert.That(report.AccountLeaves.InterleavedBlobCount, Is.EqualTo(interleavedAccountBlobs), "the one setting picks the leaf layout too");
+            Assert.That(
+                report.AccountLeaves.InterleavedBlobCount,
+                Is.EqualTo(format == PbtGroupFormat.Interleaved ? AccountLeafCounts.Length : 0),
+                "the one setting picks the leaf layout too");
+            Assert.That(
+                report.AccountLeaves.LeavesOnlyBlobCount,
+                Is.EqualTo(format == PbtGroupFormat.BoundaryOnly ? AccountLeafCounts.Length : 0));
             foreach (int leaves in AccountLeafCounts)
             {
                 Assert.That(report.AccountLeaves.BlobsByLeafCount[leaves], Is.EqualTo(1), $"one account blob holds {leaves} leaves");
@@ -221,8 +233,10 @@ public class PbtScannerTests
     /// Leaves 128 and 200 of one stem, which branch at the 128-wide level alone — a skipped one, so the
     /// interleaved layout stores nothing above them.
     /// </param>
+    /// <remarks>The leaves-only layout stores no internal node anywhere, so each section costs its leaves.</remarks>
     [TestCase(PbtGroupFormat.EveryLevel, 3 + 1, 3 + 2, 2 + 1)]
     [TestCase(PbtGroupFormat.Interleaved, 3, 3 + 1, 2)]
+    [TestCase(PbtGroupFormat.BoundaryOnly, 3, 3, 2)]
     public async Task Scan_SplitsAccountLeavesByWhatTheStemEmbeds(
         PbtGroupFormat format, int fieldsEntries, int storageEntries, int codeEntries)
     {
@@ -270,6 +284,7 @@ public class PbtScannerTests
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
+    [TestCase(PbtGroupFormat.BoundaryOnly)]
     public async Task Scan_ReadsAClusterAsTheNodesItHolds(PbtGroupFormat format)
     {
         // three account stems: two parting at nibble 2, so their group at depth 8 hangs under the

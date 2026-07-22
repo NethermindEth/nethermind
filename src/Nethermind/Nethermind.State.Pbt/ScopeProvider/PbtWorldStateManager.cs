@@ -21,8 +21,8 @@ public class PbtWorldStateManager(
     IPbtConfig config,
     [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
 {
-    private readonly PbtGroupFormat _writeFormat = config.TrieNodeWriteFormat();
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeWriteFormat());
+    private readonly PbtGroupFormat _writeFormat = config.TrieNodeLevels;
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeLevels);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
