@@ -375,7 +375,7 @@ public class LogFinderTests
 
         IndexedLogFinder logFinder = new(
             _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
-            logIndexStorage, minBlocksToUseIndex: 1
+            new ReceiptConfig(), logIndexStorage, minBlocksToUseIndex: 1
         );
         _ = logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
 
@@ -383,6 +383,50 @@ public class LogFinderTests
             logIndexStorage.Received(1).GetEnumerator(address, exFrom.Value, exTo.Value);
         else
             logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
+    }
+
+    [TestCase(2, true, TestName = "range 5 exceeds limit 2 -> throws")]
+    [TestCase(5, false, TestName = "range 5 within limit 5 -> allowed")]
+    [TestCase(0, false, TestName = "limit disabled -> allowed")]
+    public void FindLogs_enforces_max_block_depth(int maxBlockDepth, bool shouldThrow)
+    {
+        SetUp(true);
+        LogFinder logFinder = CreateLogFinder(receiptConfig: new ReceiptConfig { MaxBlockDepth = maxBlockDepth });
+        LogFilter filter = FilterBuilder.New().FromBlock(0).ToBlock(4).Build();
+
+        if (shouldThrow)
+        {
+            Assert.That(() => logFinder.FindLogs(filter).ToArray(),
+                Throws.TypeOf<ArgumentException>().With.Message.Contains(nameof(IReceiptConfig.MaxBlockDepth)));
+        }
+        else
+        {
+            Assert.That(() => logFinder.FindLogs(filter).ToArray(), Throws.Nothing);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindLogs_index_served_range_bypasses_max_block_depth()
+    {
+        SetUp(true, chainLength: 10);
+
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(3);
+        logIndexStorage.MaxBlockNumber.Returns(6);
+        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+
+        // range 0..9 (10 blocks) far exceeds the limit, but the index serves the middle (3..6) and the
+        // out-of-index head/tail scans must bypass the cap since the query is already bounded by the index
+        LogFilter filter = FilterBuilder.New().FromBlock(0).ToBlock(9).WithAddress(TestItem.AddressA).Build();
+
+        IndexedLogFinder logFinder = new(
+            _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
+            new ReceiptConfig { MaxBlockDepth = 2 }, logIndexStorage, minBlocksToUseIndex: 1
+        );
+
+        Assert.That(() => logFinder.FindLogs(filter).ToArray(), Throws.Nothing);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -402,8 +446,8 @@ public class LogFinderTests
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
 
-    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
-        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);
+    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null, IReceiptConfig? receiptConfig = null) =>
+        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery, receiptConfig ?? new ReceiptConfig());
 
     private PersistentReceiptStorage CreateCompactEncodedReceiptStorage()
     {

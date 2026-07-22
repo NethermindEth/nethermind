@@ -21,7 +21,8 @@ namespace Nethermind.Facade.Find
         IReceiptFinder? receiptFinder,
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
-        IReceiptsRecovery? receiptsRecovery)
+        IReceiptsRecovery? receiptsRecovery,
+        IReceiptConfig? receiptConfig)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
@@ -33,6 +34,7 @@ namespace Nethermind.Facade.Find
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
         private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
+        private readonly int _maxBlockDepth = receiptConfig?.MaxBlockDepth ?? 0;
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private readonly ILogger _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -52,6 +54,27 @@ namespace Nethermind.Facade.Find
         }
 
         public virtual IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        {
+            EnsureBlockRangeWithinLimit(fromBlock, toBlock);
+            return FindLogsUnbounded(filter, fromBlock, toBlock, cancellationToken);
+        }
+
+        // cap block range of a logs query against unbounded sequential scans, skip if log index is enabled
+        private void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            if (_maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
+                return;
+
+            ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
+            if (rangeSize > (ulong)_maxBlockDepth)
+            {
+                throw new ArgumentException(
+                    $"Block range {rangeSize} exceeds the maximum of {_maxBlockDepth} blocks per logs request. " +
+                    $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.");
+            }
+        }
+
+        protected IEnumerable<FilterLog> FindLogsUnbounded(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 

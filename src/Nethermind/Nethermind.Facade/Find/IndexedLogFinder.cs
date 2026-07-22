@@ -25,9 +25,10 @@ public class IndexedLogFinder(
     IReceiptStorage receiptStorage,
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
+    IReceiptConfig receiptConfig,
     ILogIndexStorage logIndexStorage,
     int minBlocksToUseIndex = 32)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
 
@@ -40,7 +41,7 @@ public class IndexedLogFinder(
     {
         if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
         {
-            foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
+            foreach (FilterLog log in FindLogsUnbounded(filter, fromBlock, beforeIndex, cancellationToken))
                 yield return log;
         }
 
@@ -59,7 +60,7 @@ public class IndexedLogFinder(
 
         if ((ulong)indexRange.to < toBlock.Number && FindHeaderOrLogError((ulong)(indexRange.to + 1), cancellationToken) is { } afterIndex)
         {
-            foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
+            foreach (FilterLog log in FindLogsUnbounded(filter, afterIndex, toBlock, cancellationToken))
                 yield return log;
         }
     }

@@ -898,19 +898,6 @@ public partial class EthRpcModule(
         try
         {
             int id = filterId <= int.MaxValue ? (int)filterId : -1;
-
-            if (id >= 0 && _blockchainBridge.GetLogFilter(id) is { } logFilter)
-            {
-                SearchResult<BlockHeader> fromResult = _blockFinder.SearchForHeader(logFilter.FromBlock);
-                SearchResult<BlockHeader> toResult = logFilter.FromBlock == logFilter.ToBlock
-                    ? fromResult
-                    : _blockFinder.SearchForHeader(logFilter.ToBlock);
-
-                if (!fromResult.IsError && !toResult.IsError
-                    && EnsureBlockRangeWithinLimit(fromResult.Object!, toResult.Object!, logFilter.UseIndex) is { } rangeError)
-                    return rangeError;
-            }
-
             bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
             if (id < 0 || !filterFound)
             {
@@ -983,9 +970,6 @@ public partial class EthRpcModule(
 
             BlockHeader fromBlockHeader = fromResult.Object!;
             BlockHeader toBlockHeader = toResult.Object!;
-
-            if (EnsureBlockRangeWithinLimit(fromBlockHeader, toBlockHeader, filter.UseIndex) is { } rangeError)
-                return rangeError;
 
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
@@ -1286,26 +1270,5 @@ public partial class EthRpcModule(
                 );
             }
         }
-    }
-
-    // cap block range of a logs query against unbounded sequential scans, skip if log index is enabled
-    private ResultWrapper<IEnumerable<FilterLog>>? EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock, bool useIndex)
-    {
-        int maxBlockDepth = _receiptConfig.MaxBlockDepth;
-        bool usingLogIndex = logIndexConfig?.Enabled is true && useIndex;
-
-        if (usingLogIndex || maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
-            return null;
-
-        ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
-        if (rangeSize > (ulong)maxBlockDepth)
-        {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(
-                $"Block range {rangeSize} exceeds the maximum of {maxBlockDepth} blocks per logs request. " +
-                $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.",
-                ErrorCodes.InvalidParams);
-        }
-
-        return null;
     }
 }
