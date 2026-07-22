@@ -106,6 +106,7 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
             }
         }
 
-        return new PbtSnapshot(chainOldestFirst[0].From, chainOldestFirst[^1].To, merged, resourcePool, usage);
+        PbtSnapshot newest = chainOldestFirst[^1];
+        return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
     }
 }

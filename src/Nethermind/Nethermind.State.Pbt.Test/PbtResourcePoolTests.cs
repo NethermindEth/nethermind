@@ -102,7 +102,7 @@ public class PbtResourcePoolTests
     public void Snapshot_ReturnsItsContent_ToTheUsageItWasRentedFrom()
     {
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        PbtSnapshot snapshot = new(default, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshot snapshot = new(default, default, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
         snapshot.TryLease();
 
         snapshot.Dispose();

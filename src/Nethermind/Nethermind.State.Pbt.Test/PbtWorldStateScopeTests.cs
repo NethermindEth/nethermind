@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
@@ -96,6 +97,51 @@ public class PbtWorldStateScopeTests
 
         Assert.That(scope.Get(TestItem.AddressA)?.Balance, Is.EqualTo(UInt256.One), "the scope reads back what it committed");
         Assert.That(ctx.Repository.Count, Is.Zero, "and the layer never reaches the repository");
+    }
+
+    /// <summary>
+    /// The block's header already claims a root, so that is what the scope must report and key its
+    /// state by; the root the tree folds to is kept beside it, on the sealed layer, for the next fold.
+    /// Committing must also carry the resolved header forward, or the block after it in the same
+    /// branch would resolve the child of the block just committed — itself.
+    /// </summary>
+    [Test]
+    public async Task Commit_ReportsTheHeaderRoot_AndSealsTheTreeRootBesideIt()
+    {
+        PbtTestChildHeaders childHeaders = new();
+        await using PbtTestContext ctx = new(childHeaders: childHeaders);
+
+        // block 0 has no header to echo, so its own tree root becomes the genesis header's claim
+        using IWorldStateScopeProvider.IScope genesisScope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        Write(genesisScope, 1);
+        genesisScope.Commit(0);
+        BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithStateRoot(genesisScope.RootHash).TestObject;
+
+        BlockHeader first = childHeaders.Add(genesis, TestItem.KeccakA);
+        BlockHeader second = childHeaders.Add(first, TestItem.KeccakB);
+
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(genesis, new LocalMetrics());
+        Write(scope, 2);
+        scope.Commit(1);
+        Assert.That(scope.RootHash, Is.EqualTo(TestItem.KeccakA), "the first block reports what its header claims");
+
+        Write(scope, 3);
+        scope.Commit(2);
+        Assert.That(scope.RootHash, Is.EqualTo(TestItem.KeccakB), "and the next block in the branch resolves its own header");
+
+        IPbtDbManager manager = ctx.Manager;
+        Assert.That(manager.HasStateForBlock(new StateId(first)), Is.True, "both states are keyed by their header");
+        Assert.That(manager.HasStateForBlock(new StateId(second)), Is.True);
+
+        using PbtSnapshotBundle bundle = manager.GatherBundle(new StateId(second), PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+        Assert.That(bundle.TreeRoot, Is.Not.EqualTo(TestItem.KeccakB.ValueHash256), "the tree folded to a root of its own");
+        Assert.That(bundle.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)3), "and the state is readable through the header-keyed id");
+    }
+
+    private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)
+    {
+        using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
+        batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(balance).TestObject);
     }
 
     /// <summary>

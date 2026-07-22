@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Buffers;
@@ -8,9 +9,38 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
+/// <summary>Which of its internal nodes a <see cref="StemLeafBlob"/> stores an entry for; the last byte of every non-empty blob.</summary>
+/// <remarks>
+/// All of them describe the same 256-leaf subtree and fold to the same root — they differ only in how
+/// much of the fold they write down — so a store may hold any of them at any stem, and a blob converts
+/// only when a change rewrites it.
+/// </remarks>
+public enum PbtLeafFormat : byte
+{
+    /// <summary>Every internal node whose range holds a leaf, the original layout; read but never written.</summary>
+    Legacy = 0x01,
+
+    /// <summary>Every branching internal node — one with a leaf in both halves — at every level.</summary>
+    EveryLevel = 0x02,
+
+    /// <summary>
+    /// The branching internal nodes of the kept levels only, folding the skipped levels' hashes on
+    /// demand; a stored node's stored children are its grandchildren. The subtree root is left out as
+    /// well, the stem node holding the blob having cached it already.
+    /// </summary>
+    Interleaved = 0x03,
+
+    /// <summary>
+    /// The leaves alone: no internal node is stored, the whole subtree being folded from them on
+    /// demand. A leaf holds a value rather than a hash, so nothing here is recomputable and nothing
+    /// more can go.
+    /// </summary>
+    LeavesOnly = 0x04,
+}
+
 /// <summary>
-/// The 256-leaf subtree of one stem, stored as its leaves and branching internals in DFS post-order
-/// followed by a compact two-level leaf-presence bitmap and a format byte.
+/// The 256-leaf subtree of one stem, stored as its leaves and the internal nodes its format keeps in
+/// DFS post-order, followed by a compact two-level leaf-presence bitmap and a format byte.
 /// </summary>
 /// <remarks>
 /// The blob is <c>[ node entries: 32B × S ][ two-level bitmap footer ]</c>. Entries are in DFS post-order:
@@ -19,22 +49,23 @@ namespace Nethermind.Pbt;
 /// trailing footer is the two-level bitmap of <see cref="TwoLevelBitmapReader"/>. Zero values are
 /// normalized to absent. An empty blob is an empty array (no footer) and signals stem deletion.
 /// <para>
-/// The stored nodes are the present leaves plus only the <em>branching</em> internals — those with a leaf
-/// in both halves. A single-child internal is recomputed on demand rather than cached, which makes
-/// <c>S = 2n - 1</c> for <c>n</c> present leaves, whatever the placement of those leaves. Skipping is a
-/// storage decision alone: a single-child internal still hashes as <c>HashPairOrZero(child, 0)</c>, which
-/// is not its child's hash, so the subtree root is unaffected.
+/// Which internal nodes earn an entry is <see cref="StoresInternal"/>, and it is a storage decision
+/// alone — an omitted node is folded from its children wherever it is needed, so the subtree root is
+/// the same under every format. Note that a single-child internal still hashes as
+/// <c>HashPairOrZero(child, 0)</c>, which is not its child's hash.
 /// </para>
 /// <para>
-/// The legacy format (<see cref="TwoLevelBitmapReader.LegacyFormatByte"/>) cached every single-child
-/// internal too, making <c>S</c> the live-node count of <see cref="CountLiveNodes"/>. It is read but never
-/// written; <see cref="Apply"/> upgrades a legacy blob before rebuilding it.
+/// <see cref="Apply"/> writes the format it is handed and reads any of them: a prior in another format
+/// is refolded in full rather than copied over subtree by subtree, which is what converts it.
 /// </para>
 /// </remarks>
 public static class StemLeafBlob
 {
     public const int ValueLength = 32;
     private const int LeafCount = 256;
+
+    /// <summary>Leaves per word of the flat bitmap, which <see cref="CountInterleavedNodes"/> reads it a word at a time.</summary>
+    private const int LeavesPerWord = 64;
 
     public static bool TryGetValue(ReadOnlySpan<byte> blob, byte subIndex, out ReadOnlySpan<byte> value)
     {
@@ -47,38 +78,44 @@ public static class StemLeafBlob
         Span<byte> bitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
         reader.ExpandTo(bitmap);
         int slot = 0;
-        Locate(bitmap, 0, LeafCount, subIndex, TwoLevelBitmapReader.IsLegacy(blob), ref slot);
+        Locate(bitmap, 0, LeafCount, subIndex, TwoLevelBitmapReader.FormatOf(blob), ref slot);
         value = entries.Slice(slot * ValueLength, ValueLength);
         return true;
     }
 
     /// <summary>
     /// Applies <paramref name="changes"/> (each a 32-byte leaf value; a zero value clears the leaf) to
-    /// <paramref name="blob"/>, returning a disposable <see cref="RebuildState"/> whose <see cref="RebuildState.Blob"/>
-    /// is the new blob (empty, with <see cref="RebuildState.IsEmpty"/> set, when no leaves remain) and whose
-    /// <see cref="RebuildState.SubtreeRoot"/> is the merkelized 256-leaf subtree root.
+    /// <paramref name="blob"/> in <paramref name="format"/>, returning a disposable <see cref="RebuildState"/>
+    /// whose <see cref="RebuildState.Blob"/> is the new blob (empty, with <see cref="RebuildState.IsEmpty"/>
+    /// set, when no leaves remain) and whose <see cref="RebuildState.SubtreeRoot"/> is the merkelized
+    /// 256-leaf subtree root.
     /// </summary>
     /// <remarks>
     /// Rebuilds dirty paths in post-order and copies clean subtree entries verbatim. A present leaf
     /// contributes <c>blake3(value)</c>; higher levels use the EIP-8297 pair hash, with empty subtrees
     /// folding to zero. The blob is backed by memory from <paramref name="provider"/>, so the caller must
     /// dispose the result once its bytes have been consumed.
+    /// <para>
+    /// <paramref name="blob"/> may be in any format: it is read through its own, and where that is not
+    /// the one being written no subtree of it is clean, so the whole stem refolds and converts.
+    /// </para>
     /// </remarks>
-    internal static RebuildState Apply(ReadOnlySpan<byte> blob, IPbtStemChanges changes, IRefCountingMemoryProvider provider)
+    internal static RebuildState Apply(
+        ReadOnlySpan<byte> blob, IPbtStemChanges changes, IRefCountingMemoryProvider provider, PbtLeafFormat format)
     {
-        if (!blob.IsEmpty && TwoLevelBitmapReader.IsLegacy(blob))
-        {
-            // A legacy post-order run holds nodes this format omits, so RebuildState cannot copy one verbatim.
-            // The rebuilt blob owns its own memory and reads nothing back from the prior, so releasing the
-            // upgraded copy the moment Apply returns is safe.
-            using RefCountingMemory upgraded = Upgrade(blob, provider);
-            return Apply(upgraded.GetSpan(), changes, provider);
-        }
-
         Span<byte> previousBitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
         ReadOnlySpan<byte> previousEntries = default;
-        if (blob.IsEmpty) previousBitmap.Clear();
-        else TwoLevelBitmapReader.FromBlob(blob, out previousEntries).ExpandTo(previousBitmap);
+        // an empty prior has no entries to step over, so its format is only ever this one
+        PbtLeafFormat previousFormat = format;
+        if (blob.IsEmpty)
+        {
+            previousBitmap.Clear();
+        }
+        else
+        {
+            TwoLevelBitmapReader.FromBlob(blob, out previousEntries).ExpandTo(previousBitmap);
+            previousFormat = TwoLevelBitmapReader.FormatOf(blob);
+        }
 
         Span<byte> newBitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
         previousBitmap.CopyTo(newBitmap);
@@ -91,67 +128,27 @@ public static class StemLeafBlob
         if (leafCount == 0) return default;
 
         int groupCount = TwoLevelBitmapReader.OccupiedGroupsOf(newBitmap);
-        RebuildState state = new(previousEntries, changes, 2 * leafCount - 1, groupCount, provider);
+        // the leaves alone are the whole of a LeavesOnly blob, so there its bound is its exact size
+        int storedCountBound = format == PbtLeafFormat.LeavesOnly ? leafCount : 2 * leafCount - 1;
+        RebuildState state = new(previousEntries, previousFormat, changes, storedCountBound, groupCount, provider, format);
         state.Build(previousBitmap, newBitmap);
         return state;
     }
 
-    /// <summary>Rewrites a legacy blob into the current format, dropping the single-child internal entries it no longer stores.</summary>
+    /// <summary>
+    /// Whether <paramref name="format"/> stores an entry for the internal node covering
+    /// <paramref name="width"/> leaves, given whether each of its halves holds one.
+    /// </summary>
     /// <remarks>
-    /// A filtering copy with no hashing: the current format's stored nodes are a subset of the legacy
-    /// format's live nodes, both run in DFS post-order over the same leaf bitmap, and a branching internal's
-    /// cached hash is identical either way. The footer carries over verbatim but for its format byte.
+    /// A single-child internal is left out of every written format: it is recomputed from the child
+    /// below it, which is one hash away, where a branching node's would cost a walk of both its halves.
+    /// <see cref="PbtLeafFormat.Interleaved"/> leaves out whole levels on top of that, and
+    /// <see cref="PbtLeafFormat.LeavesOnly"/> all of them.
     /// </remarks>
-    private static RefCountingMemory Upgrade(ReadOnlySpan<byte> blob, IRefCountingMemoryProvider provider)
-    {
-        TwoLevelBitmapReader reader = TwoLevelBitmapReader.FromBlob(blob, out ReadOnlySpan<byte> legacyEntries);
-        Span<byte> bitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
-        reader.ExpandTo(bitmap);
-
-        ReadOnlySpan<byte> footer = blob[legacyEntries.Length..];
-        int storedCount = CountStoredNodes(bitmap, 0, LeafCount);
-        RefCountingMemory memory = provider.Rent(storedCount * ValueLength + footer.Length);
-        Span<byte> upgraded = memory.GetSpan();
-
-        int legacySlot = 0;
-        int slot = 0;
-        CopyStoredNodes(bitmap, 0, LeafCount, legacyEntries, upgraded, ref legacySlot, ref slot);
-        Debug.Assert(slot == storedCount);
-
-        footer.CopyTo(upgraded[(storedCount * ValueLength)..]);
-        upgraded[^1] = TwoLevelBitmapReader.FormatByte;
-        return memory;
-    }
-
-    private static void CopyStoredNodes(
-        scoped ReadOnlySpan<byte> bitmap,
-        int low,
-        int high,
-        ReadOnlySpan<byte> legacyEntries,
-        Span<byte> upgraded,
-        ref int legacySlot,
-        ref int slot)
-    {
-        if (!RangeHasLeaf(bitmap, low, high)) return;
-
-        if (high - low == 1)
-        {
-            Copy(legacyEntries, legacySlot++, upgraded, slot++);
-            return;
-        }
-
-        int middle = low + (high - low) / 2;
-        CopyStoredNodes(bitmap, low, middle, legacyEntries, upgraded, ref legacySlot, ref slot);
-        CopyStoredNodes(bitmap, middle, high, legacyEntries, upgraded, ref legacySlot, ref slot);
-
-        // the legacy blob caches every live internal; keep only those that branch
-        bool branching = RangeHasLeaf(bitmap, low, middle) && RangeHasLeaf(bitmap, middle, high);
-        if (branching) Copy(legacyEntries, legacySlot, upgraded, slot++);
-        legacySlot++;
-
-        static void Copy(ReadOnlySpan<byte> source, int sourceSlot, Span<byte> destination, int destinationSlot) =>
-            source.Slice(sourceSlot * ValueLength, ValueLength).CopyTo(destination.Slice(destinationSlot * ValueLength, ValueLength));
-    }
+    private static bool StoresInternal(PbtLeafFormat format, int width, bool leftHasLeaf, bool rightHasLeaf) =>
+        format == PbtLeafFormat.Legacy
+            ? leftHasLeaf || rightHasLeaf
+            : leftHasLeaf && rightHasLeaf && PbtLayout.StemLeafStoresInternalAtWidth(format, width);
 
     /// <summary>The stem node hash: <c>blake3(stem || 0x00 || subtreeRoot)</c>.</summary>
     public static ValueHash256 ComputeStemNodeHash(in Stem stem, in ValueHash256 subtreeRoot)
@@ -213,22 +210,78 @@ public static class StemLeafBlob
         return count;
     }
 
-    /// <summary>The number of nodes a rebuild emits for <paramref name="bitmap"/> over <c>[low, high)</c>: the present leaves plus the branching internals between them.</summary>
-    /// <remarks>A binary tree with <c>m</c> leaves has exactly <c>m - 1</c> branching nodes, so the count is <c>2m - 1</c> however the leaves are placed.</remarks>
-    private static int CountStoredNodes(ReadOnlySpan<byte> bitmap, int low, int high)
+    /// <summary>The number of entries <paramref name="format"/> holds for <paramref name="bitmap"/> over the aligned range <c>[low, high)</c>: the present leaves plus the internal nodes it stores between them.</summary>
+    /// <remarks>
+    /// Counted rather than walked, this being on the path of every read and of every clean subtree a
+    /// rebuild copies: a walk of the nodes costs more than the copy it is sizing.
+    /// <see cref="PbtLeafFormat.EveryLevel"/> has a closed form — a binary tree with <c>m</c> leaves has
+    /// exactly <c>m - 1</c> branching nodes, so the count is <c>2m - 1</c> however the leaves are placed
+    /// — as does <see cref="PbtLeafFormat.LeavesOnly"/>, whose entries are the leaves themselves, and
+    /// <see cref="PbtLeafFormat.Interleaved"/>, which has none, is counted by
+    /// <see cref="CountInterleavedNodes"/> instead. Only the legacy layout, which nothing writes, is
+    /// walked.
+    /// </remarks>
+    internal static int CountStoredNodes(ReadOnlySpan<byte> bitmap, int low, int high, PbtLeafFormat format)
     {
-        int leafCount = PopCountRange(bitmap, low, high);
-        return leafCount == 0 ? 0 : 2 * leafCount - 1;
-    }
+        if (format == PbtLeafFormat.LeavesOnly) return PopCountRange(bitmap, low, high);
 
-    /// <summary>The number of nodes the legacy format holds for <paramref name="bitmap"/>: present leaves plus every internal node whose range holds one.</summary>
-    private static int CountLiveNodes(ReadOnlySpan<byte> bitmap, int low, int high)
-    {
+        if (format == PbtLeafFormat.EveryLevel)
+        {
+            int leafCount = PopCountRange(bitmap, low, high);
+            return leafCount == 0 ? 0 : 2 * leafCount - 1;
+        }
+
+        if (format == PbtLeafFormat.Interleaved) return CountInterleavedNodes(bitmap, low, high);
+
         if (!RangeHasLeaf(bitmap, low, high)) return 0;
         if (high - low == 1) return 1;
 
         int middle = low + (high - low) / 2;
-        return 1 + CountLiveNodes(bitmap, low, middle) + CountLiveNodes(bitmap, middle, high);
+        return 1 + CountStoredNodes(bitmap, low, middle, format) + CountStoredNodes(bitmap, middle, high, format);
+    }
+
+    /// <summary>
+    /// <see cref="CountStoredNodes"/> for <see cref="PbtLeafFormat.Interleaved"/>: the leaves of the
+    /// aligned range <c>[low, high)</c> plus the branching nodes of its 4-, 16- and 64-wide levels.
+    /// </summary>
+    /// <remarks>
+    /// A level's nodes are aligned blocks of the leaf bitmap, so the whole level is settled at once:
+    /// folding each block's bits down to one says which blocks hold a leaf, and <c>and</c>-ing that
+    /// against itself shifted by half a block says which hold one in both halves — a branching node. All
+    /// three kept levels sit inside a 64-leaf word, so no block straddles two, and a range narrower than
+    /// one is handled by masking the word down to it: a block reaching outside then has an empty half
+    /// and drops out of its own accord. The levels this layout skips are simply never asked about, and
+    /// the 128- and 256-wide ones are among them.
+    /// </remarks>
+    private static int CountInterleavedNodes(ReadOnlySpan<byte> bitmap, int low, int high)
+    {
+        int width = high - low;
+        ulong rangeMask = width < LeavesPerWord
+            ? (ulong.MaxValue << (LeavesPerWord - width)) >> (low & (LeavesPerWord - 1))
+            : ulong.MaxValue;
+
+        int count = 0;
+        for (int word = low / LeavesPerWord; word <= (high - 1) / LeavesPerWord; word++)
+        {
+            ulong leaves = BinaryPrimitives.ReadUInt64BigEndian(bitmap.Slice(word * sizeof(ulong), sizeof(ulong))) & rangeMask;
+            if (leaves == 0) continue;
+
+            // One bit per block, at the block's first leaf, which the bitmap being MSB-first puts at the
+            // block's highest bit — so a block folds by shifting its second half up onto its first.
+            // 0xAA… marks every second bit, 0x88… every fourth, and so on.
+            ulong pairs = (leaves | (leaves << 1)) & 0xAAAA_AAAA_AAAA_AAAAul;
+            ulong quads = (pairs | (pairs << 2)) & 0x8888_8888_8888_8888ul;
+            ulong eights = (quads | (quads << 4)) & 0x8080_8080_8080_8080ul;
+            ulong sixteens = (eights | (eights << 8)) & 0x8000_8000_8000_8000ul;
+            ulong thirtyTwos = (sixteens | (sixteens << 16)) & 0x8000_0000_8000_0000ul;
+
+            count += BitOperations.PopCount(leaves)
+                + BitOperations.PopCount(pairs & (pairs << 2) & 0x8888_8888_8888_8888ul)
+                + BitOperations.PopCount(eights & (eights << 8) & 0x8000_8000_8000_8000ul)
+                + BitOperations.PopCount(thirtyTwos & (thirtyTwos << 32) & 0x8000_0000_0000_0000ul);
+        }
+
+        return count;
     }
 
     /// <summary>
@@ -238,20 +291,20 @@ public static class StemLeafBlob
     /// target are counted wholesale; every enclosing internal node comes after the target and is skipped,
     /// which is why whether those ancestors are stored does not enter into it.
     /// </summary>
-    /// <param name="legacy">Whether to count by the legacy layout, which also stores single-child internals.</param>
-    private static void Locate(ReadOnlySpan<byte> bitmap, int low, int high, int target, bool legacy, ref int nodesBefore)
+    /// <param name="format">The layout the blob being read holds its entries in.</param>
+    private static void Locate(ReadOnlySpan<byte> bitmap, int low, int high, int target, PbtLeafFormat format, ref int nodesBefore)
     {
         if (high - low == 1) return;
 
         int middle = low + (high - low) / 2;
         if (target < middle)
         {
-            Locate(bitmap, low, middle, target, legacy, ref nodesBefore);
+            Locate(bitmap, low, middle, target, format, ref nodesBefore);
         }
         else
         {
-            nodesBefore += legacy ? CountLiveNodes(bitmap, low, middle) : CountStoredNodes(bitmap, low, middle);
-            Locate(bitmap, middle, high, target, legacy, ref nodesBefore);
+            nodesBefore += CountStoredNodes(bitmap, low, middle, format);
+            Locate(bitmap, middle, high, target, format, ref nodesBefore);
         }
     }
 
@@ -262,19 +315,27 @@ public static class StemLeafBlob
     /// and must not escape). The buffer comes from an <see cref="IRefCountingMemoryProvider"/> and is
     /// released on <see cref="Dispose"/>; a <c>default</c> instance owns no buffer and represents the empty
     /// (no leaves remaining) result.
+    /// <para>
+    /// It is rented to the bound of what the leaves can cost and narrowed to what they did once the fold
+    /// is done, there being no counting the entries of a format that leaves out levels without walking
+    /// the whole subtree first.
+    /// </para>
     /// </remarks>
     internal ref struct RebuildState
     {
         private readonly ReadOnlySpan<byte> _previousEntries;
+        private readonly PbtLeafFormat _previousFormat;
+        private readonly PbtLeafFormat _format;
         private readonly IPbtStemChanges _changes;
         private readonly Span<byte> _buffer;
         private RefCountingMemory? _memory;
         private int _previousSlot;
         private int _changeIndex;
         private int _slot;
+        private int _length;
 
         /// <summary>The rebuilt blob, valid until <see cref="Dispose"/>; empty when <see cref="IsEmpty"/>.</summary>
-        public readonly ReadOnlySpan<byte> Blob => _buffer;
+        public readonly ReadOnlySpan<byte> Blob => _buffer[.._length];
 
         /// <summary>Whether the stem has no leaves remaining, in which case <see cref="Blob"/> is empty.</summary>
         public readonly bool IsEmpty => _memory is null;
@@ -284,12 +345,14 @@ public static class StemLeafBlob
 
         public RebuildState(
             ReadOnlySpan<byte> previousEntries,
+            PbtLeafFormat previousFormat,
             IPbtStemChanges changes,
-            int storedCount,
+            int storedCountBound,
             int groupCount,
-            IRefCountingMemoryProvider provider)
+            IRefCountingMemoryProvider provider,
+            PbtLeafFormat format)
         {
-            int length = storedCount * ValueLength
+            int length = storedCountBound * ValueLength
                 + groupCount * TwoLevelBitmapReader.SubWordLength
                 + TwoLevelBitmapReader.TopLength
                 + TwoLevelBitmapReader.FormatLength;
@@ -297,6 +360,8 @@ public static class StemLeafBlob
             _buffer = _memory.GetSpan();
 
             _previousEntries = previousEntries;
+            _previousFormat = previousFormat;
+            _format = format;
             _changes = changes;
             _previousSlot = 0;
             _changeIndex = 0;
@@ -307,8 +372,10 @@ public static class StemLeafBlob
         public void Build(scoped ReadOnlySpan<byte> previousBitmap, scoped ReadOnlySpan<byte> newBitmap)
         {
             SubtreeRoot = Rebuild(previousBitmap, newBitmap, 0, LeafCount);
-            int footerLength = TwoLevelBitmapReader.Encode(newBitmap, _buffer[(_slot * ValueLength)..]);
-            Debug.Assert(_slot * ValueLength + footerLength == _buffer.Length);
+            int footerLength = TwoLevelBitmapReader.Encode(newBitmap, _buffer[(_slot * ValueLength)..], _format);
+            _length = _slot * ValueLength + footerLength;
+            Debug.Assert(_length <= _buffer.Length);
+            _memory!.Shrink(_length);
         }
 
         /// <summary>
@@ -358,17 +425,24 @@ public static class StemLeafBlob
             bool previousLeft = RangeHasLeaf(previousBitmap, low, middle);
             bool previousRight = RangeHasLeaf(previousBitmap, middle, high);
 
-            // A single-child internal has no entry of its own, so its run does not end at its own hash and
-            // CopyCleanSubtree could not return it. Recurse instead and let the copy fire at the branching
-            // node (or leaf) below, where the run does end at the root. Equal flags mean branching or empty.
-            if (clean && previousLeft == previousRight) return CopyCleanSubtree(previousBitmap, low, high);
+            // A node the previous blob stored no entry for does not end its own post-order run, so
+            // CopyCleanSubtree could not return its hash. Recurse instead and let the copy fire at the
+            // stored node (or leaf) below, where the run does end at the root — which also refolds a prior
+            // in another format, whose runs are not this format's to splice in. An empty range is copied
+            // whatever the format: there is nothing to copy and nothing to fold.
+            if (clean
+                && (!previousLeft && !previousRight
+                    || _previousFormat == _format && StoresInternal(_format, high - low, previousLeft, previousRight)))
+            {
+                return CopyCleanSubtree(previousBitmap, low, high);
+            }
 
             ValueHash256 left = Rebuild(previousBitmap, newBitmap, low, middle);
             ValueHash256 right = Rebuild(previousBitmap, newBitmap, middle, high);
 
             // post-order put the children's entries before this node's in the previous blob too, so its own
-            // slot is only stepped over once they have been
-            if (previousLeft && previousRight) _previousSlot++;
+            // slot is only stepped over once they have been — and by that blob's format, not this one
+            if (StoresInternal(_previousFormat, high - low, previousLeft, previousRight)) _previousSlot++;
 
             ValueHash256 hash = Blake3Hash.HashPairOrZero(left, right);
             // What is emitted turns on the new bitmap where _previousSlot above turns on the previous one:
@@ -376,20 +450,25 @@ public static class StemLeafBlob
             // the two disagree at every ancestor of a change. Asking the bitmap rather than whether left and
             // right came back non-default keeps the popcount the buffer was sized from the only thing
             // deciding what lands in it.
-            if (RangeHasLeaf(newBitmap, low, middle) && RangeHasLeaf(newBitmap, middle, high)) Append(hash.Bytes);
+            if (StoresInternal(_format, high - low, RangeHasLeaf(newBitmap, low, middle), RangeHasLeaf(newBitmap, middle, high)))
+            {
+                Append(hash.Bytes);
+            }
+
             return hash;   // returned whether or not it was stored: skipping withholds the entry, not the hash
         }
 
         /// <summary>Copies an unchanged subtree's stored nodes verbatim from the previous blob and returns its root's hash.</summary>
         /// <remarks>
         /// Their count is <see cref="CountStoredNodes"/> of the previous bitmap over the subtree — the same
-        /// contiguous post-order run the previous rebuild emitted. The caller must exclude a single-child
-        /// internal: only a stored root ends its own run, which is what makes the last copied entry the one
-        /// to return. A clean subtree's bitmap is unchanged, so its node set cannot differ from the new one's.
+        /// contiguous post-order run the previous rebuild emitted, and so counted by that blob's format.
+        /// The caller must exclude a root that blob stored no entry for: only a stored root ends its own
+        /// run, which is what makes the last copied entry the one to return. A clean subtree's bitmap is
+        /// unchanged, so its node set cannot differ from the new one's.
         /// </remarks>
         private ValueHash256 CopyCleanSubtree(scoped ReadOnlySpan<byte> previousBitmap, int low, int high)
         {
-            int count = CountStoredNodes(previousBitmap, low, high);
+            int count = CountStoredNodes(previousBitmap, low, high, _previousFormat);
             if (count == 0) return default;
 
             _previousEntries.Slice(_previousSlot * ValueLength, count * ValueLength)

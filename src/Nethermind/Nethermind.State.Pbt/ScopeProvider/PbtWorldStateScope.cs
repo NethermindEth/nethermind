@@ -21,9 +21,17 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// shadows the layer chain, so a fold composes on top of any earlier fold this block and
 /// <see cref="Commit"/> seals the accumulated buffer into the snapshot.
 /// </summary>
+/// <remarks>
+/// The fold's own root is not what <see cref="RootHash"/> reports: on a Patricia-rooted chain the
+/// block being processed already claims a root, and reporting anything else fails validation. The
+/// scope therefore tracks both — the EIP-8297 root the tree folds to, which the next fold and the
+/// sealed snapshot need, and the header's root, which is what it reports and keys its states by. See
+/// <see cref="IPbtChildHeaderSource"/>.
+/// </remarks>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore
 {
     private readonly IPbtCommitTarget _commitTarget;
+    private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
     private readonly PbtGroupFormat _writeFormat;
     private readonly int _rootFoldConcurrency;
@@ -40,15 +48,25 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
 
     private StateId _currentStateId;
+    private ValueHash256 _treeRoot;
     private Hash256 _rootHash;
+
+    // the header of the state the scope currently sits on, and the header of the block it is folding;
+    // the latter is resolved once per block and carried into Commit so a branch's next block starts
+    // from the header it just committed
+    private BlockHeader? _currentHeader;
+    private BlockHeader? _childHeader;
+
     private bool _rootDirty;
     private bool _isDisposed;
 
     public PbtWorldStateScope(
         in StateId currentStateId,
+        BlockHeader? currentHeader,
         PbtSnapshotBundle bundle,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IPbtCommitTarget commitTarget,
+        IPbtChildHeaderSource childHeaders,
         IPbtResourcePool resourcePool,
         PbtResourcePool.Usage usage,
         bool isReadOnly,
@@ -56,12 +74,15 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         int rootFoldConcurrency)
     {
         _currentStateId = currentStateId;
+        _currentHeader = currentHeader;
         Bundle = bundle;
         _commitTarget = commitTarget;
+        _childHeaders = childHeaders;
         _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
         _isReadOnly = isReadOnly;
         _writeFormat = writeFormat;
         _rootFoldConcurrency = rootFoldConcurrency;
+        _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, _pendingCode);
     }
@@ -93,14 +114,21 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     /// Folds the stems dirtied since the last update into the tree on top of the pre-block state,
     /// recording the new blobs and nodes in the bundle's write buffer and flushing the dirty set.
     /// </summary>
+    /// <remarks>
+    /// The reported root is the one the block's own header claims. Falling back to the tree's root
+    /// when no such header exists keeps the blocks this node builds itself — and every scope over a
+    /// synthetic block — self-consistent: such a block carries the tree root, and echoes it back when
+    /// it is later processed.
+    /// </remarks>
     public void UpdateRootHash()
     {
         if (!_rootDirty) return;
 
         using PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch();
-        _rootHash = TrieUpdater.UpdateRoot(
-            this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat,
-            _rootFoldConcurrency, out _).ToHash256();
+        _treeRoot = TrieUpdater.UpdateRoot(
+            this, _treeRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, _rootFoldConcurrency, out _);
+        _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
+        _rootHash = _childHeader?.StateRoot ?? _treeRoot.ToHash256();
         _rootDirty = false;
     }
 
@@ -120,7 +148,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         StateId newStateId = new(blockNumber, _rootHash);
         if (newStateId != _currentStateId)
         {
-            PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId);
+            PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot);
             if (_isReadOnly)
             {
                 // read-only scopes keep the layer only in their own bundle; drop the lease that
@@ -134,6 +162,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
             _currentStateId = newStateId;
         }
+
+        // unconditionally, null included: keeping the old header would have the next block in the
+        // branch resolve the child of the block this one just committed — the block itself
+        _currentHeader = _childHeader;
+        _childHeader = null;
 
         // the dirty stems were already drained (and their maps returned) by UpdateRootHash, and the
         // blob and node results left with the buffer CollectSnapshot sealed

@@ -138,7 +138,7 @@ public class PbtSnapshotCompactorTests
         {
             PbtSnapshotContent layer = new();
             layer.Slots[(TestItem.AddressA, UInt256.Zero)] = Word((byte)block);
-            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), layer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), default, layer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
             compactor.DoCompactSnapshot(State(block));
         }
 
@@ -165,7 +165,7 @@ public class PbtSnapshotCompactorTests
 
         for (ulong block = 1; block <= 4; block++)
         {
-            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), new PbtSnapshotContent(), _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), default, new PbtSnapshotContent(), _pool, PbtResourcePool.Usage.MainBlockProcessing));
             compactor.DoCompactSnapshot(State(block));
         }
 
@@ -204,7 +204,7 @@ public class PbtSnapshotCompactorTests
         using PbtSnapshotPooledList chain = new(layers.Length);
         for (int i = 0; i < layers.Length; i++)
         {
-            chain.Add(new PbtSnapshot(State((ulong)i + 1), State((ulong)i + 2), layers[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            chain.Add(new PbtSnapshot(State((ulong)i + 1), State((ulong)i + 2), default, layers[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
         }
 
         return NewCompactor(new PbtSnapshotRepository()).Compact(chain);

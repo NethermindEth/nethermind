@@ -72,7 +72,7 @@ public class PbtColumnRoutingTests
     }
 
     private static IPbtPersistence.IWriteBatch StartBatch(SnapshotableMemColumnsDb<PbtColumns> db) =>
-        new PbtRocksDbPersistence(db).CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256), WriteFlags.None);
+        new PbtRocksDbPersistence(db).CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256), default, WriteFlags.None);
 
     private static void AssertOnlyIn(SnapshotableMemColumnsDb<PbtColumns> db, byte[] key, PbtColumns expected, byte[] value, PbtColumns[] candidates)
     {

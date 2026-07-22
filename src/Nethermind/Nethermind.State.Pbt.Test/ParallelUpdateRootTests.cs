@@ -18,6 +18,7 @@ namespace Nethermind.State.Pbt.Test;
 /// <param name="format"><inheritdoc cref="StemTrieTests" path="/param[@name='format']"/></param>
 [TestFixture(PbtGroupFormat.EveryLevel)]
 [TestFixture(PbtGroupFormat.Interleaved)]
+[TestFixture(PbtGroupFormat.BoundaryOnly)]
 public class ParallelUpdateRootTests(PbtGroupFormat format)
 {
     private const int Workers = 8;

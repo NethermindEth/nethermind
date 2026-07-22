@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
 
@@ -37,8 +38,8 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Number of parallel workers sweeping each column during the tree scan, each claiming key ranges in turn. 0 uses the processor count. The columns are still scanned one after another.", DefaultValue = "0")]
     int ScanTreeConcurrency { get; set; }
 
-    [ConfigItem(Description = "Whether to store only the even levels of each 4-level trie node tile, folding the odd levels' hashes on demand. Reduces the size of the trie node column at a small rebuild cost. The state root is identical either way, and both layouts remain readable regardless of this setting.", DefaultValue = "true")]
-    bool InterleaveTrieNodeLevels { get; set; }
+    [ConfigItem(Description = "Which levels of each 4-level trie node tile and of each stem's 256-leaf subtree store a node, the rest being folded on demand: `EveryLevel` stores all of them, `Interleaved` only the even ones, and `BoundaryOnly` none at all - just the tile's boundary entries and the stem's leaves. Each in turn trades size in the trie node and leaf columns for work on rebuild. The state root is identical whichever is chosen, and every layout remains readable regardless of this setting.", DefaultValue = "Interleaved")]
+    PbtGroupFormat TrieNodeLevels { get; set; }
 
     [ConfigItem(Description = "Number of parallel workers folding a block's writes into the tree. 0 uses the processor count, 1 folds on the calling thread only. A batch too small to be worth splitting folds on the calling thread whatever this says.", DefaultValue = "0")]
     int RootFoldConcurrency { get; set; }

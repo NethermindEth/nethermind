@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -34,6 +35,10 @@ public class PbtSnapshotBundle(
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
     private bool _isDisposed;
+
+    /// <inheritdoc cref="PbtReadOnlySnapshotBundle.TreeRoot"/>
+    /// <remarks>The write buffer has no root of its own: it is unfolded until a scope seals it.</remarks>
+    public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
 
     private PbtSnapshotContent WriteBuffer
     {
@@ -136,11 +141,11 @@ public class PbtSnapshotBundle(
     /// Seals the write buffer into a snapshot, appends it as this branch's newest layer (leased),
     /// and starts a fresh buffer for the next block.
     /// </summary>
-    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to)
+    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         // ownership of the buffer passes to the snapshot, which returns it to the pool once its last
         // lease drops; the bundle must never touch the old one again
-        PbtSnapshot snapshot = new(from, to, WriteBuffer, resourcePool, usage);
+        PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _writeBuffer = resourcePool.GetSnapshotContent(usage);

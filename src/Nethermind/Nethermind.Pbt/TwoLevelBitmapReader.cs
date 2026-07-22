@@ -25,8 +25,6 @@ internal readonly ref struct TwoLevelBitmapReader
     internal const int SubWordLength = 2;
     internal const int TopLength = 2;
     internal const int FormatLength = 1;
-    internal const byte LegacyFormatByte = 0x01;   // read-only: entries hold every live node
-    internal const byte FormatByte = 0x02;         // entries skip single-child internals
     internal const int BitmapLength = 32;
 
     private readonly ReadOnlySpan<byte> _subwords;   // 2·G bytes, ascending occupied-group order
@@ -38,15 +36,18 @@ internal readonly ref struct TwoLevelBitmapReader
         _top = top;
     }
 
-    /// <summary>Whether the non-empty <paramref name="blob"/> uses the legacy entry layout.</summary>
-    /// <remarks>The footer itself is identical across versions; only the entries region differs.</remarks>
-    public static bool IsLegacy(ReadOnlySpan<byte> blob) => blob[^1] == LegacyFormatByte;
+    /// <summary>Which layout the non-empty <paramref name="blob"/> holds its entries in.</summary>
+    /// <remarks>
+    /// The footer itself is identical across the layouts; only the entries region differs.
+    /// <see cref="FromBlob"/> is what validates the byte, so this is a plain read of a blob it has parsed.
+    /// </remarks>
+    public static PbtLeafFormat FormatOf(ReadOnlySpan<byte> blob) => (PbtLeafFormat)blob[^1];
 
     /// <summary>Parses the footer from the tail of a non-empty blob and yields the leading entries region.</summary>
-    /// <exception cref="InvalidDataException">The trailing format byte is neither <see cref="FormatByte"/> nor <see cref="LegacyFormatByte"/>.</exception>
+    /// <exception cref="InvalidDataException">The trailing format byte is no <see cref="PbtLeafFormat"/>.</exception>
     public static TwoLevelBitmapReader FromBlob(ReadOnlySpan<byte> blob, out ReadOnlySpan<byte> entries)
     {
-        if (blob[^1] is not (FormatByte or LegacyFormatByte))
+        if (FormatOf(blob) is not (PbtLeafFormat.Legacy or PbtLeafFormat.EveryLevel or PbtLeafFormat.Interleaved or PbtLeafFormat.LeavesOnly))
             throw new InvalidDataException($"StemLeafBlob: unexpected format byte 0x{blob[^1]:x2}");
 
         ushort top = BinaryPrimitives.ReadUInt16LittleEndian(blob.Slice(blob.Length - TopLength - FormatLength, TopLength));
@@ -94,10 +95,11 @@ internal readonly ref struct TwoLevelBitmapReader
     }
 
     /// <summary>
-    /// Encodes a flat 32-byte MSB-first leaf bitmap as the footer (second-level, first-level, format
-    /// byte) into <paramref name="footer"/>, returning the bytes written (<c>2·G + 3</c>).
+    /// Encodes a flat 32-byte MSB-first leaf bitmap as the footer (second-level, first-level, the
+    /// <paramref name="format"/> byte) into <paramref name="footer"/>, returning the bytes written
+    /// (<c>2·G + 3</c>).
     /// </summary>
-    public static int Encode(ReadOnlySpan<byte> flat, Span<byte> footer)
+    public static int Encode(ReadOnlySpan<byte> flat, Span<byte> footer, PbtLeafFormat format)
     {
         ushort top = 0;
         int slot = 0;
@@ -112,7 +114,7 @@ internal readonly ref struct TwoLevelBitmapReader
         }
 
         BinaryPrimitives.WriteUInt16LittleEndian(footer.Slice(slot * SubWordLength, TopLength), top);
-        footer[slot * SubWordLength + TopLength] = FormatByte;
+        footer[slot * SubWordLength + TopLength] = (byte)format;
         return slot * SubWordLength + TopLength + FormatLength;
     }
 

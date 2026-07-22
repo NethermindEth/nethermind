@@ -66,9 +66,10 @@ public static partial class TrieUpdater
     /// bytes for an empty tree). An empty batch returns <paramref name="currentRoot"/> untouched.
     /// </summary>
     /// <param name="writeFormat">
-    /// Which encoding to write the groups this batch rebuilds in. Both fold to the same root and both
-    /// are read whatever this says, so it may change between batches over one store: a group is
-    /// converted only by a change that rewrites it anyway.
+    /// Which encoding to write the groups this batch rebuilds in, and with them the leaf blobs (see
+    /// <see cref="PbtLeafFormat"/>). They all fold to the same root and are all read whatever this says,
+    /// so it may change between batches over one store: a group is converted only by a change that
+    /// rewrites it anyway.
     /// </param>
     /// <param name="delta">The change this batch makes to the whole tree's stem count — positive as stems are added, negative as their leaves are zeroed away.</param>
     /// <param name="concurrency">
@@ -1112,6 +1113,14 @@ public static partial class TrieUpdater
             public void Dispose() => ((IDisposable?)_blob)?.Dispose();
         }
 
+        /// <summary>The leaf blob layout that goes with <see cref="Updater.WriteFormat"/>; one setting picks how far both skip.</summary>
+        private PbtLeafFormat LeafFormat => updater.WriteFormat switch
+        {
+            PbtGroupFormat.Interleaved => PbtLeafFormat.Interleaved,
+            PbtGroupFormat.BoundaryOnly => PbtLeafFormat.LeavesOnly,
+            _ => PbtLeafFormat.EveryLevel,
+        };
+
         /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and reports whether the stem is now empty.</summary>
         /// <param name="knownAbsent">
         /// The stem had no node in the trie, so — a stem node and its leaf blob being born and dying
@@ -1120,7 +1129,7 @@ public static partial class TrieUpdater
         private bool ComputeBlob(in Stem stem, IPbtStemChanges changes, bool knownAbsent, out ValueHash256 subtreeRoot)
         {
             using RefCountingMemory? prior = knownAbsent ? null : updater.Store.GetLeafBlob(stem);
-            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, updater.MemoryProvider);
+            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, updater.MemoryProvider, LeafFormat);
             subtreeRoot = newBlob.SubtreeRoot;
             bool isEmpty = newBlob.IsEmpty;
             SetLeafBlob(stem, newBlob.Take());

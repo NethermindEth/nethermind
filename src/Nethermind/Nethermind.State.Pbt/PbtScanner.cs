@@ -325,6 +325,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         stats.GroupsByDepth[depth]++;
         stats.GroupBytesByDepth[depth] += bytes - chainBytes;
         if (group.Format == PbtGroupFormat.Interleaved) stats.InterleavedGroupCount++;
+        if (group.Format == PbtGroupFormat.BoundaryOnly) stats.BoundaryOnlyGroupCount++;
         if (depth == 0) report.RootSubtreeStemCount = group.Stats.StemCount;
 
         WalkPosition(group, PbtLayout.TrieNodeGroupRootPosition, PbtLayout.TrieNodeGroupBoundarySlots, depth, stats);
@@ -374,7 +375,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         if (!left && !right) return false;
 
         stats.IntermediateNodeCount++;
-        if (PbtLayout.TrieNodeGroupIsSkippedPosition(group.Format, position)) stats.InterleaveSkippedNodes++;
+        if (PbtLayout.TrieNodeGroupIsSkippedPosition(group.Format, position)) stats.SkippedLevelNodes++;
         return true;
     }
 
@@ -390,8 +391,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         Span<byte> bitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
         reader.ExpandTo(bitmap);
 
+        PbtLeafFormat format = TwoLevelBitmapReader.FormatOf(blob);
         int leaves = PopCountRange(bitmap, 0, PbtKeyDerivation.StemSubtreeWidth);
-        if (sections is not null) ScanAccountSections(bitmap, sections);
+        if (sections is not null) ScanAccountSections(bitmap, format, sections);
 
         stats.BlobCount++;
         stats.Bytes += blob.Length;
@@ -399,7 +401,12 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         stats.LeafCount += leaves;
         stats.IntermediateNodeCount += entries.Length / StemLeafBlob.ValueLength - leaves;
         stats.BlobsByLeafCount[leaves]++;
-        if (TwoLevelBitmapReader.IsLegacy(blob)) stats.LegacyBlobCount++;
+        switch (format)
+        {
+            case PbtLeafFormat.Legacy: stats.LegacyBlobCount++; break;
+            case PbtLeafFormat.Interleaved: stats.InterleavedBlobCount++; break;
+            case PbtLeafFormat.LeavesOnly: stats.LeavesOnlyBlobCount++; break;
+        }
     }
 
     /// <summary>
@@ -407,28 +414,29 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     /// own fields, its first <see cref="PbtKeyDerivation.HeaderStorageOffset"/> storage slots and its
     /// first <see cref="PbtKeyDerivation.HeaderCodeChunks"/> code chunks.
     /// </summary>
-    private static void ScanAccountSections(ReadOnlySpan<byte> bitmap, PbtScanReport.AccountLeafSections sections)
+    private static void ScanAccountSections(ReadOnlySpan<byte> bitmap, PbtLeafFormat format, PbtScanReport.AccountLeafSections sections)
     {
-        ScanAccountSection(bitmap, 0, PbtKeyDerivation.HeaderStorageOffset, sections.Fields);
-        ScanAccountSection(bitmap, PbtKeyDerivation.HeaderStorageOffset, PbtKeyDerivation.CodeOffset, sections.Storage);
-        ScanAccountSection(bitmap, PbtKeyDerivation.CodeOffset, PbtKeyDerivation.StemSubtreeWidth, sections.Code);
+        ScanAccountSection(bitmap, 0, PbtKeyDerivation.HeaderStorageOffset, format, sections.Fields);
+        ScanAccountSection(bitmap, PbtKeyDerivation.HeaderStorageOffset, PbtKeyDerivation.CodeOffset, format, sections.Storage);
+        ScanAccountSection(bitmap, PbtKeyDerivation.CodeOffset, PbtKeyDerivation.StemSubtreeWidth, format, sections.Code);
     }
 
     /// <summary>Counts the leaves one sub-index range holds and the entries the blob spends on them.</summary>
     /// <remarks>
-    /// Each range is an aligned subtree of the stem's 256 leaves, so the entries within it are its m
-    /// leaves and the m - 1 internals branching between them, whatever their placement. What that leaves
-    /// out is the handful of nodes joining the ranges themselves, and the footer, which belong to no one
-    /// of them.
+    /// Each range is an aligned subtree of the stem's 256 leaves, so the entries within it are its own —
+    /// its leaves and whichever internals between them <paramref name="format"/> stores. What that
+    /// leaves out is the handful of nodes joining the ranges themselves, and the footer, which belong to
+    /// no one of them.
     /// </remarks>
-    private static void ScanAccountSection(ReadOnlySpan<byte> bitmap, int fromSubIndex, int toSubIndex, PbtScanReport.LeafSectionStats section)
+    private static void ScanAccountSection(
+        ReadOnlySpan<byte> bitmap, int fromSubIndex, int toSubIndex, PbtLeafFormat format, PbtScanReport.LeafSectionStats section)
     {
         int leaves = PopCountRange(bitmap, fromSubIndex, toSubIndex);
         if (leaves == 0) return;
 
         section.BlobCount++;
         section.LeafCount += leaves;
-        section.EntryBytes += (2 * leaves - 1) * StemLeafBlob.ValueLength;
+        section.EntryBytes += StemLeafBlob.CountStoredNodes(bitmap, fromSubIndex, toSubIndex, format) * StemLeafBlob.ValueLength;
     }
 
     /// <summary>The leaves present in <c>[fromSubIndex, toSubIndex)</c>, a range of whole bitmap bytes.</summary>
@@ -514,7 +522,7 @@ public sealed class PbtScanReport
     public long TrieNodeKeyBytes => Sum(static stats => stats.KeyBytes);
     public long ClusterCount => Sum(static stats => stats.ClusterCount);
     public long ClusteredGroupCount => Sum(static stats => stats.ClusteredGroupCount);
-    public long InterleaveSkippedNodes => Sum(static stats => stats.InterleaveSkippedNodes);
+    public long SkippedLevelNodes => Sum(static stats => stats.SkippedLevelNodes);
     public long ChainSkippedNodes => Sum(static stats => stats.ChainSkippedNodes);
     public long ChainEntriesAvoided => Sum(static stats => stats.ChainEntriesAvoided);
     public long ChainGroupBlobsAvoided => Sum(static stats => stats.ChainGroupBlobsAvoided);
@@ -555,6 +563,7 @@ public sealed class PbtScanReport
     {
         public long GroupCount { get; internal set; }
         public long InterleavedGroupCount { get; internal set; }
+        public long BoundaryOnlyGroupCount { get; internal set; }
         public long ChainCount { get; internal set; }
         public long StemCount { get; internal set; }
 
@@ -608,8 +617,8 @@ public sealed class PbtScanReport
         public long[] ChainsByStartDepth { get; } = new long[DepthSlots];
         public long[] ChainsBySpan { get; } = new long[DepthSlots];
 
-        /// <summary>Internal nodes the interleaved encoding leaves unstored; also the entries it saves, one hash each.</summary>
-        public long InterleaveSkippedNodes { get; internal set; }
+        /// <summary>Internal nodes the encoding leaves unstored at a level it skips; also the entries it saves, one hash each.</summary>
+        public long SkippedLevelNodes { get; internal set; }
 
         /// <summary>Trie levels the chains collapsed, each a real single-child node with no entry of its own.</summary>
         public long ChainSkippedNodes { get; internal set; }
@@ -626,6 +635,7 @@ public sealed class PbtScanReport
         {
             GroupCount += other.GroupCount;
             InterleavedGroupCount += other.InterleavedGroupCount;
+            BoundaryOnlyGroupCount += other.BoundaryOnlyGroupCount;
             ChainCount += other.ChainCount;
             StemCount += other.StemCount;
             IntermediateNodeCount += other.IntermediateNodeCount;
@@ -636,7 +646,7 @@ public sealed class PbtScanReport
             ClusterCount += other.ClusterCount;
             ClusteredGroupCount += other.ClusteredGroupCount;
             ClusterFramingBytes += other.ClusterFramingBytes;
-            InterleaveSkippedNodes += other.InterleaveSkippedNodes;
+            SkippedLevelNodes += other.SkippedLevelNodes;
             ChainSkippedNodes += other.ChainSkippedNodes;
             ChainEntriesAvoided += other.ChainEntriesAvoided;
             ChainGroupBlobsAvoided += other.ChainGroupBlobsAvoided;
@@ -704,11 +714,17 @@ public sealed class PbtScanReport
         /// <summary>Present leaves across every blob: the stored slots, code chunks or header fields.</summary>
         public long LeafCount { get; internal set; }
 
-        /// <summary>Branching internal nodes stored alongside those leaves.</summary>
+        /// <summary>Internal nodes stored alongside those leaves.</summary>
         public long IntermediateNodeCount { get; internal set; }
 
         /// <summary>Blobs still in the legacy layout, which caches every single-child internal too.</summary>
         public long LegacyBlobCount { get; internal set; }
+
+        /// <summary>Blobs in the interleaved layout, which stores no internal node at a skipped level.</summary>
+        public long InterleavedBlobCount { get; internal set; }
+
+        /// <summary>Blobs in the leaves-only layout, which stores no internal node at all.</summary>
+        public long LeavesOnlyBlobCount { get; internal set; }
 
         /// <summary>Blobs by how many of the stem's 256 leaves they hold, indexed by that count.</summary>
         public long[] BlobsByLeafCount { get; } = new long[LeafSlots];
@@ -721,6 +737,8 @@ public sealed class PbtScanReport
             LeafCount += other.LeafCount;
             IntermediateNodeCount += other.IntermediateNodeCount;
             LegacyBlobCount += other.LegacyBlobCount;
+            InterleavedBlobCount += other.InterleavedBlobCount;
+            LeavesOnlyBlobCount += other.LeavesOnlyBlobCount;
 
             AddInto(BlobsByLeafCount, other.BlobsByLeafCount);
         }
@@ -739,16 +757,16 @@ public sealed class PbtScanReport
         report.AppendLine();
 
         report.AppendLine("Intermediate nodes with no stored entry");
-        report.AppendLine($"  {"partition",-10}  {"interleaved levels",20}  {"chain levels",14}  {"chain entries saved",21}");
+        report.AppendLine($"  {"partition",-10}  {"skipped levels",20}  {"chain levels",14}  {"chain entries saved",21}");
         foreach (PbtTreePartition partition in Partitions)
         {
             TrieNodeStats stats = this[partition];
             if (stats.IsEmpty) continue;
-            report.AppendLine($"  {partition,-10}  {stats.InterleaveSkippedNodes,20:N0}  {stats.ChainSkippedNodes,14:N0}  {stats.ChainEntriesAvoided,21:N0}");
+            report.AppendLine($"  {partition,-10}  {stats.SkippedLevelNodes,20:N0}  {stats.ChainSkippedNodes,14:N0}  {stats.ChainEntriesAvoided,21:N0}");
         }
 
-        report.AppendLine($"  {"TOTAL",-10}  {InterleaveSkippedNodes,20:N0}  {ChainSkippedNodes,14:N0}  {ChainEntriesAvoided,21:N0}");
-        report.AppendLine($"  (an interleaved level saves exactly one entry each; chains also replaced {ChainGroupBlobsAvoided:N0} group blobs)");
+        report.AppendLine($"  {"TOTAL",-10}  {SkippedLevelNodes,20:N0}  {ChainSkippedNodes,14:N0}  {ChainEntriesAvoided,21:N0}");
+        report.AppendLine($"  (a skipped level saves exactly one entry each; chains also replaced {ChainGroupBlobsAvoided:N0} group blobs)");
         report.AppendLine();
 
         foreach (PbtTreePartition partition in Partitions) AppendPartition(report, partition);
@@ -767,7 +785,7 @@ public sealed class PbtScanReport
         if (stats.IsEmpty) return;
 
         report.AppendLine($"--- {partition} ---");
-        report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems over {stats.IntermediateNodeCount:N0} intermediate nodes");
+        report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.BoundaryOnlyGroupCount:N0} boundary-only, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems over {stats.IntermediateNodeCount:N0} intermediate nodes");
         report.AppendLine($"  in {stats.BlobCount:N0} blobs, whose keys take a further {stats.KeyBytes:N0} bytes");
         if (stats.ClusterCount != 0)
         {
@@ -846,7 +864,7 @@ public sealed class PbtScanReport
     private static void AppendLeafColumn(StringBuilder report, string title, LeafColumnStats stats)
     {
         report.AppendLine($"--- {title} ---");
-        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes plus {stats.KeyBytes:N0} of keys, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.LegacyBlobCount:N0} legacy");
+        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes plus {stats.KeyBytes:N0} of keys, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.InterleavedBlobCount:N0} interleaved, {stats.LeavesOnlyBlobCount:N0} leaves-only, {stats.LegacyBlobCount:N0} legacy");
         if (stats.BlobCount == 0)
         {
             report.AppendLine();

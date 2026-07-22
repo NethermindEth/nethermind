@@ -15,7 +15,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Pbt;
 using Nethermind.State;
 using Nethermind.State.Pbt;
 using Nethermind.State.Pbt.Persistence;
@@ -131,8 +130,8 @@ public class PbtScopeProviderBenchmark
         _pbtManager = new PbtDbManager(
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
         return new PbtScopeProvider(
-            new MemDb(), _pbtManager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel, RootFoldConcurrency);
+            new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
+            config.TrieNodeLevels, RootFoldConcurrency);
     }
 
     [Benchmark]

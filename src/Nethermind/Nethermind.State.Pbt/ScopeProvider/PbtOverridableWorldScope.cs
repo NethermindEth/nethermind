@@ -17,6 +17,12 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// A world scope whose commits stack in local layers above the main state instead of the global
 /// repository, letting override environments (eth_call state overrides) process and reset freely.
 /// </summary>
+/// <remarks>
+/// Its scopes report their own EIP-8297 root rather than a header's: the blocks they process are
+/// synthetic and never reach the block tree, so resolving a child by height would answer with the
+/// canonical block's root. Nothing here validates a root, so the tree's own is both honest and
+/// self-consistent.
+/// </remarks>
 public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 {
     private readonly ConcurrentDictionary<StateId, PbtSnapshot> _snapshots = new();
@@ -31,7 +37,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     {
         _manager = manager;
         _resourcePool = resourcePool;
-        _writeFormat = config.TrieNodeWriteFormat();
+        _writeFormat = config.TrieNodeLevels;
         _rootFoldConcurrency = config.RootFoldConcurrency;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
@@ -116,7 +122,10 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
         {
             StateId stateId = new(baseBlock);
-            return new PbtWorldStateScope(stateId, outer.GatherBundle(stateId), _codeDb, outer, outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, outer._writeFormat, outer._rootFoldConcurrency);
+            return new PbtWorldStateScope(
+                stateId, baseBlock, outer.GatherBundle(stateId), _codeDb, outer, NullPbtChildHeaderSource.Instance,
+                outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, outer._writeFormat,
+                outer._rootFoldConcurrency);
         }
     }
 

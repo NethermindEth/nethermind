@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 
@@ -20,12 +21,13 @@ public interface IPbtPersistence
     /// Starts an atomic batch advancing the persisted state <paramref name="from"/> →
     /// <paramref name="to"/>; throws when the currently persisted state is not <paramref name="from"/>.
     /// </summary>
+    /// <param name="toTreeRoot">The EIP-8297 root of <paramref name="to"/>, which its header-derived <see cref="StateId.StateRoot"/> does not carry.</param>
     /// <param name="flags">
     /// Applied to every write of the batch. <see cref="WriteFlags.DisableWAL"/> makes the batch
     /// non-durable until <see cref="Flush"/> is called, so it is only safe for bulk writes that are
     /// restarted from scratch on a crash.
     /// </param>
-    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags);
+    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 toTreeRoot, WriteFlags flags);
 
     /// <summary>Materializes every column's memtable, making prior <see cref="WriteFlags.DisableWAL"/> writes crash-durable.</summary>
     void Flush();
@@ -33,6 +35,10 @@ public interface IPbtPersistence
     public interface IReader : IDisposable
     {
         StateId CurrentState { get; }
+
+        /// <inheritdoc cref="CreateWriteBatch" path="/param[@name='toTreeRoot']"/>
+        ValueHash256 CurrentTreeRoot { get; }
+
         Account? GetAccount(Address address);
 
         /// <summary>Returns the stored slot value, or zero when absent.</summary>
