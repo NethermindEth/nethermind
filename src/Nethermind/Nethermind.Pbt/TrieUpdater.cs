@@ -746,7 +746,7 @@ public static partial class TrieUpdater
             // What lets the wrapper's offsets be the writer's own count: a group holding its children is
             // one no group above holds, so its bytes are the whole of the buffer rather than a slice of it.
             Debug.Assert(!isInWrapper || mark == 0, "a wrapping group's bytes must start the buffer for its child offsets to be absolute");
-            NodeKind rootKind = KindOf(occupiedBitmask, stemsBitmask);
+            NodeKind rootKind = GroupRebuild.KindOf(occupiedBitmask, stemsBitmask);
 
             // Every stem of this subtree sits under one of the sixteen slots, so what they hoisted is the
             // whole of what changed here. This holds however the nodes are settled below: the statistics
@@ -908,22 +908,6 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// The kind of the node a boundary range folds to, given the range's occupied slots
-        /// <paramref name="occupied"/> and which of the group's slots hold stems
-        /// <paramref name="stems"/>: an unoccupied range is absent, a lone stem stays a stem —
-        /// hoisting to its shortest unique prefix higher up — and anything else roots an internal node.
-        /// </summary>
-        /// <remarks>
-        /// This is the fold's whole kind algebra, and it needs only the boundary results: it lets a
-        /// node's shape be decided without walking below it, which is what allows the rebuild to
-        /// emit nodes in encoding order.
-        /// </remarks>
-        private static NodeKind KindOf(uint occupiedBitmask, uint stemsBitmask) =>
-            occupiedBitmask == 0 ? NodeKind.Absent
-            : BitOperations.PopCount(occupiedBitmask) == 1 && (stemsBitmask & occupiedBitmask) != 0 ? NodeKind.Stem
-            : NodeKind.Internal;
-
-        /// <summary>
         /// Rebuilds a group straight into a fresh encoding, folding its <paramref name="changed"/> boundary
         /// values and reading every unchanged one back out of <paramref name="existing"/>.
         /// </summary>
@@ -941,7 +925,7 @@ public static partial class TrieUpdater
         /// Where the encoding goes, once every child the group holds is in: the fold takes its room off
         /// this, and what it wrote is committed here before returning.
         /// </param>
-        /// <param name="stats">What the whole subtree amounts to, for the group's header; see <see cref="PbtTrieNodeGroup.Builder.Finish"/>.</param>
+        /// <param name="stats">What the whole subtree amounts to, for the group's header; see <see cref="GroupRebuild.Finish"/>.</param>
         private (NodeResult Root, ValueHash256 RootHash, int Length) RebuildGroup(
             ref BufferWriter writer, ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
             NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 beforeHash, in PbtSubtreeStats stats)
@@ -1117,14 +1101,6 @@ public static partial class TrieUpdater
 
             public void Dispose() => ((IDisposable?)_blob)?.Dispose();
         }
-
-        /// <summary>
-        /// A boundary node's value as the fold consumes it: the hash it contributes, its stem when it is a
-        /// stem node, and the memory holding its encoding when it is a run, which the group copies in
-        /// verbatim. Projected from the descent's <see cref="NodeResult"/>s once, so the fold reads plain
-        /// values rather than reaching back through their leases.
-        /// </summary>
-        private readonly record struct Boundary(ValueHash256 Hash, Stem Stem, RefCountingMemory? Chain);
 
         /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and reports whether the stem is now empty.</summary>
         /// <param name="knownAbsent">

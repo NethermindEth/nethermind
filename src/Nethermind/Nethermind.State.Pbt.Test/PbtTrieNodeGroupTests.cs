@@ -78,7 +78,7 @@ public class PbtTrieNodeGroupTests
         Assert.That(reencoded.AsSpan(0, length).SequenceEqual(encoded.AsSpan(0, length)));
 
         // an empty group encodes to nothing (the store's removal marker), whatever it is told it holds
-        Assert.That(new PbtTrieNodeGroup.Builder(encoded, format).Finish(stats), Is.EqualTo(0));
+        Assert.That(new PbtGroupEncoder(encoded, format).Finish(stats), Is.EqualTo(0));
         Assert.That(default(PbtTrieNodeGroup).Stats, Is.EqualTo(default(PbtSubtreeStats)), "an absent subtree holds nothing");
 
         // validation: an unknown format byte, position bit 31, a stem bit without its presence bit,
@@ -271,7 +271,7 @@ public class PbtTrieNodeGroupTests
         // a stem below the run and a boundary internal above it, so the run shifts the one that follows
         // and leaves the one before it where it was
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtTrieNodeGroup.Builder builder = new(encoded, format);
+        PbtGroupEncoder builder = new(encoded, format);
         builder.AppendStem(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), stem, stemRoot);
         builder.AppendChain(PbtLayout.TrieNodeGroupBoundarySlotPosition(chainSlot), chain);
         builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(2), childRoot);
@@ -330,7 +330,7 @@ public class PbtTrieNodeGroupTests
         uint positions = OccupiedPositions(occupiedSlots) & ~(1u << PbtLayout.TrieNodeGroupRootPosition);
 
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.EveryLevel);
+        PbtGroupEncoder builder = new(encoded, PbtGroupFormat.EveryLevel);
         for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
             if ((positions >> position & 1) == 0) continue;
@@ -381,13 +381,13 @@ public class PbtTrieNodeGroupTests
     }
 
     /// <summary>
-    /// Encodes positional slots through <see cref="PbtTrieNodeGroup.Builder"/>, walking positions in
+    /// Encodes positional slots through <see cref="PbtGroupEncoder"/>, walking positions in
     /// the ascending order it requires — the order the updater's post-order rebuild appends in.
     /// </summary>
     private static int Encode(
         ReadOnlySpan<PbtTrieNodeGroup.ValueSlot> slots, in PbtSubtreeStats stats, Span<byte> destination, PbtGroupFormat format)
     {
-        PbtTrieNodeGroup.Builder builder = new(destination, format);
+        PbtGroupEncoder builder = new(destination, format);
         for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
             PbtTrieNodeGroup.ValueSlot slot = slots[position];
