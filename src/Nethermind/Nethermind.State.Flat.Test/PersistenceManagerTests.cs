@@ -925,8 +925,6 @@ public class PersistenceManagerTests
         }
     }
 
-    // The crash-gap guarantee: the flat head must never advance past durable history. A capture failure aborts the
-    // whole persist iteration — nothing persisted, nothing pruned — and the same range is retried next invocation.
     [Test]
     public async Task AddToPersistence_WhenCaptureHookThrows_DoesNotAdvancePersistence()
     {

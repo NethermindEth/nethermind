@@ -28,9 +28,6 @@ public class FlatStateReaderTests
         new TestCaseData((Action<FlatStateReader>)(reader => reader.RunTreeVisitor(new TreeDumper(), _header))) { TestName = "RunTreeVisitor" },
     ];
 
-    // Regression: gather failures (pruned/orphaned state, gather timeout) surfaced as InvalidOperationException,
-    // which JSON-RPC reports as -32603 internal error. The reader must translate them to MissingTrieNodeException,
-    // which JSON-RPC maps to a clean resource-not-found response — same contract as the hash-based reader.
     [TestCaseSource(nameof(UnavailableStateReads))]
     public void Read_WhenStateUnavailable_ThrowsMissingTrieNodeException(Action<FlatStateReader> read)
     {
@@ -39,8 +36,6 @@ public class FlatStateReaderTests
         Assert.Throws<MissingTrieNodeException>(() => read(reader));
     }
 
-    // Regression: a trie visit (eth_getProof) on a history-backed bundle failed mid-walk with NotSupportedException
-    // (-32603). It must fail fast with MissingTrieNodeException instead.
     [Test]
     public void RunTreeVisitor_OnHistoricalBundle_ThrowsMissingTrieNodeException()
     {

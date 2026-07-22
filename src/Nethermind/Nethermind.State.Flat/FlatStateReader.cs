@@ -47,8 +47,6 @@ public class FlatStateReader(
 
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
 
-        // A historical bundle serves flat values only — there is no trie to walk at that block, so proof/visit
-        // requests surface as state-unavailable instead of failing mid-walk with an internal error.
         if (reader.IsHistorical)
         {
             throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
@@ -63,9 +61,8 @@ public class FlatStateReader(
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
     /// <summary>
-    /// Gathers a read bundle, translating "state unavailable" (pruned, orphaned, or gather timeout) into
-    /// <see cref="MissingTrieNodeException"/> — the same contract the hash-based reader exposes — which JSON-RPC
-    /// maps to a clean resource-not-found response instead of an internal error.
+    /// Translates "state unavailable" into <see cref="MissingTrieNodeException"/> — the hash-based reader's
+    /// contract, which JSON-RPC maps to resource-not-found instead of an internal error.
     /// </summary>
     private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
     {

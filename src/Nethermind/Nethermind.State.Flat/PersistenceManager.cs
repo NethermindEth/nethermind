@@ -281,12 +281,8 @@ public class PersistenceManager(
         }
     }
 
-    // Captures the just-finalized per-block changesets BEFORE the flat state is persisted and the snapshots pruned:
-    // the flat head must never advance past durable history, or a crash in between leaves a permanently
-    // uncapturable range (restart replay resumes from the flat head, above the missed blocks). A capture failure
-    // therefore propagates and aborts this persist iteration — nothing is persisted or pruned — and the same range
-    // is retried on the next invocation. A permanent-gap node (history enabled mid-life) does not throw: the hook
-    // detects the gap, warns once and disables itself, so it never stalls persistence.
+    // Runs before the persist and the prune: the flat head must never advance past durable history, or a crash in
+    // between leaves a permanently uncapturable range. Failures propagate and abort this iteration (retried next).
     private void CaptureHistory(in StateId persistedHead)
     {
         if (captureHook is null || persistedHead == StateId.PreGenesis) return;

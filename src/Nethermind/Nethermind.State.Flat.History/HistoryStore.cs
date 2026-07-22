@@ -12,14 +12,12 @@ namespace Nethermind.State.Flat.History;
 /// <summary>
 /// Finalized-only historical state for one flat domain (account or storage), over already-encoded byte keys.
 /// History is key-major with a descending block suffix (<c>[key | ~block BE] -> value</c>), so each key's versions
-/// sit contiguously newest-first: an as-of read is a single ceiling-seek that yields the value directly.
+/// sit contiguously newest-first: an as-of read is a single forward seek that yields the value directly.
 /// </summary>
 /// <remarks>
-/// The block suffix is stored bitwise-complemented so that within a key the newest version sorts first. Besides
-/// making the as-of read a plain forward seek, this lets a future sliding-window prune run as a purely sequential
-/// compaction filter — "first version at/below the cutoff → keep (it is the value in force at the window edge),
-/// every later entry of the same key → drop" — with no lookahead. Block-range operations (pruning, segment export)
-/// derive their block view from this column or from the capture stream; there is no separate block-major index.
+/// The descending suffix also lets a future sliding-window prune run as a purely sequential compaction filter
+/// ("first version at/below the cutoff → keep, every later entry of the key → drop" — no lookahead). There is no
+/// block-major index; block-range operations derive their view from this column or from the capture stream.
 /// </remarks>
 public sealed class HistoryStore
 {
@@ -69,8 +67,7 @@ public sealed class HistoryStore
         Span<byte> seekKey = stackalloc byte[flatKey.Length + BlockBytes];
         WriteHistoryKey(seekKey, flatKey, block);
 
-        // One byte past the key's last possible entry [key | 0xFF..FF] (block 0): the view's exclusive upper bound
-        // must not cut off the genesis version.
+        // One byte past [key | 0xFF..FF] so the exclusive upper bound cannot cut off the block-0 version.
         Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes + 1];
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);

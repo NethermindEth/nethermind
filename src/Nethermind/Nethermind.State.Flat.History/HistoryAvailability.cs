@@ -17,8 +17,7 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 internal sealed class HistoryAvailability
 {
-    // v2: ChangeSets columns dropped, descending block suffix in history keys. v1 (pre-release) data is
-    // unreadable under v2 seeks, so a v1 layout is refused at startup rather than silently misread.
+    // v2: no ChangeSets columns, descending block suffix — v1 data is unreadable under v2 seeks.
     internal const byte FormatVersion = 2;
 
     private const int BlockBytes = sizeof(ulong);
@@ -37,8 +36,8 @@ internal sealed class HistoryAvailability
     }
 
     /// <summary>
-    /// Refuses to operate on a history index written by an incompatible (pre-release) format. A fresh/empty index
-    /// passes; the current version is stamped on the first <see cref="PublishWatermark"/>.
+    /// Refuses a history index written by an incompatible format. A fresh/empty index passes; the current version
+    /// is stamped on the first <see cref="PublishWatermark"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException">The on-disk index uses a different format version.</exception>
     public void VerifyFormat()
@@ -49,7 +48,7 @@ internal sealed class HistoryAvailability
         bool hasLegacyData = version is not null;
         if (!hasLegacyData)
         {
-            // Pre-versioning v1 stamped no format key; any existing marker means captured data in an old layout.
+            // Pre-versioning v1 stamped no format key, so any existing marker means old-layout data.
             foreach (KeyValuePair<byte[], byte[]?> _ in _availableBlocks.GetAll())
             {
                 hasLegacyData = true;

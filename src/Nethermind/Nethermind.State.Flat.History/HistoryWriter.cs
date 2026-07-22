@@ -31,10 +31,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private readonly bool _enabled;
     private readonly ILogger _logger;
 
-    // Set when a capture walk cannot connect to the captured range. Under the persistence lock that serializes
-    // captures, conversions and pruning, a failed lease means the range below is gone for good (history enabled
-    // mid-life), so further captures would only write rows above a gap no read can ever cross — skip them until
-    // restart. Only touched under that lock.
+    // Under the persistence lock a failed lease means the range below is gone for good (history enabled mid-life);
+    // further captures would only write rows above a gap no read can cross, so skip them until restart.
     private bool _permanentGapDetected;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
@@ -68,12 +66,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     /// </summary>
     /// <remarks>
     /// Walks backwards through each base's <see cref="Snapshot.From"/> link (one base == one block's changeset),
-    /// leasing from the persisted tier when long-finality Phase 2 converted the in-memory copy away, until it connects
-    /// to the block just below the existing watermark (or to genesis). The watermark — which gates reads — is advanced
-    /// only on a connect, so a partial capture (or a crash mid-walk) never advances it and reads above the gap fail
-    /// closed; a restart re-captures the same range idempotently. On a connect the history WAL is synced before
-    /// returning: the caller commits the flat persist only after this returns, and the flat head must never get ahead
-    /// of durable history — a power loss reordering the two WALs would otherwise leave a permanent, silent gap.
+    /// leasing from the persisted tier when long-finality Phase 2 converted the in-memory copy away, until it
+    /// connects to the existing watermark (or genesis). The watermark gates reads and advances only on a connect,
+    /// so a partial capture fails closed. On a connect the history WAL is synced before returning — the flat
+    /// persist commits only after, and must never get ahead of durable history.
     /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
@@ -87,7 +83,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         bool connected = false;
         while (current != StateId.PreGenesis)
         {
-            // Reached the block just below the existing contiguous range — the new range joins it.
             if (hasWatermark && current.BlockNumber <= watermark)
             {
                 connected = true;
@@ -120,17 +115,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 
         if (connected)
         {
-            // [watermark+1 .. target] (or [0 .. target]) is contiguous with what came before. Publish, then
-            // WAL-sync so the range and the watermark are crash-durable before the caller persists the flat state.
+            // Publish, then WAL-sync so range + watermark are durable before the caller persists the flat state.
             _availability.PublishWatermark(target);
             _history.Flush(onlyWal: true);
         }
         else
         {
-            // The range below `current` was pruned before it could be captured — with capture ordered before every
-            // persist/prune this only happens when history was enabled mid-life, and it can never connect. Stop
-            // capturing (rows above the gap are unreadable: the watermark cannot cross it) instead of stalling
-            // persistence or rewriting dead rows every round.
+            // With capture ordered before every persist/prune, an unconnectable walk only happens when history was
+            // enabled mid-life — permanent, so stop capturing instead of stalling or rewriting dead rows.
             _permanentGapDetected = true;
             if (_logger.IsWarn)
                 _logger.Warn($"History capture stopped at {current} without connecting to the captured range - " +
@@ -140,12 +132,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     }
 
     /// <summary>
-    /// Seeds the genesis (block 0) changeset from the chain's initial allocations, for a node that enabled history
-    /// after genesis left memory and so cannot capture block 0 via the walk. Anchors the floor that dormant genesis
-    /// allocations floor-seek to.
+    /// Seeds the block-0 changeset from the chain's initial allocations, for a node that cannot capture genesis via
+    /// the walk — without it a dormant genesis allocation reads as absent at every height.
     /// </summary>
-    /// <remarks>Must run at startup before block processing begins: it writes the history columns without the
-    /// persistence lock that serializes <see cref="CaptureUpTo"/>, so it must not overlap a capture.</remarks>
+    /// <remarks>Must run at startup before block processing: it writes without the persistence lock that
+    /// serializes <see cref="CaptureUpTo"/>, so it must not overlap a capture.</remarks>
     [SkipLocalsInit]
     public void SeedGenesis(IReadOnlyCollection<KeyValuePair<Address, Account>> allocations, in ValueHash256 genesisStateRoot)
     {
@@ -163,8 +154,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
             }
         }
 
-        // Publish only after the block-0 batch is durable; the seed runs only when nothing was captured yet, so this
-        // establishes the genesis floor a later capture walk connects to.
+        // Publish only after the block-0 batch is durable — this is the genesis floor a later walk connects to.
         _availability.PublishWatermark(0);
         _history.Flush(onlyWal: true);
     }

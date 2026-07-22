@@ -8,13 +8,10 @@ namespace Nethermind.State.Flat;
 /// capture the per-block changesets before they are pruned (used to build the archival history index).
 /// </summary>
 /// <remarks>
-/// Contract: it runs <em>before</em> the flat state is persisted, the per-block snapshots are pruned, and the
-/// persisted-state barrier is published — the flat head must never advance past durable history, or a crash in
-/// between leaves a permanently uncapturable range. Captured data must be crash-durable when the call returns.
-/// An exception aborts the whole persist iteration (nothing is persisted or pruned) and the range is retried on
-/// the next invocation, so an implementation must be idempotent under re-capture and must not throw for
-/// conditions that can never resolve (e.g. a permanent gap from enabling history mid-life), or persistence
-/// would stall forever.
+/// Contract: runs <em>before</em> the flat persist, the prune, and the barrier publish — the flat head must never
+/// advance past durable history. Captured data must be crash-durable when the call returns. An exception aborts
+/// the persist iteration and the range is retried, so implementations must be idempotent under re-capture and
+/// must not throw for conditions that can never resolve (a permanent gap), or persistence would stall forever.
 /// </remarks>
 public interface IFlatPersistenceCaptureHook
 {

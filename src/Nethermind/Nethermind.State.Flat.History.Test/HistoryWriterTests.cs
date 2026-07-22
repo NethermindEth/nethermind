@@ -353,9 +353,6 @@ public class HistoryWriterTests
         }
     }
 
-    // Crash-recovery contract: after a crash between the history commit and the flat persist, restart replay
-    // re-runs the capture. A fresh writer (as after restart) must treat the already-captured range as a no-op and
-    // connect a new range to the persisted watermark, with reads staying byte-identical.
     [Test]
     public void Recapture_after_restart_is_idempotent_and_extends_from_watermark()
     {
@@ -385,8 +382,6 @@ public class HistoryWriterTests
         }
     }
 
-    // Once a walk fails to connect (history enabled mid-life), the gap is permanent: the watermark can never cross
-    // it, so rows above it would be dead weight. Capture must disable itself instead of writing them.
     [Test]
     public void Permanent_gap_disables_further_capture()
     {

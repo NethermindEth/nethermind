@@ -68,30 +68,21 @@ public class HistoryStoreTests
         }
     }
 
-    // The descending block suffix puts block 0 at the key's last slot ([key | 0xFF..FF]), right at the seek
-    // range's upper edge — a genesis version must not be cut off by the bound.
-    [TestCase(0ul, 1)]
-    [TestCase(7ul, 1)]
-    public void Resolves_genesis_version(ulong block, int expectedLength)
-    {
-        Record(0, KeyA, [0xAA]);
-
-        Span<byte> buffer = stackalloc byte[64];
-        Assert.That(_store.TryGetAt(block, KeyA, buffer, out ulong foundAtBlock), Is.EqualTo(expectedLength));
-        Assert.That(foundAtBlock, Is.EqualTo(0ul));
-    }
-
+    // Block 0 sits at the seek range's upper edge under the descending suffix; the genesis cases pin that boundary.
+    [TestCase(0ul, 0ul)]
+    [TestCase(4ul, 0ul)]
     [TestCase(5ul, 5ul)]
     [TestCase(19ul, 5ul)]
     [TestCase(20ul, 20ul)]
     [TestCase(1000ul, 20ul)]
     public void Reports_block_of_resolved_change(ulong block, ulong expectedFoundAt)
     {
+        Record(0, KeyA, [0x0A]);
         Record(5, KeyA, [0xAA]);
         Record(20, KeyA, [0xBB, 0xCC]);
 
         Span<byte> buffer = stackalloc byte[64];
-        _store.TryGetAt(block, KeyA, buffer, out ulong foundAtBlock);
+        Assert.That(_store.TryGetAt(block, KeyA, buffer, out ulong foundAtBlock), Is.GreaterThan(0));
         Assert.That(foundAtBlock, Is.EqualTo(expectedFoundAt));
     }
 
