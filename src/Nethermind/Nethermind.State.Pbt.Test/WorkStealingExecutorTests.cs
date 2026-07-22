@@ -25,10 +25,15 @@ public class WorkStealingExecutorTests
     /// visible, and a count only this thread writes.
     /// </summary>
     internal sealed class ThreadState(int[] runs)
-        : IJobRunner<ThreadState, Job>, IJobStateProvider<ThreadState>, IDisposable
+        : IJobRunner<ThreadState, Job>, IJobStateProvider<ThreadState>, IJobWorkerState
     {
-        /// <summary>What a thread's state is disposed with, which here is only a count of how often.</summary>
+        /// <summary>How often the executor told this state the run was through, and disposed it.</summary>
+        public int Completions { get; private set; }
+
+        /// <inheritdoc cref="Completions"/>
         public int Disposals { get; private set; }
+
+        public void Complete() => Completions++;
 
         public void Dispose() => Disposals++;
 
@@ -223,19 +228,32 @@ public class WorkStealingExecutorTests
         }
     }
 
-    /// <summary>Disposing the executor disposes every thread's state, the calling thread's included.</summary>
+    /// <summary>
+    /// Completing the executor tells every thread's state the run is through; disposing it disposes
+    /// them. A run abandoned part-way is disposed without being completed, which is how a caller tells
+    /// the two apart.
+    /// </summary>
     [Test]
-    public void DisposingTheExecutor_DisposesEveryThreadsState()
+    public void TheExecutor_CompletesAndDisposesEveryThreadsState()
     {
         int[] runs = new int[1];
         Executor executor = Create(runs, Threads);
 
-        foreach (ThreadState state in executor.States) Assert.That(state.Disposals, Is.Zero);
+        foreach (ThreadState state in executor.States)
+        {
+            Assert.That(state.Completions, Is.Zero);
+            Assert.That(state.Disposals, Is.Zero);
+        }
 
+        executor.Complete();
         executor.Dispose();
 
         Assert.That(executor.States, Has.Length.EqualTo(Threads));
-        foreach (ThreadState state in executor.States) Assert.That(state.Disposals, Is.EqualTo(1));
+        foreach (ThreadState state in executor.States)
+        {
+            Assert.That(state.Completions, Is.EqualTo(1));
+            Assert.That(state.Disposals, Is.EqualTo(1));
+        }
     }
 
     /// <summary>A job may queue and wait on jobs of its own, which is what a recursive descent does.</summary>

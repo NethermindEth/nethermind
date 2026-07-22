@@ -20,6 +20,12 @@ namespace Nethermind.Pbt;
 /// release it once done — by disposing it after copying, or, if it retains the memory, when it drops
 /// the value. It never acquires a lease of its own to do so, and the caller must not use the memory
 /// afterwards; a caller that needs to keep reading it acquires its own lease first.
+/// <para>
+/// An implementation must bear reads and writes from several threads at once: a fold runs across as
+/// many threads as it is given, each reading and writing as it goes. What it needs of them is
+/// structural safety and nothing more — two threads never touch the same node key or stem, since the
+/// ranges they fold are disjoint subtrees, and a value is always read before it is written.
+/// </para>
 /// </remarks>
 public interface IPbtStore
 {
@@ -118,9 +124,6 @@ public static partial class TrieUpdater
         /// <summary>The smallest bucket worth handing to another thread; <see cref="int.MaxValue"/> on a fold that stays on the calling thread.</summary>
         private readonly int _minQueueEntries;
 
-        /// <summary>What one thread's buffered writes start out sized for.</summary>
-        private readonly int _writeBufferCapacity;
-
         /// <summary>
         /// A stored blob as the descent reads it: its bytes, and where they sit in the memory holding
         /// them. A blob the store handed over is all of its memory; one the frame above holds in a
@@ -169,11 +172,11 @@ public static partial class TrieUpdater
                 if (changed && root.Blob is { } rootBlob)
                 {
                     rootBlob.AcquireLease();
-                    SetTrieNode(TrieNodeKey.Root, rootBlob);
+                    _store.SetTrieNode(TrieNodeKey.Root, rootBlob);
                 }
                 else if (changed && root.Kind == NodeKind.Absent && rootData is not null)
                 {
-                    SetTrieNode(TrieNodeKey.Root, null);
+                    _store.SetTrieNode(TrieNodeKey.Root, null);
                 }
 
                 return root.NodeHash();
@@ -722,7 +725,7 @@ public static partial class TrieUpdater
                 // No frame writes its own key; the parent settles each child's: a stored one the writes
                 // emptied to nothing, or collapsed into a run the parent now holds, is removed here (a
                 // child that produced a blob of its own is planted by the parent's rebuild).
-                if (storedChild && changed && result.KeyedBlob is null) SetTrieNode(childKey, null);
+                if (storedChild && changed && result.KeyedBlob is null) _store.SetTrieNode(childKey, null);
                 return;
             }
 
@@ -942,7 +945,7 @@ public static partial class TrieUpdater
                     if ((changedBitmask >> slot & 1) != 0 && results[slot].KeyedBlob is { } childBlob)
                     {
                         childBlob.AcquireLease();
-                        SetTrieNode(key.ChildGroup(slot), childBlob);
+                        _store.SetTrieNode(key.ChildGroup(slot), childBlob);
                     }
                 }
             }
@@ -1163,7 +1166,7 @@ public static partial class TrieUpdater
             using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, _memoryProvider, LeafFormat);
             subtreeRoot = newBlob.SubtreeRoot;
             bool isEmpty = newBlob.IsEmpty;
-            SetLeafBlob(stem, newBlob.Take());
+            _store.SetLeafBlob(stem, newBlob.Take());
             return isEmpty;
         }
 

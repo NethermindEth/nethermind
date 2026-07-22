@@ -27,8 +27,9 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     private readonly List<RefCountingMemory> _handedOut = [];
     private readonly HashSet<int> _readThreads = [];
 
-    // a parallel fold reads from several threads at once; it writes from the calling thread alone, and
-    // only once every reader is through, so the lock covers the reads and the counters they keep
+    // a parallel fold reads and writes from several threads at once, so everything the store keeps —
+    // the two maps, the handed-out values, the counters — is behind one lock; a real store would do
+    // better than that, but a test one only has to be correct
     private readonly Lock _lock = new();
     private ValueHash256 _root;
 
@@ -112,10 +113,13 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
 
     public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
     {
-        NodeWrites++;
         byte[]? value = node?.ToArrayAndRelease();
-        if (value is null) _nodes.Remove(key);
-        else _nodes[key] = value;
+        lock (_lock)
+        {
+            NodeWrites++;
+            if (value is null) _nodes.Remove(key);
+            else _nodes[key] = value;
+        }
     }
 
     public RefCountingMemory? GetLeafBlob(in Stem stem)
@@ -130,8 +134,11 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
     {
         byte[]? value = blob?.ToArrayAndRelease();
-        if (value is null) _blobs.Remove(stem);
-        else _blobs[stem] = value;
+        lock (_lock)
+        {
+            if (value is null) _blobs.Remove(stem);
+            else _blobs[stem] = value;
+        }
     }
 
     /// <remarks>Called under <see cref="_lock"/>, as everything it keeps is read from every worker.</remarks>

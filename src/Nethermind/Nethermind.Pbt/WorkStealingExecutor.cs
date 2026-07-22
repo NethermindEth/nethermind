@@ -5,7 +5,7 @@ namespace Nethermind.Pbt;
 
 /// <summary>Runs the jobs an executor hands out, on whichever thread took them.</summary>
 internal interface IJobRunner<TWorkerState, TJob>
-    where TWorkerState : class, IDisposable
+    where TWorkerState : class, IJobWorkerState
     where TJob : struct
 {
     /// <summary>Runs one job, reading and writing it in place.</summary>
@@ -14,13 +14,24 @@ internal interface IJobRunner<TWorkerState, TJob>
     void Execute(ref TJob job, TWorkerState state, WorkStealingExecutor<TWorkerState, TJob>.JobQueue queue);
 }
 
+/// <summary>What one thread of a run holds, which the executor tells when the run is through.</summary>
+/// <remarks>
+/// <see cref="Complete"/> comes only where the run finished as the caller wanted; a run abandoned
+/// part-way is disposed without it. Both run on the calling thread, once every other has gone quiet.
+/// </remarks>
+internal interface IJobWorkerState : IDisposable
+{
+    /// <summary>The run is through: make of what this thread holds whatever the caller means to keep.</summary>
+    void Complete();
+}
+
 /// <summary>Builds the state one thread runs with.</summary>
 /// <remarks>
 /// The state is given nothing of the executor's: where to queue work arrives with each job, so what a
 /// thread holds is the caller's business alone. What it is built holding, though, the executor
 /// disposes — see <see cref="WorkStealingExecutor{TWorkerState, TJob}.Dispose"/>.
 /// </remarks>
-internal interface IJobStateProvider<TWorkerState> where TWorkerState : IDisposable
+internal interface IJobStateProvider<TWorkerState> where TWorkerState : IJobWorkerState
 {
     TWorkerState Create();
 }
@@ -57,7 +68,7 @@ internal interface IJobStateProvider<TWorkerState> where TWorkerState : IDisposa
 /// fills the inputs, the thread that runs it writes the outputs back through <see cref="Node.Job"/>.
 /// </typeparam>
 internal sealed class WorkStealingExecutor<TWorkerState, TJob> : IDisposable
-    where TWorkerState : class, IDisposable
+    where TWorkerState : class, IJobWorkerState
     where TJob : struct
 {
     /// <summary>Jobs one queue holds before <see cref="JobQueue.TryQueue"/> starts refusing them.</summary>
@@ -109,18 +120,29 @@ internal sealed class WorkStealingExecutor<TWorkerState, TJob> : IDisposable
         }
     }
 
-    /// <summary>Tells the threads the run is over; they exit as they notice, and nothing waits for them.</summary>
-    public void Complete() => Volatile.Write(ref _done, true);
+    /// <summary>
+    /// Ends the run as the caller wanted it: the threads exit as they notice, and every one of their
+    /// states is told the run is through.
+    /// </summary>
+    /// <remarks>
+    /// Nothing waits for the threads to exit — by the time a caller reaches here its outermost wait is
+    /// through, so no state is still being run against. A run abandoned part-way is not completed, only
+    /// disposed.
+    /// </remarks>
+    public void Complete()
+    {
+        Volatile.Write(ref _done, true);
+        foreach (TWorkerState state in States) state?.Complete();
+    }
 
     /// <summary>Ends the run, if it has not been ended already, and disposes every thread's state.</summary>
     /// <remarks>
     /// The calling thread's state included: it was handed over to be run with, and the states are what
-    /// the executor has of the caller's. Whatever a state does with what it holds — replay it, release
-    /// it — belongs before this.
+    /// the executor has of the caller's.
     /// </remarks>
     public void Dispose()
     {
-        Complete();
+        Volatile.Write(ref _done, true);
         foreach (TWorkerState state in States) state?.Dispose();
     }
 

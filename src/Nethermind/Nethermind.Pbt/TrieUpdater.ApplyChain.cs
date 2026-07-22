@@ -207,7 +207,7 @@ public static partial class TrieUpdater
             using RefCountingMemory? adopted = directChild && PbtLayout.IsClusteringDepth(depth)
                 ? _store.GetTrieNode(chain.TargetKey)
                 : null;
-            if (adopted is not null) SetTrieNode(chain.TargetKey, null);
+            if (adopted is not null) _store.SetTrieNode(chain.TargetKey, null);
 
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
@@ -259,7 +259,7 @@ public static partial class TrieUpdater
             {
                 case NodeKind.Absent:
                 case NodeKind.Stem:
-                    if (innerBlobStored) SetTrieNode(innerKey, null);
+                    if (innerBlobStored) _store.SetTrieNode(innerKey, null);
                     return inner;
                 case NodeKind.Internal:
                     // plant the rebuilt encoding when the descent produced one, else the stored blob stands
@@ -268,7 +268,7 @@ public static partial class TrieUpdater
                         if (inner.Blob is { } innerBlob)
                         {
                             innerBlob.AcquireLease();
-                            SetTrieNode(innerKey, innerBlob);
+                            _store.SetTrieNode(innerKey, innerBlob);
                         }
                         return NewChainNode(startDepth, innerKey.Depth, innerKey.Path, inner.Hash, stats);
                     }
@@ -278,7 +278,7 @@ public static partial class TrieUpdater
                     Stem targetPath = absorbed.TargetPath;
                     ValueHash256 targetHash = absorbed.TargetHash;
                     Debug.Assert(absorbed.Stats == stats, "an absorbed run reaches the same subtree the run absorbing it does");
-                    if (innerBlobStored) SetTrieNode(innerKey, null);
+                    if (innerBlobStored) _store.SetTrieNode(innerKey, null);
                     using (inner) return NewChainNode(startDepth, targetDepth, targetPath, targetHash, stats);
             }
         }

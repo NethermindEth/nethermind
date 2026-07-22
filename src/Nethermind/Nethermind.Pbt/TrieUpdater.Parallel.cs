@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
@@ -16,7 +15,7 @@ public static partial class TrieUpdater
 {
     // The updater as the executor sees it: the state one thread folds with, the queue it hands its
     // buckets to, and the job it is asked to run. The descent itself is in TrieUpdater.cs.
-    private sealed partial class Updater : IJobRunner<Updater, Updater.BucketJob>, IJobStateProvider<Updater>, IDisposable
+    private sealed partial class Updater : IJobRunner<Updater, Updater.BucketJob>, IJobStateProvider<Updater>, IJobWorkerState
     {
         /// <summary>Below this many stems a batch folds on the calling thread, whatever the concurrency says.</summary>
         /// <remarks>
@@ -35,42 +34,8 @@ public static partial class TrieUpdater
         /// </summary>
         private const int TargetJobsPerThread = 16;
 
-        /// <summary>
-        /// Bounds on a thread's buffered writes: enough that a small fold never grows, capped so a huge
-        /// one does not rent per thread what only one of them will fill.
-        /// </summary>
-        private const int MinWriteBufferCapacity = 64;
-
-        /// <inheritdoc cref="MinWriteBufferCapacity"/>
-        private const int MaxWriteBufferCapacity = 4096;
-
         /// <summary>The threads this fold runs across; the calling thread's own updater owns it.</summary>
         private readonly WorkStealingExecutor<Updater, BucketJob>? _executor;
-
-        /// <summary>Whether this fold buffers its store writes, which is to say whether it is a parallel one.</summary>
-        private readonly bool _buffered;
-
-        /// <summary>
-        /// The store writes this thread made, replayed by the calling thread once the fold is through;
-        /// <c>null</c> for a fold on the calling thread alone, which writes straight through.
-        /// </summary>
-        /// <remarks>
-        /// Buffering is what keeps <see cref="IPbtStore"/> a single-threaded interface: only the reads
-        /// run concurrently, and nothing writes the store while they do. The two lists need no order
-        /// between them — a node key and a stem name different things — and the writes of two threads
-        /// need none either, their key ranges being disjoint. What is buffered is the value as it was
-        /// folded, lease and all, since a store is free to retain the memory rather than copy it out —
-        /// which does mean a parallel fold holds a rental per write until the flush, and rents fresh
-        /// buffers where the pool runs dry in the meantime.
-        /// <para>
-        /// The lists themselves are pooled, and sized for the share of the batch one thread can expect:
-        /// a fold buffers one entry per stem it touches, so they are the largest thing it allocates.
-        /// </para>
-        /// </remarks>
-        private readonly ArrayPoolList<(TrieNodeKey Key, RefCountingMemory? Node)>? _nodeWrites;
-
-        /// <inheritdoc cref="_nodeWrites"/>
-        private readonly ArrayPoolList<(Stem Stem, RefCountingMemory? Blob)>? _blobWrites;
 
         /// <summary>
         /// The calling thread's updater, which settles what the fold costs — how many threads, how big a
@@ -101,10 +66,6 @@ public static partial class TrieUpdater
             _minQueueEntries = threadCount == 1
                 ? int.MaxValue
                 : Math.Max(HardMinimumStems, changes.Count / threadCount / TargetJobsPerThread);
-            _writeBufferCapacity = Math.Clamp(changes.Count / threadCount, MinWriteBufferCapacity, MaxWriteBufferCapacity);
-            _buffered = threadCount > 1;
-            (_nodeWrites, _blobWrites) = WriteBuffers(_buffered, _writeBufferCapacity);
-
             _executor = new WorkStealingExecutor<Updater, BucketJob>(threadCount, this, this, this);
         }
 
@@ -117,10 +78,6 @@ public static partial class TrieUpdater
             _entries = main._entries;
             _buckets = main._buckets;
             _minQueueEntries = main._minQueueEntries;
-            _writeBufferCapacity = main._writeBufferCapacity;
-            _buffered = main._buffered;
-
-            (_nodeWrites, _blobWrites) = WriteBuffers(_buffered, _writeBufferCapacity);
         }
 
         /// <inheritdoc cref="IJobStateProvider{TWorkerState}.Create"/>
@@ -156,29 +113,15 @@ public static partial class TrieUpdater
         {
             _executor!.Start();
 
-            bool folded = false;
             try
             {
                 ValueHash256 root = Descend(currentRoot, changes, new Fanout(_executor.MainQueue), out delta);
-                folded = true;
+                _executor.Complete();
                 return root;
             }
             finally
             {
-                _executor.Complete();
-
-                try
-                {
-                    // Every thread is quiescent by now: the root frame's wait settled the last job
-                    // before this was reached, and a job's completion publishes its writes to whoever
-                    // waits on it. A fold that threw keeps none of them.
-                    foreach (Updater updater in _executor.States) updater.FlushWrites(folded);
-                }
-                finally
-                {
-                    // the pooled lists go back whatever the replay made of their contents
-                    _executor.Dispose();
-                }
+                _executor.Dispose();
             }
         }
 
@@ -195,12 +138,6 @@ public static partial class TrieUpdater
             int affordable = stems / (HardMinimumStems * TargetJobsPerThread);
             return Math.Clamp(Math.Min(requested, affordable), 1, Environment.ProcessorCount);
         }
-
-        private static (ArrayPoolList<(TrieNodeKey, RefCountingMemory?)>?, ArrayPoolList<(Stem, RefCountingMemory?)>?) WriteBuffers(
-            bool parallel, int capacity) =>
-            parallel
-                ? (new ArrayPoolList<(TrieNodeKey, RefCountingMemory?)>(capacity), new ArrayPoolList<(Stem, RefCountingMemory?)>(capacity))
-                : (null, null);
 
         /// <summary>
         /// Whether this frame may hand any of its buckets out at all: the fold is a parallel one, and the
@@ -270,54 +207,16 @@ public static partial class TrieUpdater
             if (error is not null) ExceptionDispatchInfo.Throw(error);
         }
 
-        /// <summary><inheritdoc cref="IPbtStore.SetTrieNode" path="/summary"/></summary>
-        /// <remarks>
-        /// Takes <paramref name="node"/>'s lease, as the store would; where the fold is a parallel one
-        /// the lease is held until the flush rather than handed straight over — see <see cref="_nodeWrites"/>.
-        /// </remarks>
-        private void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
+        /// <inheritdoc cref="IJobWorkerState.Complete"/>
+        /// <remarks>Nothing: a thread's writes went to the store as it made them, the store bearing them all.</remarks>
+        public void Complete()
         {
-            if (_nodeWrites is null) _store.SetTrieNode(key, node);
-            else _nodeWrites.Add((key, node));
         }
 
-        /// <summary><inheritdoc cref="IPbtStore.SetLeafBlob" path="/summary"/></summary>
-        /// <remarks><inheritdoc cref="SetTrieNode" path="/remarks"/></remarks>
-        private void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
-        {
-            if (_blobWrites is null) _store.SetLeafBlob(stem, blob);
-            else _blobWrites.Add((stem, blob));
-        }
-
-        /// <summary>
-        /// Hands the store what this thread buffered, in the order it made the writes — or, where the
-        /// fold threw and the writes are not to be kept, releases the leases it was holding for it.
-        /// </summary>
-        private void FlushWrites(bool commit)
-        {
-            if (_nodeWrites is null) return;
-
-            foreach ((TrieNodeKey key, RefCountingMemory? node) in _nodeWrites.AsSpan())
-            {
-                if (commit) _store.SetTrieNode(key, node);
-                else ((IDisposable?)node)?.Dispose();
-            }
-
-            foreach ((Stem stem, RefCountingMemory? blob) in _blobWrites!.AsSpan())
-            {
-                if (commit) _store.SetLeafBlob(stem, blob);
-                else ((IDisposable?)blob)?.Dispose();
-            }
-
-            _nodeWrites.Clear();
-            _blobWrites.Clear();
-        }
-
-        /// <summary>Returns this thread's write buffers to the pool; the executor disposes every thread's.</summary>
+        /// <inheritdoc cref="IDisposable.Dispose"/>
+        /// <remarks><inheritdoc cref="Complete" path="/remarks"/></remarks>
         public void Dispose()
         {
-            _nodeWrites?.Dispose();
-            _blobWrites?.Dispose();
         }
 
         /// <summary>Where <paramref name="span"/> starts in <paramref name="array"/>, which it must be a range of.</summary>
