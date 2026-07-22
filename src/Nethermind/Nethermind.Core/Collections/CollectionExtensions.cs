@@ -82,16 +82,6 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        /// <summary>Clears the set, optionally shrinking its backing storage.</summary>
-        /// <remarks>
-        /// <see cref="HashSet{T}.Clear"/> retains the grown capacity, so a past burst permanently
-        /// inflates the cost of every subsequent clear. Trimming once capacity exceeds
-        /// <paramref name="trimAboveCapacity"/> lets those clears stop paying O(inflated capacity).
-        /// To guarantee shrink-only behavior, <paramref name="trimToCapacity"/> must not exceed
-        /// <paramref name="trimAboveCapacity"/>.
-        /// </remarks>
-        /// <param name="trimAboveCapacity">Only trim when the current capacity exceeds this value.</param>
-        /// <param name="trimToCapacity">Capacity to shrink back to when trimming.</param>
         public static void ClearAndTrim<T>(this HashSet<T> set, int trimAboveCapacity = DefaultTrimAboveCapacity, int trimToCapacity = DefaultTrimToCapacity)
         {
             set.Clear();
