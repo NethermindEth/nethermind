@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 namespace Nethermind.State.Flat;
 
 /// <summary>
@@ -21,5 +22,8 @@ public interface IFlatPersistenceCaptureHook
     /// </summary>
     /// <param name="persistedHead">The state about to be persisted; capture proceeds down its <see cref="Snapshot.From"/> chain.</param>
     /// <param name="snapshotRepository">Source of the per-block snapshots to capture; leases must be disposed.</param>
-    void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository);
+    /// <param name="cancellationToken">Checked between blocks: a long first capture must not block shutdown. On
+    /// cancellation the implementation must throw — never return silently, or the caller would persist and prune
+    /// the uncaptured sources.</param>
+    void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken);
 }

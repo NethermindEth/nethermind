@@ -36,12 +36,11 @@ public class SeedFlatHistoryGenesis(
     {
         if (historyReader.HasHistoryForBlock(0)) return Task.CompletedTask;
 
-        // A fresh from-genesis node captures block 0 through the normal walk as it processes genesis, so there is
-        // nothing to seed and no gap to warn about. Only a node whose head is already past genesis with block 0
-        // uncaptured (history enabled after the genesis snapshot left memory) needs the chain-spec fallback.
-        if ((blockTree.Head?.Number ?? 0) == 0) return Task.CompletedTask;
-
-        // The genesis header carries the state root the seeded block-0 marker must bind to (EIP-1898 match).
+        // On a genuinely fresh DB the genesis header does not exist yet — this step is ordered before
+        // InitializeBlockchain, which executes genesis — and that node captures block 0 through the normal walk, so
+        // there is nothing to seed. Any DB with an existing genesis header but no captured block 0 needs the seed:
+        // genesis is never re-executed, so the walk alone can never connect to block 0. The header also carries the
+        // state root the seeded marker must bind to (EIP-1898 match).
         if (blockTree.Genesis?.StateRoot is not { } genesisStateRoot) return Task.CompletedTask;
 
         Dictionary<Address, ChainSpecAllocation> allocations = chainSpec.Allocations ?? [];

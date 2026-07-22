@@ -36,8 +36,9 @@ internal sealed class HistoryAvailability
     }
 
     /// <summary>
-    /// Refuses a history index written by an incompatible format. A fresh/empty index passes; the current version
-    /// is stamped on the first <see cref="PublishWatermark"/>.
+    /// Refuses a history index written by an incompatible format. A fresh/empty index passes; every capture batch
+    /// stamps the version atomically via <see cref="MarkBlock"/>, so a marker without a format key can only mean a
+    /// pre-versioning layout.
     /// </summary>
     /// <exception cref="InvalidOperationException">The on-disk index uses a different format version.</exception>
     public void VerifyFormat()

@@ -1259,7 +1259,7 @@ public class PersistenceManagerTests
     {
         public StateId? CapturedUpTo { get; private set; }
 
-        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository) =>
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
             CapturedUpTo = persistedHead;
     }
 
@@ -1269,7 +1269,7 @@ public class PersistenceManagerTests
 
         public StateId? CapturedUpTo { get; private set; }
 
-        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken)
         {
             if (_remainingFailures-- > 0) throw new System.InvalidOperationException("simulated history capture failure");
             CapturedUpTo = persistedHead;
@@ -1280,7 +1280,7 @@ public class PersistenceManagerTests
     {
         public StateId BarrierAtCapture { get; private set; }
 
-        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository) =>
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
             BarrierAtCapture = readBarrier();
     }
 }

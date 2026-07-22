@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -73,7 +74,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200))]);
         CommitBlock(2, 3, accountChanges: [(AddrA, null)]);
 
-        _writer.CaptureUpTo(StateAt(3), _repository);
+        _writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
 
         ReadOnlySpan<byte> flatKey = AccountKey(AddrA);
         Span<byte> buffer = stackalloc byte[256];
@@ -108,7 +109,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, Slot(0x0b, 0xbb))]);
         CommitBlock(2, 3, storageChanges: [(AddrA, Slot1, null)]);
 
-        _writer.CaptureUpTo(StateAt(3), _repository);
+        _writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
 
         ReadOnlySpan<byte> flatKey = StorageKey(AddrA, Slot1);
         Span<byte> buffer = stackalloc byte[64];
@@ -139,7 +140,7 @@ public class HistoryWriterTests
         SlotValue slot = Slot(0xde, 0xad, 0xbe, 0xef);
         CommitBlock(0, 1, accountChanges: [(AddrB, account)], storageChanges: [(AddrB, Slot2, slot)]);
 
-        _writer.CaptureUpTo(StateAt(1), _repository);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
         Span<byte> buffer = stackalloc byte[256];
         int accountWritten = _accountHistory.TryGetAt(1, AccountKey(AddrB), buffer);
@@ -162,10 +163,10 @@ public class HistoryWriterTests
         Account atBlock1 = new(1, 11);
         Account atBlock2 = new(2, 22);
         CommitBlock(0, 1, accountChanges: [(AddrA, atBlock1)]);
-        _writer.CaptureUpTo(StateAt(1), _repository);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
         CommitBlock(1, 2, accountChanges: [(AddrA, atBlock2)]);
-        _writer.CaptureUpTo(StateAt(2), _repository);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         Span<byte> buffer = stackalloc byte[256];
         ReadOnlySpan<byte> flatKey = AccountKey(AddrA);
@@ -192,7 +193,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, null)]);
         CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))]);
 
-        _writer.CaptureUpTo(StateAt(3), _repository);
+        _writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
 
         bool found = _reader.TryGetAccount(readBlock, AddrA, out AccountStruct account);
 
@@ -238,7 +239,7 @@ public class HistoryWriterTests
         CommitBlock(2, 3, storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
         if (killBlockConverted) ConvertToPersistedTier(2);
 
-        _writer.CaptureUpTo(StateAt(3), _repository);
+        _writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
 
         AssertStorageAt(readBlock, Slot1, expectedHex);
     }
@@ -250,7 +251,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         CommitBlock(2, 3, accountChanges: [(AddrA, new Account(1, 100))], storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
 
-        _writer.CaptureUpTo(StateAt(3), _repository);
+        _writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -267,7 +268,7 @@ public class HistoryWriterTests
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
 
-        _writer.CaptureUpTo(StateAt(2), _repository);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -285,7 +286,7 @@ public class HistoryWriterTests
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         CommitBlock(1, 2, selfDestructs: [(AddrA, true)]);
 
-        _writer.CaptureUpTo(StateAt(2), _repository);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         AssertStorageAt(3, Slot1, "0a");
     }
@@ -297,7 +298,7 @@ public class HistoryWriterTests
     {
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(0UL, UInt256.Zero))]);
 
-        _writer.CaptureUpTo(StateAt(1), _repository);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
         bool found = _reader.TryGetAccount(1, AddrA, out AccountStruct account);
 
@@ -319,7 +320,7 @@ public class HistoryWriterTests
         CommitBlock(0, 1, accountChanges: [(AddrB, new Account(1, 1))]);
         CommitBlock(1, 2, accountChanges: [(AddrB, new Account(2, 2))]);
 
-        _writer.CaptureUpTo(StateAt(2), _repository);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         bool atGenesis = _reader.TryGetAccount(0, AddrA, out AccountStruct genesisAccount);
         bool atLater = _reader.TryGetAccount(2, AddrA, out AccountStruct laterAccount);
@@ -343,7 +344,7 @@ public class HistoryWriterTests
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
 
-        _writer.CaptureUpTo(StateAt(2), _repository);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -361,15 +362,15 @@ public class HistoryWriterTests
         Account atBlock2 = new(2, 22);
         CommitBlock(0, 1, accountChanges: [(AddrA, atBlock1)]);
         CommitBlock(1, 2, accountChanges: [(AddrA, atBlock2)]);
-        _writer.CaptureUpTo(StateAt(2), _repository);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         // "Restart": a fresh writer over the same columns, replay re-captures the same head, then extends.
         HistoryWriter restarted = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
-        restarted.CaptureUpTo(StateAt(2), _repository);
+        restarted.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         Account atBlock3 = new(3, 33);
         CommitBlock(2, 3, accountChanges: [(AddrA, atBlock3)]);
-        restarted.CaptureUpTo(StateAt(3), _repository);
+        restarted.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
 
         Span<byte> buffer = stackalloc byte[256];
         ReadOnlySpan<byte> flatKey = AccountKey(AddrA);
@@ -388,7 +389,7 @@ public class HistoryWriterTests
     public void Capture_without_publish_still_stamps_format()
     {
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
-        _writer.CaptureUpTo(StateAt(1), _repository); // unconnected: markers written, watermark never published
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None); // unconnected: markers written, watermark never published
 
         Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, LimboLogs.Instance));
     }
@@ -397,10 +398,10 @@ public class HistoryWriterTests
     public void Permanent_gap_disables_further_capture()
     {
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
-        _writer.CaptureUpTo(StateAt(1), _repository); // cannot connect: no genesis floor
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None); // cannot connect: no genesis floor
 
         CommitBlock(1, 2, accountChanges: [(AddrB, new Account(2, 2))]);
-        _writer.CaptureUpTo(StateAt(2), _repository);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         Span<byte> buffer = stackalloc byte[256];
         using (Assert.EnterMultipleScope())
@@ -419,7 +420,7 @@ public class HistoryWriterTests
         SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
 
-        _writer.CaptureUpTo(StateAt(1), _repository);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -435,7 +436,7 @@ public class HistoryWriterTests
         HistoryWriter disabled = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = false }, LimboLogs.Instance);
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
 
-        disabled.CaptureUpTo(StateAt(1), _repository);
+        disabled.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -475,7 +476,7 @@ public class HistoryWriterTests
         ConvertToPersistedTier(2);
         ConvertToPersistedTier(3);
 
-        _writer.CaptureUpTo(StateAt(4), _repository);
+        _writer.CaptureUpTo(StateAt(4), _repository, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -554,7 +555,7 @@ public class HistoryWriterTests
 
         Assert.That(_repository.CompactedSnapshotCount, Is.GreaterThan(0), "Expected the real compactor to have coalesced at least one window.");
 
-        _writer.CaptureUpTo(StateAt(blockCount), _repository);
+        _writer.CaptureUpTo(StateAt(blockCount), _repository, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {

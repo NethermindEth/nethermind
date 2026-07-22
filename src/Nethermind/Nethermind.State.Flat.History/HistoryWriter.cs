@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -71,7 +72,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     /// so a partial capture fails closed. On a connect the history WAL is synced before returning — the flat
     /// persist commits only after, and must never get ahead of durable history.
     /// </remarks>
-    public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
+    public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
     {
         if (!_enabled || _permanentGapDetected) return;
 
@@ -83,6 +84,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         bool connected = false;
         while (current != StateId.PreGenesis)
         {
+            // A first capture can span the whole in-memory depth under the persistence lock; stay responsive to
+            // shutdown. Throwing (never returning) aborts the caller's persist, so the sources survive for a retry.
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (hasWatermark && current.BlockNumber <= watermark)
             {
                 connected = true;

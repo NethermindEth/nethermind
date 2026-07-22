@@ -287,7 +287,7 @@ public class PersistenceManager(
     {
         if (captureHook is null || persistedHead == StateId.PreGenesis) return;
 
-        captureHook.CaptureUpTo(persistedHead, snapshotRepository);
+        captureHook.CaptureUpTo(persistedHead, snapshotRepository, _cts.Token);
     }
 
     /// <summary>

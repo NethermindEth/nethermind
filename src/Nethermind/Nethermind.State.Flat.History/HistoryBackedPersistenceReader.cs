@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.History;
 /// members throw — a historical trie traversal must fail loudly as unsupported, not silently produce a wrong proof
 /// or an empty state walk.
 /// </summary>
-public sealed class HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block) : IPersistence.IPersistenceReader
+internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block) : IPersistence.IPersistenceReader
 {
     public StateId CurrentState => block;
 
