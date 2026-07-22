@@ -392,7 +392,11 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         stats.LeafCount += leaves;
         stats.IntermediateNodeCount += entries.Length / StemLeafBlob.ValueLength - leaves;
         stats.BlobsByLeafCount[leaves]++;
-        if (TwoLevelBitmapReader.IsLegacy(blob)) stats.LegacyBlobCount++;
+        switch (TwoLevelBitmapReader.FormatOf(blob))
+        {
+            case PbtLeafFormat.Legacy: stats.LegacyBlobCount++; break;
+            case PbtLeafFormat.Interleaved: stats.InterleavedBlobCount++; break;
+        }
     }
 
     /// <remarks>
@@ -607,11 +611,14 @@ public sealed class PbtScanReport
         /// <summary>Present leaves across every blob: the stored slots, code chunks or header fields.</summary>
         public long LeafCount { get; internal set; }
 
-        /// <summary>Branching internal nodes stored alongside those leaves.</summary>
+        /// <summary>Internal nodes stored alongside those leaves.</summary>
         public long IntermediateNodeCount { get; internal set; }
 
         /// <summary>Blobs still in the legacy layout, which caches every single-child internal too.</summary>
         public long LegacyBlobCount { get; internal set; }
+
+        /// <summary>Blobs in the interleaved layout, which stores no internal node at a skipped level.</summary>
+        public long InterleavedBlobCount { get; internal set; }
 
         /// <summary>Blobs by how many of the stem's 256 leaves they hold, indexed by that count.</summary>
         public long[] BlobsByLeafCount { get; } = new long[LeafSlots];
@@ -624,6 +631,7 @@ public sealed class PbtScanReport
             LeafCount += other.LeafCount;
             IntermediateNodeCount += other.IntermediateNodeCount;
             LegacyBlobCount += other.LegacyBlobCount;
+            InterleavedBlobCount += other.InterleavedBlobCount;
 
             AddInto(BlobsByLeafCount, other.BlobsByLeafCount);
         }
@@ -729,7 +737,7 @@ public sealed class PbtScanReport
     private static void AppendLeafColumn(StringBuilder report, string title, LeafColumnStats stats)
     {
         report.AppendLine($"--- {title} ---");
-        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes plus {stats.KeyBytes:N0} of keys, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.LegacyBlobCount:N0} legacy");
+        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes plus {stats.KeyBytes:N0} of keys, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.InterleavedBlobCount:N0} interleaved, {stats.LegacyBlobCount:N0} legacy");
         if (stats.BlobCount == 0)
         {
             report.AppendLine();

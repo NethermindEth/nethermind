@@ -158,20 +158,24 @@ public class PbtScannerTests
     }
 
     /// <summary>
-    /// A blob stores its present leaves plus only its branching internals, so a stem holding n leaves
-    /// contributes n - 1 of them whatever the placement.
+    /// A blob stores its present leaves plus its branching internals, so a stem holding n leaves
+    /// contributes n - 1 of them whatever the placement — bar the interleaved layout, which keeps only
+    /// those of the 4-, 16- and 64-wide levels: of these stems, whose leaves run from sub-index 0, that
+    /// is the one node over <c>[0, 4)</c> wherever a stem holds three leaves or more.
     /// </summary>
-    [TestCase(PbtGroupFormat.EveryLevel)]
-    [TestCase(PbtGroupFormat.Interleaved)]
-    public async Task Scan_CountsLeafBlobsPerColumn(PbtGroupFormat format)
+    [TestCase(PbtGroupFormat.EveryLevel, 0 + 1 + 2 + 4, 0 + 3)]
+    [TestCase(PbtGroupFormat.Interleaved, 0 + 0 + 1 + 1, 0 + 1)]
+    public async Task Scan_CountsLeafBlobsPerColumn(PbtGroupFormat format, int accountIntermediates, int storageIntermediates)
     {
         PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
+        long interleavedAccountBlobs = format == PbtGroupFormat.Interleaved ? AccountLeafCounts.Length : 0;
 
         Assert.Multiple(() =>
         {
             Assert.That(report.AccountLeaves.BlobCount, Is.EqualTo(AccountLeafCounts.Length));
             Assert.That(report.AccountLeaves.LeafCount, Is.EqualTo(1 + 2 + 3 + 5));
-            Assert.That(report.AccountLeaves.IntermediateNodeCount, Is.EqualTo(0 + 1 + 2 + 4));
+            Assert.That(report.AccountLeaves.IntermediateNodeCount, Is.EqualTo(accountIntermediates));
+            Assert.That(report.AccountLeaves.InterleavedBlobCount, Is.EqualTo(interleavedAccountBlobs), "the one setting picks the leaf layout too");
             foreach (int leaves in AccountLeafCounts)
             {
                 Assert.That(report.AccountLeaves.BlobsByLeafCount[leaves], Is.EqualTo(1), $"one account blob holds {leaves} leaves");
@@ -179,7 +183,7 @@ public class PbtScannerTests
 
             Assert.That(report.StorageLeaves.BlobCount, Is.EqualTo(StorageLeafCounts.Length));
             Assert.That(report.StorageLeaves.LeafCount, Is.EqualTo(1 + 4));
-            Assert.That(report.StorageLeaves.IntermediateNodeCount, Is.EqualTo(0 + 3));
+            Assert.That(report.StorageLeaves.IntermediateNodeCount, Is.EqualTo(storageIntermediates));
             Assert.That(report.StorageLeaves.BlobsByLeafCount[1], Is.EqualTo(1), "one storage blob holds a single slot");
             Assert.That(report.StorageLeaves.BlobsByLeafCount[4], Is.EqualTo(1), "and one holds four");
 

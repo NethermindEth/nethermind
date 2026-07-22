@@ -37,6 +37,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Number of parallel workers sweeping each column during the tree scan, each claiming key ranges in turn. 0 uses the processor count. The columns are still scanned one after another.", DefaultValue = "0")]
     int ScanTreeConcurrency { get; set; }
 
-    [ConfigItem(Description = "Whether to store only the even levels of each 4-level trie node tile, folding the odd levels' hashes on demand. Reduces the size of the trie node column at a small rebuild cost. The state root is identical either way, and both layouts remain readable regardless of this setting.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to store only the even levels of each 4-level trie node tile and of each stem's 256-leaf subtree, folding the skipped levels' hashes on demand. Reduces the size of the trie node and leaf columns at a small rebuild cost. The state root is identical either way, and both layouts remain readable regardless of this setting.", DefaultValue = "true")]
     bool InterleaveTrieNodeLevels { get; set; }
 }
