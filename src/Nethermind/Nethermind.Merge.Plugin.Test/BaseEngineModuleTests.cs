@@ -217,13 +217,11 @@ public abstract partial class BaseEngineModuleTests
                     : c);
             }
 
+            double defaultImprovementOfSlot = new BlocksConfig().SingleBlockImprovementOfSlot;
             List<IConfig> materialized = configs.ToList();
             foreach (IConfig config in materialized)
             {
-                // Production payload-improvement budget (SecondsPerSlot × 0.25 = 3s) is too tight under CI
-                // load: a starved thread pool truncates the first build to an empty block, which the
-                // parent-hash improvement wait accepts. Timeout tests register their own improvement factories.
-                if (config is IBlocksConfig blocksConfig)
+                if (config is IBlocksConfig blocksConfig && blocksConfig.SingleBlockImprovementOfSlot == defaultImprovementOfSlot)
                 {
                     blocksConfig.SingleBlockImprovementOfSlot = 5;
                 }
