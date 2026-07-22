@@ -399,6 +399,11 @@ public class DbConfig : IDbConfig
     // Most writes
     public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
         FlatDbCommonTrieOptions +
+        // TEST branch: optimize random storage-trie node reads.
+        "compression=kNoCompression;" +
+        "block_based_table_factory.block_size=4096;" +
+        "block_based_table_factory.block_restart_interval=1;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
         // Slight increase to account for high writes
         "max_bytes_for_level_base=350000000;" +
         "write_buffer_size=64000000;" +
