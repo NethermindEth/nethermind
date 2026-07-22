@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -31,6 +32,8 @@ public class PreBlockCaches
 
     [ThreadStatic]
     private static StorageReadCapture? _currentStorageReadCapture;
+
+    private int _activeStorageReadCaptures;
 
     public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
 
@@ -73,6 +76,7 @@ public class PreBlockCaches
     {
         StorageReadCapture capture = new(this, _currentStorageReadCapture, skipBackingReads);
         _currentStorageReadCapture = capture;
+        Interlocked.Increment(ref _activeStorageReadCaptures);
         return capture;
     }
 
@@ -83,22 +87,13 @@ public class PreBlockCaches
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool CaptureStorageMiss(in StorageCell storageCell)
     {
+        if (Volatile.Read(ref _activeStorageReadCaptures) == 0) return false;
+
         StorageReadCapture? capture = _currentStorageReadCapture;
         if (capture is null || !ReferenceEquals(capture.Owner, this)) return false;
 
         capture.Record(in storageCell);
         return capture.SkipBackingReads;
-    }
-
-    /// <summary>Whether the current thread is running a speculative storage-discovery pass for this cache.</summary>
-    public bool IsStorageDiscoveryActive
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            StorageReadCapture? capture = _currentStorageReadCapture;
-            return capture is not null && ReferenceEquals(capture.Owner, this) && capture.SkipBackingReads;
-        }
     }
 
     public CacheType ClearCaches()
@@ -154,6 +149,8 @@ public class PreBlockCaches
             {
                 _currentStorageReadCapture = _previous;
             }
+
+            Interlocked.Decrement(ref Owner._activeStorageReadCaptures);
         }
     }
 

@@ -170,31 +170,52 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     internal List<Transaction>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
     {
-        Dictionary<AddressAsKey, int> destinationCounts = [];
-        foreach (Transaction tx in block.Transactions)
-        {
-            if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
-            destinationCounts.TryGetValue(destination, out int count);
-            destinationCounts[destination] = count + 1;
-        }
-
-        foreach ((AddressAsKey destination, int count) in destinationCounts)
-        {
-            if (count > 1) RegisterBatchedHeavy(destination);
-        }
-
+        List<(AddressAsKey Destination, Transaction Transaction)>? firstHeavyTransactions = null;
         List<Transaction>? candidates = null;
+
         foreach (Transaction tx in block.Transactions)
         {
             if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
-            if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
-            if (!_batchedHeavyDestinations.ContainsKey(destination)) continue;
 
-            (candidates ??= new(MaxDiscoveryCandidates)).Add(tx);
-            if (candidates.Count == MaxDiscoveryCandidates) break;
+            if (_batchedHeavyDestinations.ContainsKey(destination))
+            {
+                AddCandidate(tx);
+                continue;
+            }
+
+            int firstIndex = -1;
+            if (firstHeavyTransactions is not null)
+            {
+                for (int i = 0; i < firstHeavyTransactions.Count; i++)
+                {
+                    if (firstHeavyTransactions[i].Destination.Equals(destination))
+                    {
+                        firstIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (firstIndex < 0)
+            {
+                (firstHeavyTransactions ??= []).Add((destination, tx));
+                continue;
+            }
+
+            RegisterBatchedHeavy(destination);
+            AddCandidate(firstHeavyTransactions![firstIndex].Transaction);
+            AddCandidate(tx);
         }
 
         return candidates;
+
+        void AddCandidate(Transaction tx)
+        {
+            if (candidates?.Count == MaxDiscoveryCandidates) return;
+            if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) return;
+
+            (candidates ??= new(MaxDiscoveryCandidates)).Add(tx);
+        }
     }
 
     private void RegisterBatchedHeavy(AddressAsKey destination)
