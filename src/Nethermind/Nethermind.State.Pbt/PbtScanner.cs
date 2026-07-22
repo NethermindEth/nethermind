@@ -208,6 +208,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
         stats.WrapperCount++;
         stats.WrappersByDepth[depth]++;
+        stats.WrapperBlobBytesByDepth[depth] += value.Length;
         int childDepth = depth + PbtLayout.TrieNodeGroupLevelsPerGroup;
         int childBytes = 0;
         for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
@@ -518,6 +519,16 @@ public sealed class PbtScanReport
         public long[] WrappersByDepth { get; } = new long[DepthSlots];
 
         /// <summary>
+        /// The whole stored length of those wrappers — their own group, every child they hold and the
+        /// framing between them — so that the average is the value size the store sees at that depth.
+        /// </summary>
+        /// <remarks>
+        /// Not <see cref="GroupBytesByDepth"/> restricted to wrappers: that counts each group where it
+        /// sits, so a wrapper's children land a group lower and its framing lands nowhere.
+        /// </remarks>
+        public long[] WrapperBlobBytesByDepth { get; } = new long[DepthSlots];
+
+        /// <summary>
         /// Wrapped children by the depth of the wrapper holding them, so that the two histograms read
         /// as one table; a child itself sits <see cref="PbtLayout.TrieNodeGroupLevelsPerGroup"/> levels below.
         /// </summary>
@@ -560,6 +571,7 @@ public sealed class PbtScanReport
             AddInto(GroupBytesByDepth, other.GroupBytesByDepth);
             AddInto(StemsByDepth, other.StemsByDepth);
             AddInto(WrappersByDepth, other.WrappersByDepth);
+            AddInto(WrapperBlobBytesByDepth, other.WrapperBlobBytesByDepth);
             AddInto(WrappedChildrenByDepth, other.WrappedChildrenByDepth);
             AddInto(ChainsByStartDepth, other.ChainsByStartDepth);
             AddInto(ChainsBySpan, other.ChainsBySpan);
@@ -646,6 +658,7 @@ public sealed class PbtScanReport
 
         AppendDepthTable(report, "Trie node groups by depth", ("groups", "bytes", "avg size"), stats.GroupsByDepth, stats.GroupBytesByDepth);
         AppendDepthTable(report, "Wrappers by depth", ("wrappers", "children", "avg children"), stats.WrappersByDepth, stats.WrappedChildrenByDepth);
+        AppendDepthTable(report, "Wrapper blobs by depth", ("wrappers", "bytes", "avg size"), stats.WrappersByDepth, stats.WrapperBlobBytesByDepth);
         AppendCountTable(report, "Stems by depth", "depth", "stems", stats.StemsByDepth);
         AppendCountTable(report, "Node chains by start depth", "depth", "chains", stats.ChainsByStartDepth);
         AppendCountTable(report, "Node chains by span", "levels", "chains", stats.ChainsBySpan);

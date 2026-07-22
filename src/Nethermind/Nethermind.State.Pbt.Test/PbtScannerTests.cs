@@ -212,9 +212,15 @@ public class PbtScannerTests
             Assert.That(report.WrappedChildCount, Is.EqualTo(1));
             Assert.That(report.AccountNodes.WrappersByDepth[4], Is.EqualTo(1), "a wrapper counts at the depth of the group it holds");
             Assert.That(report.AccountNodes.WrappedChildrenByDepth[4], Is.EqualTo(1), "and its children beside it, not at their own depth");
+            Assert.That(report.ChainCount, Is.EqualTo(0), "nothing here collapses, so the blob is its two groups and the framing");
+            Assert.That(
+                report.AccountNodes.WrapperBlobBytesByDepth[4],
+                Is.EqualTo(report.AccountNodes.GroupBytesByDepth[4] + report.AccountNodes.GroupBytesByDepth[8] + report.AccountNodes.WrapperBytes),
+                "the wrapper's size is the whole stored value, child blob and framing included");
             Assert.That(report.StemCount, Is.EqualTo(3));
             Assert.That(report.StemCountAgrees, Is.True);
             Assert.That(report.Format(), Does.Contain("Wrappers by depth"));
+            Assert.That(report.Format(), Does.Contain("Wrapper blobs by depth"));
         });
     }
 
