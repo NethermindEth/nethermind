@@ -31,6 +31,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private readonly bool _enabled;
     private readonly ILogger _logger;
 
+    // Guards the "stopped early" warning so a node with a permanent gap doesn't log it on every persist; reset once
+    // a capture connects again. Only touched under the persistence lock that serializes CaptureUpTo.
+    private bool _gapWarningLogged;
+
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
         : this(history, BasePersistence.ResolveSlotEncoding(
             db,
@@ -117,11 +121,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         {
             // [watermark+1 .. target] (or [0 .. target]) is now durable and contiguous with what came before.
             _availability.PublishWatermark(target);
+            _gapWarningLogged = false;
         }
-        else if (_logger.IsWarn)
+        else if (!_gapWarningLogged)
         {
-            _logger.Warn($"History capture stopped early at {current} without connecting to the captured range; " +
-                $"the watermark stays at {(hasWatermark ? watermark.ToString() : "none")} and as-of reads above it report no history until the gap is filled.");
+            // Warn once per unconnected episode: a permanent gap (e.g. history enabled mid-life, with the middle range
+            // already pruned) can never connect, so warning on every persist would spam the log.
+            _gapWarningLogged = true;
+            if (_logger.IsWarn)
+                _logger.Warn($"History capture stopped early at {current} without connecting to the captured range; " +
+                    $"the watermark stays at {(hasWatermark ? watermark.ToString() : "none")} and as-of reads above it report no history until the gap is filled.");
         }
     }
 
