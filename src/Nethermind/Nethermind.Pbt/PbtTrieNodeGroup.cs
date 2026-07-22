@@ -154,14 +154,14 @@ public readonly ref partial struct PbtTrieNodeGroup
         };
     }
 
-    private const int EntriesOffset = 0;
+    internal const int EntriesOffset = 0;
 
-    private const int PresenceTrailerOffset = 0;
-    private const int StemsTrailerOffset = PresenceTrailerOffset + sizeof(uint);
-    private const int ChainsTrailerOffset = StemsTrailerOffset + sizeof(uint);
-    private const int StatsTrailerOffset = ChainsTrailerOffset + sizeof(ushort);
-    private const int FormatTrailerOffset = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
-    private const int TrailerLength = FormatTrailerOffset + sizeof(byte);
+    internal const int PresenceTrailerOffset = 0;
+    internal const int StemsTrailerOffset = PresenceTrailerOffset + sizeof(uint);
+    internal const int ChainsTrailerOffset = StemsTrailerOffset + sizeof(uint);
+    internal const int StatsTrailerOffset = ChainsTrailerOffset + sizeof(ushort);
+    internal const int FormatTrailerOffset = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
+    internal const int TrailerLength = FormatTrailerOffset + sizeof(byte);
 
     private const int OverheadLength = EntriesOffset + TrailerLength;
     private const int HashLength = 32;
@@ -172,8 +172,8 @@ public readonly ref partial struct PbtTrieNodeGroup
     /// <summary>
     /// An upper bound on an encoding's length: all 31 positions present, and the 16 disjoint boundary
     /// ranges a stem or a run can terminate all terminated by the longer of the two. An over-estimate
-    /// now that the root position holds no stored internal node; buffers are sized by the exact
-    /// <see cref="EncodedLength"/>.
+    /// now that the root position holds no stored internal node; a producer that knows its boundary
+    /// takes the tighter <see cref="EncodedLengthBound"/> instead.
     /// </summary>
     public const int MaxEncodedLength = OverheadLength + PbtLayout.TrieNodeGroupPositionCount * HashLength + PbtLayout.TrieNodeGroupBoundarySlots * ChainExtraLength;
 
@@ -187,6 +187,28 @@ public readonly ref partial struct PbtTrieNodeGroup
         + BitOperations.PopCount(masks.Presence) * HashLength
         + BitOperations.PopCount(masks.Stems) * Stem.Length
         + BitOperations.PopCount(masks.Chains) * ChainExtraLength;
+
+    /// <summary>
+    /// An upper bound on the encoding a fold over the boundary values <paramref name="boundary"/>
+    /// describes will produce, for a producer reserving room before it folds.
+    /// </summary>
+    /// <remarks>
+    /// Takes the boundary shape — sixteen slot-indexed bits, as <see cref="BoundaryShape"/> gives —
+    /// where <see cref="EncodedLength"/> takes the thirty-one position-indexed ones a finished encoding
+    /// has. Exact on stems and runs, both of which land at a boundary slot, so the masks count their
+    /// entries outright. Loose only on internal nodes, of which a tile over <c>k</c> occupied slots
+    /// holds at most <c>min(1,k) + min(2,k) + min(4,k) + min(8,k) + k</c>, one term per level. A range
+    /// the fold copies verbatim rather than rebuilding covers the same slots, so it is bounded alike.
+    /// </remarks>
+    internal static int EncodedLengthBound(NodeGroupBitmasks boundary)
+    {
+        int occupiedSlots = BitOperations.PopCount(boundary.Presence);
+        int nodes = 1 + Math.Min(2, occupiedSlots) + Math.Min(4, occupiedSlots) + Math.Min(8, occupiedSlots) + occupiedSlots;
+        return OverheadLength
+            + nodes * HashLength
+            + BitOperations.PopCount(boundary.Stems) * Stem.Length
+            + BitOperations.PopCount(boundary.Chains) * ChainExtraLength;
+    }
 
     private readonly ReadOnlySpan<byte> _data;
     private readonly NodeGroupBitmasks _masks;

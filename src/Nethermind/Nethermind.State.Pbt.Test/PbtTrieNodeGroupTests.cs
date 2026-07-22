@@ -78,7 +78,7 @@ public class PbtTrieNodeGroupTests
         Assert.That(reencoded.AsSpan(0, length).SequenceEqual(encoded.AsSpan(0, length)));
 
         // an empty group encodes to nothing (the store's removal marker), whatever it is told it holds
-        Assert.That(new PbtTrieNodeGroup.Builder(encoded, format).Finish(stats), Is.EqualTo(0));
+        Assert.That(new PbtGroupEncoder(encoded, format).Finish(stats), Is.EqualTo(0));
         Assert.That(default(PbtTrieNodeGroup).Stats, Is.EqualTo(default(PbtSubtreeStats)), "an absent subtree holds nothing");
 
         // validation: an unknown format byte, position bit 31, a stem bit without its presence bit,
@@ -271,7 +271,7 @@ public class PbtTrieNodeGroupTests
         // a stem below the run and a boundary internal above it, so the run shifts the one that follows
         // and leaves the one before it where it was
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtTrieNodeGroup.Builder builder = new(encoded, format);
+        PbtGroupEncoder builder = new(encoded, format);
         builder.AppendStem(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), stem, stemRoot);
         builder.AppendChain(PbtLayout.TrieNodeGroupBoundarySlotPosition(chainSlot), chain);
         builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(2), childRoot);
@@ -306,13 +306,88 @@ public class PbtTrieNodeGroupTests
     }
 
     /// <summary>
-    /// Encodes positional slots through <see cref="PbtTrieNodeGroup.Builder"/>, walking positions in
+    /// The bound a producer reserves room by must cover the densest group its boundary admits: a node
+    /// at every range an occupied slot reaches, the boundary slots all holding the longest entry of the
+    /// kind under test. A full tile is where it must be tight — every level full, and the only room left
+    /// over the root's, which is folded rather than stored.
+    /// </summary>
+    [TestCase(0xFFFFu, PbtTrieNodeGroup.NodeKind.Internal)]
+    [TestCase(0xFFFFu, PbtTrieNodeGroup.NodeKind.Stem)]
+    [TestCase(0xFFFFu, PbtTrieNodeGroup.NodeKind.Chain)]
+    [TestCase(0x0001u, PbtTrieNodeGroup.NodeKind.Internal)] // a lone slot, reached down a spine of single-child levels
+    [TestCase(0x8001u, PbtTrieNodeGroup.NodeKind.Stem)]     // two spines, sharing only the root
+    [TestCase(0x0007u, PbtTrieNodeGroup.NodeKind.Chain)]
+    [TestCase(0xAAAAu, PbtTrieNodeGroup.NodeKind.Internal)]
+    public void EncodedLengthBound_CoversTheDensestGroupItsBoundaryAdmits(uint occupiedSlots, PbtTrieNodeGroup.NodeKind boundaryKind)
+    {
+        ValueHash256 hash = new(Bytes.FromHexString("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
+        Stem targetPath = new(Bytes.FromHexString("0x0dead000000000000000000000000000000000000000000000000000000000"));
+        byte[] chain = new byte[PbtNodeChain.EncodedLength];
+        PbtNodeChain.Write(chain, startDepth: 8, targetDepth: 20, targetPath, hash, new PbtSubtreeStats(3));
+
+        // every position whose range holds an occupied slot, bar the root, which no group stores
+        uint positions = OccupiedPositions(occupiedSlots) & ~(1u << PbtLayout.TrieNodeGroupRootPosition);
+
+        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
+        PbtGroupEncoder builder = new(encoded, PbtGroupFormat.EveryLevel);
+        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
+        {
+            if ((positions >> position & 1) == 0) continue;
+
+            switch (PbtLayout.TrieNodeGroupIsBoundaryPosition(position) ? boundaryKind : PbtTrieNodeGroup.NodeKind.Internal)
+            {
+                case PbtTrieNodeGroup.NodeKind.Stem:
+                    builder.AppendStem(position, stem, hash);
+                    break;
+                case PbtTrieNodeGroup.NodeKind.Chain:
+                    builder.AppendChain(position, chain);
+                    break;
+                default:
+                    builder.AppendInternal(position, hash);
+                    break;
+            }
+        }
+
+        int length = builder.Finish(new PbtSubtreeStats(9));
+        PbtTrieNodeGroup group = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
+        int bound = PbtTrieNodeGroup.EncodedLengthBound(group.BoundaryShape());
+
+        Assert.That(bound, Is.GreaterThanOrEqualTo(length));
+        Assert.That(bound, Is.LessThanOrEqualTo(PbtTrieNodeGroup.MaxEncodedLength));
+        if (occupiedSlots == (1u << PbtLayout.TrieNodeGroupBoundarySlots) - 1)
+        {
+            Assert.That(bound - length, Is.EqualTo(32), "a full tile leaves the bound only the root hash to spare, which no group stores");
+        }
+    }
+
+    /// <summary>Every position whose range holds one of <paramref name="occupiedSlots"/>, the group root included.</summary>
+    private static uint OccupiedPositions(uint occupiedSlots)
+    {
+        uint positions = 0;
+        Walk(PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots);
+        return positions;
+
+        void Walk(int position, int firstSlot, int width)
+        {
+            if ((occupiedSlots & (((1u << width) - 1) << firstSlot)) == 0) return;
+
+            positions |= 1u << position;
+            if (width == 1) return;
+
+            Walk(position - width, firstSlot, width / 2);
+            Walk(position - 1, firstSlot + width / 2, width / 2);
+        }
+    }
+
+    /// <summary>
+    /// Encodes positional slots through <see cref="PbtGroupEncoder"/>, walking positions in
     /// the ascending order it requires — the order the updater's post-order rebuild appends in.
     /// </summary>
     private static int Encode(
         ReadOnlySpan<PbtTrieNodeGroup.ValueSlot> slots, in PbtSubtreeStats stats, Span<byte> destination, PbtGroupFormat format)
     {
-        PbtTrieNodeGroup.Builder builder = new(destination, format);
+        PbtGroupEncoder builder = new(destination, format);
         for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
         {
             PbtTrieNodeGroup.ValueSlot slot = slots[position];

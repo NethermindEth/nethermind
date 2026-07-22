@@ -746,7 +746,7 @@ public static partial class TrieUpdater
             // What lets the wrapper's offsets be the writer's own count: a group holding its children is
             // one no group above holds, so its bytes are the whole of the buffer rather than a slice of it.
             Debug.Assert(!isInWrapper || mark == 0, "a wrapping group's bytes must start the buffer for its child offsets to be absolute");
-            NodeKind rootKind = KindOf(occupiedBitmask, stemsBitmask);
+            NodeKind rootKind = boundary.RootKind;
 
             // Every stem of this subtree sits under one of the sixteen slots, so what they hoisted is the
             // whole of what changed here. This holds however the nodes are settled below: the statistics
@@ -840,31 +840,17 @@ public static partial class TrieUpdater
             // run, whose bytes go into the group's own encoding — stores as a bare group whatever its
             // depth, there being nothing to wrap.
             bool holdsChildren = isInWrapper && boundary.ChildSlots != 0;
-            int groupLength = PredictedGroupLength(existing, boundary, changedBitmask);
             if (holdsChildren) wrapper.WriteOffsets(ref writer);
 
-            Span<byte> groupDestination = writer.GetSpan(groupLength)[..groupLength];
-            (FoldedNode rootFold, ValueHash256 rootHash) = RebuildGroup(groupDestination, changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, afterStats);
-            writer.Advance(groupLength);
+            GroupRebuild rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, writeFormat);
+            (Stem? rootStem, ValueHash256 rootHash) = rebuild.Rebuild(ref writer, afterStats);
+            NodeResult rootNode = rootStem is { } stem ? NodeResult.StemNode(stem, rootHash) : NodeResult.Internal(rootHash);
 
-            // A stem root's stem and subtree root are read out of the fresh encoding while the span still
-            // points at it — the trailer below may move the buffer. An internal root has no entry, its hash
-            // coming from the fold via rootHash instead.
-            Stem rootStem = default;
-            ValueHash256 rootSubtreeRoot = default;
-            if (rootFold.IsStored)
-            {
-                PbtTrieNodeGroup.Slot rootSlot = PbtTrieNodeGroup.SlotAt(groupDestination, rootFold.Kind, rootFold.Offset);
-                rootStem = rootSlot.Stem;
-                rootSubtreeRoot = rootSlot.Hash;
-            }
-
-            if (holdsChildren) wrapper.Finish(ref writer, groupLength);
+            if (holdsChildren) wrapper.Finish(ref writer);
 
             // Unchanged root => the encoding is byte-identical to what is stored (an internal root whose
-            // hash matches implies the same subtree, hence the same cached boundary hashes). rootHash is the
-            // node hash the fold produced: a stem root's stem-node hash, or an internal root's folded hash.
-            changed = rootHash != beforeHash;
+            // hash matches implies the same subtree, hence the same cached boundary hashes).
+            changed = rootNode.NodeHash() != beforeHash;
 
             // Plant each child group's blob at its key. The frame that built it never wrote it; this one,
             // its parent, does. A wrapping frame plants none of them: it has just written their bytes into
@@ -884,9 +870,7 @@ public static partial class TrieUpdater
 
             Release(results, handedUp: -1);
 
-            return rootFold.IsStored
-                ? NodeResult.StemNode(rootStem, rootSubtreeRoot)
-                : NodeResult.Internal(rootHash);
+            return rootNode;
         }
 
         /// <summary>
@@ -921,103 +905,6 @@ public static partial class TrieUpdater
             {
                 if (slot != handedUp) nodes[slot].Dispose();
             }
-        }
-
-        /// <summary>
-        /// The kind of the node a boundary range folds to, given the range's occupied slots
-        /// <paramref name="occupied"/> and which of the group's slots hold stems
-        /// <paramref name="stems"/>: an unoccupied range is absent, a lone stem stays a stem —
-        /// hoisting to its shortest unique prefix higher up — and anything else roots an internal node.
-        /// </summary>
-        /// <remarks>
-        /// This is the fold's whole kind algebra, and it needs only the boundary results: it lets a
-        /// node's shape be decided without walking below it, which is what allows the rebuild to
-        /// emit nodes in encoding order.
-        /// </remarks>
-        private static NodeKind KindOf(uint occupiedBitmask, uint stemsBitmask) =>
-            occupiedBitmask == 0 ? NodeKind.Absent
-            : BitOperations.PopCount(occupiedBitmask) == 1 && (stemsBitmask & occupiedBitmask) != 0 ? NodeKind.Stem
-            : NodeKind.Internal;
-
-        /// <summary>
-        /// Rebuilds a group straight into a fresh encoding, folding its <paramref name="changed"/> boundary
-        /// values and reading every unchanged one back out of <paramref name="existing"/>.
-        /// </summary>
-        /// <param name="changed">
-        /// The changed boundary values in ascending slot order — the only ones the fold cannot recover from
-        /// <paramref name="existing"/>, since an unchanged boundary sits at a fixed position however its
-        /// siblings shift.
-        /// </param>
-        /// <returns>
-        /// The folded root — a stem root as an offset into the encoding to read back, or — the
-        /// usual case — an internal root the encoding stores no entry for, the parent caching it in its
-        /// boundary slot — and that root's node hash.
-        /// </returns>
-        /// <param name="destination">Exactly <see cref="PredictedGroupLength"/> bytes, which the caller takes off its writer once every child it holds is in.</param>
-        /// <param name="stats">What the whole subtree amounts to, for the group's header; see <see cref="PbtTrieNodeGroup.Builder.Finish"/>.</param>
-        private (FoldedNode Root, ValueHash256 RootHash) RebuildGroup(
-            Span<byte> destination, ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
-            NodeGroupBitmasks boundary, uint changedBitmask, in ValueHash256 beforeHash, in PbtSubtreeStats stats)
-        {
-            GroupRebuild rebuild = new(changed, existing, boundary, changedBitmask, beforeHash, destination, writeFormat);
-            // an internal group root is folded to a by-value hash and never stored, the parent caching it
-            // in its boundary slot; only a stem root is written, which the caller reads back
-            FoldedNode root = rebuild.Fold(PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, out ValueHash256 rootHash);
-            int length = rebuild.Finish(stats);
-            Debug.Assert(length == destination.Length, "the predicted shape must size the fold's encoding exactly");
-
-            return (root, rootHash);
-        }
-
-        /// <summary>The length <see cref="RebuildGroup"/> will write, so that the room for it can be taken off the writer before the fold runs.</summary>
-        private int PredictedGroupLength(PbtTrieNodeGroup existing, NodeGroupBitmasks boundary, uint changedBitmask) =>
-            PbtTrieNodeGroup.EncodedLength(PredictShape(
-                existing, boundary, changedBitmask, PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, writeFormat));
-
-        /// <summary>
-        /// The bitmaps <see cref="GroupRebuild.Fold"/> will produce over
-        /// <c>[firstSlot, firstSlot + width)</c>, given the boundary results <paramref name="boundary"/>
-        /// describes.
-        /// </summary>
-        /// <remarks>
-        /// Mirrors the fold's walk on the masks alone — no hashing, no reads — so the group's encoding
-        /// can be sized before its buffer is rented, as <see cref="StemLeafBlob.RebuildState"/> sizes a
-        /// leaf blob from its stored-node counts. This is well-defined because a node's kind follows from
-        /// <see cref="KindOf"/> over its range, which needs only the boundary masks. It must prune where
-        /// the fold prunes, which is what sharing <see cref="IsCleanRange"/> keeps it doing: a range
-        /// copied verbatim keeps the shape it already had.
-        /// </remarks>
-        private static NodeGroupBitmasks PredictShape(
-            PbtTrieNodeGroup existing, NodeGroupBitmasks boundary, uint changed, int position, int firstSlot, int width,
-            PbtGroupFormat format)
-        {
-            uint range = ((1u << width) - 1) << firstSlot;
-            switch (KindOf(boundary.Presence & range, boundary.Stems))
-            {
-                case NodeKind.Absent:
-                    return default;
-                case NodeKind.Stem:
-                    // a lone stem lands at its boundary position; the shape walk recurses down to it just
-                    // as the fold does, so it is stored there and nothing above it is emitted
-                    if (width == 1) return new NodeGroupBitmasks(1u << position, 1u << position, 0);
-                    int stemHalf = width / 2;
-                    return (boundary.Presence & range & (((1u << stemHalf) - 1) << firstSlot)) != 0
-                        ? PredictShape(existing, boundary, changed, position - width, firstSlot, stemHalf, format)
-                        : PredictShape(existing, boundary, changed, position - 1, firstSlot + stemHalf, stemHalf, format);
-            }
-
-            if (IsCleanRange(existing, changed, range, position, width, format)) return existing.SubtreeBitmaps(position, width);
-
-            // an internal node the format skips — and the group root whatever the format — is folded,
-            // not stored, so it takes no room
-            uint self = PbtLayout.TrieNodeGroupStoresInternalAtWidth(format, width) && width != PbtLayout.TrieNodeGroupBoundarySlots ? 1u << position : 0;
-            // a boundary slot holding a run holds the whole of it, which is the longer entry
-            if (width == 1) return new NodeGroupBitmasks(self, 0, boundary.Chains & range);
-
-            int half = width / 2;
-            NodeGroupBitmasks left = PredictShape(existing, boundary, changed, position - width, firstSlot, half, format);
-            NodeGroupBitmasks right = PredictShape(existing, boundary, changed, position - 1, firstSlot + half, half, format);
-            return new NodeGroupBitmasks(left.Presence | right.Presence | self, left.Stems | right.Stems, left.Chains | right.Chains);
         }
 
         private readonly record struct NodeRef(NodeKind Kind, int Offset);
@@ -1174,14 +1061,6 @@ public static partial class TrieUpdater
 
             public void Dispose() => ((IDisposable?)_blob)?.Dispose();
         }
-
-        /// <summary>
-        /// A boundary node's value as the fold consumes it: the hash it contributes, its stem when it is a
-        /// stem node, and the memory holding its encoding when it is a run, which the group copies in
-        /// verbatim. Projected from the descent's <see cref="NodeResult"/>s once, so the fold reads plain
-        /// values rather than reaching back through their leases.
-        /// </summary>
-        private readonly record struct Boundary(ValueHash256 Hash, Stem Stem, RefCountingMemory? Chain);
 
         /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and reports whether the stem is now empty.</summary>
         /// <param name="knownAbsent">
