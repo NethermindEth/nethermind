@@ -64,13 +64,14 @@ public static partial class TrieUpdater
         /// property of the entries rather than of a depth, so that much does carry over the jump.
         /// </remarks>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
+        /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="result"><inheritdoc cref="ApplyGroup" path="/param[@name='result']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyChain(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, ReadOnlySpan<byte> chainData,
-            scoped BucketPlan plan, ref BufferWriter writer, out NodeResult result,
+            scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer, out NodeResult result,
             out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
@@ -113,11 +114,11 @@ public static partial class TrieUpdater
                 bool targetChanged;
                 if (PbtLayout.IsClusteringDepth(targetDepth))
                 {
-                    ApplyClustered(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref targetWriter, out inner, out targetChanged, out delta);
+                    ApplyClustered(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter, out inner, out targetChanged, out delta);
                 }
                 else
                 {
-                    ApplyGroup(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), ref targetWriter, out inner, out targetChanged, out delta);
+                    ApplyGroup(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter, out inner, out targetChanged, out delta);
                 }
 
                 if (targetWriter.Detach() is { } targetBlob) inner = inner.WithBlob(targetBlob);
@@ -151,7 +152,7 @@ public static partial class TrieUpdater
             bool branchesHere = branchDepth == depth;
             if (branchesHere)
             {
-                result = ApplyChainSplit(key, entries, chain, plan, ref writer, out changed, out delta);
+                result = ApplyChainSplit(key, entries, chain, plan, fanout, ref writer, out changed, out delta);
                 return;
             }
 
@@ -160,7 +161,7 @@ public static partial class TrieUpdater
             // hash — not the split group's — is what changed against the run this frame replaced.
             TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, targetPath);
             BufferWriter splitWriter = new(_memoryProvider);
-            NodeResult split = ApplyChainSplit(branchKey, entries, chain, plan.AfterJump(), ref splitWriter, out _, out delta);
+            NodeResult split = ApplyChainSplit(branchKey, entries, chain, plan.AfterJump(), fanout, ref splitWriter, out _, out delta);
             if (splitWriter.Detach() is { } splitBlob) split = split.WithBlob(splitBlob);
             result = WrapIntoChain(depth, branchKey, split, innerBlobStored: false, chain.Stats + delta);
             changed = result.NodeHash() != chain.NodeHash;
@@ -173,12 +174,14 @@ public static partial class TrieUpdater
         /// descent takes over.
         /// </summary>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
+        /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private NodeResult ApplyChainSplit(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in PbtNodeChain chain,
-            scoped BucketPlan plan, ref BufferWriter writer, out bool changed, out PbtSubtreeStats delta)
+            scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer, out bool changed,
+            out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             int childDepth = depth + PbtLayout.TrieNodeGroupLevelsPerGroup;
@@ -215,7 +218,7 @@ public static partial class TrieUpdater
             PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results, ref writer, ref builder)
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, fanout, results, ref writer, ref builder)
                 .MergeUntouched(occupantsShape);
             // The seeded run is held by no encoding, so nothing can read it back later: it rides on in
             // `results` unless the descent already refreshed its slot.

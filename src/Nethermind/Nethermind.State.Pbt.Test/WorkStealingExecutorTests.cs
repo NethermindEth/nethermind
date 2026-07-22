@@ -24,20 +24,17 @@ public class WorkStealingExecutorTests
     /// the queue it hands them to — plus the tally they all share, so a job run twice or never is
     /// visible, and a count only this thread writes.
     /// </summary>
-    internal sealed class ThreadState(Executor.JobQueue? queue, int[] runs)
-        : IJobRunner<Job>, IJobStateProvider<ThreadState, Job>
+    internal sealed class ThreadState(int[] runs)
+        : IJobRunner<ThreadState, Job>, IJobStateProvider<ThreadState>
     {
-        /// <summary>Where this thread hands its jobs; the calling thread's is only known once its executor exists.</summary>
-        public Executor.JobQueue Queue { get; set; } = queue!;
-
         /// <summary>Shared with every other thread: what they have in common, they hold in common.</summary>
         public int[] Runs => runs;
 
         public int Ran { get; set; }
 
-        public ThreadState Create(Executor.JobQueue other) => new(other, runs);
+        public ThreadState Create() => new(runs);
 
-        public void Execute(ref Job job) => Run(this, ref job);
+        public void Execute(ref Job job, ThreadState state, Executor.JobQueue queue) => Run(state, queue, ref job);
     }
 
     internal struct Job
@@ -55,7 +52,7 @@ public class WorkStealingExecutorTests
         public bool Throw { get; init; }
     }
 
-    private static void Run(ThreadState thread, ref Job job)
+    private static void Run(ThreadState thread, Executor.JobQueue queue, ref Job job)
     {
         Interlocked.Increment(ref thread.Runs[job.Index]);
         thread.Ran++;
@@ -69,12 +66,12 @@ public class WorkStealingExecutorTests
             for (int child = 1; child <= job.Children; child++)
             {
                 Job childJob = new() { Index = job.Index + child, Input = job.Input + child };
-                if (!thread.Queue.TryQueue(in childJob, ref queued)) RunHere(thread, in childJob, ref fromChildren);
+                if (!queue.TryQueue(in childJob, ref queued)) RunHere(thread, queue, in childJob, ref fromChildren);
             }
 
             if (!queued.IsEmpty)
             {
-                thread.Queue.Wait(in queued);
+                queue.Wait(in queued);
                 foreach (Executor.Node node in queued) fromChildren += node.Job.Output;
             }
 
@@ -86,23 +83,21 @@ public class WorkStealingExecutorTests
     }
 
     /// <summary>Runs a job the queue refused, as a caller must be free to do.</summary>
-    private static void RunHere(ThreadState thread, in Job job, ref long total)
+    private static void RunHere(ThreadState thread, Executor.JobQueue queue, in Job job, ref long total)
     {
         Job copy = job;
-        Run(thread, ref copy);
+        Run(thread, queue, ref copy);
         total += copy.Output;
     }
 
     /// <remarks>
     /// The calling thread's state exists first and builds the rest, exactly as the trie's updater does:
-    /// it is both the executor's main state and the provider of the others.
+    /// it is the executor's main state, the provider of the others, and the runner of every job.
     /// </remarks>
     private static Executor Create(int[] runs, int threads)
     {
-        ThreadState main = new(queue: null, runs);
-        Executor executor = new(threads, main, main);
-        main.Queue = executor.MainQueue;
-        return executor;
+        ThreadState main = new(runs);
+        return new Executor(threads, main, main, main);
     }
 
     [TestCase(1)]
@@ -133,7 +128,7 @@ public class WorkStealingExecutorTests
                 for (int index = 0; index < jobs; index++)
                 {
                     Job job = new() { Index = index, Input = index };
-                    if (!main.TryQueue(in job, ref queued)) RunHere(executor.States[0], in job, ref folded);
+                    if (!main.TryQueue(in job, ref queued)) RunHere(executor.States[0], main, in job, ref folded);
                 }
 
                 main.Wait(in queued);

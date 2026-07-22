@@ -152,13 +152,14 @@ public static partial class TrieUpdater
             }
         }
 
-        private ValueHash256 Descend(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
+        private ValueHash256 Descend(
+            in ValueHash256 currentRoot, PbtWriteBatch changes, in Fanout fanout, out PbtSubtreeStats delta)
         {
             using RefCountingMemory? rootData = _store.GetTrieNode(TrieNodeKey.Root);
             BufferWriter writer = new(_memoryProvider);
             ApplyGroup(
                 TrieNodeKey.Root, changes.Entries, StoredBlob.Of(rootData), currentRoot,
-                new BucketPlan(changes.Buckets, branchDepth: 0), ref writer, out NodeResult root, out bool changed, out delta);
+                new BucketPlan(changes.Buckets, branchDepth: 0), fanout, ref writer, out NodeResult root, out bool changed, out delta);
             if (writer.Detach() is { } folded) root = root.WithBlob(folded);
 
             using (root)
@@ -283,14 +284,18 @@ public static partial class TrieUpdater
         /// </param>
         /// <param name="beforeHash"><inheritdoc cref="RebuildNode" path="/param[@name='beforeHash']"/></param>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
+        /// <param name="fanout">
+        /// Where this frame hands the buckets it is not folding itself. Carried down the descent rather
+        /// than held, since the queue belongs to whichever thread is running the fold, not to the updater.
+        /// </param>
         /// <param name="writer">Where the group folds its encoding: the blob of the group above where that one holds this, a buffer of this group's own where it owns its blob.</param>
         /// <param name="result">The node now occupying the group's root position, written straight into the caller's slot.</param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyGroup(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, StoredBlob existingData,
-            in ValueHash256 beforeHash, scoped BucketPlan plan, ref BufferWriter writer, out NodeResult result,
-            out bool changed, out PbtSubtreeStats delta)
+            in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
+            out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0);
@@ -305,7 +310,7 @@ public static partial class TrieUpdater
             PbtNodeCluster.Builder bare = default;
 
             StoredOccupants occupants = new(existing, existingData, default);
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results, ref writer, ref bare)
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, fanout, results, ref writer, ref bare)
                 .MergeUntouched(existing.BoundaryShape());
             result = RebuildNode(
                 key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref bare, mark,
@@ -314,8 +319,8 @@ public static partial class TrieUpdater
 
         private void ApplyClustered(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, StoredBlob existingData,
-            in ValueHash256 beforeHash, scoped BucketPlan plan, ref BufferWriter writer, out NodeResult result,
-            out bool changed, out PbtSubtreeStats delta)
+            in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
+            out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0);
@@ -330,7 +335,7 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             StoredOccupants occupants = new(existing, existingData, cluster);
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results, ref writer, ref builder)
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, fanout, results, ref writer, ref builder)
                 .MergeUntouched(existing.BoundaryShape());
             result = RebuildNode(
                 key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref builder, mark: 0,
@@ -345,13 +350,14 @@ public static partial class TrieUpdater
         /// otherwise the pushed stem and the writes are routed on down together.
         /// </summary>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
+        /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="result"><inheritdoc cref="ApplyGroup" path="/param[@name='result']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyPushedStem(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in Occupant pushed,
-            scoped BucketPlan plan, ref BufferWriter writer, out NodeResult result,
+            scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer, out NodeResult result,
             out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
@@ -449,7 +455,7 @@ public static partial class TrieUpdater
                 // group, so it is one no blob of this frame's can hold: it owns its own.
                 BufferWriter branchWriter = new(_memoryProvider);
                 ApplyPushedStem(
-                    branchKey, entries, pushed, new BucketPlan(default, entriesBranch), ref branchWriter,
+                    branchKey, entries, pushed, new BucketPlan(default, entriesBranch), fanout, ref branchWriter,
                     out NodeResult inner, out _, out delta);
                 if (branchWriter.Detach() is { } innerBlob) inner = inner.WithBlob(innerBlob);
 
@@ -480,7 +486,7 @@ public static partial class TrieUpdater
             // `buckets` carries the level partitioned above where there was none to start with, and
             // `entriesBranch` lets the resolve fill one itself where nothing was partitioned at all, so the
             // range is bucketed once however this frame reached here.
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, new BucketPlan(buckets, entriesBranch), results, ref writer, ref builder)
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, new BucketPlan(buckets, entriesBranch), fanout, results, ref writer, ref builder)
                 .MergeUntouched(new NodeGroupBitmasks(occupantsOccupied, occupantsOccupied, Chains: 0));
             // A frame with no stored encoding leaves the rebuild nothing but `results` to read a boundary
             // out of, so the pushed stem rides on in its slot unless the descent already refreshed it. It
@@ -538,11 +544,12 @@ public static partial class TrieUpdater
         /// holding the one node a run-split or pushed stem seeds.
         /// </param>
         /// <param name="plan"><inheritdoc cref="BucketPlan" path="/summary"/></param>
+        /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="cluster">The blob this frame is assembling, where its depth holds its children inside it.</param>
         private GroupShape ResolveBoundaries<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
-            scoped BucketPlan plan, Span<NodeResult> results, ref BufferWriter writer,
+            scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results, ref BufferWriter writer,
             ref PbtNodeCluster.Builder cluster)
             where TOccupants : IOccupants, allows ref struct
         {
@@ -574,8 +581,8 @@ public static partial class TrieUpdater
             AssertTouchedMaskMatchesBounds(touchedBitmask, level[..PbtWriteBatch.BoundsLength]);
 
             return PbtLayout.IsClusteringDepth(depth)
-                ? ResolveClusteredChildren(key, entries, occupants, plan, results, level, branchDepth, ref writer, ref cluster)
-                : ResolveKeyedChildren(key, entries, occupants, plan, results, level, branchDepth);
+                ? ResolveClusteredChildren(key, entries, occupants, plan, fanout, results, level, branchDepth, ref writer, ref cluster)
+                : ResolveKeyedChildren(key, entries, occupants, plan, fanout, results, level, branchDepth);
         }
 
         /// <summary>
@@ -587,8 +594,8 @@ public static partial class TrieUpdater
         /// </summary>
         private GroupShape ResolveClusteredChildren<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
-            scoped BucketPlan plan, Span<NodeResult> results, scoped ReadOnlySpan<int> level, int branchDepth,
-            ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
+            scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results, scoped ReadOnlySpan<int> level,
+            int branchDepth, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
             where TOccupants : IOccupants, allows ref struct
         {
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength];
@@ -613,15 +620,15 @@ public static partial class TrieUpdater
                 PbtSubtreeStats childDelta;
                 if (occupant.Kind == NodeKind.Internal)
                 {
-                    ApplyGroup(childKey, bucket, occupants.ChildBlob(slot), occupant.NodeHash(), childPlan, ref writer, out result, out childChanged, out childDelta);
+                    ApplyGroup(childKey, bucket, occupants.ChildBlob(slot), occupant.NodeHash(), childPlan, fanout, ref writer, out result, out childChanged, out childDelta);
                 }
                 else if (occupant.Kind == NodeKind.Chain)
                 {
-                    ApplyChain(childKey, bucket, occupant.ChainData, childPlan, ref writer, out result, out childChanged, out childDelta);
+                    ApplyChain(childKey, bucket, occupant.ChainData, childPlan, fanout, ref writer, out result, out childChanged, out childDelta);
                 }
                 else
                 {
-                    ApplyPushedStem(childKey, bucket, occupant, childPlan, ref writer, out result, out childChanged, out childDelta);
+                    ApplyPushedStem(childKey, bucket, occupant, childPlan, fanout, ref writer, out result, out childChanged, out childDelta);
                 }
 
                 if (result.Kind == NodeKind.Internal) cluster.MarkChild(in writer);
@@ -645,7 +652,8 @@ public static partial class TrieUpdater
         /// </remarks>
         private GroupShape ResolveKeyedChildren<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
-            scoped BucketPlan plan, Span<NodeResult> results, scoped ReadOnlySpan<int> level, int branchDepth)
+            scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results, scoped ReadOnlySpan<int> level,
+            int branchDepth)
             where TOccupants : IOccupants, allows ref struct
         {
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength];
@@ -656,7 +664,7 @@ public static partial class TrieUpdater
             // The buckets this frame handed out, which the settle below takes back whatever it can
             // still do itself.
             QueuedBuckets queued = default;
-            bool mayQueue = MayQueue(touchedBitmask);
+            bool mayQueue = MayQueue(touchedBitmask, in fanout);
 
             for (uint remainingBitmask = touchedBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
             {
@@ -667,18 +675,18 @@ public static partial class TrieUpdater
                 BucketPlan childPlan = plan.ForChild(slot, branchDepth);
 
                 if (mayQueue && bucket.Length >= _minQueueEntries
-                    && TryQueue(slot, childKey, bucket, occupant, childPlan, ref queued))
+                    && TryQueue(slot, childKey, bucket, occupant, childPlan, in fanout, ref queued))
                 {
                     continue;
                 }
 
                 ref NodeResult result = ref results[slot];
-                ApplyKeyedChild(childKey, bucket, occupant, childPlan, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
+                ApplyKeyedChild(childKey, bucket, occupant, childPlan, fanout, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
                 if (storedChild) storedChildBitmask |= 1u << slot;
                 scan.Add(slot, result, childChanged, childDelta);
             }
 
-            if (!queued.IsEmpty) Settle(ref queued, results, ref scan, ref storedChildBitmask);
+            if (!queued.IsEmpty) Settle(in fanout, ref queued, results, ref scan, ref storedChildBitmask);
 
             return scan.ToShape(touchedBitmask, storedChildBitmask);
         }
@@ -693,10 +701,12 @@ public static partial class TrieUpdater
         /// touches is under <paramref name="childKey"/>, bar the removal of that key itself, which no
         /// other range can reach either.
         /// </remarks>
+        /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
         /// <param name="storedChild">Whether the store held a blob at <paramref name="childKey"/>, which the parent's rebuild needs to know to settle a collapse onto it.</param>
         private void ApplyKeyedChild(
-            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in Occupant occupant, scoped BucketPlan childPlan,
-            out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild)
+            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in Occupant occupant,
+            scoped BucketPlan childPlan, in Fanout fanout, out NodeResult result, out bool changed,
+            out PbtSubtreeStats delta, out bool storedChild)
         {
             BufferWriter owned = new(_memoryProvider);
             storedChild = false;
@@ -706,7 +716,7 @@ public static partial class TrieUpdater
                 // old root hash, which the child no longer stores itself
                 using RefCountingMemory? childData = _store.GetTrieNode(childKey);
                 storedChild = childData is not null;
-                ApplyClustered(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, ref owned, out result, out changed, out delta);
+                ApplyClustered(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
                 if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
 
                 // No frame writes its own key; the parent settles each child's: a stored one the writes
@@ -718,11 +728,11 @@ public static partial class TrieUpdater
 
             if (occupant.Kind == NodeKind.Chain)
             {
-                ApplyChain(childKey, bucket, occupant.ChainData, childPlan, ref owned, out result, out changed, out delta);
+                ApplyChain(childKey, bucket, occupant.ChainData, childPlan, fanout, ref owned, out result, out changed, out delta);
             }
             else
             {
-                ApplyPushedStem(childKey, bucket, occupant, childPlan, ref owned, out result, out changed, out delta);
+                ApplyPushedStem(childKey, bucket, occupant, childPlan, fanout, ref owned, out result, out changed, out delta);
             }
 
             if (owned.Detach() is { } blob) result = result.WithBlob(blob);
