@@ -199,9 +199,11 @@ A Go runner (built on the runner from a pinned commit via its own
 from `reference_client` and overridable via `mode`:
 
 - **benchmark** (single node, or both side by side): k6-driven load benchmark of
-  a weighted call mix; produces `results.json` / `results.csv` /
-  `report.html`. json-bench streams k6 metrics through Prometheus remote-write,
-  so a throwaway local Prometheus container runs for the duration.
+  a weighted call mix; produces `results.json` / `results.csv` / `report.html`.
+  Metrics come from k6's own `summary.json` — the pinned json-bench builds
+  per-client/per-method metrics from it directly, so **no Prometheus is
+  involved**. The summary renders an overall + per-method latency table parsed
+  from `summary.json`.
 - **compare** (needs a reference node): one-shot differential test — each call
   from the compare config goes to both nodes and the responses are diffed.
 
@@ -209,20 +211,28 @@ from `reference_client` and overridable via `mode`:
 {
   "ref": "",                                       // json-bench commit/tag; empty = pinned default
   "mode": "",                                      // benchmark | compare; empty = auto
-  "benchmark_config": "",                          // workload YAML; empty = generated default (mainnet read mix)
+  "benchmark_config": "",                          // workload: bare name | repo-relative path; empty = generated read mix
   "compare_config": "config/compare/defaults.yaml",// repo-relative or absolute runner path
-  "rps": 100, "duration": "60s", "vus": 10,        // generated benchmark workload only
+  "rps": "", "duration": "", "vus": "",            // override the workload; empty = keep its values (generated default: 100/60s/10)
   "concurrency": 5, "timeout": 30,                 // compare mode
   "validate_schema": false,                        // compare: also validate against the OpenRPC schema
   "html_report": true,
   "fail_on_diff": false,                           // compare: fail the job on any response difference
+  "max_fail_rate_pct": 1,                          // benchmark: fail when summary.json's http fail rate exceeds this % (k6 itself exits 0 even at 100%)
   "extra_args": ""
 }
 ```
 
-A custom `benchmark_config` must reference the rendered registry names — the
-client name(s), e.g. `nethermind` / `geth` (a same-client reference gets a
-`-ref` suffix).
+`benchmark_config` accepts json-bench's curated head-only workloads by name —
+`realistic-mix-head` (weighted mainnet mix), `ethcall-contracts-head` (`eth_call`
+across 27 contracts), `new-state-methods-head` (`eth_estimateGas`/`eth_getCode`/
+`eth_getProof`/`eth_getStorageAt` + `eth_call`) — or any repo-relative/absolute
+path. These target `latest`, so they run against the snapshot head. The script
+**rewrites the config's `clients:` list** to the node(s) started here (so the
+repo's five-client configs work as-is) and injects a loose per-call threshold so
+k6 emits per-method sub-metrics into `summary.json`. The config's relative
+`./rpc-calls/*.jsonl` fixtures resolve via the container's working directory
+(the mounted checkout at `/jb`) — json-bench's loader rejects absolute paths.
 
 ### `ethcallchaos` — [kamilchodola/EthCallChaos](https://github.com/kamilchodola/EthCallChaos)
 
@@ -295,8 +305,9 @@ The `reproducible-benchmarks` self-hosted runner must provide:
 - **A writable scratch location** on the same large disk (default
   `/mnt/sda/expb-data/rpc-bench-scratch`).
 - **`mount`/`umount` privileges** and overlayfs (expb already uses both there).
-- **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood), and the **.NET SDK**
-  (only if `/opt/dottrace` is not already installed by previous expb dotTrace runs).
+- **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
+  its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
+  `/opt/dottrace` is not already installed by previous expb dotTrace runs).
 
 ## Files
 
@@ -307,5 +318,5 @@ The `reproducible-benchmarks` self-hosted runner must provide:
 | `stop-node.sh` | Graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
-| `run-jsonbench.sh` | Clone/build json-bench's runner image, run `benchmark` (with throwaway Prometheus) or `compare`, report. |
+| `run-jsonbench.sh` | Clone/build json-bench's runner image, adapt the workload config to the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
 | `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |
