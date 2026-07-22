@@ -366,6 +366,8 @@ public class DbConfig : IDbConfig
 
         // TEST branch: take the 4kb-is-faster tradeoff the comment describes.
         "block_based_table_factory.block_size=4096;" +
+        "block_based_table_factory.block_restart_interval=1;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
 
         // Smaller
         "write_buffer_size=32000000;" +
