@@ -370,8 +370,9 @@ public sealed class SnapshotBundle : IDisposable
     {
         // Read backfills (HintGet) repeat far more often than genuine changes; skip the locked
         // indexer write when the entry already holds this exact account.
-        if (_changedAccounts.TryGetValue(address, out Account? existing) && ReferenceEquals(existing, account)) return;
-        _changedAccounts[address] = account;
+        HashedKey<Address> key = new(address);
+        if (_changedAccounts.TryGetValue(key, out Account? existing) && ReferenceEquals(existing, account)) return;
+        _changedAccounts[key] = account;
     }
 
     internal void PromoteAccount(Address address, Account? account) =>
