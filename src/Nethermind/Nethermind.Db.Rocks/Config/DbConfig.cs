@@ -18,7 +18,6 @@ public class DbConfig : IDbConfig
     public uint StatsDumpPeriodSec { get; set; } = 600;
 
     public int? MaxOpenFiles { get; set; }
-    public bool CacheIndexAndFilterBlocks { get; set; } = false;
     public bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     public ulong? ReadAheadSize { get; set; } = 256UL.KiB;
 

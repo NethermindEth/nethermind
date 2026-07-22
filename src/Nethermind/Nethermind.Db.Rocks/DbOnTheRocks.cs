@@ -555,34 +555,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // changes to the table options must be applied before setting to set.
         options.SetBlockBasedTableFactory(tableOptions);
 
-        string rocksDbOptions = dbConfig.RocksDbOptions;
-        if (dbConfig.CacheIndexAndFilterBlocks)
-        {
-            // Must go through the options string: the rocksdb_get_options_from_string merge below rewrites
-            // block_based_table_factory fields set via the C# table-options API.
-            // Deliberately self-contained: some keys duplicate RocksDbOptions defaults so the
-            // partitioned-index setup holds even when users override RocksDbOptions without them.
-            // index_type=kTwoLevelIndexSearch intentionally overrides the flat state columns' default
-            // kBinarySearch: the partitioned (two-level) index is what lets the index/filter blocks live
-            // in — and be bounded by — the block cache. That is the whole point of the flag; the extra
-            // top-level index lookup is the accepted cost.
-            // A base RocksDbOptions may end without a trailing ';' (RocksDB accepts a final option without
-            // one), so add a delimiter first, otherwise the first appended key merges into that last value.
-            if (rocksDbOptions.Length > 0 && !rocksDbOptions.TrimEnd().EndsWith(';'))
-            {
-                rocksDbOptions += ";";
-            }
-            rocksDbOptions +=
-                "block_based_table_factory.cache_index_and_filter_blocks=true;" +
-                "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
-                "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
-                "block_based_table_factory.partition_filters=true;" +
-                "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
-                "block_based_table_factory.pin_top_level_index_and_filter=true;" +
-                "block_based_table_factory.metadata_block_size=4096;";
-        }
-
-        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(rocksDbOptions));
+        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.RocksDbOptions));
         try
         {
             _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
