@@ -43,7 +43,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private const int StorageHeavyMissThreshold = 128;
     private const int MaxDiscoveryCandidates = 16;
-    private const int MaxDiscoveryRounds = 1;
+    private const int MaxDiscoveryRounds = 6;
     private const int MaxDiscoveredCells = 8192;
     private const int MaxStorageHeavyDestinations = 1024;
 
@@ -129,13 +129,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
+        List<Transaction>? discoveryCandidates = SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, systemAccessLists);
+
+        if (discoveryCandidates is null)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+            return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+        }
+
         // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
         return Task.Run(() =>
         {
             try
             {
-                DiscoverAndWarmStorage(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
+                DiscoverAndWarmStorage(discoveryCandidates, suggestedBlock, parent, spec, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -150,38 +158,43 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         });
     }
 
-    private void DiscoverAndWarmStorage(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken)
+    private List<Transaction>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
+    {
+        List<Transaction>? candidates = null;
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
+            if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
+            if (!_storageHeavyDestinations.ContainsKey(destination)) continue;
+
+            bool destinationSelected = false;
+            if (candidates is not null)
+            {
+                foreach (Transaction candidate in candidates)
+                {
+                    if (candidate.To == destination)
+                    {
+                        destinationSelected = true;
+                        break;
+                    }
+                }
+            }
+
+            if (destinationSelected) continue;
+
+            (candidates ??= new(MaxDiscoveryCandidates)).Add(tx);
+            if (candidates.Count == MaxDiscoveryCandidates) break;
+        }
+
+        return candidates;
+    }
+
+    private void DiscoverAndWarmStorage(List<Transaction> candidates, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken)
     {
         IWorldStateScopeProvider.IScope? mainScope = _preBlockCaches.MainScope;
         if (mainScope is null || cancellationToken.IsCancellationRequested) return;
 
-        Dictionary<AddressAsKey, int> destinationCounts = [];
-        foreach (Transaction tx in block.Transactions)
-        {
-            if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.To is not Address destination) continue;
-            destinationCounts.TryGetValue(destination, out int count);
-            destinationCounts[destination] = count + 1;
-        }
-
-        List<Transaction> candidates = new(Math.Min(MaxDiscoveryCandidates, destinationCounts.Count));
-        foreach (Transaction tx in block.Transactions)
-        {
-            if (candidates.Count == MaxDiscoveryCandidates) break;
-            if (tx.GasLimit <= SplitSenderGroupGasThreshold || tx.SenderAddress is null || tx.To is not Address destination) continue;
-            if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
-
-            bool knownStorageHeavy = _storageHeavyDestinations.ContainsKey(destination);
-            bool repeatedDestination = destinationCounts[destination] > 1;
-            if (knownStorageHeavy || repeatedDestination)
-            {
-                candidates.Add(tx);
-            }
-        }
-
-        if (candidates.Count == 0) return;
-
         HashSet<StorageCell> allDiscoveredCells = [];
-        ConcurrentDictionary<AddressAsKey, int> discoveredByDestination = new();
 
         for (int round = 0; round < MaxDiscoveryRounds && candidates.Count > 0; round++)
         {
@@ -233,11 +246,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         {
                             roundCells.UnionWith(capture.Cells);
                         }
-
-                        AddressAsKey destination = tx.To!;
-                        int destinationCount = discoveredByDestination.AddOrUpdate(destination, capture.Cells.Count,
-                            (_, count) => count + capture.Cells.Count);
-                        if (destinationCount >= StorageHeavyMissThreshold) RegisterStorageHeavy(tx);
                     }
                     catch (Exception ex)
                     {
