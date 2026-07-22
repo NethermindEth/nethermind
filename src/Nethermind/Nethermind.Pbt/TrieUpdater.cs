@@ -90,13 +90,18 @@ public static partial class TrieUpdater
         return new Updater(store, memoryProvider, writeFormat, changes, concurrency).Run(currentRoot, changes, out delta);
     }
 
-    /// <summary>One thread's share of a fold: the descent itself, and the queue other threads take work from.</summary>
+    /// <summary>
+    /// The walk down the tree as one thread runs it: the frames themselves, the store writes they
+    /// buffer, and the lane they hand the buckets worth splitting out through.
+    /// </summary>
     /// <remarks>
-    /// The descent's state is the thread's, so the frames are this type's instance methods and nothing
-    /// is threaded through them; what every thread shares — the store, the batch, the spawn threshold —
-    /// sits on the <see cref="Updater"/> behind them.
+    /// A descent's state is its thread's, which is what lets the frames be this type's instance methods
+    /// with nothing threaded through them; what every thread shares — the store, the batch, the spawn
+    /// threshold — sits on the <see cref="Updater"/> behind them. One of these exists per lane, so it is
+    /// what the executor keeps as its per-thread state; the threads themselves are the executor's
+    /// business, not this type's.
     /// </remarks>
-    private sealed partial class Worker(Updater updater, WorkStealingExecutor<Updater, Worker, Worker.BucketJob>.Lane lane)
+    private sealed partial class Descent(Updater updater, WorkStealingExecutor<Updater, Descent, Descent.BucketJob>.Lane lane)
     {
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
@@ -635,7 +640,7 @@ public static partial class TrieUpdater
 
             // The jobs this frame spawned, newest first, and where its own queue stood before the first of
             // them: what the join hands back the work it can still do itself.
-            WorkStealingExecutor<Updater, Worker, BucketJob>.Node? spawned = null;
+            WorkStealingExecutor<Updater, Descent, BucketJob>.Node? spawned = null;
             long queueMark = _lane.QueueMark;
             bool maySpawn = MaySpawn(touchedBitmask);
 
@@ -960,7 +965,7 @@ public static partial class TrieUpdater
 
         // Internal rather than private, this and the two structs below, only so that BucketJob — which
         // Updater has to name, and so cannot be private — may carry them. Naming any of them still means
-        // naming Worker, which is private, so nothing outside this class sees them either way.
+        // naming Descent, which is private, so nothing outside this class sees them either way.
         internal readonly record struct NodeRef(NodeKind Kind, int Offset);
 
         /// <summary>
