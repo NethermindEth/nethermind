@@ -3,24 +3,25 @@
 
 namespace Nethermind.Pbt;
 
-/// <summary>
-/// A thread's own state, which runs the jobs that thread takes: the executor hands a job back to the
-/// state rather than to a callback of its own, so that what runs a job and what it runs with are one
-/// thing.
-/// </summary>
-internal interface IJobRunner<TJob> where TJob : struct
-{
-    /// <summary>Runs one job, reading and writing it in place.</summary>
-    void Execute(ref TJob job);
-}
-
-/// <summary>Builds the state one thread runs with, around the queue it hands its own work to.</summary>
-internal interface IJobStateProvider<TState, TJob>
-    where TState : class, IJobRunner<TJob>
+/// <summary>Runs the jobs an executor hands out, on whichever thread took them.</summary>
+internal interface IJobRunner<TWorkerState, TJob>
+    where TWorkerState : class
     where TJob : struct
 {
-    /// <param name="queue">Where the state being built queues work for the other threads, and waits for it.</param>
-    TState Create(WorkStealingExecutor<TState, TJob>.JobQueue queue);
+    /// <summary>Runs one job, reading and writing it in place.</summary>
+    /// <param name="state">The state of the thread running it.</param>
+    /// <param name="queue">Where that thread queues work of its own, and waits for it.</param>
+    void Execute(ref TJob job, TWorkerState state, WorkStealingExecutor<TWorkerState, TJob>.JobQueue queue);
+}
+
+/// <summary>Builds the state one thread runs with.</summary>
+/// <remarks>
+/// The state is given nothing of the executor's: where to queue work arrives with each job, so what a
+/// thread holds is the caller's business alone.
+/// </remarks>
+internal interface IJobStateProvider<TWorkerState>
+{
+    TWorkerState Create();
 }
 
 /// <summary>
@@ -44,17 +45,17 @@ internal interface IJobStateProvider<TState, TJob>
 /// a pooled one would still be scanned after the run that rented it had ended.
 /// </para>
 /// </remarks>
-/// <typeparam name="TState">
-/// What one thread runs with and through: built once per thread by the caller's
-/// <see cref="IJobStateProvider{TState, TJob}"/>, and asked to run every job that thread takes.
-/// Whatever the threads share, they share through it.
+/// <typeparam name="TWorkerState">
+/// What one thread runs with: built once per thread by the caller's
+/// <see cref="IJobStateProvider{TWorkerState}"/> and handed back to the runner with every job that
+/// thread takes. Whatever the threads share, they share through it.
 /// </typeparam>
 /// <typeparam name="TJob">
 /// One job's inputs and outputs, held by value in the node carrying it: the thread that queues a job
 /// fills the inputs, the thread that runs it writes the outputs back through <see cref="Node.Job"/>.
 /// </typeparam>
-internal sealed class WorkStealingExecutor<TState, TJob>
-    where TState : class, IJobRunner<TJob>
+internal sealed class WorkStealingExecutor<TWorkerState, TJob>
+    where TWorkerState : class
     where TJob : struct
 {
     /// <summary>Jobs one queue holds before <see cref="JobQueue.TryQueue"/> starts refusing them.</summary>
@@ -67,31 +68,31 @@ internal sealed class WorkStealingExecutor<TState, TJob>
     /// <summary>How many jobs a thread may take on while waiting, one nested inside the next.</summary>
     private const int MaxHelpDepth = 8;
 
+    private readonly IJobRunner<TWorkerState, TJob> _runner;
     private readonly JobQueue[] _queues;
     private bool _done;
 
     /// <param name="threadCount">Threads to run across, the calling one included; 1 leaves every job to the caller.</param>
     /// <param name="main">The calling thread's state, which exists already — it is what builds this.</param>
     /// <param name="provider">Builds the state for every other thread; called here, on the calling thread.</param>
-    public WorkStealingExecutor(int threadCount, TState main, IJobStateProvider<TState, TJob> provider)
+    /// <param name="runner">Runs one job against the state of whichever thread took it.</param>
+    public WorkStealingExecutor(
+        int threadCount, TWorkerState main, IJobStateProvider<TWorkerState> provider, IJobRunner<TWorkerState, TJob> runner)
     {
+        _runner = runner;
         _queues = new JobQueue[threadCount];
-        States = new TState[threadCount];
-
-        // The queues come first: a state is built around the queue it will hand work to, and a queue
-        // reads its own state back off this executor rather than holding it, so neither has to be
-        // patched into the other afterwards.
-        for (int index = 0; index < threadCount; index++) _queues[index] = new JobQueue(this, index, threadCount > 1 ? QueueCapacity : 0);
+        States = new TWorkerState[threadCount];
 
         States[0] = main;
-        for (int index = 1; index < threadCount; index++) States[index] = provider.Create(_queues[index]);
+        for (int index = 0; index < threadCount; index++) _queues[index] = new JobQueue(this, index, threadCount > 1 ? QueueCapacity : 0);
+        for (int index = 1; index < threadCount; index++) States[index] = provider.Create();
     }
 
     /// <summary>Whether there is any thread but the caller's, which is what makes queueing a job worth anything.</summary>
     public bool IsParallel => _queues.Length > 1;
 
     /// <summary>Each thread's state, the calling thread's first, for the caller's own teardown.</summary>
-    public TState[] States { get; }
+    public TWorkerState[] States { get; }
 
     /// <summary>The calling thread's queue, which its own work is handed out through.</summary>
     public JobQueue MainQueue => _queues[0];
@@ -110,11 +111,11 @@ internal sealed class WorkStealingExecutor<TState, TJob>
     public void Complete() => Volatile.Write(ref _done, true);
 
     /// <summary>Runs <paramref name="node"/>'s job here and now, leaving what it produced — or threw — on the node.</summary>
-    private static void Run(TState state, Node node)
+    private void Run(TWorkerState state, JobQueue queue, Node node)
     {
         try
         {
-            state.Execute(ref node.Job);
+            _runner.Execute(ref node.Job, state, queue);
             node.Complete(error: null);
         }
         catch (Exception exception)
@@ -128,7 +129,7 @@ internal sealed class WorkStealingExecutor<TState, TJob>
     /// interface the caller never sees, the loop by which that thread takes work from the rest.
     /// </summary>
     /// <remarks>Everything but <see cref="WorkStealingDeque{T}.TrySteal"/> is the owning thread's alone.</remarks>
-    internal sealed class JobQueue(WorkStealingExecutor<TState, TJob> executor, int index, int capacity)
+    internal sealed class JobQueue(WorkStealingExecutor<TWorkerState, TJob> executor, int index, int capacity)
         : IThreadPoolWorkItem
     {
         private readonly WorkStealingDeque<Node>? _deque = capacity == 0 ? null : new WorkStealingDeque<Node>(capacity);
@@ -138,7 +139,7 @@ internal sealed class WorkStealingExecutor<TState, TJob>
         public bool CanQueue => _deque is not null;
 
         /// <remarks>Read back rather than held, so that a queue and its state need not be built in one go.</remarks>
-        private TState State => executor.States[index];
+        private TWorkerState State => executor.States[index];
 
         /// <summary>
         /// Offers <paramref name="job"/> to whichever thread reaches it first, adding it to
@@ -178,14 +179,14 @@ internal sealed class WorkStealingExecutor<TState, TJob>
             {
                 Node? popped = _deque.TryPopHead();
                 if (popped is null) break;
-                if (popped.TryClaim()) Run(State, popped);
+                if (popped.TryClaim()) executor.Run(State, this, popped);
             }
 
             // A node a thief took off the queue but has not claimed is still the caller's to run: the
             // claim settles which of the two threads it falls to, and the loser leaves it alone.
             for (Node? node = queued; node is not null; node = node.Next)
             {
-                if (node.TryClaim()) Run(State, node);
+                if (node.TryClaim()) executor.Run(State, this, node);
             }
 
             for (Node? node = queued; node is not null; node = node.Next) WaitFor(node);
@@ -253,7 +254,7 @@ internal sealed class WorkStealingExecutor<TState, TJob>
                 Node? stolen = queues[(index + offset) % queues.Length]._deque!.TrySteal();
                 if (stolen is null || !stolen.TryClaim()) continue;
 
-                Run(State, stolen);
+                executor.Run(State, this, stolen);
                 return true;
             }
 
