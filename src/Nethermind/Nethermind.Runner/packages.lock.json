@@ -759,7 +759,7 @@
           "ConcurrentHashSet": "[1.3.0, )",
           "Nethermind.Api": "[1.40.0-unstable, )",
           "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.RocksDB.Runtimes": "[10.10.1-jemalloc.2, )",
+          "Nethermind.RocksDB.Runtimes": "[10.10.1-mimalloc.3, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
@@ -1615,9 +1615,9 @@
       },
       "Nethermind.RocksDB.Runtimes": {
         "type": "CentralTransitive",
-        "requested": "[10.10.1-jemalloc.2, )",
-        "resolved": "10.10.1-jemalloc.2",
-        "contentHash": "AFGzTrHCq23LUmpzCpldN37JfEKTEHTDhsnTclGIAFJ16xa8qFp46MA3UtLnZIXIj7a56ac4qUMYZDO1OqaVsA==",
+        "requested": "[10.10.1-mimalloc.3, )",
+        "resolved": "10.10.1-mimalloc.3",
+        "contentHash": "77e8A85+XSmEHTO7By0jyhpJGDfAl0DWNPmVKGHjcwa/N+xXt+Uk3CLip0GE3A99XbibXMQMwwEagSdr1eY0NA==",
         "dependencies": {
           "RocksDB": "10.10.1.1747"
         }
@@ -1830,9 +1830,9 @@
       },
       "Nethermind.RocksDB.Runtimes": {
         "type": "CentralTransitive",
-        "requested": "[10.10.1-jemalloc.2, )",
-        "resolved": "10.10.1-jemalloc.2",
-        "contentHash": "AFGzTrHCq23LUmpzCpldN37JfEKTEHTDhsnTclGIAFJ16xa8qFp46MA3UtLnZIXIj7a56ac4qUMYZDO1OqaVsA==",
+        "requested": "[10.10.1-mimalloc.3, )",
+        "resolved": "10.10.1-mimalloc.3",
+        "contentHash": "77e8A85+XSmEHTO7By0jyhpJGDfAl0DWNPmVKGHjcwa/N+xXt+Uk3CLip0GE3A99XbibXMQMwwEagSdr1eY0NA==",
         "dependencies": {
           "RocksDB": "10.10.1.1747"
         }
@@ -1939,9 +1939,9 @@
       },
       "Nethermind.RocksDB.Runtimes": {
         "type": "CentralTransitive",
-        "requested": "[10.10.1-jemalloc.2, )",
-        "resolved": "10.10.1-jemalloc.2",
-        "contentHash": "AFGzTrHCq23LUmpzCpldN37JfEKTEHTDhsnTclGIAFJ16xa8qFp46MA3UtLnZIXIj7a56ac4qUMYZDO1OqaVsA==",
+        "requested": "[10.10.1-mimalloc.3, )",
+        "resolved": "10.10.1-mimalloc.3",
+        "contentHash": "77e8A85+XSmEHTO7By0jyhpJGDfAl0DWNPmVKGHjcwa/N+xXt+Uk3CLip0GE3A99XbibXMQMwwEagSdr1eY0NA==",
         "dependencies": {
           "RocksDB": "10.10.1.1747"
         }
@@ -2048,9 +2048,9 @@
       },
       "Nethermind.RocksDB.Runtimes": {
         "type": "CentralTransitive",
-        "requested": "[10.10.1-jemalloc.2, )",
-        "resolved": "10.10.1-jemalloc.2",
-        "contentHash": "AFGzTrHCq23LUmpzCpldN37JfEKTEHTDhsnTclGIAFJ16xa8qFp46MA3UtLnZIXIj7a56ac4qUMYZDO1OqaVsA==",
+        "requested": "[10.10.1-mimalloc.3, )",
+        "resolved": "10.10.1-mimalloc.3",
+        "contentHash": "77e8A85+XSmEHTO7By0jyhpJGDfAl0DWNPmVKGHjcwa/N+xXt+Uk3CLip0GE3A99XbibXMQMwwEagSdr1eY0NA==",
         "dependencies": {
           "RocksDB": "10.10.1.1747"
         }
@@ -2157,9 +2157,9 @@
       },
       "Nethermind.RocksDB.Runtimes": {
         "type": "CentralTransitive",
-        "requested": "[10.10.1-jemalloc.2, )",
-        "resolved": "10.10.1-jemalloc.2",
-        "contentHash": "AFGzTrHCq23LUmpzCpldN37JfEKTEHTDhsnTclGIAFJ16xa8qFp46MA3UtLnZIXIj7a56ac4qUMYZDO1OqaVsA==",
+        "requested": "[10.10.1-mimalloc.3, )",
+        "resolved": "10.10.1-mimalloc.3",
+        "contentHash": "77e8A85+XSmEHTO7By0jyhpJGDfAl0DWNPmVKGHjcwa/N+xXt+Uk3CLip0GE3A99XbibXMQMwwEagSdr1eY0NA==",
         "dependencies": {
           "RocksDB": "10.10.1.1747"
         }
@@ -2266,9 +2266,9 @@
       },
       "Nethermind.RocksDB.Runtimes": {
         "type": "CentralTransitive",
-        "requested": "[10.10.1-jemalloc.2, )",
-        "resolved": "10.10.1-jemalloc.2",
-        "contentHash": "AFGzTrHCq23LUmpzCpldN37JfEKTEHTDhsnTclGIAFJ16xa8qFp46MA3UtLnZIXIj7a56ac4qUMYZDO1OqaVsA==",
+        "requested": "[10.10.1-mimalloc.3, )",
+        "resolved": "10.10.1-mimalloc.3",
+        "contentHash": "77e8A85+XSmEHTO7By0jyhpJGDfAl0DWNPmVKGHjcwa/N+xXt+Uk3CLip0GE3A99XbibXMQMwwEagSdr1eY0NA==",
         "dependencies": {
           "RocksDB": "10.10.1.1747"
         }
