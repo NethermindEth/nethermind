@@ -97,6 +97,12 @@ public class PbtScannerTests
             Assert.That(report.StemCountAgrees, Is.True);
 
             Assert.That(report.Root.GroupBytesByDepth[0], Is.GreaterThan(0), "average size per depth needs the byte totals");
+
+            // the chain rides in the root group's blob, so the three groups are the only keyed entries
+            Assert.That(report.TrieNodeBlobCount, Is.EqualTo(3));
+            Assert.That(report.TrieNodeKeyBytes, Is.EqualTo(3 * TrieNodeKey.Length));
+            Assert.That(report.AccountLeaves.KeyBytes, Is.EqualTo(AccountLeafCounts.Length * Stem.Length));
+            Assert.That(report.StorageLeaves.KeyBytes, Is.EqualTo(StorageLeafCounts.Length * Stem.Length));
         });
     }
 
@@ -210,6 +216,8 @@ public class PbtScannerTests
             Assert.That(report.AccountNodes.GroupsByDepth[8], Is.EqualTo(1), "the wrapped child is counted at its own depth");
             Assert.That(report.WrapperCount, Is.EqualTo(1), "the depth-4 blob holds the depth-8 group");
             Assert.That(report.WrappedChildCount, Is.EqualTo(1));
+            Assert.That(report.TrieNodeBlobCount, Is.EqualTo(2), "the wrapped child is stored under no key of its own");
+            Assert.That(report.AccountNodes.KeyBytes, Is.EqualTo(TrieNodeKey.Length), "so zone 0 pays for the depth-4 blob alone");
             Assert.That(report.AccountNodes.WrappersByDepth[4], Is.EqualTo(1), "a wrapper counts at the depth of the group it holds");
             Assert.That(report.AccountNodes.WrappedChildrenByDepth[4], Is.EqualTo(1), "and its children beside it, not at their own depth");
             Assert.That(report.ChainCount, Is.EqualTo(0), "nothing here collapses, so the blob is its two groups and the framing");
