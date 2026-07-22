@@ -98,16 +98,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
         if (push == EvmExceptionType.None && outputLength > 0 && callResult.Output.Length > 0)
         {
-            ZeroPaddedSpan outSlice = callResult.Output.Span
-                .SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)outputLength));
+            ReadOnlySpan<byte> output = callResult.Output.Span[..Math.Min(callResult.Output.Length, (int)outputLength)];
             UInt256 dest = (ulong)outputDestination;
-            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, ref parent.Memory))
+            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)output.Length, ref parent.Memory))
             {
                 push = EvmExceptionType.OutOfGas;
             }
             else
             {
-                parent.Memory.TrySave(in dest, outSlice);
+                parent.Memory.SaveAfterGas(in dest, output);
             }
         }
 

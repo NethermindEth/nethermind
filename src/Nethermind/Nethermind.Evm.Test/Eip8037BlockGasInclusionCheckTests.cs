@@ -138,31 +138,18 @@ public class Eip8037BlockGasInclusionCheckTests
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
     }
 
-    [Test]
-    public void Calculate_block_regular_gas_subtracts_state_component()
-    {
-        // tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas).
-        Assert.That(
-            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 379_970, blockStateGas: 281_520),
-            Is.EqualTo(98_450));
-        Assert.That(
-            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 133_379, blockStateGas: 97_920),
-            Is.EqualTo(35_459));
-    }
-
-    // When the state component exceeds the pre-refund gas the regular dimension floors at zero;
-    // the state dimension then dominates block gasUsed via the max.
-    [Test]
-    public void Calculate_block_regular_gas_never_negative()
+    [TestCase(379_970UL, 281_520UL, 0UL, 98_450UL, TestName = "Calculate_block_regular_gas_subtracts_state_component")]
+    [TestCase(133_379UL, 97_920UL, 0UL, 35_459UL, TestName = "Calculate_block_regular_gas_subtracts_smaller_state_component")]
+    [TestCase(12_625UL, 1_566_720UL, 0UL, 0UL, TestName = "Calculate_block_regular_gas_never_negative")]
+    [TestCase(100_000UL, 60_000UL, 30_000UL, 40_000UL, TestName = "Calculate_block_regular_gas_uses_regular_gas_above_calldata_floor")]
+    [TestCase(100_000UL, 60_000UL, 50_000UL, 50_000UL, TestName = "Calculate_block_regular_gas_applies_calldata_floor_after_state_subtraction")]
+    [TestCase(12_625UL, 1_566_720UL, 21_000UL, 21_000UL, TestName = "Calculate_block_regular_gas_applies_calldata_floor_when_state_gas_dominates")]
+    public void Calculate_block_regular_gas(
+        ulong preRefundGas,
+        ulong blockStateGas,
+        ulong calldataFloor,
+        ulong expected)
         => Assert.That(
-            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 12_625, blockStateGas: 1_566_720),
-            Is.EqualTo(0));
-
-    // Regression: the calldata floor is a sender-only minimum and must not inflate the block's
-    // regular-gas dimension.
-    [Test]
-    public void Calculate_block_regular_gas_ignores_calldata_floor()
-        => Assert.That(
-            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 21_000, blockStateGas: 0),
-            Is.EqualTo(21_000));
+            Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, blockStateGas, calldataFloor),
+            Is.EqualTo(expected));
 }

@@ -292,7 +292,7 @@ public abstract class BlockchainTestBase
             }
 
             // zkEVM witness assertions. Engine-path diffs were gathered while driving
-            // engine_newPayloadWithWitness; the RLP path regenerates the witness post-hoc here.
+            // engine_newPayloadWithWitnessV*; the RLP path regenerates the witness post-hoc here.
             differences.AddRange(engineWitnessDifferences);
             if (test.Blocks is not null && HasAnyExecutionWitness(test))
             {
@@ -408,7 +408,7 @@ public abstract class BlockchainTestBase
     /// <summary>
     /// Replays the test's engine payloads through the JSON-RPC service.
     /// </summary>
-    /// <param name="witnessDifferences">Collector for zkEVM witness mismatches found while driving engine_newPayloadWithWitness.</param>
+    /// <param name="witnessDifferences">Collector for zkEVM witness mismatches found while driving engine_newPayloadWithWitnessV*.</param>
     /// <returns>
     /// The last payload status in <see cref="Result{TData}.Data"/>; when the last INVALID payload
     /// carried a validation error, that error in <see cref="Result{TData}.Error"/> (an expected
@@ -432,7 +432,7 @@ public abstract class BlockchainTestBase
                 throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{enginePayload.ForkChoiceUpdatedVersion}'");
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            // Only an unmutated, expected-VALID reference witness exercises engine_newPayloadWithWitness; EIP-8025
+            // Only an unmutated, expected-VALID reference witness exercises engine_newPayloadWithWitnessV*; EIP-8025
             // mutated payloads go through the plain endpoint (their witness is a corrupted reference useful for stateless exec).
             bool expectWitness = enginePayload.ExecutionWitness is not null
                 && enginePayload.ExecutionWitnessMutated != true
@@ -441,7 +441,7 @@ public abstract class BlockchainTestBase
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
-            string npMethod = expectWitness ? "engine_newPayloadWithWitness" : "engine_newPayloadV" + newPayloadVersion;
+            string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, npMethod, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
@@ -463,7 +463,7 @@ public abstract class BlockchainTestBase
                     Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
                     if (witnessResult.ExecutionWitness is null)
                     {
-                        witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitness returned VALID but no witness");
+                        witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitnessV{newPayloadVersion} returned VALID but no witness");
                     }
                     else
                     {
@@ -498,7 +498,7 @@ public abstract class BlockchainTestBase
         {
             ResultWrapper<NewPayloadWithWitnessV1Result> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
             JsonRpcSuccessResponse { Result: NewPayloadWithWitnessV1Result result } => result,
-            _ => throw new AssertionException($"engine_newPayloadWithWitness (V{payloadVersion}) returned unexpected response type {response.GetType().FullName}")
+            _ => throw new AssertionException($"engine_newPayloadWithWitnessV{payloadVersion} returned unexpected response type {response.GetType().FullName}")
         };
 
     private static bool TryGetRpcError(JsonRpcResponse response, out int errorCode, out string? errorMessage)
@@ -626,17 +626,14 @@ public abstract class BlockchainTestBase
         ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
         ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
         ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
-        ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations)Empty: Contract is not deployed\.")),
-        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations)Failed: Contract execution failed\.")),
+        ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations|BuilderDeposits|BuilderExits)Empty: Contract is not deployed\.")),
+        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations|BuilderDeposits|BuilderExits)Failed: Contract execution failed\.")),
         ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),
         ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|Error decoding block access list:")),
         ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Error decoding block access list:")),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
         ("BlockException.INVALID_BAL_EXTRA_ACCOUNT", ValidationErrorRegex(@"Error decoding block access list:.*Account changes were in incorrect order")),
         ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
-        ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
-        // Nethermind currently reports these BAL system-contract failures with the same block access list validation message.
-        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
     ];
 
     private static string[] MapValidationErrorsToEestExceptions(string validationError) =>
