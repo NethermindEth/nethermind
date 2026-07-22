@@ -235,7 +235,7 @@ jobs:
               fi
 
               if ! jq -er 'to_entries | if length != 1 then empty else .[0].value.blocks | if length != 1 then empty else .[0].statelessInputBytes // empty end end' "$block_json" > "$input_hex_file"; then
-                record_failure "$block_number" "$block_hash" "failed to read statelessInputBytes"
+                record_failure "$block_number" "$block_hash" "unsupported EEST fixture shape or missing statelessInputBytes"
                 continue
               fi
 
