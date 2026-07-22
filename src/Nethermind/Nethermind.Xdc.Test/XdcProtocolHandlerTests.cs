@@ -302,10 +302,10 @@ public class XdcProtocolHandlerTests
     }
 
     [Test]
-    public void HandleMessage_XdcMessageWhileSyncing_IsIgnoredWithoutDisconnect()
+    public void HandleMessage_VoteAndTimeoutMsgWhileSyncing_AreIgnoredWithoutDisconnect()
     {
         (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
-            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, _)
             = CreateAll(suggestedAheadOfHead: 900);
         using (handler)
         {
@@ -313,12 +313,35 @@ public class XdcProtocolHandlerTests
 
             handler.HandleMessage(CreatePacket(XdcMessageCode.VoteMsg));
             handler.HandleMessage(CreatePacket(XdcMessageCode.TimeoutMsg));
-            handler.HandleMessage(CreatePacket(XdcMessageCode.SyncInfoMsg));
 
             votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
             timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
-            syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());
             session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_SyncInfoMsgWhileSyncing_IsNeverIgnored()
+    {
+        // SyncInfo is the node's own catch-up path (carries the network's HighestQC/HighestTC) and
+        // already guards itself via VerifySyncInfo, so unlike Vote/Timeout it must never be dropped
+        // by the syncing check - not even while genuinely far behind, as this test's 900-block gap
+        // simulates.
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            _, _, ISyncInfoManager syncInfoManager)
+            = CreateAll(suggestedAheadOfHead: 900);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
+            ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
+            serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
+
+            handler.HandleMessage(syncInfoPacket);
+
+            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
         }
     }
 

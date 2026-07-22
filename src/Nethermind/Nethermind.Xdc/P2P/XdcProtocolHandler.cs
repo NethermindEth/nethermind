@@ -53,8 +53,10 @@ internal class XdcProtocolHandler(
 
         int packetType = message.PacketType;
 
+        // SyncInfo is exempt: it's the node's own catch-up path and already guards itself via
+        // VerifySyncInfo plus a graceful no-op when the referenced block isn't known yet.
         (bool isSyncing, _, _) = blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus);
-        if (isSyncing && XdcMessageCode.IsXdcMessage(packetType))
+        if (isSyncing && packetType is XdcMessageCode.VoteMsg or XdcMessageCode.TimeoutMsg)
         {
             const string ignored = $"XDC message ignored, syncing";
             ReportIn(ignored, size);
