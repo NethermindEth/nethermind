@@ -1,0 +1,102 @@
+name: Nix
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/nix.yml
+      - Directory.Build.props
+      - Directory.Build.targets
+      - Directory.Packages.props
+      - flake.lock
+      - flake.nix
+      - global.json
+      - nix/**
+      - nuget.config
+      - src/Nethermind/**/*.csproj
+      - src/Nethermind/Directory.Build.props
+      - src/Nethermind/Directory.Build.targets
+      - src/Nethermind/Nethermind.Runner/packages.lock.json
+  pull_request:
+    paths:
+      - .github/workflows/nix.yml
+      - Directory.Build.props
+      - Directory.Build.targets
+      - Directory.Packages.props
+      - flake.lock
+      - flake.nix
+      - global.json
+      - nix/**
+      - nuget.config
+      - src/Nethermind/**/*.csproj
+      - src/Nethermind/Directory.Build.props
+      - src/Nethermind/Directory.Build.targets
+      - src/Nethermind/Nethermind.Runner/packages.lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Build and check flake (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
+          - os: macos-latest
+            experimental: true
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Install Nix
+        uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
+      - name: Check flake
+        run: nix flake check --print-build-logs
+
+  lockfile-sync:
+    name: Check NuGet lockfile sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Install Nix
+        uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
+      - name: Disable non-nuget.org feeds
+        run: |
+          dotnet nuget disable source dotnet-tools --configfile nuget.config
+          dotnet nuget disable source nugettest.org --configfile nuget.config
+      - name: Regenerate nuget-deps.json
+        run: |
+          nix build .#nethermind.fetch-deps --out-link fetch-deps --print-build-logs
+          ./fetch-deps regenerated-nuget-deps.json
+      - name: Compare with committed nix/nuget-deps.json
+        run: |
+          if ! diff -u nix/nuget-deps.json regenerated-nuget-deps.json; then
+            {
+              echo "## \`nix/nuget-deps.json\` is out of date"
+              echo "NuGet dependencies changed without regenerating the Nix lockfile."
+              echo "Download the \`regenerated-nuget-deps\` artifact from this run and commit it as \`nix/nuget-deps.json\`, or run:"
+              echo '```'
+              echo "nix build .#nethermind.fetch-deps --out-link result && ./result nix/nuget-deps.json"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Upload regenerated file
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: regenerated-nuget-deps
+          path: regenerated-nuget-deps.json
+          if-no-files-found: ignore
