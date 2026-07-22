@@ -24,7 +24,7 @@ internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, 
 
     public RefCountingMemory? GetLeafBlob(in Stem stem) => reader.GetLeafBlob(stem);
 
-    public void SetTrieNode(in TrieNodeKey key, byte[]? node) => batch.SetTrieNode(key, node);
+    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) => batch.SetTrieNode(key, node?.ToArrayAndRelease());
 
-    public void SetLeafBlob(in Stem stem, byte[]? blob) => batch.SetLeafBlob(stem, blob);
+    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob) => batch.SetLeafBlob(stem, blob?.ToArrayAndRelease());
 }

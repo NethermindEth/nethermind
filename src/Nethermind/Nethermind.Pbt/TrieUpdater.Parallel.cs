@@ -16,7 +16,7 @@ public static partial class TrieUpdater
 {
     // The updater as the executor sees it: the state one thread folds with, the queue it hands its
     // buckets to, and the job it is asked to run. The descent itself is in TrieUpdater.cs.
-    private sealed partial class Updater : IJobRunner<Updater, Updater.BucketJob>, IJobStateProvider<Updater>
+    private sealed partial class Updater : IJobRunner<Updater, Updater.BucketJob>, IJobStateProvider<Updater>, IDisposable
     {
         /// <summary>Below this many stems a batch folds on the calling thread, whatever the concurrency says.</summary>
         /// <remarks>
@@ -58,18 +58,19 @@ public static partial class TrieUpdater
         /// Buffering is what keeps <see cref="IPbtStore"/> a single-threaded interface: only the reads
         /// run concurrently, and nothing writes the store while they do. The two lists need no order
         /// between them — a node key and a stem name different things — and the writes of two threads
-        /// need none either, their key ranges being disjoint. What is buffered is the value's own array
-        /// rather than the buffer it was folded in, which goes back to the pool at the write: holding
-        /// a fold's worth of rentals to the end of it would leave every thread renting fresh ones.
+        /// need none either, their key ranges being disjoint. What is buffered is the value as it was
+        /// folded, lease and all, since a store is free to retain the memory rather than copy it out —
+        /// which does mean a parallel fold holds a rental per write until the flush, and rents fresh
+        /// buffers where the pool runs dry in the meantime.
         /// <para>
-        /// Pooled, and sized for the share of the batch one thread can expect: a fold buffers one entry
-        /// per stem it touches, so the lists are the largest thing it allocates.
+        /// The lists themselves are pooled, and sized for the share of the batch one thread can expect:
+        /// a fold buffers one entry per stem it touches, so they are the largest thing it allocates.
         /// </para>
         /// </remarks>
-        private readonly ArrayPoolList<(TrieNodeKey Key, byte[]? Node)>? _nodeWrites;
+        private readonly ArrayPoolList<(TrieNodeKey Key, RefCountingMemory? Node)>? _nodeWrites;
 
         /// <inheritdoc cref="_nodeWrites"/>
-        private readonly ArrayPoolList<(Stem Stem, byte[]? Blob)>? _blobWrites;
+        private readonly ArrayPoolList<(Stem Stem, RefCountingMemory? Blob)>? _blobWrites;
 
         /// <summary>
         /// The calling thread's updater, which settles what the fold costs — how many threads, how big a
@@ -166,10 +167,18 @@ public static partial class TrieUpdater
             {
                 _executor.Complete();
 
-                // Every thread is quiescent by now: the root frame's wait settled the last job before
-                // this was reached, and a job's completion publishes its writes to whoever waits on it.
-                // A fold that threw keeps none of them.
-                foreach (Updater updater in _executor.States) updater.FlushWrites(folded);
+                try
+                {
+                    // Every thread is quiescent by now: the root frame's wait settled the last job
+                    // before this was reached, and a job's completion publishes its writes to whoever
+                    // waits on it. A fold that threw keeps none of them.
+                    foreach (Updater updater in _executor.States) updater.FlushWrites(folded);
+                }
+                finally
+                {
+                    // the pooled lists go back whatever the replay made of their contents
+                    _executor.Dispose();
+                }
             }
         }
 
@@ -187,10 +196,10 @@ public static partial class TrieUpdater
             return Math.Clamp(Math.Min(requested, affordable), 1, Environment.ProcessorCount);
         }
 
-        private static (ArrayPoolList<(TrieNodeKey, byte[]?)>?, ArrayPoolList<(Stem, byte[]?)>?) WriteBuffers(
+        private static (ArrayPoolList<(TrieNodeKey, RefCountingMemory?)>?, ArrayPoolList<(Stem, RefCountingMemory?)>?) WriteBuffers(
             bool parallel, int capacity) =>
             parallel
-                ? (new ArrayPoolList<(TrieNodeKey, byte[]?)>(capacity), new ArrayPoolList<(Stem, byte[]?)>(capacity))
+                ? (new ArrayPoolList<(TrieNodeKey, RefCountingMemory?)>(capacity), new ArrayPoolList<(Stem, RefCountingMemory?)>(capacity))
                 : (null, null);
 
         /// <summary>
@@ -261,40 +270,54 @@ public static partial class TrieUpdater
             if (error is not null) ExceptionDispatchInfo.Throw(error);
         }
 
-        /// <summary>
-        /// <inheritdoc cref="IPbtStore.SetTrieNode" path="/summary"/> Takes <paramref name="node"/>'s
-        /// lease, copying the value out of it as the store would.
-        /// </summary>
-        /// <remarks>Buffered where the fold is a parallel one — see <see cref="_nodeWrites"/>.</remarks>
+        /// <summary><inheritdoc cref="IPbtStore.SetTrieNode" path="/summary"/></summary>
+        /// <remarks>
+        /// Takes <paramref name="node"/>'s lease, as the store would; where the fold is a parallel one
+        /// the lease is held until the flush rather than handed straight over — see <see cref="_nodeWrites"/>.
+        /// </remarks>
         private void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
         {
-            byte[]? value = node?.ToArrayAndRelease();
-            if (_nodeWrites is null) _store.SetTrieNode(key, value);
-            else _nodeWrites.Add((key, value));
+            if (_nodeWrites is null) _store.SetTrieNode(key, node);
+            else _nodeWrites.Add((key, node));
         }
 
-        /// <summary><inheritdoc cref="SetTrieNode" path="/summary"/></summary>
+        /// <summary><inheritdoc cref="IPbtStore.SetLeafBlob" path="/summary"/></summary>
         /// <remarks><inheritdoc cref="SetTrieNode" path="/remarks"/></remarks>
         private void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
         {
-            byte[]? value = blob?.ToArrayAndRelease();
-            if (_blobWrites is null) _store.SetLeafBlob(stem, value);
-            else _blobWrites.Add((stem, value));
+            if (_blobWrites is null) _store.SetLeafBlob(stem, blob);
+            else _blobWrites.Add((stem, blob));
         }
 
-        /// <summary>Hands the store what this thread buffered, in the order it made the writes, or drops it.</summary>
+        /// <summary>
+        /// Hands the store what this thread buffered, in the order it made the writes — or, where the
+        /// fold threw and the writes are not to be kept, releases the leases it was holding for it.
+        /// </summary>
         private void FlushWrites(bool commit)
         {
             if (_nodeWrites is null) return;
 
-            if (commit)
+            foreach ((TrieNodeKey key, RefCountingMemory? node) in _nodeWrites.AsSpan())
             {
-                foreach ((TrieNodeKey key, byte[]? node) in _nodeWrites.AsSpan()) _store.SetTrieNode(key, node);
-                foreach ((Stem stem, byte[]? blob) in _blobWrites!.AsSpan()) _store.SetLeafBlob(stem, blob);
+                if (commit) _store.SetTrieNode(key, node);
+                else ((IDisposable?)node)?.Dispose();
             }
 
-            _nodeWrites.Dispose();
-            _blobWrites!.Dispose();
+            foreach ((Stem stem, RefCountingMemory? blob) in _blobWrites!.AsSpan())
+            {
+                if (commit) _store.SetLeafBlob(stem, blob);
+                else ((IDisposable?)blob)?.Dispose();
+            }
+
+            _nodeWrites.Clear();
+            _blobWrites.Clear();
+        }
+
+        /// <summary>Returns this thread's write buffers to the pool; the executor disposes every thread's.</summary>
+        public void Dispose()
+        {
+            _nodeWrites?.Dispose();
+            _blobWrites?.Dispose();
         }
 
         /// <summary>Where <paramref name="span"/> starts in <paramref name="array"/>, which it must be a range of.</summary>
