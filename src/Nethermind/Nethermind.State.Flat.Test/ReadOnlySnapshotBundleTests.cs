@@ -74,6 +74,27 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void GetAccounts_UsesSnapshotsAndBatchesOnlyPersistenceMisses()
+    {
+        Address snapshotAddress = TestItem.AddressA;
+        Address persistedAddress = TestItem.AddressB;
+        Account snapshotAccount = TestItem.GenerateIndexedAccount(1);
+        Account persistedAccount = TestItem.GenerateIndexedAccount(2);
+        TrackingPersistenceReader reader = new(persistedAddress, persistedAccount);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(
+            FlatTestHelpers.SnapshotList(MakeSnapshot(c => c.Accounts[new HashedKey<Address>(snapshotAddress)] = snapshotAccount)),
+            reader);
+        Account?[] accounts = new Account?[2];
+
+        bundle.GetAccounts([snapshotAddress, persistedAddress], accounts);
+
+        Assert.That(accounts, Is.EqualTo(new[] { snapshotAccount, persistedAccount }));
+        Assert.That(reader.MultiGetCalls, Is.EqualTo(1));
+        Assert.That(reader.RequestedAddresses, Is.EqualTo(new[] { persistedAddress }));
+    }
+
+    [Test]
     public void DetermineSelfDestructSnapshotIdx_ReturnsHighestIndexWhenSelfDestructed()
     {
         Address address = TestItem.AddressA;
@@ -125,6 +146,37 @@ public class ReadOnlySnapshotBundleTests
 
         // Default SlotValue.ToEvmBytes() is the canonical zero (single 0x00 byte).
         Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
+    }
+
+    [Test]
+    public void GetSlots_UsesSnapshotsAndBatchesOnlyPersistenceMisses()
+    {
+        StorageCell snapshotCell = new(TestItem.AddressA, (UInt256)1);
+        StorageCell persistenceCell = new(TestItem.AddressB, (UInt256)2);
+        StorageCell selfDestructedCell = new(TestItem.AddressC, (UInt256)3);
+        SlotValue snapshotValue = SlotValue.FromSpanWithoutLeadingZero([0x12, 0x34]);
+        SlotValue persistenceValue = SlotValue.FromSpanWithoutLeadingZero([0x56, 0x78]);
+        TrackingStoragePersistenceReader reader = new(persistenceCell, persistenceValue);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(
+            FlatTestHelpers.SnapshotList(MakeSnapshot(c =>
+                c.Storages[new HashedKey<(Address, UInt256)>((snapshotCell.Address, snapshotCell.Index))] = snapshotValue)),
+            reader);
+        byte[]?[] slots = new byte[]?[3];
+
+        bundle.GetSlots(
+            [snapshotCell, persistenceCell, selfDestructedCell],
+            [-1, -1, 0],
+            slots);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0], Is.EqualTo(new byte[] { 0x12, 0x34 }));
+            Assert.That(slots[1], Is.EqualTo(new byte[] { 0x56, 0x78 }));
+            Assert.That(slots[2], Is.Null);
+            Assert.That(reader.MultiGetCalls, Is.EqualTo(1));
+            Assert.That(reader.RequestedCells, Is.EqualTo(new[] { persistenceCell }));
+        }
     }
 
     [Test]
@@ -202,5 +254,66 @@ public class ReadOnlySnapshotBundleTests
         bundle.Dispose(); // tears down for real
 
         Assert.That(() => bundle.GetAccount(TestItem.AddressA), Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    private sealed class TrackingPersistenceReader(Address address, Account account) : IPersistence.IPersistenceReader
+    {
+        public int MultiGetCalls { get; private set; }
+        public Address[]? RequestedAddresses { get; private set; }
+
+        public Account? GetAccount(Address requestedAddress) => requestedAddress == address ? account : null;
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            MultiGetCalls++;
+            RequestedAddresses = addresses.ToArray();
+            for (int i = 0; i < addresses.Length; i++)
+                accounts[i] = GetAccount(addresses[i]);
+        }
+
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public StateId CurrentState => default;
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+        public void Dispose() { }
+    }
+
+    private sealed class TrackingStoragePersistenceReader(StorageCell storageCell, SlotValue slotValue) : IPersistence.IPersistenceReader
+    {
+        public int MultiGetCalls { get; private set; }
+        public StorageCell[]? RequestedCells { get; private set; }
+
+        public Account? GetAccount(Address address) => null;
+
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+        {
+            StorageCell requestedCell = new(address, in slot);
+            if (!requestedCell.Equals(storageCell)) return false;
+            outValue = slotValue;
+            return true;
+        }
+
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<SlotValue> slots, Span<bool> found)
+        {
+            MultiGetCalls++;
+            RequestedCells = storageCells.ToArray();
+            for (int i = 0; i < storageCells.Length; i++)
+                found[i] = TryGetSlot(storageCells[i].Address, storageCells[i].Index, ref slots[i]);
+        }
+
+        public StateId CurrentState => default;
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+        public void Dispose() { }
     }
 }

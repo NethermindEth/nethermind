@@ -20,6 +20,9 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
+    private const int AccountReadBatchSize = 256;
+    private const int StorageReadBatchSize = 256;
+
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -187,63 +190,89 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             ParallelOptions parallelOptions = new() { CancellationToken = token };
 
-            Account?[]? accounts = sink is null ? null : new Account?[accountCount];
+            Account?[] loadedAccounts = new Account?[accountCount];
+            Account?[]? accounts = sink is null ? null : loadedAccounts;
             int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
 
             try
             {
-                // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
+                // Phase 1: account reads + trie warmup + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
-                Parallel.For(0, accountCount, parallelOptions, (i) =>
+                Parallel.ForEach(Partitioner.Create(0, accountCount, AccountReadBatchSize), parallelOptions, range =>
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                    ReadOnlyAccountChanges ac = accountChanges[i];
-                    Address address = ac.Address;
-
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
-                        && _warmer.PushAddressJob(this, address, snapshot))
-                        Interlocked.Increment(ref _outstandingWarmups);
-
-                    ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
-                    int storageChangeCount = storageChanges.Length;
-
-                    Account? account = sink is null && storageChangeCount == 0
-                        ? null
-                        : _snapshotBundle.GetAccount(address);
-
-                    if (sink is not null && sink.StillNeeded(address, out _))
-                        sink.OnAccountRead(address, account);
-
-                    if (account is null) return;
-                    Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-                    if (storageRoot == Keccak.EmptyTreeHash) return;
-
-                    if (storageChangeCount > 0)
+                    int rangeLength = range.Item2 - range.Item1;
+                    Address[] addressesToRead = new Address[rangeLength];
+                    int[] addressIndices = new int[rangeLength];
+                    int addressCount = 0;
+                    for (int i = range.Item1; i < range.Item2; i++)
                     {
-                        FlatStorageTree storageWarmer = new(
-                            this,
-                            _warmer,
-                            _snapshotBundle,
-                            _configuration,
-                            _concurrencyQuota,
-                            storageRoot,
-                            address,
-                            _logManager);
+                        ReadOnlyAccountChanges accountChange = accountChanges[i];
+                        if (sink is null && accountChange.StorageChanges.Length == 0) continue;
 
-                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
-                        {
-                            UInt256 key = slotChanges.Key;
-                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
-                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
-                                Interlocked.Increment(ref _outstandingWarmups);
-                        }
+                        addressesToRead[addressCount] = accountChange.Address;
+                        addressIndices[addressCount] = i;
+                        addressCount++;
                     }
 
-                    if (accounts is not null)
+                    if (addressCount > 0)
                     {
-                        accounts[i] = account;
-                        selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                        Account?[] batchAccounts = new Account?[addressCount];
+                        _snapshotBundle.GetAccounts(addressesToRead.AsSpan(0, addressCount), batchAccounts);
+                        for (int i = 0; i < addressCount; i++)
+                            loadedAccounts[addressIndices[i]] = batchAccounts[i];
+                    }
+
+                    for (int i = range.Item1; i < range.Item2; i++)
+                    {
+                        if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
+
+                        ReadOnlyAccountChanges ac = accountChanges[i];
+                        Address address = ac.Address;
+
+                        if (_snapshotBundle.ShouldQueuePrewarm(address)
+                            && _warmer.PushAddressJob(this, address, snapshot))
+                            Interlocked.Increment(ref _outstandingWarmups);
+
+                        ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
+                        int storageChangeCount = storageChanges.Length;
+
+                        Account? account = loadedAccounts[i];
+
+                        if (sink is not null && sink.StillNeeded(address, out _))
+                            sink.OnAccountRead(address, account);
+
+                        if (account is null) continue;
+                        Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                        if (storageRoot == Keccak.EmptyTreeHash) continue;
+
+                        if (storageChangeCount > 0)
+                        {
+                            FlatStorageTree storageWarmer = new(
+                                this,
+                                _warmer,
+                                _snapshotBundle,
+                                _configuration,
+                                _concurrencyQuota,
+                                storageRoot,
+                                address,
+                                _logManager);
+
+                            foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+                            {
+                                UInt256 key = slotChanges.Key;
+                                if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                                    && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                                    Interlocked.Increment(ref _outstandingWarmups);
+                            }
+                        }
+
+                        if (accounts is not null)
+                        {
+                            accounts[i] = account;
+                            selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                        }
                     }
                 });
 
@@ -294,22 +323,46 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
         // that never see a BAL never allocate the dedicated reader threads.
         WarmReadPool pool = _warmReadPool.Value;
-        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
+        int batchCount = (idx + StorageReadBatchSize - 1) / StorageReadBatchSize;
+        int workers = Math.Min(batchCount, Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64)));
 
-        pool.Run(idx, workers, j =>
+        pool.Run(batchCount, workers, batchIndex =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        }, parallelOptions.CancellationToken);
-    }
 
-    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
-    {
-        StorageCell cell = new(address, in slot);
-        if (!sink.StillNeeded(in cell)) return;
-        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+            int start = batchIndex * StorageReadBatchSize;
+            int end = Math.Min(start + StorageReadBatchSize, idx);
+            int rangeLength = end - start;
+            StorageCell[] storageCells = new StorageCell[rangeLength];
+            int[] selfDestructStateIdxs = new int[rangeLength];
+            int neededCount = 0;
+
+            for (int jobIndex = start; jobIndex < end; jobIndex++)
+            {
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[jobIndex];
+                StorageCell cell = new(address, in slot);
+                if (!sink.StillNeeded(in cell)) continue;
+
+                storageCells[neededCount] = cell;
+                selfDestructStateIdxs[neededCount] = selfDestructIdx;
+                neededCount++;
+            }
+
+            if (neededCount == 0) return;
+
+            byte[]?[] values = new byte[]?[neededCount];
+            _snapshotBundle.GetSlots(
+                storageCells.AsSpan(0, neededCount),
+                selfDestructStateIdxs.AsSpan(0, neededCount),
+                values);
+
+            for (int i = 0; i < neededCount; i++)
+            {
+                StorageCell cell = storageCells[i];
+                byte[]? value = values[i];
+                sink.OnStorageRead(in cell, value is null || value.Length == 0 ? StorageTree.ZeroBytes : value);
+            }
+        }, parallelOptions.CancellationToken);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }

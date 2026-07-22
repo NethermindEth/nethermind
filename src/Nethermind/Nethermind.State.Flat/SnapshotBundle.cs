@@ -101,6 +101,53 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetAccount(address, key);
     }
 
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        GuardDispose();
+
+        if (addresses.Length != accounts.Length)
+            throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+        Address[] missingAddresses = new Address[addresses.Length];
+        int[] missingIndices = new int[addresses.Length];
+        int missingCount = 0;
+
+        for (int addressIndex = 0; addressIndex < addresses.Length; addressIndex++)
+        {
+            Address address = addresses[addressIndex];
+            HashedKey<Address> key = new(address);
+
+            if (_changedAccounts.TryGetValue(key, out Account? account))
+            {
+                accounts[addressIndex] = account;
+                continue;
+            }
+
+            bool found = false;
+            for (int snapshotIndex = _snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (!_snapshots[snapshotIndex].TryGetAccount(key, out account)) continue;
+
+                accounts[addressIndex] = account;
+                found = true;
+                break;
+            }
+
+            if (found) continue;
+
+            missingAddresses[missingCount] = address;
+            missingIndices[missingCount] = addressIndex;
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        Account?[] missingAccounts = new Account?[missingCount];
+        _readOnlySnapshotBundle.GetAccounts(missingAddresses.AsSpan(0, missingCount), missingAccounts);
+        for (int i = 0; i < missingCount; i++)
+            accounts[missingIndices[i]] = missingAccounts[i];
+    }
+
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
         HashedKey<Address> key = new(address);
@@ -148,6 +195,73 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+    }
+
+    public void GetSlots(
+        ReadOnlySpan<StorageCell> storageCells,
+        ReadOnlySpan<int> selfDestructStateIdxs,
+        Span<byte[]?> slots)
+    {
+        GuardDispose();
+
+        if (storageCells.Length != selfDestructStateIdxs.Length || storageCells.Length != slots.Length)
+            throw new ArgumentException("Storage cells, self-destruct indices, and slots must have the same length.", nameof(slots));
+
+        StorageCell[] missingCells = new StorageCell[storageCells.Length];
+        int[] missingSelfDestructStateIdxs = new int[storageCells.Length];
+        int[] missingIndices = new int[storageCells.Length];
+        int missingCount = 0;
+
+        for (int cellIndex = 0; cellIndex < storageCells.Length; cellIndex++)
+        {
+            StorageCell cell = storageCells[cellIndex];
+            HashedKey<(Address, UInt256)> key = new((cell.Address, cell.Index));
+            int selfDestructStateIdx = selfDestructStateIdxs[cellIndex];
+
+            if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
+            {
+                slots[cellIndex] = slotValue?.ToEvmBytes();
+                continue;
+            }
+
+            if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
+                continue;
+
+            int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+            bool resolved = false;
+            for (int snapshotIndex = _snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (_snapshots[snapshotIndex].TryGetStorage(key, out slotValue))
+                {
+                    slots[cellIndex] = slotValue?.ToEvmBytes();
+                    resolved = true;
+                    break;
+                }
+
+                if (snapshotIndex <= currentBundleSelfDestructIdx)
+                {
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if (resolved) continue;
+
+            missingCells[missingCount] = cell;
+            missingSelfDestructStateIdxs[missingCount] = selfDestructStateIdx;
+            missingIndices[missingCount] = cellIndex;
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        byte[]?[] missingSlots = new byte[]?[missingCount];
+        _readOnlySnapshotBundle.GetSlots(
+            missingCells.AsSpan(0, missingCount),
+            missingSelfDestructStateIdxs.AsSpan(0, missingCount),
+            missingSlots);
+        for (int i = 0; i < missingCount; i++)
+            slots[missingIndices[i]] = missingSlots[i];
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)

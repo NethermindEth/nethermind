@@ -160,6 +160,48 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return account;
         }
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            bool current = parent.IsCurrent(generation);
+            if (!current)
+            {
+                inner.GetAccounts(addresses, accounts);
+                return;
+            }
+
+            Address[] missingAddresses = new Address[addresses.Length];
+            int[] missingIndices = new int[addresses.Length];
+            int missingCount = 0;
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                Address address = addresses[i];
+                if (parent._accounts.TryGetValue(address, out Account? cached))
+                {
+                    accounts[i] = cached;
+                    continue;
+                }
+
+                missingAddresses[missingCount] = address;
+                missingIndices[missingCount] = i;
+                missingCount++;
+            }
+
+            if (missingCount == 0) return;
+
+            Account?[] missingAccounts = new Account?[missingCount];
+            inner.GetAccounts(missingAddresses.AsSpan(0, missingCount), missingAccounts);
+            for (int i = 0; i < missingCount; i++)
+            {
+                Address address = missingAddresses[i];
+                Account? account = missingAccounts[i];
+                accounts[missingIndices[i]] = account;
+                parent.TryCacheAccount(address, account, generation);
+            }
+        }
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             (Address, UInt256) key = (address, slot);
@@ -173,6 +215,53 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool found = inner.TryGetSlot(address, slot, ref outValue);
             if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
             return found;
+        }
+
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<SlotValue> slots, Span<bool> found)
+        {
+            if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
+                throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
+
+            bool current = parent.IsCurrent(generation);
+            if (!current)
+            {
+                inner.GetSlots(storageCells, slots, found);
+                return;
+            }
+
+            StorageCell[] missingCells = new StorageCell[storageCells.Length];
+            int[] missingIndices = new int[storageCells.Length];
+            int missingCount = 0;
+            for (int i = 0; i < storageCells.Length; i++)
+            {
+                StorageCell cell = storageCells[i];
+                if (parent._slots.TryGetValue((cell.Address, cell.Index), out CachedSlot cached))
+                {
+                    found[i] = cached.Found;
+                    if (cached.Found) slots[i] = cached.Value;
+                    continue;
+                }
+
+                missingCells[missingCount] = cell;
+                missingIndices[missingCount] = i;
+                missingCount++;
+            }
+
+            if (missingCount == 0) return;
+
+            SlotValue[] missingSlots = new SlotValue[missingCount];
+            bool[] missingFound = new bool[missingCount];
+            inner.GetSlots(missingCells.AsSpan(0, missingCount), missingSlots, missingFound);
+            for (int i = 0; i < missingCount; i++)
+            {
+                StorageCell cell = missingCells[i];
+                SlotValue slot = missingSlots[i];
+                bool slotFound = missingFound[i];
+                int destinationIndex = missingIndices[i];
+                slots[destinationIndex] = slot;
+                found[destinationIndex] = slotFound;
+                parent.TryCacheSlot((cell.Address, cell.Index), new CachedSlot(slotFound, slotFound ? slot : default), generation);
+            }
         }
 
         public StateId CurrentState => inner.CurrentState;

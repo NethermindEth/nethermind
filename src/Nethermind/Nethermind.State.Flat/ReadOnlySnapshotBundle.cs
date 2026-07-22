@@ -77,6 +77,53 @@ public sealed class ReadOnlySnapshotBundle(
         return account;
     }
 
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        GuardDispose();
+
+        if (addresses.Length != accounts.Length)
+            throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+        Address[] missingAddresses = new Address[addresses.Length];
+        int[] missingIndices = new int[addresses.Length];
+        int missingCount = 0;
+
+        for (int addressIndex = 0; addressIndex < addresses.Length; addressIndex++)
+        {
+            Address address = addresses[addressIndex];
+            HashedKey<Address> key = new(address);
+            bool found = false;
+
+            for (int snapshotIndex = snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (!snapshots[snapshotIndex].TryGetAccount(key, out Account? account)) continue;
+
+                accounts[addressIndex] = account;
+                found = true;
+                break;
+            }
+
+            if (found) continue;
+
+            if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
+            {
+                accounts[addressIndex] = persistedAccount;
+                continue;
+            }
+
+            missingAddresses[missingCount] = address;
+            missingIndices[missingCount] = addressIndex;
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        Account?[] missingAccounts = new Account?[missingCount];
+        persistenceReader.GetAccounts(missingAddresses.AsSpan(0, missingCount), missingAccounts);
+        for (int i = 0; i < missingCount; i++)
+            accounts[missingIndices[i]] = missingAccounts[i];
+    }
+
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
         HashedKey<Address> key = new(address);
@@ -91,6 +138,71 @@ public sealed class ReadOnlySnapshotBundle(
 
     public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
         GetSlot(selfDestructStateIdx, (address, index));
+
+    public void GetSlots(
+        ReadOnlySpan<StorageCell> storageCells,
+        ReadOnlySpan<int> selfDestructStateIdxs,
+        Span<byte[]?> slots)
+    {
+        GuardDispose();
+
+        if (storageCells.Length != selfDestructStateIdxs.Length || storageCells.Length != slots.Length)
+            throw new ArgumentException("Storage cells, self-destruct indices, and slots must have the same length.", nameof(slots));
+
+        StorageCell[] missingCells = new StorageCell[storageCells.Length];
+        int[] missingIndices = new int[storageCells.Length];
+        int missingCount = 0;
+
+        for (int cellIndex = 0; cellIndex < storageCells.Length; cellIndex++)
+        {
+            StorageCell cell = storageCells[cellIndex];
+            HashedKey<(Address, UInt256)> key = new((cell.Address, cell.Index));
+            int selfDestructStateIdx = selfDestructStateIdxs[cellIndex];
+            bool resolved = false;
+
+            for (int snapshotIndex = snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (snapshots[snapshotIndex].TryGetStorage(key, out SlotValue? slotValue))
+                {
+                    slots[cellIndex] = slotValue?.ToEvmBytes();
+                    resolved = true;
+                    break;
+                }
+
+                if (_persistedSnapshotCount + snapshotIndex <= selfDestructStateIdx)
+                {
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if (resolved) continue;
+
+            long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+            if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(
+                cell.Address,
+                cell.Index,
+                selfDestructStateIdx,
+                sw,
+                out byte[]? persistedSlot))
+            {
+                slots[cellIndex] = persistedSlot;
+                continue;
+            }
+
+            missingCells[missingCount] = cell;
+            missingIndices[missingCount] = cellIndex;
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        SlotValue[] missingSlots = new SlotValue[missingCount];
+        bool[] missingFound = new bool[missingCount];
+        persistenceReader.GetSlots(missingCells.AsSpan(0, missingCount), missingSlots, missingFound);
+        for (int i = 0; i < missingCount; i++)
+            slots[missingIndices[i]] = missingSlots[i].ToEvmBytes();
+    }
 
     public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
     {

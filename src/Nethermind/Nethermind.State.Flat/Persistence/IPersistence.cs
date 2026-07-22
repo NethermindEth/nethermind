@@ -28,9 +28,31 @@ public interface IPersistence
     {
         Account? GetAccount(Address address);
 
+        void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            for (int i = 0; i < addresses.Length; i++)
+                accounts[i] = GetAccount(addresses[i]);
+        }
+
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+
+        void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<SlotValue> slots, Span<bool> found)
+        {
+            if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
+                throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
+
+            for (int i = 0; i < storageCells.Length; i++)
+            {
+                StorageCell cell = storageCells[i];
+                found[i] = TryGetSlot(cell.Address, cell.Index, ref slots[i]);
+            }
+        }
+
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
