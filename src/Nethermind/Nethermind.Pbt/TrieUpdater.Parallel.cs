@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
@@ -43,6 +44,12 @@ public static partial class TrieUpdater
         /// </summary>
         private const int TargetJobsPerWorker = 16;
 
+        /// <summary>Bounds on <see cref="WriteBufferCapacity"/>: enough that a small fold never grows, capped so a huge one does not rent per worker what only one of them will fill.</summary>
+        private const int MinWriteBufferCapacity = 64;
+
+        /// <inheritdoc cref="MinWriteBufferCapacity"/>
+        private const int MaxWriteBufferCapacity = 4096;
+
         private readonly Worker[] _workers;
         private bool _done;
 
@@ -62,6 +69,8 @@ public static partial class TrieUpdater
             MinSpawnEntries = workerCount == 1
                 ? int.MaxValue
                 : Math.Max(HardMinimumStems, changes.Count / workerCount / TargetJobsPerWorker);
+
+            WriteBufferCapacity = Math.Clamp(changes.Count / workerCount, MinWriteBufferCapacity, MaxWriteBufferCapacity);
 
             _workers = new Worker[workerCount];
             for (int index = 0; index < workerCount; index++) _workers[index] = new Worker(this, index);
@@ -86,6 +95,13 @@ public static partial class TrieUpdater
         public int MinSpawnEntries { get; }
 
         public bool IsParallel => _workers.Length > 1;
+
+        /// <summary>
+        /// What one worker's buffered writes start out sized for: an even share of the batch, since a
+        /// fold buffers a leaf blob per stem it touches. A worker handed more than its share grows into
+        /// the pool rather than out of it.
+        /// </summary>
+        public int WriteBufferCapacity { get; }
 
         /// <summary>Whether the fold has finished, which is what the stealing workers exit on.</summary>
         public bool IsDone => Volatile.Read(ref _done);
@@ -186,11 +202,17 @@ public static partial class TrieUpdater
         /// need none either, their key ranges being disjoint. What is buffered is the value's own array
         /// rather than the buffer it was folded in, which goes back to the pool at the write: holding
         /// a fold's worth of rentals to the end of it would leave every worker renting fresh ones.
+        /// <para>
+        /// Pooled, and sized for the share of the batch this worker can expect: a fold buffers one entry
+        /// per stem it touches, so the lists are the largest thing it allocates.
+        /// </para>
         /// </remarks>
-        private readonly List<(TrieNodeKey Key, byte[]? Node)>? _nodeWrites = updater.IsParallel ? [] : null;
+        private readonly ArrayPoolList<(TrieNodeKey Key, byte[]? Node)>? _nodeWrites =
+            updater.IsParallel ? new ArrayPoolList<(TrieNodeKey, byte[]?)>(updater.WriteBufferCapacity) : null;
 
         /// <inheritdoc cref="_nodeWrites"/>
-        private readonly List<(Stem Stem, byte[]? Blob)>? _blobWrites = updater.IsParallel ? [] : null;
+        private readonly ArrayPoolList<(Stem Stem, byte[]? Blob)>? _blobWrites =
+            updater.IsParallel ? new ArrayPoolList<(Stem, byte[]?)>(updater.WriteBufferCapacity) : null;
 
         /// <summary>Where this worker's queue stands, which a frame takes as a mark before spawning.</summary>
         private long QueueMark => _queue?.Head ?? 0;
@@ -389,12 +411,12 @@ public static partial class TrieUpdater
 
             if (commit)
             {
-                foreach ((TrieNodeKey key, byte[]? node) in _nodeWrites) updater.Store.SetTrieNode(key, node);
-                foreach ((Stem stem, byte[]? blob) in _blobWrites!) updater.Store.SetLeafBlob(stem, blob);
+                foreach ((TrieNodeKey key, byte[]? node) in _nodeWrites.AsSpan()) updater.Store.SetTrieNode(key, node);
+                foreach ((Stem stem, byte[]? blob) in _blobWrites!.AsSpan()) updater.Store.SetLeafBlob(stem, blob);
             }
 
-            _nodeWrites.Clear();
-            _blobWrites!.Clear();
+            _nodeWrites.Dispose();
+            _blobWrites!.Dispose();
         }
 
         /// <summary>Where <paramref name="span"/> starts in <paramref name="array"/>, which it must be a range of.</summary>
