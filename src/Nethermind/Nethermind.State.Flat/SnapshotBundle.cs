@@ -34,14 +34,6 @@ public sealed class SnapshotBundle : IDisposable
     // Notably, it holds loaded caches from trie warmer.
     private TransientResource _transientResource = null!;
 
-    // Ambient per-job capture of the pinned transient resource. A warmer traversal runs synchronously
-    // on one thread and reads the transient once per node through a shared adapter that cannot carry a
-    // parameter. The owning job pins the transient once (see EnterWarmerTransientScope) and parks it here,
-    // so the per-node reads use the pinned reference directly with no per-node lease atomics. The owner
-    // reference gates the slot so a foreign bundle can never read another bundle's capture.
-    [ThreadStatic]
-    private static (SnapshotBundle Owner, TransientResource Resource) t_warmerJobCapture;
-
     internal SnapshotPooledList _snapshots;
     private readonly ITrieNodeCache _trieNodeCache;
     private bool _isDisposed;
@@ -187,17 +179,7 @@ public sealed class SnapshotBundle : IDisposable
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
     {
         // The warmer never reads the recyclable _snapshots; it warms nodes from persistence into the
-        // per-job-pinned _transientResource. The warm job holds a ReadOnlySnapshotBundle lease
-        // (TryLeaseReadOnlyBundle) covering the persistence reads and pins the transient via
-        // EnterWarmerTransientScope for the whole traversal.
-        (SnapshotBundle owner, TransientResource resource) = t_warmerJobCapture;
-        if (ReferenceEquals(owner, this))
-        {
-            // The enclosing warmer job already pinned the transient for its whole traversal.
-            return WarmUpStateNode(resource, path, hash);
-        }
-
-        // No active per-job capture on this thread: pin the transient per read while the bundle is live,
+        // _transientResource. Pin the transient per read (lease + ABA re-check) while the bundle is live,
         // else fall back to a persistence-only read (the bundle is being torn down).
         TransientResource? transientResource = TryLeaseTransientResourceForWarmer();
         if (transientResource is null)
@@ -253,37 +235,6 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             spinWait.SpinOnce();
-        }
-    }
-
-    /// <summary>
-    /// Pins the transient resource once for the whole duration of a trie-warmer traversal and parks it in
-    /// <see cref="t_warmerJobCapture"/>, so the per-node warmer reads below skip the per-node lease atomics
-    /// and read the pinned resource directly. The single acquire keeps the ABA identity re-check; the reader
-    /// lease keeps the captured resource alive across a concurrent <see cref="SwapTransientResource"/> until
-    /// the returned handle is disposed. When the bundle is being torn down the capture is left unset and the
-    /// per-node reads fall back to a persistence-only read.
-    /// </summary>
-    internal WarmerTransientLease EnterWarmerTransientScope()
-    {
-        TransientResource? captured = TryLeaseTransientResourceForWarmer();
-        (SnapshotBundle Owner, TransientResource Resource) previous = t_warmerJobCapture;
-        if (captured is not null) t_warmerJobCapture = (this, captured);
-        // Invariant: the per-node warmer's in-place GetOrAdd into this captured resource may race a
-        // concurrent Commit->PopulateTrieNodeCache enumeration of the same shards. Tolerated by design --
-        // a torn tuple read yields at worst a misplaced/lost cache entry (Keccak-validated on read -> DB
-        // fallback), never a wrong node, and the lease pins the resource so the shards are not reallocated.
-        return new WarmerTransientLease(captured, previous);
-    }
-
-    internal readonly struct WarmerTransientLease(
-        TransientResource? captured,
-        (SnapshotBundle Owner, TransientResource Resource) previous) : IDisposable
-    {
-        public void Dispose()
-        {
-            t_warmerJobCapture = previous;
-            captured?.ReleaseLease();
         }
     }
 
@@ -349,15 +300,8 @@ public sealed class SnapshotBundle : IDisposable
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
     {
         // Persistence-only external find, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
-        (SnapshotBundle owner, TransientResource resource) = t_warmerJobCapture;
-        if (ReferenceEquals(owner, this))
-        {
-            // The enclosing warmer job already pinned the transient for its whole traversal.
-            return WarmUpStorageNode(resource, address, path, hash);
-        }
-
-        // No active per-job capture on this thread: pin the transient per read while the bundle is live,
-        // else fall back to a persistence-only read (the bundle is being torn down).
+        // Pin the transient per read (lease + ABA re-check) while the bundle is live, else fall back
+        // to a persistence-only read (the bundle is being torn down).
         TransientResource? transientResource = TryLeaseTransientResourceForWarmer();
         if (transientResource is null)
         {
