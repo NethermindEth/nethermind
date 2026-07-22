@@ -308,20 +308,29 @@ public class SnapServerTest
     }
 
     [Test]
-    public void TestGetTrieNode_Root()
+    public void TestGetTrieNode_RootAndShortAccountPath()
     {
         using ISnapServerContext context = CreateContext();
-        FillWithTestAccounts(context);
+        using (IWriteBatch batch = context.BeginWriteBatch())
+        {
+            batch.SetAccount(new Hash256("0100000000000000000000000000000000000000000000000000000000000000"), Build.An.Account.WithBalance(0).TestObject);
+            batch.SetAccount(new Hash256("0110000000000000000000000000000000000000000000000000000000000000"), Build.An.Account.WithBalance(1).TestObject);
+        }
 
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
             new PathGroup()
             {
                 Group = [[]]
+            },
+            new PathGroup()
+            {
+                Group = [[1], []]
             }
         ]);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
         Assert.That(result.Count, Is.EqualTo(1));
+        Assert.That(ValueKeccak.Compute(result[0]), Is.EqualTo(context.RootHash));
     }
 
     [Test]

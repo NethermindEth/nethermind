@@ -352,7 +352,7 @@ public abstract class VirtualMachineTestsBase
 
     protected void AssertStorage(UInt256 address, Hash256 value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
 
-    protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray()), "storage");
+    protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.PadLeft(32)), "storage");
 
     protected void AssertStorage(UInt256 address, BigInteger expectedValue)
     {

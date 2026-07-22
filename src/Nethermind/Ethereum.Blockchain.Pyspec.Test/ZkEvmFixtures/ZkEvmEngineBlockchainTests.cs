@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmFixtures;
 
 // zkEVM witness assertion over the Engine API (blockchain_tests_engine) path. Per-payload dispatch between
-// engine_newPayloadWithWitness and the plain endpoint lives in BlockchainTestBase.RunNewPayloads.
+// engine_newPayloadWithWitnessV* and the plain endpoint lives in BlockchainTestBase.RunNewPayloads.
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public abstract class ZkEvmEngineBlockchainTestFixture : PyspecLinuxX64BlockchainFixture
