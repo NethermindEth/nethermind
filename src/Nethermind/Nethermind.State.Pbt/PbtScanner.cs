@@ -72,9 +72,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         await ScanColumn(PbtColumns.AccountTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Account), report, workerCount, cancellationToken);
         await ScanColumn(PbtColumns.CodeTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Code), report, workerCount, cancellationToken);
         await ScanColumn(PbtColumns.StorageTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Storage), report, workerCount, cancellationToken);
-        await ScanColumn(PbtColumns.AccountLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.AccountLeaves), report, workerCount, cancellationToken);
-        await ScanColumn(PbtColumns.CodeLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.CodeLeaves), report, workerCount, cancellationToken);
-        await ScanColumn(PbtColumns.StorageLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.StorageLeaves), report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.AccountLeaves, leafBounds, static (report, key, value) => ScanLeafBlob(value, key.Length, report.AccountLeaves), report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.CodeLeaves, leafBounds, static (report, key, value) => ScanLeafBlob(value, key.Length, report.CodeLeaves), report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.StorageLeaves, leafBounds, static (report, key, value) => ScanLeafBlob(value, key.Length, report.StorageLeaves), report, workerCount, cancellationToken);
 
         return report;
     }
@@ -189,7 +189,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         // the key is the node's position: the zero-padded path, then the depth byte
         int depth = key[Stem.Length];
 
-        ScanTrieNode(value, depth, partition, report);
+        ScanTrieNode(value, key.Length, depth, partition, report);
     };
 
     /// <summary>
@@ -197,9 +197,15 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     /// off it, and for a wrapper the children one group below it, with their own runs — so every
     /// histogram here reads as it did before they shared a blob.
     /// </summary>
-    private static void ScanTrieNode(ReadOnlySpan<byte> value, int depth, PbtTreePartition partition, PbtScanReport report)
+    /// <remarks>
+    /// <paramref name="keyBytes"/> is counted for this blob alone, as the nodes riding in it — a run, a
+    /// wrapped child — are precisely the ones that cost no key of their own.
+    /// </remarks>
+    private static void ScanTrieNode(ReadOnlySpan<byte> value, int keyBytes, int depth, PbtTreePartition partition, PbtScanReport report)
     {
         PbtScanReport.TrieNodeStats stats = report[depth == 0 ? PbtTreePartition.Root : partition];
+        stats.BlobCount++;
+        stats.KeyBytes += keyBytes;
 
         PbtTrieNodeWrapper wrapper = PbtTrieNodeWrapper.Decode(value, out PbtTrieNodeGroup group);
         ReadOnlySpan<byte> groupBytes = value[wrapper.Group];
@@ -371,7 +377,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     /// post-order run, so the leaf count comes from the footer bitmap and the internals are whatever
     /// the run holds beyond them.
     /// </remarks>
-    private static void ScanLeafBlob(ReadOnlySpan<byte> blob, PbtScanReport.LeafColumnStats stats)
+    private static void ScanLeafBlob(ReadOnlySpan<byte> blob, int keyBytes, PbtScanReport.LeafColumnStats stats)
     {
         TwoLevelBitmapReader reader = TwoLevelBitmapReader.FromBlob(blob, out ReadOnlySpan<byte> entries);
         Span<byte> bitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
@@ -382,6 +388,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
         stats.BlobCount++;
         stats.Bytes += blob.Length;
+        stats.KeyBytes += keyBytes;
         stats.LeafCount += leaves;
         stats.IntermediateNodeCount += entries.Length / StemLeafBlob.ValueLength - leaves;
         stats.BlobsByLeafCount[leaves]++;
@@ -455,6 +462,8 @@ public sealed class PbtScanReport
     public long ChainCount => Sum(static stats => stats.ChainCount);
     public long StemCount => Sum(static stats => stats.StemCount);
     public long TrieNodeBytes => Sum(static stats => stats.GroupBytes + stats.ChainBytes + stats.WrapperBytes);
+    public long TrieNodeBlobCount => Sum(static stats => stats.BlobCount);
+    public long TrieNodeKeyBytes => Sum(static stats => stats.KeyBytes);
     public long WrapperCount => Sum(static stats => stats.WrapperCount);
     public long WrappedChildCount => Sum(static stats => stats.WrappedChildCount);
     public long InterleaveSkippedNodes => Sum(static stats => stats.InterleaveSkippedNodes);
@@ -501,6 +510,12 @@ public sealed class PbtScanReport
         public long StemCount { get; internal set; }
         public long GroupBytes { get; internal set; }
         public long ChainBytes { get; internal set; }
+
+        /// <summary>Stored entries, which is what the nodes above cost the store in keys and lookups.</summary>
+        public long BlobCount { get; internal set; }
+
+        /// <summary>The keys of those entries, a cost the value totals do not see.</summary>
+        public long KeyBytes { get; internal set; }
 
         /// <summary>Blobs holding their children's blobs alongside their own group.</summary>
         public long WrapperCount { get; internal set; }
@@ -559,6 +574,8 @@ public sealed class PbtScanReport
             StemCount += other.StemCount;
             GroupBytes += other.GroupBytes;
             ChainBytes += other.ChainBytes;
+            BlobCount += other.BlobCount;
+            KeyBytes += other.KeyBytes;
             WrapperCount += other.WrapperCount;
             WrappedChildCount += other.WrappedChildCount;
             WrapperBytes += other.WrapperBytes;
@@ -584,6 +601,9 @@ public sealed class PbtScanReport
         public long BlobCount { get; internal set; }
         public long Bytes { get; internal set; }
 
+        /// <summary>The stems those blobs are keyed by, a cost <see cref="Bytes"/> does not see.</summary>
+        public long KeyBytes { get; internal set; }
+
         /// <summary>Present leaves across every blob: the stored slots, code chunks or header fields.</summary>
         public long LeafCount { get; internal set; }
 
@@ -600,6 +620,7 @@ public sealed class PbtScanReport
         {
             BlobCount += other.BlobCount;
             Bytes += other.Bytes;
+            KeyBytes += other.KeyBytes;
             LeafCount += other.LeafCount;
             IntermediateNodeCount += other.IntermediateNodeCount;
             LegacyBlobCount += other.LegacyBlobCount;
@@ -616,7 +637,7 @@ public sealed class PbtScanReport
         report.AppendLine();
 
         report.AppendLine($"Totals: {GroupCount + ChainCount:N0} trie nodes ({TrieNodeBytes:N0} bytes), {GroupCount:N0} groups, {ChainCount:N0} chains, {StemCount:N0} stems");
-        report.AppendLine($"Stored in {GroupCount - WrappedChildCount:N0} blobs: every chain rides in the group above it, and {WrapperCount:N0} groups wrap {WrappedChildCount:N0} more");
+        report.AppendLine($"Stored in {TrieNodeBlobCount:N0} blobs keyed by {TrieNodeKeyBytes:N0} bytes: every chain rides in the group above it, and {WrapperCount:N0} groups wrap {WrappedChildCount:N0} more");
         report.AppendLine($"Root records {RootSubtreeStemCount:N0} stems for its subtree ({(StemCountAgrees ? "agrees" : "MISMATCH")})");
         report.AppendLine();
 
@@ -649,6 +670,7 @@ public sealed class PbtScanReport
 
         report.AppendLine($"--- {partition} ---");
         report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems");
+        report.AppendLine($"  in {stats.BlobCount:N0} blobs, whose keys take a further {stats.KeyBytes:N0} bytes");
         if (stats.WrapperCount != 0)
         {
             report.AppendLine($"  {stats.WrapperCount:N0} of those blobs also hold {stats.WrappedChildCount:N0} of those nodes, for {stats.WrapperBytes:N0} bytes of framing");
@@ -707,7 +729,7 @@ public sealed class PbtScanReport
     private static void AppendLeafColumn(StringBuilder report, string title, LeafColumnStats stats)
     {
         report.AppendLine($"--- {title} ---");
-        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.LegacyBlobCount:N0} legacy");
+        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes plus {stats.KeyBytes:N0} of keys, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.LegacyBlobCount:N0} legacy");
         if (stats.BlobCount == 0)
         {
             report.AppendLine();
