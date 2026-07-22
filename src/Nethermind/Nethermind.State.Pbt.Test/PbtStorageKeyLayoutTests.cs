@@ -38,7 +38,7 @@ public class PbtStorageKeyLayoutTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db);
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
         {
             batch.SetSlot(TestItem.AddressA, slot, Word(0xAB));
         }
@@ -54,7 +54,7 @@ public class PbtStorageKeyLayoutTests
         ValueHash256 treeKey = PbtKeyDerivation.StorageKey(TestItem.AddressA, slot);
         Assert.That(db.GetColumnDb(PbtColumns.Storage)[treeKey.Bytes.ToArray()], Is.Not.Null);
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, TestItem.KeccakA.ValueHash256), new StateId(2, TestItem.KeccakB.ValueHash256), WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, TestItem.KeccakA.ValueHash256), new StateId(2, TestItem.KeccakB.ValueHash256), default, WriteFlags.None))
         {
             batch.SetSlot(TestItem.AddressA, slot, default);
         }
@@ -80,7 +80,7 @@ public class PbtStorageKeyLayoutTests
         UInt256[] slots = [5, 70, 1000, 63, 64, 0, 100_000];
 
         List<ValueHash256> written = [];
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
         {
             foreach (Address address in addresses)
             {
@@ -119,7 +119,7 @@ public class PbtStorageKeyLayoutTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db);
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
         {
             batch.SetSlot(TestItem.AddressA, 1, Word(0xAB));
         }

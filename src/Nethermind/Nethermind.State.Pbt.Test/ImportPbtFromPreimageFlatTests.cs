@@ -25,6 +25,10 @@ public class ImportPbtFromPreimageFlatTests
 {
     private const ulong SourceBlock = 7;
 
+    /// <summary>The root the source's header claims, which the import must carry over as the key of the state it builds.</summary>
+    /// <remarks>Deliberately unrelated to any tree the fixtures fold to, so an assertion on it cannot pass by coincidence.</remarks>
+    private static readonly Hash256 SourceStateRoot = TestItem.KeccakA;
+
     // 0 leaves the built-in window size, so the whole import folds as one window; the small values
     // force many windows, which the stem-ordered column scan must fold to the very same root
     [TestCase(0)]
@@ -51,7 +55,7 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
             // a contract with storage carries a non-empty storage root in a real flat db, which is what
@@ -78,7 +82,8 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, PbtReferenceModel.Root(model))));
+        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
+        Assert.That(reader.CurrentTreeRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
         Assert.That(reader.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
         Assert.That(reader.GetAccount(TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(reader.GetAccount(TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
@@ -103,7 +108,7 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
             batch.SetAccount(TestItem.AddressB, new Account(2, 200).WithChangedStorageRoot(TestItem.KeccakA));
@@ -120,7 +125,8 @@ public class ImportPbtFromPreimageFlatTests
 
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, PbtReferenceModel.Root(model))));
+        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
+        Assert.That(reader.CurrentTreeRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
 
     /// <summary>
@@ -148,7 +154,7 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(first, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
             batch.SetAccount(second, new Account(2, 200).WithChangedStorageRoot(TestItem.KeccakB));
@@ -167,7 +173,8 @@ public class ImportPbtFromPreimageFlatTests
 
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, PbtReferenceModel.Root(model))));
+        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
+        Assert.That(reader.CurrentTreeRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
         Assert.That(EvmWordSlot.AsReadOnlySpan(reader.GetSlot(first, 1000)).ToArray(), Is.EqualTo(((UInt256)0x22).ToBigEndian()));
         Assert.That(EvmWordSlot.AsReadOnlySpan(reader.GetSlot(second, 1000)).ToArray(), Is.EqualTo(((UInt256)0x44).ToBigEndian()));
     }
@@ -192,7 +199,7 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
             batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedStorageRoot(TestItem.KeccakA));
@@ -211,7 +218,8 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
             using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-            return reader.CurrentState.StateRoot;
+            Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
+            return reader.CurrentTreeRoot;
         }
 
         ValueHash256 first = await Import();
@@ -228,7 +236,7 @@ public class ImportPbtFromPreimageFlatTests
     {
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
             // two storage-zone slots in the same 256-block: 100>>8 == 101>>8 == 0, so they share a stem
@@ -255,7 +263,7 @@ public class ImportPbtFromPreimageFlatTests
     {
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
         }
@@ -264,7 +272,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb);
         ValueHash256 existingRoot = new(Keccak.Compute("existing").Bytes);
-        using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), WriteFlags.None)) { }
+        using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), existingRoot, WriteFlags.None)) { }
 
         RecordingExitSource exitSource = new();
         ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);

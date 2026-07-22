@@ -158,4 +158,56 @@ public class PbtDbManagerTests
         // the open scope keeps serving through its leased layers
         Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)500));
     }
+
+    /// <summary>
+    /// The whole point of the header-keyed state: a node restarting on a persisted database looks its
+    /// state up by the root its header carries, and still folds the next block on the tree root it
+    /// actually left off at.
+    /// </summary>
+    [Test]
+    public async Task PersistedState_IsKeyedByTheHeaderRoot_WithTheTreeRootRecordedBesideIt()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtTestChildHeaders childHeaders = new();
+        BlockHeader first;
+        ValueHash256 treeRoot;
+
+        await using (PbtTestContext ctx = new(db, childHeaders: childHeaders))
+        {
+            // block 0 has no header to echo, so its own tree root becomes the genesis header's claim
+            BlockHeader genesis;
+            using (IWorldStateScopeProvider.IScope genesisScope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+            {
+                genesis = Header(0, CommitBlock(genesisScope, 0, 1));
+            }
+
+            first = childHeaders.Add(genesis, TestItem.KeccakA);
+            using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(genesis, new LocalMetrics()))
+            {
+                Assert.That(CommitBlock(scope, 1, 100), Is.EqualTo(TestItem.KeccakA), "the block reports the root its header claims");
+            }
+
+            using (PbtReadOnlySnapshotBundle bundle = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(first)))
+            {
+                treeRoot = bundle.TreeRoot;
+            }
+
+            Assert.That(treeRoot, Is.Not.EqualTo(TestItem.KeccakA.ValueHash256), "which is not the root the tree folded to");
+            ctx.Manager.FlushCache(default);
+        }
+
+        await using (PbtTestContext reopened = new(db, childHeaders: childHeaders))
+        {
+            using (Persistence.IPbtPersistence.IReader reader = reopened.Persistence.CreateReader())
+            {
+                Assert.That(reader.CurrentState, Is.EqualTo(new StateId(first)));
+                Assert.That(reader.CurrentTreeRoot, Is.EqualTo(treeRoot));
+            }
+
+            BlockHeader second = childHeaders.Add(first, TestItem.KeccakB);
+            using IWorldStateScopeProvider.IScope scope = reopened.CreateScopeProvider().BeginScope(first, new LocalMetrics());
+            Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)100), "the persisted state is found by its header");
+            Assert.That(CommitBlock(scope, 2, 200), Is.EqualTo(second.StateRoot), "and the branch carries on from it");
+        }
+    }
 }

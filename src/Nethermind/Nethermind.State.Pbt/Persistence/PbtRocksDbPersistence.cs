@@ -18,18 +18,21 @@ namespace Nethermind.State.Pbt.Persistence;
 /// <summary>
 /// <see cref="IPbtPersistence"/> over the pbt columns database. Readers wrap a column-family
 /// snapshot; write batches are atomic across all columns and record the new
-/// <see cref="StateId"/> in the metadata column of the same batch.
+/// <see cref="StateId"/> and its tree root in the metadata column of the same batch.
 /// </summary>
 public class PbtRocksDbPersistence : IPbtPersistence
 {
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> LayoutVersionKey => "layoutVersion"u8;
 
+    /// <summary>Block number, then the header root the state is keyed by, then the EIP-8297 root it actually has.</summary>
+    private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
+
     /// <summary>
     /// On-disk layout of the columns this class writes. Bump it whenever a key or value encoding
     /// changes, so a database written by an older build is refused rather than silently misread.
     /// </summary>
-    private const int LayoutVersion = 3;
+    private const int LayoutVersion = 4;
 
     private readonly IColumnsDb<PbtColumns> _db;
 
@@ -58,7 +61,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
 
         // No version key: either a fresh database, which we stamp, or one written before the key
         // existed. Only the latter holds state, so the persisted-state pointer tells them apart.
-        if (ReadCurrentState(metadata) != StateId.PreGenesis)
+        if (ReadCurrentState(metadata).State != StateId.PreGenesis)
         {
             throw new InvalidDataException($"The pbt database predates layout version {LayoutVersion} and cannot be read by this build. Delete the pbt database and re-import.");
         }
@@ -87,38 +90,44 @@ public class PbtRocksDbPersistence : IPbtPersistence
 
     public IPbtPersistence.IReader CreateReader() => new Reader(_db.CreateSnapshot());
 
-    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
+    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 toTreeRoot, WriteFlags flags)
     {
-        StateId currentState = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata));
+        StateId currentState = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata)).State;
         if (currentState != from)
         {
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, db state: {currentState}");
         }
 
-        return new WriteBatch(_db, to, flags);
+        return new WriteBatch(_db, to, toTreeRoot, flags);
     }
 
     public void Flush() => _db.Flush();
 
-    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore metadata)
+    internal static (StateId State, ValueHash256 TreeRoot) ReadCurrentState(IReadOnlyKeyValueStore metadata)
     {
         byte[]? value = metadata.Get(CurrentStateKey);
         return value is null
-            ? StateId.PreGenesis
-            : new StateId(BinaryPrimitives.ReadUInt64BigEndian(value), new ValueHash256(value.AsSpan(8, 32)));
+            ? (StateId.PreGenesis, default)
+            : (new StateId(BinaryPrimitives.ReadUInt64BigEndian(value), new ValueHash256(value.AsSpan(sizeof(ulong), ValueHash256.MemorySize))),
+                new ValueHash256(value.AsSpan(sizeof(ulong) + ValueHash256.MemorySize, ValueHash256.MemorySize)));
     }
 
-    private static void WriteCurrentState(IWriteOnlyKeyValueStore metadata, in StateId stateId, WriteFlags flags)
+    private static void WriteCurrentState(IWriteOnlyKeyValueStore metadata, in StateId stateId, in ValueHash256 treeRoot, WriteFlags flags)
     {
-        Span<byte> value = stackalloc byte[40];
+        Span<byte> value = stackalloc byte[CurrentStateLength];
         BinaryPrimitives.WriteUInt64BigEndian(value, stateId.BlockNumber);
-        stateId.StateRoot.Bytes.CopyTo(value[8..]);
+        stateId.StateRoot.Bytes.CopyTo(value[sizeof(ulong)..]);
+        treeRoot.Bytes.CopyTo(value[(sizeof(ulong) + ValueHash256.MemorySize)..]);
         metadata.PutSpan(CurrentStateKey, value, flags);
     }
 
     private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot) : IPbtPersistence.IReader
     {
-        public StateId CurrentState { get; } = ReadCurrentState(snapshot.GetColumn(PbtColumns.Metadata));
+        private readonly (StateId State, ValueHash256 TreeRoot) _current = ReadCurrentState(snapshot.GetColumn(PbtColumns.Metadata));
+
+        public StateId CurrentState => _current.State;
+
+        public ValueHash256 CurrentTreeRoot => _current.TreeRoot;
 
         public Account? GetAccount(Address address)
         {
@@ -176,7 +185,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
     /// write, so every write here — deletes included, hence <c>Set(key, null, flags)</c> over
     /// <c>Remove(key)</c> — must carry <paramref name="flags"/> for them to take effect.
     /// </remarks>
-    private sealed class WriteBatch(IColumnsDb<PbtColumns> db, StateId to, WriteFlags flags) : IPbtPersistence.IWriteBatch
+    private sealed class WriteBatch(IColumnsDb<PbtColumns> db, StateId to, ValueHash256 toTreeRoot, WriteFlags flags) : IPbtPersistence.IWriteBatch
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
@@ -250,7 +259,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
 
         public void Dispose()
         {
-            WriteCurrentState(_batch.GetColumnBatch(PbtColumns.Metadata), to, flags);
+            WriteCurrentState(_batch.GetColumnBatch(PbtColumns.Metadata), to, toTreeRoot, flags);
             _batch.Dispose();
 
             // a WAL-disabled batch is deliberately non-durable; the caller flushes when it is done

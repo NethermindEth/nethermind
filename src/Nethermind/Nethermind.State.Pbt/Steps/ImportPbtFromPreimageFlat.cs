@@ -128,7 +128,10 @@ public class ImportPbtFromPreimageFlat(
         {
             ClearInterruptedAttempt();
             await CopyFlatColumns(workerCount, cancellationToken);
-            await DeriveAndFold(sourceState.BlockNumber, cancellationToken);
+
+            // the source is keyed by the header's root, which is also how the rest of the node
+            // addresses the state; the tree root the fold produces is recorded beside it
+            await DeriveAndFold(new StateId(sourceState.BlockNumber, sourceState.StateRoot), cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -223,7 +226,7 @@ public class ImportPbtFromPreimageFlat(
 
                 // one batch per range rather than per worker: it bounds how much a batch buffers, and
                 // the persisted-state pointer it rewrites is the same pre-genesis value either way
-                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL))
+                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
                 {
                     CopyAccounts(reader, batch, start, end, ref accounts, cancellationToken);
                     CopySlots(sourceStorage, batch, rlpWrapSlots, partition, partitionCount, ref slots, cancellationToken);
@@ -482,7 +485,7 @@ public class ImportPbtFromPreimageFlat(
     /// The scan is single-threaded because the fold it feeds is, and because the rebuilder's windowing
     /// only pays off while the leaves stay ordered.
     /// </summary>
-    private async Task DeriveAndFold(ulong blockNumber, CancellationToken cancellationToken)
+    private async Task DeriveAndFold(StateId targetState, CancellationToken cancellationToken)
     {
         Channel<ArrayPoolList<RebuildEntry>> entries = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(new BoundedChannelOptions(EntryChunkCapacity)
         {
@@ -497,7 +500,7 @@ public class ImportPbtFromPreimageFlat(
 
         try
         {
-            await rebuilder.Rebuild(entries.Reader, blockNumber, cancellationToken);
+            await rebuilder.Rebuild(entries.Reader, targetState, cancellationToken);
         }
         finally
         {

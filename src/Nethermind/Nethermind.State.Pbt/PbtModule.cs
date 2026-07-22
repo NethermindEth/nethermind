@@ -41,6 +41,7 @@ public class PbtModule(IPbtConfig config) : Module
             .AddSingleton<PbtCompactionSchedule>()
             .AddSingleton<PbtPersistenceCoordinator>()
             .AddSingleton<IPbtDbManager, PbtDbManager>()
+            .AddSingleton<IPbtChildHeaderSource, PbtBlockTreeChildHeaderSource>()
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()
