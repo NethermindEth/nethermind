@@ -14,6 +14,12 @@ namespace Nethermind.Core.Collections
     {
         public static int LockPartitions { get; } = Environment.ProcessorCount * 16;
 
+        /// <summary>Default capacity above which <c>ClearAndTrim</c> shrinks a collection's backing storage.</summary>
+        public const int DefaultTrimAboveCapacity = 8192;
+
+        /// <summary>Default capacity <c>ClearAndTrim</c> shrinks a collection back to once <see cref="DefaultTrimAboveCapacity"/> is exceeded.</summary>
+        public const int DefaultTrimToCapacity = 1024;
+
         public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
         {
             switch (items)
@@ -76,11 +82,15 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        /// <summary>
-        /// Clears the set and shrinks its backing storage when a past burst inflated capacity
-        /// far beyond current needs, so subsequent clears stop paying O(inflated capacity).
-        /// </summary>
-        public static void ClearAndTrim<T>(this HashSet<T> set, int trimAboveCapacity = 8192, int trimToCapacity = 1024)
+        /// <summary>Clears the set, optionally shrinking its backing storage.</summary>
+        /// <remarks>
+        /// <see cref="HashSet{T}.Clear"/> retains the grown capacity, so a past burst permanently
+        /// inflates the cost of every subsequent clear. Trimming once capacity exceeds
+        /// <paramref name="trimAboveCapacity"/> lets those clears stop paying O(inflated capacity).
+        /// </remarks>
+        /// <param name="trimAboveCapacity">Only trim when the current capacity exceeds this value.</param>
+        /// <param name="trimToCapacity">Capacity to shrink back to when trimming.</param>
+        public static void ClearAndTrim<T>(this HashSet<T> set, int trimAboveCapacity = DefaultTrimAboveCapacity, int trimToCapacity = DefaultTrimToCapacity)
         {
             set.Clear();
             if (set.Capacity > trimAboveCapacity)

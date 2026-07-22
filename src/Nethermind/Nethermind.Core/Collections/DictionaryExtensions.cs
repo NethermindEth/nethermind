@@ -71,11 +71,15 @@ public static class DictionaryExtensions
             return true;
         }
 
-        /// <summary>
-        /// Clears the dictionary and shrinks its backing storage when a past burst inflated capacity
-        /// far beyond current needs, so subsequent clears stop paying O(inflated capacity).
-        /// </summary>
-        public void ClearAndTrim(int trimAboveCapacity = 8192, int trimToCapacity = 1024)
+        /// <summary>Clears the dictionary, optionally shrinking its backing storage.</summary>
+        /// <remarks>
+        /// <see cref="Dictionary{TKey,TValue}.Clear"/> retains the grown capacity, so a past burst
+        /// permanently inflates the cost of every subsequent clear. Trimming once capacity exceeds
+        /// <paramref name="trimAboveCapacity"/> lets those clears stop paying O(inflated capacity).
+        /// </remarks>
+        /// <param name="trimAboveCapacity">Only trim when the current capacity exceeds this value.</param>
+        /// <param name="trimToCapacity">Capacity to shrink back to when trimming.</param>
+        public void ClearAndTrim(int trimAboveCapacity = CollectionExtensions.DefaultTrimAboveCapacity, int trimToCapacity = CollectionExtensions.DefaultTrimToCapacity)
         {
             dictionary.Clear();
             if (dictionary.Capacity > trimAboveCapacity)
