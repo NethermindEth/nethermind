@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.Persistence;
 
 public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null) : IPersistence
 {
-    // TEST-ONLY (benchmark branch): synchronously rewrite the Storage column SSTs with the current
+    // TEST-ONLY (benchmark branch): synchronously rewrite the Storage columns' SSTs with the current
     // column options before any benchmarking, so option changes (compression/block size) apply to
     // the premade fixture data. Gated by env var; blocks startup for the duration of the compaction.
     private readonly bool _storageCompacted = MaybeCompactStorageForTest(db, logManager);
@@ -26,9 +26,10 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
 
         ILogger logger = logManager.GetClassLogger<RocksDbPersistence>();
         long start = Stopwatch.GetTimestamp();
-        if (logger.IsWarn) logger.Warn("TEST: compacting flat Storage column (blocking startup)...");
+        if (logger.IsWarn) logger.Warn("TEST: compacting flat Storage and StorageNodes columns (blocking startup)...");
         db.GetColumnDb(FlatDbColumns.Storage).Compact();
-        if (logger.IsWarn) logger.Warn($"TEST: flat Storage column compaction completed in {Stopwatch.GetElapsedTime(start).TotalSeconds:F0}s");
+        db.GetColumnDb(FlatDbColumns.StorageNodes).Compact();
+        if (logger.IsWarn) logger.Warn($"TEST: flat Storage and StorageNodes column compaction completed in {Stopwatch.GetElapsedTime(start).TotalSeconds:F0}s");
         return true;
     }
 
