@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
@@ -42,12 +41,12 @@ public class AuRaHeaderModule : Module
 /// Ensures an AuRa genesis block carries an <see cref="AuRaBlockHeader"/>; pure post-merge
 /// genesis blocks remain in the standard PoS header shape.
 /// </summary>
-public class AuRaGenesisBuilder(IGenesisBuilder inner, IPoSSwitcher poSSwitcher) : IGenesisBuilder
+public class AuRaGenesisBuilder(IGenesisBuilder inner) : IGenesisBuilder
 {
     public Block Build()
     {
         Block genesis = inner.Build();
-        if (genesis.Header is AuRaBlockHeader || poSSwitcher.IsPostMerge(genesis.Header)) return genesis;
+        if (genesis.Header is AuRaBlockHeader || genesis.Header.IsPostMerge) return genesis;
 
         // Reached only if a chainspec declares `authorityRound` but omits the genesis signature
         // (no bundled chain does). The zero signature shifts genesis to a step+signature shape,

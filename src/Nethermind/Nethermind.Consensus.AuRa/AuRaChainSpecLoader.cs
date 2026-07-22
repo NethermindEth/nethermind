@@ -12,8 +12,8 @@ namespace Nethermind.Consensus.AuRa;
 /// and stamps the step + signature parsed from <c>genesis.seal.authorityRound</c>.
 /// </summary>
 /// <remarks>
-/// A zero terminal total difficulty means the chain starts post-merge, so its genesis keeps the
-/// standard mixHash + nonce seal even when the chain spec contains a placeholder AuRa seal.
+/// A zero terminal total difficulty marks genesis as post-merge, so its header keeps the standard
+/// mixHash + nonce seal even when the chain spec contains a placeholder AuRa seal.
 /// </remarks>
 public static class AuRaChainSpecLoader
 {
@@ -38,8 +38,13 @@ public static class AuRaChainSpecLoader
         chainSpec.Genesis = chainSpec.Genesis.WithReplacedHeader(upgraded);
     }
 
-    private static bool IsPostMergeGenesis(ChainSpec chainSpec) =>
-        chainSpec.Parameters?.TerminalTotalDifficulty?.IsZero == true;
+    private static bool IsPostMergeGenesis(ChainSpec chainSpec)
+    {
+        if (chainSpec.Genesis is null || chainSpec.Parameters?.TerminalTotalDifficulty?.IsZero != true) return false;
+
+        chainSpec.Genesis.Header.IsPostMerge = true;
+        return true;
+    }
 
     private sealed class AuRaGenesisSealJson
     {

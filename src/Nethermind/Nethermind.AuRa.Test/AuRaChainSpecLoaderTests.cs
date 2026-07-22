@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Blockchain;
-using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -13,7 +12,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test;
@@ -81,13 +79,8 @@ public class AuRaChainSpecLoaderTests
         };
 
         AuRaChainSpecLoader.ProcessChainSpec(chainSpec);
-        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
-        poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(callInfo =>
-        {
-            callInfo.Arg<BlockHeader>().IsPostMerge = true;
-            return true;
-        });
-        Block genesis = new AuRaGenesisBuilder(new FixedGenesisBuilder(chainSpec.Genesis), poSSwitcher).Build();
+        Assert.That(chainSpec.Genesis.Header.IsPostMerge, Is.True);
+        Block genesis = new AuRaGenesisBuilder(new FixedGenesisBuilder(chainSpec.Genesis)).Build();
 
         using (Assert.EnterMultipleScope())
         {
@@ -95,8 +88,6 @@ public class AuRaChainSpecLoaderTests
             Assert.That(genesis.Header.IsPostMerge, Is.True);
             Assert.That(genesis.Header.CalculateHash(), Is.EqualTo(new Hash256("0x9469153ba75532411cbad308fadd1206ec5c919ef4a463549c9af05a8bad5641")));
         }
-
-        poSSwitcher.Received(1).IsPostMerge(genesis.Header);
     }
 
     private sealed class FixedGenesisBuilder(Block genesis) : IGenesisBuilder
