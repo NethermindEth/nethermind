@@ -10,6 +10,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Persistence;
@@ -61,7 +62,10 @@ public class PbtModule(IPbtConfig config) : Module
         {
             builder
                 .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-                .AddSingleton<IPersistence, PreimageRocksdbPersistence>()
+                // the import reads a PreimageFlat source and nothing else; a database recorded as any
+                // other layout is rejected when the persistence validates it
+                .AddSingleton<IPersistence, IColumnsDb<FlatDbColumns>, ILogManager>(
+                    (flatDb, logManager) => new PreimageRocksdbPersistence(flatDb, logManager, FlatLayout.PreimageFlat))
                 .AddSingleton<PbtRebuilder>()
                 .AddStep(typeof(ImportPbtFromPreimageFlat));
         }

@@ -54,7 +54,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetAccount(model, TestItem.AddressC, 9, 5, bigCode);
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
@@ -75,7 +75,7 @@ public class ImportPbtFromPreimageFlatTests
         RecordingExitSource exitSource = new();
         // the same columns db must back both the persistence and the step, or phase two scans an empty
         // database and the test passes while proving nothing
-        ImportPbtFromPreimageFlat step = new(flatSource, flatDb, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -107,7 +107,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 63, 0x22);
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
@@ -119,7 +119,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -153,7 +153,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetSlot(model, second, 1000, 0x44);
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(first, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
@@ -167,7 +167,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -198,7 +198,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
@@ -213,7 +213,7 @@ public class ImportPbtFromPreimageFlatTests
         async Task<ValueHash256> Import()
         {
             RecordingExitSource exitSource = new();
-            ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
+            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
             await step.Execute(CancellationToken.None);
             Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
@@ -235,7 +235,7 @@ public class ImportPbtFromPreimageFlatTests
     public async Task Consecutive_storage_slots_share_one_stem()
     {
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
@@ -248,7 +248,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         // FlushEntryInterval 1 forces the two slots into separate windows, so a same-stem cross-window merge is exercised too
-        ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = 1 }, pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = 1 }, pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
@@ -262,7 +262,7 @@ public class ImportPbtFromPreimageFlatTests
     public async Task Skips_when_pbt_already_populated()
     {
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
@@ -275,7 +275,7 @@ public class ImportPbtFromPreimageFlatTests
         using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), existingRoot, WriteFlags.None)) { }
 
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
