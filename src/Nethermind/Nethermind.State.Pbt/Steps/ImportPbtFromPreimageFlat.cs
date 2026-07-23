@@ -18,9 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Pbt.Persistence;
-using FlatDbColumns = Nethermind.State.Flat.FlatDbColumns;
 using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
-using FlatSlotValue = Nethermind.State.Flat.SlotValue;
 using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Steps;
@@ -46,7 +44,6 @@ namespace Nethermind.State.Pbt.Steps;
 )]
 public class ImportPbtFromPreimageFlat(
     FlatPersistence flatSource,
-    IColumnsDb<FlatDbColumns> flatSourceDb,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IColumnsDb<PbtColumns> pbtDb,
     PbtRebuilder rebuilder,
@@ -57,15 +54,6 @@ public class ImportPbtFromPreimageFlat(
 ) : IStep
 {
     private const int AddressLength = 20;
-
-    /// <summary>Address bytes a flat storage key carries up front; the rest trail the slot. See <see cref="CopySlots"/>.</summary>
-    private const int FlatKeyAddressPrefix = 4;
-
-    /// <summary>Slot bytes of a flat storage key, holding the raw slot number in preimage mode.</summary>
-    private const int FlatKeySlotLength = 32;
-
-    /// <summary>A flat storage key carries a whole address, split around the slot.</summary>
-    private const int FlatStorageKeyLength = AddressLength + FlatKeySlotLength;
 
     /// <summary>A tree key is a stem plus its sub-index byte, and is also a flat storage key.</summary>
     private const int TreeKeyLength = Stem.Length + 1;
@@ -208,13 +196,6 @@ public class ImportPbtFromPreimageFlat(
         int nextPartition = -1, donePartitions = 0;
         long accounts = 0, slots = 0;
 
-        ISortedKeyValueStore sourceStorage = (ISortedKeyValueStore)flatSourceDb.GetColumnDb(FlatDbColumns.Storage);
-        bool rlpWrapSlots;
-        using (FlatPersistence.IPersistenceReader probe = flatSource.CreateReader())
-        {
-            rlpWrapSlots = DetectRlpWrappedSlots(probe, sourceStorage);
-        }
-
         void CopyPartitions()
         {
             using FlatPersistence.IPersistenceReader reader = flatSource.CreateReader();
@@ -228,8 +209,7 @@ public class ImportPbtFromPreimageFlat(
                 // the persisted-state pointer it rewrites is the same pre-genesis value either way
                 using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
                 {
-                    CopyAccounts(reader, batch, start, end, ref accounts, cancellationToken);
-                    CopySlots(sourceStorage, batch, rlpWrapSlots, partition, partitionCount, ref slots, cancellationToken);
+                    CopyAccounts(reader, batch, start, end, ref accounts, ref slots, cancellationToken);
                 }
 
                 Interlocked.Increment(ref donePartitions);
@@ -309,6 +289,7 @@ public class ImportPbtFromPreimageFlat(
         ValueHash256 start,
         ValueHash256 end,
         ref long accounts,
+        ref long slots,
         CancellationToken cancellationToken)
     {
         long pendingAccounts = 0;
@@ -321,9 +302,11 @@ public class ImportPbtFromPreimageFlat(
             ValueHash256 accountKey = accountIterator.CurrentKey;
             Address address = new(accountKey.Bytes[..AddressLength]);
 
-            batch.SetAccount(address, DecodeAccount(accountIterator.CurrentValue));
-            pendingAccounts++;
+            Account account = DecodeAccount(accountIterator.CurrentValue);
+            batch.SetAccount(address, account);
+            if (account.HasStorage) CopySlots(reader, batch, accountKey, address, ref slots, cancellationToken);
 
+            pendingAccounts++;
             if (pendingAccounts >= ProgressPublishInterval)
             {
                 Interlocked.Add(ref accounts, pendingAccounts);
@@ -334,64 +317,30 @@ public class ImportPbtFromPreimageFlat(
         Interlocked.Add(ref accounts, pendingAccounts);
     }
 
-    /// <summary>
-    /// Copies one partition's slots by sweeping the source's storage column, taking each slot's address
-    /// from the key rather than seeking per account.
-    /// </summary>
+    /// <summary>Copies one account's slots, taking them from the source reader's own storage iterator.</summary>
     /// <remarks>
-    /// A flat storage key is <c>address[0..4] | slot | address[4..20]</c>: the address is split so
-    /// RocksDB's comparator can skip its tail and shorten the index. That leaves every account sharing
-    /// the leading four address bytes interleaved under them, ordered by slot, so iterating one
-    /// account's storage has to walk the whole four-byte group and discard its neighbours' rows. On
-    /// hashed keys a group holds one account and that costs nothing, but preimage keys are raw
-    /// addresses: mined vanity addresses cluster under <c>0x00000000</c> alongside some of the largest
-    /// storage contracts on the chain, so each one rescans all of their slots and the partition holding
-    /// them never finishes. Sweeping the column once turns that from O(accounts × slots in group) into a
-    /// single ordered pass.
-    /// <para>
-    /// Slots still reach the batch grouped by address and in ascending slot order wherever a group holds
-    /// one account — the ordering its key deriver needs to charge one address hash per account plus one
-    /// suffix hash per 256-slot run. In a shared group the deriver falls back to a hash per slot.
-    /// </para>
+    /// The iterator hands over the slot already decoded and the key already parsed, which is what keeps
+    /// this blind to the source's storage key shape and slot encoding. Slots arrive grouped by address
+    /// and in ascending slot order — the ordering the batch's key deriver needs to charge one address
+    /// hash per account plus one suffix hash per 256-slot run.
     /// </remarks>
     private static void CopySlots(
-        ISortedKeyValueStore sourceStorage,
+        FlatPersistence.IPersistenceReader reader,
         IPbtPersistence.IWriteBatch batch,
-        bool rlpWrapSlots,
-        int partition,
-        int partitionCount,
+        in ValueHash256 accountKey,
+        Address address,
         ref long slots,
         CancellationToken cancellationToken)
     {
-        (byte[] start, byte[] end) = StoragePartitionBounds(partition, partitionCount);
-
         long pendingSlots = 0;
-        Span<byte> addressBytes = stackalloc byte[AddressLength];
-        Address? address = null;
-
-        using ISortedView view = sourceStorage.GetViewBetween(start, end);
-        while (view.MoveNext())
+        using FlatPersistence.IFlatIterator slotIterator = reader.CreateStorageIterator(accountKey, default, ValueKeccak.MaxValue);
+        while (slotIterator.MoveNext())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            ReadOnlySpan<byte> key = view.CurrentKey;
-            if (key.Length != FlatStorageKeyLength) continue;
-
-            ReadOnlySpan<byte> addressHead = key[..FlatKeyAddressPrefix];
-            ReadOnlySpan<byte> addressTail = key[(FlatKeyAddressPrefix + FlatKeySlotLength)..];
-            if (address is null
-                || !addressHead.SequenceEqual(addressBytes[..FlatKeyAddressPrefix])
-                || !addressTail.SequenceEqual(addressBytes[FlatKeyAddressPrefix..]))
-            {
-                addressHead.CopyTo(addressBytes);
-                addressTail.CopyTo(addressBytes[FlatKeyAddressPrefix..]);
-                address = new Address(addressBytes);
-            }
-
-            // preimage mode: the flat slot key holds the raw slot as a 32-byte big-endian value
-            UInt256 slot = new(key.Slice(FlatKeyAddressPrefix, FlatKeySlotLength), isBigEndian: true);
-            ReadOnlySpan<byte> stored = rlpWrapSlots ? new RlpReader(view.CurrentValue).DecodeByteArraySpan() : view.CurrentValue;
-            batch.SetSlot(address, slot, EvmWordSlot.FromStripped(stored));
+            // preimage mode: the slot key holds the raw slot as a 32-byte big-endian value
+            UInt256 slot = new(slotIterator.CurrentKey.Bytes, isBigEndian: true);
+            batch.SetSlot(address, slot, EvmWordSlot.FromStripped(slotIterator.CurrentValue));
 
             if (++pendingSlots >= ProgressPublishInterval)
             {
@@ -401,40 +350,6 @@ public class ImportPbtFromPreimageFlat(
         }
 
         Interlocked.Add(ref slots, pendingSlots);
-    }
-
-    /// <summary>
-    /// Whether the source stores slot values RLP-wrapped, decided by re-reading one row through the
-    /// source's own reader and comparing.
-    /// </summary>
-    /// <remarks>
-    /// The encoding is recorded in flat metadata that this assembly cannot read, and the two encodings
-    /// overlap — RLP leaves a lone byte below <c>0x80</c> untouched — so a row is only conclusive when
-    /// its stored value is not one of those. Rows that are not conclusive are skipped; a source with no
-    /// conclusive row decodes the same either way.
-    /// </remarks>
-    private static bool DetectRlpWrappedSlots(FlatPersistence.IPersistenceReader reader, ISortedKeyValueStore sourceStorage)
-    {
-        using ISortedView view = sourceStorage.GetViewBetween(new byte[FlatStorageKeyLength], PastEveryStorageKey());
-        while (view.MoveNext())
-        {
-            ReadOnlySpan<byte> key = view.CurrentKey;
-            ReadOnlySpan<byte> stored = view.CurrentValue;
-            if (key.Length != FlatStorageKeyLength || (stored.Length == 1 && stored[0] < 0x80)) continue;
-
-            ValueHash256 accountKey = default;
-            key[..FlatKeyAddressPrefix].CopyTo(accountKey.BytesAsSpan);
-            key[(FlatKeyAddressPrefix + FlatKeySlotLength)..].CopyTo(accountKey.BytesAsSpan[FlatKeyAddressPrefix..]);
-            ValueHash256 slotKey = new(key.Slice(FlatKeyAddressPrefix, FlatKeySlotLength));
-
-            FlatSlotValue decoded = default;
-            if (!reader.TryGetStorageRaw(accountKey, slotKey, ref decoded)) continue;
-
-            EvmWord asRaw = EvmWordSlot.FromStripped(stored);
-            return !EvmWordSlot.AsReadOnlySpan(in asRaw).SequenceEqual(decoded.AsReadOnlySpan);
-        }
-
-        return true;
     }
 
     /// <summary>
@@ -452,32 +367,6 @@ public class ImportPbtFromPreimageFlat(
         ValueHash256 end = default;
         BinaryPrimitives.WriteUInt16BigEndian(end.BytesAsSpan, (ushort)((long)(partition + 1) * PartitionPrefixSpace / partitionCount));
         return (start, end);
-    }
-
-    /// <summary>The storage-column key range of one copy partition, covering exactly <see cref="PartitionBounds"/>'s accounts.</summary>
-    /// <remarks>
-    /// A storage key opens with the address's first four bytes, so the two bytes the partitions are cut
-    /// on lead the key as well and the range needs no filtering.
-    /// </remarks>
-    private static (byte[] Start, byte[] End) StoragePartitionBounds(int partition, int partitionCount)
-    {
-        byte[] start = new byte[FlatStorageKeyLength];
-        BinaryPrimitives.WriteUInt16BigEndian(start, (ushort)((long)partition * PartitionPrefixSpace / partitionCount));
-
-        // the last partition runs past every key; its own upper bound would cut the 0xFFFF group short
-        if (partition == partitionCount - 1) return (start, PastEveryStorageKey());
-
-        byte[] end = new byte[FlatStorageKeyLength];
-        BinaryPrimitives.WriteUInt16BigEndian(end, (ushort)((long)(partition + 1) * PartitionPrefixSpace / partitionCount));
-        return (start, end);
-    }
-
-    /// <summary>One byte longer than any flat storage key, so it sorts above every one of them.</summary>
-    private static byte[] PastEveryStorageKey()
-    {
-        byte[] key = new byte[FlatStorageKeyLength + 1];
-        key.AsSpan().Fill(0xFF);
-        return key;
     }
 
     /// <summary>
