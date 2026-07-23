@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Logging;
 
 namespace Nethermind.Core;
 
@@ -36,10 +37,11 @@ public interface IStatePersistenceBarrier
 }
 
 /// <inheritdoc cref="IStatePersistenceBarrier"/>
-public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
+public sealed class StatePersistenceBarrier(ILogManager logManager) : IStatePersistenceBarrier
 {
     // Copy-on-write: rare startup registration rebuilds the arrays under a lock; FlushDeferred reads lock-free.
     private readonly Lock _registrationLock = new();
+    private readonly ILogger _logger = logManager.GetClassLogger<StatePersistenceBarrier>();
     private volatile Action[] _drains = [];
     private volatile Action[] _flushes = [];
 
@@ -60,10 +62,27 @@ public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
     public void FlushDeferred()
     {
         Action[] drains = _drains;
-        for (int i = 0; i < drains.Length; i++) drains[i]();
+        for (int i = 0; i < drains.Length; i++) Invoke(drains[i]);
 
         Action[] flushes = _flushes;
-        for (int i = 0; i < flushes.Length; i++) flushes[i]();
+        for (int i = 0; i < flushes.Length; i++) Invoke(flushes[i]);
+    }
+
+    private void Invoke(Action callback)
+    {
+        try
+        {
+            callback();
+        }
+        catch (ObjectDisposedException e)
+        {
+            // A disposed registrant has already made its data durable (the DBs flush on dispose),
+            // so the barrier invariant holds without its callback. This happens on shutdown when
+            // the container disposes a block-data DB before TrieStore.PersistOnShutdown flushes
+            // state through the barrier; the remaining callbacks — and, critically, the caller's
+            // own state flush — must still run rather than abort the teardown.
+            if (_logger.IsDebug) _logger.Debug($"Skipping disposed persistence-barrier registrant: {e.Message}");
+        }
     }
 
     private static Action[] Append(Action[] existing, Action callback)

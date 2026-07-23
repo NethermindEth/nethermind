@@ -53,7 +53,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _blockTree = Substitute.For<IBlockTree>();
         _blockStore = Substitute.For<IBlockStore>();
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
-        _barrier = new StatePersistenceBarrier();
+        _barrier = new StatePersistenceBarrier(LimboLogs.Instance);
         _writer = DeferredWriteTestHelpers.ManualWriter(_barrier);
         _logger = Substitute.For<InterfaceLogger>();
         _logger.IsWarn.Returns(true);
@@ -399,7 +399,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Barrier_drain_returns_after_writer_completed_normally()
     {
-        StatePersistenceBarrier barrier = new();
+        StatePersistenceBarrier barrier = new(LimboLogs.Instance);
         DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, barrier);
         await writer.DisposeAsync();
 

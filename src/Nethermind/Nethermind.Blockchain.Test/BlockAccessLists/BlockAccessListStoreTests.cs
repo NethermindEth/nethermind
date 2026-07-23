@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -163,7 +164,7 @@ public class BlockAccessListStoreTests
     public async Task Barrier_flush_drains_queued_bal_and_fsyncs_before_state_persists()
     {
         TestMemDb db = new();
-        StatePersistenceBarrier barrier = new();
+        StatePersistenceBarrier barrier = new(LimboLogs.Instance);
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
         BlockAccessListStore store = new(db, null, writer, persistenceBarrier: barrier);
 

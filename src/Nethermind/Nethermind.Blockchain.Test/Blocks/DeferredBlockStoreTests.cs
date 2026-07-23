@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -18,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Blocks;
 public class DeferredBlockStoreTests
 {
     private readonly TestMemDb _db = new();
-    private readonly StatePersistenceBarrier _barrier = new();
+    private readonly StatePersistenceBarrier _barrier = new(LimboLogs.Instance);
     private DeferredBlockDataWriter _writer = null!;
     private BlockStore _store = null!;
 
