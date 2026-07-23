@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -48,6 +49,10 @@ public class FlatWorldStateScopeProviderTests
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
 
+        // Retention cache for cache-aware tests that build scopes via CreateRetentionScope.
+        public FlatSparseTrieCache SparseCache { get; } = new(512UL.MiB);
+        public bool FailNextAddSnapshot { get; set; }
+
         public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
             config ??= new FlatDbConfig();
@@ -73,9 +78,17 @@ public class FlatWorldStateScopeProviderTests
 
                                 if (LastCreatedCachedResource is not null)
                                 {
-                                    resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+                                    resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, LastCreatedCachedResource);
                                 }
                                 LastCreatedCachedResource = transientResource;
+
+                                // Fail only after the resource bookkeeping so the injected failure
+                                // leaks nothing; the caller still sees the commit throw.
+                                if (FailNextAddSnapshot)
+                                {
+                                    FailNextAddSnapshot = false;
+                                    throw new InvalidOperationException("injected AddSnapshot failure");
+                                }
                             });
 
                         return flatDiff;
@@ -117,6 +130,20 @@ public class FlatWorldStateScopeProviderTests
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
 
+        /// <summary>A retention-enabled scope sharing this context's cache, built via the internal
+        /// cache-aware constructor (the Autofac-resolved Scope uses the cache-free public one).</summary>
+        public FlatWorldStateScope CreateRetentionScope(StateId currentState) =>
+            new(currentState,
+                Container.Resolve<SnapshotBundle>(),
+                Container.Resolve<IWorldStateScopeProvider.ICodeDb>(),
+                Container.Resolve<IFlatCommitTarget>(),
+                Container.Resolve<IFlatDbConfig>(),
+                Container.Resolve<ITrieWarmer>(),
+                LimboLogs.Instance,
+                warmReadPool: null,
+                isReadOnly: false,
+                sparseCache: SparseCache);
+
         public void Dispose()
         {
             _cancellationTokenSource.Cancel();
@@ -124,6 +151,7 @@ public class FlatWorldStateScopeProviderTests
             LastCommittedSnapshot?.Dispose();
             if (LastCreatedCachedResource is not null) ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, LastCreatedCachedResource);
 
+            SparseCache.Dispose();
             _container?.Dispose();
             _cancellationTokenSource.Dispose();
         }
@@ -676,6 +704,112 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(scope.RootHash, Is.EqualTo(Keccak.EmptyTreeHash), "root stays at the anchor");
             Assert.Throws<InvalidOperationException>(() => scope.UpdateRootHash(), "recalculation rejected");
             Assert.Throws<InvalidOperationException>(() => scope.Commit(1), "commit rejected");
+        }
+    }
+
+    [Test]
+    public void StorageFlushedThenAccountDeleted_AcrossBatches_CommitsWithoutPublishingStorage()
+    {
+        // The account's storage is flushed in one write batch (so its tree is tracked for
+        // publication), then the account is deleted in a later batch of the same block. The
+        // tracked tree must yield no trie at publication instead of throwing.
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch1 = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch1.CreateStorageWriteBatch(address, 2);
+            storageBatch.Set(1, [0x01]);
+            storageBatch.Set(2, [0x02]);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch2 = scope.StartWriteBatch(1))
+        {
+            batch2.Set(address, null);
+        }
+
+        // Before the fix, publication called TakeSparseTrie on the deleted account's tracked tree
+        // and threw. It must commit cleanly with the deletion intact. (The same-block
+        // write-then-delete slot visibility is governed by the pre-existing SnapshotBundle.Clear
+        // isNewAccount behavior and is not asserted here.)
+        Assert.DoesNotThrow(() => scope.Commit(1));
+        Assert.That(scope.Get(address), Is.Null, "account deleted");
+    }
+
+    [Test]
+    public void RetentionDisabled_disposesTriesEachCommit_whileEnabledKeepsThemWarm()
+    {
+        // Without a cache the session must hold no cross-block working set after a commit; with one
+        // it keeps the state trie and the touched storage trie warm for the next block. Separate
+        // contexts so each scope owns its own snapshot bundle.
+        using (TestContext coldCtx = new())
+        {
+            FlatWorldStateScope cold = coldCtx.Scope; // Autofac public ctor: no cache
+            CommitOneAccountWithStorage(cold, TestItem.AddressA);
+            Assert.That(cold.SparseSession.RetainedTrieCount, Is.EqualTo(0), "disabled retention holds nothing after commit");
+        }
+
+        using TestContext warmCtx = new();
+        using FlatWorldStateScope warm = warmCtx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        CommitOneAccountWithStorage(warm, TestItem.AddressC);
+        Assert.That(warm.SparseSession.RetainedTrieCount, Is.GreaterThan(0), "enabled retention keeps tries warm");
+    }
+
+    private static void CommitOneAccountWithStorage(FlatWorldStateScope scope, Address address)
+    {
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1))
+            {
+                storageBatch.Set(1, [0x01]);
+            }
+
+            writeBatch.Set(address, TestItem.GenerateRandomAccount());
+        }
+
+        scope.UpdateRootHash();
+        scope.Commit(1);
+    }
+
+    [Test]
+    public void RetentionScope_doesNotAdmit_whenALaterCommitFailsAfterACleanCommit()
+    {
+        // _lastCommitClean is set true only at the end of Commit (after snapshot registration) and
+        // cleared when the next batch starts, so a block that fails during AddSnapshot leaves the
+        // scope's mutated tries un-admitted even though an earlier block committed cleanly.
+        using TestContext ctx = new();
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch1 = scope.StartWriteBatch(1))
+        {
+            batch1.Set(TestItem.AddressA, TestItem.GenerateRandomAccount());
+        }
+
+        scope.UpdateRootHash();
+        scope.Commit(1);
+        // The root a buggy admit would use: AddSnapshot fails before _currentStateId advances, so
+        // an un-gated dispose would admit the mutated generation under this (block 1) root.
+        ValueHash256 cleanRoot = scope.RootHash.ValueHash256;
+
+        ctx.FailNextAddSnapshot = true;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch2 = scope.StartWriteBatch(1))
+        {
+            batch2.Set(TestItem.AddressB, TestItem.GenerateRandomAccount());
+        }
+
+        scope.UpdateRootHash();
+        Assert.Throws<InvalidOperationException>(() => scope.Commit(2));
+
+        scope.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.SparseCache.TryCheckout(in cleanRoot), Is.Null, "aborted scope admitted nothing at the clean root");
+            Assert.That(ctx.SparseCache.Hits, Is.EqualTo(0), "no generation was ever handed out");
         }
     }
 
@@ -1667,5 +1801,135 @@ public class FlatTrieNodeReaderTests
             Assert.That(results[1].AsSpan().SequenceEqual(rlpY), "slot 1");
             Assert.That(results[2].AsSpan().SequenceEqual(rlpX), "duplicate slot 2");
         }
+    }
+
+    // A source that never resolves anything; inserts into an empty trie need no reveal, so it is
+    // enough to build small warm generations for exercising the retention cache in isolation.
+    private sealed class EmptySparseSource : ISparseTrieNodeSource
+    {
+        public void Resolve(ReadOnlySpan<SparseNodeRequest> requests, Span<CappedArray<byte>> results)
+        {
+            for (int i = 0; i < requests.Length; i++) results[i] = CappedArray<byte>.Null;
+        }
+    }
+
+    private static SparseTrie MakeWarmTrie(int seed)
+    {
+        SparseTrie trie = new(new EmptySparseSource(), ValueKeccak.EmptyTreeHash);
+        SparseTrieUpdate[] updates =
+        [
+            new SparseTrieUpdate(ValueKeccak.Compute([(byte)seed, 1]), [(byte)(seed + 1)]),
+            new SparseTrieUpdate(ValueKeccak.Compute([(byte)seed, 2]), [(byte)(seed + 2)]),
+        ];
+        trie.Apply(updates);
+        trie.CalculateRoot();
+        // Drain so the trie is a clean published generation, exactly as retention retains it.
+        using ArrayPoolList<SparseTrieStagedNode> drained = new(8);
+        trie.DrainUnpublished(drained);
+        return trie;
+    }
+
+    private static RetainedGeneration MakeGeneration(int seed)
+    {
+        SparseTrie state = MakeWarmTrie(seed);
+        return new RetainedGeneration(state.RootHash, state, []);
+    }
+
+    [Test]
+    public void SparseCache_checkout_is_exact_root_matched_and_destructive()
+    {
+        using FlatSparseTrieCache cache = new(512UL.MiB);
+        RetainedGeneration generation = MakeGeneration(1);
+        ValueHash256 root = generation.StateRoot;
+        cache.Admit(generation);
+
+        ValueHash256 wrongRoot = ValueKeccak.Compute([9, 9]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryCheckout(in wrongRoot), Is.Null, "mismatch is a miss");
+            RetainedGeneration? hit = cache.TryCheckout(in root);
+            Assert.That(hit, Is.SameAs(generation), "exact-root checkout returns the generation");
+            Assert.That(cache.TryCheckout(in root), Is.Null, "checkout is destructive");
+            Assert.That(cache.Hits, Is.EqualTo(1));
+            Assert.That(cache.Misses, Is.EqualTo(2));
+        }
+
+        generation.Dispose();
+    }
+
+    [Test]
+    public void SparseCache_admit_replaces_and_disposes_the_previous_generation()
+    {
+        using FlatSparseTrieCache cache = new(512UL.MiB);
+        RetainedGeneration first = MakeGeneration(1);
+        cache.Admit(first);
+        RetainedGeneration second = MakeGeneration(2);
+        cache.Admit(second);
+
+        // The replaced generation's arena was disposed, so its rented bytes are released.
+        Assert.That(first.RentedBytes, Is.EqualTo(0), "previous generation disposed on replacement");
+
+        ValueHash256 secondRoot = second.StateRoot;
+        RetainedGeneration? held = cache.TryCheckout(in secondRoot);
+        Assert.That(held, Is.SameAs(second), "the newer generation is held");
+        held!.Dispose();
+    }
+
+    [Test]
+    public void SparseCache_rejects_and_disposes_a_generation_over_budget()
+    {
+        using FlatSparseTrieCache cache = new(budgetBytes: 8); // any real generation exceeds this
+        RetainedGeneration generation = MakeGeneration(1);
+        Assert.That(generation.RentedBytes, Is.GreaterThan(8));
+
+        cache.Admit(generation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Rejections, Is.EqualTo(1), "oversized generation rejected");
+            Assert.That(generation.RentedBytes, Is.EqualTo(0), "rejected generation disposed");
+            ValueHash256 root = generation.StateRoot;
+            Assert.That(cache.TryCheckout(in root), Is.Null, "nothing retained after rejection");
+        }
+    }
+
+    [Test]
+    public void SparseCache_dispose_releases_the_held_generation()
+    {
+        RetainedGeneration generation = MakeGeneration(1);
+        FlatSparseTrieCache cache = new(512UL.MiB);
+        cache.Admit(generation);
+        cache.Dispose();
+
+        Assert.That(generation.RentedBytes, Is.EqualTo(0), "held generation disposed with the cache");
+    }
+
+    [Test]
+    public void SparseCache_checkout_readmit_cycle_carries_the_generation_forward()
+    {
+        // The cross-scope cycle: a scope checks out the held generation, mutates and re-admits it
+        // at a new root, and the next scope checks it out at that root.
+        using FlatSparseTrieCache cache = new(512UL.MiB);
+        RetainedGeneration gen1 = MakeGeneration(1);
+        ValueHash256 root1 = gen1.StateRoot;
+        cache.Admit(gen1);
+
+        RetainedGeneration? checkedOut = cache.TryCheckout(in root1);
+        Assert.That(checkedOut, Is.SameAs(gen1), "first scope checks out at root1");
+
+        // Simulate the scope committing to a new root and re-admitting the same (mutated) tries.
+        RetainedGeneration gen2 = new(ValueKeccak.Compute([2, 2]), checkedOut!.StateTrie, checkedOut.StorageTries);
+        cache.Admit(gen2);
+
+        ValueHash256 root2 = gen2.StateRoot;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryCheckout(in root1), Is.Null, "old root no longer matches");
+            Assert.That(cache.TryCheckout(in root2), Is.SameAs(gen2), "next scope checks out at the new root");
+            Assert.That(cache.Hits, Is.EqualTo(2));
+        }
+
+        gen2.Dispose();
     }
 }
