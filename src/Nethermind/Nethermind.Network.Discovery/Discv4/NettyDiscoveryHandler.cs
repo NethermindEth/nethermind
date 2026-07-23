@@ -125,7 +125,7 @@ public class NettyDiscoveryHandler(
         shouldForward = true;
 
         IByteBuffer content = packet.Content;
-        // Mirrors NettyDiscoveryV5Handler.NormalizeEndpoint).
+        // Mirrors NettyDiscoveryV5Handler.NormalizeEndpoint.
         address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
 
         int size = content.ReadableBytes;
