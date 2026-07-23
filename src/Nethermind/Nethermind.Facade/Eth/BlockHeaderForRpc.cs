@@ -74,7 +74,7 @@ public class BlockHeaderForRpc
 
     public byte[]? Signature { get; set; }
 
-    [JsonConverter(typeof(NullableRawULongConverter))]
+    [JsonConverter(typeof(NullableULongConverter))]
     public ulong? Step { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
