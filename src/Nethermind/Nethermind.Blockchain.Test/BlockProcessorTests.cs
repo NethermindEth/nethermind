@@ -27,6 +27,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -317,6 +318,8 @@ public class BlockProcessorTests
 
         Assert.That(stateProvider.GetCode(verifier), Is.EqualTo(Eip8141Constants.ExpiryVerifierCode));
         Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(1ul));
+        // EIP-8250 is not enabled here, so the NONCE_MANAGER predeploy must not be installed.
+        Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress), Is.Empty);
 
         // The install must appear in the generated block-level access list (code + nonce change).
         GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(verifier);
@@ -336,6 +339,56 @@ public class BlockProcessorTests
         Assert.That(stateProvider.GetCode(verifier), Is.EqualTo(Eip8141Constants.ExpiryVerifierCode));
         Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(1ul));
         Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(verifier), Is.Null,
+            "a re-install must not churn state or the BAL once the code is already present");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal()
+    {
+        IReleaseSpec enabled8250 = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true };
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(enabled8250);
+        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch(specProvider: specProvider);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
+        Address manager = Eip8250Constants.NonceManagerAddress;
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        // Eip8141Prototype builds on Amsterdam (execution requests EIP-7002/7251/8282); install those
+        // predeploys in genesis as a real chain does, otherwise ProcessExecutionRequests rejects the block.
+        stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+        stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, spec);
+        stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+        stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, spec);
+        stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+        stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, spec);
+        stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+        stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, spec);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        // First post-activation block installs the predeploy: code + nonce == 1.
+        Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        Assert.That(stateProvider.GetCode(manager), Is.EqualTo(Eip8250Constants.NonceManagerCode));
+        Assert.That(stateProvider.GetNonce(manager), Is.EqualTo(1ul));
+
+        GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(manager);
+        Assert.That(installChanges, Is.Not.Null, "nonce manager install must be captured in the BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(1));
+            Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(Eip8250Constants.NonceManagerCode));
+            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(1));
+            Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(1ul));
+        }
+
+        // Second block is a no-op: state unchanged and no BAL entry for the manager.
+        Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        Assert.That(stateProvider.GetCode(manager), Is.EqualTo(Eip8250Constants.NonceManagerCode));
+        Assert.That(stateProvider.GetNonce(manager), Is.EqualTo(1ul));
+        Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(manager), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");
     }
 
