@@ -3,12 +3,14 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Nethermind.Trie.Sparse;
 
 namespace Nethermind.Benchmarks.Store;
 
@@ -32,9 +34,22 @@ public class RootCalculationBenchmarks
     public string Fixture { get; set; } = null!;
 
     private TrieRootFixture _fixture = null!;
+    private SparseTrieUpdate[] _sparsePristine = null!;
+    private SparseTrieUpdate[] _sparseScratch = null!;
 
     [GlobalSetup]
-    public void Setup() => _fixture = TrieRootFixture.CreateGateFixture(Fixture);
+    public void Setup()
+    {
+        _fixture = TrieRootFixture.CreateGateFixture(Fixture);
+        _sparsePristine = new SparseTrieUpdate[_fixture.Updates.Length];
+        for (int i = 0; i < _sparsePristine.Length; i++)
+        {
+            PatriciaTree.BulkSetEntry entry = _fixture.Updates[i];
+            _sparsePristine[i] = new SparseTrieUpdate(entry.Path, entry.Value.Length == 0 ? null : entry.Value);
+        }
+
+        _sparseScratch = new SparseTrieUpdate[_sparsePristine.Length];
+    }
 
     [Benchmark(Baseline = true)]
     public Hash256 PatriciaCalculate()
@@ -65,6 +80,41 @@ public class RootCalculationBenchmarks
         return Verify(tree.RootHash);
     }
 
+    /// <summary>
+    /// The gate arm: sparse reveal/apply plus fused encode/hash that also stages every
+    /// persistable RLP in its final owned array during calculation. Publication (draining staged
+    /// records into snapshot destinations) is measured separately, but unlike
+    /// <see cref="PatriciaCalculate"/> the persistable output already exists when this returns.
+    /// </summary>
+    [Benchmark]
+    public ValueHash256 SparseCalculateAndStage()
+    {
+        _sparsePristine.CopyTo(_sparseScratch, 0);
+        NodeStorageSparseSource source = new(_fixture.ParentStorage);
+        using SparseTrie sparse = new(source, _fixture.ParentRoot.ValueHash256, nodeCapacityHint: _sparseScratch.Length * 4);
+        sparse.Apply(_sparseScratch);
+        ValueHash256 root = sparse.CalculateRoot();
+        return root == _fixture.ExpectedRoot.ValueHash256
+            ? root
+            : throw new InvalidOperationException($"Root mismatch for {Fixture}: {root} != {_fixture.ExpectedRoot}");
+    }
+
     private Hash256 Verify(Hash256 root) =>
         root == _fixture.ExpectedRoot ? root : throw new InvalidOperationException($"Root mismatch for {Fixture}: {root} != {_fixture.ExpectedRoot}");
+
+    // NodeStorage keys entries by (path, hash), so a returned value is the requested node by
+    // construction and re-validating its keccak here would only measure hashing the parents a
+    // second time - a cost the Patricia arms never pay. The Flat reader validates where it must:
+    // on its path-keyed persistence tier, where the check rides on the database read.
+    private sealed class NodeStorageSparseSource(NodeStorage storage) : ISparseTrieNodeSource
+    {
+        public void Resolve(ReadOnlySpan<SparseNodeRequest> requests, Span<CappedArray<byte>> results)
+        {
+            for (int i = 0; i < requests.Length; i++)
+            {
+                byte[] rlp = storage.Get(null, requests[i].Path, requests[i].Hash.ToCommitment());
+                results[i] = rlp is null ? CappedArray<byte>.Null : rlp;
+            }
+        }
+    }
 }
