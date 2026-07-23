@@ -62,7 +62,8 @@ public class PbtSnapshotBundle(
 
     /// <remarks>
     /// The write buffer is read as the pending flat writes rather than as blobs: the block in flight has
-    /// no blob until its fold runs. Every tier below decodes from the leaf.
+    /// no blob until its fold runs. Every tier below decodes from the leaf, and is handed the stem this
+    /// derived rather than the address, so the walk hashes it once however deep it goes.
     /// </remarks>
     public Account? GetAccount(Address address)
     {
@@ -76,7 +77,7 @@ public class PbtSnapshotBundle(
             if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out blob)) return PbtLeafDecoder.DecodeAccount(blob);
         }
 
-        return readOnlyBundle.GetAccount(address);
+        return readOnlyBundle.GetAccount(stem);
     }
 
     /// <summary>Returns the slot value; zero when absent or self-destructed.</summary>
@@ -96,7 +97,7 @@ public class PbtSnapshotBundle(
             if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out blob)) return PbtLeafDecoder.DecodeSlot(blob, subIndex);
         }
 
-        return readOnlyBundle.GetSlot(address, slot);
+        return readOnlyBundle.GetSlot(stem, subIndex);
     }
 
     /// <summary>Returns the complete leaf blob of the stem, or null when the stem does not exist.</summary>

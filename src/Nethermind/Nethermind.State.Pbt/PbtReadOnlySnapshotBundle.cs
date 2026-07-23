@@ -56,10 +56,13 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
     }
 
     /// <remarks>Decoded from the account's header stem leaf blob; see <see cref="PbtLeafDecoder"/>.</remarks>
-    public Account? GetAccount(Address address)
+    public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AccountHeaderStem(address));
+
+    /// <inheritdoc cref="GetAccount(Address)"/>
+    /// <param name="stem">The account's header stem, for a caller that has already derived it — which costs a hash of the address.</param>
+    public Account? GetAccount(in Stem stem)
     {
         GuardDispose();
-        Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
         long startTimestamp = StartTiming();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
@@ -84,10 +87,15 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
     /// not that blob carries this slot — an absent leaf there means the slot is unset, not that the walk
     /// should go on below.
     /// </remarks>
-    public EvmWord GetSlot(Address address, in UInt256 slot)
+    public EvmWord GetSlot(Address address, in UInt256 slot) =>
+        GetSlot(PbtLeafDecoder.SlotStem(address, slot, out byte subIndex), subIndex);
+
+    /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
+    /// <param name="stem">The stem the slot lives on, for a caller that has already derived it — which costs up to two hashes.</param>
+    /// <param name="subIndex">The slot's sub-index of <paramref name="stem"/>, as <see cref="PbtLeafDecoder.SlotStem"/> returns it.</param>
+    public EvmWord GetSlot(in Stem stem, byte subIndex)
     {
         GuardDispose();
-        Stem stem = PbtLeafDecoder.SlotStem(address, slot, out byte subIndex);
         long startTimestamp = StartTiming();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
