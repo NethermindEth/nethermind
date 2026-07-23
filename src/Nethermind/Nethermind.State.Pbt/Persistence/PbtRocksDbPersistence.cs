@@ -199,8 +199,6 @@ public class PbtRocksDbPersistence : IPbtPersistence
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
-        public void SetLeafBlob(in Stem stem, byte[]? blob) => SetLeafBlob(stem, (ReadOnlySpan<byte>)blob);
-
         public void SetTrieNode(in TrieNodeKey key, byte[]? node)
         {
             if (node is null)
