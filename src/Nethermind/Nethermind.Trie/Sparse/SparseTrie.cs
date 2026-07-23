@@ -409,105 +409,105 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
                 return;
 
             case SparseNodeKind.Extension:
-            {
-                if (path.Length + node.PrefixLength >= MaxDepth)
                 {
-                    ThrowTrie($"Extension at depth {path.Length} with a {node.PrefixLength}-nibble prefix leaves no room for its subtree");
-                }
-
-                Span<byte> prefix = _arena.Bytes(node.PrefixOffset, node.PrefixLength);
-                (int matchStart, int matchEnd) = FullPrefixMatchRange(updates, start, end, path.Length, prefix);
-                if (matchStart >= matchEnd)
-                {
-                    return;
-                }
-
-                int entry = node.ChildSlice;
-                int prefixLength = node.PrefixLength;
-                if (entry < 0)
-                {
-                    int materialized = TryMaterializeInline(entry, out ValueHash256 childHash);
-                    if (materialized < 0)
+                    if (path.Length + node.PrefixLength >= MaxDepth)
                     {
-                        TreePath childPath = path;
-                        AppendNibbles(ref childPath, prefix);
-                        pending.Add(new PendingReveal { Path = childPath, Hash = childHash, Parent = nodeIndex, ChildNibble = ExtensionChildNibble, Start = matchStart, End = matchEnd });
+                        ThrowTrie($"Extension at depth {path.Length} with a {node.PrefixLength}-nibble prefix leaves no room for its subtree");
+                    }
+
+                    Span<byte> prefix = _arena.Bytes(node.PrefixOffset, node.PrefixLength);
+                    (int matchStart, int matchEnd) = FullPrefixMatchRange(updates, start, end, path.Length, prefix);
+                    if (matchStart >= matchEnd)
+                    {
                         return;
                     }
 
-                    node.ChildSlice = entry = materialized;
-                }
-                else if (_arena.Node(entry).Kind == SparseNodeKind.Blinded)
-                {
-                    TreePath childPath = path;
-                    AppendNibbles(ref childPath, prefix);
-                    pending.Add(new PendingReveal { Path = childPath, Hash = _arena.Node(entry).Hash, Parent = nodeIndex, ChildNibble = ExtensionChildNibble, Start = matchStart, End = matchEnd });
+                    int entry = node.ChildSlice;
+                    int prefixLength = node.PrefixLength;
+                    if (entry < 0)
+                    {
+                        int materialized = TryMaterializeInline(entry, out ValueHash256 childHash);
+                        if (materialized < 0)
+                        {
+                            TreePath childPath = path;
+                            AppendNibbles(ref childPath, prefix);
+                            pending.Add(new PendingReveal { Path = childPath, Hash = childHash, Parent = nodeIndex, ChildNibble = ExtensionChildNibble, Start = matchStart, End = matchEnd });
+                            return;
+                        }
+
+                        node.ChildSlice = entry = materialized;
+                    }
+                    else if (_arena.Node(entry).Kind == SparseNodeKind.Blinded)
+                    {
+                        TreePath childPath = path;
+                        AppendNibbles(ref childPath, prefix);
+                        pending.Add(new PendingReveal { Path = childPath, Hash = _arena.Node(entry).Hash, Parent = nodeIndex, ChildNibble = ExtensionChildNibble, Start = matchStart, End = matchEnd });
+                        return;
+                    }
+
+                    AppendNibbles(ref path, prefix);
+                    WalkReveal(entry, ref path, updates, matchStart, matchEnd, pending);
+                    path.TruncateMut(path.Length - prefixLength);
                     return;
                 }
 
-                AppendNibbles(ref path, prefix);
-                WalkReveal(entry, ref path, updates, matchStart, matchEnd, pending);
-                path.TruncateMut(path.Length - prefixLength);
-                return;
-            }
-
             case SparseNodeKind.Branch:
-            {
-                int depth = path.Length;
-                if (depth >= MaxDepth)
                 {
-                    ThrowTrie($"Branch below the maximum trie depth at {path}");
-                }
-
-                int i = start;
-                while (i < end)
-                {
-                    int nibble = KeyNibble(updates[i].Key, depth);
-                    int groupEnd = i + 1;
-                    while (groupEnd < end && KeyNibble(updates[groupEnd].Key, depth) == nibble)
+                    int depth = path.Length;
+                    if (depth >= MaxDepth)
                     {
-                        groupEnd++;
+                        ThrowTrie($"Branch below the maximum trie depth at {path}");
                     }
 
-                    if ((node.OccupiedMask & (1 << nibble)) != 0)
+                    int i = start;
+                    while (i < end)
                     {
-                        int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
-                        if (entry < 0)
+                        int nibble = KeyNibble(updates[i].Key, depth);
+                        int groupEnd = i + 1;
+                        while (groupEnd < end && KeyNibble(updates[groupEnd].Key, depth) == nibble)
                         {
-                            int materialized = TryMaterializeInline(entry, out ValueHash256 childHash);
-                            if (materialized >= 0)
+                            groupEnd++;
+                        }
+
+                        if ((node.OccupiedMask & (1 << nibble)) != 0)
+                        {
+                            int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
+                            if (entry < 0)
                             {
-                                SetChildNode(nodeIndex, (byte)nibble, materialized);
-                                entry = materialized;
+                                int materialized = TryMaterializeInline(entry, out ValueHash256 childHash);
+                                if (materialized >= 0)
+                                {
+                                    SetChildNode(nodeIndex, (byte)nibble, materialized);
+                                    entry = materialized;
+                                }
+                                else
+                                {
+                                    TreePath childPath = path;
+                                    childPath.AppendMut(nibble);
+                                    pending.Add(new PendingReveal { Path = childPath, Hash = childHash, Parent = nodeIndex, ChildNibble = (byte)nibble, Start = i, End = groupEnd });
+                                    i = groupEnd;
+                                    continue;
+                                }
                             }
-                            else
+                            else if (_arena.Node(entry).Kind == SparseNodeKind.Blinded)
                             {
                                 TreePath childPath = path;
                                 childPath.AppendMut(nibble);
-                                pending.Add(new PendingReveal { Path = childPath, Hash = childHash, Parent = nodeIndex, ChildNibble = (byte)nibble, Start = i, End = groupEnd });
+                                pending.Add(new PendingReveal { Path = childPath, Hash = _arena.Node(entry).Hash, Parent = nodeIndex, ChildNibble = (byte)nibble, Start = i, End = groupEnd });
                                 i = groupEnd;
                                 continue;
                             }
-                        }
-                        else if (_arena.Node(entry).Kind == SparseNodeKind.Blinded)
-                        {
-                            TreePath childPath = path;
-                            childPath.AppendMut(nibble);
-                            pending.Add(new PendingReveal { Path = childPath, Hash = _arena.Node(entry).Hash, Parent = nodeIndex, ChildNibble = (byte)nibble, Start = i, End = groupEnd });
-                            i = groupEnd;
-                            continue;
+
+                            path.AppendMut(nibble);
+                            WalkReveal(entry, ref path, updates, i, groupEnd, pending);
+                            path.TruncateMut(path.Length - 1);
                         }
 
-                        path.AppendMut(nibble);
-                        WalkReveal(entry, ref path, updates, i, groupEnd, pending);
-                        path.TruncateMut(path.Length - 1);
+                        i = groupEnd;
                     }
 
-                    i = groupEnd;
+                    return;
                 }
-
-                return;
-            }
 
             default:
                 ThrowTrie($"Cannot traverse {node.Kind} sparse node at {path}");
@@ -1459,92 +1459,92 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         switch (node.Kind)
         {
             case SparseNodeKind.Leaf:
-            {
-                Span<byte> prefix = _arena.Bytes(node.PrefixOffset, node.PrefixLength);
-                for (int i = start; i < end; i++)
                 {
-                    if (updates[i].IsDelete && MatchesPrefix(updates[i].Key, path.Length, prefix))
+                    Span<byte> prefix = _arena.Bytes(node.PrefixOffset, node.PrefixLength);
+                    for (int i = start; i < end; i++)
                     {
-                        FreeNode(nodeIndex);
-                        return -1;
+                        if (updates[i].IsDelete && MatchesPrefix(updates[i].Key, path.Length, prefix))
+                        {
+                            FreeNode(nodeIndex);
+                            return -1;
+                        }
                     }
-                }
 
-                return nodeIndex;
-            }
-
-            case SparseNodeKind.Extension:
-            {
-                Span<byte> prefix = _arena.Bytes(node.PrefixOffset, node.PrefixLength);
-                (int matchStart, int matchEnd) = FullPrefixMatchRange(updates, start, end, path.Length, prefix);
-                if (!HasDelete(updates, matchStart, matchEnd))
-                {
                     return nodeIndex;
                 }
 
-                int prefixLength = node.PrefixLength;
-                int childEntry = node.ChildSlice;
-                if (childEntry < 0)
+            case SparseNodeKind.Extension:
                 {
-                    ThrowTrie($"Delete target below an unrevealed extension child at {path}");
+                    Span<byte> prefix = _arena.Bytes(node.PrefixOffset, node.PrefixLength);
+                    (int matchStart, int matchEnd) = FullPrefixMatchRange(updates, start, end, path.Length, prefix);
+                    if (!HasDelete(updates, matchStart, matchEnd))
+                    {
+                        return nodeIndex;
+                    }
+
+                    int prefixLength = node.PrefixLength;
+                    int childEntry = node.ChildSlice;
+                    if (childEntry < 0)
+                    {
+                        ThrowTrie($"Delete target below an unrevealed extension child at {path}");
+                    }
+
+                    AppendNibbles(ref path, prefix);
+                    int newChild = DeleteWalk(childEntry, ref path, updates, matchStart, matchEnd, reveals, collapses);
+                    path.TruncateMut(path.Length - prefixLength);
+
+                    return NormalizeExtension(nodeIndex, newChild);
                 }
-
-                AppendNibbles(ref path, prefix);
-                int newChild = DeleteWalk(childEntry, ref path, updates, matchStart, matchEnd, reveals, collapses);
-                path.TruncateMut(path.Length - prefixLength);
-
-                return NormalizeExtension(nodeIndex, newChild);
-            }
 
             case SparseNodeKind.Branch:
-            {
-                int depth = path.Length;
-                int i = start;
-                while (i < end)
                 {
-                    int nibble = KeyNibble(updates[i].Key, depth);
-                    int groupEnd = i + 1;
-                    while (groupEnd < end && KeyNibble(updates[groupEnd].Key, depth) == nibble)
+                    int depth = path.Length;
+                    int i = start;
+                    while (i < end)
                     {
-                        groupEnd++;
-                    }
-
-                    if (HasDelete(updates, i, groupEnd) && (node.OccupiedMask & (1 << nibble)) != 0)
-                    {
-                        int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
-                        if (entry < 0)
+                        int nibble = KeyNibble(updates[i].Key, depth);
+                        int groupEnd = i + 1;
+                        while (groupEnd < end && KeyNibble(updates[groupEnd].Key, depth) == nibble)
                         {
-                            ThrowTrie($"Delete target below an unrevealed child at {path}, nibble {nibble}");
+                            groupEnd++;
                         }
 
-                        path.AppendMut(nibble);
-                        int newChild = DeleteWalk(entry, ref path, updates, i, groupEnd, reveals, collapses);
-                        path.TruncateMut(path.Length - 1);
-
-                        if (newChild < 0)
+                        if (HasDelete(updates, i, groupEnd) && (node.OccupiedMask & (1 << nibble)) != 0)
                         {
-                            RemoveBranchChild(nodeIndex, nibble);
-                        }
-                        else if (newChild != entry)
-                        {
-                            SetBranchChild(nodeIndex, nibble, newChild);
-                        }
-                        else
-                        {
-                            ref SparseNode branchNode = ref _arena.Node(nodeIndex);
-                            if (_arena.Node(newChild).IsDirty)
+                            int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
+                            if (entry < 0)
                             {
-                                branchNode.DirtyMask = (ushort)(branchNode.DirtyMask | (1 << nibble));
-                                branchNode.Flags |= SparseNodeFlags.Dirty;
+                                ThrowTrie($"Delete target below an unrevealed child at {path}, nibble {nibble}");
+                            }
+
+                            path.AppendMut(nibble);
+                            int newChild = DeleteWalk(entry, ref path, updates, i, groupEnd, reveals, collapses);
+                            path.TruncateMut(path.Length - 1);
+
+                            if (newChild < 0)
+                            {
+                                RemoveBranchChild(nodeIndex, nibble);
+                            }
+                            else if (newChild != entry)
+                            {
+                                SetBranchChild(nodeIndex, nibble, newChild);
+                            }
+                            else
+                            {
+                                ref SparseNode branchNode = ref _arena.Node(nodeIndex);
+                                if (_arena.Node(newChild).IsDirty)
+                                {
+                                    branchNode.DirtyMask = (ushort)(branchNode.DirtyMask | (1 << nibble));
+                                    branchNode.Flags |= SparseNodeFlags.Dirty;
+                                }
                             }
                         }
+
+                        i = groupEnd;
                     }
 
-                    i = groupEnd;
+                    return NormalizeBranch(nodeIndex, ref path, reveals, collapses);
                 }
-
-                return NormalizeBranch(nodeIndex, ref path, reveals, collapses);
-            }
 
             default:
                 ThrowTrie($"Cannot delete below {node.Kind} sparse node at {path}");
@@ -1663,16 +1663,16 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         {
             case SparseNodeKind.Leaf:
             case SparseNodeKind.Extension:
-            {
-                PrependNibble(survivorIndex, nibble);
-                return survivorIndex;
-            }
+                {
+                    PrependNibble(survivorIndex, nibble);
+                    return survivorIndex;
+                }
 
             case SparseNodeKind.Branch:
-            {
-                Span<byte> prefix = [(byte)nibble];
-                return CreateExtension(prefix, survivorIndex);
-            }
+                {
+                    Span<byte> prefix = [(byte)nibble];
+                    return CreateExtension(prefix, survivorIndex);
+                }
 
             default:
                 ThrowTrie($"Cannot collapse into {survivor.Kind} sparse node");
@@ -1727,30 +1727,30 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
             case SparseNodeKind.Leaf:
             case SparseNodeKind.Extension:
-            {
-                // Merge prefixes: the extension disappears into the child.
-                int extLength = ext.PrefixLength;
-                int childLength = child.PrefixLength;
-                if (extLength + childLength > MaxDepth)
                 {
-                    ThrowTrie($"Extension merge would grow a prefix beyond {MaxDepth} nibbles");
-                }
+                    // Merge prefixes: the extension disappears into the child.
+                    int extLength = ext.PrefixLength;
+                    int childLength = child.PrefixLength;
+                    if (extLength + childLength > MaxDepth)
+                    {
+                        ThrowTrie($"Extension merge would grow a prefix beyond {MaxDepth} nibbles");
+                    }
 
-                int newOffset = _arena.AllocBytes(extLength + childLength);
-                Span<byte> nibbles = _arena.Bytes(newOffset, extLength + childLength);
-                _arena.Bytes(ext.PrefixOffset, extLength).CopyTo(nibbles);
-                if (childLength > 0)
-                {
-                    _arena.Bytes(child.PrefixOffset, childLength).CopyTo(nibbles[extLength..]);
-                    _arena.ReleaseBytes(childLength);
-                }
+                    int newOffset = _arena.AllocBytes(extLength + childLength);
+                    Span<byte> nibbles = _arena.Bytes(newOffset, extLength + childLength);
+                    _arena.Bytes(ext.PrefixOffset, extLength).CopyTo(nibbles);
+                    if (childLength > 0)
+                    {
+                        _arena.Bytes(child.PrefixOffset, childLength).CopyTo(nibbles[extLength..]);
+                        _arena.ReleaseBytes(childLength);
+                    }
 
-                child.PrefixOffset = newOffset;
-                child.PrefixLength = (byte)(extLength + childLength);
-                child.Flags |= SparseNodeFlags.Dirty;
-                FreeNode(extIndex);
-                return newChild;
-            }
+                    child.PrefixOffset = newOffset;
+                    child.PrefixLength = (byte)(extLength + childLength);
+                    child.Flags |= SparseNodeFlags.Dirty;
+                    FreeNode(extIndex);
+                    return newChild;
+                }
 
             default:
                 ThrowTrie($"Cannot merge extension into {child.Kind} sparse node");
@@ -1790,52 +1790,52 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         switch (node.Kind)
         {
             case SparseNodeKind.Extension:
-            {
-                int prefixLength = node.PrefixLength;
-                Span<byte> prefix = _arena.Bytes(node.PrefixOffset, prefixLength);
-                if (path.Length + prefixLength > targetPath.Length || node.ChildSlice < 0)
                 {
-                    return nodeIndex;
-                }
-
-                for (int i = 0; i < prefixLength; i++)
-                {
-                    if (targetPath[path.Length + i] != prefix[i])
+                    int prefixLength = node.PrefixLength;
+                    Span<byte> prefix = _arena.Bytes(node.PrefixOffset, prefixLength);
+                    if (path.Length + prefixLength > targetPath.Length || node.ChildSlice < 0)
                     {
                         return nodeIndex;
                     }
-                }
 
-                AppendNibbles(ref path, prefix);
-                int newChild = CollapseAlongPath(node.ChildSlice, ref path, targetPath, survivorNibble, reveals, collapses);
-                path.TruncateMut(path.Length - prefixLength);
-                return NormalizeExtension(nodeIndex, newChild);
-            }
+                    for (int i = 0; i < prefixLength; i++)
+                    {
+                        if (targetPath[path.Length + i] != prefix[i])
+                        {
+                            return nodeIndex;
+                        }
+                    }
+
+                    AppendNibbles(ref path, prefix);
+                    int newChild = CollapseAlongPath(node.ChildSlice, ref path, targetPath, survivorNibble, reveals, collapses);
+                    path.TruncateMut(path.Length - prefixLength);
+                    return NormalizeExtension(nodeIndex, newChild);
+                }
 
             case SparseNodeKind.Branch:
-            {
-                int nibble = targetPath[path.Length];
-                if ((node.OccupiedMask & (1 << nibble)) == 0)
                 {
-                    return nodeIndex;
-                }
+                    int nibble = targetPath[path.Length];
+                    if ((node.OccupiedMask & (1 << nibble)) == 0)
+                    {
+                        return nodeIndex;
+                    }
 
-                int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
-                if (entry < 0)
-                {
-                    return nodeIndex;
-                }
+                    int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
+                    if (entry < 0)
+                    {
+                        return nodeIndex;
+                    }
 
-                path.AppendMut(nibble);
-                int newChild = CollapseAlongPath(entry, ref path, targetPath, survivorNibble, reveals, collapses);
-                path.TruncateMut(path.Length - 1);
-                if (newChild != entry)
-                {
-                    SetBranchChild(nodeIndex, nibble, newChild);
-                }
+                    path.AppendMut(nibble);
+                    int newChild = CollapseAlongPath(entry, ref path, targetPath, survivorNibble, reveals, collapses);
+                    path.TruncateMut(path.Length - 1);
+                    if (newChild != entry)
+                    {
+                        SetBranchChild(nodeIndex, nibble, newChild);
+                    }
 
-                return NormalizeBranch(nodeIndex, ref path, reveals, collapses);
-            }
+                    return NormalizeBranch(nodeIndex, ref path, reveals, collapses);
+                }
 
             default:
                 return nodeIndex;
@@ -1948,18 +1948,18 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
                 return HexPrefixRlpLength(node.PrefixLength) + childRefLengths[0];
 
             case SparseNodeKind.Branch:
-            {
-                int length = 1; // empty 17th value item
-                Span<int> children = _arena.ChildSlice(node.ChildSlice, node.ChildCount);
-                int slot = 0;
-                foreach (int entry in children)
                 {
-                    length += childRefLengths[slot++] = ChildRefLength(entry);
-                }
+                    int length = 1; // empty 17th value item
+                    Span<int> children = _arena.ChildSlice(node.ChildSlice, node.ChildCount);
+                    int slot = 0;
+                    foreach (int entry in children)
+                    {
+                        length += childRefLengths[slot++] = ChildRefLength(entry);
+                    }
 
-                length += 16 - slot; // one 0x80 byte per empty child
-                return length;
-            }
+                    length += 16 - slot; // one 0x80 byte per empty child
+                    return length;
+                }
 
             default:
                 ThrowTrie($"Cannot encode {node.Kind} sparse node");
@@ -2002,26 +2002,26 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
                 return;
 
             case SparseNodeKind.Branch:
-            {
-                Span<int> children = _arena.ChildSlice(node.ChildSlice, node.ChildCount);
-                int occupied = node.OccupiedMask;
-                int slot = 0;
-                for (int nibble = 0; nibble < 16; nibble++)
                 {
-                    if ((occupied & (1 << nibble)) != 0)
+                    Span<int> children = _arena.ChildSlice(node.ChildSlice, node.ChildCount);
+                    int occupied = node.OccupiedMask;
+                    int slot = 0;
+                    for (int nibble = 0; nibble < 16; nibble++)
                     {
-                        position = WriteChildRef(destination, position, children[slot], childRefLengths[slot]);
-                        slot++;
+                        if ((occupied & (1 << nibble)) != 0)
+                        {
+                            position = WriteChildRef(destination, position, children[slot], childRefLengths[slot]);
+                            slot++;
+                        }
+                        else
+                        {
+                            destination[position++] = 0x80;
+                        }
                     }
-                    else
-                    {
-                        destination[position++] = 0x80;
-                    }
-                }
 
-                destination[position] = 0x80;
-                return;
-            }
+                    destination[position] = 0x80;
+                    return;
+                }
         }
     }
 
