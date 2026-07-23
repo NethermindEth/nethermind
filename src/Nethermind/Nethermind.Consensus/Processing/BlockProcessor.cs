@@ -28,6 +28,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 namespace Nethermind.Consensus.Processing;
@@ -69,6 +70,10 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
+    internal sealed class BlockAccessListSequentialRetryException(
+        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
+        : InvalidBlockException(blockAccessListException.InvalidBlock, blockAccessListException.Message, blockAccessListException);
+
     public event Action? TransactionsExecuted;
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
@@ -81,7 +86,27 @@ public partial class BlockProcessor(
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts;
+        bool processed = false;
+        try
+        {
+            receipts = ProcessBlock(block, blockTracer, options, spec, token);
+            processed = true;
+        }
+        catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
+        {
+            throw new BlockAccessListSequentialRetryException(ex);
+        }
+        catch (BlockAccessListManager.ParallelExecutionException ex) when (
+            _balManager.ParallelExecutionEnabled &&
+            ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
+        {
+            throw new BlockAccessListSequentialRetryException(blockAccessListException);
+        }
+        finally
+        {
+            if (!processed) block.DisposeAccountChanges();
+        }
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         // EIP-7805 (FOCIL): IL satisfaction is a signal, not a rejection — the block is still
         // committed and the CL reacts to the INCLUSION_LIST_UNSATISFIED newPayload status.
@@ -174,34 +199,51 @@ public partial class BlockProcessor(
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
-        ApplyMinerRewards(block, blockTracer, spec);
-        _systemContractHandler.ProcessWithdrawals(block, spec);
-
-        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
-        // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-        CommitState(spec);
-
-        _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
-
-        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
-
-        CommitStateAndStorageRoots(spec);
-
-        if (BlockchainProcessor.IsMainProcessingThread)
+        try
         {
-            SetAccountChanges(block);
+            ApplyMinerRewards(block, blockTracer, spec);
+            _systemContractHandler.ProcessWithdrawals(block, spec);
+
+            // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
+            // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+            CommitState(spec);
+
+            _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+            ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
+
+            CommitStateAndStorageRoots(spec);
+
+            if (BlockchainProcessor.IsMainProcessingThread)
+            {
+                SetAccountChanges(block);
+            }
+
+            if (ShouldComputeStateRoot(header))
+            {
+                ComputeStateRoot(header);
+            }
+
+            if (bloomsAndReceiptsRootTask is not null)
+            {
+                (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
+            }
+
+            _balManager.SetBlockAccessList(block);
         }
-
-        if (ShouldComputeStateRoot(header))
+        finally
         {
-            ComputeStateRoot(header);
-        }
-
-        _balManager.SetBlockAccessList(block);
-
-        if (bloomsAndReceiptsRootTask is not null)
-        {
-            (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
+            if (bloomsAndReceiptsRootTask is { IsCompletedSuccessfully: false })
+            {
+                try
+                {
+                    bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
+                }
+                catch
+                {
+                    // Preserve the processing failure while ensuring the background task is observed.
+                }
+            }
         }
 
         header.Hash = header.CalculateHash();

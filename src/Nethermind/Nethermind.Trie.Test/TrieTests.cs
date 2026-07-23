@@ -244,6 +244,7 @@ namespace Nethermind.Trie.Test
             Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
 
             Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
+            Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
         }
 
         // [Test]

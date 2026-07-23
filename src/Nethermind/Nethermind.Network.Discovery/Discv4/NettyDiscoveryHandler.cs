@@ -119,13 +119,14 @@ public class NettyDiscoveryHandler(
         Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
     }
 
-    private bool TryAcceptPacket(DatagramPacket packet, out MsgType type, out bool shouldForward)
+    private bool TryAcceptPacket(DatagramPacket packet, out MsgType type, out bool shouldForward, out EndPoint address)
     {
         type = default;
         shouldForward = true;
 
         IByteBuffer content = packet.Content;
-        EndPoint address = packet.Sender;
+        // Mirrors NettyDiscoveryV5Handler.NormalizeEndpoint.
+        address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
 
         int size = content.ReadableBytes;
         Interlocked.Add(ref Metrics.DiscoveryBytesReceived, size);
@@ -165,7 +166,7 @@ public class NettyDiscoveryHandler(
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
     {
-        if (!TryAcceptPacket(packet, out MsgType type, out bool shouldForward))
+        if (!TryAcceptPacket(packet, out MsgType type, out bool shouldForward, out EndPoint address))
         {
             if (shouldForward)
             {
@@ -175,7 +176,6 @@ public class NettyDiscoveryHandler(
             return;
         }
 
-        EndPoint address = packet.Sender;
         int size = packet.Content.ReadableBytes;
         EnsureDispatchWorkersStarted();
 
@@ -212,7 +212,7 @@ public class NettyDiscoveryHandler(
         _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
     };
 
-    private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, DatagramPacket packet, int size)
+    private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, int size)
     {
         if (msg is not EnrResponseMsg)
         {
@@ -239,17 +239,17 @@ public class NettyDiscoveryHandler(
             return false;
         }
 
-        if (!msg.FarAddress.Equals((IPEndPoint)packet.Sender))
+        if (!msg.FarAddress.Equals(address))
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has incorrect far address", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress} but was {packet.Sender}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (msg.FarPublicKey is null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far public key", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress} but was {packet.Sender}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
@@ -273,6 +273,11 @@ public class NettyDiscoveryHandler(
     // multi-packet exchanges are not dropped before signature verification.
     private bool TryAcceptInbound(IPEndPoint remoteEndpoint)
         => _inboundMessageLimiter.TryAccept(remoteEndpoint.Address);
+
+    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
+        => endpoint.Address.IsIPv4MappedToIPv6
+            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
+            : endpoint;
 
     private async Task LogDisconnectFailureAsync(Task disconnectTask)
     {
@@ -322,7 +327,7 @@ public class NettyDiscoveryHandler(
 
         ReportMsgByType(msg, packet.Size);
 
-        if (!ValidateMsg(msg, packet.Type, packet.Address, packet.Packet, packet.Size))
+        if (!ValidateMsg(msg, packet.Type, packet.Address, packet.Size))
         {
             ForwardPacket(packet);
             return;
