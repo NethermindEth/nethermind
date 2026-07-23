@@ -1291,15 +1291,15 @@ public class SszMiddlewareTests
     public async Task GetInclusionList_bogota_routes_to_engine_getInclusionListV1()
     {
         InclusionListBytes inclusionList = new(1) { new ArrayPoolList<byte>((ReadOnlySpan<byte>)[0x01, 0x02]) };
-        _engineModule.engine_getInclusionListV1(Arg.Any<Hash256>())
+        _engineModule.engine_getInclusionListV1()
             .Returns(ResultWrapper<InclusionListBytes>.Success(inclusionList));
 
-        DefaultHttpContext ctx = MakeGetContext($"/engine/v2/inclusion_list/{TestItem.KeccakA}", fork: "bogota");
+        DefaultHttpContext ctx = MakeGetContext("/engine/v2/inclusion_list", fork: "bogota");
 
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
-        await _engineModule.Received(1).engine_getInclusionListV1(Arg.Any<Hash256>());
+        await _engineModule.Received(1).engine_getInclusionListV1();
     }
 }

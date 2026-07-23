@@ -354,7 +354,7 @@ public partial class EngineModuleTests
         chain.TxPool.SubmitTx(tx1, TxHandlingOptions.PersistentBroadcast);
         chain.TxPool.SubmitTx(tx2, TxHandlingOptions.PersistentBroadcast);
 
-        using InclusionListBytes inclusionList = (await rpc.engine_getInclusionListV1(chain.BlockTree.HeadHash)).Data!;
+        using InclusionListBytes inclusionList = (await rpc.engine_getInclusionListV1()).Data!;
 
         byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
         byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;

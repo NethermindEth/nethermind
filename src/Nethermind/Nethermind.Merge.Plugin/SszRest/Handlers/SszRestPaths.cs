@@ -103,7 +103,7 @@ public static class SszRestPaths
     public const string PostBlobsV3 = "POST /engine/v2/blobs/v3";
     public const string PostBlobsV4 = "POST /engine/v2/blobs/v4";
     public const string PostPayloadsWitness = "POST /engine/v2/payloads/witness";
-    public const string GetInclusionList = "GET /engine/v2/inclusion_list/{block_hash}";
+    public const string GetInclusionList = "GET /engine/v2/inclusion_list";
 
     // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
     // (one table per HTTP method). Presence in the table means the (method, resource) pair is a

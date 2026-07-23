@@ -17,7 +17,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Builds an inclusion list from the local mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256 blockHash);
+    Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1();
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",

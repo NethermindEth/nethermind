@@ -16,8 +16,8 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256 blockHash)
-        => getInclusionListTransactionsHandler.Handle(blockHash);
+    public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1()
+        => getInclusionListTransactionsHandler.Handle();
 
     public async Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
     {

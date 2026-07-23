@@ -199,7 +199,7 @@ public class BaseMergePluginModule : Module
 
                 .AddSingleton<InclusionListTxSource>()
                 .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
-                .AddSingleton<IHandler<Hash256, InclusionListBytes>, GetInclusionListTransactionsHandler>()
+                .AddSingleton<IHandler<InclusionListBytes>, GetInclusionListTransactionsHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>
