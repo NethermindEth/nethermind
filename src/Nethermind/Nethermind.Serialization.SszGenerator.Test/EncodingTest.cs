@@ -129,8 +129,11 @@ public class EncodingTest
     public void Encode_nonnullable_static_class_null_clears_output()
     {
         NonNullableStaticClassContainer container = new() { Child = null! };
+        byte[] reusedBuffer = Enumerable.Repeat((byte)0xFF, sizeof(ulong)).ToArray();
 
-        Assert.That(Encode(container), Is.EqualTo(new byte[sizeof(ulong)]));
+        NonNullableStaticClassContainer.Encode(reusedBuffer, container);
+
+        Assert.That(reusedBuffer, Is.EqualTo(new byte[sizeof(ulong)]));
     }
 
     [Test]
