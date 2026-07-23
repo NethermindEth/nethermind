@@ -21,6 +21,10 @@ public sealed class GCScheduler
     private const int MinSecondsBetweenForcedGC = 120;
     // 4 GiB ≈ 256 typical 30 MGas mainnet blocks
     internal const long SustainedSweepAllocationBytes = 4L * 1024 * 1024 * 1024;
+    // Concurrent sweeps never compact, so gen2 fragmentation accumulates during sustained
+    // processing; past this bound the sweep compacts instead (blocking, guard-aligned).
+    internal const long MinFragmentationCompactionBytes = 4L * 1024 * 1024 * 1024;
+    private const long FragmentationCompactionAvailableMemoryDivisor = 6;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -236,7 +240,42 @@ public sealed class GCScheduler
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 
-        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+        // Concurrent sweeps only free, never compact, so fragmentation grows during sustained
+        // processing and plateaus far above the compacted size. Past the bound, compact instead;
+        // the guard aligns the pause with the gap between payloads, exactly like the idle-window GCs.
+        GCMemoryInfo memoryInfo = GC.GetGCMemoryInfo();
+        long fragmentationBound = Math.Max(
+            memoryInfo.TotalAvailableMemoryBytes / FragmentationCompactionAvailableMemoryDivisor,
+            MinFragmentationCompactionBytes);
+        if (memoryInfo.FragmentedBytes > fragmentationBound)
+        {
+            GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            return;
+        }
+
+        // When any heap's gen2 unusable fragmentation exceeds half its size, the runtime escalates
+        // an induced non-blocking gen2 to a full blocking compacting collection (1-2s stop-the-world
+        // on replay-sized heaps; coreclr gc.cpp dt_high_frag_p). SustainedLowLatency suppresses
+        // exactly that escalation while still allowing the background collection.
+        // A no-GC region may still be closing right after the guard was released (Dispose resumes
+        // the guard before EndNoGCRegion); firing then would skip the low-latency protection below.
+        // Stay armed and retry on a later tick instead.
+        GCLatencyMode entryMode = GCSettings.LatencyMode;
+        if (entryMode != GCLatencyMode.Interactive) return;
+
+        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        try
+        {
+            GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+        }
+        finally
+        {
+            // Restore only if nothing else (e.g. a no-GC region) changed the mode meanwhile.
+            if (GCSettings.LatencyMode == GCLatencyMode.SustainedLowLatency)
+            {
+                GCSettings.LatencyMode = entryMode;
+            }
+        }
     }
 
     internal long SweepBaselineAllocatedBytes
@@ -244,4 +283,5 @@ public sealed class GCScheduler
         get => Volatile.Read(ref _sweepBaselineAllocatedBytes);
         set => Volatile.Write(ref _sweepBaselineAllocatedBytes, value);
     }
+
 }
