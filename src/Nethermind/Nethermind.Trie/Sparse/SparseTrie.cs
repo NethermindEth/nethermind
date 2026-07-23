@@ -92,7 +92,9 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
     /// <summary>
     /// Reveals the parents the batch touches and applies it: inserts and value updates first,
-    /// then deletions with canonical collapse. Sorts <paramref name="updates"/> in place.
+    /// then deletions with canonical collapse. Consumes <paramref name="updates"/>: the span is
+    /// sorted and then overwritten in place (deletes compacted to the front), so callers must
+    /// not reuse its contents.
     /// </summary>
     public void Apply(Span<SparseTrieUpdate> updates)
     {
@@ -128,7 +130,22 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
         if (deleteCount > 0)
         {
-            ApplyDeletes(updates);
+            if (deleteCount < updates.Length)
+            {
+                // The writes are already applied and consumed; stably compacting the sorted
+                // deletes to the front keeps the delete walk from rescanning write entries
+                // that share prefixes with delete targets.
+                int packed = 0;
+                for (int i = 0; i < updates.Length; i++)
+                {
+                    if (updates[i].IsDelete)
+                    {
+                        updates[packed++] = updates[i];
+                    }
+                }
+            }
+
+            ApplyDeletes(updates[..deleteCount]);
         }
 
         if (_rootNode < 0)
@@ -1422,25 +1439,36 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         }
 
         using ArrayPoolList<PendingReveal> reveals = new(4);
-        using ArrayPoolList<PendingCollapse> collapses = new(4);
 
-        TreePath path = TreePath.Empty;
-        _rootNode = DeleteWalk(_rootNode, ref path, updates, 0, updates.Length, reveals, collapses);
-
-        while (collapses.Count > 0)
+        // Two swapped round buffers: cascading collapses run round after round, and renting a
+        // fresh list per round copied the whole pending set each time.
+        ArrayPoolList<PendingCollapse> collapses = new(4);
+        ArrayPoolList<PendingCollapse>? round = null;
+        try
         {
-            ResolvePendingSurvivors(reveals);
-            reveals.Clear();
+            round = new ArrayPoolList<PendingCollapse>(4);
+            TreePath path = TreePath.Empty;
+            _rootNode = DeleteWalk(_rootNode, ref path, updates, 0, updates.Length, reveals, collapses);
 
-            using ArrayPoolList<PendingCollapse> round = new(collapses.Count);
-            round.AddRange(collapses.AsSpan());
-            collapses.Clear();
-
-            for (int i = 0; i < round.Count; i++)
+            while (collapses.Count > 0)
             {
-                TreePath rootPath = TreePath.Empty;
-                _rootNode = CollapseAlongPath(_rootNode, ref rootPath, round[i].BranchPath, round[i].SurvivorNibble, reveals, collapses);
+                ResolvePendingSurvivors(reveals);
+                reveals.Clear();
+
+                (round, collapses) = (collapses, round);
+                collapses.Clear();
+
+                for (int i = 0; i < round.Count; i++)
+                {
+                    TreePath rootPath = TreePath.Empty;
+                    _rootNode = CollapseAlongPath(_rootNode, ref rootPath, round[i].BranchPath, round[i].SurvivorNibble, reveals, collapses);
+                }
             }
+        }
+        finally
+        {
+            collapses.Dispose();
+            round?.Dispose();
         }
     }
 
