@@ -326,6 +326,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         stats.GroupBytesByDepth[depth] += bytes - chainBytes;
         if (group.Format == PbtGroupFormat.Interleaved) stats.InterleavedGroupCount++;
         if (group.Format == PbtGroupFormat.BoundaryOnly) stats.BoundaryOnlyGroupCount++;
+        if (group.Format == PbtGroupFormat.Every4Depth) stats.Every4DepthGroupCount++;
         if (depth == 0) report.RootSubtreeStemCount = group.Stats.StemCount;
 
         WalkPosition(group, PbtLayout.TrieNodeGroupRootPosition, PbtLayout.TrieNodeGroupBoundarySlots, depth, stats);
@@ -406,6 +407,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             case PbtLeafFormat.Legacy: stats.LegacyBlobCount++; break;
             case PbtLeafFormat.Interleaved: stats.InterleavedBlobCount++; break;
             case PbtLeafFormat.LeavesOnly: stats.LeavesOnlyBlobCount++; break;
+            case PbtLeafFormat.Every4Depth: stats.Every4DepthBlobCount++; break;
         }
     }
 
@@ -564,6 +566,7 @@ public sealed class PbtScanReport
         public long GroupCount { get; internal set; }
         public long InterleavedGroupCount { get; internal set; }
         public long BoundaryOnlyGroupCount { get; internal set; }
+        public long Every4DepthGroupCount { get; internal set; }
         public long ChainCount { get; internal set; }
         public long StemCount { get; internal set; }
 
@@ -636,6 +639,7 @@ public sealed class PbtScanReport
             GroupCount += other.GroupCount;
             InterleavedGroupCount += other.InterleavedGroupCount;
             BoundaryOnlyGroupCount += other.BoundaryOnlyGroupCount;
+            Every4DepthGroupCount += other.Every4DepthGroupCount;
             ChainCount += other.ChainCount;
             StemCount += other.StemCount;
             IntermediateNodeCount += other.IntermediateNodeCount;
@@ -726,6 +730,9 @@ public sealed class PbtScanReport
         /// <summary>Blobs in the leaves-only layout, which stores no internal node at all.</summary>
         public long LeavesOnlyBlobCount { get; internal set; }
 
+        /// <summary>Blobs in the every-4-depth layout, which stores one internal node every four depth.</summary>
+        public long Every4DepthBlobCount { get; internal set; }
+
         /// <summary>Blobs by how many of the stem's 256 leaves they hold, indexed by that count.</summary>
         public long[] BlobsByLeafCount { get; } = new long[LeafSlots];
 
@@ -739,6 +746,7 @@ public sealed class PbtScanReport
             LegacyBlobCount += other.LegacyBlobCount;
             InterleavedBlobCount += other.InterleavedBlobCount;
             LeavesOnlyBlobCount += other.LeavesOnlyBlobCount;
+            Every4DepthBlobCount += other.Every4DepthBlobCount;
 
             AddInto(BlobsByLeafCount, other.BlobsByLeafCount);
         }
@@ -785,7 +793,7 @@ public sealed class PbtScanReport
         if (stats.IsEmpty) return;
 
         report.AppendLine($"--- {partition} ---");
-        report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.BoundaryOnlyGroupCount:N0} boundary-only, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems over {stats.IntermediateNodeCount:N0} intermediate nodes");
+        report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.BoundaryOnlyGroupCount:N0} boundary-only, {stats.Every4DepthGroupCount:N0} every-4-depth, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems over {stats.IntermediateNodeCount:N0} intermediate nodes");
         report.AppendLine($"  in {stats.BlobCount:N0} blobs, whose keys take a further {stats.KeyBytes:N0} bytes");
         if (stats.ClusterCount != 0)
         {
@@ -864,7 +872,7 @@ public sealed class PbtScanReport
     private static void AppendLeafColumn(StringBuilder report, string title, LeafColumnStats stats)
     {
         report.AppendLine($"--- {title} ---");
-        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes plus {stats.KeyBytes:N0} of keys, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.InterleavedBlobCount:N0} interleaved, {stats.LeavesOnlyBlobCount:N0} leaves-only, {stats.LegacyBlobCount:N0} legacy");
+        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes plus {stats.KeyBytes:N0} of keys, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.InterleavedBlobCount:N0} interleaved, {stats.LeavesOnlyBlobCount:N0} leaves-only, {stats.Every4DepthBlobCount:N0} every-4-depth, {stats.LegacyBlobCount:N0} legacy");
         if (stats.BlobCount == 0)
         {
             report.AppendLine();

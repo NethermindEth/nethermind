@@ -31,6 +31,9 @@ public class PbtFormatInteropTests
     {
         List<(byte[], byte[]?)> writes = RandomWrites(seed: 7, count: 400);
 
+        // Every4Depth is left out: it stores the same tile as BoundaryOnly and differs only in the leaf
+        // column, which TotalNodeBytes does not weigh, so it cannot be ordered here. Its fold and node set
+        // are covered by MixedFormatRewrite below and its leaf column by StemLeafBlobTests.
         PbtTreeHarness[] harnesses =
         [
             new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel),
@@ -66,6 +69,10 @@ public class PbtFormatInteropTests
     [TestCase(PbtGroupFormat.BoundaryOnly, PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved, PbtGroupFormat.BoundaryOnly)]
     [TestCase(PbtGroupFormat.BoundaryOnly, PbtGroupFormat.Interleaved)]
+    [TestCase(PbtGroupFormat.EveryLevel, PbtGroupFormat.Every4Depth)]
+    [TestCase(PbtGroupFormat.Every4Depth, PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.Every4Depth, PbtGroupFormat.BoundaryOnly)]
+    [TestCase(PbtGroupFormat.BoundaryOnly, PbtGroupFormat.Every4Depth)]
     public void MixedFormatRewrite_MatchesAFreshFoldInTheNewFormat(PbtGroupFormat initial, PbtGroupFormat then)
     {
         // sixteen stems on the boundary slots of one depth-4 group: it branches sixteen ways, so a

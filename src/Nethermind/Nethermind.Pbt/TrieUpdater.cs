@@ -1127,6 +1127,7 @@ public static partial class TrieUpdater
         {
             PbtGroupFormat.Interleaved => PbtLeafFormat.Interleaved,
             PbtGroupFormat.BoundaryOnly => PbtLeafFormat.LeavesOnly,
+            PbtGroupFormat.Every4Depth => PbtLeafFormat.Every4Depth,
             _ => PbtLeafFormat.EveryLevel,
         };
 

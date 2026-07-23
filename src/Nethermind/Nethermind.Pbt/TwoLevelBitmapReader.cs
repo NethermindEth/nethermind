@@ -47,7 +47,7 @@ internal readonly ref struct TwoLevelBitmapReader
     /// <exception cref="InvalidDataException">The trailing format byte is no <see cref="PbtLeafFormat"/>.</exception>
     public static TwoLevelBitmapReader FromBlob(ReadOnlySpan<byte> blob, out ReadOnlySpan<byte> entries)
     {
-        if (FormatOf(blob) is not (PbtLeafFormat.Legacy or PbtLeafFormat.EveryLevel or PbtLeafFormat.Interleaved or PbtLeafFormat.LeavesOnly))
+        if (FormatOf(blob) is not (PbtLeafFormat.Legacy or PbtLeafFormat.EveryLevel or PbtLeafFormat.Interleaved or PbtLeafFormat.LeavesOnly or PbtLeafFormat.Every4Depth))
             throw new InvalidDataException($"StemLeafBlob: unexpected format byte 0x{blob[^1]:x2}");
 
         ushort top = BinaryPrimitives.ReadUInt16LittleEndian(blob.Slice(blob.Length - TopLength - FormatLength, TopLength));

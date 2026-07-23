@@ -31,4 +31,12 @@ public enum PbtGroupFormat : byte
     /// </summary>
     /// <remarks>0x04 is <see cref="PbtNodeCluster"/>'s, whose encoding a group's has to be told from.</remarks>
     BoundaryOnly = 0x05,
+
+    /// <summary>
+    /// The boundary tile exactly as <see cref="BoundaryOnly"/> — a node stored every four trie levels —
+    /// paired with a stem blob that keeps one internal node every four depth rather than none, so the
+    /// whole store spaces its stored nodes the same on both sides. The tile is byte-for-byte a
+    /// <see cref="BoundaryOnly"/> one bar its format byte; only the leaf column differs.
+    /// </summary>
+    Every4Depth = 0x07,
 }

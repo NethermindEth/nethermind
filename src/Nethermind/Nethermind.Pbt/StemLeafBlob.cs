@@ -36,6 +36,13 @@ public enum PbtLeafFormat : byte
     /// more can go.
     /// </summary>
     LeavesOnly = 0x04,
+
+    /// <summary>
+    /// One internal node every four depth — the branching nodes of the 16-wide level alone, the rest
+    /// folded on demand. The leaves are stored whatever the format and the 256-wide root is left out as
+    /// under the others, so this keeps a single mid-height level between them.
+    /// </summary>
+    Every4Depth = 0x05,
 }
 
 /// <summary>
@@ -216,10 +223,10 @@ public static class StemLeafBlob
     /// rebuild copies: a walk of the nodes costs more than the copy it is sizing.
     /// <see cref="PbtLeafFormat.EveryLevel"/> has a closed form — a binary tree with <c>m</c> leaves has
     /// exactly <c>m - 1</c> branching nodes, so the count is <c>2m - 1</c> however the leaves are placed
-    /// — as does <see cref="PbtLeafFormat.LeavesOnly"/>, whose entries are the leaves themselves, and
-    /// <see cref="PbtLeafFormat.Interleaved"/>, which has none, is counted by
-    /// <see cref="CountInterleavedNodes"/> instead. Only the legacy layout, which nothing writes, is
-    /// walked.
+    /// — as does <see cref="PbtLeafFormat.LeavesOnly"/>, whose entries are the leaves themselves, while
+    /// <see cref="PbtLeafFormat.Interleaved"/> and <see cref="PbtLeafFormat.Every4Depth"/>, whose closed
+    /// forms are a bit fold, are counted by <see cref="CountInterleavedNodes"/> and
+    /// <see cref="CountEvery4Nodes"/> instead. Only the legacy layout, which nothing writes, is walked.
     /// </remarks>
     internal static int CountStoredNodes(ReadOnlySpan<byte> bitmap, int low, int high, PbtLeafFormat format)
     {
@@ -232,6 +239,7 @@ public static class StemLeafBlob
         }
 
         if (format == PbtLeafFormat.Interleaved) return CountInterleavedNodes(bitmap, low, high);
+        if (format == PbtLeafFormat.Every4Depth) return CountEvery4Nodes(bitmap, low, high);
 
         if (!RangeHasLeaf(bitmap, low, high)) return 0;
         if (high - low == 1) return 1;
@@ -279,6 +287,39 @@ public static class StemLeafBlob
                 + BitOperations.PopCount(pairs & (pairs << 2) & 0x8888_8888_8888_8888ul)
                 + BitOperations.PopCount(eights & (eights << 8) & 0x8000_8000_8000_8000ul)
                 + BitOperations.PopCount(thirtyTwos & (thirtyTwos << 32) & 0x8000_0000_0000_0000ul);
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// <see cref="CountStoredNodes"/> for <see cref="PbtLeafFormat.Every4Depth"/>: the leaves of the
+    /// aligned range <c>[low, high)</c> plus the branching nodes of its 16-wide level alone.
+    /// </summary>
+    /// <remarks>
+    /// The 16-wide branching term of <see cref="CountInterleavedNodes"/> on its own — its every-2-depth
+    /// fold with the 4- and 64-wide levels dropped — sharing that method's word loop and range mask, a
+    /// 16-wide block sitting inside a 64-leaf word so none straddles two.
+    /// </remarks>
+    private static int CountEvery4Nodes(ReadOnlySpan<byte> bitmap, int low, int high)
+    {
+        int width = high - low;
+        ulong rangeMask = width < LeavesPerWord
+            ? (ulong.MaxValue << (LeavesPerWord - width)) >> (low & (LeavesPerWord - 1))
+            : ulong.MaxValue;
+
+        int count = 0;
+        for (int word = low / LeavesPerWord; word <= (high - 1) / LeavesPerWord; word++)
+        {
+            ulong leaves = BinaryPrimitives.ReadUInt64BigEndian(bitmap.Slice(word * sizeof(ulong), sizeof(ulong))) & rangeMask;
+            if (leaves == 0) continue;
+
+            ulong pairs = (leaves | (leaves << 1)) & 0xAAAA_AAAA_AAAA_AAAAul;
+            ulong quads = (pairs | (pairs << 2)) & 0x8888_8888_8888_8888ul;
+            ulong eights = (quads | (quads << 4)) & 0x8080_8080_8080_8080ul;
+
+            count += BitOperations.PopCount(leaves)
+                + BitOperations.PopCount(eights & (eights << 8) & 0x8000_8000_8000_8000ul);
         }
 
         return count;

@@ -44,7 +44,7 @@ public static class PbtLayout
     private static int TrieNodeGroupKeptWidths(PbtGroupFormat format) => format switch
     {
         PbtGroupFormat.Interleaved => 0b10101,
-        PbtGroupFormat.BoundaryOnly => 0b00001,
+        PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth => 0b00001,
         _ => AllWidthsBitmask,
     };
 
@@ -63,7 +63,7 @@ public static class PbtLayout
     private static uint TrieNodeGroupSkippedPositions(PbtGroupFormat format) => format switch
     {
         PbtGroupFormat.Interleaved => 0x29125224u,
-        PbtGroupFormat.BoundaryOnly => AllPositionsBitmask & ~BoundaryPositionsBitmask,
+        PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth => AllPositionsBitmask & ~BoundaryPositionsBitmask,
         _ => 0,
     };
 
@@ -71,16 +71,18 @@ public static class PbtLayout
     /// <remarks>
     /// <see cref="PbtLeafFormat.Interleaved"/> keeps 64, 16 and 4, anchored at the leaves as the
     /// group's is at its boundary, so that the level just above a stored node is always a skipped one;
-    /// <see cref="PbtLeafFormat.LeavesOnly"/> keeps none of them. Width 1 is a leaf, which holds a
+    /// <see cref="PbtLeafFormat.LeavesOnly"/> keeps none of them, and
+    /// <see cref="PbtLeafFormat.Every4Depth"/> the 16-wide level alone. Width 1 is a leaf, which holds a
     /// value rather than a hash and is stored whatever the format, and the 256-wide root is left out
     /// wherever a level is for the same reason a group's is: the stem node holding the blob caches
-    /// that hash already. <see cref="StemLeafBlob"/> counts an interleaved blob's entries by a fold
-    /// that unrolls its three levels, so a change to them belongs there too.
+    /// that hash already. <see cref="StemLeafBlob"/> counts an interleaved or every-4-depth blob's
+    /// entries by a fold that unrolls its kept levels, so a change to them belongs there too.
     /// </remarks>
     private static int StemLeafKeptWidths(PbtLeafFormat format) => format switch
     {
         PbtLeafFormat.Interleaved => 0b1010100,
         PbtLeafFormat.LeavesOnly => 0b0000001,
+        PbtLeafFormat.Every4Depth => 0b0010000,
         _ => StemLeafAllWidthsBitmask,
     };
 

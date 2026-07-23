@@ -329,7 +329,7 @@ public readonly ref partial struct PbtTrieNodeGroup
 
         ReadOnlySpan<byte> trailer = data[^TrailerLength..];
         PbtGroupFormat format = (PbtGroupFormat)trailer[FormatTrailerOffset];
-        if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved or PbtGroupFormat.BoundaryOnly))
+        if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved or PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth))
         {
             throw new InvalidDataException($"Trie node group: unexpected format byte 0x{(byte)format:x2}");
         }
