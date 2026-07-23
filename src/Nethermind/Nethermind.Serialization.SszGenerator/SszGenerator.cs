@@ -1213,8 +1213,10 @@ internal static class SszCodecHelpers
                     "merkleizer.CalculateRoot(out root);",
                 ]);
             bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
+            string byteListVariableName = isByteListItself ? VarName(variables[0].Name) : string.Empty;
+            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], byteListVariableName, sourceIsArray: true) : string.Empty;
             string DecodeCollectionItem(string sliceExpression, string destination) => isByteListItself
-                ? $"{destination}.{variables[0].Name} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name}));"
+                ? $"{{ byte[] {byteListVariableName} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
                 : $"Decode({sliceExpression}, out {destination});";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Serialization.Ssz.Merkleization;
