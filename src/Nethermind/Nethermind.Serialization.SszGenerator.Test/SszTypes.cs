@@ -124,6 +124,12 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong Value { get; set; }
     }
 
+    [SszContainer]
+    public partial struct NonNullableStaticClassContainer
+    {
+        public StaticClassCollectionItem Child { get; set; }
+    }
+
     [SszContainer(isCollectionItself: true)]
     public partial struct ByteListListItself
     {

@@ -126,6 +126,14 @@ public class EncodingTest
     }
 
     [Test]
+    public void Encode_nonnullable_static_class_null_clears_output()
+    {
+        NonNullableStaticClassContainer container = new() { Child = null! };
+
+        Assert.That(Encode(container), Is.EqualTo(new byte[sizeof(ulong)]));
+    }
+
+    [Test]
     public void Decode_collection_itself_byte_lists_supports_list_destinations()
     {
         ByteListListItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];

@@ -770,12 +770,12 @@ internal static class SszCodecHelpers
                 : $"{property.Type.StaticMemberAccess}.Encode({destSpan}, {encodedValueExpr});";
         }
 
-        // Nullable reference-typed static fields encode as zeros when null.
+        // Reference-typed static fields encode as zeros when null.
         return NullClearingEncodeStatement(destSpan, property, valueExpr, statement);
     }
 
     private static string NullClearingEncodeStatement(string target, SszProperty property, string valueExpr, string statement) =>
-        property.IsNullable ? $"if ({valueExpr} is null) {target}.Clear(); else {statement}" : statement;
+        property.IsNullable || property.IsReferenceType ? $"if ({valueExpr} is null) {target}.Clear(); else {statement}" : statement;
 
     private static bool IsByteList(SszProperty property) =>
         property.Kind == Kind.List && (property.IsArrayProperty || property.IsMemoryLikeProperty) && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
