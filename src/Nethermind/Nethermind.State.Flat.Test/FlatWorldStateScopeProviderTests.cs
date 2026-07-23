@@ -544,6 +544,252 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void VerifyWithTrie_DualRun_AgreesAcrossStorageStateAndSelfDestruct()
+    {
+        // Every stage self-checks: storage roots per job, state roots at UpdateRootHash/Commit,
+        // and account/slot reads against the diagnostic Patricia trees.
+        using TestContext ctx = new(new FlatDbConfig { VerifyWithTrie = true });
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address contract = TestItem.AddressA;
+        Address plain = TestItem.AddressB;
+        Account contractAccount = TestItem.GenerateRandomAccount();
+        Account plainAccount = TestItem.GenerateRandomAccount();
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+        {
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(contract, 2))
+            {
+                storageBatch.Set(1, [0x01]);
+                storageBatch.Set(2, [0x02, 0x03]);
+            }
+
+            writeBatch.Set(contract, contractAccount);
+            writeBatch.Set(plain, plainAccount);
+        }
+
+        scope.UpdateRootHash();
+        scope.Commit(1);
+
+        // Cache the storage tree ahead of the deletion: the verify-mode Get check inside
+        // CreateStorageTreeImpl races the flat dirty null against the not-yet-updated
+        // diagnostic Patricia tree (pre-existing VerifyWithTrie behavior).
+        scope.CreateStorageTree(plain);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+        {
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(contract, 1))
+            {
+                storageBatch.Clear();
+                storageBatch.Set(7, [0x07]);
+            }
+
+            writeBatch.Set(contract, contractAccount);
+            writeBatch.Set(plain, null);
+        }
+
+        scope.UpdateRootHash();
+        scope.Commit(2);
+
+        TestMemDb testDb = new();
+        StorageTree expectedTree = new(new RawScopedTrieStore(testDb), LimboLogs.Instance);
+        expectedTree.Set(7, [0x07]);
+        expectedTree.UpdateRootHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(contract)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+            Assert.That(scope.Get(plain), Is.Null);
+        }
+    }
+
+    [Test]
+    public void DeletedFinalAccount_SkipsItsStorageJob_ButKeepsDeletionAndClear()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1))
+            {
+                storageBatch.Set(1, [0x01]);
+            }
+
+            writeBatch.Set(address, account);
+        }
+
+        scope.Commit(1);
+
+        // Modify the existing storage, then destroy the account in the same block: the sealed
+        // job must be discarded while the account deletion and the storage clear survive.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1))
+            {
+                storageBatch.Set(3, [0x03]);
+            }
+
+            writeBatch.Set(address, null);
+        }
+
+        scope.Commit(2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(address), Is.Null);
+            Assert.That(scope.CreateStorageTree(address).Get(1), Is.EqualTo(StorageTree.ZeroBytes), "committed slot cleared");
+            Assert.That(scope.CreateStorageTree(address).Get(3), Is.EqualTo(StorageTree.ZeroBytes), "same-block slot cleared");
+        }
+    }
+
+    [Test]
+    public void FailedStorageCalculation_PoisonsTheScope_AndCommitRejects()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address address = TestItem.AddressA;
+        // An unresolvable storage root: the reveal finds no committed node anywhere.
+        Account account = TestItem.GenerateRandomAccount().WithChangedStorageRoot(Keccak.Compute("missing"));
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+        ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
+
+        Assert.Throws<MissingTrieNodeException>(() =>
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1))
+            {
+                storageBatch.Set(1, [0x01]);
+            }
+
+            writeBatch.Set(address, account);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.RootHash, Is.EqualTo(Keccak.EmptyTreeHash), "root stays at the anchor");
+            Assert.Throws<InvalidOperationException>(() => scope.UpdateRootHash(), "recalculation rejected");
+            Assert.Throws<InvalidOperationException>(() => scope.Commit(1), "commit rejected");
+        }
+    }
+
+    [Test]
+    public void FiveStorageTries_RunTheParallelJobPhase_AndPropagateEveryRoot()
+    {
+        // Five jobs exceed the serial threshold, so this exercises the ParallelUnbalancedWork path.
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE];
+        foreach (Address address in addresses)
+        {
+            ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length))
+        {
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addresses[i], 3);
+                for (int slot = 1; slot <= 3; slot++)
+                {
+                    storageBatch.Set((UInt256)(i * 100 + slot), [(byte)(i + 1), (byte)slot]);
+                }
+            }
+        }
+
+        scope.Commit(1);
+
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            TestMemDb testDb = new();
+            StorageTree expectedTree = new(new RawScopedTrieStore(testDb), LimboLogs.Instance);
+            for (int slot = 1; slot <= 3; slot++)
+            {
+                expectedTree.Set((UInt256)(i * 100 + slot), [(byte)(i + 1), (byte)slot]);
+            }
+
+            expectedTree.UpdateRootHash();
+            Assert.That(scope.Get(addresses[i])!.StorageRoot, Is.EqualTo(expectedTree.RootHash), $"address {i}");
+        }
+    }
+
+    [Test]
+    public void StateRoot_AnchorBeforeCalculation_InvalidatedByLaterBatches_AndReusableAfterCommit()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Account accountA = TestItem.GenerateRandomAccount();
+        Account accountB = TestItem.GenerateRandomAccount();
+        Account accountC = TestItem.GenerateRandomAccount();
+
+        Assert.That(scope.RootHash, Is.EqualTo(Keccak.EmptyTreeHash), "anchor before any calculation");
+
+        TestMemDb testDb = new();
+        StateTree expectedTree = new(new RawScopedTrieStore(testDb), LimboLogs.Instance);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressA, accountA);
+        }
+
+        scope.UpdateRootHash();
+        Hash256 root1 = scope.RootHash;
+        expectedTree.Set(TestItem.AddressA, accountA);
+        expectedTree.UpdateRootHash();
+        Assert.That(root1, Is.EqualTo(expectedTree.RootHash), "intermediate root");
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressB, accountB);
+        }
+
+        scope.UpdateRootHash();
+        expectedTree.Set(TestItem.AddressB, accountB);
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedTree.RootHash), "later batch invalidates the earlier root");
+
+        scope.Commit(1);
+
+        // The next block anchors at the committed root and reveals the just-published nodes.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressC, accountC);
+        }
+
+        scope.UpdateRootHash();
+        expectedTree.Set(TestItem.AddressC, accountC);
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedTree.RootHash), "root across the published block boundary");
+
+        scope.Commit(2);
+    }
+
+    [Test]
+    public void EmptyBlockCommit_KeepsTheParentRoot()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressA, TestItem.GenerateRandomAccount());
+        }
+
+        scope.UpdateRootHash();
+        Hash256 root = scope.RootHash;
+        scope.Commit(1);
+
+        scope.Commit(2);
+        Assert.That(scope.RootHash, Is.EqualTo(root));
+    }
+
+    [Test]
     public void TestStorageRootAfterMultipleCommits()
     {
         using TestContext ctx = new();
