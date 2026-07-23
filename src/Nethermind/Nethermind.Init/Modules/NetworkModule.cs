@@ -3,12 +3,14 @@
 
 using System.Threading;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Timers;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -30,7 +32,7 @@ using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
-using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Snap = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using SnapV2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
 
@@ -162,7 +164,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
 
-            .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager>(wsm => wsm.SnapServer)
+            .AddSingleton<Synchronization.SnapServer.SnapCodeServer, IDb>(CreateSnapCodeServer)
+            .AddSingleton<Synchronization.SnapServer.SnapBalServer>()
+            .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager, Synchronization.SnapServer.SnapCodeServer, Synchronization.SnapServer.SnapBalServer>(
+                (wsm, code, bal) => new Synchronization.SnapServer.SnapServer(wsm.SnapStateServer, code, bal))
 
             // Protocol handler factories
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
@@ -176,6 +181,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             ;
     }
+
+    private static Synchronization.SnapServer.SnapCodeServer CreateSnapCodeServer([KeyFilter(DbNames.Code)] IDb codeDb) => new(codeDb);
 
     private sealed class TxGossipPolicySource(ILifetimeScope lifetimeScope) : ITxGossipPolicySource
     {

@@ -40,9 +40,8 @@ public class FlatWorldStateManager(
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapServer SnapServer => _snapServer ??= new FlatSnapServer(
+    public ISnapStateServer SnapStateServer => _snapServer ??= new FlatSnapServer(
         flatDbManager,
-        codeDb,
         flatStateRootIndex,
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;

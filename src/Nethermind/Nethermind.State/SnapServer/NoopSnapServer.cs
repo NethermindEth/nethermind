@@ -24,6 +24,9 @@ public class NoopSnapServer : ISnapServer
     public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken) =>
         EmptyByteArrayList.Instance;
 
+    public IByteArrayList GetBlockAccessLists(IReadOnlyList<ValueHash256> blockHashes, long byteLimit, CancellationToken cancellationToken) =>
+        EmptyByteArrayList.Instance;
+
     public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(Hash256 rootHash,
         in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken) =>
         (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);

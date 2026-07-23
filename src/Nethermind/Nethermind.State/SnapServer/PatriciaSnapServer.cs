@@ -30,7 +30,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.SnapServer;
 
-public class SnapServer : ISnapServer
+public class PatriciaSnapServer : ISnapStateServer
 {
     public bool CanServe => true;
 
@@ -46,17 +46,13 @@ public class SnapServer : ISnapServer
 
     private readonly AccountDecoder _decoder = new();
     private readonly ILastNStateRootTracker? _lastNStateRootTracker;
-    private readonly SnapCodeServer _codeServer;
-    private readonly SnapBalServer _balServer;
 
-    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager, ILastNStateRootTracker? lastNStateRootTracker = null)
+    public PatriciaSnapServer(IReadOnlyTrieStore trieStore, ILogManager logManager, ILastNStateRootTracker? lastNStateRootTracker = null)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-        _codeServer = new SnapCodeServer(codeDb ?? throw new ArgumentNullException(nameof(codeDb)));
-        _balServer = new SnapBalServer();
         _lastNStateRootTracker = lastNStateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = logManager.GetClassLogger<SnapServer>();
+        _logger = logManager.GetClassLogger<PatriciaSnapServer>();
 
         if (_store.Scheme == INodeStorage.KeyScheme.HalfPath)
         {
@@ -134,12 +130,6 @@ public class SnapServer : ISnapServer
 
         return new RlpByteArrayList(builder.ToRlpItemList());
     }
-
-    public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken) =>
-        _codeServer.GetByteCodes(requestedHashes, byteLimit, cancellationToken);
-
-    public IByteArrayList GetBlockAccessLists(IReadOnlyList<ValueHash256> blockHashes, long byteLimit, CancellationToken cancellationToken) =>
-        _balServer.GetBlockAccessLists(blockHashes, byteLimit, cancellationToken);
 
     public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
         Hash256 rootHash,

@@ -16,15 +16,12 @@ namespace Nethermind.State.Flat.Sync.Snap;
 
 public class FlatSnapServer(
     IFlatDbManager flatDbManager,
-    IReadOnlyKeyValueStore codeDb,
     IFlatStateRootIndex stateRootIndex,
-    ILogManager logManager) : ISnapServer
+    ILogManager logManager) : ISnapStateServer
 {
     public bool CanServe => true;
 
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapServer>();
-    private readonly SnapCodeServer _codeServer = new(codeDb);
-    private readonly SnapBalServer _balServer = new();
 
     // Flat state uses HintCacheMiss since it has different I/O patterns than Patricia
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
@@ -114,12 +111,6 @@ public class FlatSnapServer(
             return new RlpByteArrayList(builder.ToRlpItemList());
         }
     }
-
-    public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken) =>
-        _codeServer.GetByteCodes(requestedHashes, byteLimit, cancellationToken);
-
-    public IByteArrayList GetBlockAccessLists(IReadOnlyList<ValueHash256> blockHashes, long byteLimit, CancellationToken cancellationToken) =>
-        _balServer.GetBlockAccessLists(blockHashes, byteLimit, cancellationToken);
 
     public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
         Hash256 rootHash,

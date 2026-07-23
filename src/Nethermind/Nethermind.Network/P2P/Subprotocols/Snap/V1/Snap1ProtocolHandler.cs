@@ -14,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
@@ -274,8 +275,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
         }
 
         private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageDictionary<TIn, TOut> messageDictionary, CancellationToken token)
-            where TIn : Snap1MessageBase
-            where TOut : Snap1MessageBase
+            where TIn : SnapMessageBase
+            where TOut : SnapMessageBase
         {
             Request<TIn, TOut> request = new(msg);
             messageDictionary.Send(request);

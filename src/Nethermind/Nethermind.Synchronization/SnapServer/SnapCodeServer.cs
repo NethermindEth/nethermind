@@ -8,10 +8,11 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.SnapServer;
 
-namespace Nethermind.State.SnapServer;
+namespace Nethermind.Synchronization.SnapServer;
 
-public sealed class SnapCodeServer(IReadOnlyKeyValueStore codeDb)
+public sealed class SnapCodeServer(IReadOnlyKeyValueStore codeDb) : ISnapCodeServer
 {
     public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
