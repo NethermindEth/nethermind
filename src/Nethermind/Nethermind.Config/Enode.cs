@@ -19,7 +19,7 @@ namespace Nethermind.Config
         public Enode(PublicKey nodeKey, IPAddress hostIp, int port, int? discoveryPort = null)
         {
             _nodeKey = nodeKey;
-            HostIp = hostIp.IsIPv4MappedToIPv6 ? hostIp.MapToIPv4() : hostIp;
+            HostIp = hostIp;
             Port = port;
             DiscoveryPort = discoveryPort ?? port;
         }
@@ -103,10 +103,15 @@ namespace Nethermind.Config
         public int Port { get; }
         public int DiscoveryPort { get; }
         public string Info => DiscoveryPort == Port
-            ? $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}"
-            : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={DiscoveryPort}";
+            ? $"enode://{_nodeKey.ToString(false)}@{FormattedHostIp}:{Port}"
+            : $"enode://{_nodeKey.ToString(false)}@{FormattedHostIp}:{Port}?discport={DiscoveryPort}";
 
         public override string ToString() => Info;
+
+        // IPv4-mapped IPv6 addresses (e.g. from dual-stack sockets) render as "::ffff:x.x.x.x", which is not
+        // a valid URI host unless bracketed. Format as plain IPv4 here rather than bracketing, since the
+        // string constructor below parses the host with IPAddress.TryParse and doesn't expect brackets.
+        private IPAddress FormattedHostIp => HostIp.IsIPv4MappedToIPv6 ? HostIp.MapToIPv4() : HostIp;
 
         public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
             Uri.TryCreate(enodeString, new UriCreationOptions(), out parsed) && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase);
