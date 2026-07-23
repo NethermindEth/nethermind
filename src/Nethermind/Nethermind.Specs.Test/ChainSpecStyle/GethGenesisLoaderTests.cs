@@ -56,6 +56,7 @@ public class GethGenesisLoaderTests
     private static readonly HashSet<string> ForkClassesWithoutConfigProp =
     [
         "Eip8141Prototype", // frame transaction prototype — not scheduled on any network
+        "Eip8288Prototype", // PQ signature and STARK aggregation prototype — not scheduled on any network
     ];
 
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];

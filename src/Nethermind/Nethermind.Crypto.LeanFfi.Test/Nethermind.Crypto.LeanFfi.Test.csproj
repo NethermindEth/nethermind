@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Standalone live-FFI test for the EIP-8288 native Lean verifier. Intentionally NOT part of
+       Nethermind.slnx: it needs the Rust toolchain and a host-built dylib, so it is run on demand
+       (dotnet test on this csproj) rather than in the main solution build / CI. -->
+  <Import Project="../tests.props" />
+
+  <PropertyGroup>
+    <LeanFfiManifest>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/Cargo.toml</LeanFfiManifest>
+    <LeanFfiDylib>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/release/libnethermind_lean.dylib</LeanFfiDylib>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+  </ItemGroup>
+
+  <!-- Best-effort build of the Rust shim when cargo is available (host dev machine). -->
+  <Target Name="BuildLeanFfi" BeforeTargets="BeforeBuild" Condition="Exists('$(LeanFfiManifest)')">
+    <Exec Command="cargo build --release --manifest-path &quot;$(LeanFfiManifest)&quot;" ContinueOnError="true" />
+  </Target>
+
+  <ItemGroup Condition="Exists('$(LeanFfiDylib)')">
+    <None Include="$(LeanFfiDylib)">
+      <Link>libnethermind_lean.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

@@ -125,6 +125,18 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchStartLogCount = allLogs.Count;
             }
 
+            // EIP-8288 dependency-verification frame: not executed as EVM (dependencies are proven by
+            // the block-level recursive STARK). Its full gas_limit is charged unconditionally and it
+            // always yields a success receipt with no logs; being unflagged, it commits any open batch.
+            if (frame.Mode == TxFrame.ModeDepVerify)
+            {
+                frameContext.MarkFrameSucceeded(i);
+                frameReceipts[i] = new TxFrameReceipt(TxFrameReceipt.StatusSuccess, frame.GasLimit, []);
+                totalFrameGasUsed += frame.GasLimit;
+                if (inBatch && !frame.IsAtomicBatch) inBatch = false;
+                continue;
+            }
+
             // Transient storage (TSTORE/TLOAD) is discarded between frames (spec: Cross-frame
             // interactions); resetting at frame entry also covers the first frame.
             WorldState.ResetTransient();
