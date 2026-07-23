@@ -29,6 +29,7 @@ public static class PredeployInstaller
     private static readonly Predeploy[] Predeploys =
     [
         new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 1, static spec => spec.IsEip8141Enabled),
+        new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
     ];
 
     /// <summary>
