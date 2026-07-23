@@ -76,6 +76,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     internal Address Address => _address;
 
+    internal Hash256 AddressHash => _addressHash;
+
     internal bool IsDisposed => _scope.IsDisposed;
 
     public byte[] Get(in UInt256 index)
@@ -157,6 +159,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         ClearFlat();
         ResetSparseTrie();
+        // A deleted account's storage is gone; drop any warm trie retained for it so it neither
+        // leaks nor is reused if the account is later recreated.
+        _scope.SparseSession.DiscardRetainedStorage(_addressHash);
     }
 
     /// <summary>Flat-plane clear only — safe from parallel flush workers, no sparse-trie access.</summary>
@@ -197,7 +202,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         if (job.HasClear) ResetSparseTrie();
 
-        _sparseTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, _addressHash), _sparseRoot.ValueHash256, job.Updates.Count);
+        // Reuse a warm trie retained for this account (rebound to this scope's reader) when the
+        // retention cache holds one; otherwise build cold. A cleared account's anchor is empty,
+        // so a stale retained trie is dropped rather than adopted.
+        _sparseTrie ??= _scope.SparseSession.AdoptOrCreateStorageTrie(_addressHash, _sparseRoot.ValueHash256, job.Updates.Count);
         _sparseTrie.Apply(job.Updates.AsSpan());
         _sparseRoot = _sparseTrie.CalculateRoot().ToCommitment();
 
@@ -244,6 +252,16 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _sparseTrie?.Dispose();
         _sparseTrie = null;
         _inChangedSet = false;
+    }
+
+    /// <summary>Hands the warm trie to the session for reuse, leaving this tree without one;
+    /// returns null when the account was deleted this block and its trie already dropped.</summary>
+    internal SparseTrie? TakeSparseTrie()
+    {
+        SparseTrie? trie = _sparseTrie;
+        _sparseTrie = null;
+        _inChangedSet = false;
+        return trie;
     }
 
     private class SparseStorageWriteBatch(

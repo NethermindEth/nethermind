@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -27,19 +29,54 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// scope can never commit a root that may not match the applied writes. <see cref="RootHash"/>
 /// stays readable and always holds the last successfully calculated root (or the anchor).
 /// </remarks>
-internal sealed class FlatSparseTrieSession(SnapshotBundle bundle, Hash256 anchorStateRoot) : IDisposable
+internal sealed class FlatSparseTrieSession : IDisposable
 {
     /// <summary>Below this many storage jobs a serial loop beats the parallel-work dispatch cost.</summary>
     private const int ParallelJobThreshold = 4;
 
     private static readonly AccountDecoder _accountDecoder = new();
 
+    private readonly SnapshotBundle _bundle;
     private readonly ConcurrentQueue<StorageJob> _pendingStorageJobs = new();
     private readonly List<FlatStorageTree> _changedStorageTrees = [];
+
+    // The session's warm storage tries, one per account touched in this scope's lifetime. A trie
+    // is borrowed out (removed) while its account's job runs, rolled back in at publication, and
+    // dropped on account deletion. It persists across the scope's block commits, so a multi-block
+    // branch reuses warm tries directly; at the scope boundary it is handed to the cross-scope
+    // retention cache. The parallel storage phase borrows entries concurrently, under _retainedLock.
+    private Dictionary<Hash256AsKey, SparseTrie> _storageTries;
+    private readonly Lock _retainedLock = new();
+
+    // When false (no retention cache), tries are disposed at each commit so a multi-block scope
+    // never accumulates a cross-block working set; when true they roll forward for reuse.
+    private readonly bool _retentionEnabled;
+
     private SparseTrie? _stateTrie;
-    private Hash256 _rootHash = anchorStateRoot;
+    private Hash256 _rootHash;
     private bool _stateDirty;
     private bool _poisoned;
+    private bool _generationExtracted;
+
+    /// <param name="checkedOut">A warm generation checked out of the retention cache on an exact
+    /// parent-root match, or null for a cold scope. The session reuses and rolls it forward across
+    /// its commits and hands the result back through <see cref="ExtractGeneration"/> at the scope
+    /// boundary.</param>
+    /// <param name="retentionEnabled">When true the scope has a retention cache: tries are kept
+    /// warm across commits and offered to the cache at the scope boundary. When false they are
+    /// disposed at each commit, so a multi-block scope holds only the current block's working set.</param>
+    public FlatSparseTrieSession(SnapshotBundle bundle, Hash256 anchorStateRoot, RetainedGeneration? checkedOut = null, bool retentionEnabled = false)
+    {
+        _bundle = bundle;
+        _rootHash = anchorStateRoot;
+        _retentionEnabled = retentionEnabled;
+        _storageTries = checkedOut?.StorageTries ?? [];
+        if (checkedOut is not null)
+        {
+            _stateTrie = checkedOut.StateTrie;
+            _stateTrie.RebindSource(new FlatTrieNodeReader(bundle, address: null));
+        }
+    }
 
     /// <summary>A sealed storage write batch: the final sparse delta for one account.</summary>
     internal readonly record struct StorageJob(
@@ -51,8 +88,61 @@ internal sealed class FlatSparseTrieSession(SnapshotBundle bundle, Hash256 ancho
     /// <summary>The parent state root before calculation, the calculated root afterward.</summary>
     public Hash256 RootHash => _rootHash;
 
+    /// <summary>Warm tries currently held (state trie plus per-account storage tries); zero after a
+    /// commit when retention is disabled. Test-observable to pin the per-commit disposal policy.</summary>
+    internal int RetainedTrieCount => (_stateTrie is null ? 0 : 1) + _storageTries.Count;
+
     /// <summary>Called by inner storage batches, possibly from parallel flush workers.</summary>
     public void EnqueueStorageJob(in StorageJob job) => _pendingStorageJobs.Enqueue(job);
+
+    /// <summary>
+    /// Returns the warm storage trie retained for <paramref name="addressHash"/>, rebound to this
+    /// scope's reader, or a fresh trie anchored at <paramref name="anchorRoot"/>. A retained trie
+    /// whose root does not match the account's committed storage root (e.g. after a clear) is
+    /// dropped rather than reused. Runs on the storage-phase worker that owns this account's job.
+    /// </summary>
+    public SparseTrie AdoptOrCreateStorageTrie(Hash256 addressHash, in ValueHash256 anchorRoot, int hint)
+    {
+        SparseTrie? retained;
+        lock (_retainedLock)
+        {
+            _storageTries.Remove(addressHash, out retained);
+        }
+
+        if (retained is not null)
+        {
+            if (retained.RootHash == anchorRoot)
+            {
+                retained.RebindSource(new FlatTrieNodeReader(_bundle, addressHash));
+                return retained;
+            }
+
+            retained.Dispose();
+        }
+
+        return new SparseTrie(new FlatTrieNodeReader(_bundle, addressHash), anchorRoot, hint);
+    }
+
+    /// <summary>Rolls a published storage trie back into the warm set for reuse by later blocks.</summary>
+    private void ReturnStorageTrie(Hash256 addressHash, SparseTrie trie)
+    {
+        lock (_retainedLock)
+        {
+            _storageTries[addressHash] = trie;
+        }
+    }
+
+    /// <summary>Drops any warm storage trie held for a now-deleted or cleared account.</summary>
+    public void DiscardRetainedStorage(Hash256 addressHash)
+    {
+        SparseTrie? retained;
+        lock (_retainedLock)
+        {
+            _storageTries.Remove(addressHash, out retained);
+        }
+
+        retained?.Dispose();
+    }
 
     /// <summary>Marks the session unusable after a failure outside its own guarded paths.</summary>
     internal void Poison() => _poisoned = true;
@@ -141,7 +231,7 @@ internal sealed class FlatSparseTrieSession(SnapshotBundle bundle, Hash256 ancho
                 updates.Add(new SparseTrieUpdate(in keccak, accountBytes));
             }
 
-            _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(bundle, address: null), _rootHash.ValueHash256, dirtyAccounts.Count);
+            _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, address: null), _rootHash.ValueHash256, dirtyAccounts.Count);
             _stateTrie.Apply(updates.AsSpan());
             _stateDirty = true;
         }
@@ -171,8 +261,9 @@ internal sealed class FlatSparseTrieSession(SnapshotBundle bundle, Hash256 ancho
     }
 
     /// <summary>
-    /// Publishes every staged storage and state node into the bundle's changed-node maps (ahead
-    /// of snapshot collection) and resets the session to anchor the next block at the new root.
+    /// Publishes every staged storage and state node into the bundle's changed-node maps, ahead of
+    /// snapshot collection. The tries are left intact so the committed generation can either be
+    /// retained (see <see cref="ExtractGeneration"/>) or disposed with the session.
     /// </summary>
     public void Publish()
     {
@@ -188,7 +279,16 @@ internal sealed class FlatSparseTrieSession(SnapshotBundle bundle, Hash256 ancho
             foreach (FlatStorageTree tree in _changedStorageTrees)
             {
                 tree.PublishSparseNodes();
+                // With retention, roll the warm trie back into the session set so the next block
+                // in this scope reuses it; without it, dispose per commit so a multi-block scope
+                // holds no cross-block working set. A deleted account's tree yields null.
+                SparseTrie? trie = tree.TakeSparseTrie();
+                if (trie is null) continue;
+                if (_retentionEnabled) ReturnStorageTrie(tree.AddressHash, trie);
+                else trie.Dispose();
             }
+
+            _changedStorageTrees.Clear();
 
             if (_stateTrie is not null)
             {
@@ -196,32 +296,43 @@ internal sealed class FlatSparseTrieSession(SnapshotBundle bundle, Hash256 ancho
                 _stateTrie.DrainUnpublished(staged);
                 if (staged.Count > 0)
                 {
-                    bundle.PublishStateNodes([BuildPublicationBuffer(staged)]);
+                    _bundle.PublishStateNodes([BuildPublicationBuffer(staged)]);
+                }
+
+                if (!_retentionEnabled)
+                {
+                    _stateTrie.Dispose();
+                    _stateTrie = null;
                 }
             }
+
+            _stateDirty = false;
         }
         catch
         {
             _poisoned = true;
             throw;
         }
-        finally
-        {
-            DropStorageTries();
-            _stateTrie?.Dispose();
-            _stateTrie = null;
-            _stateDirty = false;
-        }
     }
 
-    private void DropStorageTries()
+    /// <summary>
+    /// Transfers the warm tries out of the session into a retainable generation keyed by
+    /// <paramref name="newStateRoot"/> (the last committed state root): the state trie plus every
+    /// warm storage trie. Called once at the scope boundary after a clean commit; the session then
+    /// owns nothing, so its dispose is a no-op and the cache (or its rejection path) owns the tries.
+    /// </summary>
+    public RetainedGeneration ExtractGeneration(in ValueHash256 newStateRoot)
     {
-        foreach (FlatStorageTree tree in _changedStorageTrees)
-        {
-            tree.DropSparseTrie();
-        }
+        GuardPoisoned();
+        // No state change ever materialized a trie; anchor an empty one so the generation is
+        // still valid for the next block (which will reveal from the committed reader).
+        _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, address: null), newStateRoot);
 
-        _changedStorageTrees.Clear();
+        RetainedGeneration generation = new(newStateRoot, _stateTrie, _storageTries);
+        _stateTrie = null;
+        _storageTries = [];
+        _generationExtracted = true;
+        return generation;
     }
 
     /// <summary>Converts staged records into the sealed <see cref="TrieNode"/> publication shape.</summary>
@@ -251,8 +362,27 @@ internal sealed class FlatSparseTrieSession(SnapshotBundle bundle, Hash256 ancho
     public void Dispose()
     {
         while (_pendingStorageJobs.TryDequeue(out StorageJob job)) job.Updates.Dispose();
-        DropStorageTries();
+
+        // A generation transferred to the cache owns its tries; the session must not touch them.
+        // Otherwise (no cache, or a scope that never reached a clean commit) the session owns every
+        // trie it built or checked out and releases them here: those still held by a tree touched
+        // in an aborted, not-yet-published block, plus the warm set and the state trie.
+        if (_generationExtracted) return;
+
+        foreach (FlatStorageTree tree in _changedStorageTrees)
+        {
+            tree.DropSparseTrie();
+        }
+
+        _changedStorageTrees.Clear();
         _stateTrie?.Dispose();
         _stateTrie = null;
+
+        foreach (KeyValuePair<Hash256AsKey, SparseTrie> kv in _storageTries)
+        {
+            kv.Value.Dispose();
+        }
+
+        _storageTries.Clear();
     }
 }

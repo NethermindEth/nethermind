@@ -183,8 +183,16 @@ internal sealed class SparseTrieArena : IDisposable
 
     public int NodeCount => _nodeCount - _freeNodeCount;
 
-    /// <summary>Total pool-rented capacity in bytes across all segments.</summary>
-    public long RentedBytes => _rentedBytes;
+    /// <summary>
+    /// Total pool-rented capacity in bytes: the node/byte/child chunks plus the always-rented
+    /// chunk directories and the free-node stack, so an arena holding only baseline arrays (e.g. a
+    /// cleared storage trie) reports the memory it actually retains rather than zero.
+    /// </summary>
+    public long RentedBytes => _nodeChunks is null
+        ? 0
+        : _rentedBytes
+          + (long)(_nodeChunks.Length + _byteChunks.Length + _childChunks.Length) * IntPtr.Size
+          + (long)_freeNodes.Length * sizeof(int);
 
     /// <summary>Bytes made unreachable by mutation (freed nodes, replaced slices/values, chunk tails).</summary>
     public long DeadBytes => _deadBytes;

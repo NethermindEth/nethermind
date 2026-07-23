@@ -27,6 +27,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private readonly FlatSparseTrieCache? _sparseCache;
+    // True only in the clean state right after a successful Commit; a started write batch clears
+    // it. The scope offers its generation to the retention cache at dispose only while true, so an
+    // aborted (mid-batch or failed) block never admits a candidate that does not match a root.
+    private bool _lastCommitClean;
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
@@ -59,11 +64,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
         bool isReadOnly = false)
+        : this(currentStateId, snapshotBundle, codeDb, commitTarget, configuration, trieCacheWarmer, logManager, warmReadPool, isReadOnly, sparseCache: null)
+    {
+    }
+
+    internal FlatWorldStateScope(
+        StateId currentStateId,
+        SnapshotBundle snapshotBundle,
+        IWorldStateScopeProvider.ICodeDb codeDb,
+        IFlatCommitTarget commitTarget,
+        IFlatDbConfig configuration,
+        ITrieWarmer trieCacheWarmer,
+        ILogManager logManager,
+        Lazy<WarmReadPool>? warmReadPool,
+        bool isReadOnly,
+        FlatSparseTrieCache? sparseCache)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
+        _sparseCache = sparseCache;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
@@ -82,7 +103,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             RootHash = currentStateId.StateRoot.ToCommitment()
         };
 
-        SparseSession = new FlatSparseTrieSession(snapshotBundle, currentStateId.StateRoot.ToCommitment());
+        RetainedGeneration? checkedOut = sparseCache?.TryCheckout(currentStateId.StateRoot);
+        SparseSession = new FlatSparseTrieSession(snapshotBundle, currentStateId.StateRoot.ToCommitment(), checkedOut, retentionEnabled: sparseCache is not null);
         _configuration = configuration;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
@@ -97,6 +119,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
         WaitForOutstandingWarmups();
+        // Offer the scope's warm generation to the retention cache only after a clean commit, so a
+        // block that aborted mid-branch discards its (possibly mid-mutation) tries instead of
+        // admitting them. ExtractGeneration transfers ownership; SparseSession.Dispose is then a
+        // no-op, otherwise it releases the tries.
+        if (_sparseCache is not null && _lastCommitClean)
+        {
+            _sparseCache.Admit(SparseSession.ExtractGeneration(_currentStateId.StateRoot));
+        }
+
         SparseSession.Dispose();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -450,6 +481,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
+        // Mutation in progress: the warm generation no longer matches a committed root until the
+        // next Commit completes.
+        _lastCommitClean = false;
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
@@ -493,6 +527,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         _currentStateId = newStateId;
+        // The warm generation now matches this committed root; it may be admitted at scope dispose.
+        _lastCommitClean = true;
         _pausePrewarmer = false;
     }
 
