@@ -55,7 +55,7 @@ public class PbtStorageKeyLayoutTests
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, TestItem.KeccakA.ValueHash256), new StateId(2, TestItem.KeccakB.ValueHash256), default, WriteFlags.None))
         {
-            batch.SetLeafBlob(stem, null);
+            batch.SetLeafBlob(stem, default);
         }
 
         using (IPbtPersistence.IReader reader = persistence.CreateReader())
