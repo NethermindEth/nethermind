@@ -106,6 +106,8 @@ public class AuRaTerminalBlockDisposerTests
     [Test]
     public void Fresh_archive_with_FinalTotalDifficulty_in_config_does_not_dispose_pre_merge_aura()
     {
+        // HasEverReachedTerminalBlock() is true on a fresh archive DB with FTD in config, but the head
+        // is still genesis and pre-merge AuRa finalization must remain active.
         Block genesis = Build.A.Block.Genesis.TestObject;
         _blockTree.Head.Returns(genesis);
         _poSSwitcher.HasEverReachedTerminalBlock().Returns(true);
