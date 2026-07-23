@@ -6,6 +6,8 @@ ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
 GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
+BFLAT_IMAGE ?= maximmenshikov/bflat-riscv64-zk-min31
+ZISK_IMAGE ?= nethermindeth/zisk:1.0.0-alpha
 BFLAT_REFS := \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
@@ -44,7 +46,7 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		maximmenshikov/bflat-riscv64-zk-min30 \
+		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		--no-pie \
 		--no-pthread \
@@ -61,7 +63,7 @@ build: dotnet-build
 run:
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
-		nethermindeth/zisk:1.0.0-alpha \
+		$(ZISK_IMAGE) \
 		ziskemu -e /n/nethermind -i /n/$(INPUT)
 
 build-run: build run
