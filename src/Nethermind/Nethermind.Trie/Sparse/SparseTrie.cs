@@ -73,7 +73,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
     private const byte ExtensionChildNibble = 0xFF;
     private const int MaxLeafValueLength = byte.MaxValue;
 
-    private readonly ISparseTrieNodeSource _source = source;
+    private ISparseTrieNodeSource _source = source;
     private readonly SparseTrieArena _arena = new(nodeCapacityHint);
     private ArrayPoolList<SparseTrieStagedNode>? _staged;
     private int _rootNode = -1;
@@ -82,6 +82,14 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
     /// <summary>The anchor root before the first calculation; the calculated root afterwards.</summary>
     public ValueHash256 RootHash => _rootHash;
+
+    /// <summary>
+    /// Points the committed-parent node source at a new backing store, for reusing a drained trie
+    /// across blocks (retention): the warm arena is kept, but blinded children must now resolve
+    /// against the next scope's committed reader. The caller guarantees <see cref="RootHash"/>
+    /// equals the committed root the new source is anchored at.
+    /// </summary>
+    public void RebindSource(ISparseTrieNodeSource source) => _source = source;
 
     /// <summary>True when updates were applied after the last calculation.</summary>
     public bool IsDirty => _rootDirty;
