@@ -129,7 +129,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
             _forkAware = ForkAwareForChain(_chainSpec.ChainId);
 
-            if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
+            if (_chainSpec.Parameters.TerminalTotalDifficulty?.IsZero == true)
+            {
+                MergeBlockNumber = (ForkActivation)0;
+            }
+            else if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
                 MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber.Value + 1);
             }
