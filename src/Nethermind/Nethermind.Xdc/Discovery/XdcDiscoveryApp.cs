@@ -4,11 +4,13 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 
 namespace Nethermind.Xdc.Discovery;
 
@@ -28,9 +30,14 @@ public class XdcDiscoveryApp(
         ipResolver,
         processExitSource,
         logManager,
-        static builder => builder
-            .RegisterType<XdcNettyDiscoveryHandler>()
-            .As<NettyDiscoveryHandler>()
-            .WithAttributeFiltering())
+        static builder =>
+        {
+            builder.RegisterType<XdcNettyDiscoveryHandler>()
+                .As<NettyDiscoveryHandler>()
+                .WithAttributeFiltering();
+
+            // XDC does not implement the ENR request/response messages, so remote ENR refresh is disabled.
+            builder.AddSingleton<IKademliaAdapter, XdcKademliaAdapter>();
+        })
 {
 }

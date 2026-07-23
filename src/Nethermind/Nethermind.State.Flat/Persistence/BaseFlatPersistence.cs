@@ -22,6 +22,10 @@ namespace Nethermind.State.Flat.Persistence;
 /// This helps RocksDB's comparator skip bytes during comparison and enables index shortening,
 /// reducing memory usage. The tradeoff is that SelfDestruct must verify the 16-byte suffix.
 ///
+/// The <c>fullAddressStorageKey</c> flag switches to the unsplit shape, where the whole address leads the key.
+/// That is required whenever the address is not a hash — see <see cref="Nethermind.Db.FlatLayout.PreimageFlat"/>,
+/// where a split prefix is attacker-chosen and collapses per-account scans into whole-range scans.
+///
 /// <code>
 /// ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 /// │ State Key (Account)                                                                       Total: 20 bytes  │
@@ -56,18 +60,45 @@ public static class BaseFlatPersistence
         return buffer[..AccountKeyLength];
     }
 
-    internal static ReadOnlySpan<byte> EncodeStorageKeyHashedWithShortPrefix(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash)
+    private static ReadOnlySpan<byte> EncodeStorageKey(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash, bool fullAddressStorageKey)
     {
-        // So we store the key with only a small part of the addr early then put the rest at the end.
-        // This helps with rocksdb comparator skipping 16 bytes during comparison, and with index shortening, which reduces
-        // memory usage. The downside is that during selfdestruct, it will need to double-check the 16 byte postfix.
-        // <4-byte-address><32-byte-slot><16-byte-address>
-        addrHash.Bytes[..StoragePrefixPortion].CopyTo(buffer);
-        slotHash.Bytes.CopyTo(buffer[StoragePrefixPortion..(StoragePrefixPortion + StorageSlotKeySize)]);
-        addrHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)].CopyTo(buffer[(StoragePrefixPortion + StorageSlotKeySize)..]);
+        if (fullAddressStorageKey)
+        {
+            // <20-byte-address><32-byte-slot>
+            addrHash.Bytes[..AccountKeyLength].CopyTo(buffer);
+            slotHash.Bytes.CopyTo(buffer[AccountKeyLength..StorageKeyLength]);
+        }
+        else
+        {
+            // So we store the key with only a small part of the addr early then put the rest at the end.
+            // This helps with rocksdb comparator skipping 16 bytes during comparison, and with index shortening, which reduces
+            // memory usage. The downside is that during selfdestruct, it will need to double-check the 16 byte postfix.
+            // <4-byte-address><32-byte-slot><16-byte-address>
+            addrHash.Bytes[..StoragePrefixPortion].CopyTo(buffer);
+            slotHash.Bytes.CopyTo(buffer[StoragePrefixPortion..(StoragePrefixPortion + StorageSlotKeySize)]);
+            addrHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)].CopyTo(buffer[(StoragePrefixPortion + StorageSlotKeySize)..StorageKeyLength]);
+        }
 
         return buffer[..StorageKeyLength];
     }
+
+    /// <summary>
+    /// Hashed-layout storage key (<c>[4B addrHash | 32B slotHash | 16B addrHash]</c>) — the encoding the history
+    /// columns capture and read.
+    /// </summary>
+    internal static ReadOnlySpan<byte> EncodeStorageKeyHashedWithShortPrefix(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash) =>
+        EncodeStorageKey(buffer, addrHash, slotHash, fullAddressStorageKey: false);
+
+    /// <summary>Length of the leading address portion of a storage key, which is also the slot offset.</summary>
+    private static int StoragePrefixLength(bool fullAddressStorageKey) =>
+        fullAddressStorageKey ? AccountKeyLength : StoragePrefixPortion;
+
+    /// <summary>
+    /// The trailing address bytes that a range scan must re-verify, since keys of other addresses sharing the
+    /// leading portion fall inside the scanned range. Empty when the whole address leads the key.
+    /// </summary>
+    private static ReadOnlySpan<byte> StorageAddressSuffix(in ValueHash256 addrHash, bool fullAddressStorageKey) =>
+        fullAddressStorageKey ? default : addrHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)];
 
     /// <summary>
     /// Encodes a storage slot value into <paramref name="buffer"/> exactly as the flat Storage column stores it:
@@ -98,7 +129,8 @@ public static class BaseFlatPersistence
         ISortedKeyValueStore state,
         ISortedKeyValueStore storage,
         bool isPreimageMode = false,
-        bool rlpWrapSlots = false
+        bool rlpWrapSlots = false,
+        bool fullAddressStorageKey = false
     ) : BasePersistence.IHashedFlatReader
     {
         public bool IsPreimageMode => isPreimageMode;
@@ -112,7 +144,7 @@ public static class BaseFlatPersistence
         [SkipLocalsInit]
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
-            ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], address, slot);
+            ReadOnlySpan<byte> storageKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], address, slot, fullAddressStorageKey);
 
             Span<byte> buffer = stackalloc byte[RlpSlotValueBufferSize];
             int resultSize = GetStorageBuffer(storageKey, buffer);
@@ -174,15 +206,18 @@ public static class BaseFlatPersistence
         {
             // Storage key layout: <4-byte-addr><32-byte-slot><16-byte-addr>
             // We need to iterate all keys with the same 4-byte prefix and 16-byte suffix
+            // With the full address leading instead, the range holds only this account's slots, so there is no
+            // suffix left to re-check and the scan no longer walks addresses that merely share a prefix.
             Span<byte> firstKey = stackalloc byte[StorageKeyLength];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
-            EncodeStorageKeyHashedWithShortPrefix(firstKey, accountKey, startSlotKey);
-            EncodeStorageKeyHashedWithShortPrefix(lastKey[..StorageKeyLength], accountKey, endSlotKey);
+            EncodeStorageKey(firstKey, accountKey, startSlotKey, fullAddressStorageKey);
+            EncodeStorageKey(lastKey[..StorageKeyLength], accountKey, endSlotKey, fullAddressStorageKey);
             lastKey[StorageKeyLength] = 0; // Exclusive upper bound
 
             return new StorageIterator(
                 storage.GetViewBetween(firstKey, lastKey),
-                accountKey.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)].ToArray(),
+                StorageAddressSuffix(accountKey, fullAddressStorageKey).ToArray(),
+                StoragePrefixLength(fullAddressStorageKey),
                 rlpWrapSlots);
         }
     }
@@ -212,7 +247,7 @@ public static class BaseFlatPersistence
         public void Dispose() => view.Dispose();
     }
 
-    public struct StorageIterator(ISortedView view, byte[] addressSuffix, bool rlpWrapSlots) : IPersistence.IFlatIterator
+    public struct StorageIterator(ISortedView view, byte[] addressSuffix, int slotOffset, bool rlpWrapSlots) : IPersistence.IFlatIterator
     {
         // 16-byte suffix to match
         private ValueHash256 _currentKey = default;
@@ -226,11 +261,11 @@ public static class BaseFlatPersistence
                 if (view.CurrentKey.Length != StorageKeyLength) continue;
 
                 // Verify the 16-byte address suffix matches
-                if (!Bytes.AreEqual(view.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], addressSuffix))
+                if (!Bytes.AreEqual(view.CurrentKey[(slotOffset + StorageSlotKeySize)..], addressSuffix))
                     continue;
 
                 // Extract the 32-byte slot hash from the middle of the key
-                _currentKey = new ValueHash256(view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
+                _currentKey = new ValueHash256(view.CurrentKey.Slice(slotOffset, StorageSlotKeySize));
                 ReadOnlySpan<byte> slotValue = rlpWrapSlots
                     ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
                     : view.CurrentValue;
@@ -256,17 +291,18 @@ public static class BaseFlatPersistence
         IWriteBatch state,
         IWriteBatch storage,
         WriteFlags flags,
-        bool rlpWrapSlots = false
+        bool rlpWrapSlots = false,
+        bool fullAddressStorageKey = false
     ) : BasePersistence.IHashedFlatWriteBatch
     {
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
+            Span<byte> firstKey = stackalloc byte[StoragePrefixLength(fullAddressStorageKey)];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
-            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey);
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey, StoragePrefixLength(fullAddressStorageKey));
             BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
-                StoragePrefixPortion + StorageSlotKeySize, accountPath.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]);
+                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(accountPath, fullAddressStorageKey));
         }
 
         public void RemoveAccount(in ValueHash256 addrHash)
@@ -278,7 +314,7 @@ public static class BaseFlatPersistence
         [SkipLocalsInit]
         public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
         {
-            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addrHash, slotHash, fullAddressStorageKey);
 
             if (slot.HasValue)
             {
@@ -299,7 +335,7 @@ public static class BaseFlatPersistence
             // only when wrapping is on. In raw mode there is no verbatim shortcut, so this path is unsupported.
             if (!rlpWrapSlots) throw new NotSupportedException("Encoded slot writes require RLP slot wrapping");
 
-            ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
+            ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addrHash, slotHash, fullAddressStorageKey);
 
             // The bytes are stored verbatim — no decode + re-encode round-trip. The single DecodeByteArraySpan
             // call validates canonical form and bounds the item exactly (trimming any trailing bytes).
@@ -330,11 +366,11 @@ public static class BaseFlatPersistence
         {
             Span<byte> firstKey = stackalloc byte[StorageKeyLength];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
-            EncodeStorageKeyHashedWithShortPrefix(firstKey, addressHash, fromPath);
-            EncodeStorageKeyHashedWithShortPrefix(lastKey[..StorageKeyLength], addressHash, toPath);
+            EncodeStorageKey(firstKey, addressHash, fromPath, fullAddressStorageKey);
+            EncodeStorageKey(lastKey[..StorageKeyLength], addressHash, toPath, fullAddressStorageKey);
             lastKey[StorageKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
-                StoragePrefixPortion + StorageSlotKeySize, addressHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]);
+                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(addressHash, fullAddressStorageKey));
         }
     }
 }
