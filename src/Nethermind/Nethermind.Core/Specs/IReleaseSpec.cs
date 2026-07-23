@@ -326,6 +326,11 @@ namespace Nethermind.Core.Specs
         bool IsEip8141Enabled { get; }
 
         /// <summary>
+        /// EIP-8250: keyed nonces for frame transactions.
+        /// </summary>
+        bool IsEip8250Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }
