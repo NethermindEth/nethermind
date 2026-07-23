@@ -48,6 +48,10 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
 
+    public PbtPendingFlatWrites GetPendingFlatWrites(Usage usage) => _categories[usage].GetPendingFlatWrites();
+
+    public void ReturnPendingFlatWrites(Usage usage, PbtPendingFlatWrites pending) => _categories[usage].ReturnPendingFlatWrites(pending);
+
     public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage)
     {
         PbtWriteBatchBuilder builder = _categories[usage].GetWriteBatchBuilder();
@@ -125,8 +129,11 @@ public class PbtResourcePool : IPbtResourcePool
         // one scope holds one builder at a time, and only main processing and the read-only envs
         // ever open scopes, so the layer sizing does not apply here
         private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _builderPool = new(writeBatchBuilderPoolSize);
+        // a scope holds one bundle for as long as it holds one builder, so the two are sized alike
+        private readonly ConcurrentStackPool<PbtPendingFlatWrites> _pendingPool = new(writeBatchBuilderPoolSize);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
         private readonly PooledResourceLabel _builderLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
+        private readonly PooledResourceLabel _pendingLabel = new(usage.ToString(), nameof(PbtPendingFlatWrites));
 
         public PbtSnapshotContent GetSnapshotContent()
         {
@@ -147,6 +154,26 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.PbtActivePooledResource.AddBy(_snapshotLabel, -1);
             _snapshotPool.Return(content);
             Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
+        }
+
+        public PbtPendingFlatWrites GetPendingFlatWrites()
+        {
+            Metrics.PbtActivePooledResource.AddBy(_pendingLabel, 1);
+            if (_pendingPool.TryGet(out PbtPendingFlatWrites? pending))
+            {
+                Metrics.PbtCachedPooledResource[_pendingLabel] = _pendingPool.PooledItemCount;
+                return pending;
+            }
+
+            Metrics.PbtCreatedPooledResource.AddBy(_pendingLabel, 1);
+            return new PbtPendingFlatWrites();
+        }
+
+        public void ReturnPendingFlatWrites(PbtPendingFlatWrites pending)
+        {
+            Metrics.PbtActivePooledResource.AddBy(_pendingLabel, -1);
+            _pendingPool.Return(pending);
+            Metrics.PbtCachedPooledResource[_pendingLabel] = _pendingPool.PooledItemCount;
         }
 
         public PbtWriteBatchBuilder GetWriteBatchBuilder()

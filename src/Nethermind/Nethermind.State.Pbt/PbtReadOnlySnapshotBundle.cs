@@ -55,17 +55,19 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         }
     }
 
+    /// <remarks>Decoded from the account's header stem leaf blob; see <see cref="PbtLeafDecoder"/>.</remarks>
     public Account? GetAccount(Address address)
     {
         GuardDispose();
-        AddressAsKey key = address;
+        Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
         long startTimestamp = StartTiming();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.Accounts.TryGetValue(key, out Account? account))
+            // layers store an empty blob as the "stem deleted" marker, which must stop the walk
+            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out byte[]? blob))
             {
                 Observe(startTimestamp, _readAccountSnapshotLabel);
-                return account;
+                return PbtLeafDecoder.DecodeAccount(blob);
             }
         }
 
@@ -75,26 +77,23 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         return persisted;
     }
 
-    /// <summary>Returns the slot value; zero when absent or self-destructed.</summary>
+    /// <summary>Returns the slot value; zero when absent.</summary>
+    /// <remarks>
+    /// A layer's blob is the complete stem, so the newest layer holding one answers the read whether or
+    /// not that blob carries this slot — an absent leaf there means the slot is unset, not that the walk
+    /// should go on below.
+    /// </remarks>
     public EvmWord GetSlot(Address address, in UInt256 slot)
     {
         GuardDispose();
-        AddressAsKey key = address;
-        (AddressAsKey, UInt256) slotKey = (key, slot);
+        Stem stem = PbtLeafDecoder.SlotStem(address, slot, out byte subIndex);
         long startTimestamp = StartTiming();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            PbtSnapshotContent content = snapshots[i].Content;
-            if (content.Slots.TryGetValue(slotKey, out EvmWord value))
+            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out byte[]? blob))
             {
                 Observe(startTimestamp, _readStorageSnapshotLabel);
-                return value;
-            }
-
-            if (content.SelfDestructs.ContainsKey(key))
-            {
-                Observe(startTimestamp, _readStorageSnapshotLabel);
-                return default;
+                return PbtLeafDecoder.DecodeSlot(blob, subIndex);
             }
         }
 

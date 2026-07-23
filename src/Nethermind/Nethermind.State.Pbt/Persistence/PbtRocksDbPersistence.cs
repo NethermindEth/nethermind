@@ -5,13 +5,11 @@ using System.Buffers;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Pbt.Persistence;
 
@@ -33,7 +31,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
     /// On-disk layout of the columns this class writes. Bump it whenever a key or value encoding
     /// changes, so a database written by an older build is refused rather than silently misread.
     /// </summary>
-    private const int LayoutVersion = 4;
+    private const int LayoutVersion = 5;
 
     private readonly IColumnsDb<PbtColumns> _db;
 
@@ -161,19 +159,36 @@ public class PbtRocksDbPersistence : IPbtPersistence
 
         public Account? GetAccount(Address address)
         {
-            ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-            byte[]? value = snapshot.GetColumn(PbtColumns.Account).Get(addressHash.Bytes);
-            if (value is null) return null;
+            Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
+            IReadOnlyKeyValueStore column = snapshot.GetColumn(LeafColumn(stem));
+            Span<byte> blob = column.GetSpan(stem.Bytes);
+            if (blob.IsNull()) return null;
 
-            RlpReader reader = new(value);
-            return AccountDecoder.Slim.Decode(ref reader);
+            try
+            {
+                return PbtLeafDecoder.DecodeAccount(blob);
+            }
+            finally
+            {
+                column.DangerousReleaseMemory(blob);
+            }
         }
 
         public EvmWord GetSlot(Address address, in UInt256 slot)
         {
-            ValueHash256 key = PbtKeyDerivation.StorageKey(address, slot);
-            byte[]? stored = snapshot.GetColumn(PbtColumns.Storage).Get(key.Bytes);
-            return stored is null ? default : EvmWordSlot.FromStripped(stored);
+            Stem stem = PbtLeafDecoder.SlotStem(address, slot, out byte subIndex);
+            IReadOnlyKeyValueStore column = snapshot.GetColumn(LeafColumn(stem));
+            Span<byte> blob = column.GetSpan(stem.Bytes);
+            if (blob.IsNull()) return default;
+
+            try
+            {
+                return PbtLeafDecoder.DecodeSlot(blob, subIndex);
+            }
+            finally
+            {
+                column.DangerousReleaseMemory(blob);
+            }
         }
 
         public RefCountingMemory? GetLeafBlob(in Stem stem) => ReadOwned(snapshot.GetColumn(LeafColumn(stem)), stem.Bytes);
@@ -218,46 +233,6 @@ public class PbtRocksDbPersistence : IPbtPersistence
     private sealed class WriteBatch(IColumnsDb<PbtColumns> db, StateId to, ValueHash256 toTreeRoot, WriteFlags flags) : IPbtPersistence.IWriteBatch
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
-
-        // Storage keys are tree keys, so each one costs two hashes to derive from scratch; reusing the
-        // deriver across an address's slots collapses that to one hash per address plus one per 256-slot run.
-        private PbtSlotKeyDeriver _deriver;
-        private Address? _deriverAddress;
-
-        public void SetAccount(Address address, Account? account)
-        {
-            ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-            IWriteBatch accounts = _batch.GetColumnBatch(PbtColumns.Account);
-            if (account is null)
-            {
-                accounts.Set(addressHash.Bytes, null, flags);
-            }
-            else
-            {
-                using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-                accounts.PutSpan(addressHash.Bytes, rlp, flags);
-            }
-        }
-
-        public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
-        {
-            if (!address.Equals(_deriverAddress))
-            {
-                _deriver = new PbtSlotKeyDeriver(address);
-                _deriverAddress = address;
-            }
-
-            ValueHash256 key = _deriver.TreeKey(slot);
-            IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storage);
-            if (EvmWordSlot.IsZero(value))
-            {
-                storage.Set(key.Bytes, null, flags);
-            }
-            else
-            {
-                storage.PutSpan(key.Bytes, EvmWordSlot.AsReadOnlySpan(in value).WithoutLeadingZeros(), flags);
-            }
-        }
 
         public void SetLeafBlob(in Stem stem, byte[]? blob)
         {

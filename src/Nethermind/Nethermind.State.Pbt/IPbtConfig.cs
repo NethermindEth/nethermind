@@ -56,12 +56,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "RocksDB options of the pbt metadata column.", HiddenFromDocs = true)]
     string MetadataRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt flat account column.", HiddenFromDocs = true)]
-    string AccountRocksDbOptions { get; set; }
-
-    [ConfigItem(Description = "RocksDB options of the pbt flat storage column.", HiddenFromDocs = true)]
-    string StorageRocksDbOptions { get; set; }
-
     [ConfigItem(Description = "RocksDB options of the pbt account header zone leaf blob column.", HiddenFromDocs = true)]
     string AccountLeavesRocksDbOptions { get; set; }
 

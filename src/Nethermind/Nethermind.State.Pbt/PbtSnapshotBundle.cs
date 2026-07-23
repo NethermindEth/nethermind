@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -34,6 +35,7 @@ public class PbtSnapshotBundle(
     PbtResourcePool.Usage usage) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
+    private PbtPendingFlatWrites? _pendingFlatWrites = resourcePool.GetPendingFlatWrites(usage);
     private bool _isDisposed;
 
     /// <inheritdoc cref="PbtReadOnlySnapshotBundle.TreeRoot"/>
@@ -49,33 +51,49 @@ public class PbtSnapshotBundle(
         }
     }
 
+    private PbtPendingFlatWrites PendingFlatWrites
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+            return _pendingFlatWrites!;
+        }
+    }
+
+    /// <remarks>
+    /// The write buffer is read as the pending flat writes rather than as blobs: the block in flight has
+    /// no blob until its fold runs. Every tier below decodes from the leaf.
+    /// </remarks>
     public Account? GetAccount(Address address)
     {
-        AddressAsKey key = address;
-        if (WriteBuffer.Accounts.TryGetValue(key, out Account? account)) return account;
+        if (PendingFlatWrites.Accounts.TryGetValue(address, out Account? account)) return account;
+
+        Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
+        if (WriteBuffer.LeafBlobs.TryGetValue(stem, out byte[]? blob)) return PbtLeafDecoder.DecodeAccount(blob);
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.Accounts.TryGetValue(key, out account)) return account;
+            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out blob)) return PbtLeafDecoder.DecodeAccount(blob);
         }
 
         return readOnlyBundle.GetAccount(address);
     }
 
     /// <summary>Returns the slot value; zero when absent or self-destructed.</summary>
+    /// <inheritdoc cref="PbtReadOnlySnapshotBundle.GetSlot" path="/remarks"/>
     public EvmWord GetSlot(Address address, in UInt256 slot)
     {
         AddressAsKey key = address;
-        (AddressAsKey, UInt256) slotKey = (key, slot);
-        PbtSnapshotContent buffer = WriteBuffer;
-        if (buffer.Slots.TryGetValue(slotKey, out EvmWord value)) return value;
-        if (buffer.SelfDestructs.ContainsKey(key)) return default;
+        PbtPendingFlatWrites pending = PendingFlatWrites;
+        if (pending.Slots.TryGetValue((key, slot), out EvmWord value)) return value;
+        if (pending.SelfDestructs.ContainsKey(key)) return default;
+
+        Stem stem = PbtLeafDecoder.SlotStem(address, slot, out byte subIndex);
+        if (WriteBuffer.LeafBlobs.TryGetValue(stem, out byte[]? blob)) return PbtLeafDecoder.DecodeSlot(blob, subIndex);
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            PbtSnapshotContent content = snapshots[i].Content;
-            if (content.Slots.TryGetValue(slotKey, out value)) return value;
-            if (content.SelfDestructs.ContainsKey(key)) return default;
+            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out blob)) return PbtLeafDecoder.DecodeSlot(blob, subIndex);
         }
 
         return readOnlyBundle.GetSlot(address, slot);
@@ -113,11 +131,11 @@ public class PbtSnapshotBundle(
         return readOnlyBundle.GetTrieNode(key);
     }
 
-    public void SetAccount(Address address, Account? account) => WriteBuffer.Accounts[address] = account;
+    public void SetAccount(Address address, Account? account) => PendingFlatWrites.Accounts[address] = account;
 
-    // present entry = written in this layer; a zero value is a valid write (distinct from absent)
+    // present entry = written in this block; a zero value is a valid write (distinct from absent)
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value) =>
-        WriteBuffer.Slots[(address, slot)] = value;
+        PendingFlatWrites.Slots[(address, slot)] = value;
 
     /// <summary>Records a leaf blob produced by the root computation; an empty blob marks the stem deleted.</summary>
     public void SetLeafBlob(in Stem stem, byte[] blob) => WriteBuffer.LeafBlobs[stem] = blob;
@@ -125,16 +143,19 @@ public class PbtSnapshotBundle(
     /// <summary>Records a trie node produced by the root computation; a null node marks it removed.</summary>
     public void SetTrieNode(in TrieNodeKey key, byte[]? node) => WriteBuffer.TrieNodes[key] = node;
 
+    /// <summary>Marks every slot of <paramref name="address"/> cleared for the rest of the block in flight.</summary>
+    /// <inheritdoc cref="PbtPendingFlatWrites" path="/remarks/para[1]"/>
     public void SelfDestruct(Address address)
     {
         AddressAsKey key = address;
-        PbtSnapshotContent buffer = WriteBuffer;
-        foreach (((AddressAsKey Address, UInt256 Slot) slotKey, _) in buffer.Slots)
+        PbtPendingFlatWrites pending = PendingFlatWrites;
+        ConcurrentDictionary<(AddressAsKey Address, UInt256 Slot), EvmWord> pendingSlots = pending.Slots;
+        foreach (((AddressAsKey Address, UInt256 Slot) slotKey, _) in pendingSlots)
         {
-            if (slotKey.Address.Equals(key)) buffer.Slots.TryRemove(slotKey, out _);
+            if (slotKey.Address.Equals(key)) pendingSlots.TryRemove(slotKey, out _);
         }
 
-        buffer.SelfDestructs[key] = true;
+        pending.SelfDestructs[key] = true;
     }
 
     /// <summary>
@@ -149,6 +170,11 @@ public class PbtSnapshotBundle(
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
+
+        // the fold that preceded this seal turned every pending write into a blob on the layer just
+        // sealed, so the buffer has served its purpose and holding it on would only leak the block's
+        // accounts and slots into the next one's footprint
+        PendingFlatWrites.Reset();
         return snapshot;
     }
 
@@ -166,10 +192,14 @@ public class PbtSnapshotBundle(
         {
             snapshots.Dispose();
 
-            // null it so a racing write cannot land in a buffer another block has already rented
+            // null them so a racing write cannot land in a buffer another block has already rented
             PbtSnapshotContent? buffer = _writeBuffer;
             _writeBuffer = null;
             if (buffer is not null) resourcePool.ReturnSnapshotContent(usage, buffer);
+
+            PbtPendingFlatWrites? pending = _pendingFlatWrites;
+            _pendingFlatWrites = null;
+            if (pending is not null) resourcePool.ReturnPendingFlatWrites(usage, pending);
         }
         finally
         {

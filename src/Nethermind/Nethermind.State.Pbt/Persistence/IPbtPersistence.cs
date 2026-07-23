@@ -10,8 +10,8 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt.Persistence;
 
 /// <summary>
-/// Durable storage of one world state: flat account/slot entries, zone-partitioned stem leaf
-/// blobs, stem trie nodes, and the <see cref="StateId"/> they collectively represent.
+/// Durable storage of one world state: zone-partitioned stem leaf blobs, stem trie nodes, and the
+/// <see cref="StateId"/> they collectively represent.
 /// </summary>
 public interface IPbtPersistence
 {
@@ -39,9 +39,16 @@ public interface IPbtPersistence
         /// <inheritdoc cref="CreateWriteBatch" path="/param[@name='toTreeRoot']"/>
         ValueHash256 CurrentTreeRoot { get; }
 
+        /// <summary>Decodes the account from its header stem's leaf blob; null when it holds neither of the account's leaves.</summary>
+        /// <remarks>
+        /// Reading the two leaves here rather than through <see cref="GetLeafBlob"/> keeps the whole blob
+        /// — up to a stem's worth of code chunks — out of a buffer the caller would have to own for the
+        /// sake of 64 bytes.
+        /// </remarks>
         Account? GetAccount(Address address);
 
-        /// <summary>Returns the stored slot value, or zero when absent.</summary>
+        /// <summary>Returns the stored slot value, decoded from its stem's leaf blob, or zero when absent.</summary>
+        /// <inheritdoc cref="GetAccount" path="/remarks"/>
         EvmWord GetSlot(Address address, in UInt256 slot);
 
         RefCountingMemory? GetLeafBlob(in Stem stem);
@@ -50,12 +57,6 @@ public interface IPbtPersistence
 
     public interface IWriteBatch : IDisposable
     {
-        /// <summary>Null deletes the account entry.</summary>
-        void SetAccount(Address address, Account? account);
-
-        /// <summary>A zero value deletes the on-disk slot entry.</summary>
-        void SetSlot(Address address, in UInt256 slot, in EvmWord value);
-
         /// <summary>Null or empty deletes the blob.</summary>
         void SetLeafBlob(in Stem stem, byte[]? blob);
 

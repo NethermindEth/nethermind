@@ -31,6 +31,9 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// </remarks>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore
 {
+    /// <summary>Zero <c>BASIC_DATA</c> and <c>CODE_HASH</c> as one run, the same two adjacent leaves <see cref="ApplyAccountHeader"/> writes.</summary>
+    private static readonly byte[] _clearedAccountHeader = new byte[2 * ValueHash256.MemorySize];
+
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
@@ -260,6 +263,16 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
     }
 
+    /// <summary>Clears the <c>BASIC_DATA</c> and <c>CODE_HASH</c> leaves of a deleted account, which is what makes it read back as absent.</summary>
+    /// <remarks>
+    /// The account's other header leaves — its first 64 storage slots and its header code chunks — are
+    /// deliberately left: nothing reads them once the account is gone, and clearing them would rewrite a
+    /// stem's worth of leaves per deletion. A stem left with none of them at all is emptied and
+    /// tombstoned by the fold.
+    /// </remarks>
+    private void ClearAccountHeader(Address address) =>
+        _writeBatchBuilder.SetLeafRange(PbtKeyDerivation.AccountHeaderStem(address), PbtKeyDerivation.BasicDataLeafKey, _clearedAccountHeader);
+
     private static ReadOnlySpan<byte> ChunkRun(byte[] chunks, int firstChunk, int count) =>
         chunks.AsSpan(firstChunk * PbtKeyDerivation.CodeChunkSize, count * PbtKeyDerivation.CodeChunkSize);
 
@@ -303,10 +316,18 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             scope.Bundle.SetAccount(key, account);
             scope._rootDirty = true;
 
-            // the world state skips the storage write batch entirely for removed accounts, so the
-            // storage clear must happen here
-            if (account is null) scope.SelfDestructStorage(key);
-            else scope.ApplyAccountHeader(key, account);
+            if (account is null)
+            {
+                // the tree is the only record of the account, so the delete has to reach it; and the
+                // world state skips the storage write batch entirely for removed accounts, so the
+                // storage clear must happen here too
+                scope.ClearAccountHeader(key);
+                scope.SelfDestructStorage(key);
+            }
+            else
+            {
+                scope.ApplyAccountHeader(key, account);
+            }
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>

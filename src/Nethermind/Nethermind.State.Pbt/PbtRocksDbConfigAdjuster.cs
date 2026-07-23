@@ -36,8 +36,6 @@ internal sealed class PbtRocksDbConfigAdjuster(
     private string ColumnRocksDbOptions(string? columnName) => columnName switch
     {
         nameof(PbtColumns.Metadata) => pbtConfig.MetadataRocksDbOptions,
-        nameof(PbtColumns.Account) => pbtConfig.AccountRocksDbOptions,
-        nameof(PbtColumns.Storage) => pbtConfig.StorageRocksDbOptions,
         nameof(PbtColumns.AccountLeaves) => pbtConfig.AccountLeavesRocksDbOptions,
         nameof(PbtColumns.CodeLeaves) => pbtConfig.CodeLeavesRocksDbOptions,
         nameof(PbtColumns.StorageLeaves) => pbtConfig.StorageLeavesRocksDbOptions,

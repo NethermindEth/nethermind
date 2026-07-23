@@ -197,6 +197,14 @@ public static class PbtKeyDerivation
 
     public static uint ReadBasicDataCodeSize(ReadOnlySpan<byte> basicData) => BinaryPrimitives.ReadUInt32BigEndian(basicData.Slice(4, 4));
 
+    /// <summary>Reads back the nonce and balance <see cref="PackBasicData"/> wrote.</summary>
+    /// <remarks>The leaf holds 16 balance bytes, so a balance above 2^128 does not round-trip; no such account is reachable.</remarks>
+    public static void UnpackBasicData(ReadOnlySpan<byte> basicData, out ulong nonce, out UInt256 balance)
+    {
+        nonce = BinaryPrimitives.ReadUInt64BigEndian(basicData.Slice(8, sizeof(ulong)));
+        balance = new UInt256(basicData[16..], isBigEndian: true);
+    }
+
     /// <summary>Copies the high <paramref name="bitCount"/> MSB-first bits of <paramref name="src"/> into <paramref name="dest"/> at <paramref name="destBitOffset"/> (dest must be zeroed).</summary>
     /// <remarks>
     /// Byte-at-a-time rather than bit-at-a-time: a storage stem copies 247 bits across two calls, on

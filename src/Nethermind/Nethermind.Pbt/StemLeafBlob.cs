@@ -90,6 +90,64 @@ public static class StemLeafBlob
         return true;
     }
 
+    /// <summary>Walks the present leaves of a <see cref="PbtLeafFormat.LeavesOnly"/> blob in ascending sub-index order.</summary>
+    /// <remarks>
+    /// Restricted to that one layout because it is the only one whose entries are the leaves alone: under
+    /// every other, internal-node entries sit between them in post-order and a leaf's slot has to be
+    /// located rather than counted. Bulk loads write leaves-only blobs (see <see cref="StemLeafBlobBuilder"/>),
+    /// which is what reads them back.
+    /// </remarks>
+    /// <exception cref="InvalidDataException">The blob is in another layout.</exception>
+    public static LeafEnumerator EnumerateLeavesOnly(ReadOnlySpan<byte> blob)
+    {
+        if (blob.IsEmpty) return default;
+
+        PbtLeafFormat format = TwoLevelBitmapReader.FormatOf(blob);
+        if (format != PbtLeafFormat.LeavesOnly)
+        {
+            throw new InvalidDataException($"StemLeafBlob: a {format} blob interleaves internal nodes and cannot be enumerated as leaves");
+        }
+
+        return new LeafEnumerator(TwoLevelBitmapReader.FromBlob(blob, out ReadOnlySpan<byte> entries), entries);
+    }
+
+    /// <summary>The present leaves of a leaves-only blob, ascending by sub-index. See <see cref="EnumerateLeavesOnly"/>.</summary>
+    public ref struct LeafEnumerator
+    {
+        private readonly TwoLevelBitmapReader _presence;
+        private readonly ReadOnlySpan<byte> _entries;
+        private int _subIndex;
+        private int _slot;
+
+        internal LeafEnumerator(TwoLevelBitmapReader presence, ReadOnlySpan<byte> entries)
+        {
+            _presence = presence;
+            _entries = entries;
+            _subIndex = -1;
+            _slot = -1;
+        }
+
+        /// <summary>The sub-index of the leaf the enumerator sits on.</summary>
+        public readonly byte CurrentSubIndex => (byte)_subIndex;
+
+        /// <summary>The 32-byte value of the leaf the enumerator sits on.</summary>
+        public readonly ReadOnlySpan<byte> CurrentValue => _entries.Slice(_slot * ValueLength, ValueLength);
+
+        /// <remarks>A <c>default</c> enumerator holds no entries and stops at once, which is how an empty blob is walked.</remarks>
+        public bool MoveNext()
+        {
+            while (++_subIndex < LeafCount)
+            {
+                if (!_presence.IsPresent((byte)_subIndex)) continue;
+
+                _slot++;
+                return true;
+            }
+
+            return false;
+        }
+    }
+
     /// <summary>
     /// Applies <paramref name="changes"/> (each a 32-byte leaf value; a zero value clears the leaf) to
     /// <paramref name="blob"/> in <paramref name="format"/>, returning a disposable <see cref="RebuildState"/>

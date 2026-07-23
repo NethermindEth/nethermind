@@ -7,12 +7,6 @@ public enum PbtColumns
 {
     Metadata,
 
-    /// <summary>Flat account entries keyed by blake3(address32).</summary>
-    Account,
-
-    /// <summary>Flat storage entries keyed by blake3(address32) || slot32BE.</summary>
-    Storage,
-
     /// <summary>Stem leaf blobs of the account header zone (0x0), keyed by stem.</summary>
     AccountLeaves,
 
