@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -21,6 +22,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Nethermind.Trie.Sparse;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -1103,5 +1105,293 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
         public bool IsPreimageMode => false;
+    }
+}
+
+[TestFixture]
+public class FlatTrieNodeReaderTests
+{
+    private class TestContext : IDisposable
+    {
+        private readonly ContainerBuilder _containerBuilder;
+        private IContainer? _container;
+        private IContainer Container => _container ??= _containerBuilder.Build();
+        private Snapshot? _collectedSnapshot;
+        private TransientResource? _collectedResource;
+
+        public SnapshotPooledList ReadOnlySnapshots = new(0);
+
+        public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
+        public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
+        public ITrieNodeCache TrieNodeCache => Container.Resolve<ITrieNodeCache>();
+        public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
+
+        public TestContext()
+        {
+            _containerBuilder = new ContainerBuilder()
+                .AddModule(new FlatWorldStateModule(new FlatDbConfig()))
+                .AddSingleton<IPersistence.IPersistenceReader>(_ =>
+                {
+                    // NSubstitute auto-returns empty arrays; a missing node must be null.
+                    IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+                    reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
+                    reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
+                    return reader;
+                })
+                .AddSingleton<IFlatDbManager>(_ => Substitute.For<IFlatDbManager>())
+                .Bind<IFlatCommitTarget, IFlatDbManager>()
+                .AddSingleton<IProcessExitSource>(_ => Substitute.For<IProcessExitSource>())
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .AddSingleton<IFlatDbConfig>(new FlatDbConfig())
+                .AddSingleton<IInitConfig>(_ => Substitute.For<IInitConfig>());
+
+            _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
+                .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
+                .WithParameter(TypedParameter.From(ReadOnlySnapshots))
+                .WithParameter(TypedParameter.From(PersistedSnapshotStack.Empty()))
+                .ExternallyOwned();
+
+            _containerBuilder.RegisterType<SnapshotBundle>()
+                .SingleInstance()
+                .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
+                .ExternallyOwned();
+        }
+
+        /// <summary>Adds a committed snapshot to the read-only (older) tier.</summary>
+        public void AddReadOnlySnapshot(Action<SnapshotContent> populator)
+        {
+            SnapshotContent content = ResourcePool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+            populator(content);
+            ReadOnlySnapshots.Add(new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, ResourcePool, ResourcePool.Usage.MainBlockProcessing));
+        }
+
+        /// <summary>Commits the bundle's current write buffer into its in-memory snapshot tier.</summary>
+        public void CollectCurrentIntoSnapshot() =>
+            (_collectedSnapshot, _collectedResource) = SnapshotBundle.CollectAndApplySnapshot(
+                new StateId(0, Keccak.EmptyTreeHash), new StateId(1, Keccak.OfAnEmptyString), returnSnapshot: true);
+
+        public void Dispose()
+        {
+            SnapshotBundle.Dispose();
+            _collectedSnapshot?.Dispose();
+            if (_collectedResource is not null)
+            {
+                ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, _collectedResource);
+            }
+
+            _container?.Dispose();
+        }
+    }
+
+    private static byte[] TestRlp(int seed)
+    {
+        byte[] rlp = new byte[40 + seed % 8];
+        for (int i = 0; i < rlp.Length; i++)
+        {
+            rlp[i] = (byte)(seed * 17 + i);
+        }
+
+        return rlp;
+    }
+
+    private static TrieNode SealedNode(byte[] rlp) =>
+        new(NodeType.Unknown, ValueKeccak.Compute(rlp).ToCommitment(), rlp);
+
+    private static CappedArray<byte> ResolveOne(FlatTrieNodeReader reader, in TreePath path, in ValueHash256 hash)
+    {
+        SparseNodeRequest[] requests = [new(in path, in hash)];
+        CappedArray<byte>[] results = new CappedArray<byte>[1];
+        reader.Resolve(requests, results);
+        return results[0];
+    }
+
+    private static TreePath Path(string nibbles) => TreePath.FromHexString(nibbles);
+
+    [Test]
+    public void Reads_committed_node_from_current_bundle_snapshot()
+    {
+        using TestContext ctx = new();
+        byte[] rlp = TestRlp(1);
+        TrieNode node = SealedNode(rlp);
+        TreePath path = Path("12a");
+
+        ctx.SnapshotBundle.SetStateNode(in path, node);
+        ctx.CollectCurrentIntoSnapshot();
+
+        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        Assert.That(ResolveOne(reader, in path, node.Keccak!.ValueHash256).AsSpan().SequenceEqual(rlp));
+    }
+
+    [Test]
+    public void Current_scope_dirty_node_cannot_shadow_the_committed_node_at_its_path()
+    {
+        using TestContext ctx = new();
+        byte[] committedRlp = TestRlp(2);
+        byte[] dirtyRlp = TestRlp(20);
+        TrieNode committed = SealedNode(committedRlp);
+        TrieNode dirty = SealedNode(dirtyRlp);
+        TreePath path = Path("12a");
+
+        ctx.AddReadOnlySnapshot(content => content.StateNodes[path] = committed);
+        ctx.SnapshotBundle.SetStateNode(in path, dirty);
+
+        // The path-keyed dirty tier (which Patricia reads consult first, without a hash check)
+        // is excluded; the committed node behind it stays reachable. Every tier the committed
+        // reader does consult is (path, hash)-keyed, so a dirty entry can only ever satisfy a
+        // request for its own exact bytes, which is harmless by construction.
+        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ResolveOne(reader, in path, committed.Keccak!.ValueHash256).AsSpan().SequenceEqual(committedRlp), "committed node reachable behind the dirty entry");
+            Assert.That(ResolveOne(reader, in path, dirty.Keccak!.ValueHash256).AsSpan().SequenceEqual(dirtyRlp), "hash-keyed hit returns exactly the requested bytes");
+        }
+    }
+
+    [Test]
+    public void Skips_newer_version_at_same_path_and_finds_older()
+    {
+        using TestContext ctx = new();
+        byte[] olderRlp = TestRlp(3);
+        byte[] newerRlp = TestRlp(4);
+        TrieNode older = SealedNode(olderRlp);
+        TrieNode newer = SealedNode(newerRlp);
+        TreePath path = Path("3f");
+
+        ctx.AddReadOnlySnapshot(content => content.StateNodes[path] = older);
+        ctx.SnapshotBundle.SetStateNode(in path, newer);
+        ctx.CollectCurrentIntoSnapshot();
+
+        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ResolveOne(reader, in path, newer.Keccak!.ValueHash256).AsSpan().SequenceEqual(newerRlp), "newer version");
+            Assert.That(ResolveOne(reader, in path, older.Keccak!.ValueHash256).AsSpan().SequenceEqual(olderRlp), "older version behind a newer path match");
+        }
+    }
+
+    [Test]
+    public void Reads_from_trie_node_cache()
+    {
+        using TestContext ctx = new();
+        byte[] rlp = TestRlp(5);
+        TrieNode node = SealedNode(rlp);
+        TreePath path = Path("ab3");
+
+        TransientResource transient = ctx.ResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        transient.UpdateStateNode(in path, node);
+        ctx.TrieNodeCache.Add(transient);
+        ctx.ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transient);
+
+        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        Assert.That(ResolveOne(reader, in path, node.Keccak!.ValueHash256).AsSpan().SequenceEqual(rlp));
+    }
+
+    [Test]
+    public void Reads_from_persistence_and_validates_hash()
+    {
+        using TestContext ctx = new();
+        byte[] rlp = TestRlp(6);
+        TreePath path = Path("77");
+        ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
+
+        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ResolveOne(reader, in path, ValueKeccak.Compute(rlp)).AsSpan().SequenceEqual(rlp), "matching hash");
+        }
+
+        ValueHash256 wrongHash = ValueKeccak.Compute([1, 2, 3]);
+        Assert.Throws<NodeHashMismatchException>(() => ResolveOne(reader, in path, in wrongHash));
+    }
+
+    [Test]
+    public void Missing_node_resolves_to_null()
+    {
+        using TestContext ctx = new();
+        ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
+
+        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        TreePath path = Path("9");
+        ValueHash256 hash = ValueKeccak.Compute([9]);
+        Assert.That(ResolveOne(reader, in path, in hash).IsNull);
+    }
+
+    [Test]
+    public void Storage_reads_are_address_bound()
+    {
+        using TestContext ctx = new();
+        Hash256 addressA = ValueKeccak.Compute([0xA]).ToCommitment();
+        Hash256 addressB = ValueKeccak.Compute([0xB]).ToCommitment();
+        byte[] rlpA = TestRlp(7);
+        byte[] rlpB = TestRlp(8);
+        TrieNode nodeA = SealedNode(rlpA);
+        TrieNode nodeB = SealedNode(rlpB);
+        TreePath path = Path("c2");
+
+        ctx.AddReadOnlySnapshot(content =>
+        {
+            content.StorageNodes.GetOrAddAddress(addressA).Set(in path, nodeA);
+            content.StorageNodes.GetOrAddAddress(addressB).Set(in path, nodeB);
+        });
+
+        FlatTrieNodeReader readerA = new(ctx.SnapshotBundle, addressA);
+        FlatTrieNodeReader readerB = new(ctx.SnapshotBundle, addressB);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ResolveOne(readerA, in path, nodeA.Keccak!.ValueHash256).AsSpan().SequenceEqual(rlpA), "address A");
+            Assert.That(ResolveOne(readerB, in path, nodeB.Keccak!.ValueHash256).AsSpan().SequenceEqual(rlpB), "address B");
+            Assert.That(ResolveOne(readerA, in path, nodeB.Keccak!.ValueHash256).IsNull, "cross-address isolation");
+        }
+    }
+
+    [Test]
+    public void Storage_persistence_reads_validate_hash()
+    {
+        using TestContext ctx = new();
+        Hash256 address = ValueKeccak.Compute([0xC]).ToCommitment();
+        byte[] rlp = TestRlp(9);
+        TreePath path = Path("d");
+        ctx.PersistenceReader.TryLoadStorageRlp(address, Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
+
+        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address);
+        Assert.That(ResolveOne(reader, in path, ValueKeccak.Compute(rlp)).AsSpan().SequenceEqual(rlp));
+
+        ValueHash256 wrongHash = ValueKeccak.Compute([4, 5, 6]);
+        Assert.Throws<NodeHashMismatchException>(() => ResolveOne(reader, in path, in wrongHash));
+    }
+
+    [Test]
+    public void Batch_preserves_request_association()
+    {
+        using TestContext ctx = new();
+        byte[] rlpX = TestRlp(10);
+        byte[] rlpY = TestRlp(11);
+        TrieNode nodeX = SealedNode(rlpX);
+        TrieNode nodeY = SealedNode(rlpY);
+        TreePath pathX = Path("1");
+        TreePath pathY = Path("2");
+
+        ctx.AddReadOnlySnapshot(content =>
+        {
+            content.StateNodes[pathX] = nodeX;
+            content.StateNodes[pathY] = nodeY;
+        });
+
+        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        SparseNodeRequest[] requests =
+        [
+            new(in pathX, nodeX.Keccak!.ValueHash256),
+            new(in pathY, nodeY.Keccak!.ValueHash256),
+            new(in pathX, nodeX.Keccak!.ValueHash256),
+        ];
+        CappedArray<byte>[] results = new CappedArray<byte>[3];
+        reader.Resolve(requests, results);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].AsSpan().SequenceEqual(rlpX), "slot 0");
+            Assert.That(results[1].AsSpan().SequenceEqual(rlpY), "slot 1");
+            Assert.That(results[2].AsSpan().SequenceEqual(rlpX), "duplicate slot 2");
+        }
     }
 }
