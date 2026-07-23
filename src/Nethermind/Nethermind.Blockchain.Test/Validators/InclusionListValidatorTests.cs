@@ -20,6 +20,7 @@ namespace Nethermind.Blockchain.Test.Validators;
 public class InclusionListValidatorTests
 {
     private static readonly ISpecProvider _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
+    private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
 
     public static IEnumerable<TestCaseData> SatisfactionCases
@@ -47,6 +48,9 @@ public class InclusionListValidatorTests
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
             // Blob txs MUST NOT appear in an IL; treated as not appendable.
             yield return Case("Blob tx", [BuildBlobTx()], true);
+            // Appendability uses full tx well-formedness: a malformed type-2 tx (tip > fee cap) that
+            // normal execution rejects must not be reported appendable, so the payload stays satisfied.
+            yield return Case("Malformed 1559 tx (tip > fee cap)", [BuildMalformed1559Tx()], true);
             // EEST regression (test_block_with_intrinsic_gas_too_low_pending_il_tx_is_valid):
             // a tx whose GasLimit is below the intrinsic cost cannot execute.
             // Non-self recipient so we hit the full 21_000 floor (self-transfers collapse into
@@ -75,7 +79,7 @@ public class InclusionListValidatorTests
             .TestObject;
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
-        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header)), Is.EqualTo(satisfied));
+        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
     }
 
     [Test]
@@ -87,7 +91,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance, _txValidator), Is.True);
     }
 
     // EIP-3607: a sender that has deployed (non-delegation) code cannot send a tx.
@@ -111,7 +115,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header));
+        return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     private static Transaction BuildTx(ulong gasLimit = 100_000, ulong nonce = 0, UInt256? gasPrice = null, UInt256? value = null, Address? to = null) =>
@@ -130,6 +134,20 @@ public class InclusionListValidatorTests
             .WithGasLimit(100_000)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerGas(10.GWei)
+            .WithNonce(0)
+            .WithValue(UInt256.One)
+            .WithTo(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+    // A type-2 tx with maxPriorityFeePerGas > maxFeePerGas is rejected by normal transaction
+    // validation, so an omitted entry like this must be treated as not appendable.
+    private static Transaction BuildMalformed1559Tx() =>
+        Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithGasLimit(100_000)
+            .WithMaxPriorityFeePerGas(2.GWei)
+            .WithMaxFeePerGas(1.GWei)
             .WithNonce(0)
             .WithValue(UInt256.One)
             .WithTo(TestItem.AddressB)

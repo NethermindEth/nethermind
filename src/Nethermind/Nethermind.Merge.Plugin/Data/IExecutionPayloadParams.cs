@@ -69,13 +69,28 @@ public class ExecutionPayloadParams(
             }
         }
 
-        if (spec.InclusionListsEnabled && InclusionListTransactions is null)
+        if (spec.InclusionListsEnabled)
         {
-            error = "Inclusion list must be set";
-            return ValidationResult.Fail;
+            if (InclusionListTransactions is null)
+            {
+                error = "Inclusion list must be set";
+                return ValidationResult.Fail;
+            }
+
+            // The flattened aggregate spans up to IL_COMMITTEE_SIZE members, each bounded by
+            // MAX_BYTES_PER_INCLUSION_LIST. Bound the raw byte total so an authenticated-but-faulty CL
+            // cannot force decode/recover work far beyond any valid FOCIL input.
+            long totalBytes = 0;
+            for (int i = 0; i < InclusionListTransactions.Length; i++)
+            {
+                totalBytes += InclusionListTransactions[i]?.Length ?? 0;
+                if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
+                {
+                    error = "Inclusion list exceeds the maximum aggregate size";
+                    return ValidationResult.Fail;
+                }
+            }
         }
-        // No byte cap here: newPayloadV6 receives the flattened aggregate of up to 16 committee
-        // members, whereas MAX_BYTES_PER_INCLUSION_LIST bounds each member's individual list.
 
         return ValidationResult.Success;
     }

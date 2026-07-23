@@ -156,7 +156,7 @@ public class BlockValidator(
         if (options.ContainsFlag(ProcessingOptions.NoValidation)) return true;
         IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
         // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
-        return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec);
+        return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, _txValidator);
     }
 
     /// <summary>

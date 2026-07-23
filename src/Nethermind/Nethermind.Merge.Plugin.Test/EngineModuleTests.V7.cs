@@ -168,6 +168,80 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV6_bounds_aggregate_inclusion_list_bytes()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
+
+        // At the aggregate limit (IL_COMMITTEE_SIZE * MAX_BYTES_PER_INCLUSION_LIST): accepted.
+        ResultWrapper<PayloadStatusV2> atLimit = await rpc.engine_newPayloadV6(
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests,
+            [new byte[Eip7805Constants.MaxAggregateInclusionListBytes]]);
+        Assert.That(atLimit.Result.ResultType, Is.EqualTo(ResultType.Success), atLimit.Result.Error);
+
+        // One byte over the limit: rejected before decode.
+        ResultWrapper<PayloadStatusV2> overLimit = await rpc.engine_newPayloadV6(
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests,
+            [new byte[Eip7805Constants.MaxAggregateInclusionListBytes + 1]]);
+        Assert.That(overLimit.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(overLimit.Result.Error, Does.Contain("exceeds the maximum aggregate size"));
+    }
+
+    [Test]
+    public async Task NewPayloadV5_is_unsupported_at_Bogota()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+
+        // execution-apis#609: at/after Bogota, engine_newPayloadV5 must be rejected with -38005.
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV5(
+            payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+    }
+
+    [Test]
+    public async Task NewPayloadV6_is_unsupported_before_Bogota()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block genesis = chain.BlockFinder.FindGenesisBlock()!;
+
+        PayloadAttributes attrs = new()
+        {
+            Timestamp = genesis.Header.Timestamp + 12,
+            PrevRandao = genesis.Header.Random!,
+            SuggestedFeeRecipient = TestItem.AddressC,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+            SlotNumber = 1,
+            TargetGasLimit = genesis.Header.GasLimit,
+        };
+        ForkchoiceStateV1 fcuState = new(genesis.Hash!, genesis.Hash!, genesis.Hash!);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV4(fcuState, attrs);
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+
+        // execution-apis#609: before Bogota, engine_newPayloadV6 must be rejected with -38005.
+        ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
+            payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+    }
+
+    [Test]
     public async Task ForkchoiceUpdatedV5_accepts_null_inclusion_list_for_initial_build()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });

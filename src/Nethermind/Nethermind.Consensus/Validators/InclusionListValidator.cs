@@ -9,15 +9,16 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
 
 public static class InclusionListValidator
 {
-    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec)
-        => IsSatisfied(block, block.InclusionListTransactions, state, spec);
+    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
+        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator);
 
-    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec)
+    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
@@ -49,18 +50,20 @@ public static class InclusionListValidator
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
-            if (!included[i] && CouldIncludeTx(il[i], block, state, spec, ref senderCache)) return false;
+            if (!included[i] && CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
         }
         return true;
     }
 
-    private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
+    private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
         // Blob txs MUST NOT appear in an IL.
         if (tx.SupportsBlobs) return false;
         if (block.GasUsed + tx.GasLimit > block.GasLimit) return false;
-        if (tx.GasLimit < (ulong)IntrinsicGasCalculator.Calculate(tx, spec, block.GasLimit)) return false;
+        // Appendability must match normal execution: reuse the block validator's well-formedness
+        // check (intrinsic gas, typed-tx rules, e.g. maxPriorityFeePerGas <= maxFeePerGas) instead of a subset.
+        if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
 
         senderCache ??= [];
