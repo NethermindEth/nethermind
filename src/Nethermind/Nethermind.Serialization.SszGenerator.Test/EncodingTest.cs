@@ -94,6 +94,30 @@ public class EncodingTest
         Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _), Throws.InstanceOf<InvalidDataException>());
     }
 
+    [Test]
+    public void Decode_collection_itself_byte_vectors()
+    {
+        ByteVectorItself[] original = [new() { Bytes = [1, 2, 3] }, new() { Bytes = [4, 5, 6] }];
+
+        byte[] encoded = ByteVectorItself.Encode(original);
+        ByteVectorItself.Decode(encoded, out ByteVectorItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_vectors_rejects_wrong_item_length()
+    {
+        byte[] encoded = [1, 2, 3, 4, 5];
+
+        Assert.That(() => ByteVectorItself.Decode(encoded, out ByteVectorItself[] _), Throws.InstanceOf<InvalidDataException>());
+    }
+
     private static BitArray MakeSampleBits10()
     {
         BitArray bits = new(10);

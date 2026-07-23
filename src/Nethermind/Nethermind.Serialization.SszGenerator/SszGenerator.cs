@@ -179,6 +179,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization;
@@ -187,9 +188,11 @@ internal static class SszCodecHelpers
 {
     private const int SszOffsetSize = 4;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeSszOffset(Span<byte> data, int offset) =>
         BinaryPrimitives.WriteInt32LittleEndian(data, offset);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int DecodeSszOffset(ReadOnlySpan<byte> data) =>
         BinaryPrimitives.ReadInt32LittleEndian(data);
 
@@ -309,10 +312,24 @@ internal static class SszCodecHelpers
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static byte[] DecodeSszByteList(ReadOnlySpan<byte> data, ulong limit, string typeName, string fieldName)
     {
         ValidateSszListLimit(data, limit, typeName, fieldName);
         byte[] result = global::System.GC.AllocateUninitializedArray<byte>(data.Length);
+        data.CopyTo(result);
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static byte[] DecodeSszByteVector(ReadOnlySpan<byte> data, int expectedLength, string typeName, string fieldName)
+    {
+        if (data.Length != expectedLength)
+        {
+            ThrowInvalidSszValue(typeName, fieldName, $"expected {expectedLength} elements but found {data.Length}.");
+        }
+
+        byte[] result = global::System.GC.AllocateUninitializedArray<byte>(expectedLength);
         data.CopyTo(result);
         return result;
     }
@@ -761,7 +778,10 @@ internal static class SszCodecHelpers
         property.IsNullable ? $"if ({valueExpr} is null) {target}.Clear(); else {statement}" : statement;
 
     private static bool IsByteList(SszProperty property) =>
-        property.Kind == Kind.List && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
+        property.Kind == Kind.List && !property.IsSpanLikeProperty && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
+
+    private static bool IsByteVector(SszProperty property) =>
+        property.Kind == Kind.Vector && !property.IsSpanLikeProperty && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
 
     private static string DecodeAndAssign(SszType decl, SszProperty property, string sliceExpression)
     {
@@ -787,6 +807,12 @@ internal static class SszCodecHelpers
         {
             string assignment = DecodeAssignmentExpression(property, variableName, sourceIsArray: true);
             return $"{{ byte[] {variableName} = DecodeSszByteList({sliceExpression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = {assignment}; }}";
+        }
+
+        if (IsByteVector(property))
+        {
+            string assignment = DecodeAssignmentExpression(property, variableName, sourceIsArray: true);
+            return $"{{ byte[] {variableName} = DecodeSszByteVector({sliceExpression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = {assignment}; }}";
         }
 
         if ((property.Kind is Kind.Vector or Kind.List or Kind.ProgressiveList) && property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec)
@@ -1228,7 +1254,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {
             return [];
         }")}
-        byte[] buf = new byte[GetLength(container)];
+        byte[] buf = global::System.GC.AllocateUninitializedArray<byte>(GetLength(container));
         Encode(buf, container);
         return buf;
     }}
@@ -1246,7 +1272,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
-        byte[] buf = new byte[GetLength(items)];
+        byte[] buf = global::System.GC.AllocateUninitializedArray<byte>(GetLength(items));
         Encode(buf, items);
         return buf;
     }}
@@ -1419,7 +1445,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {
             return [];
         }")}
-        byte[] buf = new byte[GetLength(container)];
+        byte[] buf = global::System.GC.AllocateUninitializedArray<byte>(GetLength(container));
         Encode(buf, container);
         return buf;
     }}
@@ -1442,7 +1468,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
-        byte[] buf = new byte[GetLength(items)];
+        byte[] buf = global::System.GC.AllocateUninitializedArray<byte>(GetLength(items));
         Encode(buf, items);
         return buf;
     }}
@@ -1634,7 +1660,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {
             return [];
         }")}
-        byte[] buf = new byte[GetLength(container)];
+        byte[] buf = global::System.GC.AllocateUninitializedArray<byte>(GetLength(container));
         Encode(buf, container);
         return buf;
     }}
@@ -1664,7 +1690,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
-        byte[] buf = new byte[GetLength(items)];
+        byte[] buf = global::System.GC.AllocateUninitializedArray<byte>(GetLength(items));
         Encode(buf, items);
         return buf;
     }}
