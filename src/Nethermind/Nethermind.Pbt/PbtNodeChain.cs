@@ -25,7 +25,7 @@ namespace Nethermind.Pbt;
 /// A chain has no key of its own: at a hundred-odd bytes it is far too little to be worth one, so
 /// the boundary slot it hangs from holds its encoding outright (see
 /// <see cref="PbtTrieNodeGroup.NodeKind.Chain"/>). Its start depth is therefore that slot's depth —
-/// its parent group's plus <see cref="PbtLayout.TrieNodeGroupLevelsPerGroup"/> — and is not stored, so the
+/// its parent group's plus the tiling's <see cref="IPbtTileLayout.LevelsPerGroup"/> — and is not stored, so the
 /// encoding is fixed at <see cref="EncodedLength"/> bytes.
 /// </para>
 /// <para>
@@ -136,12 +136,13 @@ public readonly ref struct PbtNodeChain
     /// on <paramref name="targetPath"/> whose root hashes to <paramref name="targetHash"/> and whose
     /// subtree amounts to <paramref name="stats"/>, folding its node hash on the way.
     /// </summary>
-    public static void Write(
+    public static void Write<TLayout>(
         Span<byte> destination, int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash,
         in PbtSubtreeStats stats)
+        where TLayout : IPbtTileLayout
     {
         Debug.Assert(destination.Length == EncodedLength);
-        Debug.Assert(IsWellFormed(startDepth, targetDepth, targetPath, targetHash, stats));
+        Debug.Assert(IsWellFormed<TLayout>(startDepth, targetDepth, targetPath, targetHash, stats));
 
         destination[TargetDepthOffset] = (byte)targetDepth;
         targetPath.Bytes.CopyTo(destination[TargetPathOffset..]);
@@ -156,13 +157,13 @@ public readonly ref struct PbtNodeChain
     /// <paramref name="data"/>.
     /// </summary>
     /// <param name="startDepth">The depth of the boundary slot <paramref name="data"/> was read from.</param>
-    public static PbtNodeChain Decode(ReadOnlySpan<byte> data, int startDepth)
+    public static PbtNodeChain Decode<TLayout>(ReadOnlySpan<byte> data, int startDepth) where TLayout : IPbtTileLayout
     {
         if (data.Length != EncodedLength) throw new InvalidDataException($"Trie node chain length {data.Length} is not {EncodedLength}");
         if (data[FormatOffset] != FormatByte) throw new InvalidDataException($"Trie node chain: unexpected format byte 0x{data[FormatOffset]:x2}");
 
         PbtNodeChain chain = new(data, startDepth);
-        if (!IsWellFormed(startDepth, chain.TargetDepth, chain.TargetPath, chain.TargetHash, chain.Stats))
+        if (!IsWellFormed<TLayout>(startDepth, chain.TargetDepth, chain.TargetPath, chain.TargetHash, chain.Stats))
         {
             throw new InvalidDataException($"Invalid trie node chain from depth {startDepth} to {chain.TargetDepth}");
         }
@@ -179,19 +180,20 @@ public readonly ref struct PbtNodeChain
     /// </summary>
     /// <remarks>
     /// A chain spans at least one group and lands on a group key, so both depths are multiples of
-    /// <see cref="PbtLayout.TrieNodeGroupLevelsPerGroup"/> and the target is a group depth. The start is past
+    /// <see cref="IPbtTileLayout.LevelsPerGroup"/> and the target is a group depth. The start is past
     /// the root, which keeps its own spine (invariant 4). The target path is a group's, so it is
     /// zero-padded past the target, and its group is stored, so its root hash is never the empty
     /// subtree's. That group is past the root and stored, so it branches (invariant 1) — two occupied
     /// boundary slots hold a stem each at the least, which is the fewest a run can reach.
     /// </remarks>
-    private static bool IsWellFormed(
-        int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats) =>
+    private static bool IsWellFormed<TLayout>(
+        int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats)
+        where TLayout : IPbtTileLayout =>
         startDepth > 0
         && startDepth < targetDepth
-        && targetDepth <= PbtLayout.TrieNodeGroupMaxGroupDepth
-        && startDepth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0
-        && targetDepth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0
+        && targetDepth <= TLayout.MaxGroupDepth
+        && startDepth % TLayout.LevelsPerGroup == 0
+        && targetDepth % TLayout.LevelsPerGroup == 0
         && targetHash != default
         && stats.StemCount >= 2
         && TrieNodeKey.For(targetDepth, targetPath).Path == targetPath;

@@ -9,6 +9,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtWriteBatchBuilderTests
@@ -28,7 +30,7 @@ public class PbtWriteBatchBuilderTests
 
         Assert.That(builder.HasDirtyStems, Is.True);
 
-        using (PbtWriteBatch batch = builder.DrainToWriteBatch())
+        using (PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel))
         {
             Assert.That(batch.Count, Is.EqualTo(2));
             AssertEntry(batch, first, [10, 11, 12, 40]);
@@ -36,7 +38,7 @@ public class PbtWriteBatchBuilderTests
         }
 
         Assert.That(builder.HasDirtyStems, Is.False, "the drain hands every map to the batch");
-        using PbtWriteBatch drained = builder.DrainToWriteBatch();
+        using PbtWriteBatch drained = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
         Assert.That(drained.Count, Is.Zero);
     }
 
@@ -68,7 +70,7 @@ public class PbtWriteBatchBuilderTests
 
         Parallel.ForEach(work, item => builder.SetLeaf(TestStem(0x80, item.Stem), (byte)item.SubIndex, Value(item.Stem * subIndices + item.SubIndex)));
 
-        using PbtWriteBatch batch = builder.DrainToWriteBatch();
+        using PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
         Assert.That(batch.Count, Is.EqualTo(stems));
         for (int s = 0; s < stems; s++)
         {
@@ -97,11 +99,11 @@ public class PbtWriteBatchBuilderTests
         using PbtWriteBatchBuilder builder = new();
         for (int i = 0; i < firstBytes.Length; i++) builder.SetLeaf(TestStem(firstBytes[i], i), 0, Value(i));
 
-        using PbtWriteBatch batch = builder.DrainToWriteBatch();
+        using PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
         Assert.That(batch.Count, Is.EqualTo(firstBytes.Length));
 
         ReadOnlySpan<int> table = batch.Buckets;
-        Assert.That(table.Length, Is.EqualTo(PbtWriteBatch.BucketTableLength));
+        Assert.That(table.Length, Is.EqualTo(Layout.BoundarySlots * PbtWriteBatch.LevelStride<Layout>() + PbtWriteBatch.LevelStride<Layout>()));
 
         // the whole scheme rests on this: the drain emits its entries grouped by first byte, ascending
         for (int i = 1; i < batch.Count; i++)
@@ -109,9 +111,9 @@ public class PbtWriteBatchBuilderTests
             Assert.That(batch.Entries[i].Stem.Bytes[0], Is.GreaterThanOrEqualTo(batch.Entries[i - 1].Stem.Bytes[0]));
         }
 
-        ReadOnlySpan<int> nibbles = table[PbtWriteBatch.ByteLevelLength..];
+        ReadOnlySpan<int> nibbles = table[(Layout.BoundarySlots * PbtWriteBatch.LevelStride<Layout>())..];
         Assert.That(nibbles[0], Is.Zero);
-        for (int nibble = 0; nibble < PbtLayout.TrieNodeGroupBoundarySlots; nibble++)
+        for (int nibble = 0; nibble < Layout.BoundarySlots; nibble++)
         {
             int expected = 0;
             foreach (byte first in firstBytes)
@@ -124,13 +126,13 @@ public class PbtWriteBatchBuilderTests
 
         // each level caches which of its buckets are non-empty, so the descent never re-derives it
         Assert.That(
-            nibbles[PbtWriteBatch.TouchedMaskIndex], Is.EqualTo(TouchedMaskOf(nibbles)), "nibble level touched mask");
+            PbtWriteBatch.ReadTouched<Layout>(nibbles), Is.EqualTo(TouchedMaskOf(nibbles)), "nibble level touched mask");
 
-        for (int nibble = 0; nibble < PbtLayout.TrieNodeGroupBoundarySlots; nibble++)
+        for (int nibble = 0; nibble < Layout.BoundarySlots; nibble++)
         {
-            ReadOnlySpan<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride, PbtWriteBatch.LevelStride);
+            ReadOnlySpan<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride<Layout>(), PbtWriteBatch.LevelStride<Layout>());
             Assert.That(group[0], Is.Zero, $"byte group {nibble} counts from its own nibble");
-            for (int low = 0; low < PbtLayout.TrieNodeGroupBoundarySlots; low++)
+            for (int low = 0; low < Layout.BoundarySlots; low++)
             {
                 int expected = 0;
                 foreach (byte first in firstBytes)
@@ -142,19 +144,19 @@ public class PbtWriteBatchBuilderTests
             }
 
             Assert.That(
-                group[PbtWriteBatch.TouchedMaskIndex], Is.EqualTo(TouchedMaskOf(group)), $"byte group {nibble} touched mask");
+                PbtWriteBatch.ReadTouched<Layout>(group), Is.EqualTo(TouchedMaskOf(group)), $"byte group {nibble} touched mask");
         }
 
         // 0x00, 0x0F and 0x10 fall in nibbles 0 and 1, 0x80 in 8 and 0xFF in 15
-        Assert.That(nibbles[PbtWriteBatch.TouchedMaskIndex], Is.EqualTo(0b1000_0001_0000_0011));
+        Assert.That(PbtWriteBatch.ReadTouched<Layout>(nibbles), Is.EqualTo(0b1000_0001_0000_0011UL));
     }
 
-    private static int TouchedMaskOf(ReadOnlySpan<int> level)
+    private static ulong TouchedMaskOf(ReadOnlySpan<int> level)
     {
-        int touched = 0;
-        for (int bucket = 0; bucket < PbtLayout.TrieNodeGroupBoundarySlots; bucket++)
+        ulong touched = 0;
+        for (int bucket = 0; bucket < Layout.BoundarySlots; bucket++)
         {
-            if (level[bucket] != level[bucket + 1]) touched |= 1 << bucket;
+            if (level[bucket] != level[bucket + 1]) touched |= 1UL << bucket;
         }
 
         return touched;

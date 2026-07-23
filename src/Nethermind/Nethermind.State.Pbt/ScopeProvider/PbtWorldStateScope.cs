@@ -33,7 +33,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
-    private readonly PbtGroupFormat _writeFormat;
+    private readonly PbtTrieFormat _writeFormat;
     private readonly int _rootFoldConcurrency;
 
     // stem leaves dirtied since the last root update: storage slots from the parallel storage batches
@@ -70,7 +70,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         IPbtResourcePool resourcePool,
         PbtResourcePool.Usage usage,
         bool isReadOnly,
-        PbtGroupFormat writeFormat,
+        PbtTrieFormat writeFormat,
         int rootFoldConcurrency)
     {
         _currentStateId = currentStateId;
@@ -124,7 +124,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     {
         if (!_rootDirty) return;
 
-        using PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch();
+        using PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch(_writeFormat.Tiling);
         _treeRoot = TrieUpdater.UpdateRoot(
             this, _treeRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, _rootFoldConcurrency, out _);
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);

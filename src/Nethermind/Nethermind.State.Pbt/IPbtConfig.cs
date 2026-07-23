@@ -41,6 +41,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Which levels of each 4-level trie node tile and of each stem's 256-leaf subtree store a node, the rest being folded on demand: `EveryLevel` stores all of them, `Interleaved` only the even ones, `BoundaryOnly` none at all - just the tile's boundary entries and the stem's leaves - and `Every4Depth` keeps the boundary-only tile but stores one stem node every four depth. Each in turn trades size in the trie node and leaf columns for work on rebuild. The state root is identical whichever is chosen, and every layout remains readable regardless of this setting.", DefaultValue = "Interleaved")]
     PbtGroupFormat TrieNodeLevels { get; set; }
 
+    [ConfigItem(Description = "How the stem trie is tiled into stored blobs: `ClusteredFourLevel` stores 4-level tiles with every other depth holding its children's blobs, `SixLevel` stores 6-level tiles each in a blob of its own. The state root is identical either way, but the keys are not: a database is stamped with the tiling that wrote it and cannot be read under the other.", DefaultValue = "ClusteredFourLevel")]
+    PbtTiling TrieNodeTiling { get; set; }
+
     [ConfigItem(Description = "Number of parallel workers folding a block's writes into the tree. 0 uses the processor count, 1 folds on the calling thread only. A batch too small to be worth splitting folds on the calling thread whatever this says.", DefaultValue = "0")]
     int RootFoldConcurrency { get; set; }
 }

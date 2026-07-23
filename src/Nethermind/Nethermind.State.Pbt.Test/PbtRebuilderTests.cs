@@ -14,13 +14,22 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-public class PbtRebuilderTests
+/// <param name="tiling">
+/// The rebuild is a producer of its own — it folds windows of sorted leaves rather than a block's
+/// writes — so it is run under every tiling, against the same reference root.
+/// </param>
+[TestFixture(PbtTiling.ClusteredFourLevel)]
+[TestFixture(PbtTiling.SixLevel)]
+public class PbtRebuilderTests(PbtTiling tiling)
 {
+    private PbtConfig Config => new() { TrieNodeTiling = tiling };
+
     private static List<RebuildEntry> BuildFixture(Dictionary<string, byte[]> model)
     {
         // > 128 chunks (3968 bytes) so overflow chunks land in the content-addressed code zone
@@ -56,12 +65,12 @@ public class PbtRebuilderTests
         return leaves;
     }
 
-    private static async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, StateId targetState, PbtRocksDbPersistence target)
+    private async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, StateId targetState, PbtRocksDbPersistence target)
     {
         ArrayPoolList<RebuildEntry> entries = new(leaves.Count); // ownership passes to Rebuild, which disposes it
         foreach (RebuildEntry leaf in leaves) entries.Add(leaf);
 
-        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = flushEntryInterval };
+        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, Config) { FlushEntryInterval = flushEntryInterval };
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         channel.Writer.TryWrite(entries);
         channel.Writer.Complete();
@@ -82,7 +91,7 @@ public class PbtRebuilderTests
         PbtTestLeaves.SortByTreeKey(leaves);
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence target = new(db);
+        PbtRocksDbPersistence target = new(db, Config);
 
         // the header root the source claims is unrelated to the tree root the fold produces, so the
         // two must be recorded separately rather than one standing in for the other
@@ -117,7 +126,7 @@ public class PbtRebuilderTests
         }
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence target = new(db);
+        PbtRocksDbPersistence target = new(db, Config);
 
         ValueHash256 root = await Fold(leaves, flushEntryInterval, new StateId(7, TestItem.KeccakA.ValueHash256), target);
 
@@ -128,8 +137,8 @@ public class PbtRebuilderTests
     public async Task Rebuild_empty_source_produces_empty_tree()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence target = new(db);
-        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, new PbtConfig());
+        PbtRocksDbPersistence target = new(db, Config);
+        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, Config);
 
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         channel.Writer.Complete();

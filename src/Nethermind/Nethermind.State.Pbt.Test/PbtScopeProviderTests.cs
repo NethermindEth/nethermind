@@ -13,19 +13,28 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Pbt;
 using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-public class PbtScopeProviderTests
+/// <param name="tiling">
+/// The whole component stack — scope, snapshot, compaction, persistence — over each tiling of the
+/// trie underneath it, all folding to the same reference roots.
+/// </param>
+[TestFixture(PbtTiling.ClusteredFourLevel)]
+[TestFixture(PbtTiling.SixLevel)]
+public class PbtScopeProviderTests(PbtTiling tiling)
 {
+    private PbtTestContext NewContext() => new(config: new PbtConfig { TrieNodeTiling = tiling });
+
     private static readonly IReleaseSpec Spec = Prague.Instance;
 
     [Test]
     public async Task ProcessBlocksThroughWorldState_RootsMatchEipReference_AndHistoricalReadsWork()
     {
-        await using PbtTestContext ctx = new();
+        await using PbtTestContext ctx = NewContext();
         WorldState worldState = new(ctx.WorldStateManager.GlobalWorldState, LimboLogs.Instance);
 
         // > 128 + 256 chunks (11904 bytes) so the overflow chunks not only land in the
@@ -94,7 +103,7 @@ public class PbtScopeProviderTests
     [Test]
     public async Task StorageWritesWithoutAccountChange_MerkelizeThroughStemPass()
     {
-        await using PbtTestContext ctx = new();
+        await using PbtTestContext ctx = NewContext();
         PbtScopeProvider provider = ctx.CreateScopeProvider();
         Address address = TestItem.AddressC;
         byte[] slotValue = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000099");
@@ -121,7 +130,7 @@ public class PbtScopeProviderTests
     [Test]
     public async Task UnchangedStorageStems_PassThroughReusesTheStoredChainNode_AndRootStaysCorrect()
     {
-        await using PbtTestContext ctx = new();
+        await using PbtTestContext ctx = NewContext();
         PbtScopeProvider provider = ctx.CreateScopeProvider();
         Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
 
@@ -186,7 +195,7 @@ public class PbtScopeProviderTests
     [Test]
     public async Task IncrementalUpdateRootHash_FoldsLaterWritesOnTopOfEarlierFold()
     {
-        await using PbtTestContext ctx = new();
+        await using PbtTestContext ctx = NewContext();
         PbtScopeProvider provider = ctx.CreateScopeProvider();
         Address address = TestItem.AddressC;
 

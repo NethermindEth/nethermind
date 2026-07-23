@@ -10,7 +10,7 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 
 public class PbtScopeProvider(
     IDb codeDb, IPbtDbManager manager, IPbtChildHeaderSource childHeaders, IPbtResourcePool resourcePool,
-    PbtResourcePool.Usage usage, bool isReadOnly, PbtGroupFormat writeFormat, int rootFoldConcurrency) : IWorldStateScopeProvider
+    PbtResourcePool.Usage usage, bool isReadOnly, PbtTrieFormat writeFormat, int rootFoldConcurrency) : IWorldStateScopeProvider
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
 

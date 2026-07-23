@@ -20,7 +20,7 @@ namespace Nethermind.State.Pbt.Test;
 /// Which encoding the batches write; settable through <see cref="WriteFormat"/> so that one store can
 /// be driven across a format switch, as a node whose configuration changed does.
 /// </param>
-public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat) : IPbtStore
+public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, PbtTrieFormat writeFormat) : IPbtStore
 {
     private readonly Dictionary<TrieNodeKey, byte[]> _nodes = [];
     private readonly Dictionary<Stem, byte[]> _blobs = [];
@@ -33,8 +33,8 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     private readonly Lock _lock = new();
     private ValueHash256 _root;
 
-    /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtGroupFormat)" path="/param[@name='writeFormat']"/>
-    public PbtGroupFormat WriteFormat { get; set; } = writeFormat;
+    /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtTrieFormat)" path="/param[@name='writeFormat']"/>
+    public PbtTrieFormat WriteFormat { get; set; } = writeFormat;
 
     /// <summary>
     /// <inheritdoc cref="TrieUpdater.UpdateRoot" path="/param[@name='concurrency']"/> Serial by default,
@@ -81,28 +81,34 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     public Dictionary<TrieNodeKey, byte[]> FlattenedNodes()
     {
         Dictionary<TrieNodeKey, byte[]> flattened = [];
-        foreach ((TrieNodeKey key, byte[] blob) in _nodes) Flatten(flattened, key, blob);
+        foreach ((TrieNodeKey key, byte[] blob) in _nodes)
+        {
+            if (WriteFormat.Tiling == PbtTiling.SixLevel) Flatten<PbtSixLevelTileLayout>(flattened, key, blob);
+            else Flatten<PbtClusteredTileLayout>(flattened, key, blob);
+        }
+
         return flattened;
     }
 
     /// <summary>Adds the blob at <paramref name="key"/> and every node it holds: its runs, and the children it clusters with theirs.</summary>
-    private static void Flatten(Dictionary<TrieNodeKey, byte[]> flattened, in TrieNodeKey key, byte[] blob)
+    private static void Flatten<TLayout>(Dictionary<TrieNodeKey, byte[]> flattened, in TrieNodeKey key, byte[] blob)
+        where TLayout : IPbtTileLayout
     {
         flattened.Add(key, blob);
 
-        PbtNodeCluster cluster = PbtNodeCluster.Decode(blob, out PbtTrieNodeGroup group);
-        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
+        PbtNodeCluster cluster = PbtNodeCluster.Decode(blob, out PbtTrieNodeGroup<TLayout> group);
+        for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
         {
             int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
             if (group.KindAt(position) == PbtTrieNodeGroup.NodeKind.Chain)
             {
-                flattened.Add(key.ChildGroup(slot), group[position].ChainData.ToArray());
+                flattened.Add(key.ChildGroup(slot, TLayout.LevelsPerGroup), group[position].ChainData.ToArray());
                 continue;
             }
 
             // a clustered child is a bare group, which may hold runs of its own
             byte[] child = blob[cluster.Child(slot, group)];
-            if (child.Length != 0) Flatten(flattened, key.ChildGroup(slot), child);
+            if (child.Length != 0) Flatten<TLayout>(flattened, key.ChildGroup(slot, TLayout.LevelsPerGroup), child);
         }
     }
 
@@ -188,7 +194,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
             builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
         }
 
-        using PbtWriteBatch batch = builder.DrainToWriteBatch();
+        using PbtWriteBatch batch = builder.DrainToWriteBatch(WriteFormat.Tiling);
         _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, RootFoldConcurrency, out _);
         return _root;
     }

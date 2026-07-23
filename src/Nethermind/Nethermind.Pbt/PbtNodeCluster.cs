@@ -35,7 +35,7 @@ namespace Nethermind.Pbt;
 /// neither a count nor a slot mask is stored, and a view of one is the bytes and nothing else.
 /// </para>
 /// <para>
-/// Which groups cluster is fixed by <see cref="PbtLayout.IsClusteringDepth"/> — absolute depth, so that a run
+/// Which groups cluster is fixed by <see cref="IPbtTileLayout.IsClusteringDepth"/> — absolute depth, so that a run
 /// appearing or splitting somewhere above never re-parities the subtree below it, and so that the
 /// clustered level is always the level that does not itself cluster: a child pulled into a cluster or
 /// pushed back out of one is a bare group, never another cluster.
@@ -83,12 +83,12 @@ public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
     /// as what it says.
     /// </remarks>
     /// <param name="group">The group this holds, whose bitmaps say which slots root a blob and how many do.</param>
-    public Range Child(int slot, in PbtTrieNodeGroup group)
+    public Range Child<TLayout>(int slot, in PbtTrieNodeGroup<TLayout> group) where TLayout : IPbtTileLayout
     {
         if (IsBare) return default;
 
-        uint bit = 1u << slot;
-        uint childSlotsBitmask = ChildSlotsBitmask(group);
+        ulong bit = 1UL << slot;
+        ulong childSlotsBitmask = ChildSlotsBitmask(group);
         if ((childSlotsBitmask & bit) == 0) return default;
 
         int tableOffset = GroupOffset - BitOperations.PopCount(childSlotsBitmask) * OffsetLength;
@@ -102,12 +102,12 @@ public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
     /// </summary>
     /// <param name="group">The decoded group, which either way borrows <paramref name="data"/>.</param>
     /// <exception cref="InvalidDataException">The blob is not a well-formed cluster or group.</exception>
-    public static PbtNodeCluster Decode(ReadOnlySpan<byte> data, out PbtTrieNodeGroup group)
+    public static PbtNodeCluster Decode<TLayout>(ReadOnlySpan<byte> data, out PbtTrieNodeGroup<TLayout> group) where TLayout : IPbtTileLayout
     {
         PbtNodeCluster cluster = new(data);
         if (cluster.IsBare)
         {
-            group = PbtTrieNodeGroup.Decode(data);
+            group = PbtTrieNodeGroup<TLayout>.Decode(data);
             return cluster;
         }
 
@@ -118,8 +118,8 @@ public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
         int groupOffset = data.Length - TrailerLength - GroupLength(data);
         if (groupOffset <= 0) throw new InvalidDataException($"Trie node cluster of {data.Length} bytes says its group is {GroupLength(data)}");
 
-        group = PbtTrieNodeGroup.Decode(data[groupOffset..^TrailerLength]);
-        uint childSlotsBitmask = ChildSlotsBitmask(group);
+        group = PbtTrieNodeGroup<TLayout>.Decode(data[groupOffset..^TrailerLength]);
+        ulong childSlotsBitmask = ChildSlotsBitmask(group);
         int count = BitOperations.PopCount(childSlotsBitmask);
         if (count == 0) throw new InvalidDataException("Trie node cluster holds a group that roots no child blob");
 
@@ -146,7 +146,7 @@ public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
     /// The boundary slots rooting a blob of their own: a group's boundary internals, exactly. A slot
     /// holding a stem or a run roots none — both live in the group's own encoding.
     /// </summary>
-    private static uint ChildSlotsBitmask(in PbtTrieNodeGroup group) => group.BoundaryShape().ChildSlots;
+    private static ulong ChildSlotsBitmask<TLayout>(in PbtTrieNodeGroup<TLayout> group) where TLayout : IPbtTileLayout => group.BoundaryShape().ChildSlots;
 
     private static int GroupLength(ReadOnlySpan<byte> data) => BinaryPrimitives.ReadUInt16LittleEndian(data[^TrailerLength..]);
 
@@ -170,7 +170,7 @@ public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
     /// The builder carries the children's ends and nothing else: the writer is passed per call rather
     /// than held, a <c>ref</c> field being unable to point at a ref struct. Those ends are the writer's
     /// own count, which is the same thing because a cluster is always the whole of the blob it is
-    /// written into — <see cref="PbtLayout.IsClusteringDepth"/> alternates, so the group above one never holds it.
+    /// written into — <see cref="IPbtTileLayout.IsClusteringDepth"/> alternates, so the group above one never holds it.
     /// </para>
     /// </remarks>
     public ref struct Builder

@@ -9,6 +9,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeClusterTests
@@ -32,9 +34,9 @@ public class PbtNodeClusterTests
     [TestCase(4, true)]
     [TestCase(8, false)]
     [TestCase(12, true)]
-    [TestCase(PbtLayout.TrieNodeGroupMaxGroupDepth, true)]
+    [TestCase(244, true)]   // Layout.MaxGroupDepth
     public void IsClusteringDepth_AlternatesByGroup(int depth, bool clusters) =>
-        Assert.That(PbtLayout.IsClusteringDepth(depth), Is.EqualTo(clusters));
+        Assert.That(Layout.IsClusteringDepth(depth), Is.EqualTo(clusters));
 
     [Test]
     public void EncodeDecodeRoundTrip_AndDiscriminatesFromWhatItHolds()
@@ -48,9 +50,9 @@ public class PbtNodeClusterTests
         Assert.That(PbtNodeCluster.HoldsChildren(encoded));
         Assert.That(PbtNodeCluster.HoldsChildren(firstChild), Is.False);
         Assert.That(PbtNodeCluster.HoldsChildren([]), Is.False, "an absent blob is neither");
-        Assert.That(() => PbtTrieNodeGroup.Decode(encoded), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(encoded), Throws.TypeOf<InvalidDataException>());
 
-        PbtNodeCluster cluster = PbtNodeCluster.Decode(encoded, out PbtTrieNodeGroup group);
+        PbtNodeCluster cluster = PbtNodeCluster.Decode<Layout>(encoded, out PbtTrieNodeGroup<Layout> group);
         Assert.That(cluster.IsBare, Is.False);
         Assert.That(group.Stats, Is.EqualTo(Stats));
         Assert.That(encoded[cluster.Child(ChildSlots[0], group)], Is.EqualTo(firstChild));
@@ -75,13 +77,13 @@ public class PbtNodeClusterTests
     public void Decode_ReadsABareGroupAsClusteringNothing()
     {
         byte[] bare = EncodeGroupOnly();
-        PbtNodeCluster cluster = PbtNodeCluster.Decode(bare, out PbtTrieNodeGroup group);
+        PbtNodeCluster cluster = PbtNodeCluster.Decode<Layout>(bare, out PbtTrieNodeGroup<Layout> group);
 
         Assert.That(cluster.IsBare);
         Assert.That(cluster.GroupOffset, Is.Zero);
         Assert.That(bare[cluster.Group], Is.EqualTo(bare));
         Assert.That(group.Stats, Is.EqualTo(Stats));
-        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++) Assert.That(bare[cluster.Child(slot, group)], Is.Empty, $"slot {slot}");
+        for (int slot = 0; slot < Layout.BoundarySlots; slot++) Assert.That(bare[cluster.Child(slot, group)], Is.Empty, $"slot {slot}");
     }
 
     private static readonly object[] Rejections =
@@ -99,7 +101,7 @@ public class PbtNodeClusterTests
     public void Decode_Rejects(string description, Func<byte[], byte[]> corrupt)
     {
         byte[] corrupted = corrupt(Encode(EncodeGroup(), EncodeChain()));
-        Assert.That(() => PbtNodeCluster.Decode(corrupted, out _), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtNodeCluster.Decode<Layout>(corrupted, out _), Throws.TypeOf<InvalidDataException>());
     }
 
     /// <summary>
@@ -121,7 +123,7 @@ public class PbtNodeClusterTests
         writer.Write(group);
         builder.Finish(ref writer);
 
-        Assert.That(() => PbtNodeCluster.Decode(encoded, out _), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtNodeCluster.Decode<Layout>(encoded, out _), Throws.TypeOf<InvalidDataException>());
     }
 
     private static Func<byte[], byte[]> Truncate(int length) => blob => blob[^length..];
@@ -163,8 +165,8 @@ public class PbtNodeClusterTests
     /// </summary>
     private static byte[] EncodeGroupOnly()
     {
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtGroupEncoder builder = new(encoded, PbtGroupFormat.Interleaved);
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
+        PbtGroupEncoder<Layout> builder = new(encoded, PbtGroupFormat.Interleaved);
         builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(ChildSlots[0]), ChildHash);
         builder.AppendStem(PbtLayout.TrieNodeGroupBoundarySlotPosition(2), StemPath, StemHash);
         builder.AppendChain(PbtLayout.TrieNodeGroupBoundarySlotPosition(ChainSlot), EncodeChain());
@@ -174,8 +176,8 @@ public class PbtNodeClusterTests
 
     private static byte[] EncodeGroup()
     {
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtGroupEncoder builder = new(encoded, PbtGroupFormat.EveryLevel);
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
+        PbtGroupEncoder<Layout> builder = new(encoded, PbtGroupFormat.EveryLevel);
         builder.AppendStem(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), StemPath, StemHash);
         builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(1), ChildHash);
         return encoded[..builder.Finish(Stats)];
@@ -184,8 +186,8 @@ public class PbtNodeClusterTests
     /// <summary>A second child, shorter than <see cref="EncodeGroup"/>'s, so that the offsets must be read rather than guessed.</summary>
     private static byte[] EncodeSmallerGroup()
     {
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtGroupEncoder builder = new(encoded, PbtGroupFormat.EveryLevel);
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
+        PbtGroupEncoder<Layout> builder = new(encoded, PbtGroupFormat.EveryLevel);
         builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), ChildHash);
         return encoded[..builder.Finish(Stats)];
     }
@@ -193,7 +195,7 @@ public class PbtNodeClusterTests
     private static byte[] EncodeChain()
     {
         byte[] encoded = new byte[PbtNodeChain.EncodedLength];
-        PbtNodeChain.Write(encoded, 8, 20, StemPath, ChildHash, Stats);
+        PbtNodeChain.Write<Layout>(encoded, 8, 20, StemPath, ChildHash, Stats);
         return encoded;
     }
 }

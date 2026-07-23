@@ -8,6 +8,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeChainTests
@@ -34,7 +36,7 @@ public class PbtNodeChainTests
         byte[] encoded = Encode(StartDepth, TargetDepth, TargetPath, TargetHash);
         Assert.That(encoded, Has.Length.EqualTo(PbtNodeChain.EncodedLength));
 
-        PbtNodeChain chain = PbtNodeChain.Decode(encoded, StartDepth);
+        PbtNodeChain chain = PbtNodeChain.Decode<Layout>(encoded, StartDepth);
         Assert.That(chain.StartDepth, Is.EqualTo(StartDepth));
         Assert.That(chain.TargetDepth, Is.EqualTo(TargetDepth));
         Assert.That(chain.TargetPath, Is.EqualTo(TargetPath));
@@ -50,7 +52,7 @@ public class PbtNodeChainTests
         // a run's encoding says what it is wherever it is read, which is what tells it from the group
         // holding it — or from one it might be mistaken for
         Assert.That(PbtNodeChain.IsChain(encoded));
-        Assert.That(() => PbtTrieNodeGroup.Decode(encoded), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(encoded), Throws.TypeOf<InvalidDataException>());
         Assert.That(PbtNodeChain.IsChain(EncodeGroup()), Is.False);
         Assert.That(PbtNodeChain.IsChain([]), Is.False, "an absent node is neither");
     }
@@ -107,18 +109,18 @@ public class PbtNodeChainTests
     public void Decode_Rejects(string description, Func<byte[], byte[]> corrupt)
     {
         byte[] corrupted = corrupt(Encode(StartDepth, TargetDepth, TargetPath, TargetHash));
-        Assert.That(() => PbtNodeChain.Decode(corrupted, StartDepth), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtNodeChain.Decode<Layout>(corrupted, StartDepth), Throws.TypeOf<InvalidDataException>());
     }
 
     [Test]
     public void Decode_RejectsAWrongLengthOrARootStart()
     {
         byte[] valid = Encode(StartDepth, TargetDepth, TargetPath, TargetHash);
-        Assert.That(() => PbtNodeChain.Decode(valid.AsSpan(..^1), StartDepth), Throws.TypeOf<InvalidDataException>());
-        Assert.That(() => PbtNodeChain.Decode([.. valid, 0], StartDepth), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtNodeChain.Decode<Layout>(valid.AsSpan(..^1), StartDepth), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtNodeChain.Decode<Layout>([.. valid, 0], StartDepth), Throws.TypeOf<InvalidDataException>());
 
         // the root group keeps its own spine, so nothing chains from depth 0 (invariant 4)
-        Assert.That(() => PbtNodeChain.Decode(valid, 0), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtNodeChain.Decode<Layout>(valid, 0), Throws.TypeOf<InvalidDataException>());
     }
 
     private static Func<byte[], byte[]> Corrupt(int offset, int value) => blob =>
@@ -136,14 +138,14 @@ public class PbtNodeChainTests
     private static byte[] Encode(int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash)
     {
         byte[] encoded = new byte[PbtNodeChain.EncodedLength];
-        PbtNodeChain.Write(encoded, startDepth, targetDepth, targetPath, targetHash, Stats);
+        PbtNodeChain.Write<Layout>(encoded, startDepth, targetDepth, targetPath, targetHash, Stats);
         return encoded;
     }
 
     private static byte[] EncodeGroup()
     {
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtGroupEncoder builder = new(encoded, PbtGroupFormat.EveryLevel);
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
+        PbtGroupEncoder<Layout> builder = new(encoded, PbtGroupFormat.EveryLevel);
         // a lone boundary internal — the root's internal node is folded, never stored
         builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), TargetHash);
         return encoded[..builder.Finish(Stats)];

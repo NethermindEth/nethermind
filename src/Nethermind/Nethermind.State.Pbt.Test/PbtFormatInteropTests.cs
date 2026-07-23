@@ -10,6 +10,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
@@ -36,9 +38,9 @@ public class PbtFormatInteropTests
         // are covered by MixedFormatRewrite below and its leaf column by StemLeafBlobTests.
         PbtTreeHarness[] harnesses =
         [
-            new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel),
-            new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.Interleaved),
-            new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.BoundaryOnly),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.EveryLevel)),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.Interleaved)),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.BoundaryOnly)),
         ];
 
         using (Assert.EnterMultipleScope())
@@ -78,17 +80,17 @@ public class PbtFormatInteropTests
         // sixteen stems on the boundary slots of one depth-4 group: it branches sixteen ways, so a
         // single-slot rewrite leaves whole clean subtrees for the copy-verbatim path to take
         List<(byte[], byte[]?)> writes = [];
-        for (byte slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++) writes.Add((BoundaryKey(0, slot), Value));
+        for (byte slot = 0; slot < Layout.BoundarySlots; slot++) writes.Add((BoundaryKey(0, slot), Value));
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, initial);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(initial));
         harness.ApplyBatch(writes);
 
-        harness.WriteFormat = then;
+        harness.WriteFormat = PbtTestFormats.Clustered(then);
         writes[3] = (writes[3].Item1, Rewritten);
         ValueHash256 root = harness.ApplyBatch([writes[3]]);
 
         // a fresh fold of the surviving state entirely in the new format
-        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, then);
+        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(then));
         ValueHash256 freshRoot = fresh.ApplyBatch(writes);
 
         Assert.That(root, Is.EqualTo(freshRoot), "the rewrite must reach the same root");
@@ -106,25 +108,25 @@ public class PbtFormatInteropTests
         // two disjoint dense groups under the root, so a later write can touch one and leave the other
         List<(byte[], byte[]?)> groupA = [];
         List<(byte[], byte[]?)> groupB = [];
-        for (byte slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
+        for (byte slot = 0; slot < Layout.BoundarySlots; slot++)
         {
             groupA.Add((BoundaryKey(0, slot), Value));
             groupB.Add((BoundaryKey(1, slot), Value));
         }
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.EveryLevel));
         harness.ApplyBatch([.. groupA, .. groupB]);
-        TrieNodeKey keyA = TrieNodeKey.Root.ChildGroup(0);
-        TrieNodeKey keyB = TrieNodeKey.Root.ChildGroup(1);
-        Assert.That(PbtTrieNodeGroup.Decode(harness.Nodes[keyA]).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
+        TrieNodeKey keyA = TrieNodeKey.Root.ChildGroup(0, Layout.LevelsPerGroup);
+        TrieNodeKey keyB = TrieNodeKey.Root.ChildGroup(1, Layout.LevelsPerGroup);
+        Assert.That(PbtTrieNodeGroup<Layout>.Decode(harness.Nodes[keyA]).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
 
-        harness.WriteFormat = PbtGroupFormat.Interleaved;
+        harness.WriteFormat = PbtTestFormats.Clustered(PbtGroupFormat.Interleaved);
         groupA[3] = (groupA[3].Item1, Rewritten);
         ValueHash256 root = harness.ApplyBatch([groupA[3]]);
 
         Assert.That(root, Is.EqualTo(ReferenceRoot([.. groupA, .. groupB])), "the old-format store still reads correctly");
-        Assert.That(PbtTrieNodeGroup.Decode(harness.Nodes[keyA]).Format, Is.EqualTo(PbtGroupFormat.Interleaved), "a rewritten group converts");
-        Assert.That(PbtTrieNodeGroup.Decode(harness.Nodes[keyB]).Format, Is.EqualTo(PbtGroupFormat.EveryLevel), "an untouched one is left as it was");
+        Assert.That(PbtTrieNodeGroup<Layout>.Decode(harness.Nodes[keyA]).Format, Is.EqualTo(PbtGroupFormat.Interleaved), "a rewritten group converts");
+        Assert.That(PbtTrieNodeGroup<Layout>.Decode(harness.Nodes[keyB]).Format, Is.EqualTo(PbtGroupFormat.EveryLevel), "an untouched one is left as it was");
     }
 
     private static long TotalNodeBytes(PbtTreeHarness harness) => harness.Nodes.Values.Sum(blob => (long)blob.Length);

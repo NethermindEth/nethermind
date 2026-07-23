@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Buffers;
@@ -83,20 +82,21 @@ internal readonly record struct FoldedNode(NodeKind Kind, int Offset)
 /// verbatim.
 /// </para>
 /// </remarks>
-internal ref struct GroupRebuild(
-    ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing,
-    NodeGroupBitmasks boundary, uint changedBitmask, ValueHash256 rootHash, PbtGroupFormat format)
+internal ref struct GroupRebuild<TLayout>(
+    ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup<TLayout> existing,
+    BoundarySlotMasks boundary, ulong changedBitmask, ValueHash256 rootHash, PbtGroupFormat format)
+    where TLayout : IPbtTileLayout
 {
     private readonly ReadOnlySpan<(int Slot, Boundary Node)> _changed = changed;
-    private readonly PbtTrieNodeGroup _existing = existing;
-    private readonly NodeGroupBitmasks _boundary = boundary;
-    private readonly uint _changedBitmask = changedBitmask;
+    private readonly PbtTrieNodeGroup<TLayout> _existing = existing;
+    private readonly BoundarySlotMasks _boundary = boundary;
+    private readonly ulong _changedBitmask = changedBitmask;
     private readonly ValueHash256 _rootHash = rootHash;
     private readonly PbtGroupFormat _format = format;
 
-    private uint _presence;
-    private uint _stems;
-    private uint _chains;
+    private UInt128 _presence;
+    private UInt128 _stems;
+    private ulong _chains;
     private int _offset = PbtTrieNodeGroup.EntriesOffset;
     private int _changedCursor;
 
@@ -126,13 +126,13 @@ internal ref struct GroupRebuild(
     /// its place and it is folded from them.
     /// </param>
     private static bool IsCleanRange(
-        PbtTrieNodeGroup existing, uint changed, uint rangeBitmask, int position, int width, PbtGroupFormat format) =>
+        PbtTrieNodeGroup<TLayout> existing, ulong changed, ulong rangeBitmask, int position, int width, PbtGroupFormat format) =>
         width > 1
         && (changed & rangeBitmask) == 0
         && !existing.IsEmpty
         && existing.Format == format
         && PbtLayout.TrieNodeGroupStoresInternalAtWidth(format, width)
-        && (existing.KindAt(position) == NodeKind.Internal || position == PbtLayout.TrieNodeGroupRootPosition);
+        && (existing.KindAt(position) == NodeKind.Internal || position == TLayout.RootPosition);
 
     /// <summary>
     /// Whether boundary <paramref name="slot"/>'s value comes from the descent rather than from the
@@ -171,12 +171,12 @@ internal ref struct GroupRebuild(
     {
         // sized for the whole encoding up front so the buffer grows once rather than once an entry,
         // nothing else writing to it until the fold is done
-        _ = writer.GetSpan(PbtTrieNodeGroup.EncodedLengthBound(_boundary));
+        _ = writer.GetSpan(PbtTrieNodeGroup<TLayout>.EncodedLengthBound(_boundary));
 
         // an internal group root is folded to a by-value hash and never stored, the parent caching it in
         // its boundary slot; only a stem root is written, and is read back out of the entries — the last
         // bytes the writer holds — before the trailer joins them
-        FoldedNode root = Fold(ref writer, PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots, out ValueHash256 hash);
+        FoldedNode root = Fold(ref writer, TLayout.RootPosition, 0, TLayout.BoundarySlots, out ValueHash256 hash);
         Stem? rootStem = null;
         if (root.IsStored)
         {
@@ -198,13 +198,13 @@ internal ref struct GroupRebuild(
     /// </summary>
     /// <remarks>
     /// <see cref="Rebuild"/> calls it for the whole group at
-    /// <see cref="PbtLayout.TrieNodeGroupRootPosition"/>, and every other call is this recursing into its
+    /// <see cref="TLayout.RootPosition"/>, and every other call is this recursing into its
     /// own halves. Post-order, so a node is appended only once all of its children are.
     /// </remarks>
     private FoldedNode Fold(ref BufferWriter writer, int position, int firstSlot, int width, out ValueHash256 hash)
     {
-        uint rangeBitmask = ((1u << width) - 1) << firstSlot;
-        uint occupiedBitmask = _boundary.Presence & rangeBitmask;
+        ulong rangeBitmask = PbtLayout.SlotRange(firstSlot, width);
+        ulong occupiedBitmask = _boundary.Presence & rangeBitmask;
         switch (_boundary.KindOf(rangeBitmask))
         {
             case NodeKind.Absent:
@@ -223,14 +223,14 @@ internal ref struct GroupRebuild(
                         hash = StemLeafBlob.ComputeStemNodeHash(stem.Stem, stem.Hash);
 
                         MarkPresent(position);
-                        _stems |= 1u << position;
+                        _stems |= UInt128.One << position;
                         int stemOffset = Write(ref writer, stem.Stem.Bytes);
                         Write(ref writer, stem.Hash.Bytes);
                         return FoldedNode.Stored(NodeKind.Stem, stemOffset);
                     }
 
                     int stemHalf = width / 2;
-                    return (occupiedBitmask & (((1u << stemHalf) - 1) << firstSlot)) != 0
+                    return (occupiedBitmask & PbtLayout.SlotRange(firstSlot, stemHalf)) != 0
                         ? Fold(ref writer, position - width, firstSlot, stemHalf, out hash)
                         : Fold(ref writer, position - 1, firstSlot + stemHalf, stemHalf, out hash);
                 }
@@ -241,14 +241,14 @@ internal ref struct GroupRebuild(
             // The group's own root stores no entry to read a hash back out of, so it takes the one
             // the parent cached — which is what lets a wholly unchanged group copy over with no
             // hashing at all, rather than refolding this level from its halves.
-            bool isGroupRoot = position == PbtLayout.TrieNodeGroupRootPosition;
+            bool isGroupRoot = position == TLayout.RootPosition;
             NodeGroupBitmasks clean = _existing.SubtreeBitmaps(position, width);
             hash = isGroupRoot ? _rootHash : _existing[position].NodeHash();
 
-            (uint cleanPresence, uint cleanStems, uint cleanChains) = clean;
+            (UInt128 cleanPresence, UInt128 cleanStems, ulong cleanChains) = clean;
             Debug.Assert(cleanPresence != 0, "an absent subtree has no entries to append");
             Debug.Assert((cleanStems & ~cleanPresence) == 0, "only a present position holds a stem");
-            Debug.Assert(_presence >> BitOperations.TrailingZeroCount(cleanPresence) == 0, "nodes must be appended in ascending position order");
+            Debug.Assert(_presence >> PbtLayout.TrailingZeroCount(cleanPresence) == 0, "nodes must be appended in ascending position order");
             Debug.Assert(
                 !PbtLayout.TrieNodeGroupHoldsSkippedInternal(_format, cleanPresence, cleanStems),
                 "a verbatim run must be in this group's own format");
@@ -258,7 +258,7 @@ internal ref struct GroupRebuild(
             _chains |= cleanChains;
 
             ReadOnlySpan<byte> entries = _existing.SubtreeEntries(position, width, clean);
-            int offset = _offset + entries.Length - RootEntryLength(BitOperations.Log2(cleanPresence), clean);
+            int offset = _offset + entries.Length - RootEntryLength(PbtLayout.Log2(cleanPresence), clean);
             Write(ref writer, entries);
             return isGroupRoot ? FoldedNode.Unstored : FoldedNode.Stored(NodeKind.Internal, offset);
         }
@@ -283,7 +283,7 @@ internal ref struct GroupRebuild(
             Debug.Assert(position == PbtLayout.TrieNodeGroupBoundarySlotPosition(firstSlot), "a lone slot is its own boundary position, which is what its run is marked at");
 
             MarkPresent(position);
-            _chains |= 1u << firstSlot;
+            _chains |= 1UL << firstSlot;
             return FoldedNode.Stored(NodeKind.Chain, Write(ref writer, chain));
         }
 
@@ -295,7 +295,7 @@ internal ref struct GroupRebuild(
         // The hash is folded either way — the root depends on every level of it. A format that
         // skips this level, and the group root whatever the format (the parent caches it in its
         // boundary slot), simply does not write it down, handing it to the parent instead.
-        bool storeHere = PbtLayout.TrieNodeGroupStoresInternalAtWidth(_format, width) && width != PbtLayout.TrieNodeGroupBoundarySlots;
+        bool storeHere = PbtLayout.TrieNodeGroupStoresInternalAtWidth(_format, width) && width != TLayout.BoundarySlots;
         return storeHere
             ? FoldedNode.Stored(NodeKind.Internal, AppendInternal(ref writer, position, hash))
             : FoldedNode.Unstored;
@@ -318,9 +318,9 @@ internal ref struct GroupRebuild(
 
     private void MarkPresent(int position)
     {
-        Debug.Assert((uint)position < PbtLayout.TrieNodeGroupPositionCount);
+        Debug.Assert((uint)position < TLayout.PositionCount);
         Debug.Assert(_presence >> position == 0, "nodes must be appended in ascending position order");
-        _presence |= 1u << position;
+        _presence |= UInt128.One << position;
     }
 
     /// <summary>Appends <paramref name="bytes"/> to the encoding and commits them, returning the offset they went to.</summary>
@@ -345,12 +345,10 @@ internal ref struct GroupRebuild(
     {
         if (_presence == 0) return;
 
-        Span<byte> trailer = writer.GetSpan(PbtTrieNodeGroup.TrailerLength);
-        BinaryPrimitives.WriteUInt32LittleEndian(trailer[PbtTrieNodeGroup.PresenceTrailerOffset..], _presence);
-        BinaryPrimitives.WriteUInt32LittleEndian(trailer[PbtTrieNodeGroup.StemsTrailerOffset..], _stems);
-        BinaryPrimitives.WriteUInt16LittleEndian(trailer[PbtTrieNodeGroup.ChainsTrailerOffset..], (ushort)_chains);
-        stats.Write(trailer[PbtTrieNodeGroup.StatsTrailerOffset..]);
-        trailer[PbtTrieNodeGroup.FormatTrailerOffset] = (byte)_format;
-        writer.Advance(PbtTrieNodeGroup.TrailerLength);
+        Span<byte> trailer = writer.GetSpan(PbtTrieNodeGroup<TLayout>.TrailerLength);
+        TLayout.WriteMasks(trailer, new NodeGroupBitmasks(_presence, _stems, _chains));
+        stats.Write(trailer[PbtTrieNodeGroup<TLayout>.StatsTrailerOffset..]);
+        trailer[PbtTrieNodeGroup<TLayout>.FormatTrailerOffset] = (byte)_format;
+        writer.Advance(PbtTrieNodeGroup<TLayout>.TrailerLength);
     }
 }

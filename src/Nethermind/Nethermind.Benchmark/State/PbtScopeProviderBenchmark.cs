@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Pbt;
 using Nethermind.State;
 using Nethermind.State.Pbt;
 using Nethermind.State.Pbt.Persistence;
@@ -72,6 +73,10 @@ public class PbtScopeProviderBenchmark
     public SlotLayout StorageLayout { get; set; }
 
     // Writes are flat in the layer count, so pinned to 1.
+    /// <summary>Which tiling of the stem trie the PBT backend stores its nodes in; ignored by the trie backend.</summary>
+    [Params(PbtTiling.ClusteredFourLevel, PbtTiling.SixLevel)]
+    public PbtTiling Tiling { get; set; }
+
     [Params(1)]
     public int ChainDepth { get; set; }
 
@@ -118,9 +123,9 @@ public class PbtScopeProviderBenchmark
     private IWorldStateScopeProvider CreatePbtProvider()
     {
         _pbtDb = new SnapshotableMemColumnsDb<PbtColumns>("pbt");
-        PbtConfig config = new();
+        PbtConfig config = new() { TrieNodeTiling = Tiling };
         PbtSnapshotRepository repository = new();
-        PbtRocksDbPersistence persistence = new(_pbtDb);
+        PbtRocksDbPersistence persistence = new(_pbtDb, config);
         PbtResourcePool resourcePool = new(config);
         PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
@@ -131,7 +136,7 @@ public class PbtScopeProviderBenchmark
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            config.TrieNodeLevels, RootFoldConcurrency);
+            new PbtTrieFormat(config.TrieNodeTiling, config.TrieNodeLevels), RootFoldConcurrency);
     }
 
     [Benchmark]

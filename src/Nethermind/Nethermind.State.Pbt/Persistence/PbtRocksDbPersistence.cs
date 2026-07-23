@@ -24,6 +24,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
 {
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> LayoutVersionKey => "layoutVersion"u8;
+    private static ReadOnlySpan<byte> TrieTilingKey => "trieTiling"u8;
 
     /// <summary>Block number, then the header root the state is keyed by, then the EIP-8297 root it actually has.</summary>
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
@@ -36,10 +37,11 @@ public class PbtRocksDbPersistence : IPbtPersistence
 
     private readonly IColumnsDb<PbtColumns> _db;
 
-    public PbtRocksDbPersistence(IColumnsDb<PbtColumns> db)
+    public PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
     {
         _db = db;
         EnsureLayoutVersion(db);
+        EnsureTiling(db, config.TrieNodeTiling);
     }
 
     /// <summary>Stamps a fresh database with <see cref="LayoutVersion"/>, and rejects one written under any other layout.</summary>
@@ -69,6 +71,34 @@ public class PbtRocksDbPersistence : IPbtPersistence
         Span<byte> value = stackalloc byte[sizeof(int)];
         BinaryPrimitives.WriteInt32BigEndian(value, LayoutVersion);
         metadata.PutSpan(LayoutVersionKey, value, WriteFlags.None);
+    }
+
+    /// <summary>
+    /// Stamps a fresh database with the tiling it is about to be written in, and rejects one written
+    /// in another.
+    /// </summary>
+    /// <remarks>
+    /// The tiling fixes the keys a tree is stored under, so a database holds one and never both. A
+    /// database with no stamp was written before the tilings parted, which is
+    /// <see cref="PbtTiling.ClusteredFourLevel"/>.
+    /// </remarks>
+    /// <exception cref="InvalidDataException">The database holds state under another tiling.</exception>
+    private static void EnsureTiling(IColumnsDb<PbtColumns> db, PbtTiling tiling)
+    {
+        IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
+        byte[]? stored = metadata.Get(TrieTilingKey);
+        PbtTiling storedTiling = stored is null ? PbtTiling.ClusteredFourLevel : (PbtTiling)stored[0];
+        if (stored is not null || ReadCurrentState(metadata).State != StateId.PreGenesis)
+        {
+            if (storedTiling != tiling)
+            {
+                throw new InvalidDataException($"The pbt database was written with the {storedTiling} trie tiling, but this node is configured for {tiling}. Delete the pbt database and re-import, or set Pbt.TrieNodeTiling to {storedTiling}.");
+            }
+
+            if (stored is not null) return;
+        }
+
+        metadata.PutSpan(TrieTilingKey, [(byte)tiling], WriteFlags.None);
     }
 
     private static PbtColumns LeafColumn(in Stem stem) => stem.Zone switch

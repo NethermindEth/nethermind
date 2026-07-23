@@ -71,7 +71,7 @@ public class ImportPbtFromPreimageFlatTests
         codeDb[bigCodeHash.Bytes] = bigCode;
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
-        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+        PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         // the same columns db must back both the persistence and the step, or phase two scans an empty
         // database and the test passes while proving nothing
@@ -117,7 +117,7 @@ public class ImportPbtFromPreimageFlatTests
         }
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
-        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+        PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
 
@@ -165,7 +165,7 @@ public class ImportPbtFromPreimageFlatTests
         }
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
-        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+        PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
 
@@ -208,7 +208,7 @@ public class ImportPbtFromPreimageFlatTests
         }
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
-        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+        PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
 
         async Task<ValueHash256> Import()
         {
@@ -245,7 +245,7 @@ public class ImportPbtFromPreimageFlatTests
         }
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
-        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+        PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         // FlushEntryInterval 1 forces the two slots into separate windows, so a same-stem cross-window merge is exercised too
         ImportPbtFromPreimageFlat step = new(flatSource, flatDb, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = 1 }, pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
@@ -270,7 +270,7 @@ public class ImportPbtFromPreimageFlatTests
 
         // seed the target so its persisted state is no longer pre-genesis
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
-        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+        PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         ValueHash256 existingRoot = new(Keccak.Compute("existing").Bytes);
         using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), existingRoot, WriteFlags.None)) { }
 

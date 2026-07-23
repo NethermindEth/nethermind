@@ -9,6 +9,8 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
@@ -166,7 +168,7 @@ public class PbtScannerTests
             Assert.That(storage.ChainSkippedNodes, Is.EqualTo(35));
 
             // nine every-level groups would have stored four hashes each; the chain stores two
-            Assert.That(storage.ChainEntriesAvoided, Is.EqualTo(9 * PbtLayout.TrieNodeGroupLevelsPerGroup - 2));
+            Assert.That(storage.ChainEntriesAvoided, Is.EqualTo(9 * Layout.LevelsPerGroup - 2));
             Assert.That(storage.ChainGroupBlobsAvoided, Is.EqualTo(9), "and the chain itself takes no blob to hold");
         });
     }
@@ -406,7 +408,7 @@ public class PbtScannerTests
 
     private static Task<PbtScanReport> ScanTree(PbtGroupFormat format, List<(byte[] Key, byte[]? Value)> writes, int concurrency)
     {
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format));
         harness.ApplyBatch(writes);
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");

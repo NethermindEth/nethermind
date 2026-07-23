@@ -15,10 +15,11 @@ public static partial class TrieUpdater
 {
     // The updater as the executor sees it: the state one thread folds with, the queue it hands its
     // buckets to, and the job it is asked to run. The descent itself is in TrieUpdater.cs.
-    private sealed partial class Updater :
-        WorkStealingExecutor<Updater, Updater.BucketJob>.IJobRunner,
-        WorkStealingExecutor<Updater, Updater.BucketJob>.IJobStateProvider,
-        WorkStealingExecutor<Updater, Updater.BucketJob>.IJobWorkerState
+    private sealed partial class Updater<TLayout> :
+        WorkStealingExecutor<Updater<TLayout>, Updater<TLayout>.BucketJob>.IJobRunner,
+        WorkStealingExecutor<Updater<TLayout>, Updater<TLayout>.BucketJob>.IJobStateProvider,
+        WorkStealingExecutor<Updater<TLayout>, Updater<TLayout>.BucketJob>.IJobWorkerState
+        where TLayout : IPbtTileLayout
     {
         /// <summary>Below this many stems a batch folds on the calling thread, whatever the concurrency says.</summary>
         /// <remarks>
@@ -38,7 +39,7 @@ public static partial class TrieUpdater
         private const int TargetJobsPerThread = 16;
 
         /// <summary>The threads this fold runs across; the calling thread's own updater owns it.</summary>
-        private readonly WorkStealingExecutor<Updater, BucketJob>? _executor;
+        private readonly WorkStealingExecutor<Updater<TLayout>, BucketJob>? _executor;
 
         /// <summary>
         /// The calling thread's updater, which settles what the fold costs — how many threads, how big a
@@ -69,11 +70,11 @@ public static partial class TrieUpdater
             _minQueueEntries = threadCount == 1
                 ? int.MaxValue
                 : Math.Max(HardMinimumStems, changes.Count / threadCount / TargetJobsPerThread);
-            _executor = new WorkStealingExecutor<Updater, BucketJob>(threadCount, this, this, this);
+            _executor = new WorkStealingExecutor<Updater<TLayout>, BucketJob>(threadCount, this, this, this);
         }
 
         /// <summary>One more thread's updater, folding the same batch with the same settings.</summary>
-        private Updater(Updater main)
+        private Updater(Updater<TLayout> main)
         {
             _store = main._store;
             _memoryProvider = main._memoryProvider;
@@ -84,11 +85,11 @@ public static partial class TrieUpdater
         }
 
         /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.IJobStateProvider.Create"/>
-        public Updater Create() => new(this);
+        public Updater<TLayout> Create() => new(this);
 
         /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.IJobRunner.Execute"/>
         /// <remarks>One bucket of one frame, folded on whichever thread got to it.</remarks>
-        public void Execute(ref BucketJob job, Updater state, WorkStealingExecutor<Updater, BucketJob>.JobQueue queue)
+        public void Execute(ref BucketJob job, Updater<TLayout> state, WorkStealingExecutor<Updater<TLayout>, BucketJob>.JobQueue queue)
         {
             BucketPlan plan = new(
                 job.BucketLength == 0 ? default : state._buckets!.AsSpan(job.BucketStart, job.BucketLength),
@@ -147,7 +148,7 @@ public static partial class TrieUpdater
         /// frame branches. A frame whose entries all fall in one bucket would be handing its whole range
         /// over and then waiting on it, which buys nothing.
         /// </summary>
-        private static bool MayQueue(uint touchedBitmask, in Fanout fanout) =>
+        private static bool MayQueue(ulong touchedBitmask, in Fanout fanout) =>
             fanout.CanQueue && !BitOperations.IsPow2(touchedBitmask);
 
         /// <summary>
@@ -181,12 +182,12 @@ public static partial class TrieUpdater
         /// </summary>
         private void Settle(
             in Fanout fanout, ref QueuedBuckets queued, Span<NodeResult> results, ref BoundaryScan scan,
-            ref uint storedChildBitmask)
+            ref ulong storedChildBitmask)
         {
             fanout.Wait(in queued);
 
             Exception? error = null;
-            foreach (WorkStealingExecutor<Updater, BucketJob>.Node node in queued.Jobs)
+            foreach (WorkStealingExecutor<Updater<TLayout>, BucketJob>.Node node in queued.Jobs)
             {
                 if (node.Error is not null)
                 {
@@ -236,7 +237,7 @@ public static partial class TrieUpdater
         /// Where a frame hands the buckets it is not folding itself: the queue of the thread running it,
         /// which arrives with the job rather than being anything the updater keeps.
         /// </summary>
-        private readonly struct Fanout(WorkStealingExecutor<Updater, BucketJob>.JobQueue queue)
+        private readonly struct Fanout(WorkStealingExecutor<Updater<TLayout>, BucketJob>.JobQueue queue)
         {
             /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.JobQueue.CanQueue"/>
             public bool CanQueue => queue.CanQueue;
@@ -256,7 +257,7 @@ public static partial class TrieUpdater
         /// </remarks>
         internal struct QueuedBuckets
         {
-            internal WorkStealingExecutor<Updater, BucketJob>.Handle Jobs;
+            internal WorkStealingExecutor<Updater<TLayout>, BucketJob>.Handle Jobs;
 
             public readonly bool IsEmpty => Jobs.IsEmpty;
         }
