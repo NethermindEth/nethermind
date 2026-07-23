@@ -111,6 +111,13 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     [SszContainer(isCollectionItself: true)]
+    public partial class ByteListClassItself
+    {
+        [SszList(3)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
     public partial struct ByteVectorItself
     {
         [SszVector(3)]

@@ -1212,7 +1212,7 @@ internal static class SszCodecHelpers
                     ..decl.Members.Select(m => MerkleizeFeedStatement(m, $"container.{m.Name}")),
                     "merkleizer.CalculateRoot(out root);",
                 ]);
-            bool isByteListItself = decl.IsSszListItself && IsByteList(variables[0]);
+            bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
             string DecodeCollectionItem(string sliceExpression, string destination) => isByteListItself
                 ? $"{destination}.{variables[0].Name} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name}));"
                 : $"Decode({sliceExpression}, out {destination});";

@@ -95,6 +95,22 @@ public class EncodingTest
     }
 
     [Test]
+    public void Decode_collection_itself_byte_lists_supports_class_items()
+    {
+        ByteListClassItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+
+        byte[] encoded = ByteListClassItself.Encode(original);
+        ByteListClassItself.Decode(encoded, out ByteListClassItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.Empty);
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
     public void Decode_collection_itself_byte_vectors()
     {
         ByteVectorItself[] original = [new() { Bytes = [1, 2, 3] }, new() { Bytes = [4, 5, 6] }];
