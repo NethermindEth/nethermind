@@ -90,29 +90,100 @@ public static class StemLeafBlob
         return true;
     }
 
+    /// <summary>
+    /// Applies <paramref name="changes"/> to <paramref name="blob"/> as <see cref="Apply"/> does, but
+    /// writes <see cref="PbtLeafFormat.LeavesOnly"/> and computes no hash at all.
+    /// </summary>
+    /// <remarks>
+    /// For a bulk load, which folds the whole tree once at the end: the leaves it starts from need only
+    /// be laid out, and the leaves-only layout stores nothing but them, so merging them in ascending
+    /// order is the entire operation. No hash means no subtree root, hence the plain byte array rather
+    /// than the <see cref="RebuildState"/> an incremental rebuild threads through.
+    /// </remarks>
+    /// <param name="blob">The prior blob, which must be empty or leaves-only; every other layout would have to be refolded, which is <see cref="Apply"/>'s job.</param>
+    /// <param name="changes">Each a 32-byte leaf value, a zero value clearing the leaf, ascending by sub-index.</param>
+    /// <returns>The new blob, or an empty array when no leaf remains — the signal that the stem is deleted.</returns>
+    /// <exception cref="InvalidDataException">The prior blob is in a layout that interleaves internal nodes.</exception>
+    internal static byte[] ApplyNoHash(ReadOnlySpan<byte> blob, IPbtStemChanges changes)
+    {
+        Span<byte> previousBitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
+        ReadOnlySpan<byte> previousEntries = default;
+        if (blob.IsEmpty)
+        {
+            previousBitmap.Clear();
+        }
+        else
+        {
+            RequireLeavesOnly(blob);
+            TwoLevelBitmapReader.FromBlob(blob, out previousEntries).ExpandTo(previousBitmap);
+        }
+
+        Span<byte> newBitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
+        previousBitmap.CopyTo(newBitmap);
+
+        int changeCount = changes.Count;
+        for (int i = 0; i < changeCount; i++) SetPresent(newBitmap, changes.SubIndexAt(i), changes.Get(i) != default);
+
+        int leafCount = PopCountRange(newBitmap, 0, LeafCount);
+        if (leafCount == 0) return [];
+
+        byte[] result = new byte[leafCount * ValueLength
+            + TwoLevelBitmapReader.OccupiedGroupsOf(newBitmap) * TwoLevelBitmapReader.SubWordLength
+            + TwoLevelBitmapReader.TopLength
+            + TwoLevelBitmapReader.FormatLength];
+
+        // A two-way merge in one ascending pass: the changes arrive in that order and a leaves-only
+        // blob's entries are in it too, so both sides are walked by a cursor that never looks back.
+        int slot = 0, previousSlot = 0, changeIndex = 0;
+        for (int subIndex = 0; subIndex < LeafCount; subIndex++)
+        {
+            bool wasPresent = IsPresent(previousBitmap, (byte)subIndex);
+            if (changeIndex < changeCount && changes.SubIndexAt(changeIndex) == subIndex)
+            {
+                ref readonly ValueHash256 value = ref changes.Get(changeIndex++);
+                if (wasPresent) previousSlot++;   // the entry it replaces still has to be stepped over
+                if (value != default) Emit(value.Bytes);
+            }
+            else if (wasPresent)
+            {
+                Emit(previousEntries.Slice(previousSlot++ * ValueLength, ValueLength));
+            }
+        }
+
+        TwoLevelBitmapReader.Encode(newBitmap, result.AsSpan(leafCount * ValueLength), PbtLeafFormat.LeavesOnly);
+        return result;
+
+        void Emit(ReadOnlySpan<byte> value) => value.CopyTo(result.AsSpan(slot++ * ValueLength, ValueLength));
+    }
+
     /// <summary>Walks the present leaves of a <see cref="PbtLeafFormat.LeavesOnly"/> blob in ascending sub-index order.</summary>
     /// <remarks>
     /// Restricted to that one layout because it is the only one whose entries are the leaves alone: under
     /// every other, internal-node entries sit between them in post-order and a leaf's slot has to be
-    /// located rather than counted. Bulk loads write leaves-only blobs (see <see cref="StemLeafBlobBuilder"/>),
+    /// located rather than counted. Bulk loads write leaves-only blobs (see <see cref="ApplyNoHash"/>),
     /// which is what reads them back.
     /// </remarks>
     /// <exception cref="InvalidDataException">The blob is in another layout.</exception>
-    public static LeafEnumerator EnumerateLeavesOnly(ReadOnlySpan<byte> blob)
+    internal static LeafEnumerator EnumerateLeavesOnly(ReadOnlySpan<byte> blob)
     {
         if (blob.IsEmpty) return default;
 
-        PbtLeafFormat format = TwoLevelBitmapReader.FormatOf(blob);
-        if (format != PbtLeafFormat.LeavesOnly)
-        {
-            throw new InvalidDataException($"StemLeafBlob: a {format} blob interleaves internal nodes and cannot be enumerated as leaves");
-        }
-
+        RequireLeavesOnly(blob);
         return new LeafEnumerator(TwoLevelBitmapReader.FromBlob(blob, out ReadOnlySpan<byte> entries), entries);
     }
 
+    /// <exception cref="InvalidDataException">The blob's entries region holds more than its leaves, so neither reading nor merging them can be a straight walk.</exception>
+    private static void RequireLeavesOnly(ReadOnlySpan<byte> blob)
+    {
+        PbtLeafFormat format = TwoLevelBitmapReader.FormatOf(blob);
+        if (format != PbtLeafFormat.LeavesOnly)
+        {
+            throw new InvalidDataException($"StemLeafBlob: a {format} blob interleaves internal nodes and cannot be treated as leaves alone");
+        }
+    }
+
     /// <summary>The present leaves of a leaves-only blob, ascending by sub-index. See <see cref="EnumerateLeavesOnly"/>.</summary>
-    public ref struct LeafEnumerator
+    internal ref struct LeafEnumerator
     {
         private readonly TwoLevelBitmapReader _presence;
         private readonly ReadOnlySpan<byte> _entries;

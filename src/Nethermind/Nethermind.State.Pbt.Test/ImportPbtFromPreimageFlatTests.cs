@@ -84,10 +84,10 @@ public class ImportPbtFromPreimageFlatTests
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
         Assert.That(reader.CurrentTreeRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
-        Assert.That(reader.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
-        Assert.That(reader.GetAccount(TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
-        Assert.That(reader.GetAccount(TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
-        Assert.That(EvmWordSlot.AsReadOnlySpan(reader.GetSlot(TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
+        Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
+        Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
+        Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
+        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
     }
 
     /// <summary>
@@ -175,8 +175,8 @@ public class ImportPbtFromPreimageFlatTests
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
         Assert.That(reader.CurrentTreeRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
-        Assert.That(EvmWordSlot.AsReadOnlySpan(reader.GetSlot(first, 1000)).ToArray(), Is.EqualTo(((UInt256)0x22).ToBigEndian()));
-        Assert.That(EvmWordSlot.AsReadOnlySpan(reader.GetSlot(second, 1000)).ToArray(), Is.EqualTo(((UInt256)0x44).ToBigEndian()));
+        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, first, 1000)).ToArray(), Is.EqualTo(((UInt256)0x22).ToBigEndian()));
+        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, second, 1000)).ToArray(), Is.EqualTo(((UInt256)0x44).ToBigEndian()));
     }
 
     /// <summary>

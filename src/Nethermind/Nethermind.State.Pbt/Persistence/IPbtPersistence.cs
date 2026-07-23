@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
@@ -38,18 +37,6 @@ public interface IPbtPersistence
 
         /// <inheritdoc cref="CreateWriteBatch" path="/param[@name='toTreeRoot']"/>
         ValueHash256 CurrentTreeRoot { get; }
-
-        /// <summary>Decodes the account from its header stem's leaf blob; null when it holds neither of the account's leaves.</summary>
-        /// <remarks>
-        /// Reading the two leaves here rather than through <see cref="GetLeafBlob"/> keeps the whole blob
-        /// — up to a stem's worth of code chunks — out of a buffer the caller would have to own for the
-        /// sake of 64 bytes.
-        /// </remarks>
-        Account? GetAccount(Address address);
-
-        /// <summary>Returns the stored slot value, decoded from its stem's leaf blob, or zero when absent.</summary>
-        /// <inheritdoc cref="GetAccount" path="/remarks"/>
-        EvmWord GetSlot(Address address, in UInt256 slot);
 
         RefCountingMemory? GetLeafBlob(in Stem stem);
         RefCountingMemory? GetTrieNode(in TrieNodeKey key);

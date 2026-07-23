@@ -5,10 +5,8 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
@@ -288,8 +286,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         // the empty tree's EIP-8297 root is 32 zero bytes
         public ValueHash256 CurrentTreeRoot => default;
 
-        public Account? GetAccount(Address address) => null;
-        public EvmWord GetSlot(Address address, in UInt256 slot) => default;
         public RefCountingMemory? GetLeafBlob(in Stem stem) => null;
         public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => null;
 

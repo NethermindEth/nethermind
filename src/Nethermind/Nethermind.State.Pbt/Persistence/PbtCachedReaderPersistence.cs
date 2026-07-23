@@ -117,10 +117,6 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
 
         public ValueHash256 CurrentTreeRoot => inner.CurrentTreeRoot;
 
-        public Account? GetAccount(Address address) => inner.GetAccount(address);
-
-        public EvmWord GetSlot(Address address, in UInt256 slot) => inner.GetSlot(address, in slot);
-
         public RefCountingMemory? GetLeafBlob(in Stem stem) => inner.GetLeafBlob(in stem);
 
         public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => inner.GetTrieNode(in key);

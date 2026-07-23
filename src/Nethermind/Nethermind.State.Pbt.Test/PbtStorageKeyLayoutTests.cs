@@ -45,10 +45,10 @@ public class PbtStorageKeyLayoutTests
 
         using (IPbtPersistence.IReader reader = persistence.CreateReader())
         {
-            Assert.That(reader.GetSlot(TestItem.AddressA, slot), Is.EqualTo(Word(0xAB)));
+            Assert.That(PbtTestLeaves.ReadSlot(reader, TestItem.AddressA, slot), Is.EqualTo(Word(0xAB)));
 
             // a different address must not collide onto the same stem
-            Assert.That(EvmWordSlot.IsZero(reader.GetSlot(TestItem.AddressB, slot)), Is.True);
+            Assert.That(EvmWordSlot.IsZero(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, slot)), Is.True);
         }
 
         Assert.That(db.GetColumnDb(expectedColumn)[stem.Bytes.ToArray()], Is.Not.Null);
@@ -60,7 +60,7 @@ public class PbtStorageKeyLayoutTests
 
         using (IPbtPersistence.IReader reader = persistence.CreateReader())
         {
-            Assert.That(EvmWordSlot.IsZero(reader.GetSlot(TestItem.AddressA, slot)), Is.True);
+            Assert.That(EvmWordSlot.IsZero(PbtTestLeaves.ReadSlot(reader, TestItem.AddressA, slot)), Is.True);
         }
     }
 
@@ -158,10 +158,5 @@ public class PbtStorageKeyLayoutTests
         return deriver.Derive(slot, out subIndex);
     }
 
-    private static byte[] Blob(byte subIndex, byte value)
-    {
-        StemLeafBlobBuilder builder = new();
-        builder.Set(subIndex, [value]);
-        return builder.Encode();
-    }
+    private static byte[] Blob(byte subIndex, byte value) => PbtTestLeaves.Blob((subIndex, [value]));
 }
