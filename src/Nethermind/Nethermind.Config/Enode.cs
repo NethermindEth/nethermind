@@ -103,10 +103,12 @@ namespace Nethermind.Config
         public int Port { get; }
         public int DiscoveryPort { get; }
         public string Info => DiscoveryPort == Port
-            ? $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}"
-            : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={DiscoveryPort}";
+            ? $"enode://{_nodeKey.ToString(false)}@{FormattedHostIp}:{Port}"
+            : $"enode://{_nodeKey.ToString(false)}@{FormattedHostIp}:{Port}?discport={DiscoveryPort}";
 
         public override string ToString() => Info;
+
+        private IPAddress FormattedHostIp => HostIp.IsIPv4MappedToIPv6 ? HostIp.MapToIPv4() : HostIp;
 
         public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
             Uri.TryCreate(enodeString, new UriCreationOptions(), out parsed) && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase);
