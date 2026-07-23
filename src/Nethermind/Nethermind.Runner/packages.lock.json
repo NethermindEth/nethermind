@@ -1093,6 +1093,17 @@
           "Snappier": "[1.3.1, )"
         }
       },
+      "nethermind.portfolioviewer.plugin": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.10, )",
+          "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Blockchain": "[1.40.0-unstable, )",
+          "Nethermind.Consensus": "[1.40.0-unstable, )",
+          "Nethermind.Facade": "[1.40.0-unstable, )",
+          "Nethermind.JsonRpc": "[1.40.0-unstable, )"
+        }
+      },
       "nethermind.seq": {
         "type": "Project",
         "dependencies": {

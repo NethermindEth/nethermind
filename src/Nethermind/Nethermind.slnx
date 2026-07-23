@@ -7,6 +7,10 @@
     <Project Path="Nethermind.Seq/Nethermind.Seq.csproj" />
   </Folder>
   <Folder Name="/Plugins/" />
+  <Folder Name="/Plugins/PortfolioViewer/">
+    <Project Path="Nethermind.PortfolioViewer.Plugin.Test/Nethermind.PortfolioViewer.Plugin.Test.csproj" />
+    <Project Path="Nethermind.PortfolioViewer.Plugin/Nethermind.PortfolioViewer.Plugin.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Flashbots/">
     <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
     <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
