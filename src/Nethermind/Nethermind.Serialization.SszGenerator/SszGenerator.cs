@@ -778,10 +778,10 @@ internal static class SszCodecHelpers
         property.IsNullable ? $"if ({valueExpr} is null) {target}.Clear(); else {statement}" : statement;
 
     private static bool IsByteList(SszProperty property) =>
-        property.Kind == Kind.List && !property.IsSpanLikeProperty && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
+        property.Kind == Kind.List && (property.IsArrayProperty || property.IsMemoryLikeProperty) && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
 
     private static bool IsByteVector(SszProperty property) =>
-        property.Kind == Kind.Vector && !property.IsSpanLikeProperty && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
+        property.Kind == Kind.Vector && (property.IsArrayProperty || property.IsMemoryLikeProperty) && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
 
     private static string DecodeAndAssign(SszType decl, SszProperty property, string sliceExpression)
     {
