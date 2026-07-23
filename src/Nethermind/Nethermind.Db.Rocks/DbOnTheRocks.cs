@@ -929,6 +929,116 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    internal unsafe void MultiGet(byte[][] keys, Span<byte[]?> values, ColumnFamilyHandle? cf, ReadOptions readOptions)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        if (keys.Length != values.Length)
+            throw new ArgumentException("Keys and values must have the same length.", nameof(values));
+
+        if (keys.Length == 0) return;
+
+        UpdateReadMetrics();
+
+        try
+        {
+            if (cf is null)
+            {
+                KeyValuePair<byte[], byte[]?>[] results = _db.MultiGet(keys, null, readOptions);
+                for (int i = 0; i < results.Length; i++)
+                    values[i] = results[i].Value;
+                return;
+            }
+
+            int keyBytesLength = 0;
+            for (int i = 0; i < keys.Length; i++)
+                keyBytesLength = checked(keyBytesLength + keys[i].Length);
+
+            byte[] keyBytes = new byte[keyBytesLength];
+            IntPtr[] keyPointers = new IntPtr[keys.Length];
+            UIntPtr[] keyLengths = new UIntPtr[keys.Length];
+            IntPtr[] valueHandles = new IntPtr[keys.Length];
+            IntPtr[] errors = new IntPtr[keys.Length];
+
+            fixed (byte* keyBytesPtr = keyBytes)
+            fixed (IntPtr* keyPointersPtr = keyPointers)
+            fixed (UIntPtr* keyLengthsPtr = keyLengths)
+            fixed (IntPtr* valueHandlesPtr = valueHandles)
+            {
+                int offset = 0;
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    byte[] key = keys[i];
+                    key.CopyTo(keyBytes, offset);
+                    keyPointers[i] = (IntPtr)(keyBytesPtr + offset);
+                    keyLengths[i] = (UIntPtr)key.Length;
+                    offset += key.Length;
+                }
+
+                _rocksDbNative.rocksdb_batched_multi_get_cf(
+                    _db.Handle,
+                    readOptions.Handle,
+                    cf.Handle,
+                    (UIntPtr)keys.Length,
+                    (IntPtr)keyPointersPtr,
+                    (IntPtr)keyLengthsPtr,
+                    (IntPtr)valueHandlesPtr,
+                    errors,
+                    0);
+            }
+
+            IntPtr firstError = IntPtr.Zero;
+            for (int i = 0; i < errors.Length; i++)
+            {
+                IntPtr error = errors[i];
+                if (error == IntPtr.Zero) continue;
+
+                if (firstError == IntPtr.Zero)
+                    firstError = error;
+                else
+                    _rocksDbNative.rocksdb_free(error);
+
+                errors[i] = IntPtr.Zero;
+            }
+
+            try
+            {
+                if (firstError != IntPtr.Zero) ThrowRocksDbException(firstError);
+
+                for (int i = 0; i < valueHandles.Length; i++)
+                {
+                    IntPtr handle = valueHandles[i];
+                    if (handle == IntPtr.Zero)
+                    {
+                        values[i] = null;
+                        continue;
+                    }
+
+                    IntPtr valuePtr = _rocksDbNative.rocksdb_pinnableslice_value(handle, out UIntPtr valueLength);
+                    values[i] = valuePtr == IntPtr.Zero
+                        ? null
+                        : new ReadOnlySpan<byte>((void*)valuePtr, checked((int)valueLength)).ToArray();
+                }
+            }
+            finally
+            {
+                for (int i = 0; i < valueHandles.Length; i++)
+                {
+                    if (valueHandles[i] != IntPtr.Zero)
+                        _rocksDbNative.rocksdb_pinnableslice_destroy(valueHandles[i]);
+                }
+            }
+        }
+        catch (RocksDbSharpException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowRocksDbException(nint errPtr) => throw new RocksDbException(errPtr);
+    }
+
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
