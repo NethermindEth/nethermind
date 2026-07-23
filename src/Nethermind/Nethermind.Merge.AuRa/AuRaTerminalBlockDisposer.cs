@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -24,17 +26,18 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
 {
     private readonly IAuRaBlockFinalizationManager _auRaBlockFinalizationManager;
     private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IBlockTree _blockTree;
-    private bool _disposed;
+    private readonly IMainProcessingContext _mainProcessingContext;
+    private int _disposed;
 
     public AuRaTerminalBlockDisposer(
         IAuRaBlockFinalizationManager auRaBlockFinalizationManager,
         IPoSSwitcher poSSwitcher,
-        IBlockTree blockTree)
+        IBlockTree blockTree,
+        IMainProcessingContext mainProcessingContext)
     {
         _auRaBlockFinalizationManager = auRaBlockFinalizationManager;
         _poSSwitcher = poSSwitcher;
-        _blockTree = blockTree;
+        _mainProcessingContext = mainProcessingContext;
 
         // A terminal total difficulty of zero makes the genesis block terminal. Hive Engine
         // networks use this configuration and must not expose AuRa's genesis finality as the
@@ -46,13 +49,13 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
         else
         {
             _poSSwitcher.TerminalBlockReached += OnTerminalBlock;
-            _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _mainProcessingContext.BranchProcessor.BlockProcessing += OnBlockProcessing;
         }
     }
 
     private void OnTerminalBlock(object? sender, EventArgs e) => Dispose();
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
         if (_poSSwitcher.IsPostMerge(e.Block.Header))
         {
@@ -62,10 +65,10 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
         _poSSwitcher.TerminalBlockReached -= OnTerminalBlock;
-        _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        _mainProcessingContext.BranchProcessor.BlockProcessing -= OnBlockProcessing;
         _auRaBlockFinalizationManager.Dispose();
     }
 }
