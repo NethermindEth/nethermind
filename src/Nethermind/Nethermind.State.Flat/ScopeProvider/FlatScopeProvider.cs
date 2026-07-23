@@ -63,6 +63,15 @@ public class FlatScopeProvider(
     public void Dispose()
     {
         if (_warmReadPool is { IsValueCreated: true }) _warmReadPool.Value.Dispose();
-        _sparseCache?.Dispose();
+        if (_sparseCache is not null)
+        {
+            ILogger logger = logManager.GetClassLogger<FlatScopeProvider>();
+            if (logger.IsInfo)
+            {
+                logger.Info($"[sparse-retention] checkout hits {_sparseCache.Hits}, misses {_sparseCache.Misses}, rejections {_sparseCache.Rejections}");
+            }
+
+            _sparseCache.Dispose();
+        }
     }
 }
