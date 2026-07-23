@@ -33,6 +33,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
             .AddColumnDatabase<PbtColumns>(DbNames.Pbt)
             .AddDecorator<IRocksDbConfigFactory, PbtRocksDbConfigAdjuster>()
             .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
+            .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
             // singleton: a second pool would silently halve every hit rate
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<PbtSnapshotRepository>()

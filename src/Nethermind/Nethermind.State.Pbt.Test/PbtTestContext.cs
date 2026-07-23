@@ -22,6 +22,7 @@ namespace Nethermind.State.Pbt.Test;
 internal sealed class PbtTestContext : IAsyncDisposable
 {
     private readonly CancellationTokenSource _cts = new();
+    private readonly PbtCachedReaderPersistence _cachedReaderPersistence;
 
     public SnapshotableMemColumnsDb<PbtColumns> Db { get; }
     public MemDb CodeDb { get; } = new();
@@ -32,7 +33,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public IDb MetadataDb { get; } = new MemDb();
     public PbtCompactionSchedule Schedule { get; }
     public PbtSnapshotCompactor Compactor { get; }
-    public PbtRocksDbPersistence Persistence { get; }
+    public IPbtPersistence Persistence { get; }
     public PbtPersistenceCoordinator Coordinator { get; }
     public PbtDbManager Manager { get; }
     public PbtStateReader StateReader { get; }
@@ -51,7 +52,8 @@ internal sealed class PbtTestContext : IAsyncDisposable
         // same blocks. A test that inherited that would have its boundaries — and so what persists,
         // and what prunes — move from run to run, so pin it unless the test asked for one.
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
-        Persistence = new PbtRocksDbPersistence(Db, new PbtConfig());
+        _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(Db, new PbtConfig()), new TestProcessExitSource(_cts));
+        Persistence = _cachedReaderPersistence;
         ResourcePool = new PbtResourcePool(Config);
         Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);
         Compactor = new PbtSnapshotCompactor(ResourcePool, Schedule, Repository, Config);
@@ -72,6 +74,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     {
         _cts.Cancel();
         await Manager.DisposeAsync();
+        await _cachedReaderPersistence.DisposeAsync();
         _cts.Dispose();
     }
 
