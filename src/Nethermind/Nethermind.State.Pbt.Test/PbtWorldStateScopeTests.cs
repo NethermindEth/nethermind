@@ -138,6 +138,43 @@ public class PbtWorldStateScopeTests
         Assert.That(bundle.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)3), "and the state is readable through the header-keyed id");
     }
 
+    /// <summary>
+    /// The tree is the only record of an account, so a delete has to reach it: nothing else would stop
+    /// the next block reading the account straight back out of its header stem's leaf blob.
+    /// </summary>
+    /// <remarks>
+    /// The account's other header leaves are deliberately left behind — see
+    /// <c>PbtWorldStateScope.ClearAccountHeader</c> — so its header storage slots stay readable, which
+    /// the storage-slot case here pins as the intended scope of the delete rather than an oversight.
+    /// </remarks>
+    [TestCase(7u, TestName = "header slot, on the account's own stem")]
+    [TestCase(1000u, TestName = "storage-zone slot, on a stem of its own")]
+    public async Task DeletedAccount_ReadsBackAsAbsent_ButItsStorageRemains(uint slot)
+    {
+        await using PbtTestContext ctx = new();
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).WithNonce(2).TestObject);
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storage.Set(slot, [0xAB]);
+        }
+
+        scope.Commit(0);
+        Assert.That(scope.Get(TestItem.AddressA), Is.Not.Null, "the account is there to begin with");
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(TestItem.AddressA, null);
+        }
+
+        scope.Commit(1);
+
+        Assert.That(scope.Get(TestItem.AddressA), Is.Null, "the delete cleared its BASIC_DATA and CODE_HASH leaves");
+        Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(slot), Is.EqualTo((byte[])[0xAB]), "and left its storage standing");
+    }
+
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)
     {
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);

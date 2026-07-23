@@ -137,10 +137,6 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     /// </remarks>
     private sealed class CacheClearingWriteBatch(IPbtPersistence.IWriteBatch inner, PbtCachedReaderPersistence parent) : IPbtPersistence.IWriteBatch
     {
-        public void SetAccount(Address address, Account? account) => inner.SetAccount(address, account);
-
-        public void SetSlot(Address address, in UInt256 slot, in EvmWord value) => inner.SetSlot(address, in slot, in value);
-
         public void SetLeafBlob(in Stem stem, byte[]? blob) => inner.SetLeafBlob(in stem, blob);
 
         public void SetTrieNode(in TrieNodeKey key, byte[]? node) => inner.SetTrieNode(in key, node);

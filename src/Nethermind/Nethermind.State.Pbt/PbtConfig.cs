@@ -61,40 +61,6 @@ public class PbtConfig : IPbtConfig
 
     public string MetadataRocksDbOptions { get; set; } = "max_bytes_for_level_base=1000000;";
 
-    public string AccountRocksDbOptions { get; set; } =
-        // The account column is small, already using slim encoding. Disabling compression does not lose much.
-        "compression=kNoCompression;" +
-
-        // Keep last level bloom filter. Take up most index memory
-        "optimize_filters_for_hits=false;" +
-
-        // Small in writes, so we set low buffer size to prevent too many different version account
-        // in the same memtable.
-        "target_file_size_multiplier=3;" +
-        "target_file_size_base=32000000;" +
-        "max_bytes_for_level_multiplier=15;" + // Reduce level count
-        "max_bytes_for_level_base=128000000;" +
-
-        // No benefit in locality whatsoever, and have compression disabled.
-        "block_based_table_factory.block_size=4096;" +
-
-        "write_buffer_size=16000000;" +
-        "max_write_buffer_number=4;" +
-        "";
-
-    public string StorageRocksDbOptions { get; set; } =
-        // Keep last level bloom filter. Take up most index memory
-        "optimize_filters_for_hits=false;" +
-
-        "target_file_size_base=64000000;" +
-
-        // Using 4kb size is faster, IO wise, but uses additional memory, which if put on block cache is much better.
-        "block_based_table_factory.block_size=8000;" +
-
-        "write_buffer_size=32000000;" +
-        "max_write_buffer_number=4;" +
-        "";
-
     // A blob is fetched whole on every stem the fold touches, and a stem absent from the tree is a
     // miss that the last level filter has to answer, so the filters are kept.
     private const string PbtCommonLeafOptions =

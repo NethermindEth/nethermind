@@ -16,11 +16,16 @@ public class PbtDbManagerTests
 {
     private static readonly Address Address = TestItem.AddressA;
 
+    /// <summary>The slot each block writes alongside the account, on a stem of its own rather than the account header's.</summary>
+    private static readonly UInt256 Slot = 1000;
+
     private static Hash256 CommitBlock(IWorldStateScopeProvider.IScope scope, ulong blockNumber, in UInt256 balance)
     {
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
             batch.Set(Address, new Account(blockNumber, balance));
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(Address, 1);
+            storage.Set(Slot, [(byte)blockNumber]);
         }
 
         scope.UpdateRootHash();
@@ -90,6 +95,7 @@ public class PbtDbManagerTests
             Assert.That(account, Is.Not.Null);
             Assert.That(account!.Nonce, Is.EqualTo(3ul));
             Assert.That(account.Balance, Is.EqualTo((UInt256)300));
+            Assert.That(scope.CreateStorageTree(Address).Get(Slot), Is.EqualTo((byte[])[3]), "and the slot decodes out of its own persisted blob");
         }
     }
 

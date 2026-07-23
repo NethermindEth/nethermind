@@ -89,11 +89,24 @@ public class PbtMirrorScopeProvider(
         {
             Account? account = authoritative.Get(address);
             Account? mirrored = pbt.Get(address);
-            if (mirrored != account)
+            if (!Matches(account, mirrored))
                 throw new PbtMirrorMismatchException($"Account {address} differs: authoritative {account} vs pbt {mirrored}");
 
             return account;
         }
+
+        /// <summary>Compares the fields PBT stores, plus existence.</summary>
+        /// <remarks>
+        /// Not <see cref="Account.Equals(Account)"/>: it covers the storage root, which an EIP-8297
+        /// account does not have — slots live in the one tree, so a PBT account always reports the
+        /// empty-tree hash (see <see cref="ScopeProvider.PbtStorageTree"/>).
+        /// </remarks>
+        private static bool Matches(Account? authoritative, Account? mirrored) =>
+            authoritative is null || mirrored is null
+                ? authoritative is null && mirrored is null
+                : authoritative.Nonce == mirrored.Nonce
+                    && authoritative.Balance == mirrored.Balance
+                    && authoritative.CodeHash == mirrored.CodeHash;
 
         public void HintGet(Address address, Account? account) => authoritative.HintGet(address, account);
 

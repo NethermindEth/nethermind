@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -15,6 +13,7 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtSnapshotCompactorTests
 {
     private static readonly Stem StemA = new(new byte[31]);
+    private static readonly Stem StemB = new(Bytes.FromHexString("0x80000000000000000000000000000000000000000000000000000000000000"));
 
     private readonly PbtResourcePool _pool = new(new PbtConfig());
 
@@ -26,28 +25,18 @@ public class PbtSnapshotCompactorTests
     [Test]
     public void Compact_TakesTheNewestLayersValue_ForEveryKindOfKey()
     {
-        Address address = TestItem.AddressA;
         TrieNodeKey nodeKey = new(0, StemA);
 
-        Account olderAccount = Build.An.Account.WithNonce(1).TestObject;
-        Account newerAccount = Build.An.Account.WithNonce(2).TestObject;
-
         PbtSnapshotContent older = new();
-        older.Accounts[address] = olderAccount;
-        older.Slots[(address, (UInt256)7)] = Word(0x11);
         older.LeafBlobs[StemA] = [0x11];
         older.TrieNodes[nodeKey] = [0x11];
 
         PbtSnapshotContent newer = new();
-        newer.Accounts[address] = newerAccount;
-        newer.Slots[(address, (UInt256)7)] = Word(0x22);
         newer.LeafBlobs[StemA] = [0x22];
         newer.TrieNodes[nodeKey] = [0x22];
 
         using PbtSnapshot merged = Compact(older, newer);
 
-        Assert.That(merged.Content.Accounts[address], Is.SameAs(newerAccount));
-        Assert.That(merged.Content.Slots[(address, (UInt256)7)], Is.EqualTo(Word(0x22)));
         Assert.That(merged.Content.LeafBlobs[StemA], Is.EqualTo((byte[])[0x22]));
         Assert.That(merged.Content.TrieNodes[nodeKey], Is.EqualTo((byte[])[0x22]));
     }
@@ -65,61 +54,14 @@ public class PbtSnapshotCompactorTests
     public void Compact_UnionsDisjointWrites()
     {
         PbtSnapshotContent older = new();
-        older.Slots[(TestItem.AddressA, UInt256.Zero)] = Word(0x11);
+        older.LeafBlobs[StemA] = [0x11];
         PbtSnapshotContent newer = new();
-        newer.Slots[(TestItem.AddressB, UInt256.Zero)] = Word(0x22);
+        newer.LeafBlobs[StemB] = [0x22];
 
         using PbtSnapshot merged = Compact(older, newer);
 
-        Assert.That(merged.Content.Slots[(TestItem.AddressA, UInt256.Zero)], Is.EqualTo(Word(0x11)));
-        Assert.That(merged.Content.Slots[(TestItem.AddressB, UInt256.Zero)], Is.EqualTo(Word(0x22)));
-    }
-
-    [Test]
-    public void Compact_SelfDestruct_DropsOlderSlotsOnly()
-    {
-        Address destroyed = TestItem.AddressA;
-        PbtSnapshotContent older = new();
-        older.Slots[(destroyed, (UInt256)1)] = Word(0x11);
-        older.Slots[(TestItem.AddressB, (UInt256)1)] = Word(0x11);
-
-        PbtSnapshotContent newer = new();
-        newer.SelfDestructs[destroyed] = true;
-        newer.Slots[(destroyed, (UInt256)2)] = Word(0x22);
-
-        using PbtSnapshot merged = Compact(older, newer);
-
-        Assert.That(merged.Content.Slots.ContainsKey((destroyed, (UInt256)1)), Is.False, "a slot written before the self-destruct must not survive it");
-        Assert.That(merged.Content.Slots[(destroyed, (UInt256)2)], Is.EqualTo(Word(0x22)), "a slot written after the self-destruct must survive");
-        Assert.That(merged.Content.Slots[(TestItem.AddressB, (UInt256)1)], Is.EqualTo(Word(0x11)), "an unrelated address must be untouched");
-        Assert.That(merged.Content.SelfDestructs.ContainsKey(destroyed), "the marker is kept so reads of the cleared account still see a clean zero");
-    }
-
-    /// <summary>
-    /// The merge filters slots against a single self-destruct boundary rather than replaying each
-    /// destruct, so the boundary has to be the last one, not the first.
-    /// </summary>
-    [Test]
-    public void Compact_SelfDestructedTwice_KeepsOnlySlotsFromTheLastDestructOnwards()
-    {
-        Address destroyed = TestItem.AddressA;
-
-        PbtSnapshotContent first = new();
-        first.SelfDestructs[destroyed] = true;
-        first.Slots[(destroyed, (UInt256)1)] = Word(0x11);   // survives the first destruct...
-
-        PbtSnapshotContent second = new();
-        second.Slots[(destroyed, (UInt256)2)] = Word(0x22);  // ...as does this, until
-
-        PbtSnapshotContent third = new();
-        third.SelfDestructs[destroyed] = true;               // the second destruct wipes both
-        third.Slots[(destroyed, (UInt256)3)] = Word(0x33);
-
-        using PbtSnapshot merged = Compact(first, second, third);
-
-        Assert.That(merged.Content.Slots.ContainsKey((destroyed, (UInt256)1)), Is.False);
-        Assert.That(merged.Content.Slots.ContainsKey((destroyed, (UInt256)2)), Is.False);
-        Assert.That(merged.Content.Slots[(destroyed, (UInt256)3)], Is.EqualTo(Word(0x33)));
+        Assert.That(merged.Content.LeafBlobs[StemA], Is.EqualTo((byte[])[0x11]));
+        Assert.That(merged.Content.LeafBlobs[StemB], Is.EqualTo((byte[])[0x22]));
     }
 
     /// <summary>
@@ -137,7 +79,7 @@ public class PbtSnapshotCompactorTests
         for (ulong block = 1; block <= 8; block++)
         {
             PbtSnapshotContent layer = new();
-            layer.Slots[(TestItem.AddressA, UInt256.Zero)] = Word((byte)block);
+            layer.LeafBlobs[StemA] = [(byte)block];
             repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), default, layer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
             compactor.DoCompactSnapshot(State(block));
         }
@@ -149,7 +91,7 @@ public class PbtSnapshotCompactorTests
         Assert.That(repository.TryLeaseChain(State(8), State(0), chain), Is.True);
         Assert.That(chain.Count, Is.EqualTo(1), "the 8-wide layer at block 8 spans the whole window");
         Assert.That(chain[0].From, Is.EqualTo(State(0)));
-        Assert.That(chain[0].Content.Slots[(TestItem.AddressA, UInt256.Zero)], Is.EqualTo(Word(8)), "and carries the newest value across it");
+        Assert.That(chain[0].Content.LeafBlobs[StemA], Is.EqualTo((byte[])[8]), "and carries the newest value across it");
     }
 
     /// <summary>
@@ -222,6 +164,4 @@ public class PbtSnapshotCompactorTests
         root[31] = (byte)blockNumber;
         return new StateId(blockNumber, new ValueHash256(root));
     }
-
-    private static EvmWord Word(byte marker) => EvmWordSlot.FromStripped([marker]);
 }

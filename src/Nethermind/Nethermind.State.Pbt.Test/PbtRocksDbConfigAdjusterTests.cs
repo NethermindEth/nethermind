@@ -24,8 +24,6 @@ public class PbtRocksDbConfigAdjusterTests
     {
         RocksDbOptions = "shared=1;",
         MetadataRocksDbOptions = $"column={nameof(PbtColumns.Metadata)};",
-        AccountRocksDbOptions = $"column={nameof(PbtColumns.Account)};",
-        StorageRocksDbOptions = $"column={nameof(PbtColumns.Storage)};",
         AccountLeavesRocksDbOptions = $"column={nameof(PbtColumns.AccountLeaves)};",
         CodeLeavesRocksDbOptions = $"column={nameof(PbtColumns.CodeLeaves)};",
         StorageLeavesRocksDbOptions = $"column={nameof(PbtColumns.StorageLeaves)};",
@@ -35,8 +33,6 @@ public class PbtRocksDbConfigAdjusterTests
     };
 
     [TestCase(PbtColumns.Metadata)]
-    [TestCase(PbtColumns.Account)]
-    [TestCase(PbtColumns.Storage)]
     [TestCase(PbtColumns.AccountLeaves)]
     [TestCase(PbtColumns.CodeLeaves)]
     [TestCase(PbtColumns.StorageLeaves)]

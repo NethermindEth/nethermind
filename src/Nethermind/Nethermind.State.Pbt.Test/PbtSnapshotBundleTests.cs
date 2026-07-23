@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -18,7 +19,11 @@ public class PbtSnapshotBundleTests
     private static readonly Stem StemA = new(new byte[31]);
     private static readonly TrieNodeKey NodeA = new(0, StemA);
     private static readonly Address Address = TestItem.AddressA;
+
+    /// <summary>Below <see cref="PbtKeyDerivation.HeaderStorageOffset"/>, so it shares <see cref="HeaderStem"/> with the account's own leaves.</summary>
     private static readonly UInt256 Slot = 7;
+
+    private static readonly Stem HeaderStem = PbtKeyDerivation.AccountHeaderStem(Address);
 
     private PbtResourcePool _pool = null!;
     private FakeReader _reader = null!;
@@ -90,13 +95,24 @@ public class PbtSnapshotBundleTests
     [Test]
     public void SelfDestruct_InThisBranch_ShadowsASharedBundleSlot()
     {
-        PbtSnapshotContent shared = new();
-        shared.Slots[(Address, Slot)] = Word(0x33);
-
-        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [shared], localLayers: []);
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [Content(0x33)], localLayers: []);
         bundle.SelfDestruct(Address);
 
         Assert.That(EvmWordSlot.IsZero(bundle.GetSlot(Address, Slot)));
+    }
+
+    /// <summary>
+    /// A slot written after the clear is a post-clear write and must survive it — that is the order
+    /// <c>ProcessStorageChanges</c> issues them in for every newly created account.
+    /// </summary>
+    [Test]
+    public void SlotWrittenAfterASelfDestruct_SurvivesIt()
+    {
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [Content(0x33)], localLayers: []);
+        bundle.SelfDestruct(Address);
+        bundle.SetSlot(Address, Slot, Word(0x11));
+
+        Assert.That(bundle.GetSlot(Address, Slot), Is.EqualTo(Word(0x11)));
     }
 
     /// <summary>
@@ -128,8 +144,8 @@ public class PbtSnapshotBundleTests
 
         using PbtSnapshot sealed_ = bundle.CollectSnapshot(default, new StateId(1, default), TestItem.KeccakA.ValueHash256);
 
-        Assert.That((byte)sealed_.Content.Accounts[Address]!.Nonce, Is.EqualTo(0x11), "the sealed layer took the buffer's writes");
-        Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x11), "which the bundle still reads through its own chain");
+        Assert.That(sealed_.Content.LeafBlobs[HeaderStem], Is.EqualTo(HeaderBlob(0x11)), "the sealed layer took the buffer's writes");
+        Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x11), "which the bundle still reads through its own chain, now decoded from the leaf");
         Assert.That(bundle.TreeRoot, Is.EqualTo(TestItem.KeccakA.ValueHash256), "and the sealed layer's tree root becomes the bundle's");
         Assert.That(bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), default).Content, Is.Not.SameAs(sealed_.Content), "a fresh buffer backs the next block");
     }
@@ -155,9 +171,8 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle fromSharedLayer = Bundle(sharedLayers: [Content(0x33)], localLayers: [], recordDetailedMetrics);
         AssertReadsAre(fromSharedLayer, 0x33);
 
-        PbtSnapshotContent selfDestructed = new();
-        selfDestructed.SelfDestructs[Address] = true;
-        using PbtSnapshotBundle overSelfDestruct = Bundle(sharedLayers: [Content(0x33), selfDestructed], localLayers: [], recordDetailedMetrics);
+        using PbtSnapshotBundle overSelfDestruct = Bundle(sharedLayers: [Content(0x33)], localLayers: [], recordDetailedMetrics);
+        overSelfDestruct.SelfDestruct(Address);
         Assert.That(EvmWordSlot.IsZero(overSelfDestruct.GetSlot(Address, Slot)));
     }
 
@@ -178,19 +193,35 @@ public class PbtSnapshotBundleTests
     private static PbtSnapshotContent Content(byte marker)
     {
         PbtSnapshotContent content = new();
-        content.Accounts[Address] = Build.An.Account.WithNonce(marker).TestObject;
-        content.Slots[(Address, Slot)] = Word(marker);
+        content.LeafBlobs[HeaderStem] = HeaderBlob(marker);
         content.LeafBlobs[StemA] = [marker];
         content.TrieNodes[NodeA] = [marker];
         return content;
     }
 
+    /// <summary>
+    /// Seeds the branch's write buffer as a block would leave it: the account and slot eagerly, and the
+    /// header blob the root fold would have produced from them.
+    /// </summary>
     private static void Seed(PbtSnapshotBundle bundle, byte marker)
     {
         bundle.SetAccount(Address, Build.An.Account.WithNonce(marker).TestObject);
         bundle.SetSlot(Address, Slot, Word(marker));
+        bundle.SetLeafBlob(HeaderStem, HeaderBlob(marker));
         bundle.SetLeafBlob(StemA, [marker]);
         bundle.SetTrieNode(NodeA, [marker]);
+    }
+
+    /// <summary>The account header stem's blob carrying <paramref name="marker"/> as both the nonce and the value of <see cref="Slot"/>.</summary>
+    private static byte[] HeaderBlob(byte marker)
+    {
+        Span<byte> basicData = stackalloc byte[StemLeafBlob.ValueLength];
+        PbtKeyDerivation.PackBasicData(basicData, 0, marker, UInt256.Zero);
+
+        StemLeafBlobBuilder builder = new();
+        builder.Set(PbtKeyDerivation.BasicDataLeafKey, basicData);
+        builder.Set(PbtKeyDerivation.HeaderSlotSubIndex(Slot), [marker]);
+        return builder.Encode();
     }
 
     private static void Seed(FakeReader reader, byte marker)

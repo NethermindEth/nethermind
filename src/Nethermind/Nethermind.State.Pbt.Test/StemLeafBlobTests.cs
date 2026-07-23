@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -482,6 +483,86 @@ public class StemLeafBlobTests
     }
 
     /// <summary>Maps the byte[] changes to 32-byte leaf values (null/empty = clear) and applies them.</summary>
+    /// <summary>
+    /// The builder lays out a blob without hashing anything, so the only thing that makes it a blob is
+    /// that <see cref="StemLeafBlob"/> reads back exactly what went in — through both the random-access
+    /// and the enumerating reader, and after a merge onto an already-built one.
+    /// </summary>
+    [Test]
+    public void Builder_LaysOutALeavesOnlyBlob_ThatReadsBackWhatWentIn()
+    {
+        byte[] value5 = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] value200 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+
+        StemLeafBlobBuilder builder = new();
+        builder.Set(5, value5);
+        byte[] blob = builder.Encode();
+
+        // seeding from a blob is how the import merges an account's own leaves onto its header slots
+        builder.Seed(blob);
+        builder.Set(200, value200);
+        // a stripped value is right-aligned into the leaf, as the storage columns hand them over
+        builder.Set(7, [0xAB]);
+        blob = builder.Encode();
+
+        Assert.That(StemLeafBlob.TryGetValue(blob, 5, out ReadOnlySpan<byte> read5) && read5.SequenceEqual(value5));
+        Assert.That(StemLeafBlob.TryGetValue(blob, 200, out ReadOnlySpan<byte> read200) && read200.SequenceEqual(value200));
+        Assert.That(StemLeafBlob.TryGetValue(blob, 7, out ReadOnlySpan<byte> read7) && read7[^1] == 0xAB && read7[..^1].IsZero());
+        Assert.That(StemLeafBlob.TryGetValue(blob, 6, out _), Is.False);
+
+        List<byte> enumerated = [];
+        StemLeafBlob.LeafEnumerator leaves = StemLeafBlob.EnumerateLeavesOnly(blob);
+        while (leaves.MoveNext()) enumerated.Add(leaves.CurrentSubIndex);
+        Assert.That(enumerated, Is.EqualTo(new List<byte> { 5, 7, 200 }), "ascending by sub-index, which is also the entry order");
+    }
+
+    /// <summary>A zero leaf is absent, so clearing the last one leaves no blob and marks the stem deleted.</summary>
+    [Test]
+    public void Builder_TreatsAZeroValueAsAbsent()
+    {
+        StemLeafBlobBuilder builder = new();
+        builder.Set(5, Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111"));
+        builder.Set(5, new byte[StemLeafBlob.ValueLength]);
+
+        Assert.That(builder.IsEmpty);
+        Assert.That(builder.Encode(), Is.Empty);
+    }
+
+    /// <summary>
+    /// The import writes leaves-only blobs and folds them afterwards, so a blob it built has to fold to
+    /// the very root the same leaves applied from empty would.
+    /// </summary>
+    [TestCase(PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.Interleaved)]
+    [TestCase(PbtLeafFormat.LeavesOnly)]
+    [TestCase(PbtLeafFormat.Every4Depth)]
+    public void Builder_ProducesABlob_FoldingToTheSameRootAsApply(PbtLeafFormat format)
+    {
+        Dictionary<byte, byte[]?> leaves = new()
+        {
+            [0] = FixtureValues[0],
+            [1] = FixtureValues[1],
+            [200] = FixtureValues[2],
+        };
+
+        StemLeafBlobBuilder builder = new();
+        foreach ((byte subIndex, byte[]? value) in leaves) builder.Set(subIndex, value);
+
+        // refolding a built blob applies no change at all, so its own leaves are what it folds
+        Apply(builder.Encode(), [], format, out ValueHash256 fromBuilt);
+        Apply([], leaves, format, out ValueHash256 fromEmpty);
+
+        Assert.That(fromBuilt, Is.EqualTo(fromEmpty));
+    }
+
+    [Test]
+    public void EnumerateLeavesOnly_RefusesALayoutThatInterleavesInternalNodes()
+    {
+        byte[] blob = Apply([], new Dictionary<byte, byte[]?> { [5] = FixtureValues[0], [200] = FixtureValues[1] }, PbtLeafFormat.EveryLevel, out _);
+
+        Assert.That(() => StemLeafBlob.EnumerateLeavesOnly(blob), Throws.InstanceOf<InvalidDataException>());
+    }
+
     private static byte[] Apply(
         ReadOnlySpan<byte> prior, Dictionary<byte, byte[]?> changes, PbtLeafFormat format, out ValueHash256 subtreeRoot)
     {

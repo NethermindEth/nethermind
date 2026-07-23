@@ -4,10 +4,8 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
@@ -168,13 +166,6 @@ public class PbtPersistenceCoordinator(
         PbtSnapshotContent content = merged.Content;
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, merged.TreeRoot, WriteFlags.None);
 
-        foreach ((AddressAsKey address, Account? account) in content.Accounts)
-        {
-            batch.SetAccount(address, account);
-        }
-
-        WriteSlots(content, batch);
-
         foreach ((Stem stem, byte[] blob) in content.LeafBlobs)
         {
             batch.SetLeafBlob(stem, blob);
@@ -183,34 +174,6 @@ public class PbtPersistenceCoordinator(
         foreach ((TrieNodeKey key, byte[]? node) in content.TrieNodes)
         {
             batch.SetTrieNode(key, node);
-        }
-    }
-
-    /// <remarks>
-    /// A flat storage key is the slot's tree key, which costs two BLAKE3 hashes to derive from
-    /// scratch. <see cref="PbtSnapshotContent.Slots"/> is an unordered map, so writing it as it
-    /// enumerates would pay both per slot; ordering by address then slot lets the batch's
-    /// <see cref="PbtSlotKeyDeriver"/> charge one hash per address plus one per 256-slot run. The
-    /// order buys nothing on disk — tree keys are digests, so any enumeration order lands randomly
-    /// in the column.
-    /// </remarks>
-    private static void WriteSlots(PbtSnapshotContent content, IPbtPersistence.IWriteBatch batch)
-    {
-        using ArrayPoolList<KeyValuePair<(AddressAsKey Address, UInt256 Slot), EvmWord>> slots = new(content.Slots.Count);
-        foreach (KeyValuePair<(AddressAsKey Address, UInt256 Slot), EvmWord> slot in content.Slots)
-        {
-            slots.Add(slot);
-        }
-
-        slots.Sort(static (a, b) =>
-        {
-            int byAddress = a.Key.Address.Value.Bytes.SequenceCompareTo(b.Key.Address.Value.Bytes);
-            return byAddress != 0 ? byAddress : a.Key.Slot.CompareTo(b.Key.Slot);
-        });
-
-        foreach (KeyValuePair<(AddressAsKey Address, UInt256 Slot), EvmWord> slot in slots.AsSpan())
-        {
-            batch.SetSlot(slot.Key.Address, slot.Key.Slot, slot.Value);
         }
     }
 }

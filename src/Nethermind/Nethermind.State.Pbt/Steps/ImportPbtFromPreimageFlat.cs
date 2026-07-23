@@ -31,12 +31,20 @@ namespace Nethermind.State.Pbt.Steps;
 /// <c>ImportFlatDb</c>).
 /// </summary>
 /// <remarks>
-/// The import runs in two phases, and the PBT's own flat columns are what carries state between them:
-/// first the source is copied into the PBT flat account and storage columns, in parallel over ranges of
-/// the source's account key space; then those columns are scanned back to derive the tree leaves, which
-/// the flat key layout hands over in stem order so nothing has to sort them.
+/// The import runs in two phases, and the leaf blob columns are what carries state between them: first
+/// the source is laid out as <see cref="PbtLeafFormat.LeavesOnly"/> blobs, in parallel over ranges of
+/// the source address space; then those blobs are scanned back and folded into the tree.
+/// <para>
+/// The first phase is what re-sorts the data. A preimage-flat source is keyed by raw address, while a
+/// stem is derived from its hash, so the two orders are unrelated — but the leaf columns are keyed by
+/// stem, so writing the blobs is itself the sort, and phase two reads them back in exactly the order
+/// the rebuild wants. Laying them out costs no hash at all: the leaves-only layout stores no internal
+/// node, and the fold that phase two runs is what merkelizes them.
+/// </para>
+/// <para>
 /// The phases cannot overlap: phase one partitions the source by address, which scatters across the
-/// whole address-hash space, so no range of phase two's key space is complete until all of phase one is.
+/// whole stem space, so no range of phase two's key space is complete until all of phase one is.
+/// </para>
 /// </remarks>
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],
@@ -54,15 +62,6 @@ public class ImportPbtFromPreimageFlat(
 ) : IStep
 {
     private const int AddressLength = 20;
-
-    /// <summary>A tree key is a stem plus its sub-index byte, and is also a flat storage key.</summary>
-    private const int TreeKeyLength = Stem.Length + 1;
-
-    /// <summary>Bit position of a stem's zone within its first byte.</summary>
-    private const int ZoneShift = 4;
-
-    /// <summary>First byte of the lowest storage-zone stem; the zone is the top bit rather than a nibble value.</summary>
-    private const byte StorageZoneFirstByte = 0x80;
 
     /// <summary>Entries per chunk on the leaf channel; chunking amortizes the channel's per-write cost over the import's billions of leaves.</summary>
     private const int ChunkSize = 2_048;
@@ -133,7 +132,7 @@ public class ImportPbtFromPreimageFlat(
 
     /// <remarks>
     /// A pre-genesis state pointer means no state was ever committed, but an interrupted run can still
-    /// have written flat rows, leaf blobs and trie nodes, and those are not inert:
+    /// have written leaf blobs and trie nodes, and those are not inert:
     /// <see cref="TrieUpdater"/> reads the stored root group before it consults the root hash it was
     /// handed, so a rebuild starting from an empty root folds against the stale tree and settles on the
     /// wrong root. Metadata is left alone — it carries the layout version, and its state pointer is
@@ -176,17 +175,17 @@ public class ImportPbtFromPreimageFlat(
     }
 
     /// <summary>
-    /// Phase one: copies the source's accounts and slots into the PBT flat columns, re-keyed on the
-    /// address key hash and the slot tree key respectively.
+    /// Phase one: lays the source's accounts and slots out as leaves-only blobs in the leaf columns,
+    /// keyed by the stem each belongs to.
     /// </summary>
     /// <remarks>
-    /// Each worker owns a source reader, a PBT write batch and the range it is currently on, so nothing
-    /// is shared but the counters. Ranges are handed out on demand rather than assigned up front
-    /// because storage sizes are wildly uneven. Every batch is written
+    /// Each worker owns a source reader, a PBT write batch, its blob scratch and the range it is
+    /// currently on, so nothing is shared but the counters. Ranges are handed out on demand rather than
+    /// assigned up front because storage sizes are wildly uneven. Every batch is written
     /// <see cref="StateId.PreGenesis"/> → <see cref="StateId.PreGenesis"/> with
     /// <see cref="WriteFlags.DisableWAL"/>: the persisted-state pointer stays pre-genesis until the
     /// rebuild completes, so a crash mid-import leaves a state that the next run simply overwrites —
-    /// the flat keys are a deterministic function of the source, so re-copying is idempotent.
+    /// a stem's blob is a deterministic function of the source, so re-laying it is idempotent.
     /// </remarks>
     private async Task CopyFlatColumns(int workerCount, CancellationToken cancellationToken)
     {
@@ -199,6 +198,7 @@ public class ImportPbtFromPreimageFlat(
         void CopyPartitions()
         {
             using FlatPersistence.IPersistenceReader reader = flatSource.CreateReader();
+            LeafBlobWriter leaves = new();
 
             int partition;
             while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
@@ -209,7 +209,7 @@ public class ImportPbtFromPreimageFlat(
                 // the persisted-state pointer it rewrites is the same pre-genesis value either way
                 using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
                 {
-                    CopyAccounts(reader, batch, start, end, ref accounts, ref slots, cancellationToken);
+                    CopyAccounts(reader, batch, leaves, start, end, ref accounts, ref slots, cancellationToken);
                 }
 
                 Interlocked.Increment(ref donePartitions);
@@ -283,9 +283,21 @@ public class ImportPbtFromPreimageFlat(
         if (_logger.IsInfo) _logger.Info($"PBT import copied {accounts:N0} accounts and {slots:N0} slots in {copying.Elapsed:hh\\:mm\\:ss}.");
     }
 
-    private static void CopyAccounts(
+    /// <summary>
+    /// Writes each account's header stem blob — its <c>BASIC_DATA</c>, <c>CODE_HASH</c>, its first 64
+    /// storage slots and its header code chunks, all of which share that stem — plus the
+    /// content-addressed overflow chunks of any code too long to fit it.
+    /// </summary>
+    /// <remarks>
+    /// The slots are taken first so that the header stem is written once, complete. That is only
+    /// possible because the source hands an account's slots over with the account itself; a sweep of the
+    /// storage column would interleave every account sharing a key prefix and no stem would be complete
+    /// until the sweep had passed it.
+    /// </remarks>
+    private void CopyAccounts(
         FlatPersistence.IPersistenceReader reader,
         IPbtPersistence.IWriteBatch batch,
+        LeafBlobWriter leaves,
         ValueHash256 start,
         ValueHash256 end,
         ref long accounts,
@@ -293,6 +305,7 @@ public class ImportPbtFromPreimageFlat(
         CancellationToken cancellationToken)
     {
         long pendingAccounts = 0;
+        Span<byte> basicData = stackalloc byte[StemLeafBlob.ValueLength];
         using FlatPersistence.IFlatIterator accountIterator = reader.CreateAccountIterator(start, end);
         while (accountIterator.MoveNext())
         {
@@ -303,8 +316,35 @@ public class ImportPbtFromPreimageFlat(
             Address address = new(accountKey.Bytes[..AddressLength]);
 
             Account account = DecodeAccount(accountIterator.CurrentValue);
-            batch.SetAccount(address, account);
-            if (account.HasStorage) CopySlots(reader, batch, accountKey, address, ref slots, cancellationToken);
+            byte[]? code = account.HasCode
+                ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for {address} (code hash {account.CodeHash}) in the code database.")
+                : null;
+
+            leaves.BeginAccount();
+            if (account.HasStorage) CopySlots(reader, batch, leaves, accountKey, address, ref slots, cancellationToken);
+
+            PbtKeyDerivation.PackBasicData(basicData, code is null ? 0u : (uint)code.Length, account.Nonce, account.Balance);
+            leaves.SetHeaderLeaf(PbtKeyDerivation.BasicDataLeafKey, basicData);
+            leaves.SetHeaderLeaf(PbtKeyDerivation.CodeHashLeafKey, account.CodeHash.Bytes);
+
+            byte[]? chunks = code is { Length: > 0 } ? PbtKeyDerivation.ChunkifyCode(code) : null;
+            int chunkCount = chunks is null ? 0 : chunks.Length / PbtKeyDerivation.CodeChunkSize;
+            for (int i = 0; i < Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks); i++)
+            {
+                leaves.SetHeaderLeaf(PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ChunkSpan(chunks!, i));
+            }
+
+            leaves.WriteHeaderStem(batch, PbtKeyDerivation.AccountHeaderStem(address));
+
+            // the overflow chunks are content-addressed, so a code shared by several accounts is laid
+            // out once per account and the writes are byte-identical
+            for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount;)
+            {
+                Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash.ValueHash256, i, out byte subIndex);
+                int run = Math.Min(chunkCount - i, PbtKeyDerivation.StemSubtreeWidth - subIndex);
+                leaves.WriteChunkRun(batch, overflowStem, subIndex, chunks!, i, run);
+                i += run;
+            }
 
             pendingAccounts++;
             if (pendingAccounts >= ProgressPublishInterval)
@@ -317,22 +357,25 @@ public class ImportPbtFromPreimageFlat(
         Interlocked.Add(ref accounts, pendingAccounts);
     }
 
-    /// <summary>Copies one account's slots, taking them from the source reader's own storage iterator.</summary>
+    /// <summary>Lays out one account's slots, taking them from the source reader's own storage iterator.</summary>
     /// <remarks>
     /// The iterator hands over the slot already decoded and the key already parsed, which is what keeps
     /// this blind to the source's storage key shape and slot encoding. Slots arrive grouped by address
-    /// and in ascending slot order — the ordering the batch's key deriver needs to charge one address
-    /// hash per account plus one suffix hash per 256-slot run.
+    /// and in ascending slot order — the ordering the key deriver needs to charge one address hash per
+    /// account plus one suffix hash per 256-slot run, and the ordering that keeps one storage-zone stem
+    /// open at a time, since a stem covers exactly one such run.
     /// </remarks>
     private static void CopySlots(
         FlatPersistence.IPersistenceReader reader,
         IPbtPersistence.IWriteBatch batch,
+        LeafBlobWriter leaves,
         in ValueHash256 accountKey,
         Address address,
         ref long slots,
         CancellationToken cancellationToken)
     {
         long pendingSlots = 0;
+        PbtSlotKeyDeriver deriver = new(address);
         using FlatPersistence.IFlatIterator slotIterator = reader.CreateStorageIterator(accountKey, default, ValueKeccak.MaxValue);
         while (slotIterator.MoveNext())
         {
@@ -340,7 +383,7 @@ public class ImportPbtFromPreimageFlat(
 
             // preimage mode: the slot key holds the raw slot as a 32-byte big-endian value
             UInt256 slot = new(slotIterator.CurrentKey.Bytes, isBigEndian: true);
-            batch.SetSlot(address, slot, EvmWordSlot.FromStripped(slotIterator.CurrentValue));
+            leaves.SetSlot(batch, ref deriver, slot, slotIterator.CurrentValue);
 
             if (++pendingSlots >= ProgressPublishInterval)
             {
@@ -349,6 +392,8 @@ public class ImportPbtFromPreimageFlat(
             }
         }
 
+        // the account's last storage-zone stem has no successor to close it
+        leaves.WriteOpenStem(batch);
         Interlocked.Add(ref slots, pendingSlots);
     }
 
@@ -398,17 +443,11 @@ public class ImportPbtFromPreimageFlat(
             catch { /* the failure already surfaced through the consumer above */ }
         }
     }
-
-    /// <summary>
-    /// Emits every tree leaf, in ascending tree-key order, by zone: the account headers, then the
-    /// content-addressed overflow code chunks, then the storage slots.
-    /// </summary>
+    /// <summary>Emits every tree leaf, in ascending stem order, by zone: the account headers, then the content-addressed overflow code chunks, then the storage slots.</summary>
     /// <remarks>
     /// The zones are disjoint subtrees and sort in that order (a stem's top nibble is its zone: 0x0
-    /// accounts, 0x1 code, 0x8 storage), so emitting them one after another yields a globally ascending
-    /// stream. The account and storage zones come straight off an ordered column scan; only the code
-    /// zone has to be sorted here, because an overflow stem is derived from the code hash and so has no
-    /// relation to the order accounts are scanned in.
+    /// accounts, 0x1 code, 0x8 storage), and each has a leaf column of its own keyed by stem — so
+    /// scanning the three in turn yields a globally ascending stream with nothing left to sort.
     /// </remarks>
     private async Task ProduceEntries(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, CancellationToken cancellationToken)
     {
@@ -416,15 +455,10 @@ public class ImportPbtFromPreimageFlat(
         try
         {
             using IColumnDbSnapshot<PbtColumns> snapshot = pbtDb.CreateSnapshot();
-            ISortedKeyValueStore accountColumn = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.Account);
-            ISortedKeyValueStore storageColumn = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.Storage);
 
-            // code hash -> chunk count, for the codes that spill past the account header
-            Dictionary<ValueHash256, int> overflowCodes = [];
-
-            await EmitAccountZone(accountColumn, storageColumn, overflowCodes, sink, cancellationToken);
-            await EmitCodeZone(overflowCodes, sink, cancellationToken);
-            await EmitStorageZone(storageColumn, sink, cancellationToken);
+            await EmitZone(snapshot, PbtColumns.AccountLeaves, sink, cancellationToken);
+            await EmitZone(snapshot, PbtColumns.CodeLeaves, sink, cancellationToken);
+            await EmitZone(snapshot, PbtColumns.StorageLeaves, sink, cancellationToken);
 
             await sink.Complete();
             entries.TryComplete();
@@ -435,142 +469,95 @@ public class ImportPbtFromPreimageFlat(
         }
     }
 
-    /// <summary>
-    /// Emits the account zone: every account's <c>BASIC_DATA</c>, <c>CODE_HASH</c>, header storage
-    /// slots and header code chunks, all of which share that account's header stem.
-    /// </summary>
+    /// <summary>Emits the leaves of one zone's blobs, in ascending stem then sub-index order.</summary>
     /// <remarks>
-    /// The account column is keyed by the address hash and the header stem is that hash's top 244 bits
-    /// behind a zero zone nibble, so the column already enumerates in stem order. Header slots
-    /// (<c>slot &lt; 64</c>) live on the same stem, which puts them in the storage column's zone-0
-    /// range in the very same order — so the two are merge-joined rather than seeked per account.
+    /// A blob's leaves are read out into a buffer before any of them is handed on: the enumerator and
+    /// the column's value are both spans over the store, which cannot survive the <c>await</c> that a
+    /// full sink chunk parks on.
     /// </remarks>
-    private async Task EmitAccountZone(
-        ISortedKeyValueStore accountColumn,
-        ISortedKeyValueStore storageColumn,
-        Dictionary<ValueHash256, int> overflowCodes,
-        LeafSink sink,
-        CancellationToken cancellationToken)
+    private static async Task EmitZone(IColumnDbSnapshot<PbtColumns> snapshot, PbtColumns column, LeafSink sink, CancellationToken cancellationToken)
     {
-        using ISortedView accounts = accountColumn.GetViewBetween(FirstKey(), PastEveryKey());
-        using ISortedView headerSlots = storageColumn.GetViewBetween(FirstKey(), ZoneFirstKey(PbtKeyDerivation.CodeZone << ZoneShift));
-        bool hasSlot = headerSlots.MoveNext();
-        long orphanSlots = 0;
+        RebuildEntry[] stemLeaves = new RebuildEntry[PbtKeyDerivation.StemSubtreeWidth];
 
-        while (accounts.MoveNext())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            ValueHash256 addressHash = new(accounts.CurrentKey);
-            Account account = DecodeAccount(accounts.CurrentValue);
-            Stem headerStem = PbtKeyDerivation.AccountHeaderStem(addressHash);
-
-            byte[]? code = account.HasCode
-                ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for the account hashing to {addressHash} (code hash {account.CodeHash}) in the code database.")
-                : null;
-
-            ValueHash256 basicData = default;
-            PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, code is null ? 0u : (uint)code.Length, account.Nonce, account.Balance);
-
-            await sink.Add(new RebuildEntry(headerStem, PbtKeyDerivation.BasicDataLeafKey, basicData));
-            await sink.Add(new RebuildEntry(headerStem, PbtKeyDerivation.CodeHashLeafKey, account.CodeHash.ValueHash256));
-
-            // a zone-0 storage row below this account's stem belongs to no account in the column; it
-            // cannot happen, but skipping it silently would hide a corrupt copy
-            while (hasSlot && CompareStem(headerSlots.CurrentKey, headerStem) < 0)
-            {
-                orphanSlots++;
-                hasSlot = headerSlots.MoveNext();
-            }
-
-            while (hasSlot && CompareStem(headerSlots.CurrentKey, headerStem) == 0)
-            {
-                byte subIndex = headerSlots.CurrentKey[Stem.Length];
-                ValueHash256 leaf = SlotLeaf(headerSlots.CurrentValue);
-                await sink.Add(new RebuildEntry(headerStem, subIndex, leaf));
-                hasSlot = headerSlots.MoveNext();
-            }
-
-            if (code is not { Length: > 0 }) continue;
-
-            byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
-            int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
-            int headerChunks = Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks);
-            for (int i = 0; i < headerChunks; i++)
-            {
-                await sink.Add(new RebuildEntry(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ChunkLeaf(chunks, i)));
-            }
-
-            // the overflow chunks are content-addressed, so one copy serves every account sharing this
-            // code; they are emitted together in the code zone once this zone is done
-            if (chunkCount > PbtKeyDerivation.HeaderCodeChunks) overflowCodes[account.CodeHash.ValueHash256] = chunkCount;
-        }
-
-        if (orphanSlots > 0 && _logger.IsWarn) _logger.Warn($"PBT import found {orphanSlots:N0} account-zone storage rows with no matching account; they were skipped.");
-    }
-
-    /// <summary>Emits the code zone: the overflow chunks of every code too long to fit the account header.</summary>
-    /// <remarks>
-    /// An overflow stem is a hash of the code hash, so it bears no relation to the order the accounts
-    /// referencing it were scanned in. The runs are therefore collected and ordered here, which is what
-    /// keeps this zone one contiguous sweep rather than a scatter across every window. The list holds
-    /// one entry per stem-sized run — EIP-170 caps code at 24576 bytes, so at most three per code.
-    /// </remarks>
-    private async Task EmitCodeZone(Dictionary<ValueHash256, int> overflowCodes, LeafSink sink, CancellationToken cancellationToken)
-    {
-        using ArrayPoolList<CodeChunkRun> runs = new(overflowCodes.Count);
-        foreach ((ValueHash256 codeHash, int chunkCount) in overflowCodes)
-        {
-            for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount;)
-            {
-                Stem stem = PbtKeyDerivation.CodeOverflowStem(codeHash, i, out byte subIndex);
-                int length = Math.Min(chunkCount - i, PbtKeyDerivation.StemSubtreeWidth - subIndex);
-                runs.Add(new CodeChunkRun(stem, codeHash, i, subIndex, length));
-                i += length;
-            }
-        }
-
-        runs.Sort(static (a, b) => a.Stem.Bytes.SequenceCompareTo(b.Stem.Bytes));
-
-        // one-entry memo: a code's runs only land adjacent when the sort happens to put them there
-        byte[]? chunks = null;
-        ValueHash256 chunkedCode = default;
-
-        for (int r = 0; r < runs.Count; r++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            CodeChunkRun run = runs[r];
-            if (chunks is null || chunkedCode != run.CodeHash)
-            {
-                chunks = PbtKeyDerivation.ChunkifyCode(codeDb.Get(run.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for code hash {run.CodeHash} in the code database."));
-                chunkedCode = run.CodeHash;
-            }
-
-            for (int j = 0; j < run.Length; j++)
-            {
-                await sink.Add(new RebuildEntry(run.Stem, (byte)(run.FirstSubIndex + j), ChunkLeaf(chunks, run.FirstChunkId + j)));
-            }
-        }
-    }
-
-    /// <summary>Emits the storage zone straight off the column, whose keys already are the tree keys.</summary>
-    private async Task EmitStorageZone(ISortedKeyValueStore storageColumn, LeafSink sink, CancellationToken cancellationToken)
-    {
-        using ISortedView view = storageColumn.GetViewBetween(ZoneFirstKey(StorageZoneFirstByte), PastEveryKey());
+        using ISortedView view = ((ISortedKeyValueStore)snapshot.GetColumn(column)).GetViewBetween(new byte[Stem.Length], PastEveryStemKey());
         while (view.MoveNext())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            Stem stem = new(view.CurrentKey[..Stem.Length]);
-            byte subIndex = view.CurrentKey[Stem.Length];
-            ValueHash256 leaf = SlotLeaf(view.CurrentValue);
-            await sink.Add(new RebuildEntry(stem, subIndex, leaf));
+            int count = ReadStemLeaves(view, stemLeaves);
+            for (int i = 0; i < count; i++)
+            {
+                await sink.Add(stemLeaves[i]);
+            }
         }
     }
 
-    /// <summary>One stem's worth of a code's overflow chunks, so the runs can be ordered before they are emitted.</summary>
-    private readonly record struct CodeChunkRun(Stem Stem, ValueHash256 CodeHash, int FirstChunkId, byte FirstSubIndex, int Length);
+    /// <summary>Reads the leaves of the blob the view sits on into <paramref name="stemLeaves"/>, returning how many there are.</summary>
+    private static int ReadStemLeaves(ISortedView view, RebuildEntry[] stemLeaves)
+    {
+        Stem stem = new(view.CurrentKey);
+        int count = 0;
+        StemLeafBlob.LeafEnumerator leaves = StemLeafBlob.EnumerateLeavesOnly(view.CurrentValue);
+        while (leaves.MoveNext())
+        {
+            stemLeaves[count++] = new RebuildEntry(stem, leaves.CurrentSubIndex, new ValueHash256(leaves.CurrentValue));
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// One worker's scratch for laying out leaves-only blobs. An account's slots arrive with the account
+    /// and in ascending order, so only two stems are ever open: its header stem, which its first 64
+    /// slots share with its own fields, and whichever storage-zone stem the slots have reached.
+    /// </summary>
+    /// <remarks>Owned by one worker and reused across every account it copies, so the two builders are paid for once.</remarks>
+    private sealed class LeafBlobWriter
+    {
+        private readonly StemLeafBlobBuilder _header = new();
+        private readonly StemLeafBlobBuilder _stem = new();
+
+        /// <summary>Meaningful only while <see cref="_stem"/> holds something.</summary>
+        private Stem _openStem;
+
+        public void BeginAccount() => _header.Reset();
+
+        public void SetHeaderLeaf(byte subIndex, scoped ReadOnlySpan<byte> value) => _header.Set(subIndex, value);
+
+        public void WriteHeaderStem(IPbtPersistence.IWriteBatch batch, in Stem stem) => batch.SetLeafBlob(stem, _header.Encode());
+
+        /// <summary>Routes a slot to its stem, closing the open storage-zone one when the slot has moved past it.</summary>
+        public void SetSlot(IPbtPersistence.IWriteBatch batch, ref PbtSlotKeyDeriver deriver, in UInt256 slot, scoped ReadOnlySpan<byte> value)
+        {
+            Stem stem = deriver.Derive(slot, out byte subIndex);
+            if (PbtKeyDerivation.IsHeaderSlot(slot))
+            {
+                _header.Set(subIndex, value);
+                return;
+            }
+
+            if (!_stem.IsEmpty && stem != _openStem) WriteOpenStem(batch);
+            _openStem = stem;
+            _stem.Set(subIndex, value);
+        }
+
+        public void WriteOpenStem(IPbtPersistence.IWriteBatch batch)
+        {
+            if (_stem.IsEmpty) return;
+
+            batch.SetLeafBlob(_openStem, _stem.Encode());
+            _stem.Reset();
+        }
+
+        /// <summary>Lays out a whole stem of code chunks at once; the storage builder is free by now, the slots having been written first.</summary>
+        public void WriteChunkRun(IPbtPersistence.IWriteBatch batch, in Stem stem, byte startSubIndex, byte[] chunks, int firstChunk, int count)
+        {
+            for (int i = 0; i < count; i++) _stem.Set((byte)(startSubIndex + i), ChunkSpan(chunks, firstChunk + i));
+            batch.SetLeafBlob(stem, _stem.Encode());
+            _stem.Reset();
+        }
+    }
+
 
     /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the rebuilder.</summary>
     private sealed class LeafSink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, CancellationToken cancellationToken) : IDisposable
@@ -611,33 +598,14 @@ public class ImportPbtFromPreimageFlat(
         return AccountDecoder.Slim.Decode(ref reader)!;
     }
 
-    /// <summary>A slot's tree leaf: the stored value re-padded to the canonical 32 bytes.</summary>
-    private static ValueHash256 SlotLeaf(ReadOnlySpan<byte> stored)
+    /// <summary>One code chunk, which is one leaf value, out of the run <see cref="PbtKeyDerivation.ChunkifyCode"/> laid out.</summary>
+    private static ReadOnlySpan<byte> ChunkSpan(byte[] chunks, int chunkId) =>
+        chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
+
+    /// <summary>One byte longer than any stem, so it sorts above every leaf column key.</summary>
+    private static byte[] PastEveryStemKey()
     {
-        EvmWord word = EvmWordSlot.FromStripped(stored);
-        return new ValueHash256(EvmWordSlot.AsReadOnlySpan(in word));
-    }
-
-    private static ValueHash256 ChunkLeaf(byte[] chunks, int chunkId) =>
-        new(chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
-
-    /// <summary>Orders a tree key against a stem, ignoring the key's trailing sub-index byte.</summary>
-    private static int CompareStem(ReadOnlySpan<byte> treeKey, in Stem stem) =>
-        treeKey[..Stem.Length].SequenceCompareTo(stem.Bytes);
-
-    private static byte[] FirstKey() => new byte[TreeKeyLength];
-
-    private static byte[] ZoneFirstKey(byte firstByte)
-    {
-        byte[] key = new byte[TreeKeyLength];
-        key[0] = firstByte;
-        return key;
-    }
-
-    /// <summary>One byte longer than any tree key, so it sorts above every one of them.</summary>
-    private static byte[] PastEveryKey()
-    {
-        byte[] key = new byte[TreeKeyLength + 1];
+        byte[] key = new byte[Stem.Length + 1];
         key.AsSpan().Fill(0xFF);
         return key;
     }

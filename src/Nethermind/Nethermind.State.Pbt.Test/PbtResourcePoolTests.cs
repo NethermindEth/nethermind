@@ -29,19 +29,29 @@ public class PbtResourcePoolTests
     public void ReturnedContent_IsReset()
     {
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        content.Accounts[TestItem.AddressA] = Build.An.Account.TestObject;
-        content.Slots[(TestItem.AddressA, UInt256.Zero)] = default;
-        content.SelfDestructs[TestItem.AddressA] = true;
         content.LeafBlobs[new Stem(new byte[31])] = [0x01];
         content.TrieNodes[new TrieNodeKey(0, new Stem(new byte[31]))] = [0x01];
 
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);
 
-        Assert.That(content.Accounts, Is.Empty);
-        Assert.That(content.Slots, Is.Empty);
-        Assert.That(content.SelfDestructs, Is.Empty);
         Assert.That(content.LeafBlobs, Is.Empty);
         Assert.That(content.TrieNodes, Is.Empty);
+    }
+
+    [Test]
+    public void ReturnedPendingFlatWrites_AreRentedAgain_AndReset()
+    {
+        PbtPendingFlatWrites pending = _pool.GetPendingFlatWrites(PbtResourcePool.Usage.MainBlockProcessing);
+        pending.Accounts[TestItem.AddressA] = Build.An.Account.TestObject;
+        pending.Slots[(TestItem.AddressA, UInt256.Zero)] = default;
+        pending.SelfDestructs[TestItem.AddressA] = true;
+
+        _pool.ReturnPendingFlatWrites(PbtResourcePool.Usage.MainBlockProcessing, pending);
+
+        Assert.That(_pool.GetPendingFlatWrites(PbtResourcePool.Usage.MainBlockProcessing), Is.SameAs(pending));
+        Assert.That(pending.Accounts, Is.Empty);
+        Assert.That(pending.Slots, Is.Empty);
+        Assert.That(pending.SelfDestructs, Is.Empty);
     }
 
     /// <summary>

@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
@@ -60,40 +58,11 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
         PbtResourcePool.Usage usage = PbtResourcePool.CompactUsage(chainOldestFirst.Count);
         PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
 
-        // First pass: the newest layer that self-destructs each address. A slot written strictly
-        // before that layer is wiped by the destruct, so it is filtered out of the merge below.
-        Dictionary<AddressAsKey, int> slotClearBoundary = [];
-        for (int i = 0; i < chainOldestFirst.Count; i++)
-        {
-            foreach ((AddressAsKey address, _) in chainOldestFirst[i].Content.SelfDestructs)
-            {
-                slotClearBoundary[address] = i;
-            }
-        }
-
-        // Second pass, oldest to newest, so a later layer's write overwrites an earlier one:
-        // reversing this inverts precedence and writes stale values to disk without any error.
+        // Oldest to newest, so a later layer's write overwrites an earlier one: reversing this inverts
+        // precedence and writes stale values to disk without any error.
         for (int i = 0; i < chainOldestFirst.Count; i++)
         {
             PbtSnapshotContent content = chainOldestFirst[i].Content;
-
-            foreach ((AddressAsKey address, Account? account) in content.Accounts)
-            {
-                merged.Accounts[address] = account;
-            }
-
-            // the markers are kept so persistence still range-deletes the on-disk storage
-            foreach ((AddressAsKey address, _) in content.SelfDestructs)
-            {
-                merged.SelfDestructs[address] = true;
-            }
-
-            foreach (((AddressAsKey Address, UInt256 Slot) slotKey, EvmWord value) in content.Slots)
-            {
-                // a slot written in the destructing layer itself is a post-destruct write and survives
-                if (slotClearBoundary.TryGetValue(slotKey.Address, out int boundary) && i < boundary) continue;
-                merged.Slots[slotKey] = value;
-            }
 
             foreach ((Stem stem, byte[] blob) in content.LeafBlobs)
             {
