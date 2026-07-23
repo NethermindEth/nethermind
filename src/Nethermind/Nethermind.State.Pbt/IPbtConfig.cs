@@ -49,4 +49,34 @@ public interface IPbtConfig : IConfig
 
     [ConfigItem(Description = "Number of parallel workers folding a block's writes into the tree. 0 uses the processor count, 1 folds on the calling thread only. A batch too small to be worth splitting folds on the calling thread whatever this says.", DefaultValue = "0")]
     int RootFoldConcurrency { get; set; }
+
+    [ConfigItem(Description = "RocksDB options shared by every column of the pbt database. Applied on top of the global database options, and overridden in turn by the per-column options below.", HiddenFromDocs = true)]
+    string RocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt metadata column.", HiddenFromDocs = true)]
+    string MetadataRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt flat account column.", HiddenFromDocs = true)]
+    string AccountRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt flat storage column.", HiddenFromDocs = true)]
+    string StorageRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt account header zone leaf blob column.", HiddenFromDocs = true)]
+    string AccountLeavesRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt code zone leaf blob column.", HiddenFromDocs = true)]
+    string CodeLeavesRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt storage zone leaf blob column.", HiddenFromDocs = true)]
+    string StorageLeavesRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt account header zone trie node column.", HiddenFromDocs = true)]
+    string AccountTrieNodesRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt code zone trie node column.", HiddenFromDocs = true)]
+    string CodeTrieNodesRocksDbOptions { get; set; }
+
+    [ConfigItem(Description = "RocksDB options of the pbt storage zone trie node column.", HiddenFromDocs = true)]
+    string StorageTrieNodesRocksDbOptions { get; set; }
 }

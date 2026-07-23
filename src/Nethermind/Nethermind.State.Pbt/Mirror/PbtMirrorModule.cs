@@ -6,6 +6,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.State.Flat.Persistence;
@@ -30,6 +31,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
     {
         builder
             .AddColumnDatabase<PbtColumns>(DbNames.Pbt)
+            .AddDecorator<IRocksDbConfigFactory, PbtRocksDbConfigAdjuster>()
             .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
             // singleton: a second pool would silently halve every hit rate
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
