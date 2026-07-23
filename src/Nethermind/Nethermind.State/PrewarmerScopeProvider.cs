@@ -228,6 +228,8 @@ public class PrewarmerScopeProvider(
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
+        public bool IsKnownEmpty => baseStorageTree.IsKnownEmpty;
+
         public byte[] Get(in UInt256 index)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly

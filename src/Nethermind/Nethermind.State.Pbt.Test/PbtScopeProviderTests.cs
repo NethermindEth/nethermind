@@ -100,6 +100,55 @@ public class PbtScopeProviderTests(PbtTiling tiling)
         Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 1000).ToArray(), Is.EqualTo((byte[])[0x12, 0x34]));
     }
 
+    /// <summary>
+    /// The world state must not read emptiness off the storage tree's placeholder root: taking it as proof
+    /// that the account holds no slot answers every read after the first with zero, and hands the commit a
+    /// storage clear that would mark the account self-destructed.
+    /// </summary>
+    [Test]
+    public async Task ReadsThroughWorldState_PastTheFirstSlot_StillSeeStoredValues()
+    {
+        await using PbtTestContext ctx = NewContext();
+        WorldState worldState = new(ctx.WorldStateManager.GlobalWorldState, LimboLogs.Instance);
+
+        byte[] firstValue = Bytes.FromHexString("0xab");
+        byte[] secondValue = Bytes.FromHexString("0x1234");
+        byte[] writtenAfterRead = Bytes.FromHexString("0x5678");
+
+        Hash256 root1;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressB, 42);
+            worldState.Set(new StorageCell(TestItem.AddressB, 5), firstValue);
+            worldState.Set(new StorageCell(TestItem.AddressB, 1000), secondValue);
+            worldState.Commit(Spec);
+            worldState.CommitTree(1);
+            root1 = worldState.StateRoot;
+        }
+
+        BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).WithStateRoot(root1).TestObject;
+        Hash256 root2;
+        using (worldState.BeginScope(header1))
+        {
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)).ToArray(), Is.EqualTo(firstValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(secondValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)).ToArray(), Is.EqualTo(firstValue));
+
+            worldState.Set(new StorageCell(TestItem.AddressB, 70), writtenAfterRead);
+            worldState.Commit(Spec);
+            worldState.CommitTree(2);
+            root2 = worldState.StateRoot;
+        }
+
+        BlockHeader header2 = Build.A.BlockHeader.WithNumber(2).WithStateRoot(root2).TestObject;
+        using (worldState.BeginScope(header2))
+        {
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)).ToArray(), Is.EqualTo(firstValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(secondValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 70)).ToArray(), Is.EqualTo(writtenAfterRead));
+        }
+    }
+
     [Test]
     public async Task StorageWritesWithoutAccountChange_MerkelizeThroughStemPass()
     {

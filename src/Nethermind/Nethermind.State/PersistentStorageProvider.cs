@@ -523,7 +523,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             _backend = _provider._currentScope.CreateStorageTree(_address);
 
-            bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
+            bool isEmpty = _backend.IsKnownEmpty;
             if (isEmpty && !_wasWritten)
             {
                 // Slight optimization that skips the tree

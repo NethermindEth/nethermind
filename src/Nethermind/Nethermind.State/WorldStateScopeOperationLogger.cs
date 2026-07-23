@@ -75,6 +75,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     {
         public Hash256 RootHash => storageTree.RootHash;
 
+        public bool IsKnownEmpty => storageTree.IsKnownEmpty;
+
         public byte[] Get(in UInt256 index)
         {
             byte[]? bytes = storageTree.Get(in index);

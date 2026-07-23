@@ -249,6 +249,34 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>
+    /// A backend that cannot prove an account holds no slot must still be read for every one of them: the
+    /// missing-slots-are-zero shortcut is gated on <c>IStorageTree.IsKnownEmpty</c>, not on the storage root.
+    /// </summary>
+    [Test]
+    public void Storage_of_a_backend_that_cannot_prove_emptiness_is_still_read()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = new(new UnknownEmptinessScopeProvider(ctx.StateProvider.ScopeProvider), LogManager);
+
+        Hash256 stateRoot;
+        using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 0);
+            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+            provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            stateRoot = provider.StateRoot;
+        }
+
+        using (IDisposable _ = provider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject))
+        {
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[2]));
+        }
+    }
+
     [Test]
     public void Storage_root_collect_recomputes_all_changed_contracts_amid_warm_reads()
     {
@@ -1116,6 +1144,52 @@ public class StorageProviderTests(bool useFlat)
                 baseStorageBatch.Clear();
                 writtenData.SelfDestructed[address] = true;
             }
+        }
+    }
+
+    /// <summary>Stands in for a backend whose storage trees keep their root but never claim to be empty.</summary>
+    private sealed class UnknownEmptinessScopeProvider(IWorldStateScopeProvider baseProvider) : IWorldStateScopeProvider
+    {
+        public bool HasRoot(BlockHeader baseBlock) => baseProvider.HasRoot(baseBlock);
+
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) =>
+            new ScopeDecorator(baseProvider.BeginScope(baseBlock, metrics));
+
+        private sealed class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope) : IWorldStateScopeProvider.IScope
+        {
+            public Hash256 RootHash => baseScope.RootHash;
+
+            public void UpdateRootHash() => baseScope.UpdateRootHash();
+
+            public Account Get(Address address) => baseScope.Get(address);
+
+            public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
+
+            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
+                => baseScope.HintBal(bal, sink);
+
+            public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
+
+            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
+                new StorageTreeDecorator(baseScope.CreateStorageTree(address));
+
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
+                baseScope.StartWriteBatch(estimatedAccountNum);
+
+            public void Commit(ulong blockNumber) => baseScope.Commit(blockNumber);
+
+            public void Dispose() => baseScope.Dispose();
+        }
+
+        private sealed class StorageTreeDecorator(IWorldStateScopeProvider.IStorageTree baseStorageTree) : IWorldStateScopeProvider.IStorageTree
+        {
+            public Hash256 RootHash => baseStorageTree.RootHash;
+
+            public bool IsKnownEmpty => false;
+
+            public byte[] Get(in UInt256 index) => baseStorageTree.Get(in index);
+
+            public void HintSet(in UInt256 index, byte[] value) => baseStorageTree.HintSet(in index, value);
         }
     }
 
