@@ -37,7 +37,7 @@ public class PbtMirrorScopeProvider(
     IPbtResourcePool resourcePool,
     IPbtConfig config) : IWorldStateScopeProvider
 {
-    private readonly PbtGroupFormat _writeFormat = config.TrieNodeLevels;
+    private readonly PbtTrieFormat _writeFormat = config.TrieNodeWriteFormat();
     private readonly int _rootFoldConcurrency = config.RootFoldConcurrency;
 
     public bool HasRoot(BlockHeader? baseBlock) =>
