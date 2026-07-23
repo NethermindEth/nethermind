@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -47,7 +48,7 @@ public class PbtFlatDrivenPersistenceTests
         FlatPersistence inner = Substitute.For<FlatPersistence>();
         FlatPersistence.IWriteBatch innerBatch = Substitute.For<FlatPersistence.IWriteBatch>();
         inner.CreateWriteBatch(Arg.Any<FlatStateId>(), Arg.Any<FlatStateId>(), Arg.Any<WriteFlags>()).Returns(innerBatch);
-        PbtFlatDrivenPersistence persistence = new(inner, ctx.Manager, ctx.Persistence);
+        PbtFlatDrivenPersistence persistence = new(inner, new Lazy<PbtDbManager>(ctx.Manager), ctx.Persistence);
 
         FlatPersistence.IWriteBatch batch = persistence.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(2, root2));
 
@@ -69,7 +70,7 @@ public class PbtFlatDrivenPersistenceTests
         };
 
         FlatPersistence inner = Substitute.For<FlatPersistence>();
-        PbtFlatDrivenPersistence persistence = new(inner, ctx.Manager, ctx.Persistence);
+        PbtFlatDrivenPersistence persistence = new(inner, new Lazy<PbtDbManager>(ctx.Manager), ctx.Persistence);
 
         persistence.CreateWriteBatch(FlatStateId.PreGenesis, to);
 
