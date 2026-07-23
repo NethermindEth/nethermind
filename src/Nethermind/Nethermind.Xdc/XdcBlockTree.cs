@@ -72,7 +72,7 @@ internal class XdcBlockTree(
             return true;
 
         return header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader headBlock &&
-            IsSameTdButSelfMined(newBlock, headBlock);
+            IsSameTdButPreferred(newBlock, headBlock);
     }
 
     protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
@@ -81,19 +81,39 @@ internal class XdcBlockTree(
             return true;
 
         return header is XdcBlockHeader newBlock && BestSuggestedBody?.Header is XdcBlockHeader bestBlock &&
-            IsSameTdButSelfMined(newBlock, bestBlock);
+            IsSameTdButPreferred(newBlock, bestBlock);
     }
 
     public override bool IsBetterThanHead(BlockHeader? header)
     {
-        if (base.IsBetterThanHead(header))
-            return true;
+        // Base falls back to comparing hashes on an equal-TD tie, which is meaningless for XDPoS
+        // (every proposal at a height ties on TD) and would let an arbitrary hash ordering override
+        // the round-based tie-break below. Decide equal-TD ties between two XDC headers here first.
+        if (header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader headBlock &&
+            newBlock.TotalDifficulty == headBlock.TotalDifficulty)
+            return IsSameTdButPreferred(newBlock, headBlock);
 
-        return header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader bestBlock &&
-            IsSameTdButSelfMined(newBlock, bestBlock);
+        return base.IsBetterThanHead(header);
     }
 
-    // Allow overriding head with self-mined blocks with the same TD
-    private static bool IsSameTdButSelfMined(XdcBlockHeader newHeader, XdcBlockHeader oldHeader) =>
-        newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.IsSelfMined;
+    /// <remarks>
+    /// XDPoS difficulty is fixed per block (always parent + 1), so every validator's competing
+    /// proposal at a given height ties on TD - the tie must be broken by round instead of TD.
+    /// Otherwise a node that already adopted an earlier round's self-mined proposal as head could
+    /// never adopt a later, network-agreed round's block proposed by another validator, since a
+    /// remote block is never self-mined. Within the same round (a proposal race), fall back to
+    /// preferring the self-mined block.
+    /// </remarks>
+    internal static bool IsSameTdButPreferred(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
+    {
+        if (newHeader.TotalDifficulty != oldHeader.TotalDifficulty)
+            return false;
+
+        ulong? newRound = newHeader.ExtraConsensusData?.BlockRound;
+        ulong? oldRound = oldHeader.ExtraConsensusData?.BlockRound;
+        if (newRound is null || oldRound is null)
+            return false;
+
+        return newRound != oldRound ? newRound > oldRound : newHeader.IsSelfMined;
+    }
 }
