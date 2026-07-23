@@ -880,7 +880,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             _backend = Provider.CurrentScope.CreateStorageTree(Address);
 
-            bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
+            bool isEmpty = _backend.IsKnownEmpty;
             if (!_storageRootSeen)
             {
                 _storageRootSeen = true;
