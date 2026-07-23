@@ -108,9 +108,6 @@ namespace Nethermind.Config
 
         public override string ToString() => Info;
 
-        // IPv4-mapped IPv6 addresses (e.g. from dual-stack sockets) render as "::ffff:x.x.x.x", which is not
-        // a valid URI host unless bracketed. Format as plain IPv4 here rather than bracketing, since the
-        // string constructor below parses the host with IPAddress.TryParse and doesn't expect brackets.
         private IPAddress FormattedHostIp => HostIp.IsIPv4MappedToIPv6 ? HostIp.MapToIPv4() : HostIp;
 
         public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
