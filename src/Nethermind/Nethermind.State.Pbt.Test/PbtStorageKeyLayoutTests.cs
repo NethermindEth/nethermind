@@ -13,6 +13,8 @@ using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
@@ -36,7 +38,7 @@ public class PbtStorageKeyLayoutTests
     public void SlotRoundTripsAndZeroDeletes(uint slot)
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db);
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
         {
@@ -74,7 +76,7 @@ public class PbtStorageKeyLayoutTests
     public void StorageColumnEnumeratesInTreeKeyOrder()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db);
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
 
         Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
         UInt256[] slots = [5, 70, 1000, 63, 64, 0, 100_000];
@@ -117,7 +119,7 @@ public class PbtStorageKeyLayoutTests
     public void RejectsADatabaseWrittenUnderAnEarlierLayout()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db);
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
         {
@@ -127,7 +129,7 @@ public class PbtStorageKeyLayoutTests
         // strip the version stamp, leaving a populated database that looks like a pre-versioning one
         db.GetColumnDb(PbtColumns.Metadata).Remove("layoutVersion"u8);
 
-        Assert.That(() => new PbtRocksDbPersistence(db), Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()), Throws.InstanceOf<InvalidDataException>());
     }
 
     /// <summary>An empty database has no state to misread, so it is stamped with the current layout rather than refused.</summary>
@@ -135,9 +137,9 @@ public class PbtStorageKeyLayoutTests
     public void StampsAFreshDatabase()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        _ = new PbtRocksDbPersistence(db);
+        _ = new PbtRocksDbPersistence(db, new PbtConfig());
 
         Assert.That(db.GetColumnDb(PbtColumns.Metadata)["layoutVersion"u8.ToArray()], Is.Not.Null);
-        Assert.That(() => new PbtRocksDbPersistence(db), Throws.Nothing);
+        Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()), Throws.Nothing);
     }
 }

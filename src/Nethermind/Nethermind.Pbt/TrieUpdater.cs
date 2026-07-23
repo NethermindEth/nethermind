@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -46,11 +47,12 @@ public static partial class TrieUpdater
     /// blobs and trie node groups to <paramref name="store"/>, and returns the new root (32 zero
     /// bytes for an empty tree). An empty batch returns <paramref name="currentRoot"/> untouched.
     /// </summary>
-    /// <param name="writeFormat">
-    /// Which encoding to write the groups this batch rebuilds in, and with them the leaf blobs (see
-    /// <see cref="PbtLeafFormat"/>). They all fold to the same root and are all read whatever this says,
-    /// so it may change between batches over one store: a group is converted only by a change that
-    /// rewrites it anyway.
+    /// <param name="format">
+    /// The tiling the store is written in, and which encoding to write the groups this batch rebuilds
+    /// in — and with them the leaf blobs (see <see cref="PbtLeafFormat"/>). The tiling is a property of
+    /// the whole store and must not change over one; the encodings may, all folding to the same root
+    /// and all being read whatever this says, so a group is converted only by a change that rewrites
+    /// it anyway.
     /// </param>
     /// <param name="delta">The change this batch makes to the whole tree's stem count — positive as stems are added, negative as their leaves are zeroed away.</param>
     /// <param name="concurrency">
@@ -60,7 +62,7 @@ public static partial class TrieUpdater
     /// </param>
     public static ValueHash256 UpdateRoot(
         IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider,
-        PbtGroupFormat writeFormat, int concurrency, out PbtSubtreeStats delta)
+        PbtTrieFormat format, int concurrency, out PbtSubtreeStats delta)
     {
         if (changes.Count == 0)
         {
@@ -68,7 +70,9 @@ public static partial class TrieUpdater
             return currentRoot;
         }
 
-        return new Updater(store, memoryProvider, writeFormat, changes, concurrency).Run(currentRoot, changes, out delta);
+        return format.Tiling == PbtTiling.SixLevel
+            ? new Updater<PbtSixLevelTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta)
+            : new Updater<PbtClusteredTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta);
     }
 
     /// <summary>
@@ -81,7 +85,12 @@ public static partial class TrieUpdater
     /// nothing mutable among it. How a fold gets its threads, and how a frame hands a bucket to one,
     /// is the other half of this class — see <c>TrieUpdater.Parallel.cs</c>.
     /// </remarks>
-    private sealed partial class Updater
+    /// <remarks>
+    /// The frames are <see cref="SkipLocalsInitAttribute"/>: each takes its boundary buffers as a
+    /// <see cref="RefList64{T}"/> sized to the tiling's slots, which clears what it hands out, so a
+    /// narrow tiling does not pay a prolog zero of the widest one's inline array.
+    /// </remarks>
+    private sealed partial class Updater<TLayout> where TLayout : IPbtTileLayout
     {
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
@@ -178,7 +187,7 @@ public static partial class TrieUpdater
             /// it rather than the store, and the absent blob where the store does.
             /// </summary>
             /// <remarks>
-            /// A frame at a <see cref="PbtLayout.IsClusteringDepth"/> depth holds every one of them:
+            /// A frame at a <see cref="TLayout.IsClusteringDepth"/> depth holds every one of them:
             /// its children have no keys of their own, so this is the only way to their bytes, whether the
             /// descent is about to read one or is copying an untouched one straight over into the blob
             /// replacing this one.
@@ -189,16 +198,16 @@ public static partial class TrieUpdater
             /// The slots <see cref="ChildBlob"/> answers for, which a clustering frame walks alongside the
             /// slots its writes touch: a child no write reaches still has to be carried over.
             /// </summary>
-            uint ChildSlotsBitmask { get; }
+            ulong ChildSlotsBitmask { get; }
         }
 
         /// <summary>
         /// The occupants of a stored group, each read straight out of its encoding at the slot's fixed
         /// boundary position, and the children the blob holds around that encoding.
         /// </summary>
-        private readonly ref struct StoredOccupants(PbtTrieNodeGroup existing, StoredBlob blob, PbtNodeCluster cluster) : IOccupants
+        private readonly ref struct StoredOccupants(PbtTrieNodeGroup<TLayout> existing, StoredBlob blob, PbtNodeCluster cluster) : IOccupants
         {
-            private readonly PbtTrieNodeGroup _existing = existing;
+            private readonly PbtTrieNodeGroup<TLayout> _existing = existing;
             private readonly StoredBlob _blob = blob;
             private readonly PbtNodeCluster _cluster = cluster;
 
@@ -218,7 +227,7 @@ public static partial class TrieUpdater
 
             public StoredBlob ChildBlob(int slot) => _blob.Slice(_cluster.Child(slot, _existing));
 
-            public uint ChildSlotsBitmask => _cluster.IsBare ? 0 : _existing.BoundaryShape().ChildSlots;
+            public ulong ChildSlotsBitmask => _cluster.IsBare ? 0 : _existing.BoundaryShape().ChildSlots;
 
             /// <summary>Where the group's entries start in the memory holding them, which a cluster puts its children ahead of.</summary>
             private int GroupOffset => _blob.Offset + _cluster.GroupOffset;
@@ -242,7 +251,7 @@ public static partial class TrieUpdater
 
             public StoredBlob ChildBlob(int slot) => slot == _seedSlot ? _seedBlob : default;
 
-            public uint ChildSlotsBitmask => _seedBlob.IsEmpty ? 0 : 1u << _seedSlot;
+            public ulong ChildSlotsBitmask => _seedBlob.IsEmpty ? 0 : 1UL << _seedSlot;
         }
 
         /// <summary>
@@ -270,19 +279,20 @@ public static partial class TrieUpdater
         /// <param name="result">The node now occupying the group's root position, written straight into the caller's slot.</param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
+        [SkipLocalsInit]
         private void ApplyGroup(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, StoredBlob existingData,
             in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
-            Debug.Assert(!entries.IsEmpty && depth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0);
-            Debug.Assert(depth <= PbtLayout.TrieNodeGroupMaxGroupDepth);
-            Debug.Assert(!PbtLayout.IsClusteringDepth(depth), "a group holding its children goes through ApplyClustered");
+            Debug.Assert(!entries.IsEmpty && depth % TLayout.LevelsPerGroup == 0);
+            Debug.Assert(depth <= TLayout.MaxGroupDepth);
+            Debug.Assert(!TLayout.IsClusteringDepth(depth), "a group holding its children goes through ApplyClustered");
 
-            PbtTrieNodeGroup existing = existingData.IsEmpty ? default : PbtTrieNodeGroup.Decode(existingData.Data);
+            PbtTrieNodeGroup<TLayout> existing = existingData.IsEmpty ? default : PbtTrieNodeGroup<TLayout>.Decode(existingData.Data);
 
-            RefList16<NodeResult> resultBuffer = new(PbtLayout.TrieNodeGroupBoundarySlots);
+            RefList64<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
             int mark = writer.WrittenCount;
             PbtNodeCluster.Builder bare = default;
@@ -295,21 +305,22 @@ public static partial class TrieUpdater
                 out changed, out delta);
         }
 
+        [SkipLocalsInit]
         private void ApplyClustered(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, StoredBlob existingData,
             in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
-            Debug.Assert(!entries.IsEmpty && depth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0);
-            Debug.Assert(depth <= PbtLayout.TrieNodeGroupMaxGroupDepth);
-            Debug.Assert(PbtLayout.IsClusteringDepth(depth), "a group holding no child goes through ApplyGroup");
+            Debug.Assert(!entries.IsEmpty && depth % TLayout.LevelsPerGroup == 0);
+            Debug.Assert(depth <= TLayout.MaxGroupDepth);
+            Debug.Assert(TLayout.IsClusteringDepth(depth), "a group holding no child goes through ApplyGroup");
 
-            PbtTrieNodeGroup existing = default;
-            PbtNodeCluster cluster = existingData.IsEmpty ? default : PbtNodeCluster.Decode(existingData.Data, out existing);
+            PbtTrieNodeGroup<TLayout> existing = default;
+            PbtNodeCluster cluster = existingData.IsEmpty ? default : PbtNodeCluster.Decode<TLayout>(existingData.Data, out existing);
 
             PbtNodeCluster.Builder builder = default;
-            RefList16<NodeResult> resultBuffer = new(PbtLayout.TrieNodeGroupBoundarySlots);
+            RefList64<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             StoredOccupants occupants = new(existing, existingData, cluster);
@@ -318,6 +329,29 @@ public static partial class TrieUpdater
             result = RebuildNode(
                 key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref builder, mark: 0,
                 out changed, out delta);
+        }
+
+        /// <summary>
+        /// Applies <paramref name="entries"/> to the group stored at <paramref name="key"/>, through
+        /// whichever of the two frames its depth calls for.
+        /// </summary>
+        /// <remarks>
+        /// A tiling where no depth holds its children folds this to <see cref="ApplyGroup"/> outright,
+        /// leaving <see cref="ApplyClustered"/> — and the blob format it reads — out of its descent.
+        /// </remarks>
+        private void ApplyStoredGroup(
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, StoredBlob existingData,
+            in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
+            out NodeResult result, out bool changed, out PbtSubtreeStats delta)
+        {
+            if (TLayout.IsClusteringDepth(key.Depth))
+            {
+                ApplyClustered(key, entries, existingData, beforeHash, plan, fanout, ref writer, out result, out changed, out delta);
+            }
+            else
+            {
+                ApplyGroup(key, entries, existingData, beforeHash, plan, fanout, ref writer, out result, out changed, out delta);
+            }
         }
 
         /// <summary>
@@ -333,13 +367,14 @@ public static partial class TrieUpdater
         /// <param name="result"><inheritdoc cref="ApplyGroup" path="/param[@name='result']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
+        [SkipLocalsInit]
         private void ApplyPushedStem(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in Occupant pushed,
             scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer, out NodeResult result,
             out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
-            Debug.Assert(!entries.IsEmpty && depth % PbtLayout.TrieNodeGroupLevelsPerGroup == 0);
+            Debug.Assert(!entries.IsEmpty && depth % TLayout.LevelsPerGroup == 0);
             // a chain routes to ApplyChain instead: it is a whole subtree, not a node to place, and the
             // collapse below would drop it
             Debug.Assert(pushed.Kind is NodeKind.Absent or NodeKind.Stem);
@@ -375,9 +410,9 @@ public static partial class TrieUpdater
             // they are all this same stem, and the range not having collapsed above means it holds more
             // than one entry for it: the producer failed to merge its writes to the stem, which
             // PbtWriteBatch requires of it. Nothing is left to partition on, so this must not descend.
-            if (depth == Stem.LengthInBits) throw new InvalidOperationException($"Stem {stem} written more than once in a single batch");
+            if (depth >= Stem.LengthInBits) throw new InvalidOperationException($"Stem {stem} written more than once in a single batch");
 
-            Debug.Assert(depth <= PbtLayout.TrieNodeGroupMaxGroupDepth);
+            Debug.Assert(depth <= TLayout.MaxGroupDepth);
 
             // Nothing is stored at this key or below it — a stem node lives in its parent group's encoding
             // and its subtree in a leaf blob keyed by the stem — so the groups from here down to wherever
@@ -392,7 +427,7 @@ public static partial class TrieUpdater
             // too; the level then stays unbucketed for the resolve below to fill from that same depth,
             // should the jump not fire.
             scoped ReadOnlySpan<int> buckets = plan.Precalculated;
-            Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride];
+            Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
             int entriesBranch = plan.BranchDepth;
             int branchDepth = depth;
             if (buckets.IsEmpty)
@@ -414,13 +449,13 @@ public static partial class TrieUpdater
             {
                 // The pushed stem is as much of this subtree as the writes are, so it bounds the run too.
                 int diff = pushed.Stem.FirstDifferingBit(stem, depth);
-                int pushedBranch = (uint)diff < Stem.LengthInBits ? diff & ~(PbtLayout.TrieNodeGroupLevelsPerGroup - 1) : Stem.LengthInBits;
+                int pushedBranch = (uint)diff < Stem.LengthInBits ? TLayout.GroupDepthOf(diff) : Stem.LengthInBits;
                 if (pushedBranch < branchDepth) branchDepth = pushedBranch;
             }
 
             // Stems that never part leave the branch past the trie's last group, which no key names: that
             // is the duplicate-stem batch, left to the descent to reject where it already does.
-            if (branchDepth > depth && branchDepth <= PbtLayout.TrieNodeGroupMaxGroupDepth)
+            if (branchDepth > depth && branchDepth <= TLayout.MaxGroupDepth)
             {
                 Debug.Assert(depth > 0, "a run starts past the root (invariant 4)");
                 TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, stem);
@@ -445,17 +480,17 @@ public static partial class TrieUpdater
                 return;
             }
 
-            uint occupantsOccupied = 0;
+            ulong occupantsOccupied = 0;
             int seedSlot = -1;
             if (pushed.Kind == NodeKind.Stem)
             {
-                seedSlot = NibbleOf(pushed.Stem, depth);
-                occupantsOccupied = 1u << seedSlot;
+                seedSlot = TLayout.SlotOf(pushed.Stem, depth);
+                occupantsOccupied = 1UL << seedSlot;
             }
 
             // a pushed stem roots no blob of its own: its subtree is its leaf blob, keyed by the stem
             SeededOccupant occupants = new(pushed, seedSlot, default);
-            RefList16<NodeResult> resultBuffer = new(PbtLayout.TrieNodeGroupBoundarySlots);
+            RefList64<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             PbtNodeCluster.Builder builder = default;
@@ -465,7 +500,7 @@ public static partial class TrieUpdater
             // `entriesBranch` lets the resolve fill one itself where nothing was partitioned at all, so the
             // range is bucketed once however this frame reached here.
             GroupShape shape = ResolveBoundaries(key, entries, occupants, new BucketPlan(buckets, entriesBranch), fanout, results, ref writer, ref builder)
-                .MergeUntouched(new NodeGroupBitmasks(occupantsOccupied, occupantsOccupied, Chains: 0));
+                .MergeUntouched(new BoundarySlotMasks(occupantsOccupied, occupantsOccupied, Chains: 0));
             // A frame with no stored encoding leaves the rebuild nothing but `results` to read a boundary
             // out of, so the pushed stem rides on in its slot unless the descent already refreshed it. It
             // promotes to a pure value, so it carries no lease.
@@ -487,7 +522,7 @@ public static partial class TrieUpdater
         /// slot.
         /// </remarks>
         private readonly record struct GroupShape(
-            NodeGroupBitmasks Boundary, uint ChangedBitmask, uint TouchedBitmask, uint StoredChildBitmask, PbtSubtreeStats Deltas)
+            BoundarySlotMasks Boundary, ulong ChangedBitmask, ulong TouchedBitmask, ulong StoredChildBitmask, PbtSubtreeStats Deltas)
         {
             /// <summary>
             /// Folds the slots the descent never visited back in, from the shape
@@ -497,9 +532,9 @@ public static partial class TrieUpdater
             /// The descent's own bits are a subset of <see cref="TouchedBitmask"/>, so the argument contributes
             /// only outside it and the two halves never collide.
             /// </remarks>
-            public GroupShape MergeUntouched(NodeGroupBitmasks untouchedBitmask) => this with
+            public GroupShape MergeUntouched(BoundarySlotMasks untouchedBitmask) => this with
             {
-                Boundary = new NodeGroupBitmasks(
+                Boundary = new BoundarySlotMasks(
                     Boundary.Presence | (untouchedBitmask.Presence & ~TouchedBitmask),
                     Boundary.Stems | (untouchedBitmask.Stems & ~TouchedBitmask),
                     Boundary.Chains | (untouchedBitmask.Chains & ~TouchedBitmask)),
@@ -537,16 +572,16 @@ public static partial class TrieUpdater
             // A precalculated level is already a bounds array over this very range, so it is read where it
             // lies; a range known not to part until deeper than this group falls in one bucket, so its
             // level follows from the count alone; only what neither covers is partitioned here.
-            Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride];
+            Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
             scoped ReadOnlySpan<int> level;
             int branchDepth = plan.BranchDepth;
             if (!plan.Precalculated.IsEmpty)
             {
-                level = plan.Precalculated[^PbtWriteBatch.LevelStride..];
+                level = plan.Precalculated[^PbtWriteBatch.LevelStride<TLayout>()..];
             }
             else if (branchDepth > depth)
             {
-                FillSingleBucket(NibbleOf(entries[0].Stem, depth), entries.Length, computed);
+                FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
                 level = computed;
             }
             else
@@ -555,10 +590,10 @@ public static partial class TrieUpdater
                 level = computed;
             }
 
-            uint touchedBitmask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
-            AssertTouchedMaskMatchesBounds(touchedBitmask, level[..PbtWriteBatch.BoundsLength]);
+            ulong touchedBitmask = PbtWriteBatch.ReadTouched<TLayout>(level);
+            AssertTouchedMaskMatchesBounds(touchedBitmask, level[..PbtWriteBatch.BoundsLength<TLayout>()]);
 
-            return PbtLayout.IsClusteringDepth(depth)
+            return TLayout.IsClusteringDepth(depth)
                 ? ResolveClusteredChildren(key, entries, occupants, plan, fanout, results, level, branchDepth, ref writer, ref cluster)
                 : ResolveKeyedChildren(key, entries, occupants, plan, fanout, results, level, branchDepth);
         }
@@ -576,11 +611,11 @@ public static partial class TrieUpdater
             int branchDepth, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
             where TOccupants : IOccupants, allows ref struct
         {
-            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength];
-            uint touchedBitmask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
+            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            ulong touchedBitmask = PbtWriteBatch.ReadTouched<TLayout>(level);
             BoundaryScan scan = default;
 
-            for (uint remainingBitmask = touchedBitmask | occupants.ChildSlotsBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
+            for (ulong remainingBitmask = touchedBitmask | occupants.ChildSlotsBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(remainingBitmask);
                 if ((touchedBitmask >> slot & 1) == 0)
@@ -592,7 +627,7 @@ public static partial class TrieUpdater
                 Occupant occupant = occupants[slot];
                 ref NodeResult result = ref results[slot];
                 Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
-                TrieNodeKey childKey = key.ChildGroup(slot);
+                TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
                 BucketPlan childPlan = plan.ForChild(slot, branchDepth);
                 bool childChanged;
                 PbtSubtreeStats childDelta;
@@ -634,9 +669,9 @@ public static partial class TrieUpdater
             int branchDepth)
             where TOccupants : IOccupants, allows ref struct
         {
-            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength];
-            uint touchedBitmask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
-            uint storedChildBitmask = 0;
+            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            ulong touchedBitmask = PbtWriteBatch.ReadTouched<TLayout>(level);
+            ulong storedChildBitmask = 0;
             BoundaryScan scan = default;
 
             // The buckets this frame handed out, which the settle below takes back whatever it can
@@ -644,12 +679,12 @@ public static partial class TrieUpdater
             QueuedBuckets queued = default;
             bool mayQueue = MayQueue(touchedBitmask, in fanout);
 
-            for (uint remainingBitmask = touchedBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
+            for (ulong remainingBitmask = touchedBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(remainingBitmask);
                 Occupant occupant = occupants[slot];
                 Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
-                TrieNodeKey childKey = key.ChildGroup(slot);
+                TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
                 BucketPlan childPlan = plan.ForChild(slot, branchDepth);
 
                 if (mayQueue && bucket.Length >= _minQueueEntries
@@ -660,7 +695,7 @@ public static partial class TrieUpdater
 
                 ref NodeResult result = ref results[slot];
                 ApplyKeyedChild(childKey, bucket, occupant, childPlan, fanout, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
-                if (storedChild) storedChildBitmask |= 1u << slot;
+                if (storedChild) storedChildBitmask |= 1UL << slot;
                 scan.Add(slot, result, childChanged, childDelta);
             }
 
@@ -694,7 +729,7 @@ public static partial class TrieUpdater
                 // old root hash, which the child no longer stores itself
                 using RefCountingMemory? childData = _store.GetTrieNode(childKey);
                 storedChild = childData is not null;
-                ApplyClustered(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
+                ApplyStoredGroup(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
                 if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
 
                 // No frame writes its own key; the parent settles each child's: a stored one the writes
@@ -719,17 +754,17 @@ public static partial class TrieUpdater
         /// <summary>What the boundary walk adds up as it settles each slot, for the shape it hands the rebuild.</summary>
         private struct BoundaryScan
         {
-            private uint _occupiedBitmask;
-            private uint _stemsBitmask;
-            private uint _chainsBitmask;
-            private uint _changedBitmask;
+            private ulong _occupiedBitmask;
+            private ulong _stemsBitmask;
+            private ulong _chainsBitmask;
+            private ulong _changedBitmask;
             private PbtSubtreeStats _deltas;
 
             public void Add(int slot, in NodeResult result, bool changed, in PbtSubtreeStats delta)
             {
                 Debug.Assert(changed || delta.IsZero, "an unchanged subtree is the same subtree, so it holds the same stemsBitmask");
 
-                uint slotBitmask = 1u << slot;
+                ulong slotBitmask = 1UL << slot;
                 if (changed) _changedBitmask |= slotBitmask;
                 if (result.Kind != NodeKind.Absent) _occupiedBitmask |= slotBitmask;
                 if (result.Kind == NodeKind.Stem) _stemsBitmask |= slotBitmask;
@@ -737,8 +772,8 @@ public static partial class TrieUpdater
                 _deltas += delta;
             }
 
-            public readonly GroupShape ToShape(uint touchedBitmask, uint storedChildBitmask) =>
-                new(new NodeGroupBitmasks(_occupiedBitmask, _stemsBitmask, _chainsBitmask), _changedBitmask, touchedBitmask, storedChildBitmask, _deltas);
+            public readonly GroupShape ToShape(ulong touchedBitmask, ulong storedChildBitmask) =>
+                new(new BoundarySlotMasks(_occupiedBitmask, _stemsBitmask, _chainsBitmask), _changedBitmask, touchedBitmask, storedChildBitmask, _deltas);
         }
 
         /// <summary>
@@ -785,20 +820,21 @@ public static partial class TrieUpdater
         /// settles into a node no key holds — a run, or a hoisting stem. Nothing written past it is a group
         /// above's, so nothing else is lost.
         /// </param>
+        [SkipLocalsInit]
         private NodeResult RebuildNode<TOccupants>(
-            in TrieNodeKey key, in TOccupants occupants, in PbtTrieNodeGroup existing,
+            in TrieNodeKey key, in TOccupants occupants, in PbtTrieNodeGroup<TLayout> existing,
             Span<NodeResult> results, in GroupShape shape,
             in ValueHash256 beforeHash, in PbtSubtreeStats beforeStats, ref BufferWriter writer,
             ref PbtNodeCluster.Builder cluster, int mark, out bool changed, out PbtSubtreeStats delta)
             where TOccupants : IOccupants, allows ref struct
         {
             bool isRoot = key.Depth == 0;
-            bool headsCluster = PbtLayout.IsClusteringDepth(key.Depth);
-            NodeGroupBitmasks boundary = shape.Boundary;
-            (uint occupiedBitmask, uint stemsBitmask, uint chainsBitmask) = boundary;
-            uint changedBitmask = shape.ChangedBitmask;
-            uint touchedBitmask = shape.TouchedBitmask;
-            uint storedChildBitmask = shape.StoredChildBitmask;
+            bool headsCluster = TLayout.IsClusteringDepth(key.Depth);
+            BoundarySlotMasks boundary = shape.Boundary;
+            (ulong occupiedBitmask, ulong stemsBitmask, ulong chainsBitmask) = boundary;
+            ulong changedBitmask = shape.ChangedBitmask;
+            ulong touchedBitmask = shape.TouchedBitmask;
+            ulong storedChildBitmask = shape.StoredChildBitmask;
             AssertUntouchedMerged(occupants, boundary, touchedBitmask);
             // What lets the cluster's offsets be the writer's own count: a group holding its children is
             // one no group above holds, so its bytes are the whole of the buffer rather than a slice of it.
@@ -845,7 +881,7 @@ public static partial class TrieUpdater
                 // unlike a stem's, a run's node hash is its path's, so it is only the same node once it
                 // starts where beforeHash did.
                 NodeResult chain = WrapIntoChain(
-                    key.Depth, key.ChildGroup(survivorSlot), survivor, (storedChildBitmask >> survivorSlot & 1) != 0, afterStats);
+                    key.Depth, key.ChildGroup(survivorSlot, TLayout.LevelsPerGroup), survivor, (storedChildBitmask >> survivorSlot & 1) != 0, afterStats);
                 changed = chain.NodeHash() != beforeHash;
                 Release(results, handedUp: -1);
                 return chain;
@@ -872,11 +908,11 @@ public static partial class TrieUpdater
             // order: the changed ones, and — when there is no existing group to read from (a run split or a
             // pushed stem seeds its occupants into an empty one) — every occupied slot. A changed slot that
             // emptied out contributes no boundary, so only the occupied ones go in.
-            RefList16<(int Slot, Boundary Node)> boundaryBuffer = new(PbtLayout.TrieNodeGroupBoundarySlots);
+            RefList64<(int Slot, Boundary Node)> boundaryBuffer = new(TLayout.BoundarySlots);
             Span<(int Slot, Boundary Node)> changedBoundaries = boundaryBuffer.AsSpan();
             int changedCount = 0;
-            uint gatherBitmask = occupiedBitmask & (occupants.HasStoredEncoding ? changedBitmask : ~0u);
-            for (uint remainingBitmask = gatherBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
+            ulong gatherBitmask = occupiedBitmask & (occupants.HasStoredEncoding ? changedBitmask : ~0UL);
+            for (ulong remainingBitmask = gatherBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
             {
                 // ascending, as the fold requires
                 int slot = BitOperations.TrailingZeroCount(remainingBitmask);
@@ -899,7 +935,7 @@ public static partial class TrieUpdater
             bool holdsChildren = headsCluster && boundary.ChildSlots != 0;
             if (holdsChildren) cluster.WriteOffsets(ref writer);
 
-            GroupRebuild rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, _writeFormat);
+            GroupRebuild<TLayout> rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedBitmask, beforeHash, _writeFormat);
             (Stem? rootStem, ValueHash256 rootHash) = rebuild.Rebuild(ref writer, afterStats);
             NodeResult rootNode = rootStem is { } stem ? NodeResult.StemNode(stem, rootHash) : NodeResult.Internal(rootHash);
 
@@ -915,12 +951,12 @@ public static partial class TrieUpdater
             // fold above has just written it into this group's own encoding.
             if (!headsCluster)
             {
-                for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
+                for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
                 {
                     if ((changedBitmask >> slot & 1) != 0 && results[slot].KeyedBlob is { } childBlob)
                     {
                         childBlob.AcquireLease();
-                        _store.SetTrieNode(key.ChildGroup(slot), childBlob);
+                        _store.SetTrieNode(key.ChildGroup(slot, TLayout.LevelsPerGroup), childBlob);
                     }
                 }
             }
@@ -1158,10 +1194,10 @@ public static partial class TrieUpdater
         /// that is often touched anyway, so there it could pass unnoticed.
         /// </remarks>
         [Conditional("DEBUG")]
-        private static void AssertUntouchedMerged<TOccupants>(in TOccupants occupants, NodeGroupBitmasks boundary, uint touchedBitmask)
+        private static void AssertUntouchedMerged<TOccupants>(in TOccupants occupants, BoundarySlotMasks boundary, ulong touchedBitmask)
             where TOccupants : IOccupants, allows ref struct
         {
-            for (uint untouchedBitmask = ~touchedBitmask & ((1u << PbtLayout.TrieNodeGroupBoundarySlots) - 1); untouchedBitmask != 0; untouchedBitmask &= untouchedBitmask - 1)
+            for (ulong untouchedBitmask = ~touchedBitmask & PbtLayout.SlotRange(0, TLayout.BoundarySlots); untouchedBitmask != 0; untouchedBitmask &= untouchedBitmask - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(untouchedBitmask);
                 NodeKind kind = occupants[slot].Kind;
@@ -1185,12 +1221,12 @@ public static partial class TrieUpdater
         /// catch the two drifting apart.
         /// </remarks>
         [Conditional("DEBUG")]
-        private static void AssertTouchedMaskMatchesBounds(uint touchedBitmask, ReadOnlySpan<int> bounds)
+        private static void AssertTouchedMaskMatchesBounds(ulong touchedBitmask, ReadOnlySpan<int> bounds)
         {
-            uint derived = 0;
-            for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
+            ulong derived = 0;
+            for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
             {
-                if (bounds[slot] != bounds[slot + 1]) derived |= 1u << slot;
+                if (bounds[slot] != bounds[slot + 1]) derived |= 1UL << slot;
             }
 
             Debug.Assert(touchedBitmask == derived, "the cached touched mask disagrees with its level's bounds");
@@ -1231,16 +1267,16 @@ public static partial class TrieUpdater
             /// </summary>
             /// <remarks>
             /// The precalculated levels are laid out coarsest-last, each one
-            /// <see cref="PbtWriteBatch.LevelStride"/> wide per group it describes, so the finer levels of a
+            /// <see cref="PbtWriteBatch.LevelStride<TLayout>()"/> wide per group it describes, so the finer levels of a
             /// slot's subtree are the slice at its own index — and what remains after this group's own level
             /// divides evenly among the sixteen slots.
             /// </remarks>
             public BucketPlan ForChild(int slot, int branchDepth)
             {
                 ReadOnlySpan<int> buckets = Precalculated;
-                int childLength = buckets.Length <= PbtWriteBatch.LevelStride
+                int childLength = buckets.Length <= PbtWriteBatch.LevelStride<TLayout>()
                     ? 0
-                    : (buckets.Length - PbtWriteBatch.LevelStride) / PbtLayout.TrieNodeGroupBoundarySlots;
+                    : (buckets.Length - PbtWriteBatch.LevelStride<TLayout>()) / TLayout.BoundarySlots;
                 return new BucketPlan(childLength == 0 ? default : buckets.Slice(slot * childLength, childLength), branchDepth);
             }
 
@@ -1249,15 +1285,15 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// Fills <paramref name="level"/> for a range that falls wholly in bucket <paramref name="nibble"/>,
+        /// Fills <paramref name="level"/> for a range that falls wholly in bucket <paramref name="slot"/>,
         /// in the shape <see cref="Partition"/> would have produced for it.
         /// </summary>
-        private static void FillSingleBucket(int nibble, int count, Span<int> level)
+        private static void FillSingleBucket(int slot, int count, Span<int> level)
         {
-            Span<int> bounds = level[..PbtWriteBatch.BoundsLength];
-            bounds[..(nibble + 1)].Clear();
-            bounds[(nibble + 1)..].Fill(count);
-            level[PbtWriteBatch.TouchedMaskIndex] = 1 << nibble;
+            Span<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            bounds[..(slot + 1)].Clear();
+            bounds[(slot + 1)..].Fill(count);
+            PbtWriteBatch.WriteTouched<TLayout>(level, 1UL << slot);
         }
 
         /// <summary>
@@ -1285,7 +1321,7 @@ public static partial class TrieUpdater
             }
 
             Debug.Assert(
-                claimed <= (splitDepth & ~(PbtLayout.TrieNodeGroupLevelsPerGroup - 1)),
+                claimed <= (TLayout.GroupDepthOf(splitDepth)),
                 "the inherited branch depth reaches past where the range parts");
         }
 
@@ -1297,19 +1333,19 @@ public static partial class TrieUpdater
         /// order is arbitrary since each bucket is re-partitioned by its child group.
         /// </summary>
         /// <param name="level">
-        /// One <see cref="PbtWriteBatch.LevelStride"/>-wide level, filled with the bounds and the
+        /// One <see cref="PbtWriteBatch.LevelStride<TLayout>()"/>-wide level, filled with the bounds and the
         /// <see cref="PbtWriteBatch.TouchedMaskIndex"/> mask, in the same shape a precalculated level
         /// arrives in.
         /// </param>
         /// <returns>
         /// The depth of the group where <paramref name="entries"/> first part from one another: this
         /// group's own whenever two of them fall in different buckets, and a deeper one when they all
-        /// share its nibble — the levels between hold a single child apiece, so a caller free to skip
+        /// share its slot — the levels between hold a single child apiece, so a caller free to skip
         /// them can jump straight to the group that branches.
         /// </returns>
         private static int Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
-            Span<int> bounds = level[..PbtWriteBatch.BoundsLength];
+            Span<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             // Only the levels the producer left unbucketed reach here, which for a batch drained from
             // PbtWriteBatchBuilder — its shard key handing over the depth-0 and depth-4 bounds — is
             // everything below depth 8, by which point the batch has fragmented sixteen ways twice and a
@@ -1318,21 +1354,21 @@ public static partial class TrieUpdater
             // dominate take a sort network instead.
             if (entries.Length <= TinyRange) return SortTiny(entries, depth, level);
 
-            Span<int> counts = stackalloc int[PbtLayout.TrieNodeGroupBoundarySlots];
+            Span<int> counts = stackalloc int[TLayout.BoundarySlots];
             counts.Clear();
 
             // The pass that buckets the range doubles as the search for where it parts, both wanting the
-            // same walk over the same stems: a stem's bucket is its nibble here, and the range's shared
+            // same walk over the same stems: a stem's bucket is its slot here, and the range's shared
             // prefix is the shortest any of them shares with a fixed member of it. Once one entry parts
             // inside this group's own four levels there is no deeper jump left to find, so the search
             // falls away and leaves the count to run on alone.
             Stem reference = entries[0].Stem;
-            int floor = depth + PbtLayout.TrieNodeGroupLevelsPerGroup;
+            int floor = depth + TLayout.LevelsPerGroup;
             int splitDepth = Stem.LengthInBits;
             for (int i = 0; i < entries.Length; i++)
             {
                 Stem stem = entries[i].Stem;
-                counts[NibbleOf(stem, depth)]++;
+                counts[TLayout.SlotOf(stem, depth)]++;
                 if (splitDepth > floor)
                 {
                     // FirstDifferingBit reports -1 for a stem that never parts — the reference against
@@ -1344,15 +1380,15 @@ public static partial class TrieUpdater
             }
 
             int total = 0;
-            uint touched = 0;
-            for (int bucket = 0; bucket < PbtLayout.TrieNodeGroupBoundarySlots; bucket++)
+            ulong touched = 0;
+            for (int bucket = 0; bucket < TLayout.BoundarySlots; bucket++)
             {
                 bounds[bucket] = total;
-                if (counts[bucket] != 0) touched |= 1u << bucket;
+                if (counts[bucket] != 0) touched |= 1UL << bucket;
                 total += counts[bucket];
             }
-            bounds[PbtLayout.TrieNodeGroupBoundarySlots] = total;
-            level[PbtWriteBatch.TouchedMaskIndex] = (int)touched;
+            bounds[TLayout.BoundarySlots] = total;
+            PbtWriteBatch.WriteTouched<TLayout>(level, touched);
             Debug.Assert(total == entries.Length);
 
             // One populated bucket holds every entry already, whatever their order, so the permutation
@@ -1360,17 +1396,17 @@ public static partial class TrieUpdater
             if (BitOperations.IsPow2(touched))
             {
                 Debug.Assert(splitDepth >= floor, "one populated bucket means nothing parts within this group");
-                return splitDepth & ~(PbtLayout.TrieNodeGroupLevelsPerGroup - 1);
+                return TLayout.GroupDepthOf(splitDepth);
             }
 
             // In-place American-flag permutation: each swap places one entry into its final bucket.
-            Span<int> heads = stackalloc int[PbtLayout.TrieNodeGroupBoundarySlots];
-            bounds[..PbtLayout.TrieNodeGroupBoundarySlots].CopyTo(heads);
-            for (int bucket = 0; bucket < PbtLayout.TrieNodeGroupBoundarySlots; bucket++)
+            Span<int> heads = stackalloc int[TLayout.BoundarySlots];
+            bounds[..TLayout.BoundarySlots].CopyTo(heads);
+            for (int bucket = 0; bucket < TLayout.BoundarySlots; bucket++)
             {
                 while (heads[bucket] < bounds[bucket + 1])
                 {
-                    int target = NibbleOf(entries[heads[bucket]].Stem, depth);
+                    int target = TLayout.SlotOf(entries[heads[bucket]].Stem, depth);
                     if (target == bucket)
                     {
                         heads[bucket]++;
@@ -1388,10 +1424,10 @@ public static partial class TrieUpdater
 
         /// <summary>
         /// <inheritdoc cref="Partition" path="/summary"/> For a range of at most <see cref="TinyRange"/>
-        /// entries, which a sorting network on the nibble orders in as many compare-and-swaps.
+        /// entries, which a sorting network on the slot orders in as many compare-and-swaps.
         /// </summary>
         /// <remarks>
-        /// Mirrors <c>PatriciaTree.BulkSet</c>'s <c>SortTiny</c>. Ordering the nibbles makes every bucket
+        /// Mirrors <c>PatriciaTree.BulkSet</c>'s <c>SortTiny</c>. Ordering the slots makes every bucket
         /// a contiguous run, so the bounds fill as a handful of vectorized spans rather than a per-slot
         /// loop over a counts array.
         /// </remarks>
@@ -1399,58 +1435,55 @@ public static partial class TrieUpdater
         {
             Debug.Assert(!entries.IsEmpty && entries.Length <= TinyRange);
 
-            Span<int> bounds = level[..PbtWriteBatch.BoundsLength];
+            Span<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
 
-            Span<int> nibbleBuffer = stackalloc int[TinyRange];
-            Span<int> nibbles = nibbleBuffer[..entries.Length];
+            Span<int> slotBuffer = stackalloc int[TinyRange];
+            Span<int> slots = slotBuffer[..entries.Length];
 
             // Read before the network below reorders them, which the search is indifferent to: the range
             // shares whatever the shortest prefix any of them shares with a fixed member is, whichever
             // member that is.
             Stem reference = entries[0].Stem;
             int splitDepth = Stem.LengthInBits;
-            uint touched = 0;
-            for (int i = 0; i < nibbles.Length; i++)
+            ulong touched = 0;
+            for (int i = 0; i < slots.Length; i++)
             {
                 Stem stem = entries[i].Stem;
-                nibbles[i] = NibbleOf(stem, depth);
-                touched |= 1u << nibbles[i];
+                slots[i] = TLayout.SlotOf(stem, depth);
+                touched |= 1UL << slots[i];
                 int diff = stem.FirstDifferingBit(reference, depth);
                 if ((uint)diff < (uint)splitDepth) splitDepth = diff;
             }
 
-            level[PbtWriteBatch.TouchedMaskIndex] = (int)touched;
+            PbtWriteBatch.WriteTouched<TLayout>(level, touched);
 
-            if (nibbles.Length > 1)
+            if (slots.Length > 1)
             {
-                CompareAndSwap(entries, nibbles, 0, 1);
-                if (nibbles.Length > 2)
+                CompareAndSwap(entries, slots, 0, 1);
+                if (slots.Length > 2)
                 {
-                    CompareAndSwap(entries, nibbles, 1, 2);
-                    CompareAndSwap(entries, nibbles, 0, 1);
+                    CompareAndSwap(entries, slots, 1, 2);
+                    CompareAndSwap(entries, slots, 0, 1);
                 }
             }
 
-            // Ascending nibbles leave bounds[i] — the number of entries whose nibble is below i — stepping
-            // up only where one sits, so each run holds the count so far. Entries sharing a nibble make the
+            // Ascending slots leave bounds[i] — the number of entries whose slot is below i — stepping
+            // up only where one sits, so each run holds the count so far. Entries sharing a slot make the
             // run between them empty, which Fill ignores.
-            bounds[..(nibbles[0] + 1)].Clear();
-            for (int i = 1; i < nibbles.Length; i++) bounds[(nibbles[i - 1] + 1)..(nibbles[i] + 1)].Fill(i);
-            bounds[(nibbles[^1] + 1)..].Fill(nibbles.Length);
+            bounds[..(slots[0] + 1)].Clear();
+            for (int i = 1; i < slots.Length; i++) bounds[(slots[i - 1] + 1)..(slots[i] + 1)].Fill(i);
+            bounds[(slots[^1] + 1)..].Fill(slots.Length);
 
             // Parting inside this group's own four levels rounds back down to it, which is what says the
             // range branches here and there is nothing to jump over.
-            return splitDepth & ~(PbtLayout.TrieNodeGroupLevelsPerGroup - 1);
+            return TLayout.GroupDepthOf(splitDepth);
         }
 
-        private static void CompareAndSwap(Span<PbtWriteBatch.StemEntry> entries, Span<int> nibbles, int i, int j)
+        private static void CompareAndSwap(Span<PbtWriteBatch.StemEntry> entries, Span<int> slots, int i, int j)
         {
-            if (nibbles[i] <= nibbles[j]) return;
+            if (slots[i] <= slots[j]) return;
             (entries[i], entries[j]) = (entries[j], entries[i]);
-            (nibbles[i], nibbles[j]) = (nibbles[j], nibbles[i]);
+            (slots[i], slots[j]) = (slots[j], slots[i]);
         }
-
-        private static int NibbleOf(in Stem stem, int depth) =>
-            (depth & 4) == 0 ? stem.Bytes[depth >> 3] >> 4 : stem.Bytes[depth >> 3] & 0xF;
     }
 }

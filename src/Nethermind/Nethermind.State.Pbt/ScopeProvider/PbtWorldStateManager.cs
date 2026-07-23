@@ -21,9 +21,9 @@ public class PbtWorldStateManager(
     IPbtConfig config,
     [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
 {
-    private readonly PbtGroupFormat _writeFormat = config.TrieNodeLevels;
+    private readonly PbtTrieFormat _writeFormat = config.TrieNodeWriteFormat();
     private readonly int _rootFoldConcurrency = config.RootFoldConcurrency;
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeLevels, config.RootFoldConcurrency);
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeWriteFormat(), config.RootFoldConcurrency);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 

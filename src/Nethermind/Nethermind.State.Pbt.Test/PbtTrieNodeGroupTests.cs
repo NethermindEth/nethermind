@@ -10,6 +10,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtTrieNodeGroupTests
@@ -26,13 +28,13 @@ public class PbtTrieNodeGroupTests
     public void PositionMath_EncodeDecodeRoundTrip_AndValidation(PbtGroupFormat format)
     {
         int boundaryCount = 0;
-        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
+        for (int position = 0; position < Layout.PositionCount; position++)
         {
             if (PbtLayout.TrieNodeGroupIsBoundaryPosition(position)) boundaryCount++;
         }
 
-        Assert.That(boundaryCount, Is.EqualTo(PbtLayout.TrieNodeGroupBoundarySlots));
-        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
+        Assert.That(boundaryCount, Is.EqualTo(Layout.BoundarySlots));
+        for (int slot = 0; slot < Layout.BoundarySlots; slot++)
         {
             int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
             Assert.That(PbtLayout.TrieNodeGroupIsBoundaryPosition(position), $"slot {slot} at position {position}");
@@ -50,7 +52,7 @@ public class PbtTrieNodeGroupTests
         ValueHash256 rootA = new(Bytes.FromHexString("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"));
         ValueHash256 rootB = new(Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
 
-        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
+        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[Layout.PositionCount];
         slots[13] = PbtTrieNodeGroup.InternalSlot(hashB);
         slots[29] = PbtTrieNodeGroup.StemSlot(stemA, rootA);
         slots[PbtLayout.TrieNodeGroupBoundarySlotPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
@@ -60,15 +62,15 @@ public class PbtTrieNodeGroupTests
         // points at a child group holding the rest
         PbtSubtreeStats stats = new(9);
 
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
         int length = Encode(slots, stats, encoded, format);
         Assert.That(length, Is.EqualTo(TrailerLength + 4 * 32 + 2 * 31));
 
-        PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
+        PbtTrieNodeGroup<Layout> decoded = PbtTrieNodeGroup<Layout>.Decode(encoded.AsSpan(0, length));
         Assert.That(decoded.Stats, Is.EqualTo(stats));
         Assert.That(decoded.Format, Is.EqualTo(format));
-        PbtTrieNodeGroup.ValueSlot[] roundTripped = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
-        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
+        PbtTrieNodeGroup.ValueSlot[] roundTripped = new PbtTrieNodeGroup.ValueSlot[Layout.PositionCount];
+        for (int position = 0; position < Layout.PositionCount; position++)
         {
             PbtTrieNodeGroup.ValueSlot slot = decoded[position].ToValue();
             Assert.That(slot.Kind, Is.EqualTo(slots[position].Kind), $"kind at {position}");
@@ -77,20 +79,20 @@ public class PbtTrieNodeGroupTests
             roundTripped[position] = slot;
         }
 
-        byte[] reencoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
+        byte[] reencoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
         Assert.That(Encode(roundTripped, decoded.Stats, reencoded, format), Is.EqualTo(length));
         Assert.That(reencoded.AsSpan(0, length).SequenceEqual(encoded.AsSpan(0, length)));
 
         // an empty group encodes to nothing (the store's removal marker), whatever it is told it holds
-        Assert.That(new PbtGroupEncoder(encoded, format).Finish(stats), Is.EqualTo(0));
-        Assert.That(default(PbtTrieNodeGroup).Stats, Is.EqualTo(default(PbtSubtreeStats)), "an absent subtree holds nothing");
+        Assert.That(new PbtGroupEncoder<Layout>(encoded, format).Finish(stats), Is.EqualTo(0));
+        Assert.That(default(PbtTrieNodeGroup<Layout>).Stats, Is.EqualTo(default(PbtSubtreeStats)), "an absent subtree holds nothing");
 
         // validation: an unknown format byte, position bit 31, a stem bit without its presence bit,
         // and a length that does not match the bitmaps are all rejected
         byte[] valid = encoded[..length];
         byte[] badFormat = (byte[])valid.Clone();
         badFormat[^1] = 0xFF;
-        Assert.That(() => PbtTrieNodeGroup.Decode(badFormat), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(badFormat), Throws.TypeOf<InvalidDataException>());
 
         // the whole header sits in the trailer: presence, then stems, then the runs, then the six-byte
         // stats, then the format byte
@@ -98,14 +100,14 @@ public class PbtTrieNodeGroupTests
 
         byte[] highBit = (byte[])valid.Clone();
         highBit[trailer + 3] |= 0x80;
-        Assert.That(() => PbtTrieNodeGroup.Decode(highBit), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(highBit), Throws.TypeOf<InvalidDataException>());
 
         byte[] orphanStem = (byte[])valid.Clone();
         orphanStem[trailer + 4] |= 0x04; // stem bit for absent position 2
-        Assert.That(() => PbtTrieNodeGroup.Decode(orphanStem), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(orphanStem), Throws.TypeOf<InvalidDataException>());
 
-        Assert.That(() => PbtTrieNodeGroup.Decode(valid.AsSpan(..^1)), Throws.TypeOf<InvalidDataException>());
-        Assert.That(() => PbtTrieNodeGroup.Decode(valid.AsSpan(..4)), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(valid.AsSpan(..^1)), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(valid.AsSpan(..4)), Throws.TypeOf<InvalidDataException>());
     }
 
     /// <summary>
@@ -124,15 +126,15 @@ public class PbtTrieNodeGroupTests
     {
         uint skipped = 0;
         uint kept = 0;
-        Walk(PbtLayout.TrieNodeGroupRootPosition, PbtLayout.TrieNodeGroupBoundarySlots, 0);
+        Walk(Layout.RootPosition, Layout.BoundarySlots, 0);
 
         Assert.That(BitOperations.PopCount(skipped), Is.EqualTo(skippedCount));
-        Assert.That(BitOperations.PopCount(kept), Is.EqualTo(PbtLayout.TrieNodeGroupPositionCount - skippedCount));
+        Assert.That(BitOperations.PopCount(kept), Is.EqualTo(Layout.PositionCount - skippedCount));
         Assert.That(skipped & kept, Is.Zero, "a position is either stored or folded, never both");
-        Assert.That(kept | skipped, Is.EqualTo((1u << PbtLayout.TrieNodeGroupPositionCount) - 1), "every position is accounted for");
+        Assert.That(kept | skipped, Is.EqualTo((1u << Layout.PositionCount) - 1), "every position is accounted for");
 
         // a boundary slot is a level of its own and is always stored, whatever the format
-        for (int slot = 0; slot < PbtLayout.TrieNodeGroupBoundarySlots; slot++)
+        for (int slot = 0; slot < Layout.BoundarySlots; slot++)
         {
             Assert.That(
                 PbtLayout.TrieNodeGroupIsSkippedPosition(format, PbtLayout.TrieNodeGroupBoundarySlotPosition(slot)),
@@ -198,25 +200,25 @@ public class PbtTrieNodeGroupTests
         Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
         PbtSubtreeStats stats = new(2);
 
-        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
+        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[Layout.PositionCount];
         slots[position] = PbtTrieNodeGroup.InternalSlot(hash);
 
         // the every-level format is what such an encoding can only be, and it still decodes
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
         int length = Encode(slots, stats, encoded, PbtGroupFormat.EveryLevel);
-        Assert.That(PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length)).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
+        Assert.That(PbtTrieNodeGroup<Layout>.Decode(encoded.AsSpan(0, length)).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
 
         // relabelling those same bytes is rejected: the position holds an internal node
         byte[] mislabelled = encoded[..length];
         mislabelled[^1] = (byte)format;
-        Assert.That(() => PbtTrieNodeGroup.Decode(mislabelled), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(mislabelled), Throws.TypeOf<InvalidDataException>());
 
         // a stem at that very position is legal in both: nothing recomputes a stem
         slots[position] = PbtTrieNodeGroup.StemSlot(stem, hash);
         foreach (PbtGroupFormat stemFormat in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, format])
         {
             int stemLength = Encode(slots, stats, encoded, stemFormat);
-            PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, stemLength));
+            PbtTrieNodeGroup<Layout> decoded = PbtTrieNodeGroup<Layout>.Decode(encoded.AsSpan(0, stemLength));
             Assert.That(decoded.KindAt(position), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{stemFormat}");
             Assert.That(decoded[position].Stem, Is.EqualTo(stem), $"{stemFormat}");
         }
@@ -234,24 +236,24 @@ public class PbtTrieNodeGroupTests
         Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
         PbtSubtreeStats stats = new(1);
 
-        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtLayout.TrieNodeGroupPositionCount];
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
+        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[Layout.PositionCount];
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
 
-        slots[PbtLayout.TrieNodeGroupRootPosition] = PbtTrieNodeGroup.InternalSlot(hash);
+        slots[Layout.RootPosition] = PbtTrieNodeGroup.InternalSlot(hash);
         foreach (PbtGroupFormat format in Formats)
         {
             int length = Encode(slots, stats, encoded, format);
-            Assert.That(() => PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length)), Throws.TypeOf<InvalidDataException>(), $"{format}");
+            Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(encoded.AsSpan(0, length)), Throws.TypeOf<InvalidDataException>(), $"{format}");
         }
 
         // a stem at the root position is legal in both and round-trips: nothing recomputes a stem
-        slots[PbtLayout.TrieNodeGroupRootPosition] = PbtTrieNodeGroup.StemSlot(stem, hash);
+        slots[Layout.RootPosition] = PbtTrieNodeGroup.StemSlot(stem, hash);
         foreach (PbtGroupFormat format in Formats)
         {
             int length = Encode(slots, stats, encoded, format);
-            PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
-            Assert.That(decoded.KindAt(PbtLayout.TrieNodeGroupRootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{format}");
-            Assert.That(decoded[PbtLayout.TrieNodeGroupRootPosition].Stem, Is.EqualTo(stem), $"{format}");
+            PbtTrieNodeGroup<Layout> decoded = PbtTrieNodeGroup<Layout>.Decode(encoded.AsSpan(0, length));
+            Assert.That(decoded.KindAt(Layout.RootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{format}");
+            Assert.That(decoded[Layout.RootPosition].Stem, Is.EqualTo(stem), $"{format}");
         }
     }
 
@@ -270,20 +272,24 @@ public class PbtTrieNodeGroupTests
     [TestCase(0x55555555u)]
     public void BoundaryBits_GathersBoundaryPositionsIntoSlotOrder(uint positions)
     {
-        uint expected = 0;
-        for (int position = 0; position < 32; position++)
+        // the numbering runs on past a narrow tile — slot 16 sits at position 31 — so only the
+        // positions this one holds are its business
+        positions &= (1u << Layout.PositionCount) - 1;
+
+        ulong expected = 0;
+        for (int position = 0; position < Layout.PositionCount; position++)
         {
             if ((positions >> position & 1) == 0 || !PbtLayout.TrieNodeGroupIsBoundaryPosition(position)) continue;
-            expected |= 1u << PbtLayout.TrieNodeGroupBoundarySlot(position);
+            expected |= 1UL << PbtLayout.TrieNodeGroupBoundarySlot(position);
         }
 
-        Assert.That(PbtLayout.TrieNodeGroupBoundaryBitmask(positions), Is.EqualTo(expected), $"0x{positions:x8}");
-        Assert.That(expected >> PbtLayout.TrieNodeGroupBoundarySlots, Is.Zero, "only the sixteen slot bits are set");
+        Assert.That(Layout.BoundaryBitmask(positions), Is.EqualTo(expected), $"0x{positions:x8}");
+        Assert.That(expected >> Layout.BoundarySlots, Is.Zero, "only the sixteen slot bits are set");
     }
 
     [Test]
     public void BoundaryShape_EmptyGroup_IsUnoccupied() =>
-        Assert.That(default(PbtTrieNodeGroup).BoundaryShape(), Is.EqualTo(default(NodeGroupBitmasks)));
+        Assert.That(default(PbtTrieNodeGroup<Layout>).BoundaryShape(), Is.EqualTo(default(BoundarySlotMasks)));
 
     /// <summary>
     /// A run is held whole by the boundary slot it hangs from, so its entry is longer than the hash a
@@ -305,18 +311,18 @@ public class PbtTrieNodeGroupTests
         // zero past its target depth, as a group's path is
         Stem targetPath = new(Bytes.FromHexString("0x0dead000000000000000000000000000000000000000000000000000000000"));
         byte[] chain = new byte[PbtNodeChain.EncodedLength];
-        PbtNodeChain.Write(chain, startDepth: 8, targetDepth: 20, targetPath, childRoot, new PbtSubtreeStats(3));
+        PbtNodeChain.Write<Layout>(chain, startDepth: 8, targetDepth: 20, targetPath, childRoot, new PbtSubtreeStats(3));
 
         // a stem below the run and a boundary internal above it, so the run shifts the one that follows
         // and leaves the one before it where it was
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtGroupEncoder builder = new(encoded, format);
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
+        PbtGroupEncoder<Layout> builder = new(encoded, format);
         builder.AppendStem(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), stem, stemRoot);
         builder.AppendChain(PbtLayout.TrieNodeGroupBoundarySlotPosition(chainSlot), chain);
         builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(2), childRoot);
         int length = builder.Finish(stats);
 
-        PbtTrieNodeGroup group = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
+        PbtTrieNodeGroup<Layout> group = PbtTrieNodeGroup<Layout>.Decode(encoded.AsSpan(0, length));
         Assert.That(length, Is.EqualTo(TrailerLength + 2 * 32 + Stem.Length + PbtNodeChain.EncodedLength));
 
         int chainPosition = PbtLayout.TrieNodeGroupBoundarySlotPosition(chainSlot);
@@ -330,9 +336,9 @@ public class PbtTrieNodeGroupTests
         Assert.That(group.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(2)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Internal));
         Assert.That(group[PbtLayout.TrieNodeGroupBoundarySlotPosition(2)].Hash, Is.EqualTo(childRoot));
 
-        NodeGroupBitmasks boundary = group.BoundaryShape();
-        Assert.That(boundary, Is.EqualTo(new NodeGroupBitmasks(0b111u, 0b001u, 1u << chainSlot)));
-        Assert.That(boundary.ChildSlots, Is.EqualTo(1u << 2), "a run roots no child blob, and neither does a stem");
+        BoundarySlotMasks boundary = group.BoundaryShape();
+        Assert.That(boundary, Is.EqualTo(new BoundarySlotMasks(0b111UL, 0b001UL, 1UL << chainSlot)));
+        Assert.That(boundary.ChildSlots, Is.EqualTo(1UL << 2), "a run roots no child blob, and neither does a stem");
 
         // the run bitmap must name an occupied boundary slot that holds no stem
         byte[] valid = encoded[..length];
@@ -340,7 +346,7 @@ public class PbtTrieNodeGroupTests
         {
             byte[] misplaced = (byte[])valid.Clone();
             BinaryPrimitives.WriteUInt16LittleEndian(misplaced.AsSpan(length - TrailerLength + 8), (ushort)(1 << slot));
-            Assert.That(() => PbtTrieNodeGroup.Decode(misplaced), Throws.TypeOf<InvalidDataException>(), $"a run claimed at slot {slot}");
+            Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(misplaced), Throws.TypeOf<InvalidDataException>(), $"a run claimed at slot {slot}");
         }
     }
 
@@ -363,14 +369,14 @@ public class PbtTrieNodeGroupTests
         Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
         Stem targetPath = new(Bytes.FromHexString("0x0dead000000000000000000000000000000000000000000000000000000000"));
         byte[] chain = new byte[PbtNodeChain.EncodedLength];
-        PbtNodeChain.Write(chain, startDepth: 8, targetDepth: 20, targetPath, hash, new PbtSubtreeStats(3));
+        PbtNodeChain.Write<Layout>(chain, startDepth: 8, targetDepth: 20, targetPath, hash, new PbtSubtreeStats(3));
 
         // every position whose range holds an occupied slot, bar the root, which no group stores
-        uint positions = OccupiedPositions(occupiedSlots) & ~(1u << PbtLayout.TrieNodeGroupRootPosition);
+        uint positions = OccupiedPositions(occupiedSlots) & ~(1u << Layout.RootPosition);
 
-        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtGroupEncoder builder = new(encoded, PbtGroupFormat.EveryLevel);
-        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
+        byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
+        PbtGroupEncoder<Layout> builder = new(encoded, PbtGroupFormat.EveryLevel);
+        for (int position = 0; position < Layout.PositionCount; position++)
         {
             if ((positions >> position & 1) == 0) continue;
 
@@ -389,12 +395,12 @@ public class PbtTrieNodeGroupTests
         }
 
         int length = builder.Finish(new PbtSubtreeStats(9));
-        PbtTrieNodeGroup group = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
-        int bound = PbtTrieNodeGroup.EncodedLengthBound(group.BoundaryShape());
+        PbtTrieNodeGroup<Layout> group = PbtTrieNodeGroup<Layout>.Decode(encoded.AsSpan(0, length));
+        int bound = PbtTrieNodeGroup<Layout>.EncodedLengthBound(group.BoundaryShape());
 
         Assert.That(bound, Is.GreaterThanOrEqualTo(length));
-        Assert.That(bound, Is.LessThanOrEqualTo(PbtTrieNodeGroup.MaxEncodedLength));
-        if (occupiedSlots == (1u << PbtLayout.TrieNodeGroupBoundarySlots) - 1)
+        Assert.That(bound, Is.LessThanOrEqualTo(PbtTrieNodeGroup<Layout>.MaxEncodedLength));
+        if (occupiedSlots == (1u << Layout.BoundarySlots) - 1)
         {
             Assert.That(bound - length, Is.EqualTo(32), "a full tile leaves the bound only the root hash to spare, which no group stores");
         }
@@ -404,7 +410,7 @@ public class PbtTrieNodeGroupTests
     private static uint OccupiedPositions(uint occupiedSlots)
     {
         uint positions = 0;
-        Walk(PbtLayout.TrieNodeGroupRootPosition, 0, PbtLayout.TrieNodeGroupBoundarySlots);
+        Walk(Layout.RootPosition, 0, Layout.BoundarySlots);
         return positions;
 
         void Walk(int position, int firstSlot, int width)
@@ -426,8 +432,8 @@ public class PbtTrieNodeGroupTests
     private static int Encode(
         ReadOnlySpan<PbtTrieNodeGroup.ValueSlot> slots, in PbtSubtreeStats stats, Span<byte> destination, PbtGroupFormat format)
     {
-        PbtGroupEncoder builder = new(destination, format);
-        for (int position = 0; position < PbtLayout.TrieNodeGroupPositionCount; position++)
+        PbtGroupEncoder<Layout> builder = new(destination, format);
+        for (int position = 0; position < Layout.PositionCount; position++)
         {
             PbtTrieNodeGroup.ValueSlot slot = slots[position];
             switch (slot.Kind)

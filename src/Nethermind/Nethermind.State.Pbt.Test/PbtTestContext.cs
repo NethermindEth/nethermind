@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.Trie.Pruning;
@@ -49,7 +50,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         // same blocks. A test that inherited that would have its boundaries — and so what persists,
         // and what prunes — move from run to run, so pin it unless the test asked for one.
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
-        Persistence = new PbtRocksDbPersistence(Db);
+        Persistence = new PbtRocksDbPersistence(Db, new PbtConfig());
         ResourcePool = new PbtResourcePool(Config);
         Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);
         Compactor = new PbtSnapshotCompactor(ResourcePool, Schedule, Repository, Config);
@@ -61,7 +62,10 @@ internal sealed class PbtTestContext : IAsyncDisposable
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
         new(CodeDb, Manager, ChildHeaders, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
-            Config.TrieNodeLevels, Config.RootFoldConcurrency);
+            TrieFormat, Config.RootFoldConcurrency);
+
+    /// <summary>The format the configured tiling and levels amount to, as the plugin's own extension derives it.</summary>
+    public PbtTrieFormat TrieFormat => new(Config.TrieNodeTiling, Config.TrieNodeLevels);
 
     public async ValueTask DisposeAsync()
     {

@@ -7,43 +7,51 @@ using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
 namespace Nethermind.Pbt;
 
 /// <summary>
-/// What a <see cref="PbtTrieNodeGroup"/> holds, as the three bitmaps that say it: where a node sits,
-/// which of those nodes are stems, and which boundary slots hold a run.
+/// What a trie node group holds by position, as the two bitmaps that say it: where a node sits, and
+/// which of those nodes are stems.
 /// </summary>
 /// <remarks>
-/// Read at either of the two granularities a group is described by, whichever the producer means.
-/// The encoding's own arithmetic — <see cref="PbtTrieNodeGroup.EncodedLength"/>,
-/// <see cref="PbtTrieNodeGroup.Decode"/>, <see cref="PbtTrieNodeGroup.SubtreeBitmaps"/> — indexes the
-/// 31 post-order positions, which is what pins every entry's offset and the whole blob's length;
-/// <see cref="PbtTrieNodeGroup.BoundaryShape"/> gathers those same bitmaps down to the 16 boundary
-/// slots, which is what the descent resolves and the fold is driven by. <see cref="Chains"/> is
-/// always the latter: a run hangs from a boundary slot and nowhere else.
+/// The encoding's own arithmetic — <c>EncodedLength</c>, <c>Decode</c>, <c>SubtreeBitmaps</c> —
+/// indexes the tile's post-order positions, which is what pins every entry's offset and the whole
+/// blob's length. The descent works at the coarser <see cref="BoundarySlotMasks"/> granularity, which
+/// is what it resolves and the fold is driven by. <see cref="Chains"/> is always the latter: a run
+/// hangs from a boundary slot and nowhere else.
+/// <para>
+/// The bitmaps are 128 bits wide whatever the tiling, the widest tile holding 127 positions. A tiling
+/// serializes only as many as it has (<see cref="IPbtTileLayout.WriteMasks"/>).
+/// </para>
 /// </remarks>
-public readonly record struct NodeGroupBitmasks(uint Presence, uint Stems, uint Chains)
+public readonly record struct NodeGroupBitmasks(UInt128 Presence, UInt128 Stems, ulong Chains);
+
+/// <summary>
+/// What a trie node group holds at its boundary: bit <c>i</c> is set where boundary slot <c>i</c>
+/// holds a node, where that node is a stem, and where it is a run.
+/// </summary>
+public readonly record struct BoundarySlotMasks(ulong Presence, ulong Stems, ulong Chains)
 {
     /// <summary>
-    /// Of a boundary shape: the slots rooting a child group's blob — occupied, and holding neither a
-    /// stem, whose subtree is its leaf blob, nor a run, whose bytes the group holds itself.
+    /// The slots rooting a child group's blob — occupied, and holding neither a stem, whose subtree is
+    /// its leaf blob, nor a run, whose bytes the group holds itself.
     /// </summary>
-    public uint ChildSlots => Presence & ~Stems & ~Chains;
+    public ulong ChildSlots => Presence & ~Stems & ~Chains;
 
     /// <summary>
-    /// Of a boundary shape: the kind of the node the slots <paramref name="rangeBitmask"/> covers fold
-    /// to — an unoccupied range is absent, a lone stem stays a stem, hoisting to its shortest unique
-    /// prefix higher up, and anything else roots an internal node.
+    /// The kind of the node the slots <paramref name="rangeBitmask"/> covers fold to — an unoccupied
+    /// range is absent, a lone stem stays a stem, hoisting to its shortest unique prefix higher up,
+    /// and anything else roots an internal node.
     /// </summary>
     /// <remarks>
     /// The fold's whole kind algebra, and it needs only the boundary: a node's shape follows from its
     /// own range without walking below it, which is what lets a rebuild emit nodes in encoding order.
     /// </remarks>
-    public NodeKind KindOf(uint rangeBitmask)
+    public NodeKind KindOf(ulong rangeBitmask)
     {
-        uint occupied = Presence & rangeBitmask;
+        ulong occupied = Presence & rangeBitmask;
         return occupied == 0 ? NodeKind.Absent
             : BitOperations.PopCount(occupied) == 1 && (Stems & occupied) != 0 ? NodeKind.Stem
             : NodeKind.Internal;
     }
 
-    /// <summary>Of a boundary shape: what the whole of it folds to, <see cref="KindOf"/> over every slot.</summary>
-    public NodeKind RootKind => KindOf(uint.MaxValue);
+    /// <summary>What the whole of the shape folds to, <see cref="KindOf"/> over every slot.</summary>
+    public NodeKind RootKind => KindOf(ulong.MaxValue);
 }

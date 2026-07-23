@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -11,7 +12,7 @@ namespace Nethermind.Pbt;
 
 public static partial class TrieUpdater
 {
-    private sealed partial class Updater
+    private sealed partial class Updater<TLayout> where TLayout : IPbtTileLayout
     {
         /// <summary>
         /// Builds the run of single-child levels from <paramref name="startDepth"/> down to the group at
@@ -22,7 +23,7 @@ public static partial class TrieUpdater
             int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats)
         {
             RefCountingMemory memory = _memoryProvider.Rent(PbtNodeChain.EncodedLength);
-            PbtNodeChain.Write(memory.GetSpan(), startDepth, targetDepth, targetPath, targetHash, stats);
+            PbtNodeChain.Write<TLayout>(memory.GetSpan(), startDepth, targetDepth, targetPath, targetHash, stats);
             return new Occupant(new NodeRef(NodeKind.Chain, 0), memory);
         }
 
@@ -77,7 +78,7 @@ public static partial class TrieUpdater
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty);
 
-            PbtNodeChain chain = PbtNodeChain.Decode(chainData, depth);
+            PbtNodeChain chain = PbtNodeChain.Decode<TLayout>(chainData, depth);
             int targetDepth = chain.TargetDepth;
             Stem targetPath = chain.TargetPath;
 
@@ -110,16 +111,9 @@ public static partial class TrieUpdater
             {
                 using RefCountingMemory? targetData = _store.GetTrieNode(chain.TargetKey);
                 BufferWriter targetWriter = new(_memoryProvider, targetData?.GetSpan().Length ?? 0);
-                NodeResult inner;
-                bool targetChanged;
-                if (PbtLayout.IsClusteringDepth(targetDepth))
-                {
-                    ApplyClustered(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter, out inner, out targetChanged, out delta);
-                }
-                else
-                {
-                    ApplyGroup(chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter, out inner, out targetChanged, out delta);
-                }
+                ApplyStoredGroup(
+                    chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter,
+                    out NodeResult inner, out bool targetChanged, out delta);
 
                 if (targetWriter.Detach() is { } targetBlob) inner = inner.WithBlob(targetBlob);
 
@@ -148,7 +142,7 @@ public static partial class TrieUpdater
             // along that prefix (invariant 3), so the deeper group is unbucketed and partitions for itself.
             // A deeper group has a run minted above it, so it is one no blob of this frame's holds: it owns
             // its own, however the run this frame replaces was held.
-            int branchDepth = splitDepth & ~(PbtLayout.TrieNodeGroupLevelsPerGroup - 1);
+            int branchDepth = TLayout.GroupDepthOf(splitDepth);
             bool branchesHere = branchDepth == depth;
             if (branchesHere)
             {
@@ -178,33 +172,34 @@ public static partial class TrieUpdater
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
+        [SkipLocalsInit]
         private NodeResult ApplyChainSplit(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in PbtNodeChain chain,
             scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer, out bool changed,
             out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
-            int childDepth = depth + PbtLayout.TrieNodeGroupLevelsPerGroup;
+            int childDepth = depth + TLayout.LevelsPerGroup;
             Stem targetPath = chain.TargetPath;
             ValueHash256 targetHash = chain.TargetHash;
 
             // The run below this frame, at the one slot its path passes through: the target group itself
             // when it is the direct child, otherwise what is left of the run. Neither is stored under that
             // key — a boundary internal points at the target, and the remainder has never been a blob.
-            int targetSlot = NibbleOf(targetPath, depth);
+            int targetSlot = TLayout.SlotOf(targetPath, depth);
             bool directChild = childDepth == chain.TargetDepth;
             using Occupant seed = directChild
                 ? NewInternalNode(targetHash)
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
             // a seeded run is the one occupant a frame can start with that is not a pointer to a blob
-            uint occupantsOccupied = 1u << targetSlot;
-            NodeGroupBitmasks occupantsShape = new(occupantsOccupied, Stems: 0, directChild ? 0 : occupantsOccupied);
+            ulong occupantsOccupied = 1UL << targetSlot;
+            BoundarySlotMasks occupantsShape = new(occupantsOccupied, Stems: 0, directChild ? 0 : occupantsOccupied);
 
             // The group this split makes real clusters its children where its depth says so, and the target
             // is one of them: its blob moves out of the key the run left it under and into the cluster
             // this frame is about to write. A run below the child depth is not stored anywhere to begin
             // with, and rides in the seed as it always has.
-            using RefCountingMemory? adopted = directChild && PbtLayout.IsClusteringDepth(depth)
+            using RefCountingMemory? adopted = directChild && TLayout.IsClusteringDepth(depth)
                 ? _store.GetTrieNode(chain.TargetKey)
                 : null;
             if (adopted is not null) _store.SetTrieNode(chain.TargetKey, null);
@@ -212,7 +207,7 @@ public static partial class TrieUpdater
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
             SeededOccupant occupants = new(seed, targetSlot, StoredBlob.Of(adopted));
-            RefList16<NodeResult> resultBuffer = new(PbtLayout.TrieNodeGroupBoundarySlots);
+            RefList64<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             PbtNodeCluster.Builder builder = default;
@@ -273,7 +268,7 @@ public static partial class TrieUpdater
                         return NewChainNode(startDepth, innerKey.Depth, innerKey.Path, inner.Hash, stats);
                     }
                 default:
-                    PbtNodeChain absorbed = PbtNodeChain.Decode(inner.ChainData, innerKey.Depth);
+                    PbtNodeChain absorbed = PbtNodeChain.Decode<TLayout>(inner.ChainData, innerKey.Depth);
                     int targetDepth = absorbed.TargetDepth;
                     Stem targetPath = absorbed.TargetPath;
                     ValueHash256 targetHash = absorbed.TargetHash;

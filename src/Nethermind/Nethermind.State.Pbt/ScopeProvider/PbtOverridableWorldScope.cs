@@ -29,7 +29,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly IReadOnlyDb _codeDbOverlay;
     private readonly IPbtDbManager _manager;
     private readonly IPbtResourcePool _resourcePool;
-    private readonly PbtGroupFormat _writeFormat;
+    private readonly PbtTrieFormat _writeFormat;
     private readonly int _rootFoldConcurrency;
     private bool _isDisposed;
 
@@ -37,7 +37,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     {
         _manager = manager;
         _resourcePool = resourcePool;
-        _writeFormat = config.TrieNodeLevels;
+        _writeFormat = config.TrieNodeWriteFormat();
         _rootFoldConcurrency = config.RootFoldConcurrency;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);

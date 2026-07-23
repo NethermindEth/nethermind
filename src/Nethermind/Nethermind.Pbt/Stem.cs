@@ -33,6 +33,12 @@ public readonly record struct Stem
 
     public ReadOnlySpan<byte> Bytes => _bytes.Bytes[..Length];
 
+    /// <summary>
+    /// The stem's bytes followed by the zero byte that pads them to 32, for a reader whose window
+    /// runs past the last stem bit — the deepest tile of a tiling that does not divide 248 evenly.
+    /// </summary>
+    internal ReadOnlySpan<byte> PaddedBytes => _bytes.Bytes;
+
     public int Zone => Bytes[0] >> 4;
 
     public bool IsStorageZone => (Bytes[0] & 0x80) != 0;

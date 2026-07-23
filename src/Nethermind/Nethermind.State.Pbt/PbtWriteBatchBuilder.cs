@@ -111,47 +111,70 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// throws mid-drain the untransferred maps are dropped to the GC instead — a lost map costs an
     /// allocation, a doubly-returned one costs correctness.
     /// <para>
-    /// The shard key being the stem's first byte makes it the two nibbles the tree's first two levels
-    /// partition on, so draining the shards in order hands the batch its entries already bucketed for
-    /// those levels, letting <see cref="TrieUpdater"/> skip re-deriving the bounds. The nesting tracks
-    /// each nibble's start so its group's ends can be local to it, as the table's layout requires.
+    /// Draining the shards in ascending order hands the batch its entries already bucketed for as many
+    /// of the tree's topmost levels as the shard key — the stem's first byte — spans, letting
+    /// <see cref="TrieUpdater"/> skip re-deriving those bounds. That is the first two levels of a
+    /// four-level tiling, whose slots are the byte's two nibbles, but only the first of a six-level
+    /// one, whose second level starts inside the next byte; the rest that tiling partitions for itself.
     /// </para>
     /// </remarks>
-    public PbtWriteBatch DrainToWriteBatch()
+    /// <param name="tiling">The tiling the batch will be applied in, whose levels the table is bucketed for.</param>
+    public PbtWriteBatch DrainToWriteBatch(PbtTiling tiling) =>
+        tiling == PbtTiling.SixLevel
+            ? DrainToWriteBatch<PbtSixLevelTileLayout>()
+            : DrainToWriteBatch<PbtClusteredTileLayout>();
+
+    private PbtWriteBatch DrainToWriteBatch<TLayout>() where TLayout : IPbtTileLayout
     {
-        ArrayPoolList<int> buckets = new(PbtWriteBatch.BucketTableLength, PbtWriteBatch.BucketTableLength);
+        // The coarse level sits last so a descent finds its own level at the table's end whatever the
+        // level count, and slot h's child level at h * LevelStride. A group's ends count from the start
+        // of its own coarse slot rather than of the batch, which is what lets the descent below use them
+        // as its bounds unchanged; the coarse level, whose range is the whole batch, is the same thing
+        // at depth 0.
+        int stride = PbtWriteBatch.LevelStride<TLayout>();
+        int slots = TLayout.BoundarySlots;
+        bool nested = ShardCount >= slots * slots;
+        int tableLength = nested ? slots * stride + stride : stride;
+        ArrayPoolList<int> buckets = new(tableLength, tableLength);
         PbtWriteBatch batch = new(estimatedStems: DirtyStemCount, buckets);
         try
         {
             Span<int> table = buckets.AsSpan();
-            Span<int> nibbles = table[PbtWriteBatch.ByteLevelLength..];
-            nibbles[0] = 0;
-            int nibbleStart = 0;
-            uint nibblesTouched = 0;
-            for (int nibble = 0; nibble < PbtLayout.TrieNodeGroupBoundarySlots; nibble++)
+            Span<int> coarse = table[(tableLength - stride)..];
+            coarse[0] = 0;
+            int coarseStart = 0;
+            ulong coarseTouched = 0;
+
+            // The shards a coarse slot covers: the first byte's high bits are the slot, and what is left
+            // of the byte splits it further — into the next level's slots where the tiling is narrow
+            // enough for a whole level to fit, and into nothing the descent can use where it is not.
+            int shardsPerSlot = ShardCount / slots;
+            for (int slot = 0; slot < slots; slot++)
             {
-                Span<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride, PbtWriteBatch.LevelStride);
-                group[0] = 0;
-                uint groupTouched = 0;
-                for (int low = 0; low < PbtLayout.TrieNodeGroupBoundarySlots; low++)
+                Span<int> fine = nested ? table.Slice(slot * stride, stride) : default;
+                if (nested) fine[0] = 0;
+                ulong fineTouched = 0;
+                for (int shard = 0; shard < shardsPerSlot; shard++)
                 {
-                    int lowStart = batch.Count;
-                    foreach ((Stem stem, IPbtStemChanges leaves) in _shards[(nibble << 4) | low].Stems)
+                    int shardStart = batch.Count;
+                    foreach ((Stem stem, IPbtStemChanges leaves) in _shards[slot * shardsPerSlot + shard].Stems)
                     {
                         batch.Add(stem, leaves);
                     }
 
-                    if (batch.Count != lowStart) groupTouched |= 1u << low;
-                    group[low + 1] = batch.Count - nibbleStart;
+                    if (!nested) continue;
+
+                    if (batch.Count != shardStart) fineTouched |= 1UL << shard;
+                    fine[shard + 1] = batch.Count - coarseStart;
                 }
 
-                group[PbtWriteBatch.TouchedMaskIndex] = (int)groupTouched;
-                if (batch.Count != nibbleStart) nibblesTouched |= 1u << nibble;
-                nibbles[nibble + 1] = batch.Count;
-                nibbleStart = batch.Count;
+                if (nested) PbtWriteBatch.WriteTouched<TLayout>(fine, fineTouched);
+                if (batch.Count != coarseStart) coarseTouched |= 1UL << slot;
+                coarse[slot + 1] = batch.Count;
+                coarseStart = batch.Count;
             }
 
-            nibbles[PbtWriteBatch.TouchedMaskIndex] = (int)nibblesTouched;
+            PbtWriteBatch.WriteTouched<TLayout>(coarse, coarseTouched);
         }
         finally
         {

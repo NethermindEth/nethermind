@@ -26,32 +26,34 @@ namespace Nethermind.Pbt;
 public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? buckets) : IDisposable
 {
     /// <summary>The bounds array of one level, so bucket <c>i</c> is <c>entries[level[i]..level[i + 1]]</c>.</summary>
-    public const int BoundsLength = PbtLayout.TrieNodeGroupBoundarySlots + 1;
+    public static int BoundsLength<TLayout>() where TLayout : IPbtTileLayout => TLayout.BoundarySlots + 1;
 
     /// <summary>
     /// Where a level caches its touched mask: bit <c>i</c> set where bucket <c>i</c> is non-empty, which is
     /// what the descent partitions on. Derived from the counts the bucketing already walks, so that a
     /// consumer never re-derives it by scanning the bounds.
     /// </summary>
-    public const int TouchedMaskIndex = BoundsLength;
-
-    /// <summary>One level of the bucket table: its <see cref="BoundsLength"/> bounds, then its <see cref="TouchedMaskIndex"/>.</summary>
-    public const int LevelStride = BoundsLength + 1;
-
-    /// <summary>
-    /// The byte level of the bucket table: one level per nibble group, group <c>h</c> covering the
-    /// stem first bytes <c>0xh0</c>..<c>0xhF</c>. The nibble level follows it.
-    /// </summary>
     /// <remarks>
-    /// A group's ends count from the start of its nibble rather than of the batch, which is what lets the
-    /// depth-4 descent use them as its bounds unchanged; the nibble level, whose range is the whole batch,
-    /// is the same thing at depth 0. The coarse level sits last so a descent finds its own level at the
-    /// table's end whatever the level count, and slot <c>h</c>'s child level at <c>h * LevelStride</c>.
+    /// Two entries, low half first: a wide tiling's mask does not fit the <c>int</c> the bounds — which
+    /// are entry indices — make the level out of.
     /// </remarks>
-    public const int ByteLevelLength = PbtLayout.TrieNodeGroupBoundarySlots * LevelStride;
+    public static int TouchedMaskIndex<TLayout>() where TLayout : IPbtTileLayout => BoundsLength<TLayout>();
 
-    /// <summary>The whole bucket table: the byte level, then the nibble level.</summary>
-    public const int BucketTableLength = ByteLevelLength + LevelStride;
+    /// <summary>One level of the bucket table: its <see cref="BoundsLength{TLayout}"/> bounds, then its <see cref="TouchedMaskIndex{TLayout}"/>.</summary>
+    public static int LevelStride<TLayout>() where TLayout : IPbtTileLayout => BoundsLength<TLayout>() + 2;
+
+    public static ulong ReadTouched<TLayout>(scoped ReadOnlySpan<int> level) where TLayout : IPbtTileLayout
+    {
+        int index = TouchedMaskIndex<TLayout>();
+        return (uint)level[index] | ((ulong)(uint)level[index + 1] << 32);
+    }
+
+    public static void WriteTouched<TLayout>(Span<int> level, ulong touched) where TLayout : IPbtTileLayout
+    {
+        int index = TouchedMaskIndex<TLayout>();
+        level[index] = (int)(uint)touched;
+        level[index + 1] = (int)(uint)(touched >> 32);
+    }
 
     /// <param name="Stem">The 31-byte stem shared by every write in <paramref name="Changes"/>.</param>
     /// <param name="Changes">The stem's sub-index → 32-byte value writes; a zero value clears the leaf.</param>

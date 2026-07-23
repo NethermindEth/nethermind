@@ -18,5 +18,6 @@ public class PbtConfig : IPbtConfig
     public bool ScanTree { get; set; }
     public int ScanTreeConcurrency { get; set; }
     public PbtGroupFormat TrieNodeLevels { get; set; } = PbtGroupFormat.Interleaved;
+    public PbtTiling TrieNodeTiling { get; set; } = PbtTiling.ClusteredFourLevel;
     public int RootFoldConcurrency { get; set; }
 }

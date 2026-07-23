@@ -7,6 +7,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 public class TrieNodeKeyTests
@@ -20,7 +22,7 @@ public class TrieNodeKeyTests
     public void DbKey_PutsThePathFirstAndTheDepthLast()
     {
         Stem stem = new(Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd"));
-        TrieNodeKey key = TrieNodeKey.For(2 * PbtLayout.TrieNodeGroupLevelsPerGroup, stem);
+        TrieNodeKey key = TrieNodeKey.For(2 * Layout.LevelsPerGroup, stem);
 
         byte[] dbKey = key.ToDbKey();
 
@@ -53,6 +55,6 @@ public class TrieNodeKeyTests
         into.Add(node.ToDbKey());
         if (remainingLevels == 0) return;
 
-        foreach (int slot in Slots) Descend(node.ChildGroup(slot), remainingLevels - 1, into);
+        foreach (int slot in Slots) Descend(node.ChildGroup(slot, Layout.LevelsPerGroup), remainingLevels - 1, into);
     }
 }

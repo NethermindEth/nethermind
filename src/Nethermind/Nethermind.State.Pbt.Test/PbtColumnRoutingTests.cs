@@ -10,6 +10,8 @@ using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 
+using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtColumnRoutingTests
@@ -48,9 +50,9 @@ public class PbtColumnRoutingTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
 
-        TrieNodeKey accountKey = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, AccountStem);
-        TrieNodeKey codeKey = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, CodeStem);
-        TrieNodeKey storageKey = TrieNodeKey.For(PbtLayout.TrieNodeGroupLevelsPerGroup, StorageStem);
+        TrieNodeKey accountKey = TrieNodeKey.For(Layout.LevelsPerGroup, AccountStem);
+        TrieNodeKey codeKey = TrieNodeKey.For(Layout.LevelsPerGroup, CodeStem);
+        TrieNodeKey storageKey = TrieNodeKey.For(Layout.LevelsPerGroup, StorageStem);
 
         byte[] rootNode = Bytes.FromHexString("0x11");
         byte[] accountNode = Bytes.FromHexString("0x22");
@@ -72,7 +74,7 @@ public class PbtColumnRoutingTests
     }
 
     private static IPbtPersistence.IWriteBatch StartBatch(SnapshotableMemColumnsDb<PbtColumns> db) =>
-        new PbtRocksDbPersistence(db).CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256), default, WriteFlags.None);
+        new PbtRocksDbPersistence(db, new PbtConfig()).CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256), default, WriteFlags.None);
 
     private static void AssertOnlyIn(SnapshotableMemColumnsDb<PbtColumns> db, byte[] key, PbtColumns expected, byte[] value, PbtColumns[] candidates)
     {
