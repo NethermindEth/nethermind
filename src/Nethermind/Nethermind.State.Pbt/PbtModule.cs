@@ -6,6 +6,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -33,6 +34,7 @@ public class PbtModule(IPbtConfig config) : Module
     {
         builder
             .AddColumnDatabase<PbtColumns>(DbNames.Pbt)
+            .AddDecorator<IRocksDbConfigFactory, PbtRocksDbConfigAdjuster>()
             .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
             // singleton: a second pool would silently halve every hit rate
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
