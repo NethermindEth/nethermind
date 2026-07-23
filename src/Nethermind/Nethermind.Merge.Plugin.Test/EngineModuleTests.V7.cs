@@ -301,6 +301,35 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task Should_build_block_including_reversed_nonce_inclusion_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Transaction tx0 = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction tx1 = Build.A.Transaction
+            .WithNonce(1).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        // Reversed order (nonce 1 before nonce 0): a one-pass producer would skip nonce 1 forever.
+        byte[][] inclusionList = [Rlp.Encode(tx1).Bytes, Rlp.Encode(tx0).Bytes];
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: inclusionList));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
+
+        // Both IL txs must be produced, in ascending-nonce order.
+        Assert.That(payload.Transactions, Has.Length.EqualTo(2));
+        Assert.That(payload.Transactions[0], Is.EqualTo(Rlp.Encode(tx0).Bytes));
+        Assert.That(payload.Transactions[1], Is.EqualTo(Rlp.Encode(tx1).Bytes));
+    }
+
+    [Test]
     public async Task Can_get_inclusion_list()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);

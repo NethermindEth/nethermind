@@ -31,7 +31,29 @@ public class InclusionListTxSource(
             : [];
 
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions, FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)));
+        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions, OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec))));
+
+    // The producer offers each IL tx to the block executor only once, so a lower nonce that appears
+    // later than its dependent higher nonce (the IL is shuffled) would be skipped forever. Ordering by
+    // (sender, nonce) guarantees each sender's txs are offered in ascending-nonce (dependency) order.
+    private static Transaction[] OrderForProduction(Transaction[] txs)
+    {
+        Array.Sort(txs, static (a, b) =>
+        {
+            int bySender = CompareSenders(a.SenderAddress, b.SenderAddress);
+            return bySender != 0 ? bySender : a.Nonce.CompareTo(b.Nonce);
+        });
+        return txs;
+    }
+
+    private static int CompareSenders(Address? a, Address? b)
+    {
+        if (ReferenceEquals(a, b)) return 0;
+        // Unrecoverable senders (null) can never be included; order them last.
+        if (a is null) return 1;
+        if (b is null) return -1;
+        return a.Bytes.SequenceCompareTo(b.Bytes);
+    }
 
     // FOCIL: blob (type-3) IL entries are ignored — drop them so block production never emits a blob
     // tx that has no ShardBlobNetworkWrapper (which would make getPayloadV6 unusable for the CL).
