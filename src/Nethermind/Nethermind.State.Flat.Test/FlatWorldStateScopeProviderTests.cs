@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -9,6 +10,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -768,6 +770,32 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.RootHash, Is.EqualTo(expectedTree.RootHash), "root across the published block boundary");
 
         scope.Commit(2);
+    }
+
+    [Test]
+    public void Publication_AdoptsTheStagedRlpArrays_WithoutCopying()
+    {
+        // The staged array is the final owned RLP; a copying TrieNode overload (e.g. the
+        // ReadOnlySpan one, which a bare byte[] binds to) would duplicate every published node.
+        byte[] rlpA = new byte[40];
+        byte[] rlpB = new byte[64];
+        for (int i = 0; i < rlpB.Length; i++) rlpB[i] = (byte)i;
+
+        using ArrayPoolList<SparseTrieStagedNode> staged = new(2)
+        {
+            new SparseTrieStagedNode(TreePath.FromHexString("1"), ValueKeccak.Compute(rlpA), rlpA),
+            new SparseTrieStagedNode(TreePath.FromHexString("2f"), ValueKeccak.Compute(rlpB), rlpB),
+        };
+
+        List<(TreePath, TrieNode)> buffer = FlatSparseTrieSession.BuildPublicationBuffer(staged);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(buffer[0].Item2.FullRlp.UnderlyingArray, rlpA), "first staged array adopted");
+            Assert.That(ReferenceEquals(buffer[1].Item2.FullRlp.UnderlyingArray, rlpB), "second staged array adopted");
+            Assert.That(buffer[0].Item2.IsSealed, "published node sealed");
+            Assert.That(buffer[0].Item2.Keccak, Is.EqualTo(ValueKeccak.Compute(rlpA).ToCommitment()));
+        }
     }
 
     [Test]

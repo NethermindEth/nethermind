@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -224,12 +225,16 @@ internal sealed class FlatSparseTrieSession(SnapshotBundle bundle, Hash256 ancho
     }
 
     /// <summary>Converts staged records into the sealed <see cref="TrieNode"/> publication shape.</summary>
+    /// <remarks>The staged array is already the final owned RLP; the explicit
+    /// <see cref="CappedArray{T}"/> binds the adopting <see cref="TrieNode"/> constructor —
+    /// a bare <c>byte[]</c> would bind the <see cref="ReadOnlySpan{T}"/> overload, which
+    /// copies every array again.</remarks>
     internal static List<(TreePath, TrieNode)> BuildPublicationBuffer(ArrayPoolList<SparseTrieStagedNode> staged)
     {
         List<(TreePath, TrieNode)> buffer = new(staged.Count);
         foreach (SparseTrieStagedNode node in staged)
         {
-            buffer.Add((node.Path, new TrieNode(NodeType.Unknown, node.Hash.ToCommitment(), node.Rlp)));
+            buffer.Add((node.Path, new TrieNode(NodeType.Unknown, node.Hash.ToCommitment(), new CappedArray<byte>(node.Rlp))));
         }
 
         return buffer;
