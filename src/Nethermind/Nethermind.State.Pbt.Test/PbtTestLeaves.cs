@@ -4,19 +4,36 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
 /// Builds the tree leaves of an account or slot for tests that feed <see cref="PbtRebuilder"/>
-/// directly. The importer derives the same leaves from the flat columns; a test asserting the folded
-/// root against <c>PbtReferenceModel</c> would catch a disagreement between the two.
+/// directly, and reads them back the way the state does. The importer derives the same leaves from the
+/// source; a test asserting the folded root against <c>PbtReferenceModel</c> would catch a disagreement
+/// between the two.
 /// </summary>
 internal static class PbtTestLeaves
 {
+    /// <summary>The account a persisted state holds, decoded out of its header stem's blob as every read path does.</summary>
+    public static Account? ReadAccount(IPbtPersistence.IReader reader, Address address)
+    {
+        using RefCountingMemory? blob = reader.GetLeafBlob(PbtKeyDerivation.AccountHeaderStem(address));
+        return blob is null ? null : PbtLeafDecoder.DecodeAccount(blob.GetSpan());
+    }
+
+    /// <summary>The slot value a persisted state holds, decoded out of its stem's blob at its sub-index.</summary>
+    public static EvmWord ReadSlot(IPbtPersistence.IReader reader, Address address, in UInt256 slot)
+    {
+        using RefCountingMemory? blob = reader.GetLeafBlob(PbtLeafDecoder.SlotStem(address, slot, out byte subIndex));
+        return blob is null ? default : PbtLeafDecoder.DecodeSlot(blob.GetSpan(), subIndex);
+    }
+
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)
     {
         Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
@@ -54,6 +71,23 @@ internal static class PbtTestLeaves
         PbtSlotKeyDeriver deriver = new(address);
         Stem stem = deriver.Derive(slot, out byte subIndex);
         into.Add(new RebuildEntry(stem, subIndex, new ValueHash256(value.ToBigEndian())));
+    }
+
+    /// <summary>Lays <paramref name="leaves"/> out as one stem's leaves-only blob, the way a bulk load writes one.</summary>
+    /// <param name="leaves">Sub-index and its value, which is left-padded to the 32-byte leaf as the storage columns hand them over.</param>
+    public static byte[] Blob(params (byte SubIndex, byte[] Value)[] leaves)
+    {
+        IPbtStemChanges changes = PbtStemChanges.Rent();
+        foreach ((byte subIndex, byte[] value) in leaves)
+        {
+            ValueHash256 leaf = default;
+            value.CopyTo(leaf.BytesAsSpan[(ValueHash256.MemorySize - value.Length)..]);
+            changes = changes.Set(subIndex, leaf);
+        }
+
+        byte[] blob = StemLeafBlob.ApplyNoHash([], changes);
+        PbtStemChanges.Return(changes);
+        return blob;
     }
 
     /// <summary>Orders leaves by tree key, the order the importer emits them in.</summary>

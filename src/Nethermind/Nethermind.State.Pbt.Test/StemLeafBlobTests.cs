@@ -482,28 +482,21 @@ public class StemLeafBlobTests
         return value;
     }
 
-    /// <summary>Maps the byte[] changes to 32-byte leaf values (null/empty = clear) and applies them.</summary>
     /// <summary>
-    /// The builder lays out a blob without hashing anything, so the only thing that makes it a blob is
-    /// that <see cref="StemLeafBlob"/> reads back exactly what went in — through both the random-access
-    /// and the enumerating reader, and after a merge onto an already-built one.
+    /// <see cref="StemLeafBlob.ApplyNoHash"/> lays out a blob without hashing anything, so the only
+    /// thing that makes it a blob is that <see cref="StemLeafBlob"/> reads back exactly what went in —
+    /// through both the random-access and the enumerating reader, and after a merge onto a prior one.
     /// </summary>
     [Test]
-    public void Builder_LaysOutALeavesOnlyBlob_ThatReadsBackWhatWentIn()
+    public void ApplyNoHash_LaysOutALeavesOnlyBlob_ThatReadsBackWhatWentIn()
     {
         byte[] value5 = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] value200 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-        StemLeafBlobBuilder builder = new();
-        builder.Set(5, value5);
-        byte[] blob = builder.Encode();
+        byte[] blob = ApplyNoHash([], new Dictionary<byte, byte[]?> { [5] = value5 });
 
-        // seeding from a blob is how the import merges an account's own leaves onto its header slots
-        builder.Seed(blob);
-        builder.Set(200, value200);
-        // a stripped value is right-aligned into the leaf, as the storage columns hand them over
-        builder.Set(7, [0xAB]);
-        blob = builder.Encode();
+        // merging onto a prior blob is how a bulk load adds to a stem it has already laid out
+        blob = ApplyNoHash(blob, new Dictionary<byte, byte[]?> { [200] = value200, [7] = [0xAB] });
 
         Assert.That(StemLeafBlob.TryGetValue(blob, 5, out ReadOnlySpan<byte> read5) && read5.SequenceEqual(value5));
         Assert.That(StemLeafBlob.TryGetValue(blob, 200, out ReadOnlySpan<byte> read200) && read200.SequenceEqual(value200));
@@ -518,25 +511,23 @@ public class StemLeafBlobTests
 
     /// <summary>A zero leaf is absent, so clearing the last one leaves no blob and marks the stem deleted.</summary>
     [Test]
-    public void Builder_TreatsAZeroValueAsAbsent()
+    public void ApplyNoHash_TreatsAZeroValueAsAClear()
     {
-        StemLeafBlobBuilder builder = new();
-        builder.Set(5, Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111"));
-        builder.Set(5, new byte[StemLeafBlob.ValueLength]);
+        byte[] blob = ApplyNoHash([], new Dictionary<byte, byte[]?> { [5] = FixtureValues[0], [200] = FixtureValues[1] });
 
-        Assert.That(builder.IsEmpty);
-        Assert.That(builder.Encode(), Is.Empty);
+        Assert.That(ApplyNoHash(blob, new Dictionary<byte, byte[]?> { [5] = null }), Is.EqualTo(ApplyNoHash([], new Dictionary<byte, byte[]?> { [200] = FixtureValues[1] })));
+        Assert.That(ApplyNoHash(blob, new Dictionary<byte, byte[]?> { [5] = null, [200] = null }), Is.Empty);
     }
 
     /// <summary>
-    /// The import writes leaves-only blobs and folds them afterwards, so a blob it built has to fold to
-    /// the very root the same leaves applied from empty would.
+    /// A bulk load lays its leaves out unhashed and folds them afterwards, so what it wrote has to fold
+    /// to the very root the same leaves applied from empty would.
     /// </summary>
     [TestCase(PbtLeafFormat.EveryLevel)]
     [TestCase(PbtLeafFormat.Interleaved)]
     [TestCase(PbtLeafFormat.LeavesOnly)]
     [TestCase(PbtLeafFormat.Every4Depth)]
-    public void Builder_ProducesABlob_FoldingToTheSameRootAsApply(PbtLeafFormat format)
+    public void ApplyNoHash_ProducesABlob_FoldingToTheSameRootAsApply(PbtLeafFormat format)
     {
         Dictionary<byte, byte[]?> leaves = new()
         {
@@ -545,39 +536,56 @@ public class StemLeafBlobTests
             [200] = FixtureValues[2],
         };
 
-        StemLeafBlobBuilder builder = new();
-        foreach ((byte subIndex, byte[]? value) in leaves) builder.Set(subIndex, value);
-
-        // refolding a built blob applies no change at all, so its own leaves are what it folds
-        Apply(builder.Encode(), [], format, out ValueHash256 fromBuilt);
+        // refolding an unhashed blob applies no change at all, so its own leaves are what it folds
+        Apply(ApplyNoHash([], leaves), [], format, out ValueHash256 fromNoHash);
         Apply([], leaves, format, out ValueHash256 fromEmpty);
 
-        Assert.That(fromBuilt, Is.EqualTo(fromEmpty));
+        Assert.That(fromNoHash, Is.EqualTo(fromEmpty));
     }
 
-    [Test]
-    public void EnumerateLeavesOnly_RefusesALayoutThatInterleavesInternalNodes()
+    [TestCase(PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.Interleaved)]
+    [TestCase(PbtLeafFormat.Every4Depth)]
+    public void LeavesOnlyPaths_RefuseALayoutThatInterleavesInternalNodes(PbtLeafFormat format)
     {
-        byte[] blob = Apply([], new Dictionary<byte, byte[]?> { [5] = FixtureValues[0], [200] = FixtureValues[1] }, PbtLeafFormat.EveryLevel, out _);
+        Dictionary<byte, byte[]?> leaves = new() { [5] = FixtureValues[0], [200] = FixtureValues[1] };
+        byte[] blob = Apply([], leaves, format, out _);
 
         Assert.That(() => StemLeafBlob.EnumerateLeavesOnly(blob), Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => ApplyNoHash(blob, leaves), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    /// <inheritdoc cref="Apply"/>
+    private static byte[] ApplyNoHash(ReadOnlySpan<byte> prior, Dictionary<byte, byte[]?> changes)
+    {
+        IPbtStemChanges mapped = Map(changes);
+        byte[] result = StemLeafBlob.ApplyNoHash(prior, mapped);
+        PbtStemChanges.Return(mapped);
+        return result;
     }
 
     private static byte[] Apply(
         ReadOnlySpan<byte> prior, Dictionary<byte, byte[]?> changes, PbtLeafFormat format, out ValueHash256 subtreeRoot)
     {
-        IPbtStemChanges mapped = PbtStemChanges.Rent();
-        foreach ((byte subIndex, byte[]? value) in changes)
-        {
-            ValueHash256 leaf = default;
-            value?.CopyTo(leaf.BytesAsSpan);
-            mapped = mapped.Set(subIndex, leaf);
-        }
-
+        IPbtStemChanges mapped = Map(changes);
         using StemLeafBlob.RebuildState rebuilt = StemLeafBlob.Apply(prior, mapped, PooledRefCountingMemoryProvider.Instance, format);
         subtreeRoot = rebuilt.SubtreeRoot;
         byte[] result = rebuilt.Blob.ToArray();
         PbtStemChanges.Return(mapped);
         return result;
+    }
+
+    /// <summary>Maps the byte[] changes to 32-byte leaf values, a null or empty one clearing the leaf.</summary>
+    private static IPbtStemChanges Map(Dictionary<byte, byte[]?> changes)
+    {
+        IPbtStemChanges mapped = PbtStemChanges.Rent();
+        foreach ((byte subIndex, byte[]? value) in changes)
+        {
+            ValueHash256 leaf = default;
+            value?.CopyTo(leaf.BytesAsSpan[(ValueHash256.MemorySize - value.Length)..]);
+            mapped = mapped.Set(subIndex, leaf);
+        }
+
+        return mapped;
     }
 }

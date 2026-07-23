@@ -8,7 +8,6 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
@@ -156,40 +155,6 @@ public class PbtRocksDbPersistence : IPbtPersistence
         public StateId CurrentState => _current.State;
 
         public ValueHash256 CurrentTreeRoot => _current.TreeRoot;
-
-        public Account? GetAccount(Address address)
-        {
-            Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
-            IReadOnlyKeyValueStore column = snapshot.GetColumn(LeafColumn(stem));
-            Span<byte> blob = column.GetSpan(stem.Bytes);
-            if (blob.IsNull()) return null;
-
-            try
-            {
-                return PbtLeafDecoder.DecodeAccount(blob);
-            }
-            finally
-            {
-                column.DangerousReleaseMemory(blob);
-            }
-        }
-
-        public EvmWord GetSlot(Address address, in UInt256 slot)
-        {
-            Stem stem = PbtLeafDecoder.SlotStem(address, slot, out byte subIndex);
-            IReadOnlyKeyValueStore column = snapshot.GetColumn(LeafColumn(stem));
-            Span<byte> blob = column.GetSpan(stem.Bytes);
-            if (blob.IsNull()) return default;
-
-            try
-            {
-                return PbtLeafDecoder.DecodeSlot(blob, subIndex);
-            }
-            finally
-            {
-                column.DangerousReleaseMemory(blob);
-            }
-        }
 
         public RefCountingMemory? GetLeafBlob(in Stem stem) => ReadOwned(snapshot.GetColumn(LeafColumn(stem)), stem.Bytes);
 

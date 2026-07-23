@@ -72,9 +72,10 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         }
 
         startTimestamp = StartTiming();
-        Account? persisted = reader.GetAccount(address);
-        Observe(startTimestamp, persisted is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
-        return persisted;
+        using RefCountingMemory? persisted = reader.GetLeafBlob(stem);
+        Account? account = persisted is null ? null : PbtLeafDecoder.DecodeAccount(persisted.GetSpan());
+        Observe(startTimestamp, account is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
+        return account;
     }
 
     /// <summary>Returns the slot value; zero when absent.</summary>
@@ -98,9 +99,10 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         }
 
         startTimestamp = StartTiming();
-        EvmWord persisted = reader.GetSlot(address, slot);
-        Observe(startTimestamp, EvmWordSlot.IsZero(in persisted) ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
-        return persisted;
+        using RefCountingMemory? persisted = reader.GetLeafBlob(stem);
+        EvmWord value = persisted is null ? default : PbtLeafDecoder.DecodeSlot(persisted.GetSpan(), subIndex);
+        Observe(startTimestamp, EvmWordSlot.IsZero(in value) ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
+        return value;
     }
 
     /// <remarks>Layer hits wrap the layer-owned array without copying; the reader fallthrough returns a

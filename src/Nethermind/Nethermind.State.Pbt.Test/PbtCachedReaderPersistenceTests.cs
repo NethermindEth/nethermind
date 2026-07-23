@@ -4,8 +4,10 @@
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NSubstitute;
 using NUnit.Framework;
@@ -66,17 +68,18 @@ public class PbtCachedReaderPersistenceTests
     public async Task SharedReader_ForwardsToTheSnapshotUnderneath()
     {
         Context ctx = new();
-        Account account = TestItem.GenerateIndexedAccount(1);
+        Stem stem = PbtKeyDerivation.AccountHeaderStem(TestItem.AddressA);
+        RefCountingMemory blob = RefCountingMemory.Wrapping([0x11]);
         ctx.Reader.CurrentState.Returns(_committedState);
         ctx.Reader.CurrentTreeRoot.Returns(_committedTreeRoot);
-        ctx.Reader.GetAccount(TestItem.AddressA).Returns(account);
+        ctx.Reader.GetLeafBlob(stem).Returns(blob);
 
         await using PbtCachedReaderPersistence persistence = ctx.Build();
         using IPbtPersistence.IReader reader = persistence.CreateReader();
 
         Assert.That(reader.CurrentState, Is.EqualTo(_committedState));
         Assert.That(reader.CurrentTreeRoot, Is.EqualTo(_committedTreeRoot));
-        Assert.That(reader.GetAccount(TestItem.AddressA), Is.SameAs(account));
+        Assert.That(reader.GetLeafBlob(stem), Is.SameAs(blob));
     }
 
     private sealed class Context

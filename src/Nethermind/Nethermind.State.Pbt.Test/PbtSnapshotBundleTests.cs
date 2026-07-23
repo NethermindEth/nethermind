@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -215,19 +214,17 @@ public class PbtSnapshotBundleTests
     /// <summary>The account header stem's blob carrying <paramref name="marker"/> as both the nonce and the value of <see cref="Slot"/>.</summary>
     private static byte[] HeaderBlob(byte marker)
     {
-        Span<byte> basicData = stackalloc byte[StemLeafBlob.ValueLength];
+        byte[] basicData = new byte[StemLeafBlob.ValueLength];
         PbtKeyDerivation.PackBasicData(basicData, 0, marker, UInt256.Zero);
 
-        StemLeafBlobBuilder builder = new();
-        builder.Set(PbtKeyDerivation.BasicDataLeafKey, basicData);
-        builder.Set(PbtKeyDerivation.HeaderSlotSubIndex(Slot), [marker]);
-        return builder.Encode();
+        return PbtTestLeaves.Blob(
+            (PbtKeyDerivation.BasicDataLeafKey, basicData),
+            (PbtKeyDerivation.HeaderSlotSubIndex(Slot), [marker]));
     }
 
     private static void Seed(FakeReader reader, byte marker)
     {
-        reader.Accounts[Address] = Build.An.Account.WithNonce(marker).TestObject;
-        reader.Slots[(Address, Slot)] = Word(marker);
+        reader.LeafBlobs[HeaderStem] = HeaderBlob(marker);
         reader.LeafBlobs[StemA] = [marker];
         reader.TrieNodes[NodeA] = [marker];
     }
@@ -247,8 +244,6 @@ public class PbtSnapshotBundleTests
 
     private sealed class FakeReader : IPbtPersistence.IReader
     {
-        public Dictionary<AddressAsKey, Account?> Accounts { get; } = [];
-        public Dictionary<(AddressAsKey, UInt256), EvmWord> Slots { get; } = [];
         public Dictionary<Stem, byte[]> LeafBlobs { get; } = [];
         public Dictionary<TrieNodeKey, byte[]> TrieNodes { get; } = [];
         public bool Disposed { get; private set; }
@@ -256,10 +251,6 @@ public class PbtSnapshotBundleTests
         public StateId CurrentState => StateId.PreGenesis;
 
         public ValueHash256 CurrentTreeRoot { get; set; }
-
-        public Account? GetAccount(Address address) => Accounts.GetValueOrDefault(address);
-
-        public EvmWord GetSlot(Address address, in UInt256 slot) => Slots.GetValueOrDefault((address, slot));
 
         public RefCountingMemory? GetLeafBlob(in Stem stem) => LeafBlobs.TryGetValue(stem, out byte[]? blob) ? RefCountingMemory.Wrapping(blob) : null;
 

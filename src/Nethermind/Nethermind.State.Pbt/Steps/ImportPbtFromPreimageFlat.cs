@@ -305,7 +305,8 @@ public class ImportPbtFromPreimageFlat(
         CancellationToken cancellationToken)
     {
         long pendingAccounts = 0;
-        Span<byte> basicData = stackalloc byte[StemLeafBlob.ValueLength];
+        // BASIC_DATA and CODE_HASH sit on adjacent sub-indices, so they go in as one run
+        Span<byte> basicDataAndCodeHash = stackalloc byte[2 * ValueHash256.MemorySize];
         using FlatPersistence.IFlatIterator accountIterator = reader.CreateAccountIterator(start, end);
         while (accountIterator.MoveNext())
         {
@@ -323,15 +324,16 @@ public class ImportPbtFromPreimageFlat(
             leaves.BeginAccount();
             if (account.HasStorage) CopySlots(reader, batch, leaves, accountKey, address, ref slots, cancellationToken);
 
-            PbtKeyDerivation.PackBasicData(basicData, code is null ? 0u : (uint)code.Length, account.Nonce, account.Balance);
-            leaves.SetHeaderLeaf(PbtKeyDerivation.BasicDataLeafKey, basicData);
-            leaves.SetHeaderLeaf(PbtKeyDerivation.CodeHashLeafKey, account.CodeHash.Bytes);
+            PbtKeyDerivation.PackBasicData(basicDataAndCodeHash[..ValueHash256.MemorySize], code is null ? 0u : (uint)code.Length, account.Nonce, account.Balance);
+            account.CodeHash.Bytes.CopyTo(basicDataAndCodeHash[ValueHash256.MemorySize..]);
+            leaves.SetHeaderRange(PbtKeyDerivation.BasicDataLeafKey, basicDataAndCodeHash);
 
             byte[]? chunks = code is { Length: > 0 } ? PbtKeyDerivation.ChunkifyCode(code) : null;
             int chunkCount = chunks is null ? 0 : chunks.Length / PbtKeyDerivation.CodeChunkSize;
-            for (int i = 0; i < Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks); i++)
+            if (chunks is not null)
             {
-                leaves.SetHeaderLeaf(PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ChunkSpan(chunks!, i));
+                int headerChunks = Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks);
+                leaves.SetHeaderRange(PbtKeyDerivation.HeaderCodeChunkSubIndex(0), ChunkRun(chunks, 0, headerChunks));
             }
 
             leaves.WriteHeaderStem(batch, PbtKeyDerivation.AccountHeaderStem(address));
@@ -342,7 +344,7 @@ public class ImportPbtFromPreimageFlat(
             {
                 Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash.ValueHash256, i, out byte subIndex);
                 int run = Math.Min(chunkCount - i, PbtKeyDerivation.StemSubtreeWidth - subIndex);
-                leaves.WriteChunkRun(batch, overflowStem, subIndex, chunks!, i, run);
+                leaves.WriteChunkRun(batch, overflowStem, subIndex, ChunkRun(chunks!, i, run));
                 i += run;
             }
 
@@ -511,20 +513,29 @@ public class ImportPbtFromPreimageFlat(
     /// and in ascending order, so only two stems are ever open: its header stem, which its first 64
     /// slots share with its own fields, and whichever storage-zone stem the slots have reached.
     /// </summary>
-    /// <remarks>Owned by one worker and reused across every account it copies, so the two builders are paid for once.</remarks>
+    /// <remarks>
+    /// Owned by one worker and reused across every account it copies, so the two maps are paid for once.
+    /// <para>
+    /// A stem's leaves accumulate in a pooled <see cref="IPbtStemChanges"/> — the same map the block path
+    /// folds through — which <see cref="StemLeafBlob.ApplyNoHash"/> lays out. A
+    /// <see cref="IPbtStemChanges.Set"/> may promote to a larger variant and return the old one to the
+    /// pool, so its result must always be stored back.
+    /// </para>
+    /// </remarks>
     private sealed class LeafBlobWriter
     {
-        private readonly StemLeafBlobBuilder _header = new();
-        private readonly StemLeafBlobBuilder _stem = new();
+        private IPbtStemChanges _header = PbtStemChanges.Rent();
+        private IPbtStemChanges _stem = PbtStemChanges.Rent();
 
         /// <summary>Meaningful only while <see cref="_stem"/> holds something.</summary>
         private Stem _openStem;
 
-        public void BeginAccount() => _header.Reset();
+        public void BeginAccount() => Restart(ref _header);
 
-        public void SetHeaderLeaf(byte subIndex, scoped ReadOnlySpan<byte> value) => _header.Set(subIndex, value);
+        /// <summary>Sets a run of the header stem's leaves — its fields, or its code chunks — which are consecutive either way.</summary>
+        public void SetHeaderRange(byte startSubIndex, scoped ReadOnlySpan<byte> values) => _header = _header.SetRange(startSubIndex, values);
 
-        public void WriteHeaderStem(IPbtPersistence.IWriteBatch batch, in Stem stem) => batch.SetLeafBlob(stem, _header.Encode());
+        public void WriteHeaderStem(IPbtPersistence.IWriteBatch batch, in Stem stem) => batch.SetLeafBlob(stem, StemLeafBlob.ApplyNoHash([], _header));
 
         /// <summary>Routes a slot to its stem, closing the open storage-zone one when the slot has moved past it.</summary>
         public void SetSlot(IPbtPersistence.IWriteBatch batch, ref PbtSlotKeyDeriver deriver, in UInt256 slot, scoped ReadOnlySpan<byte> value)
@@ -532,30 +543,48 @@ public class ImportPbtFromPreimageFlat(
             Stem stem = deriver.Derive(slot, out byte subIndex);
             if (PbtKeyDerivation.IsHeaderSlot(slot))
             {
-                _header.Set(subIndex, value);
+                _header = _header.Set(subIndex, SlotLeaf(value));
                 return;
             }
 
-            if (!_stem.IsEmpty && stem != _openStem) WriteOpenStem(batch);
+            if (_stem.Count > 0 && stem != _openStem) WriteOpenStem(batch);
             _openStem = stem;
-            _stem.Set(subIndex, value);
+            _stem = _stem.Set(subIndex, SlotLeaf(value));
         }
 
         public void WriteOpenStem(IPbtPersistence.IWriteBatch batch)
         {
-            if (_stem.IsEmpty) return;
+            if (_stem.Count == 0) return;
 
-            batch.SetLeafBlob(_openStem, _stem.Encode());
-            _stem.Reset();
+            batch.SetLeafBlob(_openStem, StemLeafBlob.ApplyNoHash([], _stem));
+            Restart(ref _stem);
         }
 
-        /// <summary>Lays out a whole stem of code chunks at once; the storage builder is free by now, the slots having been written first.</summary>
-        public void WriteChunkRun(IPbtPersistence.IWriteBatch batch, in Stem stem, byte startSubIndex, byte[] chunks, int firstChunk, int count)
+        /// <summary>Lays out a whole stem of code chunks at once; the storage map is free by now, the slots having been written first.</summary>
+        public void WriteChunkRun(IPbtPersistence.IWriteBatch batch, in Stem stem, byte startSubIndex, scoped ReadOnlySpan<byte> chunks)
         {
-            for (int i = 0; i < count; i++) _stem.Set((byte)(startSubIndex + i), ChunkSpan(chunks, firstChunk + i));
-            batch.SetLeafBlob(stem, _stem.Encode());
-            _stem.Reset();
+            _stem = _stem.SetRange(startSubIndex, chunks);
+            batch.SetLeafBlob(stem, StemLeafBlob.ApplyNoHash([], _stem));
+            Restart(ref _stem);
         }
+
+        /// <remarks>
+        /// Returned rather than cleared: the variants are size-tiered, so a map grown for a stem holding
+        /// a whole contract's code would stay that large for every stem after it.
+        /// </remarks>
+        private static void Restart(ref IPbtStemChanges changes)
+        {
+            PbtStemChanges.Return(changes);
+            changes = PbtStemChanges.Rent();
+        }
+    }
+
+    /// <summary>A slot's tree leaf: the stored value re-padded to the canonical 32 bytes.</summary>
+    private static ValueHash256 SlotLeaf(scoped ReadOnlySpan<byte> stored)
+    {
+        ValueHash256 leaf = default;
+        stored.CopyTo(leaf.BytesAsSpan[(ValueHash256.MemorySize - stored.Length)..]);
+        return leaf;
     }
 
 
@@ -598,9 +627,9 @@ public class ImportPbtFromPreimageFlat(
         return AccountDecoder.Slim.Decode(ref reader)!;
     }
 
-    /// <summary>One code chunk, which is one leaf value, out of the run <see cref="PbtKeyDerivation.ChunkifyCode"/> laid out.</summary>
-    private static ReadOnlySpan<byte> ChunkSpan(byte[] chunks, int chunkId) =>
-        chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
+    /// <summary>A run of code chunks, which are leaf values back to back, out of what <see cref="PbtKeyDerivation.ChunkifyCode"/> laid out.</summary>
+    private static ReadOnlySpan<byte> ChunkRun(byte[] chunks, int firstChunk, int count) =>
+        chunks.AsSpan(firstChunk * PbtKeyDerivation.CodeChunkSize, count * PbtKeyDerivation.CodeChunkSize);
 
     /// <summary>One byte longer than any stem, so it sorts above every leaf column key.</summary>
     private static byte[] PastEveryStemKey()
