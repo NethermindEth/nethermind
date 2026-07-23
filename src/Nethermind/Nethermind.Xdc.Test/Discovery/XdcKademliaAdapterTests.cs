@@ -14,7 +14,6 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv4;
-using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test;
