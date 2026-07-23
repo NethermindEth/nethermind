@@ -848,5 +848,40 @@ namespace Nethermind.Core.Test
                 Assert.That(data.AsSpan().CountZeros(), Is.EqualTo(1), $"single zero at position {pos} should be counted");
             }
         }
+
+        private static IEnumerable<TestCaseData> LeadingZerosCountCases()
+        {
+            yield return new TestCaseData(Array.Empty<byte>(), 0).Returns(0).SetName("empty");
+            yield return new TestCaseData(new byte[] { 0 }, 0).Returns(1).SetName("single zero");
+            yield return new TestCaseData(new byte[32], 0).Returns(32).SetName("all-zero word");
+            yield return new TestCaseData(new byte[] { 1 }, 0).Returns(0).SetName("single non-zero");
+            yield return new TestCaseData(new byte[] { 0, 1 }, 0).Returns(1).SetName("one leading zero");
+            yield return new TestCaseData(new byte[] { 1, 0 }, 0).Returns(0).SetName("trailing zero only");
+            byte[] word = new byte[32];
+            word[31] = 0xFF;
+            yield return new TestCaseData(word, 0).Returns(31).SetName("value in last byte of word");
+            yield return new TestCaseData(new byte[] { 0, 0, 1 }, 1).Returns(1).SetName("start index skips first byte");
+            yield return new TestCaseData(new byte[] { 0, 0 }, 1).Returns(1).SetName("start index in all-zero");
+        }
+
+        [TestCaseSource(nameof(LeadingZerosCountCases))]
+        public int LeadingZerosCount_cases(byte[] bytes, int startIndex) =>
+            new ReadOnlySpan<byte>(bytes).LeadingZerosCount(startIndex);
+
+        private static IEnumerable<TestCaseData> WithoutLeadingZerosCases()
+        {
+            yield return new TestCaseData(Array.Empty<byte>()).Returns(new byte[] { 0 }).SetName("empty keeps one zero byte");
+            yield return new TestCaseData(new byte[] { 0 }).Returns(new byte[] { 0 }).SetName("single zero");
+            yield return new TestCaseData(new byte[32]).Returns(new byte[] { 0 }).SetName("all-zero word keeps one zero byte");
+            yield return new TestCaseData(new byte[] { 0, 1 }).Returns(new byte[] { 1 }).SetName("one leading zero");
+            yield return new TestCaseData(new byte[] { 1, 0 }).Returns(new byte[] { 1, 0 }).SetName("trailing zero kept");
+            byte[] word = new byte[32];
+            word[31] = 0xFF;
+            yield return new TestCaseData(word).Returns(new byte[] { 0xFF }).SetName("value in last byte of word");
+        }
+
+        [TestCaseSource(nameof(WithoutLeadingZerosCases))]
+        public byte[] WithoutLeadingZeros_cases(byte[] bytes) =>
+            new ReadOnlySpan<byte>(bytes).WithoutLeadingZeros().ToArray();
     }
 }

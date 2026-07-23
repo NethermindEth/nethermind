@@ -135,6 +135,7 @@ public partial class BlockAccessListManager(
 
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
+            && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope

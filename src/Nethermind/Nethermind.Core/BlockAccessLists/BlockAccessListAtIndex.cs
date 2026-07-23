@@ -64,10 +64,11 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         foreach (AccountChangesAtIndex value in _accountChanges.Values)
         {
             if (spareCount >= MaxPooledAccountChanges) break;
+            value.Reset(value.Address);
             _accountChangesPool.Push(value);
             spareCount++;
         }
-        _accountChanges.Clear();
+        _accountChanges.ClearAndTrim();
         _changes.Clear();
         _previousCodeChanges.Clear();
         _lastReadAddress = null;

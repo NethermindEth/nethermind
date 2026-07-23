@@ -38,19 +38,19 @@ public class AuRaHeaderModule : Module
 }
 
 /// <summary>
-/// Ensures the genesis block carries an <see cref="AuRaBlockHeader"/>; no-op when the chainspec
-/// already stamped the seal (see <c>AuRaChainSpecLoader</c>).
+/// Ensures an AuRa genesis block carries an <see cref="AuRaBlockHeader"/>; pure post-merge
+/// genesis blocks remain in the standard PoS header shape.
 /// </summary>
 public class AuRaGenesisBuilder(IGenesisBuilder inner) : IGenesisBuilder
 {
     public Block Build()
     {
         Block genesis = inner.Build();
-        if (genesis.Header is AuRaBlockHeader) return genesis;
+        if (genesis.Header is AuRaBlockHeader || genesis.Header.IsPostMerge) return genesis;
 
         // Reached only if a chainspec declares `authorityRound` but omits the genesis signature
         // (no bundled chain does). The zero signature shifts genesis to a step+signature shape,
-        // diverging from master's mixHash+nonce hash for that chainspec.
+        // diverging from the standard mixHash+nonce encoding for that chainspec.
         AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(genesis.Header);
         upgraded.AuRaSignature = new byte[65];
         upgraded.Hash = new Hash256(upgraded.CalculateHash());

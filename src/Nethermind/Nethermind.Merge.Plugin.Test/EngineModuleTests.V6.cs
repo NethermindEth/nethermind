@@ -42,7 +42,7 @@ public partial class EngineModuleTests
         SurplusReads,
     }
 
-    [TestCase("0xfa626c866af6101fff6c41cd7a58eb16d76cb15cd4c4dc3823feeca5427f0cf0", "0xcc8e83383f9e859ea506694937d26f41a428f53672cc6cf22b6418af55b23679", "0x4df9e49a3232355b73d9536ac066c9c4d80e1055216568169a75a6627c7cc050", "0x72ebf00f29826cfe")]
+    [TestCase("0xa04968dfc2905bb5a79a1ad614b305f04e3fcbde14aeb724e603589103a95196", "0x87d0fad9d6a03b251234c25c1886a181e8e0855f77da7e50ce3dca8e9ecbc24b", "0x4c297f9404c233588f95de66ed9fcbea2d51bc1923aed71c1510050e0e96f339", "0xa12cc4c6899afd77")]
     [NonParallelizable]
     public virtual async Task Should_process_block_as_expected_V6(
         string latestValidHash,
@@ -202,10 +202,10 @@ public partial class EngineModuleTests
     }
 
 
-    [TestCase("0x84c83e92f2371447eda6b51eb468c73bee71856e8dcb091e485cf2013accd206", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x8dc51d96c73b47dc7ff8e1d9ad2a31af0353da03d501842b2378bb7825de86bf", false, false)]
+    [TestCase("0xc4381c18996bd5d960341ebc28c01fee26da6ceed629f3c843a5569417ea8879", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x473fd433a95499ad431e9cc7a1abce2af66e7f5841474acb3ccf7292a6b0e18a", false, false)]
     [TestCase(null, null, null, false, true)]
-    [TestCase("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, false)]
-    [TestCase("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, true)]
+    [TestCase("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, false)]
+    [TestCase("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, true)]
     public virtual Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline) =>
         !eip8037Enabled && !useEnginePipeline
             ? NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot)
@@ -237,11 +237,59 @@ public partial class EngineModuleTests
         }
     }
 
+    [TestCase("0x", true)]
+    [TestCase("0x80", true)]
+    [TestCase("0xc1", true)]
+    [TestCase("0xf8", true)]
+    [TestCase("0xf800", true)]
+    [TestCase("0xf838", true)]
+    [TestCase("0xff", true)]
+    [TestCase("0xc0c0", true)]
+    [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", false)]
+    public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, bool expectsInvalidParams)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithSlotNumber(1)
+            .TestObject;
+        ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
+        executionPayload.BlockAccessList = Bytes.FromHexString(encodedBlockAccessList);
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV5(
+            executionPayload,
+            [],
+            Keccak.Zero,
+            []);
+
+        if (expectsInvalidParams)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            }
+
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(response.Data.LatestValidHash, Is.Null);
+            Assert.That(response.Data.ValidationError, Does.StartWith("Error decoding block access list:"));
+        }
+    }
+
     [TestCase(
-        "0x6630d687c81f6598232481490d2aba430cfa816f7a9db23417985bfa63a08bfb",
+        "0x9d101a431b3af94e5ee308d6a29151bdcd58880470890f74b92bec3d55861767",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
-        "0x67b5f79a0e90f1556f7ae999e1eff579b52d7a91a776928bd3612c2e754a2862",
-        "0xe1063f68d3ec957490f73e8c96b499be23912355d081d904e1eb51400f2d5c24",
+        "0x7e1753f77e6e83be83cbe533f587d2660f683af828a4ce2fea4883a7af2444a6",
+        "0xc1644379a8116690e4ce234c70e3db5cf6ea8bd54c0e6c581988c17c8b3154e9",
         null)]
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? customWithdrawalContractAddress)
     {
@@ -309,18 +357,18 @@ public partial class EngineModuleTests
     {
         (string blockHash, BalErrorKind errorKind)[] perKindCases =
         [
-            ("0x369faa043546e569c349c3188e58104235fe34c03464a2e773c77f5794228a54", BalErrorKind.IncorrectChange),
-            ("0x2942f19ee2060543fd2fe78a05972a62f10909e556ebf0f14a87dbb2486c5798", BalErrorKind.MissingChange),
-            ("0xcc482860b5e9ebd75e2ae25c89e1c03b2f4a5eb11e1b26c2b1e08bcd596b5b81", BalErrorKind.SurplusChange),
-            ("0x8468677394d659a226a4bc5daf290f65fb3526ad21580550c1eb0b9295afc8e5", BalErrorKind.SurplusReads),
+            ("0x182bb32c98232d184b2f2ae55a520dfdbccf1b55f7b51d4d9c49cf8afdd5a446", BalErrorKind.IncorrectChange),
+            ("0x9e12675c03cb89267871756c96cb42ba8e1ea66f4e58629a09a81f83adc85687", BalErrorKind.MissingChange),
+            ("0x74d51d0ee2492b02fa56ea6a8fcb0c79855b390b933e958cf9bafb64f7f9be1e", BalErrorKind.SurplusChange),
+            ("0xb097d4bdb0ce7465a75f1066c0442da0cc1360ef075873f338aac4810a91933c", BalErrorKind.SurplusReads),
         ];
 
         foreach ((string blockHash, BalErrorKind errorKind) in perKindCases)
         {
-            yield return new TestCaseData(blockHash, "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x8dc51d96c73b47dc7ff8e1d9ad2a31af0353da03d501842b2378bb7825de86bf", false, false, errorKind);
+            yield return new TestCaseData(blockHash, "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x473fd433a95499ad431e9cc7a1abce2af66e7f5841474acb3ccf7292a6b0e18a", false, false, errorKind);
             yield return new TestCaseData(null, null, null, false, true, errorKind);
-            yield return new TestCaseData("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, false, errorKind);
-            yield return new TestCaseData("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, true, errorKind);
+            yield return new TestCaseData("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, false, errorKind);
+            yield return new TestCaseData("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, true, errorKind);
         }
     }
 
@@ -340,6 +388,10 @@ public partial class EngineModuleTests
                 BalErrorKind.SurplusChange => "surplus changes",
                 _ => "invalid storage reads",
             };
+
+    private static void AssertInvalidBalError(string? validationError, string expectedError) =>
+        Assert.That(validationError,
+            Does.Contain(expectedError).Or.Contain("InvalidBlockLevelAccessListHash:"));
 
     [TestCaseSource(nameof(InvalidBalEarlyTestCases))]
     public virtual Task NewPayloadV5_rejects_invalid_BAL_early(
@@ -487,7 +539,11 @@ public partial class EngineModuleTests
 
         using PayloadBodiesV2DirectResponse response = new(items);
 
-        await AssertStreamedJsonMatchesSerializer(response);
+        string streamedJson = await AssertStreamedJsonMatchesSerializer(response);
+
+        // V2 bodies must always carry the key, with a literal null when the block has no access list.
+        Assert.That(streamedJson, Does.Contain("\"blockAccessList\":\"0x010203\""));
+        Assert.That(streamedJson, Does.Contain("\"blockAccessList\":null"));
     }
 
     [Test]
@@ -636,7 +692,7 @@ public partial class EngineModuleTests
                 Assert.That(successResponse, Is.Not.Null);
                 Assert.That(result.GetProperty("latestValidHash").GetString(), Is.EqualTo(Keccak.Zero.ToString(true)));
                 Assert.That(result.GetProperty("status").GetString(), Is.EqualTo(PayloadStatus.Invalid));
-                Assert.That(validationError, Does.Contain(expectedError));
+                AssertInvalidBalError(validationError, expectedError);
             }
         }
 
@@ -749,7 +805,7 @@ public partial class EngineModuleTests
                 else
                 {
                     Assert.That(response, Does.Contain(PayloadStatus.Invalid));
-                    Assert.That(response, Does.Contain(expectedError));
+                    AssertInvalidBalError(response, expectedError);
                 }
             }
             else
@@ -764,7 +820,7 @@ public partial class EngineModuleTests
                 else
                 {
                     Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
-                    Assert.That(result.Data.ValidationError, Does.Contain(expectedError));
+                    AssertInvalidBalError(result.Data.ValidationError, expectedError);
                 }
             }
         }

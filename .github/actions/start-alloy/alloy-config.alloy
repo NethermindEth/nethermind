@@ -1,0 +1,231 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// Outputs
+// ──────────────────────────────────────────────────────────────────────────────
+
+loki.write "loki_endpoint" {
+	endpoint {
+		url = sys.env("LOKI_PUSH_URL")
+
+		basic_auth {
+			username = sys.env("LOKI_USERNAME")
+			password = sys.env("LOKI_PASSWORD")
+		}
+	}
+}
+
+prometheus.remote_write "metrics_endpoint" {
+	endpoint {
+		url = sys.env("PROMETHEUS_URL")
+
+		basic_auth {
+			username = sys.env("PROMETHEUS_USERNAME")
+			password = sys.env("PROMETHEUS_PASSWORD")
+		}
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Logs — Nethermind container stdout via Docker socket
+// ──────────────────────────────────────────────────────────────────────────────
+
+discovery.docker "nethermind_container" {
+	host = "unix:///var/run/docker.sock"
+
+	filter {
+		name   = "name"
+		values = [sys.env("EXECUTION_CONTAINER_NAME")]
+	}
+}
+
+discovery.relabel "nethermind_log_labels" {
+	targets = discovery.docker.nethermind_container.targets
+
+	// Platform required labels
+	rule {
+		target_label = "project"
+		replacement  = "core-monitoring"
+	}
+
+	rule {
+		target_label = "external_provider"
+		replacement  = "linode"
+	}
+
+	// Node specific labels
+	rule {
+		target_label = "Instance"
+		replacement  = sys.env("NODE_NAME")
+	}
+
+	rule {
+		target_label = "Network"
+		replacement  = sys.env("SEDGE_NETWORK")
+	}
+
+	rule {
+		target_label = "User"
+		replacement  = sys.env("GITHUB_USER")
+	}
+
+	rule {
+		target_label = "Client"
+		replacement  = sys.env("CLIENT")
+	}
+}
+
+loki.source.docker "nethermind_logs" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.nethermind_log_labels.output
+	forward_to = [loki.write.loki_endpoint.receiver]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Logs — L2 Nethermind container stdout via Docker socket
+//
+// Optional: when the node has no Nethermind L2 the container name is empty and
+// coalesce falls back to a sentinel that matches no container, so this pipeline
+// discovers nothing and ships nothing.
+// ──────────────────────────────────────────────────────────────────────────────
+
+discovery.docker "nethermind_l2_container" {
+	host = "unix:///var/run/docker.sock"
+
+	filter {
+		name   = "name"
+		values = [coalesce(sys.env("L2_EXECUTION_CONTAINER_NAME"), "sedge-execution-l2-absent")]
+	}
+}
+
+discovery.relabel "nethermind_l2_log_labels" {
+	targets = discovery.docker.nethermind_l2_container.targets
+
+	// Platform required labels
+	rule {
+		target_label = "project"
+		replacement  = "core-monitoring"
+	}
+
+	rule {
+		target_label = "external_provider"
+		replacement  = "linode"
+	}
+
+	// Node specific labels
+	rule {
+		target_label = "Instance"
+		replacement  = sys.env("L2_NODE_NAME")
+	}
+
+	rule {
+		target_label = "Network"
+		replacement  = sys.env("L2_SEDGE_NETWORK")
+	}
+
+	rule {
+		target_label = "User"
+		replacement  = sys.env("GITHUB_USER")
+	}
+
+	rule {
+		target_label = "Client"
+		replacement  = sys.env("L2_CLIENT")
+	}
+}
+
+loki.source.docker "nethermind_l2_logs" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.nethermind_l2_log_labels.output
+	forward_to = [loki.write.loki_endpoint.receiver]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Metrics — Nethermind Prometheus endpoint (default port 8008)
+// ──────────────────────────────────────────────────────────────────────────────
+
+prometheus.scrape "nethermind_metrics" {
+	targets = [{
+		__address__ = "localhost:8008",
+	}]
+	forward_to = [prometheus.relabel.nethermind_metric_labels.receiver]
+
+	scrape_interval = "15s"
+}
+
+prometheus.relabel "nethermind_metric_labels" {
+	forward_to = [prometheus.remote_write.metrics_endpoint.receiver]
+
+	// Platform required labels
+	rule {
+		target_label = "project"
+		replacement  = "core-monitoring"
+	}
+
+	rule {
+		target_label = "external_provider"
+		replacement  = "linode"
+	}
+
+	// Node specific labels
+	// // Nethermind already sets these labels
+	// rule {
+	// 	target_label = "Instance"
+	// 	replacement  = sys.env("NODE_NAME")
+	// }
+
+	// rule {
+	// 	target_label = "Network"
+	// 	replacement  = sys.env("SEDGE_NETWORK")
+	// }
+
+	rule {
+		target_label = "User"
+		replacement  = sys.env("GITHUB_USER")
+	}
+
+	rule {
+		target_label = "Client"
+		replacement  = sys.env("CLIENT")
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Metrics — L2 Nethermind Prometheus endpoint (sedge default port 8018)
+//
+// Nethermind sets Instance/Network from its own Metrics.NodeName. The endpoint
+// is only up when the node runs a Nethermind L2; otherwise the scrape target is
+// simply down (an up=0 series), same as the L1 scrape on an L2-only node.
+// ──────────────────────────────────────────────────────────────────────────────
+
+prometheus.scrape "nethermind_l2_metrics" {
+	targets = [{
+		__address__ = "localhost:8018",
+	}]
+	forward_to = [prometheus.relabel.nethermind_l2_metric_labels.receiver]
+
+	scrape_interval = "15s"
+}
+
+prometheus.relabel "nethermind_l2_metric_labels" {
+	forward_to = [prometheus.remote_write.metrics_endpoint.receiver]
+
+	// Platform required labels
+	rule {
+		target_label = "project"
+		replacement  = "core-monitoring"
+	}
+
+	rule {
+		target_label = "external_provider"
+		replacement  = "linode"
+	}
+
+	rule {
+		target_label = "User"
+		replacement  = sys.env("GITHUB_USER")
+	}
+
+	rule {
+		target_label = "Client"
+		replacement  = sys.env("L2_CLIENT")
+	}
+}
