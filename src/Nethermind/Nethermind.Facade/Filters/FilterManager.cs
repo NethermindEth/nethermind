@@ -33,6 +33,7 @@ namespace Nethermind.Facade.Filters
         private readonly FilterStore _filterStore;
         private readonly ILogger _logger;
         private long _logIndex;
+        private long _queuedItems;
 
         public FilterManager(
             FilterStore filterStore,
@@ -49,6 +50,7 @@ namespace Nethermind.Facade.Filters
             mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
             _filterStore.FilterRemoved += OnFilterRemoved;
+            _filterStore.QueuedItemCount = () => Volatile.Read(ref _queuedItems);
             txPool.NewPending += OnNewPendingTransaction;
             txPool.RemovedPending += OnRemovedPendingTransaction;
         }
@@ -56,9 +58,30 @@ namespace Nethermind.Facade.Filters
         private void OnFilterRemoved(object sender, FilterEventArgs e)
         {
             int id = e.FilterId;
-            if (_blockHashes.TryRemove(id, out _)) return;
-            if (_logs.TryRemove(id, out _)) return;
-            _pendingTransactions.TryRemove(id, out _);
+            if (_blockHashes.TryRemove(id, out ConcurrentQueue<Hash256>? blockHashes))
+            {
+                ReleaseQueued(blockHashes.Count);
+                return;
+            }
+
+            if (_logs.TryRemove(id, out ConcurrentQueue<FilterLog>? logs))
+            {
+                ReleaseQueued(logs.Count);
+                return;
+            }
+
+            if (_pendingTransactions.TryRemove(id, out ConcurrentQueue<Option<Hash256>>? pendingTransactions))
+            {
+                ReleaseQueued(pendingTransactions.Count);
+            }
+        }
+
+        private void ReleaseQueued(int count)
+        {
+            if (count > 0)
+            {
+                Interlocked.Add(ref _queuedItems, -count);
+            }
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -103,6 +126,7 @@ namespace Nethermind.Facade.Filters
                         {
                             logs ??= _logs.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<FilterLog>());
                             logs.Enqueue(filterLog);
+                            Interlocked.Increment(ref _queuedItems);
                         }
                     }
                 }
@@ -117,6 +141,7 @@ namespace Nethermind.Facade.Filters
                 int filterId = filter.Id;
                 ConcurrentQueue<Option<Hash256>> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new ConcurrentQueue<Option<Hash256>>());
                 transactions.Enqueue(new Option<Hash256>(e.Transaction.Hash));
+                Interlocked.Increment(ref _queuedItems);
                 if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
             }
         }
@@ -176,6 +201,7 @@ namespace Nethermind.Facade.Filters
             {
                 result.Add(hash);
             }
+            ReleaseQueued(result.Count);
             return result.ToArray();
         }
 
@@ -190,6 +216,7 @@ namespace Nethermind.Facade.Filters
             {
                 result.Add(log);
             }
+            ReleaseQueued(result.Count);
             return result.ToArray();
         }
 
@@ -200,13 +227,16 @@ namespace Nethermind.Facade.Filters
                 return [];
 
             using ArrayPoolListRef<Hash256> result = new(pendingTransactions.Count);
+            int dequeued = 0;
             while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
             {
+                dequeued++;
                 if (!option.IsRemoved)
                 {
                     result.Add(option.Value);
                 }
             }
+            ReleaseQueued(dequeued);
             return result.ToArray();
         }
 
@@ -244,6 +274,7 @@ namespace Nethermind.Facade.Filters
 
             ConcurrentQueue<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<Hash256>());
             blocks.Enqueue(block.Hash);
+            Interlocked.Increment(ref _queuedItems);
             if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
@@ -263,6 +294,7 @@ namespace Nethermind.Facade.Filters
                 {
                     logs ??= _logs.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<FilterLog>());
                     logs.Enqueue(filterLog);
+                    Interlocked.Increment(ref _queuedItems);
                 }
             }
 

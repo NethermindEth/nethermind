@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -284,6 +285,49 @@ public class FilterManagerTests
         );
     }
 
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void new_filters_are_rejected_when_queued_item_budget_is_exhausted()
+    {
+        const int maxQueuedItems = 4;
+        using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: maxQueuedItems);
+        BlockFilter blockFilter = new(_currentFilterId++);
+        filterStore.SaveFilter(blockFilter);
+        _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        for (int i = 0; i < maxQueuedItems; i++)
+        {
+            _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(
+                new BlockProcessedEventArgs(Build.A.Block.WithNumber(i).TestObject, []));
+        }
+
+        Assert.Throws<ConcurrencyLimitReachedException>(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
+
+        // draining the queue frees the budget again
+        _filterManager.PollBlockHashes(blockFilter.Id);
+        Assert.DoesNotThrow(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void removing_a_filter_frees_its_queued_item_budget()
+    {
+        const int maxQueuedItems = 2;
+        using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: maxQueuedItems);
+        BlockFilter blockFilter = new(_currentFilterId++);
+        filterStore.SaveFilter(blockFilter);
+        _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        for (int i = 0; i < maxQueuedItems; i++)
+        {
+            _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(
+                new BlockProcessedEventArgs(Build.A.Block.WithNumber(i).TestObject, []));
+        }
+
+        Assert.Throws<ConcurrencyLimitReachedException>(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
+
+        filterStore.RemoveFilter(blockFilter.Id);
+        Assert.DoesNotThrow(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task concurrent_block_processing_and_poll_does_not_lose_data()
