@@ -125,8 +125,7 @@ public class NettyDiscoveryHandler(
         shouldForward = true;
 
         IByteBuffer content = packet.Content;
-        // Dual-stack sockets report IPv4 senders as IPv4-mapped IPv6 addresses ("::ffff:x.x.x.x");
-        // normalize here, at the point of receipt, so nothing derived from it carries this form (mirrors NettyDiscoveryV5Handler.NormalizeEndpoint).
+        // Mirrors NettyDiscoveryV5Handler.NormalizeEndpoint).
         address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
 
         int size = content.ReadableBytes;
