@@ -96,14 +96,6 @@ internal class XdcBlockTree(
         return base.IsBetterThanHead(header);
     }
 
-    /// <remarks>
-    /// XDPoS difficulty is fixed per block (always parent + 1), so every validator's competing
-    /// proposal at a given height ties on TD - the tie must be broken by round instead of TD.
-    /// Otherwise a node that already adopted an earlier round's self-mined proposal as head could
-    /// never adopt a later, network-agreed round's block proposed by another validator, since a
-    /// remote block is never self-mined. Within the same round (a proposal race), fall back to
-    /// preferring the self-mined block.
-    /// </remarks>
     internal static bool IsSameTdButPreferred(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
     {
         if (newHeader.TotalDifficulty != oldHeader.TotalDifficulty)
