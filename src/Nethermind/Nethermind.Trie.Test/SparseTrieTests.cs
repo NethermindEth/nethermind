@@ -960,6 +960,101 @@ public class SparseTrieTests
         AssertSameNodes(recorder.Committed, DrainStaged(sparse), originalStorage);
     }
 
+    // Retention reuses one SparseTrie across blocks: Apply -> CalculateRoot -> DrainUnpublished
+    // (publish), then Apply again on the SAME instance. Draining nulls the staging list and
+    // clears every unpublished flag/record; per-block dispose meant that drain-then-reapply
+    // path was never exercised. Each generation's root must still match a fresh Patricia
+    // anchored at the previous root.
+    [TestCase(1, 5, 500, 120)]
+    [TestCase(2, 8, 900, 160)]
+    [TestCase(3, 6, 1500, 220)]
+    public void Reused_trie_drained_each_generation_matches_patricia(int seed, int generations, int parentCount, int updatesPerGeneration)
+    {
+        Dictionary<ValueHash256, byte[]> model = [];
+        List<(ValueHash256, byte[])> parentEntries = [];
+        for (int i = 0; i < parentCount; i++)
+        {
+            ValueHash256 key = DeriveKey(seed, 0, i);
+            byte[] value = DeriveValue(key, 0);
+            model[key] = value;
+            parentEntries.Add((key, value));
+        }
+
+        (NodeStorage storage, Hash256 parentRoot) = BuildPatricia(parentEntries);
+        NodeStorageSource source = new(storage);
+        using SparseTrie sparse = new(source, parentRoot.ValueHash256);
+
+        List<ValueHash256> liveKeys = [.. model.Keys];
+        int insertCounter = 0;
+
+        for (int generation = 1; generation <= generations; generation++)
+        {
+            SparseTrieUpdate[] updates = BuildGenerationUpdates(seed, generation, updatesPerGeneration, model, liveKeys, ref insertCounter);
+
+            PatriciaTree patricia = new(new RawScopedTrieStore(storage), parentRoot, true, NullLogManager.Instance);
+            foreach (SparseTrieUpdate update in updates)
+            {
+                patricia.Set(update.Key.Bytes, update.Value ?? []);
+            }
+
+            patricia.Commit();
+            parentRoot = patricia.RootHash;
+
+            sparse.Apply(updates);
+            Assert.That(sparse.CalculateRoot(), Is.EqualTo(parentRoot.ValueHash256), $"reused root after generation {generation}");
+
+            // Publish and clear staging exactly as retention does between blocks, then loop and
+            // re-Apply on the same warm instance.
+            using ArrayPoolList<SparseTrieStagedNode> drained = new(16);
+            sparse.DrainUnpublished(drained);
+            Assert.That(drained.Count, Is.GreaterThan(0), $"generation {generation} published nodes");
+            Assert.That(sparse.IsDirty, Is.False, $"generation {generation} clean after drain");
+        }
+    }
+
+    // A drained trie reused across blocks must resolve blinded children against the NEXT scope's
+    // committed reader, not the one it was constructed with.
+    [Test]
+    public void RebindSource_directs_later_reveals_to_the_new_source()
+    {
+        // Two keys diverging at the first nibble: the root branch has children at 0x0.. and 0x1..
+        byte[] valueA = V(1, 4);
+        byte[] valueB = V(2, 4);
+        (NodeStorage storage, Hash256 root) = BuildPatricia(
+        [
+            (K("0"), valueA),
+            (K("1"), valueB),
+        ]);
+
+        NodeStorageSource original = new(storage);
+        using SparseTrie sparse = new(original, root.ValueHash256);
+
+        // Touch only the 0x0.. side: reveals the root branch and the 0x0 child, leaving the 0x1
+        // child blinded in the arena.
+        SparseTrieUpdate[] first = [new SparseTrieUpdate(K("0"), V(3, 5))];
+        sparse.Apply(first);
+        sparse.CalculateRoot();
+        using (ArrayPoolList<SparseTrieStagedNode> drained = new(8))
+        {
+            sparse.DrainUnpublished(drained);
+        }
+
+        NodeStorageSource rebound = new(storage);
+        sparse.RebindSource(rebound);
+        int originalCallsBeforeReveal = original.ResolveCalls;
+
+        // Touch the 0x1.. side: the blinded child must be revealed through the new source.
+        SparseTrieUpdate[] second = [new SparseTrieUpdate(K("1"), V(4, 6))];
+        sparse.Apply(second);
+        sparse.CalculateRoot();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rebound.ResolveCalls, Is.GreaterThan(0), "reveal went to the rebound source");
+            Assert.That(original.ResolveCalls, Is.EqualTo(originalCallsBeforeReveal), "old source untouched after rebind");
+        }
+    }
+
     private static SparseTrieUpdate[] BuildGenerationUpdates(
         int seed,
         int generation,
