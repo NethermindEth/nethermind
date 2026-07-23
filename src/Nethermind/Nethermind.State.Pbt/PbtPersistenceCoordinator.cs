@@ -38,6 +38,10 @@ public class PbtPersistenceCoordinator(
     private readonly ulong _compactSize = (ulong)config.CompactSize;
     private readonly ulong _minReorgDepth = (ulong)config.MinReorgDepth;
 
+    // In mirror mode the flat backend is the only clock: it drives PersistUpTo over the very ranges it
+    // persists itself, so letting the triggers below fire too would move the two persisted pointers apart.
+    private readonly bool _externallyDriven = config.MirrorFlat;
+
     // Raised to at least one CompactSize above MinReorgDepth so the finalized trigger always has
     // room to act before the backstop fires.
     private readonly ulong _backstopReorgDepth = Math.Max((ulong)config.MaxReorgDepth, (ulong)(config.MinReorgDepth + config.CompactSize));
@@ -61,8 +65,11 @@ public class PbtPersistenceCoordinator(
 
     /// <summary>Evaluates the persistence triggers, persisting at most a few segments per call; re-invoked on every committed block.</summary>
     /// <returns>Whether anything was persisted, and so whether the persisted state id has advanced.</returns>
+    /// <remarks>Does nothing when persistence is driven externally; see <see cref="PersistUpTo"/>.</remarks>
     public bool CheckPersistence()
     {
+        if (_externallyDriven) return false;
+
         lock (_persistenceLock)
         {
             const int maxDrainIterations = 4;
@@ -73,6 +80,20 @@ public class PbtPersistenceCoordinator(
 
             return persisted > 0;
         }
+    }
+
+    /// <summary>
+    /// Persists the chain from <paramref name="seed"/> down to the persisted state, whatever the
+    /// finality triggers would have said.
+    /// </summary>
+    /// <remarks>
+    /// For a caller that owns the persistence schedule itself — the mirror, which follows the flat
+    /// backend's ranges so the two persisted pointers stay equal.
+    /// </remarks>
+    /// <returns>Whether anything was persisted; false when no chain reaches <paramref name="seed"/>.</returns>
+    public bool PersistUpTo(in StateId seed)
+    {
+        lock (_persistenceLock) return PersistSegment(seed);
     }
 
     /// <summary>Persists everything up to the last committed head, e.g. after genesis processing or on shutdown.</summary>

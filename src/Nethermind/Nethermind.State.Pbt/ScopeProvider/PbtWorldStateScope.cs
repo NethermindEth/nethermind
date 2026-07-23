@@ -50,6 +50,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private StateId _currentStateId;
     private ValueHash256 _treeRoot;
     private Hash256 _rootHash;
+    private Hash256? _authoritativeRoot;
 
     // the header of the state the scope currently sits on, and the header of the block it is folding;
     // the latter is resolved once per block and carried into Commit so a branch's next block starts
@@ -91,6 +92,23 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     public Hash256 RootHash => _rootHash;
 
+    /// <summary>
+    /// Makes the scope report and key its states by <paramref name="root"/> rather than by the root
+    /// resolved through <see cref="IPbtChildHeaderSource"/> or folded by the tree.
+    /// </summary>
+    /// <remarks>
+    /// Set by the mirror scope from the authoritative backend's root after each of that backend's root
+    /// updates. Genesis and self-built blocks have no child header to resolve, so without this the two
+    /// backends would key the same state differently and their persisted ranges could not be aligned.
+    /// The root is applied here as well as in <see cref="UpdateRootHash"/> because a block that dirties
+    /// nothing takes that method's early return.
+    /// </remarks>
+    internal void UseAuthoritativeRoot(Hash256 root)
+    {
+        _authoritativeRoot = root;
+        _rootHash = root;
+    }
+
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
     public Account? Get(Address address) => Bundle.GetAccount(address);
@@ -128,7 +146,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _treeRoot = TrieUpdater.UpdateRoot(
             this, _treeRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, _rootFoldConcurrency, out _);
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
-        _rootHash = _childHeader?.StateRoot ?? _treeRoot.ToHash256();
+        _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
         _rootDirty = false;
     }
 

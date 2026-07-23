@@ -163,6 +163,13 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         ClearReadOnlyBundleCache();
     }
 
+    /// <summary>Persists up to <paramref name="seed"/> on behalf of an external clock, sweeping the bundle cache if it advanced.</summary>
+    /// <inheritdoc cref="PbtPersistenceCoordinator.PersistUpTo" path="/remarks"/>
+    public void PersistUpTo(in StateId seed)
+    {
+        if (_coordinator.PersistUpTo(seed)) ClearReadOnlyBundleCache();
+    }
+
     private async Task RunPersistenceWorker()
     {
         try
