@@ -30,7 +30,7 @@ public partial class EngineModuleTests
         PayloadAttributes payloadAttrs = BuildBogotaPayloadAttributes(inclusionList: []);
         ForkchoiceStateV1 fcuState = new(startingHead, Keccak.Zero, startingHead);
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(fcuState, payloadAttrs);
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(fcuState, payloadAttrs);
         Assert.That(fcuResult.Result.ResultType, Is.EqualTo(ResultType.Success), fcuResult.Result.Error);
         Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(fcuResult.Data.PayloadId, Is.Not.Null);
@@ -52,13 +52,44 @@ public partial class EngineModuleTests
         Assert.That(newPayload.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
 
         // Promote the new block to head, finalized, and safe.
-        ResultWrapper<ForkchoiceUpdatedV1Result> finalFcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> finalFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash),
             payloadAttributes: null);
         Assert.That(finalFcu.Result.ResultType, Is.EqualTo(ResultType.Success), finalFcu.Result.Error);
         Assert.That(finalFcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(finalFcu.Data.PayloadStatus.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
         Assert.That(finalFcu.Data.PayloadId, Is.Null);
+        // execution-apis#609: FCU V5 reports the head's inclusion-list compliance retained from newPayloadV6.
+        Assert.That(finalFcu.Data.PayloadStatus.InclusionListSatisfied, Is.True);
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV5_reports_head_inclusion_list_unsatisfied()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
+
+        // Deliver the empty block with a censoring IL → newPayloadV6 retains inclusionListSatisfied=false.
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        ResultWrapper<PayloadStatusV2> np = await rpc.engine_newPayloadV6(
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [Rlp.Encode(censoredTx).Bytes]);
+        Assert.That(np.Data.InclusionListSatisfied, Is.False);
+
+        // FCU V5 to that VALID head reports the retained compliance.
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(emptyPayload.BlockHash, startingHead, startingHead),
+            payloadAttributes: null);
+        Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.False);
     }
 
     [Test]
@@ -70,7 +101,7 @@ public partial class EngineModuleTests
 
         // Baseline empty payload — engine computes hashes so the test stays stable across
         // unrelated Amsterdam changes.
-        ResultWrapper<ForkchoiceUpdatedV1Result> baselineFcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> baselineFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> baselinePayload = await rpc.engine_getPayloadV6(Bytes.FromHexString(baselineFcu.Data.PayloadId!));
@@ -108,7 +139,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
@@ -149,7 +180,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
@@ -174,7 +205,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
@@ -201,7 +232,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
@@ -249,7 +280,7 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
         // The proposer's initial FCUv5 carries no inclusion list yet — it must still start building.
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: null!));
 
@@ -273,7 +304,7 @@ public partial class EngineModuleTests
             .TestObject;
         byte[] txBytes = Rlp.Encode(tx).Bytes;
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: [txBytes]));
 
@@ -317,7 +348,7 @@ public partial class EngineModuleTests
         // Reversed order (nonce 1 before nonce 0): a one-pass producer would skip nonce 1 forever.
         byte[][] inclusionList = [Rlp.Encode(tx1).Bytes, Rlp.Encode(tx0).Bytes];
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: inclusionList));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));

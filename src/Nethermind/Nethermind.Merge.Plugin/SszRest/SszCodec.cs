@@ -35,17 +35,27 @@ public static class SszCodec
         => EncodeToWriter(BuildPayloadStatusWire(ps), writer);
 
     public static int EncodePayloadStatusV2(PayloadStatusV2 ps, IBufferWriter<byte> writer)
+        => EncodeToWriter(BuildPayloadStatusV2Wire(ps), writer);
+
+    private static PayloadStatusV2Wire BuildPayloadStatusV2Wire(PayloadStatusV2 ps)
     {
         PayloadStatusWire baseWire = BuildPayloadStatusWire(ps);
-        return EncodeToWriter(new PayloadStatusV2Wire
+        return new PayloadStatusV2Wire
         {
             Status = baseWire.Status,
             LatestValidHash = baseWire.LatestValidHash,
             ValidationError = baseWire.ValidationError,
             // Optional[bool] = List[byte, 1]: empty for null, else a single 0/1 byte.
             InclusionListSatisfied = ps.InclusionListSatisfied is { } satisfied ? [satisfied ? (byte)1 : (byte)0] : []
-        }, writer);
+        };
     }
+
+    public static int EncodeForkchoiceUpdatedResponseV2(ForkchoiceUpdatedV2Result resp, IBufferWriter<byte> writer)
+        => EncodeToWriter(new ForkchoiceUpdatedResponseWireV2
+        {
+            PayloadStatus = BuildPayloadStatusV2Wire(resp.PayloadStatus),
+            PayloadId = BuildPayloadIdList(resp.PayloadId)
+        }, writer);
 
     public static int EncodeInclusionListResponse(InclusionListBytes inclusionList, IBufferWriter<byte> writer)
     {
@@ -94,21 +104,23 @@ public static class SszCodec
         }
     }
 
+    // ByteVector[8]: transmitted as-is (no LE flip — the bytes are already the opaque token;
+    // the spec says treat payload_id as opaque bytes, not a uint64). Empty list when there is no build.
+    private static SszPayloadId[] BuildPayloadIdList(string? payloadId)
+    {
+        if (payloadId is null) return [];
+        ReadOnlySpan<char> hex = payloadId.AsSpan();
+        if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
+        if (hex.Length != 16)
+            throw new InvalidOperationException($"Invalid payload id '{payloadId}': expected 16 hex chars, got {hex.Length}");
+        byte[] idBytes = new byte[8];
+        Bytes.FromHexString(hex, idBytes);
+        return [new SszPayloadId { Bytes = idBytes }];
+    }
+
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
     {
-        SszPayloadId[]? pidList = null;
-        if (resp.PayloadId is not null)
-        {
-            ReadOnlySpan<char> hex = resp.PayloadId.AsSpan();
-            if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
-            if (hex.Length != 16)
-                throw new InvalidOperationException($"Invalid payload id '{resp.PayloadId}': expected 16 hex chars, got {hex.Length}");
-            // ByteVector[8]: transmitted as-is (no LE flip — the bytes are already the
-            // opaque token; the spec says treat payload_id as opaque bytes, not a uint64).
-            byte[] idBytes = new byte[8];
-            Bytes.FromHexString(hex, idBytes);
-            pidList = [new SszPayloadId { Bytes = idBytes }];
-        }
+        SszPayloadId[]? pidList = BuildPayloadIdList(resp.PayloadId);
 
         return EncodeToWriter(new ForkchoiceUpdatedResponseWire
         {

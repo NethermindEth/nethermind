@@ -29,5 +29,5 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV5(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, byte[]? custodyColumns = null);
+    Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, byte[]? custodyColumns = null);
 }

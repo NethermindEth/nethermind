@@ -167,20 +167,6 @@ public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion
         ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
-public readonly struct ForkchoiceUpdatedDescriptorV5 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV5RequestWire>
-{
-    public static int VersionNumber => EngineApiVersions.Fcu.V5;
-    public static Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Call(IEngineRpcModule engine, in ForkchoiceUpdatedV5RequestWire wire)
-    {
-        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(wire.ForkchoiceState);
-        PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
-        byte[]? custody = ForkchoiceUpdatedHelpers.CustodyColumnsToBytes(wire.CustodyColumns);
-        return engine.engine_forkchoiceUpdatedV5(state, attrs, custody);
-    }
-    public static ulong? GetTimestamp(in ForkchoiceUpdatedV5RequestWire wire) =>
-        ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
-}
-
 // Paris (V1 routing) needs block_value, which engine_getPayloadV1 doesn't return — call V2.
 public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<GetPayloadV2Result>
 {

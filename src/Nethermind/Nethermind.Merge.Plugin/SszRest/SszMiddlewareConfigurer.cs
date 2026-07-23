@@ -56,7 +56,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>>();
-        services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV5, ForkchoiceUpdatedV5RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedV5SszHandler>();
 
         services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>>();
         services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>>();

@@ -186,6 +186,15 @@ public partial struct ForkchoiceUpdatedResponseWire
     [SszList(1)] public SszPayloadId[]? PayloadId { get; set; }
 }
 
+// EIP-7805 (FOCIL): response of engine_forkchoiceUpdatedV5 — carries PayloadStatusV2 so a VALID head
+// can report inclusionListSatisfied (execution-apis#609).
+[SszContainer]
+public partial struct ForkchoiceUpdatedResponseWireV2
+{
+    public PayloadStatusV2Wire PayloadStatus { get; set; }
+    [SszList(1)] public SszPayloadId[]? PayloadId { get; set; }
+}
+
 [SszContainer]
 public partial struct NewPayloadV1RequestWire
 {

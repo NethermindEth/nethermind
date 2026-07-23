@@ -90,7 +90,7 @@ public class SszMiddlewareTests
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>(_engineModule, _specProvider),
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule, _specProvider),
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV5, ForkchoiceUpdatedV5RequestWire>(_engineModule, _specProvider),
+            new ForkchoiceUpdatedV5SszHandler(_engineModule, _specProvider),
 
             new GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
@@ -1260,12 +1260,12 @@ public class SszMiddlewareTests
     [Test]
     public async Task ForkchoiceUpdatedV5_bogota_routes_to_engine_forkchoiceUpdatedV5()
     {
-        ForkchoiceUpdatedV1Result fcuResult = new()
+        ForkchoiceUpdatedV2Result fcuResult = new()
         {
-            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }
         };
         _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<byte[]?>())
-            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
 
         byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(new ForkchoiceUpdatedV5RequestWire
         {
