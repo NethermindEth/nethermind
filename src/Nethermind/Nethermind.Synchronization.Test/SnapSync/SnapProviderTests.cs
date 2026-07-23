@@ -187,7 +187,7 @@ public class SnapProviderTests
         ];
         Array.Sort(entries, static (e1, e2) => e1.Item1.CompareTo(e2.Item1));
 
-        (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
+        (ISnapStateServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = CreateContainerBuilder(new TestSyncConfig()
         {
@@ -231,7 +231,7 @@ public class SnapProviderTests
         ];
         Array.Sort(entries, static (e1, e2) => e1.Item1.CompareTo(e2.Item1));
 
-        (SnapServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
+        (ISnapStateServer ss, Hash256 root) = BuildSnapServerFromEntries(entries);
 
         using IContainer container = CreateContainerBuilder(new TestSyncConfig()
         {
@@ -306,7 +306,7 @@ public class SnapProviderTests
         List<string> Accounts
     );
 
-    private static (SnapServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
+    private static (ISnapStateServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
     {
         TestMemDb stateDb = new();
         TestRawTrieStore trieStore = new(stateDb);
@@ -320,7 +320,7 @@ public class SnapProviderTests
             st.Commit();
         }
 
-        SnapServer ss = new(trieStore.AsReadOnly(), new TestMemDb(), LimboLogs.Instance);
+        PatriciaSnapServer ss = new(trieStore.AsReadOnly(), LimboLogs.Instance);
         return (ss, st.RootHash);
     }
 }

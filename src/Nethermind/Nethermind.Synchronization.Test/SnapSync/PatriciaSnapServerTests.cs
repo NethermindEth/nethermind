@@ -23,7 +23,7 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.SnapSync;
 
 [TestFixture]
-public class SnapServerTest
+public class PatriciaSnapServerTests
 {
     internal interface IWriteBatch : IDisposable
     {
@@ -34,7 +34,7 @@ public class SnapServerTest
 
     internal interface ISnapServerContext : IDisposable
     {
-        ISnapServer Server { get; }
+        ISnapStateServer Server { get; }
         SnapProvider SnapProvider { get; }
         Hash256 RootHash { get; }
         int PersistedNodeCount { get; }
@@ -49,7 +49,7 @@ public class SnapServerTest
         private readonly StateTree _tree;
         private readonly MemDb _clientStateDb;
 
-        public ISnapServer Server { get; }
+        public ISnapStateServer Server { get; }
         public SnapProvider SnapProvider { get; }
         public Hash256 RootHash => _tree.RootHash;
         public int PersistedNodeCount => _clientStateDb.Keys.Count;
@@ -57,10 +57,9 @@ public class SnapServerTest
         internal TrieSnapServerContext(ILastNStateRootTracker? lastNStateRootTracker = null)
         {
             MemDb stateDbServer = new();
-            MemDb codeDbServer = new();
             _store = new TestRawTrieStore(stateDbServer);
             _tree = new StateTree(_store, LimboLogs.Instance);
-            Server = new SnapServer(_store.AsReadOnly(), codeDbServer, LimboLogs.Instance, lastNStateRootTracker);
+            Server = new PatriciaSnapServer(_store.AsReadOnly(), LimboLogs.Instance, lastNStateRootTracker);
 
             _clientStateDb = new MemDb();
             using ProgressTracker progressTracker = new(_clientStateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);

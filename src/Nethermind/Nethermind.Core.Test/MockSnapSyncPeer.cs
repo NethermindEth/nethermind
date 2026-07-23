@@ -12,12 +12,12 @@ using Nethermind.State.SnapServer;
 
 namespace Nethermind.Synchronization.Test;
 
-public class MockSnapSyncPeer(ISnapStateServer stateServer, ISnapCodeServer codeServer) : ISnapSyncPeer
+public class MockSnapSyncPeer(ISnapServer server) : ISnapSyncPeer
 {
     private static readonly byte[] _emptyBytes = [0];
     public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
     {
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = stateServer.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = server.GetAccountRanges(
             range.RootHash,
             range.StartingHash,
             range.LimitHash,
@@ -33,7 +33,7 @@ public class MockSnapSyncPeer(ISnapStateServer stateServer, ISnapCodeServer code
 
     public Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
     {
-        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proof) = stateServer.GetStorageRanges(
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proof) = server.GetStorageRanges(
             range.RootHash,
             range.Accounts,
             range.StartingHash,
@@ -50,7 +50,7 @@ public class MockSnapSyncPeer(ISnapStateServer stateServer, ISnapCodeServer code
 
     public Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
     {
-        IByteArrayList codes = codeServer.GetByteCodes(codeHashes, int.MaxValue, token);
+        IByteArrayList codes = server.GetByteCodes(codeHashes, int.MaxValue, token);
         return Task.FromResult(codes);
     }
 
@@ -64,13 +64,13 @@ public class MockSnapSyncPeer(ISnapStateServer stateServer, ISnapCodeServer code
         }
 
         using RlpPathGroupList encoded = PathGroup.EncodeToRlpPathGroupList(groups);
-        IByteArrayList? res = stateServer.GetTrieNodes(encoded, request.RootHash, token);
+        IByteArrayList? res = server.GetTrieNodes(encoded, request.RootHash, token);
         return Task.FromResult(res!);
     }
 
     public Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
-        IByteArrayList? res = stateServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+        IByteArrayList? res = server.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
         return Task.FromResult(res!);
     }
 }

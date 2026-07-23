@@ -26,6 +26,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
+using Nethermind.Synchronization.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -243,7 +244,8 @@ public abstract class StateSyncFeedTestsBase(
 
         private readonly IDb _codeDb;
         private readonly IReadOnlyKeyValueStore _stateDb;
-        private readonly ISnapServer _snapServer;
+        private readonly ISnapStateServer _stateServer;
+        private readonly ISnapCodeServer _codeServer;
 
         private Hash256[]? _filter;
         private readonly Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? _executorResultFunction;
@@ -271,10 +273,8 @@ public abstract class StateSyncFeedTestsBase(
             TrieStore trieStore = new(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                 Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
-            _snapServer = new SnapServer(
-                trieStore.AsReadOnly(),
-                codeDb,
-                LimboLogs.Instance);
+            _stateServer = new PatriciaSnapServer(trieStore.AsReadOnly(), LimboLogs.Instance);
+            _codeServer = new SnapCodeServer(codeDb);
         }
 
         public int MaxResponseLength { get; set; } = int.MaxValue;
@@ -330,7 +330,7 @@ public abstract class StateSyncFeedTestsBase(
             Task.FromResult(_blockTree?.Head?.Header);
 
         public override Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token) =>
-            Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
+            Task.FromResult(_codeServer.GetByteCodes(codeHashes, long.MaxValue, token));
 
         public override Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token) =>
             GetTrieNodes(new GetTrieNodesRequest()
@@ -340,7 +340,7 @@ public abstract class StateSyncFeedTestsBase(
             }, token);
 
         public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
-            Task.FromResult(_snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token)!);
+            Task.FromResult(_stateServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token)!);
     }
 }
 

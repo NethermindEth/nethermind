@@ -29,7 +29,6 @@ public class FlatSnapServerTests
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
     private IPersistence _persistence = null!;
-    private MemDb _codeDb = null!;
     private IFlatDbManager _flatDbManager = null!;
     private IFlatStateRootIndex _stateRootIndex = null!;
     private FlatSnapServer _server = null!;
@@ -41,7 +40,6 @@ public class FlatSnapServerTests
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
-        _codeDb = new MemDb();
 
         byte[] rootRlp = BuildRootRlp(out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);
@@ -59,15 +57,11 @@ public class FlatSnapServerTests
                 return true;
             });
 
-        _server = new FlatSnapServer(_flatDbManager, _codeDb, _stateRootIndex, LimboLogs.Instance);
+        _server = new FlatSnapServer(_flatDbManager, _stateRootIndex, LimboLogs.Instance);
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _codeDb.Dispose();
-        _columnsDb.Dispose();
-    }
+    public void TearDown() => _columnsDb.Dispose();
 
     [Test]
     public void GetTrieNodes_RespectsHardResponseByteLimit()
