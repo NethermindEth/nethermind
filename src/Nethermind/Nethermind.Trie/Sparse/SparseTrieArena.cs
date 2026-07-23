@@ -118,19 +118,29 @@ internal struct SparseNode
 /// </remarks>
 internal sealed class SparseTrieArena : IDisposable
 {
-    private const int NodeChunkShift = 12; // 4096 nodes (256KB) per chunk
-    private const int NodeChunkSize = 1 << NodeChunkShift;
-    private const int NodeChunkMask = NodeChunkSize - 1;
+    // Large profile: the state trie and dominant storage tries.
+    private const int LargeNodeShift = 12;  // 4096 nodes (256KB) per chunk
+    private const int LargeByteShift = 16;  // 64KB per chunk
+    private const int LargeChildShift = 14; // 16K entries (64KB) per chunk
 
-    private const int ByteChunkShift = 16; // 64KB per chunk
-    private const int ByteChunkSize = 1 << ByteChunkShift;
-    private const int ByteChunkMask = ByteChunkSize - 1;
-
-    private const int ChildChunkShift = 14; // 16K entries (64KB) per chunk
-    private const int ChildChunkSize = 1 << ChildChunkShift;
-    private const int ChildChunkMask = ChildChunkSize - 1;
+    // Small profile for small capacity hints: the typical few-slot storage trie rents ~48KB of
+    // first chunks instead of ~384KB, which is what dominates pool churn when a block
+    // materializes thousands of per-account tries.
+    private const int SmallProfileMaxHint = 128;
+    private const int SmallNodeShift = 9;   // 512 nodes (32KB) per chunk
+    private const int SmallByteShift = 13;  // 8KB per chunk
+    private const int SmallChildShift = 11; // 2K entries (8KB) per chunk
 
     private const int InitialDirectoryLength = 16;
+
+    private readonly int _nodeShift;
+    private readonly int _nodeMask;
+    private readonly int _byteShift;
+    private readonly int _byteSize;
+    private readonly int _byteMask;
+    private readonly int _childShift;
+    private readonly int _childSize;
+    private readonly int _childMask;
 
     private SparseNode[]?[] _nodeChunks;
     private byte[]?[] _byteChunks;
@@ -148,8 +158,18 @@ internal sealed class SparseTrieArena : IDisposable
 
     public SparseTrieArena(int nodeCapacityHint = 0)
     {
+        bool small = nodeCapacityHint > 0 && nodeCapacityHint <= SmallProfileMaxHint;
+        _nodeShift = small ? SmallNodeShift : LargeNodeShift;
+        _byteShift = small ? SmallByteShift : LargeByteShift;
+        _childShift = small ? SmallChildShift : LargeChildShift;
+        _nodeMask = (1 << _nodeShift) - 1;
+        _byteSize = 1 << _byteShift;
+        _byteMask = _byteSize - 1;
+        _childSize = 1 << _childShift;
+        _childMask = _childSize - 1;
+
         int directoryLength = nodeCapacityHint > 0
-            ? Math.Max(InitialDirectoryLength, (nodeCapacityHint >> NodeChunkShift) + 1)
+            ? Math.Max(InitialDirectoryLength, (nodeCapacityHint >> _nodeShift) + 1)
             : InitialDirectoryLength;
 
         _nodeChunks = ArrayPool<SparseNode[]?>.Shared.Rent(directoryLength);
@@ -170,7 +190,7 @@ internal sealed class SparseTrieArena : IDisposable
     public long DeadBytes => _deadBytes;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref SparseNode Node(int index) => ref _nodeChunks[index >> NodeChunkShift]![index & NodeChunkMask];
+    public ref SparseNode Node(int index) => ref _nodeChunks[index >> _nodeShift]![index & _nodeMask];
 
     public int AllocNode()
     {
@@ -185,7 +205,7 @@ internal sealed class SparseTrieArena : IDisposable
         }
 
         int index = _nodeCount++;
-        int chunk = index >> NodeChunkShift;
+        int chunk = index >> _nodeShift;
         if (chunk >= _nodeChunks.Length)
         {
             GrowDirectory(ref _nodeChunks);
@@ -194,11 +214,11 @@ internal sealed class SparseTrieArena : IDisposable
         SparseNode[]? chunkArray = _nodeChunks[chunk];
         if (chunkArray is null)
         {
-            _nodeChunks[chunk] = chunkArray = ArrayPool<SparseNode>.Shared.Rent(NodeChunkSize);
+            _nodeChunks[chunk] = chunkArray = ArrayPool<SparseNode>.Shared.Rent(_nodeMask + 1);
             _rentedBytes += (long)chunkArray.Length * Unsafe.SizeOf<SparseNode>();
         }
 
-        ref SparseNode newNode = ref chunkArray[index & NodeChunkMask];
+        ref SparseNode newNode = ref chunkArray[index & _nodeMask];
         newNode = default;
         newNode.RlpOffset = -1;
         newNode.StagedRecord = -1;
@@ -242,15 +262,15 @@ internal sealed class SparseTrieArena : IDisposable
     /// <summary>Allocates a contiguous byte run and returns its handle; get the span via <see cref="Bytes"/>.</summary>
     public int AllocBytes(int length)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, ByteChunkSize);
-        int offset = _byteCount & ByteChunkMask;
-        int chunk = _byteCount >> ByteChunkShift;
-        if (offset + length > ByteChunkSize)
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, _byteSize);
+        int offset = _byteCount & _byteMask;
+        int chunk = _byteCount >> _byteShift;
+        if (offset + length > _byteSize)
         {
-            _deadBytes += ByteChunkSize - offset;
+            _deadBytes += _byteSize - offset;
             chunk++;
             offset = 0;
-            _byteCount = chunk << ByteChunkShift;
+            _byteCount = chunk << _byteShift;
         }
 
         if (chunk >= _byteChunks.Length)
@@ -260,7 +280,7 @@ internal sealed class SparseTrieArena : IDisposable
 
         if (_byteChunks[chunk] is null)
         {
-            byte[] rented = ArrayPool<byte>.Shared.Rent(ByteChunkSize);
+            byte[] rented = ArrayPool<byte>.Shared.Rent(_byteSize);
             _byteChunks[chunk] = rented;
             _rentedBytes += rented.Length;
         }
@@ -272,7 +292,7 @@ internal sealed class SparseTrieArena : IDisposable
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Span<byte> Bytes(int handle, int length) =>
-        _byteChunks[handle >> ByteChunkShift].AsSpan(handle & ByteChunkMask, length);
+        _byteChunks[handle >> _byteShift].AsSpan(handle & _byteMask, length);
 
     /// <summary>Accounts a byte run made unreachable by mutation.</summary>
     public void ReleaseBytes(int length) => _deadBytes += length;
@@ -280,13 +300,13 @@ internal sealed class SparseTrieArena : IDisposable
     /// <summary>Allocates a dense child slice of <paramref name="count"/> entries and returns its handle.</summary>
     public int AllocChildSlice(int count)
     {
-        int offset = _childCount & ChildChunkMask;
-        int chunk = _childCount >> ChildChunkShift;
-        if (offset + count > ChildChunkSize)
+        int offset = _childCount & _childMask;
+        int chunk = _childCount >> _childShift;
+        if (offset + count > _childSize)
         {
-            _deadBytes += (ChildChunkSize - offset) * sizeof(int);
+            _deadBytes += (_childSize - offset) * sizeof(int);
             chunk++;
-            _childCount = chunk << ChildChunkShift;
+            _childCount = chunk << _childShift;
         }
 
         if (chunk >= _childChunks.Length)
@@ -296,7 +316,7 @@ internal sealed class SparseTrieArena : IDisposable
 
         if (_childChunks[chunk] is null)
         {
-            int[] rented = ArrayPool<int>.Shared.Rent(ChildChunkSize);
+            int[] rented = ArrayPool<int>.Shared.Rent(_childSize);
             _childChunks[chunk] = rented;
             _rentedBytes += (long)rented.Length * sizeof(int);
         }
@@ -308,7 +328,7 @@ internal sealed class SparseTrieArena : IDisposable
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Span<int> ChildSlice(int handle, int count) =>
-        _childChunks[handle >> ChildChunkShift].AsSpan(handle & ChildChunkMask, count);
+        _childChunks[handle >> _childShift].AsSpan(handle & _childMask, count);
 
     /// <summary>Accounts a child slice made unreachable by mutation.</summary>
     public void ReleaseChildSlice(int count) => _deadBytes += count * sizeof(int);
