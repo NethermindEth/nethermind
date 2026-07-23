@@ -49,5 +49,11 @@ public interface IPbtPersistence
 
         /// <summary>Null deletes the node.</summary>
         void SetTrieNode(in TrieNodeKey key, byte[]? node);
+
+        /// <summary>An empty value deletes the blob.</summary>
+        void SetLeafBlob(in Stem stem, scoped ReadOnlySpan<byte> blob) => SetLeafBlob(stem, blob.ToArray());
+
+        /// <summary>Writes a non-null node without requiring an array.</summary>
+        void SetTrieNode(in TrieNodeKey key, scoped ReadOnlySpan<byte> node) => SetTrieNode(key, node.ToArray());
     }
 }

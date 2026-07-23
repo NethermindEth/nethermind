@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -28,14 +29,27 @@ public class PbtResourcePoolTests
     [Test]
     public void ReturnedContent_IsReset()
     {
+        Stem stem = new(new byte[31]);
+        TrieNodeKey nodeKey = new(0, stem);
+        RefCountingMemory replacedBlob = RefCountingMemory.Wrapping([0x00]);
+        RefCountingMemory blob = RefCountingMemory.Wrapping([0x01]);
+        RefCountingMemory node = RefCountingMemory.Wrapping([0x01]);
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        content.LeafBlobs[new Stem(new byte[31])] = [0x01];
-        content.TrieNodes[new TrieNodeKey(0, new Stem(new byte[31]))] = [0x01];
+        content.SetLeafBlob(stem, replacedBlob);
+        content.SetLeafBlob(stem, blob);
+        content.SetTrieNode(nodeKey, node);
+
+        Assert.That(replacedBlob.AcquireLease, Throws.InvalidOperationException, "replacement releases the old value");
 
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);
 
-        Assert.That(content.LeafBlobs, Is.Empty);
-        Assert.That(content.TrieNodes, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(content.LeafBlobs, Is.Empty);
+            Assert.That(content.TrieNodes, Is.Empty);
+            Assert.That(blob.AcquireLease, Throws.InvalidOperationException, "reset releases the blob");
+            Assert.That(node.AcquireLease, Throws.InvalidOperationException, "reset releases the node");
+        }
     }
 
     [Test]

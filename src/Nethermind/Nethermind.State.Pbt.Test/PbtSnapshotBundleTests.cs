@@ -82,13 +82,78 @@ public class PbtSnapshotBundleTests
         _reader.TrieNodes[NodeA] = [0x44];
 
         PbtSnapshotContent shared = new();
-        shared.LeafBlobs[StemA] = [];      // the "stem deleted" marker
-        shared.TrieNodes[NodeA] = null;    // the "node removed" marker
+        shared.SetLeafBlob(StemA, null);
+        shared.SetTrieNode(NodeA, null);
 
         using PbtSnapshotBundle bundle = Bundle(sharedLayers: [shared], localLayers: []);
 
         Assert.That(bundle.GetLeafBlob(StemA), Is.Null);
         Assert.That(bundle.GetTrieNode(NodeA), Is.Null);
+    }
+
+    [Test]
+    public void TransferredValues_AreReleased_WhenWrittenAfterBundleDisposal()
+    {
+        PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+        RefCountingMemory blob = Memory(0x11);
+        RefCountingMemory node = Memory(0x22);
+        bundle.Dispose();
+
+        Assert.That(() => bundle.SetOwnedLeafBlob(StemA, blob), Throws.TypeOf<System.ObjectDisposedException>());
+        Assert.That(() => bundle.SetOwnedTrieNode(NodeA, node), Throws.TypeOf<System.ObjectDisposedException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blob.AcquireLease, Throws.InvalidOperationException, "the rejected blob transfer releases its lease");
+            Assert.That(node.AcquireLease, Throws.InvalidOperationException, "the rejected node transfer releases its lease");
+        }
+    }
+
+    [Test]
+    public void TransferredValues_AreReleased_WhenWritesRaceBundleDisposal()
+    {
+        const int writeCount = 256;
+        PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+        RefCountingMemory[] values = new RefCountingMemory[writeCount];
+        for (int i = 0; i < values.Length; i++) values[i] = Memory((byte)i);
+
+        using System.Threading.Barrier start = new(2);
+        System.Threading.Tasks.Task writer = System.Threading.Tasks.Task.Run(() =>
+        {
+            start.SignalAndWait();
+            foreach (RefCountingMemory value in values)
+            {
+                try
+                {
+                    bundle.SetOwnedLeafBlob(StemA, value);
+                }
+                catch (System.ObjectDisposedException)
+                {
+                }
+            }
+        });
+
+        start.SignalAndWait();
+        bundle.Dispose();
+        writer.GetAwaiter().GetResult();
+
+        foreach (RefCountingMemory value in values)
+        {
+            Assert.That(value.AcquireLease, Throws.InvalidOperationException, "every transferred lease is released whichever side wins the race");
+        }
+    }
+
+    [Test]
+    public void LayerValueLease_RemainsValidAfterBundleDisposal()
+    {
+        PbtSnapshotBundle bundle = Bundle(sharedLayers: [Content(0x33)], localLayers: []);
+        using RefCountingMemory? blob = bundle.GetLeafBlob(StemA);
+
+        bundle.Dispose();
+
+        Assert.That(blob!.AcquireLease, Throws.Nothing, "the returned lease owns the value independently");
+        ((System.IDisposable)blob).Dispose();
+        Assert.That(blob.GetSpan().ToArray(), Is.EqualTo((byte[])[0x33]));
     }
 
     [Test]
@@ -143,7 +208,7 @@ public class PbtSnapshotBundleTests
 
         using PbtSnapshot sealed_ = bundle.CollectSnapshot(default, new StateId(1, default), TestItem.KeccakA.ValueHash256);
 
-        Assert.That(sealed_.Content.LeafBlobs[HeaderStem], Is.EqualTo(HeaderBlob(0x11)), "the sealed layer took the buffer's writes");
+        Assert.That(sealed_.Content.LeafBlobs[HeaderStem]!.GetSpan().ToArray(), Is.EqualTo(HeaderBlob(0x11)), "the sealed layer took the buffer's writes");
         Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x11), "which the bundle still reads through its own chain, now decoded from the leaf");
         Assert.That(bundle.TreeRoot, Is.EqualTo(TestItem.KeccakA.ValueHash256), "and the sealed layer's tree root becomes the bundle's");
         Assert.That(bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), default).Content, Is.Not.SameAs(sealed_.Content), "a fresh buffer backs the next block");
@@ -192,9 +257,9 @@ public class PbtSnapshotBundleTests
     private static PbtSnapshotContent Content(byte marker)
     {
         PbtSnapshotContent content = new();
-        content.LeafBlobs[HeaderStem] = HeaderBlob(marker);
-        content.LeafBlobs[StemA] = [marker];
-        content.TrieNodes[NodeA] = [marker];
+        content.SetLeafBlob(HeaderStem, Memory(HeaderBlob(marker)));
+        content.SetLeafBlob(StemA, Memory(marker));
+        content.SetTrieNode(NodeA, Memory(marker));
         return content;
     }
 
@@ -206,9 +271,9 @@ public class PbtSnapshotBundleTests
     {
         bundle.SetAccount(Address, Build.An.Account.WithNonce(marker).TestObject);
         bundle.SetSlot(Address, Slot, Word(marker));
-        bundle.SetLeafBlob(HeaderStem, HeaderBlob(marker));
-        bundle.SetLeafBlob(StemA, [marker]);
-        bundle.SetTrieNode(NodeA, [marker]);
+        bundle.SetOwnedLeafBlob(HeaderStem, Memory(HeaderBlob(marker)));
+        bundle.SetOwnedLeafBlob(StemA, Memory(marker));
+        bundle.SetOwnedTrieNode(NodeA, Memory(marker));
     }
 
     /// <summary>The account header stem's blob carrying <paramref name="marker"/> as both the nonce and the value of <see cref="Slot"/>.</summary>
@@ -239,6 +304,8 @@ public class PbtSnapshotBundleTests
         Assert.That(blob!.GetSpan().ToArray(), Is.EqualTo((byte[])[marker]));
         Assert.That(node!.GetSpan().ToArray(), Is.EqualTo((byte[])[marker]));
     }
+
+    private static RefCountingMemory Memory(params byte[] value) => RefCountingMemory.Wrapping(value);
 
     private static EvmWord Word(byte marker) => EvmWordSlot.FromStripped([marker]);
 

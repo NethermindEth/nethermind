@@ -199,10 +199,24 @@ public class PbtRocksDbPersistence : IPbtPersistence
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
-        public void SetLeafBlob(in Stem stem, byte[]? blob)
+        public void SetLeafBlob(in Stem stem, byte[]? blob) => SetLeafBlob(stem, (ReadOnlySpan<byte>)blob);
+
+        public void SetTrieNode(in TrieNodeKey key, byte[]? node)
+        {
+            if (node is null)
+            {
+                DeleteTrieNode(key);
+            }
+            else
+            {
+                SetTrieNode(key, (ReadOnlySpan<byte>)node);
+            }
+        }
+
+        public void SetLeafBlob(in Stem stem, scoped ReadOnlySpan<byte> blob)
         {
             IWriteBatch leaves = _batch.GetColumnBatch(LeafColumn(stem));
-            if (blob is null || blob.Length == 0)
+            if (blob.IsEmpty)
             {
                 leaves.Set(stem.Bytes, null, flags);
             }
@@ -212,19 +226,18 @@ public class PbtRocksDbPersistence : IPbtPersistence
             }
         }
 
-        public void SetTrieNode(in TrieNodeKey key, byte[]? node)
+        public void SetTrieNode(in TrieNodeKey key, scoped ReadOnlySpan<byte> node)
         {
             Span<byte> dbKey = stackalloc byte[TrieNodeKey.Length];
             key.WriteTo(dbKey);
-            IWriteBatch nodes = _batch.GetColumnBatch(TrieNodeColumn(key));
-            if (node is null)
-            {
-                nodes.Set(dbKey, null, flags);
-            }
-            else
-            {
-                nodes.PutSpan(dbKey, node, flags);
-            }
+            _batch.GetColumnBatch(TrieNodeColumn(key)).PutSpan(dbKey, node, flags);
+        }
+
+        private void DeleteTrieNode(in TrieNodeKey key)
+        {
+            Span<byte> dbKey = stackalloc byte[TrieNodeKey.Length];
+            key.WriteTo(dbKey);
+            _batch.GetColumnBatch(TrieNodeColumn(key)).Set(dbKey, null, flags);
         }
 
         public void Dispose()

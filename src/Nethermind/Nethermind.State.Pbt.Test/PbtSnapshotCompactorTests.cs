@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -28,17 +29,17 @@ public class PbtSnapshotCompactorTests
         TrieNodeKey nodeKey = new(0, StemA);
 
         PbtSnapshotContent older = new();
-        older.LeafBlobs[StemA] = [0x11];
-        older.TrieNodes[nodeKey] = [0x11];
+        older.SetLeafBlob(StemA, Memory(0x11));
+        older.SetTrieNode(nodeKey, Memory(0x11));
 
         PbtSnapshotContent newer = new();
-        newer.LeafBlobs[StemA] = [0x22];
-        newer.TrieNodes[nodeKey] = [0x22];
+        newer.SetLeafBlob(StemA, Memory(0x22));
+        newer.SetTrieNode(nodeKey, Memory(0x22));
 
         using PbtSnapshot merged = Compact(older, newer);
 
-        Assert.That(merged.Content.LeafBlobs[StemA], Is.EqualTo((byte[])[0x22]));
-        Assert.That(merged.Content.TrieNodes[nodeKey], Is.EqualTo((byte[])[0x22]));
+        AssertMemory(merged.Content.LeafBlobs[StemA], 0x22);
+        AssertMemory(merged.Content.TrieNodes[nodeKey], 0x22);
     }
 
     [Test]
@@ -54,14 +55,14 @@ public class PbtSnapshotCompactorTests
     public void Compact_UnionsDisjointWrites()
     {
         PbtSnapshotContent older = new();
-        older.LeafBlobs[StemA] = [0x11];
+        older.SetLeafBlob(StemA, Memory(0x11));
         PbtSnapshotContent newer = new();
-        newer.LeafBlobs[StemB] = [0x22];
+        newer.SetLeafBlob(StemB, Memory(0x22));
 
         using PbtSnapshot merged = Compact(older, newer);
 
-        Assert.That(merged.Content.LeafBlobs[StemA], Is.EqualTo((byte[])[0x11]));
-        Assert.That(merged.Content.LeafBlobs[StemB], Is.EqualTo((byte[])[0x22]));
+        AssertMemory(merged.Content.LeafBlobs[StemA], 0x11);
+        AssertMemory(merged.Content.LeafBlobs[StemB], 0x22);
     }
 
     /// <summary>
@@ -79,7 +80,7 @@ public class PbtSnapshotCompactorTests
         for (ulong block = 1; block <= 8; block++)
         {
             PbtSnapshotContent layer = new();
-            layer.LeafBlobs[StemA] = [(byte)block];
+            layer.SetLeafBlob(StemA, Memory((byte)block));
             repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), default, layer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
             compactor.DoCompactSnapshot(State(block));
         }
@@ -91,7 +92,7 @@ public class PbtSnapshotCompactorTests
         Assert.That(repository.TryLeaseChain(State(8), State(0), chain), Is.True);
         Assert.That(chain.Count, Is.EqualTo(1), "the 8-wide layer at block 8 spans the whole window");
         Assert.That(chain[0].From, Is.EqualTo(State(0)));
-        Assert.That(chain[0].Content.LeafBlobs[StemA], Is.EqualTo((byte[])[8]), "and carries the newest value across it");
+        AssertMemory(chain[0].Content.LeafBlobs[StemA], 8);
     }
 
     /// <summary>
@@ -154,6 +155,16 @@ public class PbtSnapshotCompactorTests
 
     private PbtSnapshotCompactor NewCompactor(PbtSnapshotRepository repository) =>
         new(_pool, new PbtCompactionSchedule(new MemDb(), Config, LimboLogs.Instance), repository, Config);
+
+    private static RefCountingMemory Memory(params byte[] value) => RefCountingMemory.Wrapping(value);
+
+    private static void AssertMemory(RefCountingMemory? actual, params byte[] expected)
+    {
+        Assert.That(actual, Is.Not.Null);
+        Assert.That(actual.AcquireLease, Throws.Nothing, "the merged layer owns a lease independent of its disposed sources");
+        ((System.IDisposable)actual).Dispose();
+        Assert.That(actual.GetSpan().ToArray(), Is.EqualTo(expected));
+    }
 
     // offset 0 pins which blocks align; left to itself it is rolled per node and the levels move
     private static readonly PbtConfig Config = new() { CompactSize = 16, CompactionOffset = 0 };

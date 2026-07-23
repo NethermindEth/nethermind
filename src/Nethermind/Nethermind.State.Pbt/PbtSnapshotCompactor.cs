@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Buffers;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
@@ -10,8 +11,8 @@ namespace Nethermind.State.Pbt;
 /// applied newest-wins so the result is what a bundle walk over the originals would observe.
 /// </summary>
 /// <remarks>
-/// The merged layer shares its blob and node arrays with the layers it merged, so it must not outlive
-/// them unless it takes leases of its own.
+/// The merged layer takes an independent lease on every non-null value it shares with its inputs, so
+/// the merged and source layers may be disposed in either order.
 /// </remarks>
 public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSchedule schedule, PbtSnapshotRepository repository, IPbtConfig config)
 {
@@ -58,24 +59,34 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
         PbtResourcePool.Usage usage = PbtResourcePool.CompactUsage(chainOldestFirst.Count);
         PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
 
-        // Oldest to newest, so a later layer's write overwrites an earlier one: reversing this inverts
-        // precedence and writes stale values to disk without any error.
-        for (int i = 0; i < chainOldestFirst.Count; i++)
+        try
         {
-            PbtSnapshotContent content = chainOldestFirst[i].Content;
-
-            foreach ((Stem stem, byte[] blob) in content.LeafBlobs)
+            // Oldest to newest, so a later layer's write overwrites an earlier one: reversing this inverts
+            // precedence and writes stale values to disk without any error.
+            for (int i = 0; i < chainOldestFirst.Count; i++)
             {
-                merged.LeafBlobs[stem] = blob;
+                PbtSnapshotContent content = chainOldestFirst[i].Content;
+
+                foreach ((Stem stem, RefCountingMemory? blob) in content.LeafBlobs)
+                {
+                    blob?.AcquireLease();
+                    merged.SetLeafBlob(stem, blob);
+                }
+
+                foreach ((TrieNodeKey key, RefCountingMemory? node) in content.TrieNodes)
+                {
+                    node?.AcquireLease();
+                    merged.SetTrieNode(key, node);
+                }
             }
 
-            foreach ((TrieNodeKey key, byte[]? node) in content.TrieNodes)
-            {
-                merged.TrieNodes[key] = node;
-            }
+            PbtSnapshot newest = chainOldestFirst[^1];
+            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
         }
-
-        PbtSnapshot newest = chainOldestFirst[^1];
-        return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
+        catch
+        {
+            resourcePool.ReturnSnapshotContent(usage, merged);
+            throw;
+        }
     }
 }
