@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -142,9 +143,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     {
         if (!_rootDirty) return;
 
-        using PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch(_writeFormat.Tiling);
-        _treeRoot = TrieUpdater.UpdateRoot(
-            this, _treeRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, _rootFoldConcurrency, out _);
+        long start = Stopwatch.GetTimestamp();
+        using (PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch(_writeFormat.Tiling))
+        {
+            _treeRoot = TrieUpdater.UpdateRoot(
+                this, _treeRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, _rootFoldConcurrency, out _);
+        }
+        Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
+
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
         _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
         _rootDirty = false;
@@ -279,6 +285,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     private sealed class WriteBatch(PbtWorldStateScope scope) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
+        private readonly long _start = Stopwatch.GetTimestamp();
+
         // PBT accounts have no storage root to fold back into the state provider, so the event is never raised
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
         {
@@ -304,9 +312,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
             new StorageWriteBatch(scope, key);
 
-        public void Dispose()
-        {
-        }
+        public void Dispose() => Metrics.PbtWriteBatchTime.Observe(Stopwatch.GetTimestamp() - _start);
     }
 
     private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch
