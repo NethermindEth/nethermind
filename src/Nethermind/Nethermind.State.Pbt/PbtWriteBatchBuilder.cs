@@ -119,10 +119,13 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// </para>
     /// </remarks>
     /// <param name="tiling">The tiling the batch will be applied in, whose levels the table is bucketed for.</param>
-    public PbtWriteBatch DrainToWriteBatch(PbtTiling tiling) =>
-        tiling == PbtTiling.SixLevel
-            ? DrainToWriteBatch<PbtSixLevelTileLayout>()
-            : DrainToWriteBatch<PbtClusteredTileLayout>();
+    public PbtWriteBatch DrainToWriteBatch(PbtTiling tiling) => tiling switch
+    {
+        PbtTiling.ClusteredFourLevel => DrainToWriteBatch<PbtClusteredTileLayout>(),
+        PbtTiling.SixLevel => DrainToWriteBatch<PbtSixLevelTileLayout>(),
+        PbtTiling.EightLevel => DrainToWriteBatch<PbtEightLevelTileLayout>(),
+        _ => throw new ArgumentOutOfRangeException(nameof(tiling), tiling, null),
+    };
 
     private PbtWriteBatch DrainToWriteBatch<TLayout>() where TLayout : IPbtTileLayout
     {
@@ -143,7 +146,7 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
             Span<int> coarse = table[(tableLength - stride)..];
             coarse[0] = 0;
             int coarseStart = 0;
-            ulong coarseTouched = 0;
+            coarse[PbtWriteBatch.TouchedMaskIndex<TLayout>()..].Clear();
 
             // The shards a coarse slot covers: the first byte's high bits are the slot, and what is left
             // of the byte splits it further — into the next level's slots where the tiling is narrow
@@ -153,7 +156,7 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
             {
                 Span<int> fine = nested ? table.Slice(slot * stride, stride) : default;
                 if (nested) fine[0] = 0;
-                ulong fineTouched = 0;
+                if (nested) fine[PbtWriteBatch.TouchedMaskIndex<TLayout>()..].Clear();
                 for (int shard = 0; shard < shardsPerSlot; shard++)
                 {
                     int shardStart = batch.Count;
@@ -164,17 +167,14 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 
                     if (!nested) continue;
 
-                    if (batch.Count != shardStart) fineTouched |= 1UL << shard;
+                    if (batch.Count != shardStart) PbtWriteBatch.SetTouched<TLayout>(fine, shard);
                     fine[shard + 1] = batch.Count - coarseStart;
                 }
 
-                if (nested) PbtWriteBatch.WriteTouched<TLayout>(fine, fineTouched);
-                if (batch.Count != coarseStart) coarseTouched |= 1UL << slot;
+                if (batch.Count != coarseStart) PbtWriteBatch.SetTouched<TLayout>(coarse, slot);
                 coarse[slot + 1] = batch.Count;
                 coarseStart = batch.Count;
             }
-
-            PbtWriteBatch.WriteTouched<TLayout>(coarse, coarseTouched);
         }
         finally
         {

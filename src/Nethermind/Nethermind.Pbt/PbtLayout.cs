@@ -18,31 +18,11 @@ namespace Nethermind.Pbt;
 /// </remarks>
 public static class PbtLayout
 {
-    /// <summary>The widest tile's boundary slots, which the masks here are sized for.</summary>
-    internal const int MaxBoundarySlots = 64;
-
-    /// <summary>Bit set at <see cref="TrieNodeGroupBoundarySlotPosition"/>(i) for each boundary slot i.</summary>
-    private static readonly UInt128 BoundaryPositionsBitmask = new(0x01b36366c366c6cdUL, 0x8366c6cd86cd8d9bUL);
-
-    /// <summary>Every position of the widest tile, which is what a format that skips them all skips.</summary>
-    private static readonly UInt128 AllPositionsBitmask = (UInt128.One << (2 * MaxBoundarySlots - 1)) - 1;
-
-    /// <summary>
-    /// Bit set at each position <see cref="PbtGroupFormat.Interleaved"/> stores no internal node at:
-    /// the odd group-relative levels, counted up from the widest tile's root.
-    /// </summary>
-    /// <remarks>
-    /// A position's level follows from the boundary slots its subtree covers — halving from the tile
-    /// root down to the boundary — so the levels alternate with the width, and
-    /// <see cref="TrieNodeGroupStoresInternalAtWidth"/> says the same thing by width where a walk has
-    /// one to hand. A narrower tile's root sits at a width this one also holds, so the parities agree
-    /// and the mask truncates like the boundary one. Disjoint from
-    /// <see cref="BoundaryPositionsBitmask"/>: a boundary slot is a level of its own.
-    /// </remarks>
-    private static readonly UInt128 InterleavedSkippedPositions = new(0x2a44948914892912UL, 0x5489291229125224UL);
+    /// <summary>The widest tile's boundary slots.</summary>
+    internal const int MaxBoundarySlots = 256;
 
     /// <summary>The widths a tile's levels cover, from its root down to a boundary slot.</summary>
-    private const int AllWidthsBitmask = 0b1111111;
+    private const int AllWidthsBitmask = 0b1_1111_1111;
 
     /// <summary>The widths a <see cref="StemLeafBlob"/>'s levels cover: 256 at the root down to 1 at a leaf.</summary>
     private const int StemLeafAllWidthsBitmask = 0b1_1111_1111;
@@ -56,17 +36,9 @@ public static class PbtLayout
     /// </remarks>
     private static int TrieNodeGroupKeptWidths(PbtGroupFormat format) => format switch
     {
-        PbtGroupFormat.Interleaved => 0b1010101,
+        PbtGroupFormat.Interleaved => 0b1_0101_0101,
         PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth => 0b0000001,
         _ => AllWidthsBitmask,
-    };
-
-    /// <summary>Bit set at each position <paramref name="format"/> stores no internal node at.</summary>
-    private static UInt128 TrieNodeGroupSkippedPositions(PbtGroupFormat format) => format switch
-    {
-        PbtGroupFormat.Interleaved => InterleavedSkippedPositions,
-        PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth => AllPositionsBitmask & ~BoundaryPositionsBitmask,
-        _ => 0,
     };
 
     /// <summary>The widths whose level <paramref name="format"/> stores an internal node of a <see cref="StemLeafBlob"/> at.</summary>
@@ -91,14 +63,8 @@ public static class PbtLayout
     /// <summary>Whether <paramref name="format"/> stores no internal node at <paramref name="position"/>.</summary>
     /// <remarks>A stem node is stored at every position; only an internal node's hash is recomputable.</remarks>
     public static bool TrieNodeGroupIsSkippedPosition(PbtGroupFormat format, int position) =>
-        (TrieNodeGroupSkippedPositions(format) & (UInt128.One << position)) != 0;
-
-    /// <summary>
-    /// Whether <paramref name="presenceBitmask"/> holds an internal node at a level <paramref name="format"/>
-    /// skips, which is what a group in that format must never encode.
-    /// </summary>
-    internal static bool TrieNodeGroupHoldsSkippedInternal(PbtGroupFormat format, UInt128 presenceBitmask, UInt128 stemsBitmask) =>
-        (presenceBitmask & TrieNodeGroupSkippedPositions(format) & ~stemsBitmask) != 0;
+        !TrieNodeGroupIsBoundaryPosition(position)
+        && !TrieNodeGroupStoresInternalAtWidth(format, TrieNodeGroupPositionWidth(position));
 
     /// <summary>
     /// Whether <paramref name="format"/> stores an internal node at the position whose subtree covers
@@ -120,29 +86,55 @@ public static class PbtLayout
     /// Built by shifting the all-ones word down rather than up: a tile as wide as the word would
     /// shift its one bit clean out, which C# would instead wrap back to bit zero.
     /// </remarks>
-    internal static ulong SlotRange(int firstSlot, int width) => (ulong.MaxValue >> (MaxBoundarySlots - width)) << firstSlot;
-
-    /// <summary>The bits of the boundary slots below <paramref name="slot"/>, which may be every one of them.</summary>
-    /// <remarks>
-    /// <see cref="TrieNodeGroupBoundarySlot"/> counts as high as the tile is wide — every slot sits
-    /// below its root position — and a shift by the whole word wraps back to no shift at all rather
-    /// than to zero.
-    /// </remarks>
-    internal static ulong SlotsBelow(int slot) => slot == MaxBoundarySlots ? ulong.MaxValue : (1UL << slot) - 1;
+    internal static ulong SlotRange(int firstSlot, int width) =>
+        width == 64 ? ulong.MaxValue : ((1UL << width) - 1) << firstSlot;
 
     /// <summary>The post-order position of boundary slot <paramref name="slot"/>.</summary>
     public static int TrieNodeGroupBoundarySlotPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 
-    public static bool TrieNodeGroupIsBoundaryPosition(int position) => (BoundaryPositionsBitmask & (UInt128.One << position)) != 0;
+    public static bool TrieNodeGroupIsBoundaryPosition(int position)
+    {
+        int slot = TrieNodeGroupBoundarySlot(position);
+        return slot < MaxBoundarySlots && TrieNodeGroupBoundarySlotPosition(slot) == position;
+    }
 
-    public static int TrieNodeGroupBoundarySlot(int position) => PopCount(BoundaryPositionsBitmask & ((UInt128.One << position) - 1));
+    /// <summary>The number of boundary positions strictly below <paramref name="position"/>.</summary>
+    public static int TrieNodeGroupBoundarySlot(int position)
+    {
+        int low = 0;
+        int high = MaxBoundarySlots;
+        while (low < high)
+        {
+            int middle = (low + high) / 2;
+            if (TrieNodeGroupBoundarySlotPosition(middle) < position) low = middle + 1;
+            else high = middle;
+        }
+
+        return low;
+    }
 
     /// <summary>The lowest position of the subtree rooted at <paramref name="position"/> covering <paramref name="width"/> boundary slots.</summary>
     internal static int TrieNodeGroupFirstSubtreePosition(int position, int width) => position - 2 * width + 2;
 
-    /// <summary>The positions of the subtree rooted at <paramref name="position"/> covering <paramref name="width"/> boundary slots.</summary>
-    internal static UInt128 TrieNodeGroupSubtreeBitmask(int position, int width) =>
-        ((UInt128.One << (position + 1)) - 1) & ~((UInt128.One << TrieNodeGroupFirstSubtreePosition(position, width)) - 1);
+    private static int TrieNodeGroupPositionWidth(int position)
+    {
+        for (int width = 2; width <= MaxBoundarySlots; width *= 2)
+        {
+            int firstPosition = TrieNodeGroupFirstSubtreePosition(position, width);
+            int firstSlot = TrieNodeGroupBoundarySlot(firstPosition);
+            if (firstSlot % width == 0 && TrieNodeGroupBoundarySlotPosition(firstSlot) == firstPosition) return width;
+        }
+
+        return 1;
+    }
+
+    internal static ulong GatherBoundary(UInt128 positions, int boundarySlots)
+    {
+        ulong boundary = 0;
+        for (int slot = 0; slot < boundarySlots; slot++)
+            if ((positions & (UInt128.One << TrieNodeGroupBoundarySlotPosition(slot))) != 0) boundary |= 1UL << slot;
+        return boundary;
+    }
 
     public static int PopCount(UInt128 bitmask) =>
         BitOperations.PopCount((ulong)bitmask) + BitOperations.PopCount((ulong)(bitmask >> 64));
@@ -153,30 +145,4 @@ public static class PbtLayout
     /// <summary>The highest set position of <paramref name="bitmask"/>, which must not be zero.</summary>
     internal static int Log2(UInt128 bitmask) =>
         (ulong)(bitmask >> 64) != 0 ? 64 + BitOperations.Log2((ulong)(bitmask >> 64)) : BitOperations.Log2((ulong)bitmask);
-
-    /// <summary>
-    /// Gathers the <see cref="BoundaryPositionsBitmask"/> bits of <paramref name="positionsBitmask"/>
-    /// down into slot order, over the <paramref name="slotGroups"/> groups of four slots a tile holds.
-    /// </summary>
-    /// <remarks>
-    /// A software PEXT of the constant mask, whose bits fall in groups of four — positions
-    /// <c>o + {0, 1, 3, 4}</c> for <c>o = 8g - popcount(g)</c> — so each group compacts with one shift
-    /// and they pack together. Branch-free and ISA-independent, unlike <c>Bmi2.ParallelBitExtract</c>,
-    /// and with <paramref name="slotGroups"/> a constant of the caller's tiling the loop costs only the
-    /// groups that tiling has.
-    /// </remarks>
-    internal static ulong GatherBoundary(UInt128 positionsBitmask, int slotGroups)
-    {
-        ulong gathered = 0;
-        for (int group = 0; group < slotGroups; group++)
-        {
-            int offset = 8 * group - BitOperations.PopCount((uint)group);
-            gathered |= (ulong)CompactGroup((uint)(positionsBitmask >> offset)) << (4 * group);
-        }
-
-        return gathered;
-    }
-
-    /// <summary>Compacts one group's bits — at 0, 1, 3 and 4 — down into the low four.</summary>
-    private static uint CompactGroup(uint groupBitmask) => (groupBitmask & 0b0011u) | ((groupBitmask >> 1) & 0b1100u);
 }

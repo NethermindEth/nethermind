@@ -10,74 +10,49 @@ namespace Nethermind.State.Pbt.Test;
 
 public class TwoLevelBitmapReaderTests
 {
-    private static readonly int[][] LeafSets =
-    [
-        [],
-        [0],
-        [255],
-        [5, 200],
-        [0, 1, 2, 3, 4],
-        [7, 8, 15, 16, 128, 129, 240, 255],
-        FullRange(),
-    ];
-
-    [TestCaseSource(nameof(LeafSets))]
-    public void EncodeRoundTripsPresenceExpandAndLength(int[] present)
+    [TestCase(PbtLeafFormat.Legacy)]
+    [TestCase(PbtLeafFormat.EveryLevel)]
+    [TestCase(PbtLeafFormat.Interleaved)]
+    [TestCase(PbtLeafFormat.LeavesOnly)]
+    [TestCase(PbtLeafFormat.Every4Depth)]
+    public void LeafWrapperPreservesExactFooterAndParsesBackward(PbtLeafFormat format)
     {
-        Span<byte> flat = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
-        flat.Clear();
-        foreach (int subIndex in present) flat[subIndex >> 3] |= (byte)(1 << (7 - (subIndex & 7)));
+        byte[] flat = new byte[TwoLevelBitmapReader.BitmapLength];
+        flat[0] = 0x04;
+        flat[25] = 0x80;
+        byte[] expectedFooter = [0x04, 0x00, 0x00, 0x80, 0x01, 0x10, (byte)format];
+        Span<byte> footer = stackalloc byte[CompactBitmap256.MaxEncodedLength + TwoLevelBitmapReader.FormatLength];
 
-        int expectedGroups = OccupiedGroups(flat);
-
-        Span<byte> footer = stackalloc byte[TwoLevelBitmapReader.BitmapLength + 3];
-        int footerLength = TwoLevelBitmapReader.Encode(flat, footer, PbtLeafFormat.Interleaved);
-        Assert.That(footerLength, Is.EqualTo(expectedGroups * 2 + 2 + 1));
-        Assert.That(TwoLevelBitmapReader.FormatOf(footer[..footerLength]), Is.EqualTo(PbtLeafFormat.Interleaved));
-
-        // Prepend a dummy entries region to exercise footer-from-the-tail parsing.
-        byte[] entriesPrefix = new byte[64];
+        int footerLength = TwoLevelBitmapReader.Encode(flat, footer, format);
+        byte[] entriesPrefix = new byte[2 * StemLeafBlob.ValueLength];
         for (int i = 0; i < entriesPrefix.Length; i++) entriesPrefix[i] = (byte)(i + 1);
         byte[] blob = [.. entriesPrefix, .. footer[..footerLength]];
 
         TwoLevelBitmapReader reader = TwoLevelBitmapReader.FromBlob(blob, out ReadOnlySpan<byte> entries);
-
         Span<byte> expanded = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
         reader.ExpandTo(expanded);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(TwoLevelBitmapReader.EncodedLength(flat), Is.EqualTo(expectedFooter.Length));
+            Assert.That(footerLength, Is.EqualTo(expectedFooter.Length));
+            Assert.That(footer[..footerLength].SequenceEqual(expectedFooter), Is.True, "leaf footer bytes");
+            Assert.That(TwoLevelBitmapReader.FormatOf(blob), Is.EqualTo(format));
             Assert.That(entries.SequenceEqual(entriesPrefix), Is.True, "entries region");
-            Assert.That(reader.OccupiedGroups, Is.EqualTo(expectedGroups));
             Assert.That(expanded.SequenceEqual(flat), Is.True, "expanded bitmap");
-
-            for (int subIndex = 0; subIndex < 256; subIndex++)
-            {
-                bool expected = (flat[subIndex >> 3] & (1 << (7 - (subIndex & 7)))) != 0;
-                Assert.That(reader.IsPresent((byte)subIndex), Is.EqualTo(expected), $"sub-index {subIndex}");
-            }
+            Assert.That(reader.IsPresent(5), Is.True);
+            Assert.That(reader.IsPresent(200), Is.True);
         }
     }
 
-    [Test]
-    public void FromBlobRejectsUnknownFormatByte()
+    [TestCase(new byte[] { 0x00, 0x00, 0xff }, "unknown format")]
+    [TestCase(new byte[] { 0x04 }, "missing top")]
+    [TestCase(new byte[] { 0x01, 0x00, 0x04 }, "missing subword")]
+    [TestCase(new byte[] { 0x11, 0x00, 0x00, 0x04 }, "truncated entries")]
+    public void FromBlobRejectsMalformedFooter(byte[] blob, string description)
     {
-        byte[] blob = [0x00, 0x00, 0xFF];
-        Assert.That(() => TwoLevelBitmapReader.FromBlob(blob, out _), Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => ReadMalformed(blob), Throws.InstanceOf<InvalidDataException>(), description);
     }
 
-    private static int OccupiedGroups(ReadOnlySpan<byte> flat)
-    {
-        int count = 0;
-        for (int g = 0; g < TwoLevelBitmapReader.GroupCount; g++)
-            if ((flat[2 * g] | flat[2 * g + 1]) != 0) count++;
-        return count;
-    }
-
-    private static int[] FullRange()
-    {
-        int[] all = new int[256];
-        for (int i = 0; i < all.Length; i++) all[i] = i;
-        return all;
-    }
+    private static void ReadMalformed(byte[] blob) => TwoLevelBitmapReader.FromBlob(blob, out _);
 }

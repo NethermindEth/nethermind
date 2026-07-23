@@ -17,8 +17,9 @@ namespace Nethermind.Pbt;
 /// is what it resolves and the fold is driven by. <see cref="Chains"/> is always the latter: a run
 /// hangs from a boundary slot and nowhere else.
 /// <para>
-/// The bitmaps are 128 bits wide whatever the tiling, the widest tile holding 127 positions. A tiling
-/// serializes only as many as it has (<see cref="IPbtTileLayout.WriteMasks"/>).
+/// This scalar value remains the representation for four- and six-level groups. Wider groups use
+/// caller-owned word spans through <see cref="PbtTrieNodeGroup{TLayout}.CopyBoundaryShape"/> and
+/// <see cref="GroupRebuild{TLayout}"/>.
 /// </para>
 /// </remarks>
 public readonly record struct NodeGroupBitmasks(UInt128 Presence, UInt128 Stems, ulong Chains);

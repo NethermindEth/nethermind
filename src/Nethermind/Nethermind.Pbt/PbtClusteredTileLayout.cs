@@ -30,7 +30,15 @@ public readonly struct PbtClusteredTileLayout : IPbtTileLayout
     /// <summary>The deepest tile root depth; that tile's boundary is the 248-bit stem level, where every node is a stem.</summary>
     public static int MaxGroupDepth => Stem.LengthInBits - LevelsPerGroup;
 
-    public static int MaskTrailerLength => sizeof(uint) + sizeof(uint) + sizeof(ushort);
+    public static int PositionMaskWordCount => 1;
+
+    public static int BoundaryMaskWordCount => 1;
+
+    public static int MaxMaskTrailerLength => sizeof(uint) + sizeof(uint) + sizeof(ushort);
+
+    public static bool HasCompactBoundaryMask => false;
+
+    public static int MaskTrailerLength => MaxMaskTrailerLength;
 
     /// <summary>
     /// Which tiles hold their children, which alternates by tile so that every other level is reached
@@ -48,8 +56,6 @@ public readonly struct PbtClusteredTileLayout : IPbtTileLayout
 
     public static int SlotOf(in Stem stem, int depth) =>
         (depth & 4) == 0 ? stem.Bytes[depth >> 3] >> 4 : stem.Bytes[depth >> 3] & 0xF;
-
-    public static ulong BoundaryBitmask(UInt128 positionsBitmask) => PbtLayout.GatherBoundary(positionsBitmask, BoundarySlots / 4);
 
     public static void WriteMasks(Span<byte> trailer, in NodeGroupBitmasks masks)
     {

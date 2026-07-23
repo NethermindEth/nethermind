@@ -70,9 +70,13 @@ public static partial class TrieUpdater
             return currentRoot;
         }
 
-        return format.Tiling == PbtTiling.SixLevel
-            ? new Updater<PbtSixLevelTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta)
-            : new Updater<PbtClusteredTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta);
+        return format.Tiling switch
+        {
+            PbtTiling.ClusteredFourLevel => new Updater<PbtClusteredTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
+            PbtTiling.SixLevel => new Updater<PbtSixLevelTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
+            PbtTiling.EightLevel => new Updater<PbtEightLevelTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
+            _ => throw new ArgumentOutOfRangeException(nameof(format)),
+        };
     }
 
     /// <summary>
@@ -194,11 +198,11 @@ public static partial class TrieUpdater
             /// </remarks>
             StoredBlob ChildBlob(int slot);
 
-            /// <summary>
-            /// The slots <see cref="ChildBlob"/> answers for, which a clustering frame walks alongside the
-            /// slots its writes touch: a child no write reaches still has to be carried over.
-            /// </summary>
-            ulong ChildSlotsBitmask { get; }
+            /// <summary>The kind already occupying boundary <paramref name="slot"/>.</summary>
+            NodeKind KindAt(int slot);
+
+            /// <summary>Whether <see cref="ChildBlob"/> answers for boundary <paramref name="slot"/>.</summary>
+            bool HasChild(int slot);
         }
 
         /// <summary>
@@ -227,7 +231,9 @@ public static partial class TrieUpdater
 
             public StoredBlob ChildBlob(int slot) => _blob.Slice(_cluster.Child(slot, _existing));
 
-            public ulong ChildSlotsBitmask => _cluster.IsBare ? 0 : _existing.BoundaryShape().ChildSlots;
+            public NodeKind KindAt(int slot) => _existing.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(slot));
+
+            public bool HasChild(int slot) => !_cluster.IsBare && KindAt(slot) == NodeKind.Internal;
 
             /// <summary>Where the group's entries start in the memory holding them, which a cluster puts its children ahead of.</summary>
             private int GroupOffset => _blob.Offset + _cluster.GroupOffset;
@@ -251,7 +257,9 @@ public static partial class TrieUpdater
 
             public StoredBlob ChildBlob(int slot) => slot == _seedSlot ? _seedBlob : default;
 
-            public ulong ChildSlotsBitmask => _seedBlob.IsEmpty ? 0 : 1UL << _seedSlot;
+            public NodeKind KindAt(int slot) => slot == _seedSlot ? _seed.Kind : NodeKind.Absent;
+
+            public bool HasChild(int slot) => slot == _seedSlot && !_seedBlob.IsEmpty;
         }
 
         /// <summary>
@@ -292,8 +300,8 @@ public static partial class TrieUpdater
 
             PbtTrieNodeGroup<TLayout> existing = existingData.IsEmpty ? default : PbtTrieNodeGroup<TLayout>.Decode(existingData.Data);
 
-            RefList64<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
-            Span<NodeResult> results = resultBuffer.AsSpan();
+            using PbtFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
+            Span<NodeResult> results = resultBuffer.Span;
             int mark = writer.WrittenCount;
             PbtNodeCluster.Builder bare = default;
 
@@ -320,8 +328,8 @@ public static partial class TrieUpdater
             PbtNodeCluster cluster = existingData.IsEmpty ? default : PbtNodeCluster.Decode<TLayout>(existingData.Data, out existing);
 
             PbtNodeCluster.Builder builder = default;
-            RefList64<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
-            Span<NodeResult> results = resultBuffer.AsSpan();
+            using PbtFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
+            Span<NodeResult> results = resultBuffer.Span;
 
             StoredOccupants occupants = new(existing, existingData, cluster);
             GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, fanout, results, ref writer, ref builder)
@@ -490,8 +498,8 @@ public static partial class TrieUpdater
 
             // a pushed stem roots no blob of its own: its subtree is its leaf blob, keyed by the stem
             SeededOccupant occupants = new(pushed, seedSlot, default);
-            RefList64<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
-            Span<NodeResult> results = resultBuffer.AsSpan();
+            using PbtFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
+            Span<NodeResult> results = resultBuffer.Span;
 
             PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
@@ -590,8 +598,7 @@ public static partial class TrieUpdater
                 level = computed;
             }
 
-            ulong touchedBitmask = PbtWriteBatch.ReadTouched<TLayout>(level);
-            AssertTouchedMaskMatchesBounds(touchedBitmask, level[..PbtWriteBatch.BoundsLength<TLayout>()]);
+            AssertTouchedMaskMatchesBounds(level);
 
             return TLayout.IsClusteringDepth(depth)
                 ? ResolveClusteredChildren(key, entries, occupants, plan, fanout, results, level, branchDepth, ref writer, ref cluster)
@@ -908,8 +915,8 @@ public static partial class TrieUpdater
             // order: the changed ones, and — when there is no existing group to read from (a run split or a
             // pushed stem seeds its occupants into an empty one) — every occupied slot. A changed slot that
             // emptied out contributes no boundary, so only the occupied ones go in.
-            RefList64<(int Slot, Boundary Node)> boundaryBuffer = new(TLayout.BoundarySlots);
-            Span<(int Slot, Boundary Node)> changedBoundaries = boundaryBuffer.AsSpan();
+            using PbtFrameBuffer<(int Slot, Boundary Node)> boundaryBuffer = new(TLayout.BoundarySlots);
+            Span<(int Slot, Boundary Node)> changedBoundaries = boundaryBuffer.Span;
             int changedCount = 0;
             ulong gatherBitmask = occupiedBitmask & (occupants.HasStoredEncoding ? changedBitmask : ~0UL);
             for (ulong remainingBitmask = gatherBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
@@ -1221,15 +1228,15 @@ public static partial class TrieUpdater
         /// catch the two drifting apart.
         /// </remarks>
         [Conditional("DEBUG")]
-        private static void AssertTouchedMaskMatchesBounds(ulong touchedBitmask, ReadOnlySpan<int> bounds)
+        private static void AssertTouchedMaskMatchesBounds(ReadOnlySpan<int> level)
         {
-            ulong derived = 0;
+            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
             {
-                if (bounds[slot] != bounds[slot + 1]) derived |= 1UL << slot;
+                Debug.Assert(
+                    PbtWriteBatch.ContainsTouched<TLayout>(level, slot) == (bounds[slot] != bounds[slot + 1]),
+                    "the cached touched mask disagrees with its level's bounds");
             }
-
-            Debug.Assert(touchedBitmask == derived, "the cached touched mask disagrees with its level's bounds");
         }
 
         /// <summary>
@@ -1293,7 +1300,8 @@ public static partial class TrieUpdater
             Span<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             bounds[..(slot + 1)].Clear();
             bounds[(slot + 1)..].Fill(count);
-            PbtWriteBatch.WriteTouched<TLayout>(level, 1UL << slot);
+            PbtWriteBatch.ClearTouched<TLayout>(level);
+            PbtWriteBatch.SetTouched<TLayout>(level, slot);
         }
 
         /// <summary>
@@ -1380,20 +1388,24 @@ public static partial class TrieUpdater
             }
 
             int total = 0;
-            ulong touched = 0;
+            int populatedBuckets = 0;
+            PbtWriteBatch.ClearTouched<TLayout>(level);
             for (int bucket = 0; bucket < TLayout.BoundarySlots; bucket++)
             {
                 bounds[bucket] = total;
-                if (counts[bucket] != 0) touched |= 1UL << bucket;
+                if (counts[bucket] != 0)
+                {
+                    PbtWriteBatch.SetTouched<TLayout>(level, bucket);
+                    populatedBuckets++;
+                }
                 total += counts[bucket];
             }
             bounds[TLayout.BoundarySlots] = total;
-            PbtWriteBatch.WriteTouched<TLayout>(level, touched);
             Debug.Assert(total == entries.Length);
 
             // One populated bucket holds every entry already, whatever their order, so the permutation
             // below is a no-op that still costs its head array and its sixteen-wide walk.
-            if (BitOperations.IsPow2(touched))
+            if (populatedBuckets == 1)
             {
                 Debug.Assert(splitDepth >= floor, "one populated bucket means nothing parts within this group");
                 return TLayout.GroupDepthOf(splitDepth);
@@ -1445,17 +1457,15 @@ public static partial class TrieUpdater
             // member that is.
             Stem reference = entries[0].Stem;
             int splitDepth = Stem.LengthInBits;
-            ulong touched = 0;
+            PbtWriteBatch.ClearTouched<TLayout>(level);
             for (int i = 0; i < slots.Length; i++)
             {
                 Stem stem = entries[i].Stem;
                 slots[i] = TLayout.SlotOf(stem, depth);
-                touched |= 1UL << slots[i];
+                PbtWriteBatch.SetTouched<TLayout>(level, slots[i]);
                 int diff = stem.FirstDifferingBit(reference, depth);
                 if ((uint)diff < (uint)splitDepth) splitDepth = diff;
             }
-
-            PbtWriteBatch.WriteTouched<TLayout>(level, touched);
 
             if (slots.Length > 1)
             {

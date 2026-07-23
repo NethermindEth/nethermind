@@ -127,10 +127,7 @@ public static class StemLeafBlob
         int leafCount = PopCountRange(newBitmap, 0, LeafCount);
         if (leafCount == 0) return [];
 
-        byte[] result = new byte[leafCount * ValueLength
-            + TwoLevelBitmapReader.OccupiedGroupsOf(newBitmap) * TwoLevelBitmapReader.SubWordLength
-            + TwoLevelBitmapReader.TopLength
-            + TwoLevelBitmapReader.FormatLength];
+        byte[] result = new byte[leafCount * ValueLength + TwoLevelBitmapReader.EncodedLength(newBitmap)];
 
         // A two-way merge in one ascending pass: the changes arrive in that order and a leaves-only
         // blob's entries are in it too, so both sides are walked by a cursor that never looks back.
@@ -263,10 +260,10 @@ public static class StemLeafBlob
         int leafCount = PopCountRange(newBitmap, 0, LeafCount);
         if (leafCount == 0) return default;
 
-        int groupCount = TwoLevelBitmapReader.OccupiedGroupsOf(newBitmap);
+        int footerLength = TwoLevelBitmapReader.EncodedLength(newBitmap);
         // the leaves alone are the whole of a LeavesOnly blob, so there its bound is its exact size
         int storedCountBound = format == PbtLeafFormat.LeavesOnly ? leafCount : 2 * leafCount - 1;
-        RebuildState state = new(previousEntries, previousFormat, changes, storedCountBound, groupCount, provider, format);
+        RebuildState state = new(previousEntries, previousFormat, changes, storedCountBound, footerLength, provider, format);
         state.Build(previousBitmap, newBitmap);
         return state;
     }
@@ -518,14 +515,11 @@ public static class StemLeafBlob
             PbtLeafFormat previousFormat,
             IPbtStemChanges changes,
             int storedCountBound,
-            int groupCount,
+            int footerLength,
             IRefCountingMemoryProvider provider,
             PbtLeafFormat format)
         {
-            int length = storedCountBound * ValueLength
-                + groupCount * TwoLevelBitmapReader.SubWordLength
-                + TwoLevelBitmapReader.TopLength
-                + TwoLevelBitmapReader.FormatLength;
+            int length = storedCountBound * ValueLength + footerLength;
             _memory = provider.Rent(length);
             _buffer = _memory.GetSpan();
 

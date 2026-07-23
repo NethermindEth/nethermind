@@ -207,8 +207,8 @@ public static partial class TrieUpdater
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
             SeededOccupant occupants = new(seed, targetSlot, StoredBlob.Of(adopted));
-            RefList64<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
-            Span<NodeResult> results = resultBuffer.AsSpan();
+            using PbtFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
+            Span<NodeResult> results = resultBuffer.Span;
 
             PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
