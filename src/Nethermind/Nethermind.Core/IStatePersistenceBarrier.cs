@@ -74,10 +74,7 @@ public sealed class StatePersistenceBarrier(ILogManager? logManager = null) : IS
             catch (ObjectDisposedException e)
             {
                 // On shutdown, a flush target's database can already be disposed by the time the trie store
-                // (this barrier's caller, via BarrierNodeStorage) is disposed - the registration is a runtime
-                // callback, not a graph edge Autofac's dispose ordering can see. The database already flushed
-                // itself on Dispose (see DbOnTheRocks' FlushOnExit), so this is a redundant flush racing
-                // shutdown, not a lost write.
+                // is disposed. The database already flushed itself on Dispose (see DbOnTheRocks' FlushOnExit)
                 if (_logger.IsDebug) _logger.Debug($"Skipped a block-data flush during shutdown: {e.Message}");
             }
         }
