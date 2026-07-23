@@ -134,13 +134,16 @@ internal static class GetPayloadDirectResponseWriter
             WriteBlockAccessList(writer, block);
             writer.Write(",\"slotNumber\":"u8);
             WriteNullableUlongHexString(writer, block.SlotNumber);
-            if (block.Header.RecursiveStark is { } recursiveStark)
-            {
-                writer.Write(",\"recursiveStarkProof\":"u8);
-                WriteHexString(writer, recursiveStark.StarkProof, chunked: recursiveStark.StarkProof.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
-                writer.Write(",\"recursiveStarkBlockDepsHash\":"u8);
-                WriteHexString(writer, recursiveStark.BlockDepsHash.Bytes, chunked: false);
-            }
+        }
+
+        // EIP-8288: emitted from the Osaka payload (getPayloadV5) onward whenever the block declares
+        // dependencies; omitted otherwise so pre-EIP-8288 payloads are byte-identical.
+        if (block.Header.RecursiveStark is { } recursiveStark)
+        {
+            writer.Write(",\"recursiveStarkProof\":"u8);
+            WriteHexString(writer, recursiveStark.StarkProof, chunked: recursiveStark.StarkProof.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
+            writer.Write(",\"recursiveStarkBlockDepsHash\":"u8);
+            WriteHexString(writer, recursiveStark.BlockDepsHash.Bytes, chunked: false);
         }
 
         writer.Write("}"u8);

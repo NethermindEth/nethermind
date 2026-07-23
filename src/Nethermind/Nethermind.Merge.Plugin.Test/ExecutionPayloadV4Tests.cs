@@ -81,7 +81,7 @@ public class ExecutionPayloadV4Tests
             ExcessBlobGas = 0,
             SlotNumber = 0,
             RecursiveStarkProof = proof,
-            RecursiveStarkBlockDepsHash = depsHash,
+            RecursiveStarkBlockDepsHash = depsHash.Bytes.ToArray(),
         };
 
         Block block = payload.TryGetBlock().Data!;
@@ -113,7 +113,7 @@ public class ExecutionPayloadV4Tests
         ExecutionPayloadV4 deserialized = serializer.Deserialize<ExecutionPayloadV4>(serializer.Serialize(payload));
 
         Assert.That(deserialized.RecursiveStarkProof, Is.EqualTo(proof));
-        Assert.That(deserialized.RecursiveStarkBlockDepsHash, Is.EqualTo(depsHash));
+        Assert.That(deserialized.RecursiveStarkBlockDepsHash, Is.EqualTo(depsHash.Bytes.ToArray()));
     }
 
     [Test]

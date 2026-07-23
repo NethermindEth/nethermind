@@ -4,7 +4,6 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -21,12 +20,6 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
         executionPayload.BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode(block.BlockAccessList).Bytes);
         executionPayload.SlotNumber = block.SlotNumber;
-        if (block.Header.RecursiveStark is { } recursiveStark)
-        {
-            executionPayload.RecursiveStarkProof = recursiveStark.StarkProof;
-            executionPayload.RecursiveStarkBlockDepsHash = recursiveStark.BlockDepsHash;
-        }
-
         return executionPayload;
     }
 
@@ -56,7 +49,6 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         block.EncodedBlockAccessList = BlockAccessList;
         block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : block.BlockAccessList!.WireHash;
         block.Header.SlotNumber = SlotNumber;
-        block.Header.RecursiveStark = RecursiveStarkProof is null ? null : new RecursiveStark(RecursiveStarkProof, RecursiveStarkBlockDepsHash!);
 
         return baseResult;
     }
@@ -80,14 +72,4 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     [JsonRequired]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public sealed override ulong? SlotNumber { get; set; }
-
-    /// <summary>
-    /// EIP-8288 <c>recursive_stark</c> proof and its <c>block_deps_hash</c>. Optional: present only
-    /// when the block declares dependencies, so Amsterdam blocks without EIP-8288 are unaffected.
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[]? RecursiveStarkProof { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Hash256? RecursiveStarkBlockDepsHash { get; set; }
 }

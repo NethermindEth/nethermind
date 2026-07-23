@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
   </ItemGroup>
 
   <!-- Best-effort build of the Rust shim when cargo is available (host dev machine). -->

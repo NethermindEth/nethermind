@@ -4,12 +4,12 @@
 namespace Nethermind.Specs.Forks;
 
 /// <summary>
-/// Prototype fork for EIP-8288 (PQ signature and STARK aggregation), which extends EIP-8141. Enables
-/// both flags because EIP-8288 requires EIP-8141. Not scheduled on any network; exists to gate the
-/// prototype behind <c>IsEip8288Enabled</c>. Excluded from the Geth genesis fork mapping because it is
-/// not a real fork name.
+/// Prototype fork for EIP-8288 (PQ signature and STARK aggregation), which extends EIP-8141. Built on
+/// <see cref="Bogota"/> (Osaka + EIP-8141) to match the frame-transactions devnet base, adding
+/// <c>IsEip8288Enabled</c>. Not scheduled on any network; excluded from the Geth genesis fork mapping
+/// because it is not a real fork name.
 /// </summary>
-public class Eip8288Prototype() : NamedReleaseSpec<Eip8288Prototype>(Amsterdam.Instance)
+public class Eip8288Prototype() : NamedReleaseSpec<Eip8288Prototype>(Bogota.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {
