@@ -10,6 +10,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -27,6 +28,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly IPbtResourcePool _resourcePool;
     private readonly PbtSnapshotCompactor _compactor;
     private readonly ILogger _logger;
+    private readonly bool _recordDetailedMetrics;
     // Persistence is idempotent — it re-reads the head every time — so a dropped nudge costs nothing
     // and one pending signal is enough.
     private readonly Channel<bool> _workSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
@@ -54,6 +56,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         IPbtResourcePool resourcePool,
         PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
+        IMetricsConfig metricsConfig,
         ILogManager logManager)
     {
         _repository = repository;
@@ -61,6 +64,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _persistence = persistence;
         _resourcePool = resourcePool;
         _compactor = compactor;
+        _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
         _persistenceWorker = Task.Run(RunPersistenceWorker);
@@ -72,7 +76,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     {
         // the pre-genesis state is empty by definition, whatever is on disk, and is never cached:
         // there is nothing to amortise and nothing to sweep
-        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance);
+        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics);
 
         // a sweep may have released the entry between the lookup and the lease, in which case fall
         // through and assemble; a failure here must not consume an assembly attempt, or a state that
@@ -88,8 +92,10 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             PbtSnapshotPooledList chain = new(1);
             if (_repository.TryLeaseChain(stateId, reader.CurrentState, chain))
             {
+                ReportBundleMetrics(chain);
+
                 // ownership of the chain and the reader passes to the bundle
-                PbtReadOnlySnapshotBundle bundle = new(chain, reader);
+                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _recordDetailedMetrics);
 
                 // lease before publishing, never after: a sweep landing between the publish and the
                 // lease would release the only lease and hand back a dead bundle
@@ -104,6 +110,20 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         }
 
         return null;
+    }
+
+    /// <remarks>
+    /// Only assembled chains are reported: a cache hit returns a view whose shape was already
+    /// observed when it was built.
+    /// </remarks>
+    private static void ReportBundleMetrics(PbtSnapshotPooledList chain)
+    {
+        Metrics.PbtSnapshotBundleSize = chain.Count;
+
+        // PreGenesis sits at the top of the block-number range, so it subtracts as -1 would and the
+        // span of a chain reaching back to it comes out right without a special case.
+        Metrics.PbtSnapshotBundleBlockNumberDepth.Observe(
+            chain.Count > 0 ? chain[^1].To.BlockNumber - chain[0].From.BlockNumber : 0);
     }
 
     /// <remarks>

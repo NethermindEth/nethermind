@@ -106,7 +106,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void SharedBundle_IsReleased_OnlyByTheLastBundleHoldingIt()
     {
-        PbtReadOnlySnapshotBundle shared = new(new PbtSnapshotPooledList(0), _reader);
+        PbtReadOnlySnapshotBundle shared = new(new PbtSnapshotPooledList(0), _reader, recordDetailedMetrics: false);
         shared.TryLease();
         PbtSnapshotBundle first = new(new PbtSnapshotPooledList(0), shared, _pool, PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotBundle second = new(new PbtSnapshotPooledList(0), shared, _pool, PbtResourcePool.Usage.MainBlockProcessing);
@@ -134,7 +134,34 @@ public class PbtSnapshotBundleTests
         Assert.That(bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), default).Content, Is.Not.SameAs(sealed_.Content), "a fresh buffer backs the next block");
     }
 
-    private PbtSnapshotBundle Bundle(IReadOnlyList<PbtSnapshotContent> sharedLayers, IReadOnlyList<PbtSnapshotContent> localLayers)
+    /// <summary>
+    /// Timing a read must not change what it answers, at either tier and for either outcome — the
+    /// hit, miss and self-destruct branches each carry their own observation.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Reads_AreUnchanged_WhenDetailedMetricsAreRecorded(bool recordDetailedMetrics)
+    {
+        using PbtSnapshotBundle empty = Bundle(sharedLayers: [], localLayers: [], recordDetailedMetrics);
+        Assert.That(empty.GetAccount(Address), Is.Null);
+        Assert.That(EvmWordSlot.IsZero(empty.GetSlot(Address, Slot)));
+        Assert.That(empty.GetLeafBlob(StemA), Is.Null);
+        Assert.That(empty.GetTrieNode(NodeA), Is.Null);
+
+        Seed(_reader, 0x44);
+        using PbtSnapshotBundle fromReader = Bundle(sharedLayers: [], localLayers: [], recordDetailedMetrics);
+        AssertReadsAre(fromReader, 0x44);
+
+        using PbtSnapshotBundle fromSharedLayer = Bundle(sharedLayers: [Content(0x33)], localLayers: [], recordDetailedMetrics);
+        AssertReadsAre(fromSharedLayer, 0x33);
+
+        PbtSnapshotContent selfDestructed = new();
+        selfDestructed.SelfDestructs[Address] = true;
+        using PbtSnapshotBundle overSelfDestruct = Bundle(sharedLayers: [Content(0x33), selfDestructed], localLayers: [], recordDetailedMetrics);
+        Assert.That(EvmWordSlot.IsZero(overSelfDestruct.GetSlot(Address, Slot)));
+    }
+
+    private PbtSnapshotBundle Bundle(IReadOnlyList<PbtSnapshotContent> sharedLayers, IReadOnlyList<PbtSnapshotContent> localLayers, bool recordDetailedMetrics = false)
     {
         PbtSnapshotPooledList sharedChain = new(1);
         foreach (PbtSnapshotContent content in sharedLayers) sharedChain.Add(Layer(content));
@@ -142,7 +169,7 @@ public class PbtSnapshotBundleTests
         PbtSnapshotPooledList localChain = new(1);
         foreach (PbtSnapshotContent content in localLayers) localChain.Add(Layer(content));
 
-        return new PbtSnapshotBundle(localChain, new PbtReadOnlySnapshotBundle(sharedChain, _reader), _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        return new PbtSnapshotBundle(localChain, new PbtReadOnlySnapshotBundle(sharedChain, _reader, recordDetailedMetrics), _pool, PbtResourcePool.Usage.MainBlockProcessing);
     }
 
     private PbtSnapshot Layer(PbtSnapshotContent content) =>

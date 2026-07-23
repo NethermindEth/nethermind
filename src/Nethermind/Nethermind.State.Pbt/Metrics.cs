@@ -42,4 +42,24 @@ public static class Metrics
     [Description("Pbt pooled resources allocated because the pool was empty, by category and type")]
     [KeyIsLabel("category", "resource_type")]
     public static ConcurrentDictionary<PbtResourcePool.PooledResourceLabel, long> PbtCreatedPooledResource { get; } = new();
+
+    /// <remarks>
+    /// One observation per read, labelled by the tier that answered it: a layer-chain hit, or the
+    /// persistence reader below it, split by whether it had a value. That split matters because an
+    /// absent value costs a full walk plus a database miss, which is the expensive shape.
+    /// </remarks>
+    [DetailedMetric]
+    [Description("Time of a read through the pbt read-only snapshot bundle, by tier and result (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
+    public static IMetricObserver PbtReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
+
+    [GaugeMetric]
+    [Description("Number of layers in the most recently assembled pbt read-only snapshot bundle")]
+    public static long PbtSnapshotBundleSize { get; set; }
+
+    /// <remarks>Layers widen as they compact, so this diverges from the layer count as compaction runs.</remarks>
+    [DetailedMetric]
+    [Description("Block-number span covered by the layers of a newly assembled pbt read-only snapshot bundle")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver PbtSnapshotBundleBlockNumberDepth { get; set; } = new NoopMetricObserver();
 }
