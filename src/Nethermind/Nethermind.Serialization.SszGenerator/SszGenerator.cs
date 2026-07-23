@@ -1489,8 +1489,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         }}" : @$"int offset = 0;
         foreach({decl.TypeReferenceName} item in items)
         {{
-            int length = GetLength(item);
-            Encode(data.Slice(offset, length), item);
+            int length = {decl.StaticLength};
+            {(decl.IsStruct ? string.Empty : "if (item is null) data.Slice(offset, length).Clear(); else ")}Encode(data.Slice(offset, length), item);
             offset += length;
         }}")}
     }}

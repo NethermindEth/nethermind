@@ -111,6 +111,21 @@ public class EncodingTest
     }
 
     [Test]
+    public void Encode_fixed_size_class_collection_clears_null_items()
+    {
+        StaticClassCollectionItem[] items = [new() { Value = 1 }, null!, new() { Value = 2 }];
+
+        byte[] encoded = StaticClassCollectionItem.Encode(items);
+
+        Assert.That(encoded, Is.EqualTo(new byte[]
+        {
+            1, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            2, 0, 0, 0, 0, 0, 0, 0,
+        }));
+    }
+
+    [Test]
     public void Decode_collection_itself_byte_vectors()
     {
         ByteVectorItself[] original = [new() { Bytes = [1, 2, 3] }, new() { Bytes = [4, 5, 6] }];

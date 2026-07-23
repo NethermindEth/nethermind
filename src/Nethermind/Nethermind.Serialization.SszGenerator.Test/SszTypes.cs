@@ -117,6 +117,12 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public byte[]? Bytes { get; set; }
     }
 
+    [SszContainer]
+    public partial class StaticClassCollectionItem
+    {
+        public ulong Value { get; set; }
+    }
+
     [SszContainer(isCollectionItself: true)]
     public partial struct ByteVectorItself
     {
