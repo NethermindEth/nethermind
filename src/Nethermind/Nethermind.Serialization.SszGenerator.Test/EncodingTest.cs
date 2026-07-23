@@ -70,6 +70,30 @@ public class EncodingTest
         }
     }
 
+    [Test]
+    public void Decode_collection_itself_byte_lists()
+    {
+        ByteListItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+
+        byte[] encoded = ByteListItself.Encode(original);
+        ByteListItself.Decode(encoded, out ByteListItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.Empty);
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_lists_enforces_item_limit()
+    {
+        byte[] encoded = [8, 0, 0, 0, 12, 0, 0, 0, 1, 2, 3, 4];
+
+        Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _), Throws.InstanceOf<InvalidDataException>());
+    }
+
     private static BitArray MakeSampleBits10()
     {
         BitArray bits = new(10);

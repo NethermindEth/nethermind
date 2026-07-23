@@ -309,6 +309,14 @@ internal static class SszCodecHelpers
         }
     }
 
+    internal static byte[] DecodeSszByteList(ReadOnlySpan<byte> data, ulong limit, string typeName, string fieldName)
+    {
+        ValidateSszListLimit(data, limit, typeName, fieldName);
+        byte[] result = global::System.GC.AllocateUninitializedArray<byte>(data.Length);
+        data.CopyTo(result);
+        return result;
+    }
+
     internal static void ValidateSszBitvectorLength(BitArray? bits, int expectedLength, string typeName, string fieldName)
     {
         int actualLength = bits?.Length ?? 0;
@@ -752,6 +760,9 @@ internal static class SszCodecHelpers
     private static string NullClearingEncodeStatement(string target, SszProperty property, string valueExpr, string statement) =>
         property.IsNullable ? $"if ({valueExpr} is null) {target}.Clear(); else {statement}" : statement;
 
+    private static bool IsByteList(SszProperty property) =>
+        property.Kind == Kind.List && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
+
     private static string DecodeAndAssign(SszType decl, SszProperty property, string sliceExpression)
     {
         string variableName = VarName(property.Name);
@@ -770,6 +781,12 @@ internal static class SszCodecHelpers
                 .Replace("{1}", $"container.{property.Name}");
             string validation = ValidationStatement(decl, property, $"container.{property.Name}");
             return string.IsNullOrEmpty(validation) ? decodeStatement : $"{decodeStatement} {validation}";
+        }
+
+        if (IsByteList(property))
+        {
+            string assignment = DecodeAssignmentExpression(property, variableName, sourceIsArray: true);
+            return $"{{ byte[] {variableName} = DecodeSszByteList({sliceExpression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = {assignment}; }}";
         }
 
         if ((property.Kind is Kind.Vector or Kind.List or Kind.ProgressiveList) && property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec)
@@ -1169,6 +1186,10 @@ internal static class SszCodecHelpers
                     ..decl.Members.Select(m => MerkleizeFeedStatement(m, $"container.{m.Name}")),
                     "merkleizer.CalculateRoot(out root);",
                 ]);
+            bool isByteListItself = decl.IsSszListItself && IsByteList(variables[0]);
+            string DecodeCollectionItem(string sliceExpression, string destination) => isByteListItself
+                ? $"{destination}.{variables[0].Name} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name}));"
+                : $"Decode({sliceExpression}, out {destination});";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
@@ -1275,11 +1296,11 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             int nextOffset = DecodeSszOffset(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
             ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
-            Decode(data.Slice(offset, nextOffset - offset), out container[index]);
+            {DecodeCollectionItem("data.Slice(offset, nextOffset - offset)", "container[index]")}
             offset = nextOffset;
         }}
 {Whitespace}
-        Decode(data.Slice(offset), out container[index]);" : @$"int offset = 0;
+        {DecodeCollectionItem("data.Slice(offset)", "container[index]")}" : @$"int offset = 0;
         for(int index = 0; index < length; index++)
         {{
             Decode(data.Slice(offset, {decl.StaticLength}), out container[index]);

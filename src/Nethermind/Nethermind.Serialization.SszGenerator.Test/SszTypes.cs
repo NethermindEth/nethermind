@@ -103,6 +103,13 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong[]? Items { get; set; }
     }
 
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListItself
+    {
+        [SszList(3)]
+        public byte[]? Bytes { get; set; }
+    }
+
     [SszContainer]
     public partial struct ArrayPoolListContainer
     {
