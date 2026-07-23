@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -39,18 +40,49 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
     /// </remarks>
     public static int TouchedMaskIndex<TLayout>() where TLayout : IPbtTileLayout => BoundsLength<TLayout>();
 
-    /// <summary>One level of the bucket table: its <see cref="BoundsLength{TLayout}"/> bounds, then its <see cref="TouchedMaskIndex{TLayout}"/>.</summary>
-    public static int LevelStride<TLayout>() where TLayout : IPbtTileLayout => BoundsLength<TLayout>() + 2;
+    /// <summary>The number of 32-bit words used to cache one level's touched slots.</summary>
+    /// <remarks>The existing layouts retain their two-word representation; wider layouts add words as needed.</remarks>
+    public static int TouchedWordCount<TLayout>() where TLayout : IPbtTileLayout =>
+        Math.Max(2, (TLayout.BoundarySlots + 31) / 32);
 
-    public static ulong ReadTouched<TLayout>(scoped ReadOnlySpan<int> level) where TLayout : IPbtTileLayout
+    /// <summary>One level of the bucket table: its bounds followed by its touched-mask words.</summary>
+    public static int LevelStride<TLayout>() where TLayout : IPbtTileLayout => BoundsLength<TLayout>() + TouchedWordCount<TLayout>();
+
+    /// <summary>The little-endian 32-bit words caching which buckets in <paramref name="level"/> are non-empty.</summary>
+    public static ReadOnlySpan<int> ReadTouched<TLayout>(ReadOnlySpan<int> level) where TLayout : IPbtTileLayout =>
+        level.Slice(TouchedMaskIndex<TLayout>(), TouchedWordCount<TLayout>());
+
+    public static bool ContainsTouched<TLayout>(scoped ReadOnlySpan<int> level, int slot) where TLayout : IPbtTileLayout =>
+        ((uint)ReadTouched<TLayout>(level)[slot >> 5] & (1u << (slot & 31))) != 0;
+
+    public static bool HasMultipleTouched<TLayout>(scoped ReadOnlySpan<int> level) where TLayout : IPbtTileLayout
     {
-        int index = TouchedMaskIndex<TLayout>();
-        return (uint)level[index] | ((ulong)(uint)level[index + 1] << 32);
+        bool found = false;
+        foreach (int word in ReadTouched<TLayout>(level))
+        {
+            uint bits = (uint)word;
+            if (bits == 0) continue;
+            if (found || !BitOperations.IsPow2(bits)) return true;
+            found = true;
+        }
+
+        return false;
     }
 
+    public static void ClearTouched<TLayout>(Span<int> level) where TLayout : IPbtTileLayout =>
+        level.Slice(TouchedMaskIndex<TLayout>(), TouchedWordCount<TLayout>()).Clear();
+
+    public static void SetTouched<TLayout>(Span<int> level, int slot) where TLayout : IPbtTileLayout
+    {
+        int word = TouchedMaskIndex<TLayout>() + (slot >> 5);
+        level[word] = (int)((uint)level[word] | (1u << (slot & 31)));
+    }
+
+    /// <summary>Writes the touched slots of a layout whose boundary fits in 64 bits.</summary>
     public static void WriteTouched<TLayout>(Span<int> level, ulong touched) where TLayout : IPbtTileLayout
     {
         int index = TouchedMaskIndex<TLayout>();
+        ClearTouched<TLayout>(level);
         level[index] = (int)(uint)touched;
         level[index + 1] = (int)(uint)(touched >> 32);
     }

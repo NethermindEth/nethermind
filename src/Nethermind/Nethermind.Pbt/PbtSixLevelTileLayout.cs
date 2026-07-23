@@ -38,7 +38,15 @@ public readonly struct PbtSixLevelTileLayout : IPbtTileLayout
     /// <inheritdoc cref="PbtSixLevelTileLayout" path="/remarks"/>
     public static int MaxGroupDepth => Stem.LengthInBits - Stem.LengthInBits % LevelsPerGroup;
 
-    public static int MaskTrailerLength => 2 * 16 + sizeof(ulong);
+    public static int PositionMaskWordCount => 2;
+
+    public static int BoundaryMaskWordCount => 1;
+
+    public static int MaxMaskTrailerLength => 2 * 16 + sizeof(ulong);
+
+    public static bool HasCompactBoundaryMask => false;
+
+    public static int MaskTrailerLength => MaxMaskTrailerLength;
 
     public static bool IsClusteringDepth(int depth) => false;
 
@@ -50,8 +58,6 @@ public readonly struct PbtSixLevelTileLayout : IPbtTileLayout
     /// </summary>
     public static int SlotOf(in Stem stem, int depth) =>
         BinaryPrimitives.ReadUInt16BigEndian(stem.PaddedBytes[(depth >> 3)..]) >> (16 - LevelsPerGroup - (depth & 7)) & (BoundarySlots - 1);
-
-    public static ulong BoundaryBitmask(UInt128 positionsBitmask) => PbtLayout.GatherBoundary(positionsBitmask, BoundarySlots / 4);
 
     public static void WriteMasks(Span<byte> trailer, in NodeGroupBitmasks masks)
     {

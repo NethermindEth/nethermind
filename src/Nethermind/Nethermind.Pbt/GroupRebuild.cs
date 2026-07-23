@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
@@ -82,23 +83,81 @@ internal readonly record struct FoldedNode(NodeKind Kind, int Offset)
 /// verbatim.
 /// </para>
 /// </remarks>
-internal ref struct GroupRebuild<TLayout>(
-    ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup<TLayout> existing,
-    BoundarySlotMasks boundary, ulong changedBitmask, ValueHash256 rootHash, PbtGroupFormat format)
-    where TLayout : IPbtTileLayout
+internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
 {
-    private readonly ReadOnlySpan<(int Slot, Boundary Node)> _changed = changed;
-    private readonly PbtTrieNodeGroup<TLayout> _existing = existing;
-    private readonly BoundarySlotMasks _boundary = boundary;
-    private readonly ulong _changedBitmask = changedBitmask;
-    private readonly ValueHash256 _rootHash = rootHash;
-    private readonly PbtGroupFormat _format = format;
+    [InlineArray(8)]
+    private struct PositionWords
+    {
+        private ulong _element0;
+    }
 
-    private UInt128 _presence;
-    private UInt128 _stems;
-    private ulong _chains;
+    [InlineArray(4)]
+    private struct BoundaryWords
+    {
+        private ulong _element0;
+    }
+
+    private readonly ReadOnlySpan<(int Slot, Boundary Node)> _changed;
+    private readonly PbtTrieNodeGroup<TLayout> _existing;
+    private readonly ReadOnlySpan<ulong> _boundaryPresence;
+    private readonly ReadOnlySpan<ulong> _boundaryStems;
+    private readonly ReadOnlySpan<ulong> _boundaryChains;
+    private readonly ReadOnlySpan<ulong> _changedMask;
+    private readonly BoundarySlotMasks _legacyBoundary;
+    private readonly ulong _legacyChangedMask;
+    private readonly bool _usesLegacyMasks;
+    private readonly ValueHash256 _rootHash;
+    private readonly PbtGroupFormat _format;
+
+    private PositionWords _presence;
+    private PositionWords _stems;
+    private BoundaryWords _chains;
     private int _offset = PbtTrieNodeGroup.EntriesOffset;
     private int _changedCursor;
+
+    public GroupRebuild(
+        ReadOnlySpan<(int Slot, Boundary Node)> changed,
+        PbtTrieNodeGroup<TLayout> existing,
+        ReadOnlySpan<ulong> boundaryPresence,
+        ReadOnlySpan<ulong> boundaryStems,
+        ReadOnlySpan<ulong> boundaryChains,
+        ReadOnlySpan<ulong> changedMask,
+        ValueHash256 rootHash,
+        PbtGroupFormat format)
+    {
+        _changed = changed;
+        _existing = existing;
+        _boundaryPresence = boundaryPresence;
+        _boundaryStems = boundaryStems;
+        _boundaryChains = boundaryChains;
+        _changedMask = changedMask;
+        _legacyBoundary = default;
+        _legacyChangedMask = 0;
+        _usesLegacyMasks = false;
+        _rootHash = rootHash;
+        _format = format;
+    }
+
+    public GroupRebuild(
+        ReadOnlySpan<(int Slot, Boundary Node)> changed,
+        PbtTrieNodeGroup<TLayout> existing,
+        BoundarySlotMasks boundary,
+        ulong changedBitmask,
+        ValueHash256 rootHash,
+        PbtGroupFormat format)
+    {
+        _changed = changed;
+        _existing = existing;
+        _boundaryPresence = default;
+        _boundaryStems = default;
+        _boundaryChains = default;
+        _changedMask = default;
+        _legacyBoundary = boundary;
+        _legacyChangedMask = changedBitmask;
+        _usesLegacyMasks = true;
+        _rootHash = rootHash;
+        _format = format;
+    }
 
     /// <summary>
     /// Whether the internal node at <paramref name="position"/>, over the boundary slots
@@ -125,20 +184,20 @@ internal ref struct GroupRebuild<TLayout>(
     /// the last entry of a range is taken for its root. Its children are stored, so they are copied in
     /// its place and it is folded from them.
     /// </param>
-    private static bool IsCleanRange(
-        PbtTrieNodeGroup<TLayout> existing, ulong changed, ulong rangeBitmask, int position, int width, PbtGroupFormat format) =>
-        width > 1
-        && (changed & rangeBitmask) == 0
-        && !existing.IsEmpty
-        && existing.Format == format
-        && PbtLayout.TrieNodeGroupStoresInternalAtWidth(format, width)
-        && (existing.KindAt(position) == NodeKind.Internal || position == TLayout.RootPosition);
+    private readonly bool IsCleanRange(int firstSlot, int position, int width) =>
+        TLayout.PositionCount <= 128
+        && width > 1
+        && !AnyChanged(firstSlot, width)
+        && !_existing.IsEmpty
+        && _existing.Format == _format
+        && PbtLayout.TrieNodeGroupStoresInternalAtWidth(_format, width)
+        && (_existing.KindAt(position) == NodeKind.Internal || position == TLayout.RootPosition);
 
     /// <summary>
     /// Whether boundary <paramref name="slot"/>'s value comes from the descent rather than from the
     /// encoding being replaced, which has none to give when the frame was seeded.
     /// </summary>
-    private readonly bool IsResolvedFromResults(int slot) => _existing.IsEmpty || (_changedBitmask >> slot & 1) != 0;
+    private readonly bool IsResolvedFromResults(int slot) => _existing.IsEmpty || IsChanged(slot);
 
     /// <summary>
     /// The value at boundary <paramref name="slot"/>, taken from the sorted changed span when the
@@ -154,7 +213,7 @@ internal ref struct GroupRebuild<TLayout>(
         }
 
         PbtTrieNodeGroup.Slot slotNode = _existing[PbtLayout.TrieNodeGroupBoundarySlotPosition(slot)];
-        return new Boundary(slotNode.Hash, (_boundary.Stems >> slot & 1) != 0 ? slotNode.Stem : default, Chain: null);
+        return new Boundary(slotNode.Hash, IsBoundaryStem(slot) ? slotNode.Stem : default, Chain: null);
     }
 
     /// <summary>
@@ -171,7 +230,10 @@ internal ref struct GroupRebuild<TLayout>(
     {
         // sized for the whole encoding up front so the buffer grows once rather than once an entry,
         // nothing else writing to it until the fold is done
-        _ = writer.GetSpan(PbtTrieNodeGroup<TLayout>.EncodedLengthBound(_boundary));
+        int bound = _usesLegacyMasks
+            ? PbtTrieNodeGroup<TLayout>.EncodedLengthBound(_legacyBoundary)
+            : PbtTrieNodeGroup<TLayout>.EncodedLengthBound(_boundaryPresence, _boundaryStems, _boundaryChains);
+        _ = writer.GetSpan(bound);
 
         // an internal group root is folded to a by-value hash and never stored, the parent caching it in
         // its boundary slot; only a stem root is written, and is read back out of the entries — the last
@@ -203,9 +265,7 @@ internal ref struct GroupRebuild<TLayout>(
     /// </remarks>
     private FoldedNode Fold(ref BufferWriter writer, int position, int firstSlot, int width, out ValueHash256 hash)
     {
-        ulong rangeBitmask = PbtLayout.SlotRange(firstSlot, width);
-        ulong occupiedBitmask = _boundary.Presence & rangeBitmask;
-        switch (_boundary.KindOf(rangeBitmask))
+        switch (BoundaryKind(firstSlot, width))
         {
             case NodeKind.Absent:
                 hash = default;
@@ -223,20 +283,20 @@ internal ref struct GroupRebuild<TLayout>(
                         hash = StemLeafBlob.ComputeStemNodeHash(stem.Stem, stem.Hash);
 
                         MarkPresent(position);
-                        _stems |= UInt128.One << position;
+                        PbtBitset.Set(_stems, position);
                         int stemOffset = Write(ref writer, stem.Stem.Bytes);
                         Write(ref writer, stem.Hash.Bytes);
                         return FoldedNode.Stored(NodeKind.Stem, stemOffset);
                     }
 
                     int stemHalf = width / 2;
-                    return (occupiedBitmask & PbtLayout.SlotRange(firstSlot, stemHalf)) != 0
+                    return AnyBoundaryOccupied(firstSlot, stemHalf)
                         ? Fold(ref writer, position - width, firstSlot, stemHalf, out hash)
                         : Fold(ref writer, position - 1, firstSlot + stemHalf, stemHalf, out hash);
                 }
         }
 
-        if (IsCleanRange(_existing, _changedBitmask, rangeBitmask, position, width, _format))
+        if (IsCleanRange(firstSlot, position, width))
         {
             // The group's own root stores no entry to read a hash back out of, so it takes the one
             // the parent cached — which is what lets a wholly unchanged group copy over with no
@@ -248,14 +308,15 @@ internal ref struct GroupRebuild<TLayout>(
             (UInt128 cleanPresence, UInt128 cleanStems, ulong cleanChains) = clean;
             Debug.Assert(cleanPresence != 0, "an absent subtree has no entries to append");
             Debug.Assert((cleanStems & ~cleanPresence) == 0, "only a present position holds a stem");
-            Debug.Assert(_presence >> PbtLayout.TrailingZeroCount(cleanPresence) == 0, "nodes must be appended in ascending position order");
-            Debug.Assert(
-                !PbtLayout.TrieNodeGroupHoldsSkippedInternal(_format, cleanPresence, cleanStems),
-                "a verbatim run must be in this group's own format");
+            Debug.Assert(!PbtBitset.AnyInRange(_presence, PbtLayout.TrailingZeroCount(cleanPresence), TLayout.PositionCount - PbtLayout.TrailingZeroCount(cleanPresence)),
+                "nodes must be appended in ascending position order");
+            Debug.Assert(!HoldsSkippedInternal(cleanPresence, cleanStems), "a verbatim run must be in this group's own format");
 
-            _presence |= cleanPresence;
-            _stems |= cleanStems;
-            _chains |= cleanChains;
+            _presence[0] |= (ulong)cleanPresence;
+            _presence[1] |= (ulong)(cleanPresence >> 64);
+            _stems[0] |= (ulong)cleanStems;
+            _stems[1] |= (ulong)(cleanStems >> 64);
+            _chains[0] |= cleanChains;
 
             ReadOnlySpan<byte> entries = _existing.SubtreeEntries(position, width, clean);
             int offset = _offset + entries.Length - RootEntryLength(PbtLayout.Log2(cleanPresence), clean);
@@ -268,7 +329,7 @@ internal ref struct GroupRebuild<TLayout>(
         {
             Boundary boundary = ResolveCombinedNodeAtBoundary(firstSlot);
             hash = boundary.Hash;
-            if ((_boundary.Chains >> firstSlot & 1) == 0)
+            if (!IsBoundaryChain(firstSlot))
             {
                 return FoldedNode.Stored(NodeKind.Internal, AppendInternal(ref writer, position, boundary.Hash));
             }
@@ -283,7 +344,7 @@ internal ref struct GroupRebuild<TLayout>(
             Debug.Assert(position == PbtLayout.TrieNodeGroupBoundarySlotPosition(firstSlot), "a lone slot is its own boundary position, which is what its run is marked at");
 
             MarkPresent(position);
-            _chains |= 1UL << firstSlot;
+            PbtBitset.Set(_chains, firstSlot);
             return FoldedNode.Stored(NodeKind.Chain, Write(ref writer, chain));
         }
 
@@ -319,8 +380,8 @@ internal ref struct GroupRebuild<TLayout>(
     private void MarkPresent(int position)
     {
         Debug.Assert((uint)position < TLayout.PositionCount);
-        Debug.Assert(_presence >> position == 0, "nodes must be appended in ascending position order");
-        _presence |= UInt128.One << position;
+        Debug.Assert(!PbtBitset.AnyInRange(_presence, position, TLayout.PositionCount - position), "nodes must be appended in ascending position order");
+        PbtBitset.Set(_presence, position);
     }
 
     /// <summary>Appends <paramref name="bytes"/> to the encoding and commits them, returning the offset they went to.</summary>
@@ -343,12 +404,68 @@ internal ref struct GroupRebuild<TLayout>(
     /// </param>
     private readonly void Finish(ref BufferWriter writer, in PbtSubtreeStats stats)
     {
-        if (_presence == 0) return;
+        ReadOnlySpan<ulong> presence = _presence[..TLayout.PositionMaskWordCount];
+        if (!PbtBitset.Any(presence)) return;
 
-        Span<byte> trailer = writer.GetSpan(PbtTrieNodeGroup<TLayout>.TrailerLength);
-        TLayout.WriteMasks(trailer, new NodeGroupBitmasks(_presence, _stems, _chains));
-        stats.Write(trailer[PbtTrieNodeGroup<TLayout>.StatsTrailerOffset..]);
-        trailer[PbtTrieNodeGroup<TLayout>.FormatTrailerOffset] = (byte)_format;
-        writer.Advance(PbtTrieNodeGroup<TLayout>.TrailerLength);
+        ReadOnlySpan<ulong> stems = _stems[..TLayout.PositionMaskWordCount];
+        ReadOnlySpan<ulong> chains = _chains[..TLayout.BoundaryMaskWordCount];
+        int maskLength = NodeGroupMaskEncoding.EncodedLength<TLayout>(chains);
+        int trailerLength = maskLength + PbtSubtreeStats.EncodedLength + sizeof(byte);
+        Span<byte> trailer = writer.GetSpan(trailerLength);
+        int writtenMasks = NodeGroupMaskEncoding.Write<TLayout>(trailer, presence, stems, chains);
+        Debug.Assert(writtenMasks == maskLength);
+        stats.Write(trailer[maskLength..]);
+        trailer[maskLength + PbtSubtreeStats.EncodedLength] = (byte)_format;
+        writer.Advance(trailerLength);
     }
+
+    private readonly bool IsBoundaryStem(int slot) => _usesLegacyMasks
+        ? (_legacyBoundary.Stems & (1UL << slot)) != 0
+        : PbtBitset.Contains(_boundaryStems, slot);
+
+    private readonly bool IsBoundaryChain(int slot) => _usesLegacyMasks
+        ? (_legacyBoundary.Chains & (1UL << slot)) != 0
+        : PbtBitset.Contains(_boundaryChains, slot);
+
+    private readonly bool IsChanged(int slot) => _usesLegacyMasks
+        ? (_legacyChangedMask & (1UL << slot)) != 0
+        : PbtBitset.Contains(_changedMask, slot);
+
+    private readonly bool AnyBoundaryOccupied(int firstSlot, int width) => _usesLegacyMasks
+        ? (_legacyBoundary.Presence & LegacyRange(firstSlot, width)) != 0
+        : PbtBitset.AnyInRange(_boundaryPresence, firstSlot, width);
+
+    private readonly bool AnyChanged(int firstSlot, int width) => _usesLegacyMasks
+        ? (_legacyChangedMask & LegacyRange(firstSlot, width)) != 0
+        : PbtBitset.AnyInRange(_changedMask, firstSlot, width);
+
+    private readonly NodeKind BoundaryKind(int firstSlot, int width)
+    {
+        int occupied = _usesLegacyMasks
+            ? BitOperations.PopCount(_legacyBoundary.Presence & LegacyRange(firstSlot, width))
+            : PbtBitset.PopCountRange(_boundaryPresence, firstSlot, width);
+        if (occupied == 0) return NodeKind.Absent;
+        if (occupied != 1) return NodeKind.Internal;
+
+        int slot = _usesLegacyMasks
+            ? BitOperations.TrailingZeroCount(_legacyBoundary.Presence & LegacyRange(firstSlot, width))
+            : PbtBitset.FirstSetInRange(_boundaryPresence, firstSlot, width);
+        return IsBoundaryStem(slot) ? NodeKind.Stem : NodeKind.Internal;
+    }
+
+    private readonly bool HoldsSkippedInternal(UInt128 presence, UInt128 stems)
+    {
+        UInt128 internals = presence & ~stems;
+        while (internals != 0)
+        {
+            int position = PbtLayout.TrailingZeroCount(internals);
+            if (PbtLayout.TrieNodeGroupIsSkippedPosition(_format, position)) return true;
+            internals &= internals - 1;
+        }
+
+        return false;
+    }
+
+    private static ulong LegacyRange(int firstSlot, int width) =>
+        width == 64 ? ulong.MaxValue : ((1UL << width) - 1) << firstSlot;
 }

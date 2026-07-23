@@ -16,6 +16,9 @@ public enum PbtTiling : byte
 
     /// <summary>6-level tiles, each its own blob (<see cref="PbtSixLevelTileLayout"/>).</summary>
     SixLevel = 1,
+
+    /// <summary>8-level tiles, each its own blob (<see cref="PbtEightLevelTileLayout"/>).</summary>
+    EightLevel = 2,
 }
 
 /// <summary>What a trie node group's encoding is written in: its tiling, and which levels it stores.</summary>
@@ -56,10 +59,19 @@ public interface IPbtTileLayout
     /// <summary>The boundary slot <paramref name="stem"/> descends into at <paramref name="depth"/>: its <see cref="LevelsPerGroup"/> path bits there.</summary>
     static abstract int SlotOf(in Stem stem, int depth);
 
-    /// <summary>Gathers the boundary bits of <paramref name="positionsBitmask"/> down into slot order.</summary>
-    static abstract ulong BoundaryBitmask(UInt128 positionsBitmask);
+    /// <summary>The number of 64-bit words needed for the group's position masks.</summary>
+    static abstract int PositionMaskWordCount { get; }
 
-    /// <summary>The bytes the bitmaps take in a group's trailer.</summary>
+    /// <summary>The number of 64-bit words needed for the group's boundary masks.</summary>
+    static abstract int BoundaryMaskWordCount { get; }
+
+    /// <summary>The greatest number of bytes the masks can take in a group's trailer.</summary>
+    static abstract int MaxMaskTrailerLength { get; }
+
+    /// <summary>Whether the boundary chain mask uses <see cref="CompactBitmap256"/> and therefore has a data-dependent length.</summary>
+    static abstract bool HasCompactBoundaryMask { get; }
+
+    // Compatibility surface for legacy-width encoders. Production group encoding uses NodeGroupMaskEncoding.
     static abstract int MaskTrailerLength { get; }
 
     static abstract void WriteMasks(Span<byte> trailer, in NodeGroupBitmasks masks);
