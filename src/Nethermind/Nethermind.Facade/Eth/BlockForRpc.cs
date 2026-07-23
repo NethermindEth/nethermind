@@ -136,7 +136,7 @@ public class BlockForRpc
     public byte[]? Signature { get; set; }
     public long Size { get; set; }
     public Hash256 StateRoot { get; set; }
-    [JsonConverter(typeof(NullableRawULongConverter))]
+    [JsonConverter(typeof(NullableULongConverter))]
     public ulong? Step { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? TotalDifficulty { get; set; }
