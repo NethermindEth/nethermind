@@ -1106,11 +1106,7 @@ public class RetryCacheTests
             cache.Announced(staleResources, source);
             cache.Announced(staleResources, retryHandler);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(staleResources + 1));
-                Assert.That(cache.MaxQueueEntriesPerTick, Is.EqualTo(32_768));
-            }
+            Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(staleResources + 1));
 
             timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
             Assert.That(() => cache.ResourcesInRetryQueue, Is.EqualTo(2).After(AssertTimeoutMs, 10));

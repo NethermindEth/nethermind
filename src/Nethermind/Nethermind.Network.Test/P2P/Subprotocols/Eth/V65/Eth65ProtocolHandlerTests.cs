@@ -190,6 +190,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
             _session.Received(canGossipTransactions ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+            Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(canGossipTransactions ? 2 : 0));
         }
 
         [Test]

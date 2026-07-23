@@ -44,7 +44,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly int _overflowRequestLimit;
     private readonly long _overflowGenerationPeriodTimestampTicks;
     private readonly int _maxPreferredRetryResourcesPerHandlerPerTick;
-    private readonly int _maxQueueEntriesPerTick;
     private readonly TimeProvider _timeProvider;
     private readonly Task _mainLoopTask;
     private static readonly ObjectPool<HandlerBag<TMessage>> _handlerBagsPool = new DefaultObjectPool<HandlerBag<TMessage>>(new HandlerBagPolicy<TMessage>(), maximumRetained: 512);
@@ -74,7 +73,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     internal object ExpiringQueueStorage => Volatile.Read(ref _expiringQueue);
     internal int TrackedRequestsInUse => Volatile.Read(ref _trackedRequestsCounter);
     internal int OverflowRequestsInUse => Volatile.Read(ref _overflowRequestsInUse);
-    internal int MaxQueueEntriesPerTick => _maxQueueEntriesPerTick;
     internal Task DisposalReachedOperationBarrier => _disposeReachedOperationBarrier.Task;
     internal int OverflowRetainedCapacity
     {
@@ -170,7 +168,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _maxPreferredRetryResourcesPerHandlerPerTick = Math.Max(
             1,
             MaxRetryResourcesPerTick / Math.Max(1, maxRetryRequests));
-        _maxQueueEntriesPerTick = MaxStaleQueueEntriesPerTick;
         _timeProvider = timeProvider;
         _lifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
         _token = _lifetimeCancellation.Token;
@@ -204,7 +201,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             int retryResourcesProcessed = 0;
             int queueEntriesProcessed = 0;
-            int queueEntriesToProcess = Math.Min(ResourcesInRetryQueue, _maxQueueEntriesPerTick);
+            int queueEntriesToProcess = Math.Min(ResourcesInRetryQueue, MaxStaleQueueEntriesPerTick);
             while (!_token.IsCancellationRequested
                 && retryResourcesProcessed < MaxRetryResourcesPerTick
                 && queueEntriesProcessed < queueEntriesToProcess

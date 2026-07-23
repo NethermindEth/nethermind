@@ -192,8 +192,7 @@ public class Eth68ProtocolHandler(ISession session,
         {
             ArrayPoolList<Hash256> request = hashesToRequest!;
             hashesToRequest = null;
-            ReportPooledTransactionRequests(request.AsSpan());
-            Send(V66.Messages.GetPooledTransactionsMessage.New(request));
+            SendPooledTransactionRequest<V66.Messages.GetPooledTransactionsMessage>(request);
             packetSizeLeft = TransactionsMessage.MaxPacketSize;
             toRequestCount = 0;
         }

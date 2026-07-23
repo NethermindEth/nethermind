@@ -186,6 +186,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
+        private protected void SendPooledTransactionRequest<TMessage>(IOwnedReadOnlyList<Hash256> hashes)
+            where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
+        {
+            ReportPooledTransactionRequest(hashes.AsSpan());
+            Send(TMessage.New(hashes));
+        }
+
         protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes, bool registerForRetry = true)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
         {
@@ -205,7 +212,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 }
                 else
                 {
-                    Send(TMessage.New(newTxHashes));
+                    SendPooledTransactionRequest<TMessage>(newTxHashes);
                 }
             }
 

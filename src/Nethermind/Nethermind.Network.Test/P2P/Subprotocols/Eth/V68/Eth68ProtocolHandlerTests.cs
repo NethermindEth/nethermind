@@ -121,6 +121,9 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _session.Received(canGossipTransactions && txCount != 0 ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        Assert.That(
+            _handler.RequestedPooledTransactionHashes,
+            Is.EqualTo(canGossipTransactions ? txCount : 0));
     }
 
     [TestCase(true)]
