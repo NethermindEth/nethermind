@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -105,6 +106,17 @@ public class AuRaTerminalBlockDisposerTests
         AuRaTerminalBlockDisposer _ = new(_auRaFinalizationManager, _poSSwitcher, _blockTree);
 
         _auRaFinalizationManager.DidNotReceive().Dispose();
+    }
+
+    [Test]
+    public void Disposes_aura_manager_when_terminal_total_difficulty_is_zero()
+    {
+        SetHead(postMerge: false);
+        _poSSwitcher.TerminalTotalDifficulty.Returns(UInt256.Zero);
+
+        AuRaTerminalBlockDisposer _ = new(_auRaFinalizationManager, _poSSwitcher, _blockTree);
+
+        _auRaFinalizationManager.Received(1).Dispose();
     }
 
     [Test]

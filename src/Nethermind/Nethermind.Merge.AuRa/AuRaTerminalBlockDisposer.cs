@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Merge.AuRa;
 
@@ -35,7 +36,10 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
         _poSSwitcher = poSSwitcher;
         _blockTree = blockTree;
 
-        if (poSSwitcher.IsHeadPostMerge(blockTree))
+        // A terminal total difficulty of zero makes the genesis block terminal. Hive Engine
+        // networks use this configuration and must not expose AuRa's genesis finality as the
+        // Engine API's `finalized` tag before the beacon chain provides a forkchoice update.
+        if (poSSwitcher.TerminalTotalDifficulty == UInt256.Zero || poSSwitcher.IsHeadPostMerge(blockTree))
         {
             Dispose();
         }
