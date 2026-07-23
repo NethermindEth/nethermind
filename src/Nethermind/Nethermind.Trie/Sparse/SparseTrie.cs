@@ -1438,15 +1438,17 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
             return;
         }
 
-        using ArrayPoolList<PendingReveal> reveals = new(4);
+        // Delete count bounds the survivor reveals and per-round collapses, so pre-sizing the
+        // scratch to it avoids the geometric Add-growth reallocation that dominated the delete
+        // path on large batches; the swapped round buffers each need the same headroom.
+        int scratchHint = Math.Max(4, updates.Length);
+        using ArrayPoolList<PendingReveal> reveals = new(scratchHint);
 
-        // Two swapped round buffers: cascading collapses run round after round, and renting a
-        // fresh list per round copied the whole pending set each time.
-        ArrayPoolList<PendingCollapse> collapses = new(4);
+        ArrayPoolList<PendingCollapse> collapses = new(scratchHint);
         ArrayPoolList<PendingCollapse>? round = null;
         try
         {
-            round = new ArrayPoolList<PendingCollapse>(4);
+            round = new ArrayPoolList<PendingCollapse>(scratchHint);
             TreePath path = TreePath.Empty;
             _rootNode = DeleteWalk(_rootNode, ref path, updates, 0, updates.Length, reveals, collapses);
 
