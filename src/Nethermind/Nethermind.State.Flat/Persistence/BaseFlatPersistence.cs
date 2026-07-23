@@ -49,7 +49,7 @@ public static class BaseFlatPersistence
     private const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
     private const int StorageSlotKeySize = 32;
     private const int StoragePostfixPortion = 16;
-    private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
+    internal const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
     private const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
@@ -80,6 +80,22 @@ public static class BaseFlatPersistence
         }
 
         return buffer[..StorageKeyLength];
+    }
+
+    /// <summary>
+    /// Rewrites a <see cref="Nethermind.Db.FlatLayout.PreimageFlatV1"/> storage key into the
+    /// <see cref="Nethermind.Db.FlatLayout.PreimageFlat"/> shape, i.e. from
+    /// <c>address[0..4] | slot | address[4..20]</c> to <c>address | slot</c>.
+    /// </summary>
+    /// <remarks>
+    /// A permutation of the same 52 bytes, so both shapes share a key space and the rewrite cannot be done in
+    /// place — a converted key may collide with one the scan has not reached yet.
+    /// </remarks>
+    internal static void ConvertV1StorageKey(ReadOnlySpan<byte> v1Key, Span<byte> destination)
+    {
+        v1Key[..StoragePrefixPortion].CopyTo(destination);
+        v1Key[(StoragePrefixPortion + StorageSlotKeySize)..StorageKeyLength].CopyTo(destination[StoragePrefixPortion..AccountKeyLength]);
+        v1Key.Slice(StoragePrefixPortion, StorageSlotKeySize).CopyTo(destination[AccountKeyLength..StorageKeyLength]);
     }
 
     /// <summary>Length of the leading address portion of a storage key, which is also the slot offset.</summary>

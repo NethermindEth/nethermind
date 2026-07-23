@@ -31,6 +31,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
     FlatLayout Layout { get; set; }
 
+    [ConfigItem(Description = "One-shot migration of a PreimageFlatV1 flat DB to the PreimageFlat storage key shape. Requires Layout to still be PreimageFlatV1; the node rewrites the storage column, stamps the DB as PreimageFlat and exits. Restart with Layout set to PreimageFlat afterwards.", DefaultValue = "false")]
+    bool MigrateToPreimageFlat { get; set; }
+
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 

@@ -75,6 +75,23 @@ public class PreimageStorageKeyTests
         }
     }
 
+    /// <summary>The migration off V1 rests on the two shapes being permutations of one another.</summary>
+    [Test]
+    public void ConvertV1StorageKey_YieldsTheFullAddressKeyOfTheSameSlot()
+    {
+        using SnapshotableMemDb v1State = new();
+        using SnapshotableMemDb v1Storage = new();
+        using SnapshotableMemDb state = new();
+        using SnapshotableMemDb storage = new();
+        WriteSlots(v1State, v1Storage, AddressA, FlatLayout.PreimageFlatV1, slotCount: 1);
+        WriteSlots(state, storage, AddressA, FlatLayout.PreimageFlat, slotCount: 1);
+
+        byte[] converted = new byte[BaseFlatPersistence.StorageKeyLength];
+        BaseFlatPersistence.ConvertV1StorageKey(v1Storage.FirstKey, converted);
+
+        Assert.That(converted, Is.EqualTo(storage.FirstKey));
+    }
+
     private static bool IsFullAddressKey(FlatLayout layout) => layout is not FlatLayout.PreimageFlatV1;
 
     private static List<UInt256> Slots(int slotCount)

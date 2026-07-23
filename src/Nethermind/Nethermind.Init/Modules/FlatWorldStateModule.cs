@@ -140,6 +140,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
         }
+
+        if (flatDbConfig.MigrateToPreimageFlat)
+        {
+            builder.AddStep(typeof(MigratePreimageStorageKeys));
+        }
     }
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule

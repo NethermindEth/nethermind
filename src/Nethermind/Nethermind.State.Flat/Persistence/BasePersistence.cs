@@ -78,10 +78,21 @@ public static class BasePersistence
     /// </summary>
     internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
     {
+        SetLayoutMarker(kv, layout);
+        SetSlotEncoding(kv, SlotEncodingRlp);
+    }
+
+    /// <summary>
+    /// Records the <see cref="FlatLayout"/> marker on its own, leaving the slot encoding untouched. For rewriting
+    /// the layout of a DB whose slot encoding does not change, which must not assume the RLP encoding — stamping
+    /// it on a legacy raw DB makes every slot read back misdecoded. See <see cref="ResolveSlotEncoding"/>.
+    /// </summary>
+    [SkipLocalsInit]
+    internal static void SetLayoutMarker(IWriteOnlyKeyValueStore kv, FlatLayout layout)
+    {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = (byte)layout;
         kv.PutSpan(LayoutKey, bytes);
-        SetSlotEncoding(kv, SlotEncodingRlp);
     }
 
     /// <summary>

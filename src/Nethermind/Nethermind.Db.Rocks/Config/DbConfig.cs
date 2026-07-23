@@ -415,4 +415,13 @@ public class DbConfig : IDbConfig
 
     public string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; } = "";
     public string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
+
+    // Write-once, read-once scratch space for the PreimageFlat storage key migration, so large memtables and a
+    // wide level base keep the dump from churning through compactions it will never benefit from.
+    public string? PreimageKeyMigrationDbRocksDbOptions { get; set; } =
+        "write_buffer_size=128000000;" +
+        "max_write_buffer_number=4;" +
+        "max_bytes_for_level_base=1000000000;" +
+        "";
+    public string? PreimageKeyMigrationDbAdditionalRocksDbOptions { get; set; }
 }
