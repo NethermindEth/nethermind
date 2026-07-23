@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -10,6 +11,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Sparse;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -23,6 +25,14 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
+
+    // Sparse root state: the committed anchor until a job is calculated, EmptyTreeHash after a
+    // clear, the calculated root afterwards. The trie itself exists only while a block has
+    // uncommitted storage changes for this account.
+    private SparseTrie? _sparseTrie;
+    private Hash256 _sparseRoot;
+    private Hash256? _diagnosticRoot;
+    private bool _inChangedSet;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -58,10 +68,13 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _warmupStorageTree.SetRootHash(storageRoot, false);
         _warmupStorageTree.RootRef = _tree.RootRef;
 
+        _sparseRoot = storageRoot;
         _config = config;
     }
 
-    public Hash256 RootHash => _tree.RootHash;
+    public Hash256 RootHash => _sparseRoot;
+
+    internal Address Address => _address;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -142,44 +155,151 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public void SelfDestruct()
     {
+        ClearFlat();
+        ResetSparseTrie();
+    }
+
+    /// <summary>Flat-plane clear only — safe from parallel flush workers, no sparse-trie access.</summary>
+    /// <remarks>The sparse reset for a cleared batch happens on the storage-phase owner via the
+    /// job's HasClear flag; an account deletion resets eagerly through <see cref="SelfDestruct"/>
+    /// on the outer thread because its discarded job never reaches the phase.</remarks>
+    private void ClearFlat()
+    {
         _bundle.Clear(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
+    }
+
+    private void ResetSparseTrie()
+    {
+        _sparseTrie?.Dispose();
+        _sparseTrie = null;
+        _sparseRoot = Keccak.EmptyTreeHash;
     }
 
     public void CommitTree() => _tree.Commit();
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
-                estimatedEntries,
-                _tree,
-                onRootUpdated,
-                _address,
-                commit: true);
+        // The diagnostic Patricia batch commits through the mutable tree exactly as the
+        // pre-sparse pipeline did; its root is compared against the sparse root per job.
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch? diagnosticBatch = _config.VerifyWithTrie
+            ? new(estimatedEntries, _tree, (_, patriciaRoot) => _diagnosticRoot = patriciaRoot, _address, commit: true)
+            : null;
 
-        return new StorageTreeBulkWriteBatch(
-            storageTreeBulkWriteBatch,
-            this
-        );
+        return new SparseStorageWriteBatch(this, estimatedEntries, onRootUpdated, diagnosticBatch);
     }
 
-    private class StorageTreeBulkWriteBatch(
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
-        FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
+    /// <summary>Applies one sealed job to this account's sparse trie and reports the new root.</summary>
+    /// <remarks>Runs on exactly one storage-phase worker per batch; ownership of the trie moves
+    /// with the phase, it is never touched concurrently.</remarks>
+    internal void ProcessSparseJob(in FlatSparseTrieSession.StorageJob job)
     {
+        if (job.HasClear) ResetSparseTrie();
+
+        _sparseTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, _addressHash), _sparseRoot.ValueHash256, job.Updates.Count);
+        _sparseTrie.Apply(job.Updates.AsSpan());
+        _sparseRoot = _sparseTrie.CalculateRoot().ToCommitment();
+
+        if (_diagnosticRoot is not null)
+        {
+            if (_diagnosticRoot != _sparseRoot)
+            {
+                throw new TrieException($"Sparse storage root {_sparseRoot} of {_address} does not match the Patricia root {_diagnosticRoot}");
+            }
+
+            _diagnosticRoot = null;
+        }
+
+        job.OnRootUpdated(_address, _sparseRoot);
+    }
+
+    /// <summary>First-time registration into the session's changed set for publication.</summary>
+    internal bool MarkInChangedSet()
+    {
+        if (_inChangedSet) return false;
+        _inChangedSet = true;
+        return true;
+    }
+
+    /// <summary>Publishes this block's staged storage nodes into the bundle.</summary>
+    internal void PublishSparseNodes()
+    {
+        if (_sparseTrie is null) return;
+
+        using ArrayPoolList<SparseTrieStagedNode> staged = new(64);
+        _sparseTrie.DrainUnpublished(staged);
+        if (staged.Count > 0)
+        {
+            _bundle.PublishStorageNodes(
+                _bundle.GetStorageNodeDestination(_addressHash),
+                _addressHash,
+                [FlatSparseTrieSession.BuildPublicationBuffer(staged)]);
+        }
+    }
+
+    /// <summary>Drops the trie without publishing; the session calls this after publication and on abort.</summary>
+    internal void DropSparseTrie()
+    {
+        _sparseTrie?.Dispose();
+        _sparseTrie = null;
+        _inChangedSet = false;
+    }
+
+    private class SparseStorageWriteBatch(
+        FlatStorageTree storageTree,
+        int estimatedEntries,
+        Action<Address, Hash256> onRootUpdated,
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch? diagnosticBatch) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private readonly ArrayPoolList<SparseTrieUpdate> _updates = new(estimatedEntries);
+        private ValueHash256 _keyBuff;
+        private bool _hasClear;
+        private bool _wasSetCalled;
+
         public void Set(in UInt256 index, byte[] value)
         {
-            storageTreeBulkWriteBatch.Set(in index, value);
+            _wasSetCalled = true;
+            StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
+            PatriciaTree.BulkSetEntry entry = StorageTree.CreateBulkSetEntry(in _keyBuff, value);
+            _updates.Add(new SparseTrieUpdate(entry.Path, entry.Value));
+
+            diagnosticBatch?.Set(in index, value);
             storageTree.Set(index, value);
         }
 
         public void Clear()
         {
-            storageTreeBulkWriteBatch.Clear();
-            storageTree.SelfDestruct();
+            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            _hasClear = true;
+
+            diagnosticBatch?.Clear();
+            storageTree.ClearFlat();
         }
 
-        public void Dispose() => storageTreeBulkWriteBatch.Dispose();
+        public void Dispose()
+        {
+            try
+            {
+                diagnosticBatch?.Dispose();
+            }
+            catch
+            {
+                // The updates never transfer and nothing may calculate on top of the lost batch.
+                _updates.Dispose();
+                storageTree._scope.SparseSession.Poison();
+                throw;
+            }
+
+            if (_wasSetCalled || _hasClear)
+            {
+                storageTree._scope.SparseSession.EnqueueStorageJob(
+                    new FlatSparseTrieSession.StorageJob(storageTree, _updates, _hasClear, onRootUpdated));
+            }
+            else
+            {
+                _updates.Dispose();
+            }
+        }
     }
 }

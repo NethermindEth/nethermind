@@ -47,6 +47,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
+    internal FlatSparseTrieSession SparseSession { get; }
+
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -80,6 +82,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             RootHash = currentStateId.StateRoot.ToCommitment()
         };
 
+        SparseSession = new FlatSparseTrieSession(snapshotBundle, currentStateId.StateRoot.ToCommitment());
         _configuration = configuration;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
@@ -94,6 +97,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
         WaitForOutstandingWarmups();
+        SparseSession.Dispose();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
     }
@@ -136,8 +140,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Hash256 RootHash => _stateTree.RootHash;
-    public void UpdateRootHash() => _stateTree.UpdateRootHash();
+    public Hash256 RootHash => SparseSession.RootHash;
+
+    public void UpdateRootHash()
+    {
+        SparseSession.UpdateRootHash();
+
+        if (_configuration.VerifyWithTrie)
+        {
+            _stateTree.UpdateRootHash();
+            if (_stateTree.RootHash != SparseSession.RootHash)
+            {
+                throw new TrieException($"Sparse state root {SparseSession.RootHash} does not match the Patricia root {_stateTree.RootHash}");
+            }
+        }
+    }
 
     public Account? Get(Address address)
     {
@@ -440,9 +457,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        // Storage tree commits already happened during WriteBatch.Dispose() via
-        // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        _stateTree.Commit();
+        SparseSession.UpdateRootHash();
+
+        if (_configuration.VerifyWithTrie)
+        {
+            // The diagnostic Patricia trees re-publish the same node bytes the sparse session
+            // stages; identical roots guarantee identical nodes, so the overlap is harmless.
+            _stateTree.Commit();
+            if (_stateTree.RootHash != SparseSession.RootHash)
+            {
+                throw new TrieException($"Sparse state root {SparseSession.RootHash} does not match the committed Patricia root {_stateTree.RootHash}");
+            }
+        }
+
+        SparseSession.Publish();
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
@@ -508,6 +536,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             try
             {
+                // Whole-trie sparse roots for the sealed storage jobs; completed roots arrive
+                // through MarkDirty and are drained below, preserving OnAccountUpdated timing.
+                scope.SparseSession.RunStoragePhase(FinalAccount);
+
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
@@ -531,10 +563,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 OnAccountUpdated = null;
 
-                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                scope.SparseSession.ApplyStateUpdates(_dirtyAccounts);
+
+                if (scope._configuration.VerifyWithTrie)
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                    {
+                        stateSetter.Set(kv.Key, kv.Value);
+                    }
                 }
             }
             finally
@@ -548,5 +585,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             void Trace(Address address, Hash256 storageRoot, Account? account) =>
                 logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
+
+        private Account? FinalAccount(Address address) =>
+            _dirtyAccounts.TryGetValue(address, out Account? account) ? account : scope.Get(address);
     }
 }
