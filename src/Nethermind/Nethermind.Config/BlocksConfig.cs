@@ -66,7 +66,14 @@ namespace Nethermind.Config
         public int MempoolPreWarmConcurrency { get; set; } = 0;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
+#if ZK_EVM
+        // No 0.25 initializer: storing a double constant is the only FPU
+        // instruction this ctor would contribute to the rv64ima guest image,
+        // and block production (the sole consumer) never runs in the guest.
+        public double SingleBlockImprovementOfSlot { get; set; }
+#else
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
+#endif
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
 

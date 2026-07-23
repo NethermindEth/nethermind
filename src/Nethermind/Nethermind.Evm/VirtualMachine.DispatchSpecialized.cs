@@ -5,6 +5,9 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+#if ZK_EVM
+using Nethermind.Evm.GasPolicy;
+#endif
 using Nethermind.Evm.Tracing;
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -89,6 +92,60 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // directDispatch folds at compile time, so this specializes into two loop bodies with no runtime branch.
                 if (directDispatch)
                 {
+#if ZK_EVM
+                    // Narrow, frequency-ordered switch (measured on real Glamsterdam blocks; these
+                    // cover ~78% of executed opcodes). The wide CPU switch below exhausts the
+                    // compiler's inline budget, so every case degrades into an out-of-line handler
+                    // call; keeping the method small lets the hot handlers actually inline.
+                    switch (instruction)
+                    {
+                        case Instruction.PUSH1:
+                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.PUSH2:
+                            exceptionType = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.ADD:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.SWAP1:
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.DUP2:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.MSTORE:
+                            exceptionType = EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.MLOAD:
+                            exceptionType = EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.DUP1:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.POP:
+                            exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.DUP3:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.SWAP2:
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.ISZERO:
+                            exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.DUP5:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op5, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.JUMPDEST:
+                            exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref pc);
+                            break;
+                        default:
+                            exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
+                            break;
+                    }
+#else
                     // Direct dispatch for the measured-hot opcodes; the rest take the table. MUST stay inline:
                     // extracted, the JIT stops inlining the handlers and direct dispatch loses to the table's calli.
                     switch (instruction)
@@ -209,6 +266,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
                             break;
                     }
+#endif
                 }
                 else
                 {
@@ -221,6 +279,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
                 programCounter = pc;
 
+#if ZK_EVM
+                // Inside this huge method the compiler's inline budget is exhausted, so even the
+                // trivial policy calls below compile to out-of-line calls executed once per opcode
+                // (~5% of guest execution). The typeof checks fold at compile time per
+                // instantiation, so the common EthereumGasPolicy loop reads the flag directly and
+                // skips its empty OnAfterInstructionTrace without a call.
+                bool outOfGas = typeof(TGasPolicy) == typeof(EthereumGasPolicy)
+                    ? Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas).OutOfGas
+                    : TGasPolicy.IsOutOfGas(in gas);
+                if (outOfGas)
+                {
+                    OpCodeCount += opCodeCount;
+                    goto OutOfGas;
+                }
+
+                if (typeof(TGasPolicy) != typeof(EthereumGasPolicy))
+                    TGasPolicy.OnAfterInstructionTrace(in gas);
+#else
                 if (TGasPolicy.IsOutOfGas(in gas))
                 {
                     OpCodeCount += opCodeCount;
@@ -228,12 +304,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 TGasPolicy.OnAfterInstructionTrace(in gas);
+#endif
 
                 if (exceptionType != EvmExceptionType.None)
                     break;
 
+#if ZK_EVM
+                // typeof folds at compile time even where the inliner gives up on the static
+                // abstract IsActive getter (see the gas-policy note above), which otherwise
+                // compiles to an out-of-line call returning false once per executed opcode.
+                if (typeof(TTracingInst) != typeof(OffFlag))
+                    EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+#else
                 if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+#endif
 
                 // Only the 0xF0+ family sets ReturnData (RETURN returns None and signals completion solely
                 // through it), so the field load is skipped for the cheap majority below CREATE.

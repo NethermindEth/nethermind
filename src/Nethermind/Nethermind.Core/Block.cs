@@ -161,7 +161,9 @@ public class Block
             ? $"{Number} null, tx count: {Body.Transactions.Length}"
             : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
         Format.HashNumberDiffAndTx => $"{ToShortHashAndNumber()}  diff {Difficulty} | txs {Body.Transactions.Length,7:N0}",
-        Format.HashNumberMGasAndTx => $"{ToShortHashAndNumber()}  {GasUsed / 1_000_000.0,9:N2} MGas | {Body.Transactions.Length,7:N0} txs",
+        // 1_000_000m, not 1_000_000.0: decimal is software integer math, keeping
+        // the zkEVM guest (linked against this assembly) free of FPU instructions.
+        Format.HashNumberMGasAndTx => $"{ToShortHashAndNumber()}  {GasUsed / 1_000_000m,9:N2} MGas | {Body.Transactions.Length,7:N0} txs",
         _ => ToShortHashAndNumber()
     };
 
