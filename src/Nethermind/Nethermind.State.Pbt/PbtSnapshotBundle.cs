@@ -34,9 +34,11 @@ public class PbtSnapshotBundle(
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage) : IDisposable
 {
+    private readonly object _writeOwnershipLock = new();
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
     private PbtPendingFlatWrites? _pendingFlatWrites = resourcePool.GetPendingFlatWrites(usage);
-    private bool _isDisposed;
+    private volatile bool _isDisposed;
+    private int _activeOwnershipTransfers;
 
     /// <inheritdoc cref="PbtReadOnlySnapshotBundle.TreeRoot"/>
     /// <remarks>The write buffer has no root of its own: it is unfolded until a scope seals it.</remarks>
@@ -70,14 +72,19 @@ public class PbtSnapshotBundle(
         if (PendingFlatWrites.Accounts.TryGetValue(address, out Account? account)) return account;
 
         Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
-        if (WriteBuffer.LeafBlobs.TryGetValue(stem, out byte[]? blob)) return PbtLeafDecoder.DecodeAccount(blob);
+        if (WriteBuffer.TryGetLeafBlob(stem, out RefCountingMemory? blob)) return DecodeAccount(blob);
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out blob)) return PbtLeafDecoder.DecodeAccount(blob);
+            if (snapshots[i].Content.TryGetLeafBlob(stem, out blob)) return DecodeAccount(blob);
         }
 
         return readOnlyBundle.GetAccount(stem);
+
+        static Account? DecodeAccount(RefCountingMemory? blob)
+        {
+            using (blob) return blob is null ? null : PbtLeafDecoder.DecodeAccount(blob.GetSpan());
+        }
     }
 
     /// <summary>Returns the slot value; zero when absent or self-destructed.</summary>
@@ -90,43 +97,44 @@ public class PbtSnapshotBundle(
         if (pending.SelfDestructs.ContainsKey(key)) return default;
 
         Stem stem = PbtLeafDecoder.SlotStem(address, slot, out byte subIndex);
-        if (WriteBuffer.LeafBlobs.TryGetValue(stem, out byte[]? blob)) return PbtLeafDecoder.DecodeSlot(blob, subIndex);
+        if (WriteBuffer.TryGetLeafBlob(stem, out RefCountingMemory? blob)) return DecodeSlot(blob, subIndex);
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out blob)) return PbtLeafDecoder.DecodeSlot(blob, subIndex);
+            if (snapshots[i].Content.TryGetLeafBlob(stem, out blob)) return DecodeSlot(blob, subIndex);
         }
 
         return readOnlyBundle.GetSlot(stem, subIndex);
+
+        static EvmWord DecodeSlot(RefCountingMemory? blob, byte subIndex)
+        {
+            using (blob) return blob is null ? default : PbtLeafDecoder.DecodeSlot(blob.GetSpan(), subIndex);
+        }
     }
 
     /// <summary>Returns the complete leaf blob of the stem, or null when the stem does not exist.</summary>
-    /// <remarks>Layer and write-buffer hits are wrapped without copying (their arrays are owned by the
-    /// layer); the fallthrough may return a pooled buffer the caller must dispose.</remarks>
+    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
     public RefCountingMemory? GetLeafBlob(in Stem stem)
     {
-        if (WriteBuffer.LeafBlobs.TryGetValue(stem, out byte[]? blob)) return AsFound(blob);
+        if (WriteBuffer.TryGetLeafBlob(stem, out RefCountingMemory? blob)) return blob;
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out blob)) return AsFound(blob);
+            if (snapshots[i].Content.TryGetLeafBlob(stem, out blob)) return blob;
         }
 
         return readOnlyBundle.GetLeafBlob(stem);
-
-        // an empty blob is the "stem deleted" marker; it must stop the walk rather than fall through
-        // and resurrect the stem from a lower tier
-        static RefCountingMemory? AsFound(byte[] blob) => blob.Length == 0 ? null : RefCountingMemory.Wrapping(blob);
     }
 
+    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
     {
-        if (WriteBuffer.TrieNodes.TryGetValue(key, out byte[]? node)) return RefCountingMemory.WrappingOrNull(node);
+        if (WriteBuffer.TryGetTrieNode(key, out RefCountingMemory? node)) return node;
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             // a found null is a tombstone: the node was removed at this layer
-            if (snapshots[i].Content.TrieNodes.TryGetValue(key, out node)) return RefCountingMemory.WrappingOrNull(node);
+            if (snapshots[i].Content.TryGetTrieNode(key, out node)) return node;
         }
 
         return readOnlyBundle.GetTrieNode(key);
@@ -139,10 +147,63 @@ public class PbtSnapshotBundle(
         PendingFlatWrites.Slots[(address, slot)] = value;
 
     /// <summary>Records a leaf blob produced by the root computation; an empty blob marks the stem deleted.</summary>
-    public void SetLeafBlob(in Stem stem, byte[] blob) => WriteBuffer.LeafBlobs[stem] = blob;
+    public void SetLeafBlob(in Stem stem, byte[] blob) =>
+        SetOwnedLeafBlob(stem, blob.Length == 0 ? null : RefCountingMemory.Wrapping(blob));
 
     /// <summary>Records a trie node produced by the root computation; a null node marks it removed.</summary>
-    public void SetTrieNode(in TrieNodeKey key, byte[]? node) => WriteBuffer.TrieNodes[key] = node;
+    public void SetTrieNode(in TrieNodeKey key, byte[]? node) =>
+        SetOwnedTrieNode(key, RefCountingMemory.WrappingOrNull(node));
+
+    /// <summary>Records a transferred leaf-blob lease produced by the root computation; null marks the stem deleted.</summary>
+    internal void SetOwnedLeafBlob(in Stem stem, RefCountingMemory? blob)
+    {
+        PbtSnapshotContent buffer = BeginOwnershipTransfer(blob);
+        try
+        {
+            buffer.SetLeafBlob(stem, blob);
+        }
+        finally
+        {
+            EndOwnershipTransfer();
+        }
+    }
+
+    /// <summary>Records a transferred trie-node lease produced by the root computation; null marks it removed.</summary>
+    internal void SetOwnedTrieNode(in TrieNodeKey key, RefCountingMemory? node)
+    {
+        PbtSnapshotContent buffer = BeginOwnershipTransfer(node);
+        try
+        {
+            buffer.SetTrieNode(key, node);
+        }
+        finally
+        {
+            EndOwnershipTransfer();
+        }
+    }
+
+    private PbtSnapshotContent BeginOwnershipTransfer(RefCountingMemory? value)
+    {
+        lock (_writeOwnershipLock)
+        {
+            if (_isDisposed)
+            {
+                ((IDisposable?)value)?.Dispose();
+                ObjectDisposedException.ThrowIf(true, this);
+            }
+
+            _activeOwnershipTransfers++;
+            return _writeBuffer!;
+        }
+    }
+
+    private void EndOwnershipTransfer()
+    {
+        lock (_writeOwnershipLock)
+        {
+            if (--_activeOwnershipTransfers == 0) Monitor.PulseAll(_writeOwnershipLock);
+        }
+    }
 
     /// <summary>Marks every slot of <paramref name="address"/> cleared for the rest of the block in flight.</summary>
     /// <inheritdoc cref="PbtPendingFlatWrites" path="/remarks/para[1]"/>
@@ -187,19 +248,24 @@ public class PbtSnapshotBundle(
     /// </remarks>
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _isDisposed, true)) return;
+        PbtSnapshotContent? buffer;
+        PbtPendingFlatWrites? pending;
+        lock (_writeOwnershipLock)
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+            while (_activeOwnershipTransfers != 0) Monitor.Wait(_writeOwnershipLock);
+
+            buffer = _writeBuffer;
+            _writeBuffer = null;
+            pending = _pendingFlatWrites;
+            _pendingFlatWrites = null;
+        }
 
         try
         {
             snapshots.Dispose();
-
-            // null them so a racing write cannot land in a buffer another block has already rented
-            PbtSnapshotContent? buffer = _writeBuffer;
-            _writeBuffer = null;
             if (buffer is not null) resourcePool.ReturnSnapshotContent(usage, buffer);
-
-            PbtPendingFlatWrites? pending = _pendingFlatWrites;
-            _pendingFlatWrites = null;
             if (pending is not null) resourcePool.ReturnPendingFlatWrites(usage, pending);
         }
         finally

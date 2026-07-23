@@ -32,13 +32,27 @@ internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, 
 
     public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
     {
-        byte[]? value = node?.ToArrayAndRelease();
-        lock (_writeLock) batch.SetTrieNode(key, value);
+        using (node)
+        {
+            lock (_writeLock)
+            {
+                if (node is null)
+                {
+                    batch.SetTrieNode(key, (byte[]?)null);
+                }
+                else
+                {
+                    batch.SetTrieNode(key, node.GetSpan());
+                }
+            }
+        }
     }
 
     public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
     {
-        byte[]? value = blob?.ToArrayAndRelease();
-        lock (_writeLock) batch.SetLeafBlob(stem, value);
+        using (blob)
+        {
+            lock (_writeLock) batch.SetLeafBlob(stem, blob is null ? default : blob.GetSpan());
+        }
     }
 }

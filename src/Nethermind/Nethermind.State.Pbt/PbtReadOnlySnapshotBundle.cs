@@ -19,8 +19,8 @@ namespace Nethermind.State.Pbt;
 /// </summary>
 /// <remarks>
 /// The reader belongs here rather than to the mutable bundle stacked above: layers spell a deleted
-/// stem as an empty blob and a removed node as a present null, both indistinguishable from never
-/// having been written, so only a tier answering from disk can tell them apart. This bundle is
+/// stem or removed node as a present null, both indistinguishable from never having been written
+/// without consulting the dictionary, so only a tier answering from disk can tell them apart. This bundle is
 /// therefore the bottom of every walk — its <see langword="null"/> and zero results are final, and
 /// nothing may be stacked below it. The layer chain is never appended to, which is what makes
 /// sharing safe; sealed layers accumulate on the mutable bundle instead.
@@ -66,11 +66,10 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         long startTimestamp = StartTiming();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            // layers store an empty blob as the "stem deleted" marker, which must stop the walk
-            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out byte[]? blob))
+            if (snapshots[i].Content.TryGetLeafBlob(stem, out RefCountingMemory? blob))
             {
                 Observe(startTimestamp, _readAccountSnapshotLabel);
-                return PbtLeafDecoder.DecodeAccount(blob);
+                using (blob) return blob is null ? null : PbtLeafDecoder.DecodeAccount(blob.GetSpan());
             }
         }
 
@@ -99,10 +98,10 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         long startTimestamp = StartTiming();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out byte[]? blob))
+            if (snapshots[i].Content.TryGetLeafBlob(stem, out RefCountingMemory? blob))
             {
                 Observe(startTimestamp, _readStorageSnapshotLabel);
-                return PbtLeafDecoder.DecodeSlot(blob, subIndex);
+                using (blob) return blob is null ? default : PbtLeafDecoder.DecodeSlot(blob.GetSpan(), subIndex);
             }
         }
 
@@ -113,19 +112,17 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         return value;
     }
 
-    /// <remarks>Layer hits wrap the layer-owned array without copying; the reader fallthrough returns a
-    /// pooled buffer the caller must dispose.</remarks>
+    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
     public RefCountingMemory? GetLeafBlob(in Stem stem)
     {
         GuardDispose();
         long startTimestamp = StartTiming();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            // layers store an empty blob as the "stem deleted" marker, which must stop the walk
-            if (snapshots[i].Content.LeafBlobs.TryGetValue(stem, out byte[]? blob))
+            if (snapshots[i].Content.TryGetLeafBlob(stem, out RefCountingMemory? blob))
             {
                 Observe(startTimestamp, _readLeafBlobSnapshotLabel);
-                return blob.Length == 0 ? null : RefCountingMemory.Wrapping(blob);
+                return blob;
             }
         }
 
@@ -135,17 +132,17 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         return persisted;
     }
 
+    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
     {
         GuardDispose();
         long startTimestamp = StartTiming();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            // a found null is a tombstone: the node was removed at this layer
-            if (snapshots[i].Content.TrieNodes.TryGetValue(key, out byte[]? node))
+            if (snapshots[i].Content.TryGetTrieNode(key, out RefCountingMemory? node))
             {
                 Observe(startTimestamp, _readTrieNodeSnapshotLabel);
-                return RefCountingMemory.WrappingOrNull(node);
+                return node;
             }
         }
 
