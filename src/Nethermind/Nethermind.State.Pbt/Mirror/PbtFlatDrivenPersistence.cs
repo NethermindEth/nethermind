@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Persistence;
@@ -23,7 +24,12 @@ namespace Nethermind.State.Pbt.Mirror;
 /// splits the pointers for good; recovery is a re-import (see <see cref="IPbtConfig.MirrorFlat"/>).
 /// </para>
 /// </remarks>
-public class PbtFlatDrivenPersistence(IPersistence inner, PbtDbManager pbtManager, IPbtPersistence pbtPersistence) : IPersistence
+/// <param name="pbtManager">
+/// Resolved on first write rather than on construction: the flat backend decides whether it is even
+/// active by reading this persistence, and the manager's graph reaches the block tree, which needs
+/// that decision. Only writes need the manager, and none arrive until long after the decision.
+/// </param>
+public class PbtFlatDrivenPersistence(IPersistence inner, Lazy<PbtDbManager> pbtManager, IPbtPersistence pbtPersistence) : IPersistence
 {
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
 
@@ -31,7 +37,7 @@ public class PbtFlatDrivenPersistence(IPersistence inner, PbtDbManager pbtManage
     {
         // Writes PBT does not have a chain for — sync, import, the sentinel ids — are a no-op there,
         // which is what keeps this harmless outside block processing.
-        if (TryToPbtStateId(in to, out StateId seed)) pbtManager.PersistUpTo(seed);
+        if (TryToPbtStateId(in to, out StateId seed)) pbtManager.Value.PersistUpTo(seed);
 
         return inner.CreateWriteBatch(in from, in to, flags);
     }

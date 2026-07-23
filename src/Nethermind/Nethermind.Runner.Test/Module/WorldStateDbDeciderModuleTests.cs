@@ -13,7 +13,10 @@ using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Pbt;
+using Nethermind.State.Pbt.Mirror;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -97,6 +100,24 @@ public class WorldStateDbDeciderModuleTests
         Assert.That(container.Resolve<IStateBoundary>().BestPersistedState, Is.EqualTo(expected));
         // IStateBoundary is injected into BlockTree's constructor; resolving the tree proves the
         // graph stays cycle-free (the full IWorldStateManager graph would resolve the tree back).
+        Assert.DoesNotThrow(() => container.Resolve<IBlockTree>());
+    }
+
+    /// <remarks>
+    /// Mirroring pbt decorates the flat <see cref="IPersistence"/>, which the policy reads to pick a
+    /// backend, so anything the decorator resolves eagerly is resolved mid-decision — and pbt's manager
+    /// reaches the block tree, which needs the decision. A regression recurses until the stack runs out.
+    /// </remarks>
+    [Test]
+    public void MirroringPbt_LeavesTheBackendDecisionCycleFree()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new PbtMirrorModule(new PbtConfig { Enabled = true, MirrorFlat = true }))
+            .Intercept<IFlatDbConfig>((cfg) => cfg.Enabled = true)
+            .Build();
+
+        Assert.DoesNotThrow(() => container.Resolve<IWorldStateManager>());
         Assert.DoesNotThrow(() => container.Resolve<IBlockTree>());
     }
 
