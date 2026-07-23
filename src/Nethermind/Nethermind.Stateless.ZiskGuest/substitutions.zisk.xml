@@ -3,119 +3,26 @@
   SPDX-License-Identifier: LGPL-3.0-only
 
   ILLink.Substitutions for the ZisK guest build (passed to bflat via -\-substitution).
-  The guest is single-threaded and targets rv64ima (no FPU), so the thread-pool
-  tuning machinery below is unreachable at runtime; these substitutions let ILC
-  prove that statically and trim the floating-point code it carries.
--->
-<!--
-  NOTE: the universal single-threaded-zkVM substitutions (thread-pool hill
-  climbing, gate thread, ProcessorIdCache, ArrayPool memory pressure) moved
-  into bflat itself (zisk.substitutions.xml, applied automatically for
-  -\-libc zisk). This file only carries decisions specific to this guest.
+
+  NOTE: the universal floating-point-elimination substitutions (thread-pool,
+  formatting, Double/Single conversions, primitive widening, timezone math,
+  reflection constant readers, ...) now live inside bflat itself
+  (zisk.substitutions.xml, applied automatically for -\-libc zisk). This file
+  only carries decisions specific to THIS guest.
 -->
 <linker>
   <assembly fullname="System.Private.CoreLib">
-    <!-- Widening copies between different primitive element types (int[] to
-         long[], float[] to double[], ...) carry FP convert instructions. The
-         guest only ever copies same-typed arrays; body="remove" turns the
-         method into a throw, so an unexpected widening copy fails loudly
-         instead of silently doing nothing. -->
-    <type fullname="System.Array">
-      <method signature="System.Void CopyImplPrimitiveWiden(System.Array,System.Int32,System.Array,System.Int32,System.Int32)" body="remove" />
-    </type>
-
-    <!-- Reflection-free invoke helper that widens primitive arguments (used by
-         Array.SetValue and friends); same rationale and same loud-failure
-         policy as CopyImplPrimitiveWiden. -->
-    <type fullname="System.InvokeUtils">
-      <method signature="System.Exception ConvertOrWidenPrimitivesEnumsAndPointersIfPossible(System.Object,Internal.Runtime.MethodTable*,System.InvokeUtils/CheckArgumentSemantics,System.Object&amp;)" body="remove" />
-    </type>
-
-    <!-- The core float-to-string formatter (Dragon4/Grisu3 double math). The
-         deterministic guest has no business printing floating-point values;
-         throwing here both trims the formatting cluster and surfaces any
-         accidental double.ToString() on a hot path. -->
-    <type fullname="System.Number">
-      <method signature="System.String FormatFloat`2(System.Collections.Generic.ValueListBuilder`1&lt;&gt;&amp;,,System.ReadOnlySpan`1&lt;System.Char&gt;,System.Globalization.NumberFormatInfo)" body="remove" />
-    </type>
-
-    <!-- Timezone transition math (double-based date arithmetic). The guest is
-         UTC-only (System.TimeZoneInfo.Invariant is set by bflat for zisk), but
-         these members stay reachable through the custom-timezone API surface;
-         cut them explicitly. -->
-    <type fullname="System.TimeZoneInfo">
-      <method signature="System.DateTime TransitionTimeToDateTime(System.Int32,System.TimeZoneInfo/TransitionTime)" body="remove" />
-      <!-- The +/-14h offset validation inlines TimeSpan.FromHours (NaN check,
-           fmul, fcvt) into the TimeZoneInfo cctor - the last FP there. This
-           guest only ever constructs the UTC zone (offset 0), for which
-           "in range" is the exact answer, so the check folds to false. -->
-      <method signature="System.Boolean UtcOffsetOutOfRange(System.TimeSpan)" body="stub" value="false" />
-    </type>
-    <type fullname="System.TimeZoneInfo/AdjustmentRule">
-      <method signature="System.Boolean get_HasDaylightSaving()" body="stub" value="false" />
-      <method signature="System.Void ValidateAdjustmentRule(System.DateTime,System.DateTime,System.TimeSpan,System.TimeZoneInfo/TransitionTime,System.TimeZoneInfo/TransitionTime,System.Boolean)" body="stub" />
-    </type>
-
-    <!-- Convert.ChangeType is the string-to-typed-value chokepoint of Nethermind's
-         config binder (ConfigSourceHelper) - the only ChangeType caller in the
-         closure. The guest constructs its config objects directly and never binds
-         from strings, yet reachability of these two overloads compiles the whole
-         IConvertible conversion matrix for Double/Single (Convert.ToInt32(double)
-         rounding math and friends). Throwing bodies keep the failure loud if a
-         string-bound config path ever appears in the guest. -->
+    <!-- Convert.ChangeType is the string-to-typed-value chokepoint of
+         Nethermind's config binder (ConfigSourceHelper) - the only ChangeType
+         caller in the closure. The guest constructs its config objects directly
+         and never binds from strings, yet reachability of these two overloads
+         compiles the whole IConvertible conversion matrix. Throwing bodies keep
+         the failure loud if a string-bound config path ever appears. This is a
+         guest policy (ChangeType is legitimate on the target for non-float
+         conversions), so it stays here rather than in the bflat built-in set. -->
     <type fullname="System.Convert">
       <method signature="System.Object ChangeType(System.Object,System.Type)" body="remove" />
       <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
-      <method signature="System.Int32 ToInt32(System.Double)" body="remove" />
-    </type>
-
-    <!-- Boxed Double/Single keep their virtual/interface slots alive: the
-         IConvertible implementations carry fcvt rounding math, and the
-         ToString/TryFormat overrides already throw transitively at runtime
-         (their core, Number.FormatFloat, is substituted with a throwing body
-         above) - removing them here just moves the throw one frame up and
-         drops the remaining F/D instructions from the image. -->
-    <type fullname="System.Double">
-      <method signature="System.Int16 System.IConvertible.ToInt16(System.IFormatProvider)" body="remove" />
-      <method signature="System.Int32 System.IConvertible.ToInt32(System.IFormatProvider)" body="remove" />
-      <method signature="System.String ToString()" body="remove" />
-      <method signature="System.String ToString(System.String)" body="remove" />
-      <method signature="System.String ToString(System.IFormatProvider)" body="remove" />
-      <method signature="System.String ToString(System.String,System.IFormatProvider)" body="remove" />
-      <method signature="System.Boolean TryFormat(System.Span`1&lt;System.Char&gt;,System.Int32&amp;,System.ReadOnlySpan`1&lt;System.Char&gt;,System.IFormatProvider)" body="remove" />
-      <method signature="System.Int32 CompareTo(System.Double)" body="remove" />
-      <method signature="System.Int32 CompareTo(System.Object)" body="remove" />
-      <method signature="System.Boolean Equals(System.Double)" body="remove" />
-      <method signature="System.Boolean Equals(System.Object)" body="remove" />
-    </type>
-    <type fullname="System.Single">
-      <method signature="System.Int16 System.IConvertible.ToInt16(System.IFormatProvider)" body="remove" />
-      <method signature="System.Int32 System.IConvertible.ToInt32(System.IFormatProvider)" body="remove" />
-      <method signature="System.String ToString()" body="remove" />
-      <method signature="System.String ToString(System.String)" body="remove" />
-      <method signature="System.String ToString(System.IFormatProvider)" body="remove" />
-      <method signature="System.String ToString(System.String,System.IFormatProvider)" body="remove" />
-      <method signature="System.Boolean TryFormat(System.Span`1&lt;System.Char&gt;,System.Int32&amp;,System.ReadOnlySpan`1&lt;System.Char&gt;,System.IFormatProvider)" body="remove" />
-      <method signature="System.Int32 CompareTo(System.Single)" body="remove" />
-      <method signature="System.Int32 CompareTo(System.Object)" body="remove" />
-      <method signature="System.Boolean Equals(System.Single)" body="remove" />
-      <method signature="System.Boolean Equals(System.Object)" body="remove" />
-    </type>
-
-    <!-- Reads boxed constant values (including float/double literals) out of
-         reflection metadata - e.g. ParameterInfo.DefaultValue. The guest never
-         inspects default parameter values; carries fld/fcvt for the FP cases. -->
-    <type fullname="System.Reflection.Runtime.General.NativeFormatMetadataReaderExtensions">
-      <method signature="System.Object ParseConstantNumericValue(Internal.Metadata.NativeFormat.Handle,Internal.Metadata.NativeFormat.MetadataReader)" body="remove" />
-      <method signature="System.Single[] ToArray(Internal.Metadata.NativeFormat.SingleCollection)" body="remove" />
-      <method signature="System.Double[] ToArray(Internal.Metadata.NativeFormat.DoubleCollection)" body="remove" />
-    </type>
-
-    <!-- Math.Truncate(double) survives only as a cold dependency of the
-         TimeSpan.FromHours rounding chain, which this guest never executes
-         (verified by a full block run); a stray call fails loudly. -->
-    <type fullname="System.Math">
-      <method signature="System.Double Truncate(System.Double)" body="remove" />
     </type>
   </assembly>
 </linker>
