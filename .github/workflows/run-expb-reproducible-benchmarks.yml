@@ -261,7 +261,7 @@ jobs:
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
-            run_count="1"
+            run_count="3"
             dottrace="false"
             trace_blocks=""
             client_env=""
@@ -278,7 +278,7 @@ jobs:
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
-            run_count="1"
+            run_count="3"
             dottrace="false"
             trace_blocks=""
             client_env=""
@@ -585,16 +585,6 @@ jobs:
           echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
           echo "Scenario name: ${SCENARIO_NAME}"
-
-      - name: Restore cached master metrics
-        id: restore-master-metrics
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v4
-        with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v3-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -1018,21 +1008,6 @@ jobs:
           path: ${{ steps.analyze.outputs.metrics_file }}
           retention-days: 30
 
-      - name: Prepare master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}"
-          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}/master-metrics.env"
-
-      - name: Save master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.run_id }}
-
       - name: Enforce run quality gates
         if: always()
         shell: bash
@@ -1134,9 +1109,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v3-superblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-superblocks-
+            expb-master-metrics-v4-superblocks-
 
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
@@ -1144,9 +1119,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v3-realblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-realblocks-
+            expb-master-metrics-v4-realblocks-
 
       - name: Restore master metrics (fusaka)
         id: restore-master-fusaka
@@ -1167,6 +1142,7 @@ jobs:
           MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
           MASTER_FUSAKA: /tmp/expb-master-metrics-cache-fusaka/master-metrics.env
           PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
@@ -1177,6 +1153,30 @@ jobs:
           marker="<!-- expb-reproducible-benchmark-report -->"
           comment_file="${RUNNER_TEMP}/expb-pr-comment.md"
           : > "${comment_file}"
+          run_count="${RUN_COUNT:-1}"
+
+          # Mean of each stat across run metric files; RUNS records how many runs contributed.
+          aggregate_runs() {
+            local out="$1"
+            shift
+            local files=("$@")
+            local prefix key values f v mean
+            : > "${out}"
+            for prefix in "" "TTFB_"; do
+              for key in COUNT AVG MEDIAN P90 P95 P99 MIN MAX; do
+                values=""
+                for f in "${files[@]}"; do
+                  v=$(grep -E "^${prefix}${key}=" "${f}" | head -n 1 | cut -d'=' -f2- || true)
+                  if [[ -n "${v}" ]]; then values+="${v} "; fi
+                done
+                if [[ -n "${values}" ]]; then
+                  mean=$(echo "${values}" | tr ' ' '\n' | awk 'NF {sum += $1; n++} END {printf "%.2f", sum/n}')
+                  echo "${prefix}${key}=${mean}" >> "${out}"
+                fi
+              done
+            done
+            echo "RUNS=${#files[@]}" >> "${out}"
+          }
 
           load_metric() {
             local file="$1"
@@ -1225,7 +1225,7 @@ jobs:
             local metrics=("AVG" "MEDIAN" "P90" "P95" "P99" "MIN" "MAX")
 
             if [[ ! -f "${master_metrics}" ]] || ! grep -q "^${prefix}AVG=" "${master_metrics}" 2>/dev/null; then
-              append_line "| Metric | PR |"
+              append_line "| Metric | ${PR_COL} |"
               append_line "|---|---:|"
               for m in "${metrics[@]}"; do
                 local val
@@ -1236,7 +1236,7 @@ jobs:
               return
             fi
 
-            append_line "| Metric | PR | Master (cached) | Delta |"
+            append_line "| Metric | ${PR_COL} | ${MASTER_COL} | Delta |"
             append_line "|---|---:|---:|---:|"
             for m in "${metrics[@]}"; do
               local cv mv
@@ -1265,6 +1265,18 @@ jobs:
 
             append_line "Scenario: \`${scenario_name}\`"
 
+            local pr_runs master_runs
+            pr_runs="$(load_metric "${current_metrics}" "RUNS")"
+            master_runs="$(load_metric "${master_metrics}" "RUNS")"
+            PR_COL="PR"
+            if [[ -n "${pr_runs}" && "${pr_runs}" -gt 1 ]]; then
+              PR_COL="PR (mean of ${pr_runs} runs)"
+            fi
+            MASTER_COL="Master (cached)"
+            if [[ -n "${master_runs}" && "${master_runs}" -gt 1 ]]; then
+              MASTER_COL="Master (cached, mean of ${master_runs} runs)"
+            fi
+
             if [[ ! -f "${master_metrics}" ]]; then
               append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
             fi
@@ -1276,6 +1288,26 @@ jobs:
             fi
             append_blank
             emit_metrics_section "Processing" "${current_metrics}" "${master_metrics}" ""
+
+            # Per-run breakdown behind the mean-of-runs comparison table
+            if [[ "${run_count}" -gt 1 ]]; then
+              append_blank
+              append_line "<details><summary>Per-run breakdown</summary>"
+              append_blank
+              append_line "| Run | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) |"
+              append_line "|---:|---:|---:|---:|---:|---:|---:|---:|"
+              local r rf
+              for (( r=1; r<=run_count; r++ )); do
+                rf="${METRICS_DIR}/expb-single-metrics-${payload_set}-run${r}/expb-metrics.env"
+                if [[ ! -f "${rf}" ]]; then
+                  append_line "| ${r} | - | - | - | - | - | - | - |"
+                  continue
+                fi
+                append_line "| ${r} | $(load_metric "${rf}" "AVG") | $(load_metric "${rf}" "MEDIAN") | $(load_metric "${rf}" "P90") | $(load_metric "${rf}" "P95") | $(load_metric "${rf}" "P99") | $(load_metric "${rf}" "MIN") | $(load_metric "${rf}" "MAX") |"
+              done
+              append_blank
+              append_line "</details>"
+            fi
 
             # Secondary: K6 TTFB metrics (only shown when SSE data was primary)
             if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
@@ -1297,8 +1329,20 @@ jobs:
           mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
 
           for ps in "${payload_sets[@]}"; do
-            # Find the PR metrics artifact (run 1 by default)
-            current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+            # Aggregate PR metrics across all runs (mean per stat)
+            run_files=()
+            for (( r=1; r<=run_count; r++ )); do
+              f="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              [[ -f "${f}" ]] && run_files+=("${f}")
+            done
+
+            current_metrics="${RUNNER_TEMP}/expb-pr-metrics-${ps}.env"
+            if [[ "${#run_files[@]}" -gt 0 ]]; then
+              aggregate_runs "${current_metrics}" "${run_files[@]}"
+            else
+              # Leave the file absent so build_table reports missing metrics
+              rm -f "${current_metrics}"
+            fi
 
             # Master metrics from cache
             case "${ps}" in
@@ -1353,6 +1397,92 @@ jobs:
                 body,
               });
             }
+
+  # ---------------------------------------------------------------------------
+  # Master baseline: aggregate all runs (mean per metric) and cache for PR comparisons.
+  # Runs only when every benchmark job passed its quality gates (implicit success()).
+  # ---------------------------------------------------------------------------
+
+  save-master-baseline:
+    needs: [resolve, benchmark]
+    if: github.event_name == 'push' && github.ref_name == 'master' && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all metrics artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/all-metrics
+          pattern: expb-single-metrics-*
+
+      - name: Aggregate runs into master baseline
+        id: aggregate
+        shell: bash
+        env:
+          METRICS_DIR: ${{ runner.temp }}/all-metrics
+          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+        run: |
+          set -euo pipefail
+          run_count="${RUN_COUNT:-1}"
+
+          # Mean of each stat across run metric files; RUNS records how many runs contributed.
+          aggregate_runs() {
+            local out="$1"
+            shift
+            local files=("$@")
+            local prefix key values f v mean
+            : > "${out}"
+            for prefix in "" "TTFB_"; do
+              for key in COUNT AVG MEDIAN P90 P95 P99 MIN MAX; do
+                values=""
+                for f in "${files[@]}"; do
+                  v=$(grep -E "^${prefix}${key}=" "${f}" | head -n 1 | cut -d'=' -f2- || true)
+                  if [[ -n "${v}" ]]; then values+="${v} "; fi
+                done
+                if [[ -n "${values}" ]]; then
+                  mean=$(echo "${values}" | tr ' ' '\n' | awk 'NF {sum += $1; n++} END {printf "%.2f", sum/n}')
+                  echo "${prefix}${key}=${mean}" >> "${out}"
+                fi
+              done
+            done
+            echo "RUNS=${#files[@]}" >> "${out}"
+          }
+
+          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+
+          for ps in "${payload_sets[@]}"; do
+            run_files=()
+            for (( r=1; r<=run_count; r++ )); do
+              f="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              [[ -f "${f}" ]] && run_files+=("${f}")
+            done
+
+            if [[ "${#run_files[@]}" -eq 0 ]]; then
+              echo "No metrics found for '${ps}'; skipping baseline update."
+              echo "save_${ps}=false" >> "${GITHUB_OUTPUT}"
+              continue
+            fi
+
+            mkdir -p "/tmp/expb-master-metrics-cache-${ps}"
+            aggregate_runs "/tmp/expb-master-metrics-cache-${ps}/master-metrics.env" "${run_files[@]}"
+            echo "Baseline for '${ps}' (mean of ${#run_files[@]} run(s)):"
+            cat "/tmp/expb-master-metrics-cache-${ps}/master-metrics.env"
+            echo "save_${ps}=true" >> "${GITHUB_OUTPUT}"
+          done
+
+      - name: Save master metrics cache (superblocks)
+        if: steps.aggregate.outputs.save_superblocks == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-superblocks
+          key: expb-master-metrics-v4-superblocks-${{ github.run_id }}
+
+      - name: Save master metrics cache (realblocks)
+        if: steps.aggregate.outputs.save_realblocks == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-realblocks
+          key: expb-master-metrics-v4-realblocks-${{ github.run_id }}
 
   # ---------------------------------------------------------------------------
   # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
