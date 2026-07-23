@@ -106,4 +106,19 @@ public class AuRaTerminalBlockDisposerTests
 
         _auRaFinalizationManager.DidNotReceive().Dispose();
     }
+
+    [Test]
+    public void Disposes_aura_manager_when_head_becomes_post_merge_without_terminal_block_event()
+    {
+        SetHead(postMerge: false);
+        Block postMergeHead = Build.A.Block.WithNumber(30_000_000UL).TestObject;
+        _poSSwitcher.IsPostMerge(postMergeHead.Header).Returns(true);
+
+        AuRaTerminalBlockDisposer _ = new(_auRaFinalizationManager, _poSSwitcher, _blockTree);
+
+        _blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(postMergeHead));
+        _poSSwitcher.TerminalBlockReached += Raise.Event();
+
+        _auRaFinalizationManager.Received(1).Dispose();
+    }
 }

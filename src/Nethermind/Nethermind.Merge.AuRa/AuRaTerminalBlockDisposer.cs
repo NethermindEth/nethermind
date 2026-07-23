@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.AuRa;
 
@@ -22,6 +23,7 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
 {
     private readonly IAuRaBlockFinalizationManager _auRaBlockFinalizationManager;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IBlockTree _blockTree;
     private bool _disposed;
 
     public AuRaTerminalBlockDisposer(
@@ -31,23 +33,27 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
     {
         _auRaBlockFinalizationManager = auRaBlockFinalizationManager;
         _poSSwitcher = poSSwitcher;
+        _blockTree = blockTree;
 
         if (poSSwitcher.IsHeadPostMerge(blockTree))
         {
-            _disposed = true;
-            _auRaBlockFinalizationManager.Dispose();
+            Dispose();
         }
         else
         {
             _poSSwitcher.TerminalBlockReached += OnTerminalBlock;
+            _blockTree.NewHeadBlock += OnNewHeadBlock;
         }
     }
 
-    private void OnTerminalBlock(object? sender, EventArgs e)
+    private void OnTerminalBlock(object? sender, EventArgs e) => Dispose();
+
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
-        _disposed = true;
-        _poSSwitcher.TerminalBlockReached -= OnTerminalBlock;
-        _auRaBlockFinalizationManager.Dispose();
+        if (_poSSwitcher.IsPostMerge(e.Block.Header))
+        {
+            Dispose();
+        }
     }
 
     public void Dispose()
@@ -55,6 +61,7 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
         if (_disposed) return;
         _disposed = true;
         _poSSwitcher.TerminalBlockReached -= OnTerminalBlock;
+        _blockTree.NewHeadBlock -= OnNewHeadBlock;
         _auRaBlockFinalizationManager.Dispose();
     }
 }
