@@ -141,8 +141,9 @@ public class AuRaTerminalBlockDisposerTests
         AuRaTerminalBlockDisposer _ = CreateDisposer();
 
         _branchProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(postMergeBlock));
-        _poSSwitcher.TerminalBlockReached += Raise.Event();
+        _auRaFinalizationManager.Received(1).Dispose();
 
+        _poSSwitcher.TerminalBlockReached += Raise.Event();
         _auRaFinalizationManager.Received(1).Dispose();
     }
 
