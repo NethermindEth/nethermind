@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
@@ -159,6 +160,106 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         Assert.That(result, Is.EqualTo(dbRlp));
         reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void GetCommittedStateNodeRlp_ServesPersistedSnapshotBytes_OnlyWhenHashMatches(bool hashMatches)
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        TreePath path = new(Keccak.Compute("path"), 4);
+        byte[] persistedRlp = [0xC2, 0x80, 0x80];
+        byte[] dbRlp = [0xC1, 0x80];
+
+        SnapshotContent content = new();
+        content.StateNodes[path] = new TrieNode(NodeType.Leaf, persistedRlp);
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
+
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
+        PersistedSnapshotList list = new(1) { persisted };
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(hashMatches ? (byte[]?)null : dbRlp);
+
+        using ReadOnlySnapshotBundle bundle = new(
+            new SnapshotPooledList(0),
+            reader,
+            recordDetailedMetrics: false,
+            persistedSnapshots: AlwaysTrueStack(list));
+
+        byte[] expected = hashMatches ? persistedRlp : dbRlp;
+        CappedArray<byte> result = bundle.GetCommittedStateNodeRlp(path, ValueKeccak.Compute(expected));
+
+        Assert.That(result.AsSpan().SequenceEqual(expected), Is.True);
+        reader.Received(hashMatches ? 0 : 1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void GetCommittedStorageNodeRlp_ServesPersistedSnapshotBytes_OnlyWhenHashMatches(bool hashMatches)
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        Hash256 address = Keccak.Compute("address");
+        TreePath path = new(Keccak.Compute("path"), 6);
+        byte[] persistedRlp = [0xC2, 0x80, 0x80];
+        byte[] dbRlp = [0xC1, 0x80];
+
+        SnapshotContent content = new();
+        content.StorageNodes[(address, path)] = new TrieNode(NodeType.Branch, persistedRlp);
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
+
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
+        PersistedSnapshotList list = new(1) { persisted };
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(hashMatches ? (byte[]?)null : dbRlp);
+
+        using ReadOnlySnapshotBundle bundle = new(
+            new SnapshotPooledList(0),
+            reader,
+            recordDetailedMetrics: false,
+            persistedSnapshots: AlwaysTrueStack(list));
+
+        byte[] expected = hashMatches ? persistedRlp : dbRlp;
+        CappedArray<byte> result = bundle.GetCommittedStorageNodeRlp(address, (address, path), ValueKeccak.Compute(expected));
+
+        Assert.That(result.AsSpan().SequenceEqual(expected), Is.True);
+        reader.Received(hashMatches ? 0 : 1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
+    }
+
+    [Test]
+    public void GetCommittedStateNodeRlp_ZeroHashRequest_DoesNotMatchUnresolvedSnapshotNode()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        TreePath path = new(Keccak.Compute("path"), 4);
+
+        SnapshotContent content = new();
+        // Constructed from RLP without key resolution, so the node's Keccak is null; the
+        // Hash256?/ValueHash256 == operator would equate that with a zero-hash request.
+        content.StateNodes[path] = new TrieNode(NodeType.Leaf, (byte[])[0xC2, 0x80, 0x80]);
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        SnapshotPooledList snapshots = new(1) { snap };
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
+
+        using ReadOnlySnapshotBundle bundle = new(
+            snapshots,
+            reader,
+            recordDetailedMetrics: false,
+            persistedSnapshots: PersistedSnapshotStack.Empty());
+
+        CappedArray<byte> result = bundle.GetCommittedStateNodeRlp(path, default);
+
+        Assert.That(result.IsNull, Is.True);
     }
 
     // Each test snapshot is constructed without a bloom, so it carries the AlwaysTrue

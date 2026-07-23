@@ -96,6 +96,25 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return false;
     }
 
+    /// <inheritdoc/>
+    public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
+        int bucketIdx = hashCode & _bucketMask;
+
+        TrieNode? maybeNode = _cacheShards[shardIdx][bucketIdx];
+        // Explicit null-Keccak rejection: the Hash256?/ValueHash256 == operator treats a null
+        // Keccak as equal to a zero hash, which must not match any request.
+        if (maybeNode is not null && maybeNode.Keccak is { } keccak && keccak.ValueHash256 == hash)
+        {
+            node = maybeNode;
+            return true;
+        }
+
+        node = null;
+        return false;
+    }
+
     public void Add(TransientResource transientResource)
     {
         if (_maxCacheMemoryThreshold == 0)
@@ -251,6 +270,32 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
             TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
             if (maybeNode is null || maybeNode.Keccak != hash)
+            {
+                node = null;
+                return false;
+            }
+
+            node = maybeNode;
+            return true;
+        }
+
+        /// <summary>Allocation-free variant for hash-per-request callers.</summary>
+        public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        {
+            (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
+            int idx = hashCode & _mask;
+            (int hashCode, TrieNode? node) entry = _shards[shardIdx][idx]; // Copy struct once
+
+            if (entry.hashCode != hashCode)
+            {
+                node = null;
+                return false;
+            }
+
+            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
+            // Explicit null-Keccak rejection: the Hash256?/ValueHash256 == operator treats a null
+            // Keccak as equal to a zero hash, which must not match any request.
+            if (maybeNode is null || maybeNode.Keccak is not { } keccak || keccak.ValueHash256 != hash)
             {
                 node = null;
                 return false;

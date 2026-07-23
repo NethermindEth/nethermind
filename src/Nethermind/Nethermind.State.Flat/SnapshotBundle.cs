@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -283,6 +284,72 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
+    }
+
+    /// <summary>
+    /// Committed-only, hash-validated node RLP for the sparse trie reader. Never observes
+    /// current-scope dirty nodes; an in-memory path match carrying a different hash is a newer
+    /// version and the search continues into older tiers.
+    /// </summary>
+    /// <returns>The node RLP, or <see cref="CappedArray{T}.Null"/> when the node is missing.</returns>
+    /// <exception cref="NodeHashMismatchException">Base persistence held different bytes at the path.</exception>
+    internal CappedArray<byte> GetCommittedStateNodeRlp(in TreePath path, in ValueHash256 hash)
+    {
+        GuardDispose();
+
+        if (_transientResource.TryGetStateNode(in path, in hash, out TrieNode? node))
+        {
+            CappedArray<byte> rlp = node.FullRlp;
+            if (rlp.IsNotNull) return rlp;
+        }
+
+        if (_trieNodeCache.TryGet(null, in path, in hash, out node))
+        {
+            CappedArray<byte> rlp = node.FullRlp;
+            if (rlp.IsNotNull) return rlp;
+        }
+
+        HashedKey<TreePath> key = new(path);
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStateNode(key, out node) && node.Keccak is { } keccak && keccak.ValueHash256 == hash)
+            {
+                CappedArray<byte> rlp = node.FullRlp;
+                if (rlp.IsNotNull) return rlp;
+            }
+        }
+
+        return _readOnlySnapshotBundle.GetCommittedStateNodeRlp(key, in hash);
+    }
+
+    /// <inheritdoc cref="GetCommittedStateNodeRlp"/>
+    internal CappedArray<byte> GetCommittedStorageNodeRlp(Hash256 address, in TreePath path, in ValueHash256 hash)
+    {
+        GuardDispose();
+
+        if (_transientResource.TryGetStorageNode((Hash256AsKey)address, in path, in hash, out TrieNode? node))
+        {
+            CappedArray<byte> rlp = node.FullRlp;
+            if (rlp.IsNotNull) return rlp;
+        }
+
+        if (_trieNodeCache.TryGet(address, in path, in hash, out node))
+        {
+            CappedArray<byte> rlp = node.FullRlp;
+            if (rlp.IsNotNull) return rlp;
+        }
+
+        HashedKey<(Hash256, TreePath)> key = new((address, path));
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorageNode(key, out node) && node.Keccak is { } keccak && keccak.ValueHash256 == hash)
+            {
+                CappedArray<byte> rlp = node.FullRlp;
+                if (rlp.IsNotNull) return rlp;
+            }
+        }
+
+        return _readOnlySnapshotBundle.GetCommittedStorageNodeRlp(address, key, in hash);
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)

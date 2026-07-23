@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -181,6 +182,84 @@ public sealed class ReadOnlySnapshotBundle(
 
         node = null;
         return false;
+    }
+
+    /// <summary>
+    /// Committed node RLP by expected hash: snapshots newest to oldest (continuing past path
+    /// matches carrying another hash), then persisted snapshots and base persistence with the
+    /// loaded bytes keccak-validated.
+    /// </summary>
+    /// <remarks>
+    /// The bundle is a consistent cut at scope creation, so the newest visible version at a path
+    /// is the committed-parent version; only the newest persisted-snapshot path hit is probed
+    /// because an older persisted version can never be the requested node — a keccak mismatch
+    /// there indicates corruption and falls to base persistence, which fails loud.
+    /// </remarks>
+    /// <returns>The node RLP, or <see cref="CappedArray{T}.Null"/> when missing.</returns>
+    /// <exception cref="NodeHashMismatchException">Base persistence held different bytes at the path.</exception>
+    internal CappedArray<byte> GetCommittedStateNodeRlp(HashedKey<TreePath> key, in ValueHash256 hash)
+    {
+        GuardDispose();
+
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryGetStateNode(key, out TrieNode? node) && node.Keccak is { } keccak && keccak.ValueHash256 == hash)
+            {
+                CappedArray<byte> nodeRlp = node.FullRlp;
+                if (nodeRlp.IsNotNull) return nodeRlp;
+            }
+        }
+
+        TreePath statePath = key.Key;
+        if (_persistedSnapshotCount > 0
+            && persistedSnapshots.TryLoadStateRlp(in statePath, out byte[]? persistedRlp)
+            && ValueKeccak.Compute(persistedRlp) == hash)
+        {
+            return persistedRlp;
+        }
+
+        byte[]? rlp = persistenceReader.TryLoadStateRlp(statePath, ReadFlags.None);
+        if (rlp is null)
+        {
+            return CappedArray<byte>.Null;
+        }
+
+        return ValueKeccak.Compute(rlp) == hash
+            ? rlp
+            : throw new NodeHashMismatchException($"State node at {statePath} does not hash to the expected {hash}");
+    }
+
+    /// <inheritdoc cref="GetCommittedStateNodeRlp"/>
+    internal CappedArray<byte> GetCommittedStorageNodeRlp(Hash256 address, HashedKey<(Hash256, TreePath)> key, in ValueHash256 hash)
+    {
+        GuardDispose();
+
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryGetStorageNode(key, out TrieNode? node) && node.Keccak is { } keccak && keccak.ValueHash256 == hash)
+            {
+                CappedArray<byte> nodeRlp = node.FullRlp;
+                if (nodeRlp.IsNotNull) return nodeRlp;
+            }
+        }
+
+        TreePath path = key.Key.Item2;
+        if (_persistedSnapshotCount > 0
+            && persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp)
+            && ValueKeccak.Compute(persistedRlp) == hash)
+        {
+            return persistedRlp;
+        }
+
+        byte[]? rlp = persistenceReader.TryLoadStorageRlp(address, path, ReadFlags.None);
+        if (rlp is null)
+        {
+            return CappedArray<byte>.Null;
+        }
+
+        return ValueKeccak.Compute(rlp) == hash
+            ? rlp
+            : throw new NodeHashMismatchException($"Storage node of {address} at {path} does not hash to the expected {hash}");
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
