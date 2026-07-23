@@ -30,6 +30,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-resolute@sha256:dae546296490fa23d67
 
 WORKDIR /nethermind
 
+ENV MALLOC_CONF=thp:always,metadata_thp:always
+
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
