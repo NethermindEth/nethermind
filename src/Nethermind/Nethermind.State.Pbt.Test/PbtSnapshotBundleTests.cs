@@ -277,6 +277,39 @@ public class PbtSnapshotBundleTests
         Assert.That(recorder.Labels, Does.Contain("code_trie_node_persistence_null"));
     }
 
+    /// <summary>
+    /// An account or slot read that reaches disk times the leaf fetch on its own as well as the whole
+    /// read, so the decode is what the total leaves over the fetch rather than being hidden inside it.
+    /// </summary>
+    [Test]
+    public void AccountAndSlotReadsReachingPersistence_TimeTheLeafFetchWithoutItsDecode()
+    {
+        Seed(_reader, 0x44);
+
+        IMetricObserver original = Metrics.PbtReadOnlySnapshotBundleTimes;
+        LabelRecordingObserver recorder = new();
+        Metrics.PbtReadOnlySnapshotBundleTimes = recorder;
+        try
+        {
+            using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: [], recordDetailedMetrics: true);
+            Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x44));
+            Assert.That(bundle.GetSlot(Address, Slot), Is.EqualTo(Word(0x44)));
+
+            // an account the reader has no blob for is the miss shape, on the fetch as well as the total
+            Assert.That(bundle.GetAccount(TestItem.AddressB), Is.Null);
+        }
+        finally
+        {
+            Metrics.PbtReadOnlySnapshotBundleTimes = original;
+        }
+
+        Assert.That(recorder.Labels, Does.Contain("account_persistence_fetch"));
+        Assert.That(recorder.Labels, Does.Contain("account_persistence"), "the total is still observed alongside the fetch");
+        Assert.That(recorder.Labels, Does.Contain("storage_persistence_fetch"));
+        Assert.That(recorder.Labels, Does.Contain("storage_persistence"));
+        Assert.That(recorder.Labels, Does.Contain("account_persistence_fetch_null"));
+    }
+
     private static Stem ZoneStem(byte firstByte)
     {
         byte[] path = new byte[31];
