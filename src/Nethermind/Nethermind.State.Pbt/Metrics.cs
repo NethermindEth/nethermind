@@ -49,6 +49,11 @@ public static class Metrics
     /// absent value costs a full walk plus a database miss, which is the expensive shape. A trie node
     /// read reaching persistence is split further by the zone partition it is keyed into, the three
     /// columns differing enough in size and write rate to be worth telling apart.
+    /// <para>
+    /// An account or slot read reaching persistence also observes the leaf fetch alone, under a
+    /// <c>_fetch</c> label, from the same start as the total: the two nest rather than partition, so the
+    /// decode is what the total leaves over the fetch.
+    /// </para>
     /// </remarks>
     [DetailedMetric]
     [Description("Time of a read through the pbt read-only snapshot bundle, by tier and result, and by partition for a persisted trie node (Stopwatch ticks)")]

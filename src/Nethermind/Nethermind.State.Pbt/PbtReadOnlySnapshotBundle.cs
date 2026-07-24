@@ -35,9 +35,13 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
     private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
+    private static readonly StringLabel _readAccountPersistenceFetchLabel = new("account_persistence_fetch");
+    private static readonly StringLabel _readAccountPersistenceFetchNullLabel = new("account_persistence_fetch_null");
     private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
     private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
     private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
+    private static readonly StringLabel _readStoragePersistenceFetchLabel = new("storage_persistence_fetch");
+    private static readonly StringLabel _readStoragePersistenceFetchNullLabel = new("storage_persistence_fetch_null");
     private static readonly StringLabel _readLeafBlobSnapshotLabel = new("leaf_blob_snapshot");
     private static readonly StringLabel _readLeafBlobPersistenceLabel = new("leaf_blob_persistence");
     private static readonly StringLabel _readLeafBlobPersistenceNullLabel = new("leaf_blob_persistence_null");
@@ -79,6 +83,7 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
 
         startTimestamp = StartTiming();
         using RefCountingMemory? persisted = reader.GetLeafBlob(stem);
+        Observe(startTimestamp, persisted is null ? _readAccountPersistenceFetchNullLabel : _readAccountPersistenceFetchLabel);
         Account? account = persisted is null ? null : PbtLeafDecoder.DecodeAccount(persisted.GetSpan());
         Observe(startTimestamp, account is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
         return account;
@@ -111,6 +116,7 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
 
         startTimestamp = StartTiming();
         using RefCountingMemory? persisted = reader.GetLeafBlob(stem);
+        Observe(startTimestamp, persisted is null ? _readStoragePersistenceFetchNullLabel : _readStoragePersistenceFetchLabel);
         EvmWord value = persisted is null ? default : PbtLeafDecoder.DecodeSlot(persisted.GetSpan(), subIndex);
         Observe(startTimestamp, EvmWordSlot.IsZero(in value) ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
         return value;
