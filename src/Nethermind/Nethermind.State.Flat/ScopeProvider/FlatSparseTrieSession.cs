@@ -36,9 +36,6 @@ internal sealed class FlatSparseTrieSession : IDisposable
     /// <summary>Below this many storage jobs a serial loop beats the parallel-work dispatch cost.</summary>
     private const int ParallelJobThreshold = 4;
 
-    /// <summary>Smallest measured state batch where root-child sharding wins.</summary>
-    private const int ParallelStateRootThreshold = 2_500;
-
     private static readonly AccountDecoder _accountDecoder = new();
 
     private readonly SnapshotBundle _bundle;
@@ -60,7 +57,6 @@ internal sealed class FlatSparseTrieSession : IDisposable
     private SparseTrie? _stateTrie;
     private Hash256 _rootHash;
     private bool _stateDirty;
-    private int _pendingStateUpdateCount;
     private bool _poisoned;
     private bool _generationExtracted;
 
@@ -194,13 +190,21 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
             if (jobs.Count >= ParallelJobThreshold)
             {
-                ParallelUnbalancedWork.For(0, jobs.Count, i => jobs[i].Tree.ProcessSparseJob(jobs[i]));
+                ParallelUnbalancedWork.For(
+                    0,
+                    jobs.Count,
+                    jobs,
+                    static (i, jobs) =>
+                    {
+                        jobs[i].Tree.ProcessSparseJob(jobs[i], canBeParallel: false);
+                        return jobs;
+                    });
             }
             else
             {
                 for (int i = 0; i < jobs.Count; i++)
                 {
-                    jobs[i].Tree.ProcessSparseJob(jobs[i]);
+                    jobs[i].Tree.ProcessSparseJob(jobs[i], canBeParallel: true);
                 }
             }
         }
@@ -240,7 +244,6 @@ internal sealed class FlatSparseTrieSession : IDisposable
             _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, address: null), _rootHash.ValueHash256, dirtyAccounts.Count);
             _stateTrie.Apply(updates.AsSpan());
             _stateDirty = true;
-            _pendingStateUpdateCount = (int)Math.Min(int.MaxValue, (long)_pendingStateUpdateCount + dirtyAccounts.Count);
         }
         catch
         {
@@ -257,9 +260,8 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
         try
         {
-            _rootHash = _stateTrie!.CalculateRoot(_pendingStateUpdateCount >= ParallelStateRootThreshold).ToCommitment();
+            _rootHash = _stateTrie!.CalculateRoot(canBeParallel: true).ToCommitment();
             _stateDirty = false;
-            _pendingStateUpdateCount = 0;
         }
         catch
         {
