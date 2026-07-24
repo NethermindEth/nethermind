@@ -5,11 +5,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
@@ -77,39 +75,4 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
         _writeBatch.Dispose();
         _reader.Dispose();
     }
-
-    /// <summary>
-    /// Trie store adapter that writes trie nodes AND flat entries to IPersistence.IWriteBatch.
-    /// Uses IPersistenceReader for IsPersisted queries during snap sync.
-    /// </summary>
-    private class PersistenceTrieStoreAdapter(
-        IPersistence.IPersistenceReader reader,
-        IPersistence.IWriteBatch writeBatch,
-        bool enableDoubleWriteCheck) : AbstractMinimalTrieStore
-    {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            new(NodeType.Unknown, hash);
-
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
-
-        public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-            new StateCommitter(writeBatch, reader, enableDoubleWriteCheck);
-
-        private sealed class StateCommitter(IPersistence.IWriteBatch writeBatch, IPersistence.IPersistenceReader reader, bool enableDoubleWriteCheck) : ICommitter
-        {
-            public TrieNode CommitNode(ref TreePath path, TrieNode node)
-            {
-                if (enableDoubleWriteCheck && reader.TryLoadStateRlp(path, ReadFlags.None) != null)
-                {
-                    throw new Exception($"Double state rlp write. {path}");
-                }
-                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
-                return node;
-            }
-
-            public void Dispose() { }
-        }
-    }
-
 }

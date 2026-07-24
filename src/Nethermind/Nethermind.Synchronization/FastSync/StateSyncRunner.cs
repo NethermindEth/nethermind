@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -18,6 +19,8 @@ namespace Nethermind.Synchronization.FastSync;
 
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
+    IBalHealing balHealing,
+    IStateSyncPivot stateSyncPivot,
     TreeSync treeSync,
     SimpleDispatcher<StateSyncBatch> stateSyncDispatcher,
     ISyncConfig syncConfig,
@@ -44,13 +47,18 @@ public class StateSyncRunner(
 
             await StateSyncPrecursorWait(token);
             TuneStateDb(syncConfig.TuneDbMode);
+
             try
             {
                 if (syncConfig.SnapSync)
                 {
-                    if (_logger.IsInfo) _logger.Info("Starting snap sync.");
+                    BlockHeader? firstPivot = stateSyncPivot.GetPivotHeader();
+                    if (_logger.IsInfo) _logger.Info("Starting snap sync. at pivot block " + (stateSyncPivot.GetPivotHeader()?.Number.ToString() ?? "<unknown>"));
                     await snapSyncRunner.Run(token);
-                    if (_logger.IsInfo) _logger.Info("Snap sync completed.");
+                    if (_logger.IsInfo) _logger.Info("Snap sync completed. at pivot block " + (stateSyncPivot.GetPivotHeader()?.Number.ToString() ?? "<unknown>"));
+                        
+                    if (await RunBalHealing(firstPivot, token))
+                        return;
                 }
 
                 await RunStateSyncRounds(token);
@@ -69,6 +77,86 @@ public class StateSyncRunner(
             // Clean shutdown — swallow so Synchronizer doesn't log "State sync failed".
         }
     }
+
+    public async Task<bool> RunBalHealing(BlockHeader? firstPivot, CancellationToken token)
+    {
+        if (firstPivot is null)
+        {
+            if (_logger.IsInfo) _logger.Info("BAL healing skipped - no first pivot available.");
+            return false;
+        }
+
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            Hash256? root = balHealing.Reassemble(stateSyncPivot.UpdatedStorages);
+            if (root is null)
+            {
+                if (_logger.IsError) _logger.Error("BAL healing failed - trie reassembly failed.");
+                return false;
+            }
+
+            BlockHeader currentPivot = firstPivot;
+
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+
+                stateSyncPivot.UpdateHeaderForcefully();
+                BlockHeader? nextPivot = stateSyncPivot.GetPivotHeader();
+                if (nextPivot is null)
+                {
+                    if (_logger.IsInfo) _logger.Info("BAL healing failed - no new pivot available.");
+                    return false;
+                }
+
+                if(currentPivot.Number == nextPivot.Number)
+                {
+
+                    if(stateSyncPivot.CanFinalize(currentPivot))
+                    {
+                        break;
+                    }
+                    await Task.Delay(1000, token);
+                    continue;
+                }
+
+                root = balHealing.ApplyRange(root, currentPivot, nextPivot, token);
+                currentPivot = nextPivot;
+
+                if (root is null)
+                {
+                    return false;
+                }
+            }
+            
+            if(root != currentPivot.StateRoot)
+            {
+                if (_logger.IsError) _logger.Error($"BAL healing failed - produced root {root} does not match pivot state root {currentPivot.StateRoot}.");
+                return false;
+            }
+
+            balHealing.FinalizeSync(currentPivot);
+
+            if (_logger.IsInfo) _logger.Info("BAL healing completed — skipping traditional state sync.");
+
+            if (syncConfig.VerifyTrieOnStateSyncFinished)
+                verifyTrieStarter?.TryStartVerifyTrie(currentPivot);
+
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is a clean shutdown, not a heal failure — let the caller's handler deal with it.
+            throw;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("BAL healing failed", e);
+            return false;
+        }
+    }
+
 
     public async Task RunStateSyncRounds(CancellationToken token)
     {
