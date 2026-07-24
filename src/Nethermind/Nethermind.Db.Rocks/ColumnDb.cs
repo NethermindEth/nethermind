@@ -75,20 +75,20 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
-        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
-        return _mainDb.GetAllCore(iterator);
+        _mainDb.ThrowIfDisposing();
+        return _mainDb.GetAllCore(ordered, _columnFamily);
     }
 
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
     {
-        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
-        return _mainDb.GetAllKeysCore(iterator);
+        _mainDb.ThrowIfDisposing();
+        return _mainDb.GetAllKeysCore(ordered, _columnFamily);
     }
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
-        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
-        return _mainDb.GetAllValuesCore(iterator);
+        _mainDb.ThrowIfDisposing();
+        return _mainDb.GetAllValuesCore(ordered, _columnFamily);
     }
 
     public IWriteBatch StartWriteBatch() => new ColumnsDbWriteBatch(this, (DbOnTheRocks.RocksDbWriteBatch)_mainDb.StartWriteBatch());
