@@ -33,7 +33,6 @@ namespace Nethermind.Facade.Filters
         private readonly FilterStore _filterStore;
         private readonly ILogger _logger;
         private long _logIndex;
-        private long _queuedItems;
 
         public FilterManager(
             FilterStore filterStore,
@@ -50,7 +49,7 @@ namespace Nethermind.Facade.Filters
             mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
             _filterStore.FilterRemoved += OnFilterRemoved;
-            _filterStore.QueuedItemCount = () => Volatile.Read(ref _queuedItems);
+            _filterStore.QueuedItemCount = CountQueuedItems;
             txPool.NewPending += OnNewPendingTransaction;
             txPool.RemovedPending += OnRemovedPendingTransaction;
         }
@@ -58,30 +57,26 @@ namespace Nethermind.Facade.Filters
         private void OnFilterRemoved(object sender, FilterEventArgs e)
         {
             int id = e.FilterId;
-            if (_blockHashes.TryRemove(id, out ConcurrentQueue<Hash256>? blockHashes))
-            {
-                ReleaseQueued(blockHashes.Count);
-                return;
-            }
-
-            if (_logs.TryRemove(id, out ConcurrentQueue<FilterLog>? logs))
-            {
-                ReleaseQueued(logs.Count);
-                return;
-            }
-
-            if (_pendingTransactions.TryRemove(id, out ConcurrentQueue<Option<Hash256>>? pendingTransactions))
-            {
-                ReleaseQueued(pendingTransactions.Count);
-            }
+            if (_blockHashes.TryRemove(id, out _)) return;
+            if (_logs.TryRemove(id, out _)) return;
+            _pendingTransactions.TryRemove(id, out _);
         }
 
-        private void ReleaseQueued(int count)
+        /// <summary>
+        /// Sums the results currently queued across all filters.
+        /// </summary>
+        /// <remarks>
+        /// Computed on demand from the live queues rather than tracked incrementally, so it cannot drift
+        /// under the concurrent enqueue/poll/remove races on these lock-free collections. Called only from
+        /// <see cref="FilterStore.SaveFilter"/> (filter creation), which is rare relative to the store/poll paths.
+        /// </remarks>
+        private long CountQueuedItems()
         {
-            if (count > 0)
-            {
-                Interlocked.Add(ref _queuedItems, -count);
-            }
+            long total = 0;
+            foreach (KeyValuePair<int, ConcurrentQueue<FilterLog>> entry in _logs) total += entry.Value.Count;
+            foreach (KeyValuePair<int, ConcurrentQueue<Hash256>> entry in _blockHashes) total += entry.Value.Count;
+            foreach (KeyValuePair<int, ConcurrentQueue<Option<Hash256>>> entry in _pendingTransactions) total += entry.Value.Count;
+            return total;
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -126,7 +121,6 @@ namespace Nethermind.Facade.Filters
                         {
                             logs ??= _logs.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<FilterLog>());
                             logs.Enqueue(filterLog);
-                            Interlocked.Increment(ref _queuedItems);
                         }
                     }
                 }
@@ -141,7 +135,6 @@ namespace Nethermind.Facade.Filters
                 int filterId = filter.Id;
                 ConcurrentQueue<Option<Hash256>> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new ConcurrentQueue<Option<Hash256>>());
                 transactions.Enqueue(new Option<Hash256>(e.Transaction.Hash));
-                Interlocked.Increment(ref _queuedItems);
                 if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
             }
         }
@@ -201,7 +194,6 @@ namespace Nethermind.Facade.Filters
             {
                 result.Add(hash);
             }
-            ReleaseQueued(result.Count);
             return result.ToArray();
         }
 
@@ -216,7 +208,6 @@ namespace Nethermind.Facade.Filters
             {
                 result.Add(log);
             }
-            ReleaseQueued(result.Count);
             return result.ToArray();
         }
 
@@ -227,16 +218,13 @@ namespace Nethermind.Facade.Filters
                 return [];
 
             using ArrayPoolListRef<Hash256> result = new(pendingTransactions.Count);
-            int dequeued = 0;
             while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
             {
-                dequeued++;
                 if (!option.IsRemoved)
                 {
                     result.Add(option.Value);
                 }
             }
-            ReleaseQueued(dequeued);
             return result.ToArray();
         }
 
@@ -274,7 +262,6 @@ namespace Nethermind.Facade.Filters
 
             ConcurrentQueue<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<Hash256>());
             blocks.Enqueue(block.Hash);
-            Interlocked.Increment(ref _queuedItems);
             if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
@@ -294,7 +281,6 @@ namespace Nethermind.Facade.Filters
                 {
                     logs ??= _logs.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<FilterLog>());
                     logs.Enqueue(filterLog);
-                    Interlocked.Increment(ref _queuedItems);
                 }
             }
 
