@@ -21,7 +21,7 @@ namespace Nethermind.State.Flat;
 public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>
 {
     private const int MaxPooledNodeDictionaries = 1_024;
-    private const int MaxPooledNodeCapacity = 4_096;
+    private const int PooledNodeCapacity = 4_096;
 
     private readonly ConcurrentDictionary<Hash256AsKey, AddressNodes> _byAddress = new();
     private IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>>? _cachedAddressEnumerator;
@@ -136,15 +136,13 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
         public static void Return(AddressNodes nodes)
         {
-            if (nodes.Nodes.Capacity > MaxPooledNodeCapacity) return;
-
             if (Interlocked.Increment(ref _count) > MaxPooledNodeDictionaries)
             {
                 Interlocked.Decrement(ref _count);
                 return;
             }
 
-            nodes.Nodes.Clear();
+            nodes.Nodes.ClearAndTrim(PooledNodeCapacity, PooledNodeCapacity);
             Pool.Enqueue(nodes);
         }
     }

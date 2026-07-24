@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Logging;
 
 namespace Nethermind.Core;
 
@@ -36,12 +37,13 @@ public interface IStatePersistenceBarrier
 }
 
 /// <inheritdoc cref="IStatePersistenceBarrier"/>
-public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
+public sealed class StatePersistenceBarrier(ILogManager? logManager = null) : IStatePersistenceBarrier
 {
     // Copy-on-write: rare startup registration rebuilds the arrays under a lock; FlushDeferred reads lock-free.
     private readonly Lock _registrationLock = new();
     private volatile Action[] _drains = [];
     private volatile Action[] _flushes = [];
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<StatePersistenceBarrier>();
 
     public bool IsEnabled => true;
 
@@ -63,7 +65,19 @@ public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
         for (int i = 0; i < drains.Length; i++) drains[i]();
 
         Action[] flushes = _flushes;
-        for (int i = 0; i < flushes.Length; i++) flushes[i]();
+        for (int i = 0; i < flushes.Length; i++)
+        {
+            try
+            {
+                flushes[i]();
+            }
+            catch (ObjectDisposedException e)
+            {
+                // On shutdown, a flush target's database can already be disposed by the time the trie store
+                // is disposed. The database already flushed itself on Dispose (see DbOnTheRocks' FlushOnExit)
+                if (_logger.IsDebug) _logger.Debug($"Skipped a block-data flush during shutdown: {e.Message}");
+            }
+        }
     }
 
     private static Action[] Append(Action[] existing, Action callback)
