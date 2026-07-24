@@ -87,6 +87,13 @@ public class ImportPbtFromPreimageFlat(
     /// </summary>
     internal int ViewStemChunk { get; init; } = 1_000_000;
 
+    /// <summary>
+    /// Keys <see cref="ClearInterruptedAttempt"/> deletes through one column view and one write batch
+    /// before reopening both. Bounds the same pin <see cref="ViewStemChunk"/> does, on the sweep that
+    /// discards a previous run's debris.
+    /// </summary>
+    internal int ClearKeyChunk { get; init; } = 10_000;
+
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -100,15 +107,21 @@ public class ImportPbtFromPreimageFlat(
             }
         }
 
-        using FlatPersistence.IPersistenceReader reader = flatSource.CreateReader();
-        if (!reader.IsPreimageMode)
+        FlatStateId sourceState;
+        // scoped to the two answers it is opened for: a reader pins a snapshot of every source column,
+        // and the import that follows runs for hours
+        using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
         {
-            if (_logger.IsError) _logger.Error("Source flat database is not in preimage mode; addresses and slots cannot be recovered to build PBT. Aborting.");
-            exitSource.Exit(1);
-            return;
+            if (!reader.IsPreimageMode)
+            {
+                if (_logger.IsError) _logger.Error("Source flat database is not in preimage mode; addresses and slots cannot be recovered to build PBT. Aborting.");
+                exitSource.Exit(1);
+                return;
+            }
+
+            sourceState = reader.CurrentState;
         }
 
-        FlatStateId sourceState = reader.CurrentState;
         if (sourceState == FlatStateId.PreGenesis)
         {
             if (_logger.IsInfo) _logger.Info("Source flat database is empty; nothing to import.");
@@ -144,38 +157,51 @@ public class ImportPbtFromPreimageFlat(
     /// handed, so a rebuild starting from an empty root folds against the stale tree and settles on the
     /// wrong root. Metadata is left alone — it carries the layout version, and its state pointer is
     /// pre-genesis already.
+    /// <para>
+    /// A column is swept in <see cref="ClearKeyChunk"/>-key ranges, each read through a view of its own
+    /// that is closed before the chunk's deletes are committed. The deletes land in the very column the
+    /// view scans, so one view held across the whole sweep would pin a RocksDB superversion for every
+    /// version they replace — the sweep's own tombstones included — and process memory would climb with
+    /// the size of the database being discarded.
+    /// </para>
     /// </remarks>
     private void ClearInterruptedAttempt()
     {
-        // delete in bounded batches; one batch over every key exhausts memory on a large target
-        const int batchSize = 10_000;
-
         long cleared = 0;
-        IColumnsWriteBatch<PbtColumns> batch = pbtDb.StartWriteBatch();
-        try
-        {
-            int count = 0;
-            foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
-            {
-                if (column == PbtColumns.Metadata) continue;
+        byte[] pastEnd = PastEveryKey();
 
-                foreach (byte[] key in pbtDb.GetColumnDb(column).GetAllKeys())
-                {
-                    batch.GetColumnBatch(column).Remove(key);
-                    cleared++;
-                    if (++count == batchSize)
-                    {
-                        IColumnsWriteBatch<PbtColumns> next = pbtDb.StartWriteBatch();
-                        batch.Dispose(); // commit the chunk
-                        batch = next;
-                        count = 0;
-                    }
-                }
-            }
-        }
-        finally
+        foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
         {
-            batch.Dispose();
+            if (column == PbtColumns.Metadata) continue;
+
+            ISortedKeyValueStore store = (ISortedKeyValueStore)pbtDb.GetColumnDb(column);
+            byte[] cursor = [];
+            byte[]? resumeFrom;
+            do
+            {
+                resumeFrom = null;
+                using (IColumnsWriteBatch<PbtColumns> batch = pbtDb.StartWriteBatch())
+                {
+                    IWriteBatch columnBatch = batch.GetColumnBatch(column);
+                    using ISortedView view = store.GetViewBetween(cursor, pastEnd);
+
+                    int read = 0;
+                    while (read < ClearKeyChunk && view.MoveNext())
+                    {
+                        columnBatch.Remove(view.CurrentKey);
+                        read++;
+                    }
+
+                    cleared += read;
+
+                    // the loop stopped on the count rather than on MoveNext, so the view is still on the
+                    // last key deleted: resume just past it once this chunk's deletes are committed
+                    if (read == ClearKeyChunk) resumeFrom = AfterKey(view.CurrentKey);
+                }
+
+                if (resumeFrom is not null) cursor = resumeFrom;
+            }
+            while (resumeFrom is not null);
         }
 
         if (cleared > 0 && _logger.IsInfo) _logger.Info($"Discarded {cleared:N0} entries left by an interrupted PBT import.");
@@ -204,16 +230,18 @@ public class ImportPbtFromPreimageFlat(
 
         void CopyPartitions()
         {
-            using FlatPersistence.IPersistenceReader reader = flatSource.CreateReader();
-            LeafBlobWriter leaves = new();
+            using LeafBlobWriter leaves = new();
 
             int partition;
             while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
             {
                 (ValueHash256 start, ValueHash256 end) = PartitionBounds(partition, partitionCount);
 
-                // one batch per range rather than per worker: it bounds how much a batch buffers, and
-                // the persisted-state pointer it rewrites is the same pre-genesis value either way
+                // A reader and a batch per range rather than per worker: the reader pins a snapshot of
+                // every source column and the batch bounds how much is buffered, neither of which should
+                // outlive one range of a copy that runs for hours. The persisted-state pointer the batch
+                // rewrites is the same pre-genesis value either way.
+                using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
                 using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
                 {
                     CopyAccounts(reader, batch, leaves, start, end, ref accounts, ref slots, cancellationToken);
@@ -495,7 +523,7 @@ public class ImportPbtFromPreimageFlat(
     {
         RebuildEntry[] stemLeaves = new RebuildEntry[PbtKeyDerivation.StemSubtreeWidth];
         byte[] cursor = new byte[Stem.Length];
-        byte[] pastEnd = PastEveryStemKey();
+        byte[] pastEnd = PastEveryKey();
 
         while (true)
         {
@@ -521,7 +549,7 @@ public class ImportPbtFromPreimageFlat(
 
                 // the loop stopped on the count, not on MoveNext, so the view is still on the last stem
                 // read: resume just past it so the reopened view's first row is the next stem
-                resumeFrom = AfterStemKey(view.CurrentKey);
+                resumeFrom = AfterKey(view.CurrentKey);
             }
 
             cursor = resumeFrom;
@@ -556,7 +584,7 @@ public class ImportPbtFromPreimageFlat(
     /// pool, so its result must always be stored back.
     /// </para>
     /// </remarks>
-    private sealed class LeafBlobWriter
+    private sealed class LeafBlobWriter : IDisposable
     {
         private IPbtStemChanges _header = PbtStemChanges.Rent();
         private IPbtStemChanges _stem = PbtStemChanges.Rent();
@@ -610,6 +638,13 @@ public class ImportPbtFromPreimageFlat(
         {
             PbtStemChanges.Return(changes);
             changes = PbtStemChanges.Rent();
+        }
+
+        /// <summary>Returns the two maps the writer holds, which nothing else ever hands back.</summary>
+        public void Dispose()
+        {
+            PbtStemChanges.Return(_header);
+            PbtStemChanges.Return(_stem);
         }
     }
 
@@ -665,24 +700,24 @@ public class ImportPbtFromPreimageFlat(
     private static ReadOnlySpan<byte> ChunkRun(byte[] chunks, int firstChunk, int count) =>
         chunks.AsSpan(firstChunk * PbtKeyDerivation.CodeChunkSize, count * PbtKeyDerivation.CodeChunkSize);
 
-    /// <summary>One byte longer than any stem, so it sorts above every leaf column key.</summary>
-    private static byte[] PastEveryStemKey()
+    /// <summary>One byte longer than the longest key any pbt column holds, so it sorts above all of them.</summary>
+    private static byte[] PastEveryKey()
     {
-        byte[] key = new byte[Stem.Length + 1];
+        byte[] key = new byte[Math.Max(Stem.Length, TrieNodeKey.Length) + 1];
         key.AsSpan().Fill(0xFF);
         return key;
     }
 
     /// <summary>
-    /// The exclusive successor of <paramref name="stem"/> as an inclusive lower bound: the stem's bytes
-    /// with a <c>0x00</c> appended, which sorts strictly after it and at or before the next stem, so a
-    /// view opened at it starts on the stem after <paramref name="stem"/>.
+    /// The exclusive successor of <paramref name="key"/> as an inclusive lower bound: its bytes with a
+    /// <c>0x00</c> appended, which sorts strictly after it and at or before the next key, so a view
+    /// opened at it starts on the key after <paramref name="key"/>.
     /// </summary>
-    private static byte[] AfterStemKey(ReadOnlySpan<byte> stem)
+    private static byte[] AfterKey(ReadOnlySpan<byte> key)
     {
-        byte[] key = new byte[Stem.Length + 1];
-        stem[..Stem.Length].CopyTo(key);
-        return key;
+        byte[] next = new byte[key.Length + 1];
+        key.CopyTo(next);
+        return next;
     }
 
     /// <summary>The pbt leaf column, as the sorted store its range scan reads through.</summary>
