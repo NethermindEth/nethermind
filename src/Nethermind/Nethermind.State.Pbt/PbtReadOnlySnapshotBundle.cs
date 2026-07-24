@@ -42,9 +42,15 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
     private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
     private static readonly StringLabel _readStoragePersistenceFetchLabel = new("storage_persistence_fetch");
     private static readonly StringLabel _readStoragePersistenceFetchNullLabel = new("storage_persistence_fetch_null");
-    private static readonly StringLabel _readLeafBlobSnapshotLabel = new("leaf_blob_snapshot");
-    private static readonly StringLabel _readLeafBlobPersistenceLabel = new("leaf_blob_persistence");
-    private static readonly StringLabel _readLeafBlobPersistenceNullLabel = new("leaf_blob_persistence_null");
+    private static readonly StringLabel _readAccountLeafBlobSnapshotLabel = new("account_leaf_blob_snapshot");
+    private static readonly StringLabel _readAccountLeafBlobPersistenceLabel = new("account_leaf_blob_persistence");
+    private static readonly StringLabel _readAccountLeafBlobPersistenceNullLabel = new("account_leaf_blob_persistence_null");
+    private static readonly StringLabel _readCodeLeafBlobSnapshotLabel = new("code_leaf_blob_snapshot");
+    private static readonly StringLabel _readCodeLeafBlobPersistenceLabel = new("code_leaf_blob_persistence");
+    private static readonly StringLabel _readCodeLeafBlobPersistenceNullLabel = new("code_leaf_blob_persistence_null");
+    private static readonly StringLabel _readStorageLeafBlobSnapshotLabel = new("storage_leaf_blob_snapshot");
+    private static readonly StringLabel _readStorageLeafBlobPersistenceLabel = new("storage_leaf_blob_persistence");
+    private static readonly StringLabel _readStorageLeafBlobPersistenceNullLabel = new("storage_leaf_blob_persistence_null");
     private static readonly StringLabel _readTrieNodeSnapshotLabel = new("trie_node_snapshot");
     private static readonly StringLabel _readAccountTrieNodePersistenceLabel = new("account_trie_node_persistence");
     private static readonly StringLabel _readAccountTrieNodePersistenceNullLabel = new("account_trie_node_persistence_null");
@@ -131,16 +137,38 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         {
             if (snapshots[i].Content.TryGetLeafBlob(stem, out RefCountingMemory? blob))
             {
-                Observe(startTimestamp, _readLeafBlobSnapshotLabel);
+                Observe(startTimestamp, LeafBlobSnapshotLabel(in stem));
                 return blob;
             }
         }
 
         startTimestamp = StartTiming();
         RefCountingMemory? persisted = reader.GetLeafBlob(stem);
-        Observe(startTimestamp, persisted is null ? _readLeafBlobPersistenceNullLabel : _readLeafBlobPersistenceLabel);
+        Observe(startTimestamp, LeafBlobPersistenceLabel(in stem, persisted is null));
         return persisted;
     }
+
+    /// <summary>The label of the zone partition a leaf blob read was served from, and whether it found one.</summary>
+    /// <remarks>
+    /// Leaf blobs are keyed into one column per zone, the same split the trie nodes take. It is worth
+    /// more here than the tier alone: this is the read every account and slot goes through once the
+    /// block's flat reads are decoded from the blob, so without the zone an account header read and a
+    /// storage one — which differ by orders of magnitude in both count and blob size — share a bucket.
+    /// </remarks>
+    private static StringLabel LeafBlobSnapshotLabel(in Stem stem) => stem.Zone switch
+    {
+        PbtKeyDerivation.AccountZone => _readAccountLeafBlobSnapshotLabel,
+        PbtKeyDerivation.CodeZone => _readCodeLeafBlobSnapshotLabel,
+        _ => _readStorageLeafBlobSnapshotLabel,
+    };
+
+    /// <inheritdoc cref="LeafBlobSnapshotLabel"/>
+    private static StringLabel LeafBlobPersistenceLabel(in Stem stem, bool isNull) => stem.Zone switch
+    {
+        PbtKeyDerivation.AccountZone => isNull ? _readAccountLeafBlobPersistenceNullLabel : _readAccountLeafBlobPersistenceLabel,
+        PbtKeyDerivation.CodeZone => isNull ? _readCodeLeafBlobPersistenceNullLabel : _readCodeLeafBlobPersistenceLabel,
+        _ => isNull ? _readStorageLeafBlobPersistenceNullLabel : _readStorageLeafBlobPersistenceLabel,
+    };
 
     /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key)

@@ -367,6 +367,11 @@ public class PbtSnapshotBundleTests
     /// An account or slot read that reaches disk times the leaf fetch on its own as well as the whole
     /// read, so the decode is what the total leaves over the fetch rather than being hidden inside it.
     /// </summary>
+    /// <remarks>
+    /// Read on the shared view, which is where the decoded reads live — <c>PbtStateReader</c> serves an
+    /// RPC through one. A branch's own bundle caches and decodes the blob itself, so its account and slot
+    /// reads report under the leaf blob labels instead.
+    /// </remarks>
     [Test]
     public void AccountAndSlotReadsReachingPersistence_TimeTheLeafFetchWithoutItsDecode()
     {
@@ -377,12 +382,12 @@ public class PbtSnapshotBundleTests
         Metrics.PbtReadOnlySnapshotBundleTimes = recorder;
         try
         {
-            using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: [], recordDetailedMetrics: true);
-            Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x44));
-            Assert.That(bundle.GetSlot(Address, Slot), Is.EqualTo(Word(0x44)));
+            using PbtReadOnlySnapshotBundle shared = new(new PbtSnapshotPooledList(0), _reader, recordDetailedMetrics: true);
+            Assert.That((byte)shared.GetAccount(Address)!.Nonce, Is.EqualTo(0x44));
+            Assert.That(shared.GetSlot(Address, Slot), Is.EqualTo(Word(0x44)));
 
             // an account the reader has no blob for is the miss shape, on the fetch as well as the total
-            Assert.That(bundle.GetAccount(TestItem.AddressB), Is.Null);
+            Assert.That(shared.GetAccount(TestItem.AddressB), Is.Null);
         }
         finally
         {
@@ -394,6 +399,43 @@ public class PbtSnapshotBundleTests
         Assert.That(recorder.Labels, Does.Contain("storage_persistence_fetch"));
         Assert.That(recorder.Labels, Does.Contain("storage_persistence"));
         Assert.That(recorder.Labels, Does.Contain("account_persistence_fetch_null"));
+    }
+
+    /// <summary>
+    /// A leaf blob read is labelled by the zone its stem is keyed into, whichever tier answers it — this
+    /// being the read every account and slot goes through, an account header and a storage stem would
+    /// otherwise share a bucket.
+    /// </summary>
+    [Test]
+    public void LeafBlobReads_AreLabelledByZonePartition()
+    {
+        Stem accountStem = ZoneStem(0x00);
+        Stem codeStem = ZoneStem(0x10);
+        Stem storageStem = ZoneStem(0x80);
+
+        _reader.LeafBlobs[storageStem] = [0x44];
+
+        PbtSnapshotContent shared = new();
+        shared.SetLeafBlob(accountStem, Memory(0x33));
+
+        IMetricObserver original = Metrics.PbtReadOnlySnapshotBundleTimes;
+        LabelRecordingObserver recorder = new();
+        Metrics.PbtReadOnlySnapshotBundleTimes = recorder;
+        try
+        {
+            using PbtSnapshotBundle bundle = Bundle(sharedLayers: [shared], localLayers: [], recordDetailedMetrics: true);
+            using (RefCountingMemory? account = bundle.GetLeafBlob(accountStem)) { }
+            using (RefCountingMemory? storage = bundle.GetLeafBlob(storageStem)) { }
+            Assert.That(bundle.GetLeafBlob(codeStem), Is.Null);
+        }
+        finally
+        {
+            Metrics.PbtReadOnlySnapshotBundleTimes = original;
+        }
+
+        Assert.That(recorder.Labels, Does.Contain("account_leaf_blob_snapshot"));
+        Assert.That(recorder.Labels, Does.Contain("storage_leaf_blob_persistence"));
+        Assert.That(recorder.Labels, Does.Contain("code_leaf_blob_persistence_null"));
     }
 
     private static Stem ZoneStem(byte firstByte)
