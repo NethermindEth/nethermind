@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7-labs
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
@@ -11,15 +12,14 @@ ARG TARGETARCH
 
 WORKDIR /nethermind
 
+COPY global.json nuget.config Directory.Build.props Directory.Build.targets Directory.Packages.props ./
+COPY --parents src/Nethermind/**/*.csproj src/Nethermind/Directory.Build.props src/Nethermind/Directory.Build.targets src/Nethermind/Nethermind.Runner/packages.lock.json ./
+RUN cd src/Nethermind/Nethermind.Runner && dotnet restore --locked-mode
+
 COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
-COPY Directory.Build.targets .
-COPY global.json .
-COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
-  dotnet restore --locked-mode && \
   dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
