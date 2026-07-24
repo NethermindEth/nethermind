@@ -230,8 +230,7 @@ public class KademliaAdapter(
         return bondTask.WaitAsync(token);
     }
 
-    // Runs against processExitSource.Token rather than a specific caller's token: it may be shared by several
-    // callers via GetOrStartBond, and one of them giving up must not cancel the attempt for the others.
+    
     private async Task<PongMsg?> SendBondingPing(Node receiver, NodeSession session, IPEndPoint endpoint)
     {
         CancellationToken token = processExitSource.Token;

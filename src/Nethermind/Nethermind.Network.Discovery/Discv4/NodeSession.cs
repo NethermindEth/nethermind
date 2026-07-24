@@ -174,12 +174,7 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     /// Returns the bonding attempt already in flight for <paramref name="endpoint"/>, or starts one via
     /// <paramref name="startBond"/> and shares it with any other caller that asks before it completes.
     /// </summary>
-    /// <remarks>
-    /// Concurrent Kademlia lookups can each decide the same endpoint needs (re-)bonding at the same time; without
-    /// coalescing, every one of them would send its own ping. Callers should give up on their own timeout via the
-    /// returned task's cancellation rather than cancelling <paramref name="startBond"/> itself, since cancelling it
-    /// would also fail every other caller sharing the same attempt.
-    /// </remarks>
+    
     public Task<PongMsg?> GetOrStartBond(IPEndPoint endpoint, Func<Task<PongMsg?>> startBond)
     {
         EndpointKey endpointKey = new(endpoint);
