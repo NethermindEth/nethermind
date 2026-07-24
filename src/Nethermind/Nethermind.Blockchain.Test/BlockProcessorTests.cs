@@ -120,13 +120,12 @@ public class BlockProcessorTests
 
         using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
-        using BlockAccessListManager balManager = new(
+        using BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
@@ -191,13 +190,12 @@ public class BlockProcessorTests
 
         using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
-        using BlockAccessListManager balManager = new(
+        using BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
@@ -257,7 +255,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), static worldState => new EthereumCodeInfoRepository(worldState));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -598,13 +596,12 @@ public class BlockProcessorTests
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        BlockAccessListManager balManager = new(
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
@@ -642,13 +639,12 @@ public class BlockProcessorTests
     public void ValidateBlockAccessList_matches_accounts_by_address_when_insertion_order_differs()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        BlockAccessListManager balManager = new(
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState));
 
         Address lowAddress = TestItem.AddressA;
@@ -1143,13 +1139,12 @@ public class BlockProcessorTests
     }
 
     private static BlockAccessListManager CreateAmsterdamBalManager(IWorldState stateProvider) =>
-        new(
+        ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState),
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 

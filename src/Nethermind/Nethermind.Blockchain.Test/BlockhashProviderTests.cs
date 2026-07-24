@@ -9,7 +9,6 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -362,13 +361,12 @@ public class BlockhashProviderTests
 
         using IDisposable balScope = balWorldState.BeginScope(current.Header);
         TestSingleReleaseSpecProvider specProvider = new(spec);
-        BlockAccessListManager balManager = new(
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             balWorldState,
             specProvider,
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState));
         balManager.PrepareForProcessing(current, spec, ProcessingOptions.None);
         balManager.SetBlockExecutionContext(new BlockExecutionContext(current.Header, spec));

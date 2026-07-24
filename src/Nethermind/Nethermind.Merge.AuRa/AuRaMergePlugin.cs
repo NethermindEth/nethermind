@@ -67,7 +67,6 @@ namespace Nethermind.Merge.AuRa
                 .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
                 .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
-                .AddSingleton<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>()
                 .AddScoped<IBlockProcessor, AuRaMergeBlockProcessor>()
 
                 .AddDecorator<IHeaderValidator, MergeHeaderValidator>()

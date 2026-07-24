@@ -21,27 +21,10 @@ public sealed class AuRaEthereumTransactionProcessor(
     IWorldState? worldState,
     IVirtualMachine? virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
-    ILogManager? logManager,
-    bool parallel = false)
-    : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
+    ILogManager? logManager)
+    : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     protected override SystemTransactionProcessor<EthereumGasPolicy> CreateSystemTransactionProcessor() =>
         new AuRaSystemTransactionProcessor<EthereumGasPolicy>(
             _blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-}
-
-/// <summary>Builds AuRa-aware worker tx processors for the BAL pool.</summary>
-public sealed class AuRaTransactionProcessorFactory : ITransactionProcessorFactory
-{
-    public ITransactionProcessor Create(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider specProvider,
-        IWorldState worldState,
-        IVirtualMachine virtualMachine,
-        ICodeInfoRepository codeInfoRepository,
-        ILogManager logManager,
-        bool parallel)
-        => new AuRaEthereumTransactionProcessor(
-            blobBaseFeeCalculator, specProvider, worldState, virtualMachine,
-            codeInfoRepository, logManager, parallel);
 }

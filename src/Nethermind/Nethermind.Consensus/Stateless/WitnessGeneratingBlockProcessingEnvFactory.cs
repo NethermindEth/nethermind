@@ -10,14 +10,12 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Withdrawals;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -91,16 +89,19 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<IHeaderFinder>(capturingHeaderFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
+            // Override the default code cache with a no-op so every code lookup goes through the
+            // recording world state and is captured in the witness rather than served from the cache.
             .AddScoped<ICodeCache>(NoopCodeCache.Instance)
+            // Force sequential BAL execution: the parallel path reads from a parent-state snapshot
+            // that bypasses the recording world state, so its reads never reach the witness.
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.Resolve<IBlockhashProvider>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
-                ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: ctx.Resolve<CodeInfoRepositoryFactory>(),
-                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
+                ctx.Resolve<Lazy<IParallelBalEnvManager>>(),
+                ctx.Resolve<Lazy<ISequentialBalEnvManager>>()))
+            // Leaving the parent-reader pool args unset keeps _hasParentReaderPool false, which
+            // disables parallel execution (ParallelExecutionEnabled) so the sequential env is used.
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 

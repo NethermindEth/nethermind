@@ -3,8 +3,7 @@
 
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Withdrawals;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
@@ -23,7 +22,7 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
-        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        IBalProcessingEnv preExecution = _balEnvManager.GetPreExecution();
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
     }
 
@@ -31,7 +30,7 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
-        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        IBalProcessingEnv preExecution = _balEnvManager.GetPreExecution();
         new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
@@ -39,22 +38,17 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
-        TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        IWithdrawalProcessor withdrawalProcessor = withdrawalProcessorFactory.Create(postExecution.WorldState, postExecution.TxProcessor);
-        if (_isBuilding)
-        {
-            withdrawalProcessor = new BlockProductionWithdrawalProcessor(withdrawalProcessor);
-        }
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        IBalProcessingEnv postExecution = _balEnvManager.GetPostExecution();
+        // No block-production wrapping here: on the DI path the env's IWithdrawalProcessor is
+        // already the producer-decorated one when building; the manual path never produces BAL blocks.
+        postExecution.WithdrawalProcessor.ProcessWithdrawals(block, spec);
     }
 
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
     {
         CheckInitialized();
 
-        TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        IExecutionRequestsProcessor executionRequestsProcessor =
-            (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
-        executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        IBalProcessingEnv postExecution = _balEnvManager.GetPostExecution();
+        postExecution.ExecutionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

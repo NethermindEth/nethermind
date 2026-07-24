@@ -31,9 +31,8 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager,
-        bool parallel = false)
-        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
+        ILogManager? logManager)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
     }
@@ -47,9 +46,8 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager,
-        bool parallel = false)
-        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
+        ILogManager? logManager)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
 
     public class BlobBaseFeeCalculator : ITransactionProcessor.IBlobBaseFeeCalculator
     {
@@ -101,7 +99,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         protected readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         protected readonly ILogManager _logManager;
-        private readonly bool _parallel;
         private ulong _blockCumulativeRegularGas;
         private ulong _blockCumulativeStateGas;
 
@@ -111,8 +108,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IWorldState? worldState,
             IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager,
-            bool parallel = false)
+            ILogManager? logManager)
         {
             ArgumentNullException.ThrowIfNull(logManager);
             ArgumentNullException.ThrowIfNull(specProvider);
@@ -131,7 +127,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
-            _parallel = parallel;
         }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -553,7 +548,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 blobBaseFee,
             int statusCode)
         {
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !_parallel)
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !VirtualMachine.BlockExecutionContext.Parallel)
             {
                 if (spec.IsEip8037Enabled)
                 {
@@ -952,12 +947,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 // Admission must use the same basis as block accounting (header.GasUsed): pre-refund under EIP-7778, post-refund otherwise.
-                ulong gasUsedForAllowance = _parallel ? 0 : header.GasUsed;
+                bool parallel = VirtualMachine.BlockExecutionContext.Parallel;
+                ulong gasUsedForAllowance = parallel ? 0 : header.GasUsed;
 
                 ulong maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
                 if (tx.GasLimit > maxTransactionGasLimit)
                 {
-                    string limitDescription = _parallel
+                    string limitDescription = parallel
                         ? $"{header.GasLimit}"
                         : $"{header.GasLimit} - {gasUsedForAllowance}";
                     TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
@@ -1813,9 +1809,8 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager,
-        bool parallel = false)
-        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
+        ILogManager? logManager)
+        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
 
     public readonly struct TransactionResult : IEquatable<TransactionResult>
     {

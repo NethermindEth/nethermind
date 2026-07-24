@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
@@ -29,13 +28,12 @@ public class BlockAccessListManagerTests
         public IWorldState WorldState { get; } = Substitute.For<IWorldState>();
         public BlockAccessListManager Manager { get; }
 
-        public Harness() => Manager = new BlockAccessListManager(
+        public Harness() => Manager = ManualBlockAccessListManagerFactory.Create(
             WorldState,
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig(), // ParallelExecution / ParallelExecutionBatchRead default to true
-            Substitute.For<IWithdrawalProcessorFactory>(),
             static worldState => new EthereumCodeInfoRepository(worldState),
             // Enables parallel execution (and thus BAL read warmup), mirroring the production DI path.
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
