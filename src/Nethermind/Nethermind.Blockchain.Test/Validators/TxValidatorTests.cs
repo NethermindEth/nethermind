@@ -539,8 +539,10 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.False);
     }
 
+    // FrameTx is excluded because its spec gate (IsEip8141Enabled, off in Prague) rejects with
+    // InvalidTxType before the authorization-list check is reached.
     private static IEnumerable<TxType> NonSetCodeTypes() =>
-        Enum.GetValues<TxType>().Where(static t => t != TxType.SetCode && t != TxType.DepositTx);
+        Enum.GetValues<TxType>().Where(static t => t != TxType.SetCode && t != TxType.DepositTx && t != TxType.FrameTx);
 
     [TestCaseSource(nameof(NonSetCodeTypes))]
     public void IsWellFormed_NonSetCodeTxHasAuthorizationList_ReturnsFalse(TxType type)
@@ -612,7 +614,9 @@ public class TxValidatorTests
         Assert.That(result.AsBool, Is.True);
     }
 
-    public static IEnumerable<TxType> TxTypes = FastEnum.GetValues<TxType>().Where(t => t != TxType.DepositTx);
+    // FrameTx is excluded because its spec gate (off in the spec used here) rejects with
+    // InvalidTxType before the nonce cap is reached; the frame tx chain includes NonceCapTxValidator.
+    public static IEnumerable<TxType> TxTypes = FastEnum.GetValues<TxType>().Where(t => t != TxType.DepositTx && t != TxType.FrameTx);
 
     [Test]
     public void IsWellFormed_Nonce_Over_Limit([ValueSource(nameof(TxTypes))] TxType txType)

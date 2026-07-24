@@ -159,6 +159,14 @@ public enum Instruction : byte
     LOG3 = 0xa3,
     LOG4 = 0xa4,
 
+    // EIP-8141 frame transactions
+    APPROVE = 0xaa,
+    TXPARAM = 0xb0,
+    FRAMEDATALOAD = 0xb1,
+    FRAMEDATACOPY = 0xb2,
+    FRAMEPARAM = 0xb3,
+    SIGPARAM = 0xb4,
+
     DUPN = 0xe6,
     SWAPN = 0xe7,
     EXCHANGE = 0xe8,

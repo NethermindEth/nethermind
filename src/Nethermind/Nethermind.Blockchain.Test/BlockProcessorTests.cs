@@ -253,16 +253,18 @@ public class BlockProcessorTests
 
     private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
+        IBlockCachePreWarmer? preWarmer = null,
+        ISpecProvider? specProvider = null)
     {
+        specProvider ??= HoodiSpecProvider.Instance;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
+        BlockAccessListManager balManager = new(stateProvider, specProvider, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
-            stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
-        BlockProcessor processor = new(HoodiSpecProvider.Instance,
+            stateProvider, specProvider, balManager, LimboLogs.Instance);
+        BlockProcessor processor = new(specProvider,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
             transactionsExecutor,
@@ -277,13 +279,64 @@ public class BlockProcessorTests
 
         BranchProcessor branchProcessor = new(
             processor,
-            HoodiSpecProvider.Instance,
+            specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal()
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
+        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch(specProvider: specProvider);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
+        Address verifier = Eip8141Constants.ExpiryVerifierAddress;
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        // Eip8141Prototype builds on Amsterdam, which enables execution requests (EIP-7002/7251/8282);
+        // processing a post-genesis block reads them from their system-contract predeploys, so install
+        // those in genesis as a real chain does — otherwise ProcessExecutionRequests rejects the block.
+        stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+        stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, spec);
+        stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+        stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, spec);
+        stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+        stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, spec);
+        stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+        stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, spec);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        // First post-activation block installs the predeploy: code + nonce == 1.
+        Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        Assert.That(stateProvider.GetCode(verifier), Is.EqualTo(Eip8141Constants.ExpiryVerifierCode));
+        Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(1ul));
+
+        // The install must appear in the generated block-level access list (code + nonce change).
+        GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(verifier);
+        Assert.That(installChanges, Is.Not.Null, "expiry verifier install must be captured in the BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(1));
+            Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(Eip8141Constants.ExpiryVerifierCode));
+            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(1));
+            Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(1ul));
+        }
+
+        // Second block is a no-op: state unchanged and no BAL entry for the verifier.
+        Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        Assert.That(stateProvider.GetCode(verifier), Is.EqualTo(Eip8141Constants.ExpiryVerifierCode));
+        Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(1ul));
+        Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(verifier), Is.Null,
+            "a re-install must not churn state or the BAL once the code is already present");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1410,6 +1463,10 @@ public class BlockProcessorTests
         }
 
         public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+        {
+        }
+
+        public void InstallPredeploys(IReleaseSpec spec)
         {
         }
 
