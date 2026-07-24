@@ -34,17 +34,7 @@ internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, 
     {
         using (node)
         {
-            lock (_writeLock)
-            {
-                if (node is null)
-                {
-                    batch.SetTrieNode(key, (byte[]?)null);
-                }
-                else
-                {
-                    batch.SetTrieNode(key, node.GetSpan());
-                }
-            }
+            lock (_writeLock) batch.SetTrieNode(key, node is null ? default : node.GetSpan());
         }
     }
 
