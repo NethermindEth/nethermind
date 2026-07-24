@@ -216,7 +216,17 @@ public abstract partial class BaseEngineModuleTests
                     ? new BlocksConfig { MinGasPrice = bc.MinGasPrice, ParallelExecution = ParallelExecutionOverride.Value }
                     : c);
             }
-            return configs;
+
+            double defaultImprovementOfSlot = new BlocksConfig().SingleBlockImprovementOfSlot;
+            List<IConfig> materialized = configs.ToList();
+            foreach (IConfig config in materialized)
+            {
+                if (config is IBlocksConfig blocksConfig && blocksConfig.SingleBlockImprovementOfSlot == defaultImprovementOfSlot)
+                {
+                    blocksConfig.SingleBlockImprovementOfSlot = 5;
+                }
+            }
+            return materialized;
         }
 
         /// <summary>
