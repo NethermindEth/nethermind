@@ -10,6 +10,7 @@ using System.Numerics;
 using System.Threading;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
@@ -59,9 +60,10 @@ internal readonly record struct SparseTrieStagedNode(TreePath Path, ValueHash256
 /// (modified Merkle Patricia trie) with Appendix B RLP; children whose RLP is shorter than
 /// 32 bytes are embedded in the parent, and fixed-length keys leave the seventeenth branch item
 /// empty. Keys are fixed 32 bytes (64 nibbles). One instance has one external mutable owner;
-/// root encoding may fan out internally across disjoint root children. Reveal is a synchronous
-/// multi-round loop: sorted target ranges descend as far as materialized nodes allow, missing
-/// hashed boundaries are collected and resolved in one batch per round, and only the affected
+/// root encoding may fan out internally across a bounded frontier of disjoint dirty subtrees.
+/// Reveal is a synchronous multi-round loop: sorted target ranges descend as far as materialized
+/// nodes allow, missing hashed boundaries are collected and resolved in one batch per round, and
+/// only the affected
 /// ranges resume. A round that leaves requests unresolved throws, so the loop cannot stall.
 /// Update batches must contain unique keys with final values (duplicates throw). Deletions may
 /// require revealing a surviving sibling to collapse a branch canonically; those reveals are
@@ -174,8 +176,8 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
     /// Re-encodes and hashes every dirty path post-order, staging persistable nodes, and returns
     /// the root hash. Idempotent until the next <see cref="Apply"/>.
     /// </summary>
-    /// <param name="canBeParallel">Whether disjoint children of a dirty branch root may encode
-    /// concurrently. Callers must prevent nested parallelism.</param>
+    /// <param name="canBeParallel">Whether a bounded frontier of disjoint dirty subtrees may
+    /// encode concurrently. Callers must prevent nested parallelism.</param>
     public ValueHash256 CalculateRoot(bool canBeParallel = false)
     {
         if (!_rootDirty)
@@ -187,7 +189,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         {
             if (canBeParallel)
             {
-                EncodeRootChildrenInParallel();
+                EncodeDirtySubtreesInParallel();
             }
 
             TreePath path = TreePath.Empty;
@@ -1910,16 +1912,18 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
     // ---------------- Encode ----------------
 
-    private void EncodeRootChildrenInParallel()
+    private struct ParallelEncodeWork(int nodeIndex, in TreePath path, int nodeCount)
     {
-        ref SparseNode root = ref _arena.Node(_rootNode);
-        if (root.Kind != SparseNodeKind.Branch || Environment.ProcessorCount < 2)
-        {
-            return;
-        }
+        public readonly int NodeIndex = nodeIndex;
+        public readonly TreePath Path = path;
+        public readonly int NodeCount = nodeCount;
+        public bool CanSplit = true;
+    }
 
-        int dirtyCount = BitOperations.PopCount(root.DirtyMask);
-        if (dirtyCount < 2)
+    private void EncodeDirtySubtreesInParallel()
+    {
+        int maxWorkers = RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16.MaxDegreeOfParallelism;
+        if (maxWorkers < 2)
         {
             return;
         }
@@ -1931,80 +1935,222 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
             return;
         }
 
-        int dirtyNodeCount = CountDirtyNodes(_rootNode);
-        // Workers fill distinct records below Count; the owner appends the root in the last slot.
-        // Inline nodes leave harmless holes because publication follows each node's StagedRecord.
-        _staged = new ArrayPoolList<SparseTrieStagedNode>(dirtyNodeCount, dirtyNodeCount - 1);
-        _concurrentStagedCount = 0;
-        _arena.PrepareForConcurrentEncoding();
-        ParallelUnbalancedWork.For(
-            0,
-            dirtyCount,
-            this,
-            static (ordinal, trie) =>
-            {
-                trie.EncodeRootChild(ordinal);
-                return trie;
-            });
+        int dirtyNodeCount = CountAndMarkDirtyNodes(_rootNode);
+        if (dirtyNodeCount < 3)
+        {
+            return;
+        }
 
-        root.DirtyMask = 0;
+        int targetWorkCount = Math.Min(dirtyNodeCount, maxWorkers * 2);
+        Span<ParallelEncodeWork> split = stackalloc ParallelEncodeWork[16];
+        int initialWorkCount = SplitAtNextDirtyBranch(
+            new ParallelEncodeWork(_rootNode, TreePath.Empty, dirtyNodeCount),
+            split);
+        if (initialWorkCount < 2)
+        {
+            return;
+        }
+
+        int workCapacity = Math.Min(dirtyNodeCount, targetWorkCount + 15);
+        ParallelEncodeWork[] work = ArrayPool<ParallelEncodeWork>.Shared.Rent(workCapacity);
+        int workCount = initialWorkCount;
+        Debug.Assert(workCount <= workCapacity);
+        split[..initialWorkCount].CopyTo(work);
+        try
+        {
+            while (workCount < targetWorkCount)
+            {
+                int workIndex = FindHeaviestSplittableWork(work, workCount);
+                if (workIndex < 0)
+                {
+                    break;
+                }
+
+                int splitCount = SplitAtNextDirtyBranch(work[workIndex], split);
+                if (splitCount < 2)
+                {
+                    work[workIndex].CanSplit = false;
+                    continue;
+                }
+
+                work[workIndex] = split[0];
+                Debug.Assert(workCount + splitCount - 1 <= workCapacity);
+                split[1..splitCount].CopyTo(work.AsSpan(workCount));
+                workCount += splitCount - 1;
+            }
+
+            SortByDescendingNodeCount(work.AsSpan(0, workCount));
+
+            int parallelNodeCount = 0;
+            for (int i = 0; i < workCount; i++)
+            {
+                parallelNodeCount += work[i].NodeCount;
+            }
+
+            Debug.Assert(parallelNodeCount < dirtyNodeCount);
+            Debug.Assert(parallelNodeCount >= workCount);
+
+            // Workers fill distinct records below Count; the owner appends the dirty ancestor
+            // skeleton afterward. Inline nodes leave harmless holes because publication follows
+            // each node's StagedRecord.
+            _staged = new ArrayPoolList<SparseTrieStagedNode>(dirtyNodeCount, parallelNodeCount);
+            _concurrentStagedCount = 0;
+            _arena.PrepareForConcurrentEncoding();
+            ParallelUnbalancedWork.For(
+                0,
+                workCount,
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                (Trie: this, Work: work),
+                static (index, state) =>
+                {
+                    state.Trie.EncodeParallelSubtree(state.Work[index]);
+                    return state;
+                });
+            Debug.Assert(_concurrentStagedCount <= parallelNodeCount);
+        }
+        finally
+        {
+            ArrayPool<ParallelEncodeWork>.Shared.Return(work);
+        }
     }
 
-    private int CountDirtyNodes(int nodeIndex)
+    private static int FindHeaviestSplittableWork(ParallelEncodeWork[] work, int workCount)
+    {
+        int heaviestIndex = -1;
+        int heaviestCount = 0;
+        for (int i = 0; i < workCount; i++)
+        {
+            ref ParallelEncodeWork candidate = ref work[i];
+            if (candidate.CanSplit && candidate.NodeCount > heaviestCount)
+            {
+                heaviestIndex = i;
+                heaviestCount = candidate.NodeCount;
+            }
+        }
+
+        return heaviestIndex;
+    }
+
+    private static void SortByDescendingNodeCount(Span<ParallelEncodeWork> work)
+    {
+        for (int i = 1; i < work.Length; i++)
+        {
+            ParallelEncodeWork item = work[i];
+            int j = i - 1;
+            while (j >= 0 && work[j].NodeCount < item.NodeCount)
+            {
+                work[j + 1] = work[j];
+                j--;
+            }
+
+            work[j + 1] = item;
+        }
+    }
+
+    private int SplitAtNextDirtyBranch(in ParallelEncodeWork work, Span<ParallelEncodeWork> split)
+    {
+        int nodeIndex = work.NodeIndex;
+        TreePath path = work.Path;
+
+        while (true)
+        {
+            ref SparseNode node = ref _arena.Node(nodeIndex);
+            if (node.Kind == SparseNodeKind.Extension)
+            {
+                int entry = node.ChildSlice;
+                if (entry < 0 || !_arena.Node(entry).IsDirty)
+                {
+                    return 0;
+                }
+
+                AppendNibbles(ref path, _arena.Bytes(node.PrefixOffset, node.PrefixLength));
+                nodeIndex = entry;
+                continue;
+            }
+
+            if (node.Kind != SparseNodeKind.Branch)
+            {
+                return 0;
+            }
+
+            int splitCount = 0;
+            int dirtyMask = node.DirtyMask;
+            while (dirtyMask != 0)
+            {
+                int nibble = BitOperations.TrailingZeroCount(dirtyMask);
+                dirtyMask &= dirtyMask - 1;
+                int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
+                if (entry >= 0 && _arena.Node(entry).IsDirty)
+                {
+                    TreePath childPath = path;
+                    childPath.AppendMut(nibble);
+                    split[splitCount++] = new ParallelEncodeWork(
+                        entry,
+                        childPath,
+                        DecodeDirtyNodeCount(_arena.Node(entry).StagedRecord));
+                }
+            }
+
+            if (splitCount != 1)
+            {
+                return splitCount;
+            }
+
+            nodeIndex = split[0].NodeIndex;
+            path = split[0].Path;
+        }
+    }
+
+    private int CountAndMarkDirtyNodes(int nodeIndex)
     {
         ref SparseNode node = ref _arena.Node(nodeIndex);
         int count = 1;
         if (node.Kind == SparseNodeKind.Extension)
         {
             int entry = node.ChildSlice;
-            return entry >= 0 && _arena.Node(entry).IsDirty
-                ? count + CountDirtyNodes(entry)
-                : count;
-        }
-
-        if (node.Kind != SparseNodeKind.Branch)
-        {
-            return count;
-        }
-
-        int dirtyMask = node.DirtyMask;
-        while (dirtyMask != 0)
-        {
-            int nibble = BitOperations.TrailingZeroCount(dirtyMask);
-            dirtyMask &= dirtyMask - 1;
-            int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
             if (entry >= 0 && _arena.Node(entry).IsDirty)
             {
-                count += CountDirtyNodes(entry);
+                count += CountAndMarkDirtyNodes(entry);
+            }
+        }
+        else if (node.Kind == SparseNodeKind.Branch)
+        {
+            int dirtyMask = node.DirtyMask;
+            while (dirtyMask != 0)
+            {
+                int nibble = BitOperations.TrailingZeroCount(dirtyMask);
+                dirtyMask &= dirtyMask - 1;
+                int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
+                if (entry >= 0 && _arena.Node(entry).IsDirty)
+                {
+                    count += CountAndMarkDirtyNodes(entry);
+                }
             }
         }
 
+        // Parallel preparation only runs with no staged publication records, so the otherwise
+        // unused negative domain carries the subtree weight until this node is encoded.
+        node.StagedRecord = EncodeDirtyNodeCount(count);
         return count;
     }
 
-    private void EncodeRootChild(int ordinal)
-    {
-        ref SparseNode root = ref _arena.Node(_rootNode);
-        int dirtyMask = root.DirtyMask;
-        int nibble;
-        do
-        {
-            nibble = BitOperations.TrailingZeroCount(dirtyMask);
-            dirtyMask &= dirtyMask - 1;
-        } while (ordinal-- > 0);
+    private static int EncodeDirtyNodeCount(int count) => ~count;
 
-        int entry = _arena.ChildSlice(root.ChildSlice, root.ChildCount)[root.ChildSlot(nibble)];
-        if (entry >= 0 && _arena.Node(entry).IsDirty)
-        {
-            TreePath path = TreePath.Empty;
-            path.AppendMut(nibble);
-            EncodeNode(entry, ref path, isRoot: false, concurrent: true);
-        }
+    private static int DecodeDirtyNodeCount(int encoded) => ~encoded;
+
+    private void EncodeParallelSubtree(in ParallelEncodeWork work)
+    {
+        TreePath path = work.Path;
+        EncodeNode(work.NodeIndex, ref path, isRoot: false, concurrent: true);
     }
 
     private void EncodeNode(int nodeIndex, ref TreePath path, bool isRoot, bool concurrent = false)
     {
         ref SparseNode node = ref _arena.Node(nodeIndex);
+        if (node.StagedRecord < -1)
+        {
+            node.StagedRecord = -1;
+        }
 
         // Children first (post-order), so their hashes/inline bytes are final.
         if (node.Kind == SparseNodeKind.Extension)
@@ -2148,8 +2294,9 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
         Debug.Assert(node.StagedRecord < 0);
         int stagedRecord = Interlocked.Increment(ref _concurrentStagedCount) - 1;
+        Debug.Assert(stagedRecord < _staged!.Count);
         node.StagedRecord = stagedRecord;
-        _staged!.GetRef(stagedRecord) = new SparseTrieStagedNode(path, node.Hash, rlp);
+        _staged.GetRef(stagedRecord) = new SparseTrieStagedNode(path, node.Hash, rlp);
     }
 
     private int ComputeContentLength(ref SparseNode node, Span<int> childRefLengths)

@@ -124,13 +124,15 @@ public class SparseTrieTests
         AssertSameNodes(recorder.Committed, DrainStaged(sparse));
     }
 
-    [Test]
-    public void Parallel_root_encoding_matches_patricia()
+    [TestCase("", 256)]
+    [TestCase("abc0", 256)]
+    [TestCase("abc0", 1)]
+    public void Parallel_root_encoding_matches_patricia(string sharedPrefix, int updateCount)
     {
-        List<(ValueHash256 Key, byte[]? Value)> updates = new(256);
-        for (int i = 0; i < 256; i++)
+        List<(ValueHash256 Key, byte[]? Value)> updates = new(updateCount);
+        for (int i = 0; i < updateCount; i++)
         {
-            updates.Add((new ValueHash256($"{i:x2}".PadRight(64, '0')), V(i, 32)));
+            updates.Add((new ValueHash256($"{sharedPrefix}{i:x2}".PadRight(64, '0')), V(i, 32)));
         }
 
         AssertMatchesPatricia([], updates, canBeParallel: true);

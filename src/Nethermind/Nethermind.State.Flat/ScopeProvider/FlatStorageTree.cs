@@ -198,9 +198,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     /// <summary>Applies one sealed job to this account's sparse trie and reports the new root.</summary>
-    /// <remarks>Runs on exactly one storage-phase worker per batch; ownership of the trie moves
-    /// with the phase, it is never touched concurrently.</remarks>
-    internal void ProcessSparseJob(in FlatSparseTrieSession.StorageJob job)
+    /// <remarks>Runs on exactly one storage-phase owner per batch; ownership of the trie moves
+    /// with the phase. Subtree encoding is permitted only when the storage phase itself is serial,
+    /// so parallel schedulers never nest.</remarks>
+    internal void ProcessSparseJob(in FlatSparseTrieSession.StorageJob job, bool canBeParallel)
     {
         if (job.HasClear) ResetSparseTrie();
 
@@ -209,7 +210,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // so a stale retained trie is dropped rather than adopted.
         _sparseTrie ??= _scope.SparseSession.AdoptOrCreateStorageTrie(_addressHash, _sparseRoot.ValueHash256, job.Updates.Count);
         _sparseTrie.Apply(job.Updates.AsSpan());
-        _sparseRoot = _sparseTrie.CalculateRoot().ToCommitment();
+        _sparseRoot = _sparseTrie.CalculateRoot(canBeParallel).ToCommitment();
 
         if (_diagnosticRoot is not null)
         {

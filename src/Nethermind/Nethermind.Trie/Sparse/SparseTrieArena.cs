@@ -75,7 +75,10 @@ internal struct SparseNode
     /// <summary>Branch: child-entry segment offset of the dense child slice. Extension: the single child entry itself.</summary>
     public int ChildSlice;
 
-    /// <summary>Index of this node's staged publication record; -1 when none.</summary>
+    /// <summary>
+    /// Non-negative index of this node's staged publication record; negative when none. Parallel
+    /// encoding preparation temporarily stores an encoded dirty-subtree weight in the negative domain.
+    /// </summary>
     public int StagedRecord;
 
     public ushort RlpLength;
@@ -299,7 +302,7 @@ internal sealed class SparseTrieArena : IDisposable
     }
 
     /// <summary>
-    /// Pre-grows the byte-chunk directory before disjoint root children encode concurrently.
+    /// Pre-grows the byte-chunk directory before disjoint dirty subtrees encode concurrently.
     /// Encoding can allocate at most one inline RLP and one moved leaf value per live node.
     /// Reserving twice that payload plus one chunk also covers bump-allocation tail waste, so
     /// concurrent allocations never replace and return a directory another encoder may read.
