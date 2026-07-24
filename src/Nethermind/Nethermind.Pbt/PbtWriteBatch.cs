@@ -87,6 +87,14 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
         level[index + 1] = (int)(uint)(touched >> 32);
     }
 
+    /// <summary>Reads the touched slots of a layout whose boundary fits in 64 bits back as a bitmask.</summary>
+    /// <remarks>The inverse of <see cref="WriteTouched"/>; the low two mask words are always present, since <see cref="TouchedWordCount"/> is at least two.</remarks>
+    public static ulong ReadTouchedBitmask<TLayout>(scoped ReadOnlySpan<int> level) where TLayout : IPbtTileLayout
+    {
+        ReadOnlySpan<int> touched = ReadTouched<TLayout>(level);
+        return (uint)touched[0] | ((ulong)(uint)touched[1] << 32);
+    }
+
     /// <param name="Stem">The 31-byte stem shared by every write in <paramref name="Changes"/>.</param>
     /// <param name="Changes">The stem's sub-index → 32-byte value writes; a zero value clears the leaf.</param>
     internal readonly record struct StemEntry(Stem Stem, IPbtStemChanges Changes);

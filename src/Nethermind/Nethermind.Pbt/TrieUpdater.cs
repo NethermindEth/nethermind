@@ -619,10 +619,19 @@ public static partial class TrieUpdater
             where TOccupants : IOccupants, allows ref struct
         {
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            ulong touchedBitmask = PbtWriteBatch.ReadTouched<TLayout>(level);
+            ulong touchedBitmask = PbtWriteBatch.ReadTouchedBitmask<TLayout>(level);
             BoundaryScan scan = default;
 
-            for (ulong remainingBitmask = touchedBitmask | occupants.ChildSlotsBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
+            // The slots whose child the frame holds and no key reaches, so the walk visits them alongside
+            // the touched ones to carry each untouched child over into the blob replacing this one. Only a
+            // clustering depth gets here, and only the clustered layout clusters, so the boundary is 64-slot.
+            ulong childSlotsBitmask = 0;
+            for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
+            {
+                if (occupants.HasChild(slot)) childSlotsBitmask |= 1UL << slot;
+            }
+
+            for (ulong remainingBitmask = touchedBitmask | childSlotsBitmask; remainingBitmask != 0; remainingBitmask &= remainingBitmask - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(remainingBitmask);
                 if ((touchedBitmask >> slot & 1) == 0)
@@ -677,7 +686,7 @@ public static partial class TrieUpdater
             where TOccupants : IOccupants, allows ref struct
         {
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            ulong touchedBitmask = PbtWriteBatch.ReadTouched<TLayout>(level);
+            ulong touchedBitmask = PbtWriteBatch.ReadTouchedBitmask<TLayout>(level);
             ulong storedChildBitmask = 0;
             BoundaryScan scan = default;
 

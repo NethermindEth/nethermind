@@ -49,10 +49,8 @@ public class TwoLevelBitmapReaderTests
     [TestCase(new byte[] { 0x04 }, "missing top")]
     [TestCase(new byte[] { 0x01, 0x00, 0x04 }, "missing subword")]
     [TestCase(new byte[] { 0x11, 0x00, 0x00, 0x04 }, "truncated entries")]
-    public void FromBlobRejectsMalformedFooter(byte[] blob, string description)
-    {
+    public void FromBlobRejectsMalformedFooter(byte[] blob, string description) =>
         Assert.That(() => ReadMalformed(blob), Throws.InstanceOf<InvalidDataException>(), description);
-    }
 
     private static void ReadMalformed(byte[] blob) => TwoLevelBitmapReader.FromBlob(blob, out _);
 }
