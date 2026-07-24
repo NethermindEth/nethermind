@@ -90,10 +90,10 @@ on:
       node_config:
         description: >-
           Advanced node/runner overrides as JSON:
-          {"db_source":"","db_isolation":"overlay","scratch_root":"/mnt/sda/expb-data/rpc-bench-scratch",
+          {"db_source":"","db_isolation":"overlay|copy|readonly-bind|direct","scratch_root":"/mnt/sda/expb-data/rpc-bench-scratch",
           "network":"mainnet","jsonrpc_modules":"Eth,...","health_timeout_minutes":30,"cpuset":"2-7,10-15","memory":"64g",
-          "reference_db_source":"","reference_image":"","reference_flags":""}.
-          Leave empty for defaults (db_source resolved from client/state_layout/snapshot_block).
+          "reference_db_source":"","reference_image":"","reference_flags":"","reference_db_isolation":""}.
+          Leave empty for defaults (db_source resolved from client/state_layout/snapshot_block; db_isolation defaults to 'direct' for reth — RW mount, no overlay copy-up — else 'overlay').
         required: false
         default: ""
   pull_request:
@@ -128,6 +128,7 @@ jobs:
       db_source: ${{ steps.resolve.outputs.db_source }}
       ref_db_source: ${{ steps.resolve.outputs.ref_db_source }}
       db_isolation: ${{ steps.resolve.outputs.db_isolation }}
+      ref_db_isolation: ${{ steps.resolve.outputs.ref_db_isolation }}
       scratch_root: ${{ steps.resolve.outputs.scratch_root }}
       network: ${{ steps.resolve.outputs.network }}
       jsonrpc_modules: ${{ steps.resolve.outputs.jsonrpc_modules }}
@@ -284,7 +285,15 @@ jobs:
             [[ -z "${ref_db_source}" ]] && ref_db_source="$(snapshot_path "${reference_client}")"
             ref_additional_flags="$(nc '.reference_flags')"
           fi
-          db_isolation="$(nc '.db_isolation')";     [[ -z "${db_isolation}" ]] && db_isolation="overlay"
+          # reth defaults to 'direct' (RW bind, no overlay): otherwise overlayfs
+          # copy-up of its single large mdbx.dat costs ~200s at open. NM/geth
+          # stay on 'overlay' (their engines only copy up tiny control files, and
+          # their snapshots — the NM flat set especially — are shared with expb,
+          # so keep them pristine). Override for any client via node_config.
+          db_isolation="$(nc '.db_isolation')"
+          if [[ -z "${db_isolation}" ]]; then
+            if [[ "${client}" == "reth" ]]; then db_isolation="direct"; else db_isolation="overlay"; fi
+          fi
           scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="/mnt/sda/expb-data/rpc-bench-scratch"
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
           jsonrpc_modules="$(nc '.jsonrpc_modules')"
@@ -299,10 +308,21 @@ jobs:
           fi
           health_timeout=$(( health_min * 60 ))
 
-          case "${db_isolation}" in
-            overlay|copy|readonly-bind) ;;
-            *) echo "node_config.db_isolation must be overlay | copy | readonly-bind, got '${db_isolation}'."; exit 1;;
-          esac
+          # The reference node's isolation is derived from ITS client, independently
+          # of the primary's — a reth reference still wants 'direct', and an NM/geth
+          # reference must NOT inherit a reth-primary's 'direct' (which would mutate
+          # its shared snapshot). Override via node_config.reference_db_isolation.
+          ref_db_isolation="$(nc '.reference_db_isolation')"
+          if [[ -z "${ref_db_isolation}" ]]; then
+            if [[ "${reference_client}" == "reth" ]]; then ref_db_isolation="direct"; else ref_db_isolation="overlay"; fi
+          fi
+
+          for iso in "${db_isolation}" "${ref_db_isolation}"; do
+            case "${iso}" in
+              overlay|copy|readonly-bind|direct) ;;
+              *) echo "db_isolation must be overlay | copy | readonly-bind | direct, got '${iso}'."; exit 1;;
+            esac
+          done
 
           # These paths reach root-privileged mount/rm on the runner — enforce a
           # strict shape here (the scripts canonicalize and guard again).
@@ -387,6 +407,7 @@ jobs:
             echo "db_source=${db_source}"
             echo "ref_db_source=${ref_db_source}"
             echo "db_isolation=${db_isolation}"
+            echo "ref_db_isolation=${ref_db_isolation}"
             echo "scratch_root=${scratch_root}"
             echo "network=${network}"
             echo "jsonrpc_modules=${jsonrpc_modules}"
@@ -517,7 +538,7 @@ jobs:
           CONTAINER_NAME: ${{ env.REF_CONTAINER_NAME }}
           RPC_PORT: ${{ env.REF_RPC_PORT }}
           DB_SOURCE: ${{ needs.resolve.outputs.ref_db_source }}
-          DB_ISOLATION: ${{ needs.resolve.outputs.db_isolation }}
+          DB_ISOLATION: ${{ needs.resolve.outputs.ref_db_isolation }}
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           NETWORK: ${{ needs.resolve.outputs.network }}
           JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}

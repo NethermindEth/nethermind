@@ -45,13 +45,26 @@ if [[ "${DOTTRACE:-}" == "true" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3) Verify the pristine snapshot is unchanged (the hard DB-safety guarantee).
+# 3) Verify the snapshot. Under overlay/copy/readonly-bind it must be unchanged
+#    (the hard DB-safety guarantee). Under 'direct' it is intentionally mounted
+#    read-write, so changes are expected: record what changed and warn, but do
+#    NOT fail the job or update the cross-run anchor.
 # ---------------------------------------------------------------------------
-log "Verifying DB snapshot integrity..."
-# A fingerprint failure must never look like a clean snapshot: flag it and fall
-# through to teardown + the final die (with set -e it would otherwise abort here
-# and skip the umount/scratch cleanup below).
-if ! db_fingerprint "$DB_SOURCE" "$FINAL_FILE"; then
+if [[ "${DB_ISOLATION:-}" == "direct" ]]; then
+  log "direct mode: snapshot was mounted read-write — verifying scope of changes (not a failure)..."
+  if ! db_fingerprint "$DB_SOURCE" "$FINAL_FILE"; then
+    log "::warning::direct mode: failed to compute the final fingerprint — cannot summarize what changed."
+  elif diff -q "$BASELINE_FILE" "$FINAL_FILE" >/dev/null 2>&1; then
+    log "  snapshot unchanged despite read-write mount (node made no on-disk changes)."
+  else
+    changed=$(diff "$BASELINE_FILE" "$FINAL_FILE" 2>/dev/null | grep -cE '^[<>]' || true)
+    log "::warning::direct mode: snapshot changed as expected (${changed} differing fingerprint lines). First 40:"
+    diff "$BASELINE_FILE" "$FINAL_FILE" 2>/dev/null | grep -E '^[<>]' | head -n 40 || true
+  fi
+elif ! db_fingerprint "$DB_SOURCE" "$FINAL_FILE"; then
+  # A fingerprint failure must never look like a clean snapshot: flag it and fall
+  # through to teardown + the final die (with set -e it would otherwise abort here
+  # and skip the umount/scratch cleanup below).
   log "::error::Failed to compute the final DB fingerprint — snapshot integrity could not be verified."
   integrity_fail=1
 elif ! diff -q "$BASELINE_FILE" "$FINAL_FILE" >/dev/null 2>&1; then

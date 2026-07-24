@@ -9,13 +9,18 @@
 #     (geth backups hold the contents of <datadir>/geth and are mounted one
 #     level down so geth finds <datadir>/geth/chaindata),
 #   * isolation backend 'overlay' matches expb's snapshot_backend: overlay
-#     (read-only lowerdir + scratch upperdir, redirect_dir/metacopy/volatile),
+#     (read-only lowerdir + scratch upperdir, redirect_dir/metacopy/volatile);
+#     'direct' skips isolation entirely and mounts the snapshot read-write (the
+#     node's startup writes land on it — accepted for reth, which otherwise
+#     pays ~200s to overlay-copy-up its single large mdbx.dat),
 #   * dotTrace profiling (nethermind only — it is .NET-specific) mounts the
 #     host-installed dottrace CLI into the container and wraps the entrypoint.
 # INSTANCE=reference starts a second, independently-isolated node (own scratch,
 # state file and fingerprint) for cross-client comparison runs.
-# The pristine snapshot is NEVER mounted writable. A tamper tripwire baseline is
-# captured here and verified by stop-node.sh.
+# Under overlay/copy/readonly-bind the pristine snapshot is NEVER mounted
+# writable; a tamper tripwire baseline is captured here and verified by
+# stop-node.sh. Under 'direct' the snapshot IS mutated and the tripwire only
+# records/warns.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -168,8 +173,21 @@ case "$DB_ISOLATION" in
     DATA_DIR_SOURCE="$RUN_SCRATCH/ro"
     MOUNT_OPT="ro"
     ;;
+  direct)
+    # Mount the snapshot itself read-write — no overlay, no copy. The node opens
+    # the DB in place and makes its usual startup housekeeping writes (LOCK/LOG,
+    # RocksDB CURRENT/MANIFEST/OPTIONS or MDBX lock, WAL reconcile) directly on
+    # the snapshot. This is the ONLY mode that avoids overlayfs whole-file
+    # copy-up, which for reth's single large mdbx.dat costs ~200s at open.
+    # Tradeoff (accepted here): the snapshot is mutated — stop-node.sh records
+    # what changed and warns instead of failing, and does NOT run two nodes
+    # against the same snapshot concurrently. See README "direct".
+    log "::warning::db_isolation=direct — mounting the pristine snapshot READ-WRITE; the node's startup writes will modify it (accepted tradeoff)."
+    DATA_DIR_SOURCE="$DB_SOURCE"
+    MOUNT_OPT="rw"
+    ;;
   *)
-    die "unknown DB_ISOLATION '$DB_ISOLATION' (expected overlay | copy | readonly-bind)"
+    die "unknown DB_ISOLATION '$DB_ISOLATION' (expected overlay | copy | readonly-bind | direct)"
     ;;
 esac
 

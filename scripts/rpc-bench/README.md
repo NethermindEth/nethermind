@@ -94,14 +94,39 @@ clean latency — for perf A/B use two separate single-node runs.
 
 ## How the node is started (and why the snapshot is safe)
 
-The pristine snapshot at `db_source` is **never mounted writable**. `start-node.sh`
-builds an isolated, writable *view* of it and gives the container only that view:
+Under `overlay`/`copy`/`readonly-bind` the pristine snapshot at `db_source` is
+**never mounted writable** — `start-node.sh` builds an isolated, writable *view*
+of it and gives the container only that view. `direct` is the exception: it
+mounts the snapshot itself read-write and accepts the node's startup writes.
 
 | `db_isolation` | Mechanism | Snapshot protection |
 |---|---|---|
-| `overlay` (default) | `mount -t overlay` with the snapshot as a **read-only `lowerdir`** and scratch as `upperdir`/`workdir`; the container gets the merged dir. All writes land in the scratch upper layer. | Kernel-enforced — the lowerdir is read-only. |
+| `overlay` (default for nethermind/geth) | `mount -t overlay` with the snapshot as a **read-only `lowerdir`** and scratch as `upperdir`/`workdir`; the container gets the merged dir. All writes land in the scratch upper layer. | Kernel-enforced — the lowerdir is read-only. |
 | `copy` | `cp -a --reflink=auto` the snapshot to scratch (instant CoW clone on btrfs/xfs, full copy otherwise); the container gets the copy. | The node never sees the original at all. |
-| `readonly-bind` | Read-only bind mount of the snapshot, passed `:ro` into the container. | Advanced — requires the node/RocksDB to open the DB read-only, which it may refuse. Prefer `overlay`. |
+| `readonly-bind` | Read-only bind mount of the snapshot, passed `:ro` into the container. | Advanced — requires the node/DB engine to open the DB read-only, which all three node commands refuse (they open read-write and take a lock). Effectively unusable; prefer `overlay`. |
+| `direct` (default for reth) | Bind-mounts the snapshot **read-write** into the container — no overlay, no copy. The node opens the DB in place. | **None — the snapshot is mutated.** |
+
+### Why reth defaults to `direct`
+
+A node opens its DB engine **read-write** on startup even when it will only serve
+read RPC (there is no read-only node mode in nethermind/geth/reth), so the engine
+writes its lock + control files regardless. For RocksDB (nethermind) and Pebble
+(geth) those are a handful of tiny files, so `overlay`'s copy-up is trivial and
+the snapshot stays pristine. reth's MDBX is instead a **single large
+`mdbx.dat`**, and the first write forces overlayfs to copy the *entire* file up
+to the scratch layer before startup proceeds — measured at **~200 s** on the
+mainnet snapshot (vs ~11–15 s for nethermind/geth). `direct` avoids the copy-up
+by writing in place; reth then opens in seconds. The cost is that reth's snapshot
+is no longer byte-identical afterwards — acceptable because these are read-only
+benchmarks (no transactions, no `newPayload`), so the only changes are the
+engine's own startup housekeeping (lock, log, meta pages, WAL reconcile).
+
+**`direct` caveats:** the snapshot is mutated, so (1) the tamper tripwire records
+the diff and warns instead of failing (see below); (2) do not point two nodes at
+the same `direct` snapshot concurrently (DB lock conflict) — comparison runs are
+fine because each client uses its own snapshot; (3) if this snapshot is shared
+with another consumer (e.g. expb reuses the nethermind sets), don't put that
+client on `direct` — which is why nethermind/geth stay on `overlay`.
 
 ### Tamper tripwire (active verification of goal #2)
 
@@ -110,7 +135,9 @@ builds an isolated, writable *view* of it and gives the container only that view
 (path, type, size, mtime, mode, owner, symlink target) plus a sha256 of the
 small RocksDB control files that get rewritten the instant a DB is opened
 read-write (`CURRENT`, `IDENTITY`, `MANIFEST-*`, `OPTIONS-*`). If anything
-differs, **the job fails**. Hashing is limited to the small control files so the
+differs, **the job fails** (except under `direct`, where changes are expected —
+there the tripwire logs how many fingerprint lines changed and warns, and does
+not update the cross-run anchor). Hashing is limited to the small control files so the
 check stays fast on a multi-TB DB; listing errors are fatal rather than
 silently producing a partial fingerprint. After a clean verification the
 fingerprint is persisted (`<scratch_root>/fingerprints/`) as a **cross-run
@@ -149,7 +176,7 @@ images (see the table above).
 ```json
 {
   "db_source": "",                 // snapshot path; empty = resolved from client/state_layout/snapshot_block
-  "db_isolation": "overlay",       // overlay | copy | readonly-bind
+  "db_isolation": "",              // overlay | copy | readonly-bind | direct; empty = direct for reth, overlay otherwise
   "scratch_root": "/mnt/sda/expb-data/rpc-bench-scratch",
   "network": "mainnet",
   "jsonrpc_modules": "Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug",
@@ -158,7 +185,8 @@ images (see the table above).
   "memory": "",                    // e.g. "64g"
   "reference_db_source": "",       // reference snapshot path; empty = resolved from reference_client/snapshot_block
   "reference_image": "",           // reference image; empty = the client's upstream default
-  "reference_flags": ""            // extra flags for the reference node's command
+  "reference_flags": "",           // extra flags for the reference node's command
+  "reference_db_isolation": ""     // reference isolation; empty = direct for a reth reference, overlay otherwise
 }
 ```
 
