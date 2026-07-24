@@ -283,7 +283,7 @@ public class PbtTrieNodeGroupTests
             expected |= 1UL << PbtLayout.TrieNodeGroupBoundarySlot(position);
         }
 
-        Assert.That(Layout.BoundaryBitmask(positions), Is.EqualTo(expected), $"0x{positions:x8}");
+        Assert.That(PbtLayout.GatherBoundary(positions, Layout.BoundarySlots), Is.EqualTo(expected), $"0x{positions:x8}");
         Assert.That(expected >> Layout.BoundarySlots, Is.Zero, "only the sixteen slot bits are set");
     }
 

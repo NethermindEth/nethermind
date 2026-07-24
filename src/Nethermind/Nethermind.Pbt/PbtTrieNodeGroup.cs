@@ -299,6 +299,8 @@ public readonly ref struct PbtTrieNodeGroup<TLayout> where TLayout : IPbtTileLay
     /// <param name="position"><inheritdoc cref="this[int]" path="/param[@name='position']"/></param>
     public PbtTrieNodeGroup.NodeKind KindAt(int position)
     {
+        // an empty group holds nothing at any position, and its mask spans have no words to index
+        if (_presence.IsEmpty) return PbtTrieNodeGroup.NodeKind.Absent;
         if (!NodeGroupMaskEncoding.Contains(_presence, position)) return PbtTrieNodeGroup.NodeKind.Absent;
         if (NodeGroupMaskEncoding.Contains(_stems, position)) return PbtTrieNodeGroup.NodeKind.Stem;
 
