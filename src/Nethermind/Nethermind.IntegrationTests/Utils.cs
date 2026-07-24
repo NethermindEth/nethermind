@@ -302,7 +302,12 @@ public static class Utils
         return json["result"];
     }
 
-    public static async Task CreateBlocksAsync(HttpClient httpClient, int count, int version, long minimumTimestamp)
+    public static async Task CreateBlocksAsync(
+        HttpClient httpClient,
+        int count,
+        int version,
+        long minimumTimestamp,
+        TimeSpan? payloadBuildDelay = null)
     {
         // Amsterdam (EIP-7928 / EIP-7843) reuses FCU V4 but switches getPayload→V6 / newPayload→V5.
         // We model that as `version: 5` here so callers can opt in without leaking three handler
@@ -404,6 +409,11 @@ public static class Utils
 
             string payloadId = fcuResult1["payloadId"]?.GetValue<string>();
             Assert.That(payloadId, Is.Not.Null.And.Not.Empty);
+
+            if (payloadBuildDelay is { } delay && delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay);
+            }
 
             JsonNode getPayloadResult = await SendEngineRequestAsync(httpClient, $"engine_getPayloadV{getPayloadVersion}", payloadId);
             JsonNode executionPayload = version == 1 ? getPayloadResult : getPayloadResult["executionPayload"];
