@@ -63,8 +63,8 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
     public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AccountHeaderStem(address));
 
     /// <inheritdoc cref="GetAccount(Address)"/>
-    /// <param name="stem">The account's header stem, for a caller that has already derived it — which costs a hash of the address.</param>
-    public Account? GetAccount(in Stem stem)
+    /// <param name="stem">The account's header stem, already derived — which costs a hash of the address.</param>
+    private Account? GetAccount(in Stem stem)
     {
         GuardDispose();
         long startTimestamp = StartTiming();
@@ -94,9 +94,9 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         GetSlot(PbtLeafDecoder.SlotStem(address, slot, out byte subIndex), subIndex);
 
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
-    /// <param name="stem">The stem the slot lives on, for a caller that has already derived it — which costs up to two hashes.</param>
+    /// <param name="stem">The stem the slot lives on, already derived — which costs up to two hashes.</param>
     /// <param name="subIndex">The slot's sub-index of <paramref name="stem"/>, as <see cref="PbtLeafDecoder.SlotStem"/> returns it.</param>
-    public EvmWord GetSlot(in Stem stem, byte subIndex)
+    private EvmWord GetSlot(in Stem stem, byte subIndex)
     {
         GuardDispose();
         long startTimestamp = StartTiming();

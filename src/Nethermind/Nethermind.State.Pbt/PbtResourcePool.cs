@@ -52,6 +52,10 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnPendingFlatWrites(Usage usage, PbtPendingFlatWrites pending) => _categories[usage].ReturnPendingFlatWrites(pending);
 
+    public PbtLeafBlobCache GetLeafBlobCache(Usage usage) => _categories[usage].GetLeafBlobCache();
+
+    public void ReturnLeafBlobCache(Usage usage, PbtLeafBlobCache cache) => _categories[usage].ReturnLeafBlobCache(cache);
+
     public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage)
     {
         PbtWriteBatchBuilder builder = _categories[usage].GetWriteBatchBuilder();
@@ -129,11 +133,13 @@ public class PbtResourcePool : IPbtResourcePool
         // one scope holds one builder at a time, and only main processing and the read-only envs
         // ever open scopes, so the layer sizing does not apply here
         private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _builderPool = new(writeBatchBuilderPoolSize);
-        // a scope holds one bundle for as long as it holds one builder, so the two are sized alike
+        // a scope holds one bundle for as long as it holds one builder, so these are sized alike
         private readonly ConcurrentStackPool<PbtPendingFlatWrites> _pendingPool = new(writeBatchBuilderPoolSize);
+        private readonly ConcurrentStackPool<PbtLeafBlobCache> _leafCachePool = new(writeBatchBuilderPoolSize);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
         private readonly PooledResourceLabel _builderLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
         private readonly PooledResourceLabel _pendingLabel = new(usage.ToString(), nameof(PbtPendingFlatWrites));
+        private readonly PooledResourceLabel _leafCacheLabel = new(usage.ToString(), nameof(PbtLeafBlobCache));
 
         public PbtSnapshotContent GetSnapshotContent()
         {
@@ -174,6 +180,26 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.PbtActivePooledResource.AddBy(_pendingLabel, -1);
             _pendingPool.Return(pending);
             Metrics.PbtCachedPooledResource[_pendingLabel] = _pendingPool.PooledItemCount;
+        }
+
+        public PbtLeafBlobCache GetLeafBlobCache()
+        {
+            Metrics.PbtActivePooledResource.AddBy(_leafCacheLabel, 1);
+            if (_leafCachePool.TryGet(out PbtLeafBlobCache? cache))
+            {
+                Metrics.PbtCachedPooledResource[_leafCacheLabel] = _leafCachePool.PooledItemCount;
+                return cache;
+            }
+
+            Metrics.PbtCreatedPooledResource.AddBy(_leafCacheLabel, 1);
+            return new PbtLeafBlobCache();
+        }
+
+        public void ReturnLeafBlobCache(PbtLeafBlobCache cache)
+        {
+            Metrics.PbtActivePooledResource.AddBy(_leafCacheLabel, -1);
+            _leafCachePool.Return(cache);
+            Metrics.PbtCachedPooledResource[_leafCacheLabel] = _leafCachePool.PooledItemCount;
         }
 
         public PbtWriteBatchBuilder GetWriteBatchBuilder()

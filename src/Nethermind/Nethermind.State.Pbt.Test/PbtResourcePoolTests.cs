@@ -68,6 +68,24 @@ public class PbtResourcePoolTests
         Assert.That(pending.SelfDestructs, Is.Empty);
     }
 
+    [Test]
+    public void ReturnedLeafBlobCache_IsRentedAgain_AndReset()
+    {
+        Stem stem = new(new byte[31]);
+        RefCountingMemory blob = RefCountingMemory.Wrapping([0x01]);
+        PbtLeafBlobCache cache = _pool.GetLeafBlobCache(PbtResourcePool.Usage.MainBlockProcessing);
+        cache.Add(stem, blob);
+
+        _pool.ReturnLeafBlobCache(PbtResourcePool.Usage.MainBlockProcessing, cache);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_pool.GetLeafBlobCache(PbtResourcePool.Usage.MainBlockProcessing), Is.SameAs(cache));
+            Assert.That(cache.LeafBlobs, Is.Empty);
+            Assert.That(blob.AcquireLease, Throws.Nothing, "the cache leased the blob rather than taking the caller's lease");
+        }
+    }
+
     /// <summary>
     /// Categories are independent: a wide compacted layer's content must never end up in the pool a
     /// per-block scope rents from, which is the distortion the pooling exists to remove.

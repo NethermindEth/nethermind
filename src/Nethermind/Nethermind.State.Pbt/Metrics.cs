@@ -55,6 +55,22 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver PbtReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
+    /// <remarks>
+    /// Counted only where detailed metrics are on, and only for the reads that got past the tiers above
+    /// the cache: a hit is a leaf blob the block had already read out of the shared view, and a miss is
+    /// one that had to be read from it. Both are per read, so the ratio is the cache's hit rate.
+    /// </remarks>
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Reads served by a pbt bundle's leaf blob cache")]
+    public static long PbtLeafBlobCacheHits { get; set; }
+
+    /// <inheritdoc cref="PbtLeafBlobCacheHits"/>
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Reads that missed a pbt bundle's leaf blob cache and went to the shared view")]
+    public static long PbtLeafBlobCacheMisses { get; set; }
+
     [GaugeMetric]
     [Description("Number of layers in the most recently assembled pbt read-only snapshot bundle")]
     public static long PbtSnapshotBundleSize { get; set; }

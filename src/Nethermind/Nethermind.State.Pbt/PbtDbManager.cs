@@ -147,7 +147,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         try
         {
             // ownership of the shared bundle's lease passes to the writable one
-            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _resourcePool, usage);
+            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _resourcePool, usage, _recordDetailedMetrics);
         }
         catch
         {

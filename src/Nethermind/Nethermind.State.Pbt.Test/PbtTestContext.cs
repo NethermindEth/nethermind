@@ -60,7 +60,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, Compactor, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), new MetricsConfig(), LimboLogs.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, Config), Config, CodeDb);
+        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, Config, new MetricsConfig()), Config, CodeDb);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
