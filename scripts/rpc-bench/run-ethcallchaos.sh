@@ -147,6 +147,16 @@ curl -sf "$api/api/leaderboard?top=${ECC_LEADERBOARD_TOP}&sortBy=mean_ms" -o "$O
   || { log "::warning::failed to scrape /api/leaderboard"; scrape_failed=1; }
 
 docker logs "$CONTAINER_NAME" > "$OUT_DIR/ethcallchaos.log" 2>&1 || true
+
+# Persist the evolved corpus itself (not just the scraped leaderboard) so a long
+# run's DB can be published as the next corpus release. Stop the container first
+# so SQLite is quiesced, then copy from scratch before teardown wipes it.
+docker stop -t 20 "$CONTAINER_NAME" >/dev/null 2>&1 || true
+if [[ -s "$work/bench.db" ]]; then
+  cp "$work/bench.db" "$OUT_DIR/ethcallchaos.db" 2>/dev/null \
+    && log "Saved evolved corpus -> $OUT_DIR/ethcallchaos.db ($(du -h "$OUT_DIR/ethcallchaos.db" | cut -f1))" \
+    || log "::warning::failed to persist evolved corpus DB"
+fi
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 # ---------------------------------------------------------------------------
