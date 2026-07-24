@@ -333,6 +333,33 @@ jobs:
               "${L2_METRICS_FLAGS[@]}" \
               $extra_param
 
+          elif [[ "$network" == "xdc" ]]; then
+            mkdir -p execution-data/logs/configs
+            mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
+
+            if [ -n "${{ inputs.nethermind_args }}" ]; then
+              for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-extra-flag $f"; done
+            fi
+
+            ./build/sedge generate \
+              --logging none \
+              -p $GITHUB_WORKSPACE/sedge \
+              full-node \
+              -e nethermind:$docker_image \
+              --map-all \
+              --no-mev-boost \
+              --no-validator \
+              --network xdc \
+              --el-extra-flag FlatDb.Enabled=$flatdb_enabled \
+              --el-extra-flag Sync.NonValidatorNode=true \
+              --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+              --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+              --el-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
+              --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
+              --el-extra-flag Sync.SnapSync=false \
+              "${GENERIC_METRICS_FLAGS[@]}" \
+              $extra_param
+
           else
             mkdir -p execution-data/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
@@ -416,7 +443,7 @@ jobs:
           retention-days: 7
 
       - name: Get Consensus Logs
-        if: always()
+        if: always() && matrix.config.network != 'xdc'
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == op-* || "$network" == world-* ]]; then

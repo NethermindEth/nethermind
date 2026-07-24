@@ -17,7 +17,7 @@ else:
     print(f"Unsupported sync mode: {sync_mode}")
     sys.exit(1)
 
-if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia", "energyweb", "volta"}:
+if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia", "energyweb", "volta", "xdc"}:
     good_logs["Synced Chain Head"] = 0
     required_count["Synced Chain Head"] = 20
 
