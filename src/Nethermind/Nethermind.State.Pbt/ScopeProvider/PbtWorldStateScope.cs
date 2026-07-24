@@ -37,7 +37,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
-    private readonly PbtTrieFormat _writeFormat;
+    private readonly PbtTrieLayout _writeLayout;
     private readonly int _rootFoldConcurrency;
 
     // stem leaves dirtied since the last root update: storage slots from the parallel storage batches
@@ -75,7 +75,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         IPbtResourcePool resourcePool,
         PbtResourcePool.Usage usage,
         bool isReadOnly,
-        PbtTrieFormat writeFormat,
+        PbtTrieLayout writeLayout,
         int rootFoldConcurrency)
     {
         _currentStateId = currentStateId;
@@ -85,7 +85,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _childHeaders = childHeaders;
         _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
         _isReadOnly = isReadOnly;
-        _writeFormat = writeFormat;
+        _writeLayout = writeLayout;
         _rootFoldConcurrency = rootFoldConcurrency;
         _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
@@ -147,10 +147,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         if (!_rootDirty) return;
 
         long start = Stopwatch.GetTimestamp();
-        using (PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch(_writeFormat.Tiling))
+        using (PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch(_writeLayout.Tiling()))
         {
             _treeRoot = TrieUpdater.UpdateRoot(
-                this, _treeRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, _rootFoldConcurrency, out _);
+                this, _treeRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeLayout, _rootFoldConcurrency, out _);
         }
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
 

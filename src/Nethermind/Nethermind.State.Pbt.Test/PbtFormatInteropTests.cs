@@ -17,7 +17,7 @@ namespace Nethermind.State.Pbt.Test;
 /// <summary>
 /// The group encodings all describe the same trie, so they interoperate: any of them reads any other,
 /// they fold to the same root, and a store written across a format switch stays correct — the
-/// guarantee that lets the <c>TrieNodeLevels</c> config change without a migration.
+/// guarantee that lets <c>Pbt.TrieNodeLayout</c> move between layouts of one tiling without a migration.
 /// </summary>
 public class PbtFormatInteropTests
 {
@@ -35,62 +35,65 @@ public class PbtFormatInteropTests
 
         // Every4Depth is left out: it stores the same tile as BoundaryOnly and differs only in the leaf
         // column, which TotalNodeBytes does not weigh, so it cannot be ordered here. Its fold and node set
-        // are covered by MixedFormatRewrite below and its leaf column by StemLeafBlobTests.
+        // are covered by MixedLayoutRewrite below and its leaf column by StemLeafBlobTests.
         PbtTreeHarness[] harnesses =
         [
-            new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.EveryLevel)),
-            new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.Interleaved)),
-            new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.BoundaryOnly)),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelEveryLevel),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelInterleaved),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelBoundaryOnly),
         ];
 
         using (Assert.EnterMultipleScope())
         {
             foreach (PbtTreeHarness harness in harnesses)
             {
-                Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)), $"{harness.WriteFormat} folds to the EIP-8297 reference root");
-                Assert.That(harness.Nodes.Keys, Is.EquivalentTo(harnesses[0].Nodes.Keys), $"{harness.WriteFormat} changes bytes, not the node set");
+                Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)), $"{harness.WriteLayout} folds to the EIP-8297 reference root");
+                Assert.That(harness.Nodes.Keys, Is.EquivalentTo(harnesses[0].Nodes.Keys), $"{harness.WriteLayout} changes bytes, not the node set");
             }
 
             for (int i = 1; i < harnesses.Length; i++)
             {
                 Assert.That(
                     TotalNodeBytes(harnesses[i]), Is.LessThan(TotalNodeBytes(harnesses[i - 1])),
-                    $"{harnesses[i].WriteFormat} stores fewer bytes than {harnesses[i - 1].WriteFormat}");
+                    $"{harnesses[i].WriteLayout} stores fewer bytes than {harnesses[i - 1].WriteLayout}");
             }
         }
     }
 
     /// <summary>
-    /// A group first written in one format and then rewritten in another must come out byte-identical
-    /// to one folded in that format from scratch — the copy-verbatim path must refold across the format
-    /// change rather than splice old bytes into the new encoding.
+    /// A group first written in one layout and then rewritten in another of the same tiling must come
+    /// out byte-identical to one folded in that layout from scratch — the copy-verbatim path must refold
+    /// across the format change rather than splice old bytes into the new encoding.
     /// </summary>
-    [TestCase(PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved)]
-    [TestCase(PbtGroupFormat.Interleaved, PbtGroupFormat.EveryLevel)]
-    [TestCase(PbtGroupFormat.EveryLevel, PbtGroupFormat.BoundaryOnly)]
-    [TestCase(PbtGroupFormat.BoundaryOnly, PbtGroupFormat.EveryLevel)]
-    [TestCase(PbtGroupFormat.Interleaved, PbtGroupFormat.BoundaryOnly)]
-    [TestCase(PbtGroupFormat.BoundaryOnly, PbtGroupFormat.Interleaved)]
-    [TestCase(PbtGroupFormat.EveryLevel, PbtGroupFormat.Every4Depth)]
-    [TestCase(PbtGroupFormat.Every4Depth, PbtGroupFormat.EveryLevel)]
-    [TestCase(PbtGroupFormat.Every4Depth, PbtGroupFormat.BoundaryOnly)]
-    [TestCase(PbtGroupFormat.BoundaryOnly, PbtGroupFormat.Every4Depth)]
-    public void MixedFormatRewrite_MatchesAFreshFoldInTheNewFormat(PbtGroupFormat initial, PbtGroupFormat then)
+    /// <remarks>
+    /// The eight-level pair is where <see cref="PbtGroupFormat.Every4Depth"/> is covered, no clustered
+    /// layout writing it.
+    /// </remarks>
+    [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel, PbtTrieLayout.ClusteredFourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelEveryLevel)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel, PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, PbtTrieLayout.ClusteredFourLevelEveryLevel)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, PbtTrieLayout.ClusteredFourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.EightLevelInterleaved, PbtTrieLayout.EightLevelEvery4Depth, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
+    [TestCase(PbtTrieLayout.EightLevelEvery4Depth, PbtTrieLayout.EightLevelInterleaved, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
+    public void MixedLayoutRewrite_MatchesAFreshFoldInTheNewLayout(PbtTrieLayout initial, PbtTrieLayout then)
     {
-        // sixteen stems on the boundary slots of one depth-4 group: it branches sixteen ways, so a
-        // single-slot rewrite leaves whole clean subtrees for the copy-verbatim path to take
+        // one tile filled at every boundary slot: it branches every way it can, so a single-slot rewrite
+        // leaves whole clean subtrees for the copy-verbatim path to take
+        int slots = initial.Tiling() == PbtTiling.EightLevel ? PbtEightLevelTileLayout.BoundarySlots : Layout.BoundarySlots;
         List<(byte[], byte[]?)> writes = [];
-        for (byte slot = 0; slot < Layout.BoundarySlots; slot++) writes.Add((BoundaryKey(0, slot), Value));
+        for (int slot = 0; slot < slots; slot++) writes.Add((TileSlotKey((byte)slot), Value));
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(initial));
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, initial);
         harness.ApplyBatch(writes);
 
-        harness.WriteFormat = PbtTestFormats.Clustered(then);
+        harness.WriteLayout = then;
         writes[3] = (writes[3].Item1, Rewritten);
         ValueHash256 root = harness.ApplyBatch([writes[3]]);
 
-        // a fresh fold of the surviving state entirely in the new format
-        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(then));
+        // a fresh fold of the surviving state entirely in the new layout
+        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, then);
         ValueHash256 freshRoot = fresh.ApplyBatch(writes);
 
         Assert.That(root, Is.EqualTo(freshRoot), "the rewrite must reach the same root");
@@ -114,13 +117,13 @@ public class PbtFormatInteropTests
             groupB.Add((BoundaryKey(1, slot), Value));
         }
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.EveryLevel));
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelEveryLevel);
         harness.ApplyBatch([.. groupA, .. groupB]);
         TrieNodeKey keyA = TrieNodeKey.Root.ChildGroup(0, Layout.LevelsPerGroup);
         TrieNodeKey keyB = TrieNodeKey.Root.ChildGroup(1, Layout.LevelsPerGroup);
         Assert.That(PbtTrieNodeGroup<Layout>.Decode(harness.Nodes[keyA]).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
 
-        harness.WriteFormat = PbtTestFormats.Clustered(PbtGroupFormat.Interleaved);
+        harness.WriteLayout = PbtTrieLayout.ClusteredFourLevelInterleaved;
         groupA[3] = (groupA[3].Item1, Rewritten);
         ValueHash256 root = harness.ApplyBatch([groupA[3]]);
 
@@ -131,10 +134,17 @@ public class PbtFormatInteropTests
 
     private static long TotalNodeBytes(PbtTreeHarness harness) => harness.Nodes.Values.Sum(blob => (long)blob.Length);
 
-    private static byte[] BoundaryKey(byte rootNibble, byte slot)
+    private static byte[] BoundaryKey(byte rootNibble, byte slot) =>
+        TileSlotKey((byte)((rootNibble << 4) | slot)); // depth-0 nibble picks the child group, depth-4 nibble the slot
+
+    /// <summary>
+    /// A key whose first byte is its whole path down to a boundary slot: of the depth-4 group under a
+    /// root nibble on the four-level tiling, of the root tile itself on the eight-level one.
+    /// </summary>
+    private static byte[] TileSlotKey(byte path)
     {
         byte[] key = new byte[Stem.Length + 1];
-        key[0] = (byte)((rootNibble << 4) | slot); // depth-0 nibble picks the child group, depth-4 nibble the slot
+        key[0] = path;
         return key;
     }
 

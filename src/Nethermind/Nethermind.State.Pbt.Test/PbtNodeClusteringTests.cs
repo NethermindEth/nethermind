@@ -263,7 +263,7 @@ public class PbtNodeClusteringTests
     /// </summary>
     private static void AssertMatchesFreshRebuild(PbtTreeHarness harness, List<(byte[], byte[]?)> writes)
     {
-        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, harness.WriteFormat);
+        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, harness.WriteLayout);
         fresh.ApplyBatch(writes);
 
         Assert.That(harness.Nodes.Keys, Is.EquivalentTo(fresh.Nodes.Keys));

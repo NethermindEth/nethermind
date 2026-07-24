@@ -74,9 +74,9 @@ public class PbtScopeProviderBenchmark
     public SlotLayout StorageLayout { get; set; }
 
     // Writes are flat in the layer count, so pinned to 1.
-    /// <summary>Which tiling of the stem trie the PBT backend stores its nodes in; ignored by the trie backend.</summary>
-    [Params(PbtTiling.ClusteredFourLevel, PbtTiling.SixLevel, PbtTiling.EightLevel)]
-    public PbtTiling Tiling { get; set; }
+    /// <summary>Which layout the PBT backend stores its nodes in; ignored by the trie backend.</summary>
+    [Params(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.SixLevelInterleaved, PbtTrieLayout.EightLevelInterleaved)]
+    public PbtTrieLayout Layout { get; set; }
 
     [Params(1)]
     public int ChainDepth { get; set; }
@@ -124,7 +124,7 @@ public class PbtScopeProviderBenchmark
     private IWorldStateScopeProvider CreatePbtProvider()
     {
         _pbtDb = new SnapshotableMemColumnsDb<PbtColumns>("pbt");
-        PbtConfig config = new() { TrieNodeTiling = Tiling };
+        PbtConfig config = new() { TrieNodeLayout = Layout };
         PbtSnapshotRepository repository = new();
         PbtRocksDbPersistence persistence = new(_pbtDb, config);
         PbtResourcePool resourcePool = new(config);
@@ -137,7 +137,7 @@ public class PbtScopeProviderBenchmark
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), new MetricsConfig(), LimboLogs.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            new PbtTrieFormat(config.TrieNodeTiling, config.TrieNodeLevels), RootFoldConcurrency);
+            config.TrieNodeLayout, RootFoldConcurrency);
     }
 
     [Benchmark]

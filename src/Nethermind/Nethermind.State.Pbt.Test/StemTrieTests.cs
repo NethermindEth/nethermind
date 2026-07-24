@@ -952,7 +952,7 @@ public class StemTrieTests(PbtGroupFormat format)
     /// </summary>
     private static void AssertStoreMatchesFreshRebuild(PbtTreeHarness harness, IEnumerable<(byte[] Key, byte[]? Value)> survivingEntries)
     {
-        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, harness.WriteFormat);
+        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, harness.WriteLayout);
         fresh.ApplyBatch(survivingEntries);
         Assert.That(harness.Nodes, Has.Count.EqualTo(fresh.Nodes.Count));
         foreach ((TrieNodeKey key, byte[] expected) in fresh.Nodes)

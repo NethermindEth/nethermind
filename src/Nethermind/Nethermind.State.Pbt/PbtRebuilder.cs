@@ -144,7 +144,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                         {
                             // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
                             // drained batch lost to a faulting flusher only drops its pooled maps to the GC
-                            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeTiling), writeBatch!, entries, lastStem), pipelineCts.Token);
+                            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
                             writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
                             pending = 0;
                         }
@@ -153,7 +153,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             }
 
             // seal the final (possibly empty) window; the flusher owns its write batch from here
-            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeTiling), writeBatch!, entries, lastStem), pipelineCts.Token);
+            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
             writeBatch = null;
             flushChannel.Writer.Complete();
             await flusher;
@@ -200,7 +200,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                 // and blobs and writes the new ones into this window's still-open batch
                 using IPbtPersistence.IReader reader = target.CreateReader();
                 PersistenceBackedPbtStore store = new(reader, writeBatch);
-                currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeWriteFormat(), config.RootFoldConcurrency, out stemDelta);
+                currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeLayout, config.RootFoldConcurrency, out stemDelta);
             }
         }
 

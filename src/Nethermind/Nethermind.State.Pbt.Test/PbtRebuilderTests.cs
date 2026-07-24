@@ -20,15 +20,16 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <param name="tiling">
+/// <param name="layout">
 /// The rebuild is a producer of its own — it folds windows of sorted leaves rather than a block's
 /// writes — so it is run under every tiling, against the same reference root.
 /// </param>
-[TestFixture(PbtTiling.ClusteredFourLevel)]
-[TestFixture(PbtTiling.SixLevel)]
-public class PbtRebuilderTests(PbtTiling tiling)
+[TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+[TestFixture(PbtTrieLayout.SixLevelInterleaved)]
+[TestFixture(PbtTrieLayout.EightLevelInterleaved, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
+public class PbtRebuilderTests(PbtTrieLayout layout)
 {
-    private PbtConfig Config => new() { TrieNodeTiling = tiling };
+    private PbtConfig Config => new() { TrieNodeLayout = layout };
 
     private static List<RebuildEntry> BuildFixture(Dictionary<string, byte[]> model)
     {

@@ -184,10 +184,12 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
     /// <summary>Counts the entries of one zone's trie node column into that zone's statistics.</summary>
     /// <remarks>The depth-0 root shares the account column but spans every zone, so it is counted apart.</remarks>
-    private ScanEntry TrieNodeScanner(PbtTreePartition partition) =>
-        config.TrieNodeWriteFormat().Tiling == PbtTiling.SixLevel
-            ? TrieNodeScanner<PbtSixLevelTileLayout>(partition)
-            : TrieNodeScanner<PbtClusteredTileLayout>(partition);
+    private ScanEntry TrieNodeScanner(PbtTreePartition partition) => config.TrieNodeLayout.Tiling() switch
+    {
+        PbtTiling.SixLevel => TrieNodeScanner<PbtSixLevelTileLayout>(partition),
+        PbtTiling.EightLevel => TrieNodeScanner<PbtEightLevelTileLayout>(partition),
+        _ => TrieNodeScanner<PbtClusteredTileLayout>(partition),
+    };
 
     private static ScanEntry TrieNodeScanner<TLayout>(PbtTreePartition partition) where TLayout : IPbtTileLayout => (report, key, value) =>
     {

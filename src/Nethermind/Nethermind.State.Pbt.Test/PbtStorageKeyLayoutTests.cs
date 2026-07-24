@@ -133,6 +133,32 @@ public class PbtStorageKeyLayoutTests
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()), Throws.Nothing);
     }
 
+    /// <summary>
+    /// The tiling fixes the keys a tree is stored under, so a populated database may only be reopened
+    /// under a layout of the tiling that wrote it — the levels half of the layout being free to change,
+    /// as the encodings all read whichever wrote them.
+    /// </summary>
+    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, false, TestName = "the same tiling, other levels")]
+    [TestCase(PbtTrieLayout.SixLevelInterleaved, true, TestName = "another tiling")]
+    [TestCase(PbtTrieLayout.EightLevelInterleaved, true, TestName = "another tiling, wider")]
+    public void ReopeningAPopulatedDatabase_IsRefusedOnlyUnderAnotherTiling(PbtTrieLayout reopenAs, bool refused)
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtConfig written = new() { TrieNodeLayout = PbtTrieLayout.ClusteredFourLevelInterleaved };
+        PbtRocksDbPersistence persistence = new(db, written);
+
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
+        {
+            batch.SetLeafBlob(StemOf(TestItem.AddressA, 1, out byte subIndex), Blob(subIndex, 0xAB));
+        }
+
+        Assert.That(
+            () => new PbtRocksDbPersistence(db, new PbtConfig { TrieNodeLayout = reopenAs }),
+            refused
+                ? Throws.InstanceOf<InvalidDataException>().With.Message.Contains(nameof(IPbtConfig.TrieNodeLayout))
+                : Throws.Nothing);
+    }
+
     private static List<Stem> ScanStems(SnapshotableMemColumnsDb<PbtColumns> db, PbtColumns column)
     {
         // one byte longer than any stem, so it sorts above every one of them

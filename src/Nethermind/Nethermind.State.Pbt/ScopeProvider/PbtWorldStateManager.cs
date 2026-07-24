@@ -21,9 +21,9 @@ public class PbtWorldStateManager(
     IPbtConfig config,
     [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
 {
-    private readonly PbtTrieFormat _writeFormat = config.TrieNodeWriteFormat();
+    private readonly PbtTrieLayout _writeLayout = config.TrieNodeLayout;
     private readonly int _rootFoldConcurrency = config.RootFoldConcurrency;
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeWriteFormat(), config.RootFoldConcurrency);
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeLayout, config.RootFoldConcurrency);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
@@ -35,7 +35,7 @@ public class PbtWorldStateManager(
 
     // the child header source is kept here too: this env re-executes real, already-suggested blocks
     // (tracing, re-processing), which still have to validate against the root their header claims
-    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _writeFormat, _rootFoldConcurrency);
+    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _writeLayout, _rootFoldConcurrency);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();
 
