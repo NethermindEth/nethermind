@@ -25,9 +25,20 @@ defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
+  # Build the test binaries once per Linux RID and share as an artifact. Windows/macOS
+  # are excluded — their artifacts can't be deduped cheaply, so building in-job is faster.
+  build:
+    uses: ./.github/workflows/build-test-artifacts.yml
+    with:
+      matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-arm64","os":"ubuntu-24.04-arm","variant":"release","build_args":""}]}'
+
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     outputs:
@@ -40,7 +51,6 @@ jobs:
         runner:
           - ubuntu-latest
           - ubuntu-24.04-arm
-          - windows-latest
         project:
           - Nethermind.Abi.Test
           - Nethermind.Api.Test
@@ -110,12 +120,34 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download test binaries
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
 
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
@@ -124,7 +156,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
-          dotnet build ${{ matrix.project }}.csproj -c release
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
+          else
+            dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
+          fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 
@@ -151,8 +187,12 @@ jobs:
 
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
+    env:
+      # Only these EF fixture tests read the src/tests submodule at runtime.
+      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       matrix:
@@ -193,12 +233,22 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Fetch submodules
+        if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download test binaries
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
 
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
@@ -207,7 +257,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
-          dotnet build ${{ matrix.project }}.csproj -c release
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
+          else
+            dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
+          fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 
@@ -234,6 +288,7 @@ jobs:
 
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -268,6 +323,15 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download test binaries
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
@@ -275,7 +339,11 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
-          dotnet build ${{ matrix.test.project }}.csproj -c release
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            dotnet restore ${{ matrix.test.project }}.csproj
+          else
+            dotnet build ${{ matrix.test.project }}.csproj -c release
+          fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 

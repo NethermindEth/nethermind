@@ -46,6 +46,28 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void ReturnDataCopy_copies_an_exact_precompile_output_slice()
+    {
+        byte[] input = new byte[32];
+        for (int i = 0; i < input.Length; i++) input[i] = (byte)(i + 1);
+        byte[] code = Prepare.EvmCode
+            .MSTORE(0, input)
+            .STATICCALL(50_000, IdentityPrecompile.Address, 0, (UInt256)input.Length, 0, 0)
+            .Op(Instruction.POP)
+            .RETURNDATACOPY(64, 5, 7)
+            .RETURN(64, 7)
+            .Done;
+
+        ReceiptOnlyTracer tracer = Execute(new ReceiptOnlyTracer(), code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReturnValue, Is.EqualTo(input[5..12]));
+        }
+    }
+
+    [Test]
     public void Staticcall_to_precompile_below_base_gas_cost_returns_zero()
         => AssertStaticCallStatus(ECRecoverPrecompile.Address, inputLength: 128, gasForwarded: 100, expectedStatus: 0);
 

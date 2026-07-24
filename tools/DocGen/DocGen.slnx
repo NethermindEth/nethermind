@@ -47,6 +47,7 @@
     <Project Path="../../src/Nethermind/Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network/Nethermind.Network.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.CensorshipDetector.Plugin/Nethermind.CensorshipDetector.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Optimism/Nethermind.Optimism.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj" />

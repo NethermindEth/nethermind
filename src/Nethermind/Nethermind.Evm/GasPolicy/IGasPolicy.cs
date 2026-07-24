@@ -35,9 +35,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong GetPreRefundGas(in TSelf gas, ulong txGasLimit)
     {
-        Debug.Assert((long)txGasLimit - (long)TSelf.GetRemainingGas(in gas) - TSelf.GetStateReservoir(in gas) >= 0,
-            $"Gas invariant violated: remaining ({TSelf.GetRemainingGas(in gas)}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
-        return txGasLimit - TSelf.GetRemainingGas(in gas) - (ulong)TSelf.GetStateReservoir(in gas);
+        ulong remainingGas = TSelf.GetRemainingGas(in gas);
+        Debug.Assert((long)txGasLimit - (long)remainingGas - TSelf.GetStateReservoir(in gas) >= 0,
+            $"Gas invariant violated: remaining ({remainingGas}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
+        return txGasLimit - remainingGas - (ulong)TSelf.GetStateReservoir(in gas);
     }
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
@@ -240,6 +241,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void ResetForHalt(ref TSelf gas, long initialStateReservoir, long initialStateGasUsed) { }
 
+    /// <summary>Folds EIP-8037 top-frame state gas into the rollback baseline.</summary>
+    /// <remarks>Used for preparation charges, such as EIP-7702 authorization writes, that survive execution rollback.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void FoldTopFrameStateGas(ref TSelf gas, ref TSelf baseline, long stateGasUsed) { }
+
     // EIP-7702 code-insert refund regular-gas portion. Pre-EIP-8037: (NewAccount - PerAuthBaseCost) each.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong GetCodeInsertRegularRefund(ulong codeInsertRefunds, IReleaseSpec spec) =>
@@ -308,6 +314,9 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
     public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
+
+    public ulong StandardGas => TGasPolicy.GetRemainingGas(Standard) + (ulong)TGasPolicy.GetStateReservoir(Standard);
+    public ulong MinRequiredGasLimit => Math.Max(StandardGas, TGasPolicy.GetRemainingGas(FloorGas));
 
     /// <summary>
     /// EIP-8037: rejects a transaction whose intrinsic regular or floor gas exceeds <paramref name="cap"/>.

@@ -8,7 +8,11 @@ namespace Nethermind.Core.Test;
 public class ProductInfoTest
 {
     [TearDown]
-    public void TearDown() => ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
+    public void TearDown()
+    {
+        ProductInfo.VersionPostfix = "";
+        ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
+    }
 
     [Test]
     public void Public_client_id_template_properly_initialized()
@@ -34,6 +38,20 @@ public class ProductInfoTest
         ProductInfo.InitializePublicClientId("{name}/{version}");
         Assert.That(ProductInfo.PublicClientId,
             Is.EqualTo($"{ProductInfo.Name}/v{ProductInfo.Version}"));
+    }
+
+    [TestCase("-hp")]
+    [TestCase("-f")]
+    [TestCase("")]
+    public void Public_client_id_includes_version_postfix(string postfix)
+    {
+        ProductInfo.VersionPostfix = postfix;
+        ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
+        Assert.That(
+            ProductInfo.PublicClientId, Is.EqualTo(
+                $"{ProductInfo.Name}/v{ProductInfo.Version}{postfix}/{ProductInfo.OS.ToLowerInvariant()}-{ProductInfo.OSArchitecture}/dotnet{ProductInfo.Runtime[5..]}"
+            )
+        );
     }
 
     [Test]

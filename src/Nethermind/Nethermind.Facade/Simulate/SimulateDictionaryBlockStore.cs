@@ -46,7 +46,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
-            return _blockDecoder.Encode(block).Bytes;
+            return _blockDecoder.EncodeAsBytes(block);
         }
         return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);
     }
@@ -60,5 +60,5 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         => Insert(block);
 
     public bool HasBlock(ulong blockNumber, Hash256 blockHash)
-        => _blockNumDict.ContainsKey(blockNumber);
+        => _blockNumDict.ContainsKey(blockNumber) || readonlyBaseBlockStore.HasBlock(blockNumber, blockHash);
 }

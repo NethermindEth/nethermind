@@ -48,6 +48,14 @@ public class XdcPool<T> where T : IXdcPoolItem
         }
     }
 
+    internal void RemoveRoundsOutsideRetention(ulong latestRound, ulong retainedRoundCount)
+    {
+        if (latestRound < retainedRoundCount)
+            return;
+
+        EndRound(latestRound - retainedRoundCount);
+    }
+
     public IReadOnlyCollection<T> GetItemsByKey(T item)
     {
         using McsLock.Disposable lockRelease = _lock.Acquire();

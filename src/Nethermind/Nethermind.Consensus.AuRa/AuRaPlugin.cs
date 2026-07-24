@@ -70,7 +70,8 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
-                .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
+                .AddSingleton<AuRaTxPoolTxSourceFactory>()
+                .AddSingleton<AuRaBlockProducerEnvFactory>()
                 .AddSingleton<AuRaBlockProducerFactory>()
                 .Bind<IBlockProducerFactory, AuRaBlockProducerFactory>()
                 .Bind<IBlockProducerRunnerFactory, AuRaBlockProducerFactory>()
@@ -80,8 +81,8 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IValidatorStore, ValidatorStore>()
                 .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
                 .AddSingleton<ReportingContractBasedValidator.Cache>()
-                .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
-                    ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
+                .AddSingleton<IReportingValidator, IMainProcessingContext, AuraStatefulComponents>(
+                    static (_, statefulComponents) => statefulComponents.MainProcessingReportingValidator)
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
 
                 // Steps override
