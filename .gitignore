@@ -456,3 +456,6 @@ keystore/
 # Worktrees
 .worktrees/
 /.dotnet-cli
+
+# Clawpatch
+.clawpatch/
