@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
@@ -24,8 +25,31 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 {
     public record Size(long PrewarmedAddressSize, int NodesCacheSize);
 
+    // Invariant: the pool return runs exactly once, at refcount zero, so an in-flight trie-warmer
+    // lookup can never overlap Reset/re-rent of this resource.
+    private long _leases = RefCountingLease.Single;
+    private IResourcePool? _returnPool;
+    private ResourcePool.Usage _returnUsage;
+
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
+
+    internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
+    {
+        _returnPool = pool;
+        _returnUsage = usage;
+        Volatile.Write(ref _leases, RefCountingLease.Single);
+    }
+
+    internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
+
+    internal void ReleaseLease()
+    {
+        if (RefCountingLease.ReleaseOnce(ref _leases))
+        {
+            _returnPool?.ReturnCachedResource(_returnUsage, this);
+        }
+    }
 
     public Size GetSize() => new(PrewarmedAddresses.Capacity, Nodes.Capacity);
 

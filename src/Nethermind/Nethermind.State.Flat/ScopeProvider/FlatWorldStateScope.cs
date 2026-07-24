@@ -460,7 +460,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             else
             {
                 newSnapshot?.Dispose();
-                cachedResource?.Dispose();
+                cachedResource?.ReleaseLease();
             }
         }
 
