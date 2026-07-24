@@ -227,9 +227,12 @@ public class PersistenceManager(
         {
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
 
-            // Skip interior (unmaterialized) bases: converting one would move an unbacked root into the
-            // persisted tier. No-op when CommitBatchSize == 1.
-            if (IsOnDisk(baseSnap!.From, currentPersistedState) && IsMaterializationBoundary(baseSnap.To))
+            // Interior (trie-less) bases MUST remain convertible, or the in-memory base chain grows without
+            // bound and every flat read walks it (O(N) per block -> the sync grinds to a halt). Converting an
+            // interior base moves only its flat KVs into the persisted tier; its empty-StateNodes root is never
+            // queried during forward sync, and the DURABLE persisted pointer is still pinned to materialization
+            // boundaries by the finalized/backstop/flush guards above. No-op when CommitBatchSize == 1.
+            if (IsOnDisk(baseSnap!.From, currentPersistedState))
             {
                 return new ConversionCandidate(Compacted: null, baseSnap);
             }
