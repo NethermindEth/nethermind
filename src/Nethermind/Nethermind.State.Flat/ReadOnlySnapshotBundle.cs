@@ -224,10 +224,17 @@ public sealed class ReadOnlySnapshotBundle(
             return CappedArray<byte>.Null;
         }
 
-        return ValueKeccak.Compute(rlp) == hash
-            ? rlp
-            : throw new NodeHashMismatchException($"State node at {statePath} does not hash to the expected {hash}");
+        if (ValueKeccak.Compute(rlp) != hash)
+        {
+            ThrowStateNodeHashMismatch(in statePath, in hash);
+        }
+
+        return rlp;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStateNodeHashMismatch(in TreePath path, in ValueHash256 hash) =>
+        throw new NodeHashMismatchException($"State node at {path} does not hash to the expected {hash}");
 
     /// <inheritdoc cref="GetCommittedStateNodeRlp"/>
     internal CappedArray<byte> GetCommittedStorageNodeRlp(Hash256 address, HashedKey<(Hash256, TreePath)> key, in ValueHash256 hash)
@@ -257,10 +264,17 @@ public sealed class ReadOnlySnapshotBundle(
             return CappedArray<byte>.Null;
         }
 
-        return ValueKeccak.Compute(rlp) == hash
-            ? rlp
-            : throw new NodeHashMismatchException($"Storage node of {address} at {path} does not hash to the expected {hash}");
+        if (ValueKeccak.Compute(rlp) != hash)
+        {
+            ThrowStorageNodeHashMismatch(address, in path, in hash);
+        }
+
+        return rlp;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageNodeHashMismatch(Hash256 address, in TreePath path, in ValueHash256 hash) =>
+        throw new NodeHashMismatchException($"Storage node of {address} at {path} does not hash to the expected {hash}");
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
     {

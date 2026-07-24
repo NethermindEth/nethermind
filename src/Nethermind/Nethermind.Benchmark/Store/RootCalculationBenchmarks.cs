@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -94,13 +96,27 @@ public class RootCalculationBenchmarks
         using SparseTrie sparse = new(source, _fixture.ParentRoot.ValueHash256, nodeCapacityHint: _sparseScratch.Length * 4);
         sparse.Apply(_sparseScratch);
         ValueHash256 root = sparse.CalculateRoot();
-        return root == _fixture.ExpectedRoot.ValueHash256
-            ? root
-            : throw new InvalidOperationException($"Root mismatch for {Fixture}: {root} != {_fixture.ExpectedRoot}");
+        if (root != _fixture.ExpectedRoot.ValueHash256)
+        {
+            ThrowRootMismatch(Fixture, root, _fixture.ExpectedRoot);
+        }
+
+        return root;
     }
 
-    private Hash256 Verify(Hash256 root) =>
-        root == _fixture.ExpectedRoot ? root : throw new InvalidOperationException($"Root mismatch for {Fixture}: {root} != {_fixture.ExpectedRoot}");
+    private Hash256 Verify(Hash256 root)
+    {
+        if (root != _fixture.ExpectedRoot)
+        {
+            ThrowRootMismatch(Fixture, root.ValueHash256, _fixture.ExpectedRoot);
+        }
+
+        return root;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowRootMismatch(string fixture, in ValueHash256 root, Hash256 expectedRoot) =>
+        throw new InvalidOperationException($"Root mismatch for {fixture}: {root} != {expectedRoot}");
 
     // NodeStorage keys entries by (path, hash), so a returned value is the requested node by
     // construction and re-validating its keccak here would only measure hashing the parents a
