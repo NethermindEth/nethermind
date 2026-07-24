@@ -222,10 +222,20 @@ public class KademliaAdapter(
         return true;
     }
 
-    private async Task<PongMsg?> TryBond(Node receiver, NodeSession session, CancellationToken token)
+    // Coalesced via NodeSession.GetOrStartBond: concurrent lookups can each decide the same endpoint needs
+    // bonding at the same time, so callers share one in-flight ping rather than each sending their own.
+    private Task<PongMsg?> TryBond(Node receiver, NodeSession session, CancellationToken token)
     {
         IPEndPoint endpoint = receiver.DiscoveryAddress;
+        Task<PongMsg?> bondTask = session.GetOrStartBond(endpoint, () => SendBondingPing(receiver, session, endpoint));
+        return bondTask.WaitAsync(token);
+    }
 
+    // Runs against processExitSource.Token rather than a specific caller's token: it may be shared by several
+    // callers via GetOrStartBond, and one of them giving up must not cancel the attempt for the others.
+    private async Task<PongMsg?> SendBondingPing(Node receiver, NodeSession session, IPEndPoint endpoint)
+    {
+        CancellationToken token = processExitSource.Token;
         PingMsg msg = new(endpoint, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.DiscoveryAddress, kademliaConfig.CurrentNodeId.Port, 0)
         {
             EnrSequence = (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence // optional and does not seem to be used anywhere.

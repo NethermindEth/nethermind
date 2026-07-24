@@ -24,6 +24,11 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     private EndpointBondTable _pendingBondingPings;
     private TaskCompletionSource? _endpointBondChanged;
 
+    // Separate from _endpointBondLock: startBond's synchronous prefix (e.g. OnPingSent) takes that lock, so
+    // invoking it while holding this one too would self-deadlock.
+    private readonly Lock _bondCoalesceLock = new();
+    private readonly Dictionary<EndpointKey, Task<PongMsg?>> _inFlightBonds = [];
+
     public bool NotTooManyFailure => Volatile.Read(ref _authenticatedRequestFailureCount) <= AuthenticatedRequestFailureLimit;
     public bool HasTriedPingRecently => Volatile.Read(ref _lastPingSentTicks) + PingRetryTimeout.Ticks > Timestamper.UtcNow.Ticks;
 
@@ -165,6 +170,49 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
         {
             SignalEndpointBondChanged();
         }
+    }
+
+    /// <summary>
+    /// Returns the bonding attempt already in flight for <paramref name="endpoint"/>, or starts one via
+    /// <paramref name="startBond"/> and shares it with any other caller that asks before it completes.
+    /// </summary>
+    /// <remarks>
+    /// Concurrent Kademlia lookups can each decide the same endpoint needs (re-)bonding at the same time; without
+    /// coalescing, every one of them would send its own ping. Callers should give up on their own timeout via the
+    /// returned task's cancellation rather than cancelling <paramref name="startBond"/> itself, since cancelling it
+    /// would also fail every other caller sharing the same attempt.
+    /// </remarks>
+    public Task<PongMsg?> GetOrStartBond(IPEndPoint endpoint, Func<Task<PongMsg?>> startBond)
+    {
+        EndpointKey endpointKey = new(endpoint);
+        Task<PongMsg?> bondTask;
+        lock (_bondCoalesceLock)
+        {
+            // IsCompleted, not just presence: the cleanup continuation below races with callers waking up from
+            // the same completed task, so a finished entry may still be in the table when the next call arrives.
+            if (_inFlightBonds.TryGetValue(endpointKey, out Task<PongMsg?>? existing) && !existing.IsCompleted)
+            {
+                return existing;
+            }
+
+            bondTask = startBond();
+            _inFlightBonds[endpointKey] = bondTask;
+        }
+
+        _ = bondTask.ContinueWith(static (_, state) =>
+        {
+            (NodeSession session, EndpointKey key, Task<PongMsg?> task) = ((NodeSession, EndpointKey, Task<PongMsg?>))state!;
+            lock (session._bondCoalesceLock)
+            {
+                // Only remove our own attempt: a new one may have already replaced it after we completed.
+                if (session._inFlightBonds.TryGetValue(key, out Task<PongMsg?>? current) && ReferenceEquals(current, task))
+                {
+                    session._inFlightBonds.Remove(key);
+                }
+            }
+        }, (this, endpointKey, bondTask), TaskScheduler.Default);
+
+        return bondTask;
     }
 
     public async ValueTask<bool> WaitForEndpointBond(IPEndPoint endpoint, TimeSpan timeout, CancellationToken token)
