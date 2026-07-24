@@ -113,7 +113,11 @@ public ref struct BufferWriter
         return memory;
     }
 
-    /// <summary>Releases the rented buffer of a writer whose bytes were dropped; a detached or span-backed one holds none.</summary>
+    /// <summary>
+    /// Releases the rented buffer of a writer whose bytes were dropped; a detached or span-backed one
+    /// holds none, so a frame may call this unconditionally on the way out — which is what lets it sit
+    /// in a <c>finally</c> and catch the way out of a throw, where nothing detaches at all.
+    /// </summary>
     public void Dispose()
     {
         ((IDisposable?)_memory)?.Dispose();

@@ -211,6 +211,21 @@ public static partial class TrieUpdater
             if (error is not null) ExceptionDispatchInfo.Throw(error);
         }
 
+        /// <summary>
+        /// Sees the buckets <paramref name="queued"/> holds through and releases what each one folded,
+        /// for a frame whose own descent threw and which will settle none of them.
+        /// </summary>
+        private static void Discard(in Fanout fanout, ref QueuedBuckets queued)
+        {
+            fanout.Wait(in queued);
+
+            foreach (WorkStealingExecutor<Updater<TLayout>, BucketJob>.Node node in queued.Jobs)
+            {
+                node.Job.Result.Dispose();
+                node.Job.Result = default;
+            }
+        }
+
         /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.IJobWorkerState.Complete"/>
         /// <remarks>Nothing: a thread's writes went to the store as it made them, the store bearing them all.</remarks>
         public void Complete()

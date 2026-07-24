@@ -149,10 +149,19 @@ public static partial class TrieUpdater
         {
             using RefCountingMemory? rootData = _store.GetTrieNode(TrieNodeKey.Root);
             BufferWriter writer = new(_memoryProvider);
-            ApplyGroup(
-                TrieNodeKey.Root, changes.Entries, StoredBlob.Of(rootData), currentRoot,
-                new BucketPlan(changes.Buckets, branchDepth: 0), fanout, ref writer, out NodeResult root, out bool changed, out delta);
-            if (writer.Detach() is { } folded) root = root.WithBlob(folded);
+            NodeResult root;
+            bool changed;
+            try
+            {
+                ApplyGroup(
+                    TrieNodeKey.Root, changes.Entries, StoredBlob.Of(rootData), currentRoot,
+                    new BucketPlan(changes.Buckets, branchDepth: 0), fanout, ref writer, out root, out changed, out delta);
+                if (writer.Detach() is { } folded) root = root.WithBlob(folded);
+            }
+            finally
+            {
+                writer.Dispose();
+            }
 
             using (root)
             {
@@ -301,7 +310,7 @@ public static partial class TrieUpdater
 
             PbtTrieNodeGroup<TLayout> existing = existingData.IsEmpty ? default : PbtTrieNodeGroup<TLayout>.Decode(existingData.Data);
 
-            using PbtFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
+            using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
             int mark = writer.WrittenCount;
             PbtNodeCluster.Builder bare = default;
@@ -328,7 +337,7 @@ public static partial class TrieUpdater
             PbtNodeCluster cluster = existingData.IsEmpty ? default : PbtNodeCluster.Decode<TLayout>(existingData.Data, out existing);
 
             PbtNodeCluster.Builder builder = default;
-            using PbtFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
+            using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
             StoredOccupants occupants = new(existing, existingData, cluster);
@@ -474,10 +483,18 @@ public static partial class TrieUpdater
                 // where the pushed stem is what cut the run short. A run is about to be minted above that
                 // group, so it is one no blob of this frame's can hold: it owns its own.
                 BufferWriter branchWriter = new(_memoryProvider);
-                ApplyPushedStem(
-                    branchKey, entries, pushed, new BucketPlan(default, entriesBranch), fanout, ref branchWriter,
-                    out NodeResult inner, out _, out delta);
-                if (branchWriter.Detach() is { } innerBlob) inner = inner.WithBlob(innerBlob);
+                NodeResult inner;
+                try
+                {
+                    ApplyPushedStem(
+                        branchKey, entries, pushed, new BucketPlan(default, entriesBranch), fanout, ref branchWriter,
+                        out inner, out _, out delta);
+                    if (branchWriter.Detach() is { } innerBlob) inner = inner.WithBlob(innerBlob);
+                }
+                finally
+                {
+                    branchWriter.Dispose();
+                }
 
                 // A run's node hash is its path's, unlike a stem's, so the inner frame's answer to whether
                 // it changed is about a node starting at the wrong depth. It is settled here instead, once
@@ -497,7 +514,7 @@ public static partial class TrieUpdater
 
             // a pushed stem roots no blob of its own: its subtree is its leaf blob, keyed by the stem
             SeededOccupant occupants = new(pushed, seedSlot, default);
-            using PbtFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
+            using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
             PbtNodeCluster.Builder builder = default;
@@ -680,23 +697,34 @@ public static partial class TrieUpdater
             QueuedBuckets queued = default;
             bool mayQueue = MayQueue(touched, in fanout);
 
-            foreach (int slot in touched)
+            try
             {
-                Occupant occupant = occupants[slot];
-                Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
-                TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
-                BucketPlan childPlan = plan.ForChild(slot, branchDepth);
-
-                if (mayQueue && bucket.Length >= _minQueueEntries
-                    && TryQueue(slot, childKey, bucket, occupant, childPlan, in fanout, ref queued))
+                foreach (int slot in touched)
                 {
-                    continue;
-                }
+                    Occupant occupant = occupants[slot];
+                    Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
+                    TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
+                    BucketPlan childPlan = plan.ForChild(slot, branchDepth);
 
-                ref NodeResult result = ref results[slot];
-                ApplyKeyedChild(childKey, bucket, occupant, childPlan, fanout, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
-                if (storedChild) storedChildren.Set(slot);
-                scan.Add(slot, result, childChanged, childDelta);
+                    if (mayQueue && bucket.Length >= _minQueueEntries
+                        && TryQueue(slot, childKey, bucket, occupant, childPlan, in fanout, ref queued))
+                    {
+                        continue;
+                    }
+
+                    ref NodeResult result = ref results[slot];
+                    ApplyKeyedChild(childKey, bucket, occupant, childPlan, fanout, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
+                    if (storedChild) storedChildren.Set(slot);
+                    scan.Add(slot, result, childChanged, childDelta);
+                }
+            }
+            catch
+            {
+                // A frame this thread has given up on still has buckets being folded on other threads,
+                // reading the entries and writing the store as they go. They are seen through here rather
+                // than left to race the unwinding fold, and what they produced is released with them.
+                if (!queued.IsEmpty) Discard(in fanout, ref queued);
+                throw;
             }
 
             if (!queued.IsEmpty) Settle(in fanout, ref queued, results, ref scan, ref storedChildren);
@@ -723,32 +751,39 @@ public static partial class TrieUpdater
         {
             BufferWriter owned = new(_memoryProvider);
             storedChild = false;
-            if (occupant.Kind == NodeKind.Internal)
+            try
             {
-                // a stored child group descends with its own content; the boundary internal caches its
-                // old root hash, which the child no longer stores itself
-                using RefCountingMemory? childData = _store.GetTrieNode(childKey);
-                storedChild = childData is not null;
-                ApplyStoredGroup(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
-                if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
+                if (occupant.Kind == NodeKind.Internal)
+                {
+                    // a stored child group descends with its own content; the boundary internal caches its
+                    // old root hash, which the child no longer stores itself
+                    using RefCountingMemory? childData = _store.GetTrieNode(childKey);
+                    storedChild = childData is not null;
+                    ApplyStoredGroup(childKey, bucket, StoredBlob.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
+                    if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
 
-                // No frame writes its own key; the parent settles each child's: a stored one the writes
-                // emptied to nothing, or collapsed into a run the parent now holds, is removed here (a
-                // child that produced a blob of its own is planted by the parent's rebuild).
-                if (storedChild && changed && result.KeyedBlob is null) _store.SetTrieNode(childKey, null);
-                return;
+                    // No frame writes its own key; the parent settles each child's: a stored one the writes
+                    // emptied to nothing, or collapsed into a run the parent now holds, is removed here (a
+                    // child that produced a blob of its own is planted by the parent's rebuild).
+                    if (storedChild && changed && result.KeyedBlob is null) _store.SetTrieNode(childKey, null);
+                    return;
+                }
+
+                if (occupant.Kind == NodeKind.Chain)
+                {
+                    ApplyChain(childKey, bucket, occupant.ChainData, childPlan, fanout, ref owned, out result, out changed, out delta);
+                }
+                else
+                {
+                    ApplyPushedStem(childKey, bucket, occupant, childPlan, fanout, ref owned, out result, out changed, out delta);
+                }
+
+                if (owned.Detach() is { } blob) result = result.WithBlob(blob);
             }
-
-            if (occupant.Kind == NodeKind.Chain)
+            finally
             {
-                ApplyChain(childKey, bucket, occupant.ChainData, childPlan, fanout, ref owned, out result, out changed, out delta);
+                owned.Dispose();
             }
-            else
-            {
-                ApplyPushedStem(childKey, bucket, occupant, childPlan, fanout, ref owned, out result, out changed, out delta);
-            }
-
-            if (owned.Detach() is { } blob) result = result.WithBlob(blob);
         }
 
         /// <summary>What the boundary walk adds up as it settles each slot, for the shape it hands the rebuild.</summary>
@@ -1001,11 +1036,18 @@ public static partial class TrieUpdater
         /// <paramref name="handedUp"/> — the node it returns, whose lease goes with it (<c>-1</c> when
         /// it returns a node of its own).
         /// </summary>
+        /// <remarks>
+        /// Every slot is left <c>default</c>, the handed-up one included: the caller took its value
+        /// before this ran, so what stays behind holds no lease and
+        /// <see cref="PbtLeasedFrameBuffer{T}"/> has nothing left to release should the frame be
+        /// abandoned after this point.
+        /// </remarks>
         private static void Release<T>(Span<T> nodes, int handedUp) where T : struct, IDisposable
         {
             for (int slot = 0; slot < nodes.Length; slot++)
             {
                 if (slot != handedUp) nodes[slot].Dispose();
+                nodes[slot] = default;
             }
         }
 
