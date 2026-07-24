@@ -270,16 +270,19 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     /// <summary>
-    /// <see cref="ImportPbtFromPreimageFlat.ViewStemChunk"/> 1 reopens the leaf-column view on every
-    /// stem, so each stem past the first is read from a freshly reopened view whose lower bound is the
-    /// exclusive successor of the previous one. Folding to the reference root proves the reopen skips
-    /// exactly the prior stem (no duplicate, no gap) across all three zones — accounts, overflow code
-    /// and storage — and that reading live rather than off a snapshot still sees every un-folded blob.
-    /// A window size of 1 folds each stem before the scan reaches the next, so the rewrite-under-cursor
-    /// the removed snapshot used to guard against happens on every step.
+    /// A small <see cref="ImportPbtFromPreimageFlat.ViewLeafChunk"/> reopens the leaf-column view mid-zone,
+    /// so each stem past the first chunk is read from a freshly reopened view whose lower bound is the
+    /// exclusive successor of the last stem the previous one read. Folding to the reference root proves
+    /// the reopen skips exactly that stem (no duplicate, no gap) across all three zones — accounts,
+    /// overflow code and storage — and that reading live rather than off a snapshot still sees every
+    /// un-folded blob. A window size of 1 folds each stem before the scan reaches the next, so the
+    /// rewrite-under-cursor the removed snapshot used to guard against happens on every step.
     /// </summary>
-    [Test]
-    public async Task Reopening_the_leaf_view_per_stem_folds_to_the_same_root()
+    /// <param name="viewLeafChunk">1 reopens the view on every stem; 5 lets a view read several stems
+    /// before the bound trips, so the resume cursor is exercised at a stem other than the first.</param>
+    [TestCase(1)]
+    [TestCase(5)]
+    public async Task Reopening_the_leaf_view_mid_zone_folds_to_the_same_root(int viewLeafChunk)
     {
         byte[] bigCode = new byte[5000];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
@@ -315,14 +318,14 @@ public class ImportPbtFromPreimageFlatTests
         RecordingExitSource exitSource = new();
         ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = 1 }, pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance)
         {
-            ViewStemChunk = 1,
+            ViewLeafChunk = viewLeafChunk,
         };
 
         await step.Execute(CancellationToken.None);
 
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-        Assert.That(reader.CurrentTreeRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "reopening the view per stem must fold to the same root");
+        Assert.That(reader.CurrentTreeRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "reopening the view mid-zone must fold to the same root");
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)).ToArray(), Is.EqualTo(((UInt256)0x55).ToBigEndian()));
     }
