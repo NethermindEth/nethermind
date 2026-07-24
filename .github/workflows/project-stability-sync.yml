@@ -1,0 +1,124 @@
+name: Stability board sync
+
+on:
+  issues:
+    types: [assigned]
+  pull_request_target:
+    types: [closed]
+
+concurrency:
+  group: stability-sync-${{ github.event.issue.node_id || github.event.pull_request.node_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.STABILITY_PROJECT_TOKEN }}
+      PROJECT_ID: ${{ secrets.STABILITY_PROJECT_ID }}
+      STATUS_FIELD_ID: ${{ secrets.STABILITY_STATUS_FIELD_ID }}
+      OPT_BACKLOG: ${{ secrets.STABILITY_OPT_BACKLOG }}
+      OPT_TRIAGE: ${{ secrets.STABILITY_OPT_TRIAGE }}
+      OPT_TESTING: ${{ secrets.STABILITY_OPT_TESTING }}
+      OPT_DONE: ${{ secrets.STABILITY_OPT_DONE }}
+    steps:
+      - name: Sync project status
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          ISSUE_NODE_ID: ${{ github.event.issue.node_id }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          set -euo pipefail
+
+          missing=""
+          for var in GH_TOKEN PROJECT_ID STATUS_FIELD_ID OPT_BACKLOG OPT_TRIAGE OPT_TESTING OPT_DONE; do
+            [[ -z "${!var:-}" ]] && missing="$missing $var"
+          done
+          if [[ -n "$missing" ]]; then
+            echo "Required secrets not configured ($missing); skipping." >&2
+            exit 0
+          fi
+
+          ensure_in_project() {
+            gh api graphql -f query='
+              mutation($p:ID!,$c:ID!) {
+                addProjectV2ItemById(input:{projectId:$p,contentId:$c}) {
+                  item { id }
+                }
+              }' -f p="$PROJECT_ID" -f c="$1" \
+              --jq '.data.addProjectV2ItemById.item.id'
+          }
+
+          set_status() {
+            gh api graphql -f query='
+              mutation($p:ID!,$i:ID!,$f:ID!,$o:String!) {
+                updateProjectV2ItemFieldValue(input:{
+                  projectId:$p, itemId:$i, fieldId:$f,
+                  value:{singleSelectOptionId:$o}
+                }) { projectV2Item { id } }
+              }' -f p="$PROJECT_ID" -f i="$1" -f f="$STATUS_FIELD_ID" -f o="$2" \
+              >/dev/null
+            echo "  -> item=$1 status=$2"
+          }
+
+          current_status() {
+            gh api graphql -f query='
+              query($id:ID!) {
+                node(id:$id) {
+                  ... on ProjectV2Item {
+                    fieldValueByName(name:"Status") {
+                      ... on ProjectV2ItemFieldSingleSelectValue { optionId }
+                    }
+                  }
+                }
+              }' -f id="$1" --jq '.data.node.fieldValueByName.optionId // ""'
+          }
+
+          linked_issues() {
+            gh api graphql -f query='
+              query($id:ID!) {
+                node(id:$id) {
+                  ... on PullRequest {
+                    closingIssuesReferences(first:50) { nodes { id } }
+                  }
+                }
+              }' -f id="$1" --jq '.data.node.closingIssuesReferences.nodes[].id'
+          }
+
+          case "$EVENT.$ACTION" in
+            issues.assigned)
+              item_id=$(ensure_in_project "$ISSUE_NODE_ID")
+              cur=$(current_status "$item_id")
+              if [[ -z "$cur" || "$cur" == "$OPT_BACKLOG" ]]; then
+                echo "Issue assigned -> Triage (was: ${cur:-unset})"
+                set_status "$item_id" "$OPT_TRIAGE"
+              else
+                echo "Issue assigned, already past Triage (status=$cur) -> no-op"
+              fi
+              ;;
+            pull_request_target.closed)
+              if [[ "$PR_MERGED" != "true" ]]; then
+                echo "PR closed unmerged -> no-op"
+                exit 0
+              fi
+              echo "PR merged -> linked issues to Testing"
+              for iid in $(linked_issues "$PR_NODE_ID"); do
+                item_id=$(ensure_in_project "$iid")
+                cur=$(current_status "$item_id")
+                if [[ "$cur" == "$OPT_DONE" ]]; then
+                  echo "  -> item=$item_id already Done, skipping"
+                else
+                  set_status "$item_id" "$OPT_TESTING"
+                fi
+              done
+              ;;
+            *)
+              echo "Ignoring $EVENT.$ACTION"
+              ;;
+          esac
