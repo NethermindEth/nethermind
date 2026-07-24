@@ -80,6 +80,13 @@ public class ImportPbtFromPreimageFlat(
 
     private static readonly TimeSpan CopyLogInterval = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Stems a phase-two zone scan reads through one leaf-column view before reopening it. Bounds how
+    /// long a single RocksDB superversion stays pinned — not correctness, which the ascending
+    /// scan-ahead-of-fold invariant holds at any chunking (see <see cref="EmitZone"/>).
+    /// </summary>
+    internal int ViewStemChunk { get; init; } = 1_000_000;
+
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -456,11 +463,9 @@ public class ImportPbtFromPreimageFlat(
         using LeafSink sink = new(entries, cancellationToken);
         try
         {
-            using IColumnDbSnapshot<PbtColumns> snapshot = pbtDb.CreateSnapshot();
-
-            await EmitZone(snapshot, PbtColumns.AccountLeaves, sink, cancellationToken);
-            await EmitZone(snapshot, PbtColumns.CodeLeaves, sink, cancellationToken);
-            await EmitZone(snapshot, PbtColumns.StorageLeaves, sink, cancellationToken);
+            await EmitZone(LeafColumn(PbtColumns.AccountLeaves), sink, cancellationToken);
+            await EmitZone(LeafColumn(PbtColumns.CodeLeaves), sink, cancellationToken);
+            await EmitZone(LeafColumn(PbtColumns.StorageLeaves), sink, cancellationToken);
 
             await sink.Complete();
             entries.TryComplete();
@@ -476,21 +481,50 @@ public class ImportPbtFromPreimageFlat(
     /// A blob's leaves are read out into a buffer before any of them is handed on: the enumerator and
     /// the column's value are both spans over the store, which cannot survive the <c>await</c> that a
     /// full sink chunk parks on.
+    /// <para>
+    /// The column is read live — no snapshot — in <see cref="ViewStemChunk"/>-stem ranges, reopening the
+    /// view between them so no RocksDB superversion stays pinned across the hours-long fold. This is safe
+    /// because the scan runs strictly ahead of the fold it feeds (producer → bounded channel → window →
+    /// flush channel → fold), so the fold only ever rewrites the <see cref="PbtLeafFormat.LeavesOnly"/>
+    /// blob of a stem the scan has already emitted. A view opened over stems not yet emitted therefore
+    /// never observes a reformatted blob. Were that invariant ever broken the failure is loud, not
+    /// silent: <see cref="StemLeafBlob.EnumerateLeavesOnly"/> throws on a non-leaves-only blob.
+    /// </para>
     /// </remarks>
-    private static async Task EmitZone(IColumnDbSnapshot<PbtColumns> snapshot, PbtColumns column, LeafSink sink, CancellationToken cancellationToken)
+    private async Task EmitZone(ISortedKeyValueStore column, LeafSink sink, CancellationToken cancellationToken)
     {
         RebuildEntry[] stemLeaves = new RebuildEntry[PbtKeyDerivation.StemSubtreeWidth];
+        byte[] cursor = new byte[Stem.Length];
+        byte[] pastEnd = PastEveryStemKey();
 
-        using ISortedView view = ((ISortedKeyValueStore)snapshot.GetColumn(column)).GetViewBetween(new byte[Stem.Length], PastEveryStemKey());
-        while (view.MoveNext())
+        while (true)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            int stemsRead = 0;
+            byte[] resumeFrom;
 
-            int count = ReadStemLeaves(view, stemLeaves);
-            for (int i = 0; i < count; i++)
+            using (ISortedView view = column.GetViewBetween(cursor, pastEnd))
             {
-                await sink.Add(stemLeaves[i]);
+                while (stemsRead < ViewStemChunk && view.MoveNext())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    int count = ReadStemLeaves(view, stemLeaves);
+                    for (int i = 0; i < count; i++)
+                    {
+                        await sink.Add(stemLeaves[i]);
+                    }
+                    stemsRead++;
+                }
+
+                // the view drained before the chunk filled, so the zone is exhausted
+                if (stemsRead < ViewStemChunk) return;
+
+                // the loop stopped on the count, not on MoveNext, so the view is still on the last stem
+                // read: resume just past it so the reopened view's first row is the next stem
+                resumeFrom = AfterStemKey(view.CurrentKey);
             }
+
+            cursor = resumeFrom;
         }
     }
 
@@ -638,4 +672,19 @@ public class ImportPbtFromPreimageFlat(
         key.AsSpan().Fill(0xFF);
         return key;
     }
+
+    /// <summary>
+    /// The exclusive successor of <paramref name="stem"/> as an inclusive lower bound: the stem's bytes
+    /// with a <c>0x00</c> appended, which sorts strictly after it and at or before the next stem, so a
+    /// view opened at it starts on the stem after <paramref name="stem"/>.
+    /// </summary>
+    private static byte[] AfterStemKey(ReadOnlySpan<byte> stem)
+    {
+        byte[] key = new byte[Stem.Length + 1];
+        stem[..Stem.Length].CopyTo(key);
+        return key;
+    }
+
+    /// <summary>The pbt leaf column, as the sorted store its range scan reads through.</summary>
+    private ISortedKeyValueStore LeafColumn(PbtColumns column) => (ISortedKeyValueStore)pbtDb.GetColumnDb(column);
 }

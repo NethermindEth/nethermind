@@ -258,6 +258,64 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(report.StorageLeaves.LeafCount, Is.EqualTo(2), "the shared stem's blob must hold both slots' leaves");
     }
 
+    /// <summary>
+    /// <see cref="ImportPbtFromPreimageFlat.ViewStemChunk"/> 1 reopens the leaf-column view on every
+    /// stem, so each stem past the first is read from a freshly reopened view whose lower bound is the
+    /// exclusive successor of the previous one. Folding to the reference root proves the reopen skips
+    /// exactly the prior stem (no duplicate, no gap) across all three zones — accounts, overflow code
+    /// and storage — and that reading live rather than off a snapshot still sees every un-folded blob.
+    /// A window size of 1 folds each stem before the scan reaches the next, so the rewrite-under-cursor
+    /// the removed snapshot used to guard against happens on every step.
+    /// </summary>
+    [Test]
+    public async Task Reopening_the_leaf_view_per_stem_folds_to_the_same_root()
+    {
+        byte[] bigCode = new byte[5000];
+        for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
+        Hash256 bigCodeHash = Keccak.Compute(bigCode);
+
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressB, 3, 42, bigCode);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressC, 9, 5, bigCode);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 5, 0xAB);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 70, 0x07);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressC, 2000, 0x55);
+
+        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
+        {
+            batch.SetAccount(TestItem.AddressA, new Account(1, 100));
+            batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakA));
+            batch.SetStorage(TestItem.AddressB, 5, SlotValue.FromSpanWithoutLeadingZero([0xAB]));
+            batch.SetStorage(TestItem.AddressB, 70, SlotValue.FromSpanWithoutLeadingZero([0x07]));
+            batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
+            batch.SetAccount(TestItem.AddressC, new Account(9, 5).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakB));
+            batch.SetStorage(TestItem.AddressC, 2000, SlotValue.FromSpanWithoutLeadingZero([0x55]));
+        }
+
+        MemDb codeDb = new();
+        codeDb[bigCodeHash.Bytes] = bigCode;
+
+        SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
+        PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
+        RecordingExitSource exitSource = new();
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = 1 }, pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance)
+        {
+            ViewStemChunk = 1,
+        };
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
+        using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
+        Assert.That(reader.CurrentTreeRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "reopening the view per stem must fold to the same root");
+        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
+        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)).ToArray(), Is.EqualTo(((UInt256)0x55).ToBigEndian()));
+    }
+
     [Test]
     public async Task Skips_when_pbt_already_populated()
     {
