@@ -13,18 +13,27 @@ public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
+    byte[][]? InclusionListTransactions { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
 
-public class ExecutionPayloadParams(byte[][]? executionRequests = null)
+public class ExecutionPayloadParams(
+    byte[][]? executionRequests = null,
+    byte[][]? inclusionListTransactions = null)
 {
     /// <summary>
     /// Gets or sets <see cref="ExecutionRequests"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
+
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
     protected ValidationResult ValidateInitialParams(IReleaseSpec spec, out string? error)
     {
@@ -60,6 +69,29 @@ public class ExecutionPayloadParams(byte[][]? executionRequests = null)
             }
         }
 
+        if (spec.InclusionListsEnabled)
+        {
+            if (InclusionListTransactions is null)
+            {
+                error = "Inclusion list must be set";
+                return ValidationResult.Fail;
+            }
+
+            // The flattened aggregate spans up to IL_COMMITTEE_SIZE members, each bounded by
+            // MAX_BYTES_PER_INCLUSION_LIST. Bound the raw byte total so an authenticated-but-faulty CL
+            // cannot force decode/recover work far beyond any valid FOCIL input.
+            long totalBytes = 0;
+            for (int i = 0; i < InclusionListTransactions.Length; i++)
+            {
+                totalBytes += InclusionListTransactions[i]?.Length ?? 0;
+                if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
+                {
+                    error = "Inclusion list exceeds the maximum aggregate size";
+                    return ValidationResult.Fail;
+                }
+            }
+        }
+
         return ValidationResult.Success;
     }
 }
@@ -68,8 +100,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
     Hash256?[]? blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
-    byte[][]? executionRequests = null)
-    : ExecutionPayloadParams(executionRequests), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
+    byte[][]? executionRequests = null,
+    byte[][]? inclusionListTransactions = null)
+    : ExecutionPayloadParams(executionRequests, inclusionListTransactions), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
 

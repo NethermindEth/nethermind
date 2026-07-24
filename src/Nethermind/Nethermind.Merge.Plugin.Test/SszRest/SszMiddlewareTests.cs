@@ -22,6 +22,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
@@ -83,11 +84,13 @@ public class SszMiddlewareTests
             new NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>(_engineModule),
             new NewPayloadSszHandler<NewPayloadDescriptorV4, NewPayloadV4RequestWire>(_engineModule),
             new NewPayloadSszHandler<NewPayloadDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
+            new NewPayloadV6SszHandler(_engineModule),
 
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV1, ForkchoiceUpdatedV1RequestWire>(_engineModule, _specProvider),
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>(_engineModule, _specProvider),
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule, _specProvider),
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule, _specProvider),
+            new ForkchoiceUpdatedV5SszHandler(_engineModule, _specProvider),
 
             new GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
@@ -95,6 +98,8 @@ public class SszMiddlewareTests
             new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
+
+            new GetInclusionListSszHandler(_engineModule),
 
             new GetBlobsV1SszHandler(_engineModule),
             new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_engineModule),
@@ -1223,4 +1228,78 @@ public class SszMiddlewareTests
             ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
             ParentBeaconBlockRoot = TestItem.KeccakA,
         });
+
+    // EIP-7805 (FOCIL): the three Bogota methods must resolve to a handler (not 404) once advertised over SSZ.
+    [Test]
+    public async Task NewPayloadV6_bogota_routes_to_engine_newPayloadV6()
+    {
+        _engineModule.engine_newPayloadV6(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
+            {
+                Status = PayloadStatus.Valid,
+                LatestValidHash = TestItem.KeccakA,
+                InclusionListSatisfied = true
+            }));
+
+        byte[] body = NewPayloadV6RequestWire.Encode(new NewPayloadV6RequestWire
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakA,
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads", body, fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        await _engineModule.Received(1).engine_newPayloadV6(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>());
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV5_bogota_routes_to_engine_forkchoiceUpdatedV5()
+    {
+        ForkchoiceUpdatedV2Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }
+        };
+        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<byte[]?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
+
+        byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(new ForkchoiceUpdatedV5RequestWire
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = Keccak.Zero
+            },
+            PayloadAttributes = [],
+            CustodyColumns = []
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/forkchoice", body, fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_forkchoiceUpdatedV5(
+            Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<byte[]?>());
+    }
+
+    [Test]
+    public async Task GetInclusionList_bogota_routes_to_engine_getInclusionListV1()
+    {
+        InclusionListBytes inclusionList = new(1) { new ArrayPoolList<byte>((ReadOnlySpan<byte>)[0x01, 0x02]) };
+        _engineModule.engine_getInclusionListV1()
+            .Returns(ResultWrapper<InclusionListBytes>.Success(inclusionList));
+
+        DefaultHttpContext ctx = MakeGetContext("/engine/v2/inclusion_list", fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        await _engineModule.Received(1).engine_getInclusionListV1();
+    }
 }

@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -24,15 +27,20 @@ namespace Nethermind.Consensus.Processing
 
         public void RecoverData(Block block)
         {
-            Transaction[] txs = block.Transactions;
-            if (txs.Length == 0)
-                return;
-
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
-            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
-                return;
 
-            RecoverData(txs, releaseSpec);
+            Transaction[] txs = block.Transactions;
+            if (txs.Length != 0 && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+            {
+                RecoverData(txs, releaseSpec);
+            }
+
+            if (block.InclusionListTransactions is not null)
+            {
+                // FOCIL: skip errors so an IL tx with valid RLP but invalid signature
+                // leaves SenderAddress null (treated as not-appendable) rather than throwing.
+                RecoverData(block.InclusionListTransactions, releaseSpec, skipErrors: true);
+            }
         }
 
         private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
@@ -58,7 +66,18 @@ namespace Nethermind.Consensus.Processing
             return true;
         }
 
-        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
+        /// <summary>
+        /// Recovers senders (and EIP-7702 authorities) for transactions that are not yet part of a
+        /// constructed <see cref="Block"/>.
+        /// </summary>
+        /// <remarks>
+        /// Lets callers overlap recovery with other block-assembly work (e.g. transaction-root
+        /// computation on the engine <c>newPayload</c> path). Already-recovered transactions are skipped.
+        /// </remarks>
+        /// <param name="txs">The transactions to recover senders and authorities for.</param>
+        /// <param name="releaseSpec">The spec of the block the transactions belong to.</param>
+        /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing (FOCIL inclusion-list transactions).</param>
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false)
         {
             if (txs.Length == 0)
                 return;
@@ -66,31 +85,44 @@ namespace Nethermind.Consensus.Processing
             if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return;
 
-            bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {
                 ParallelUnbalancedWork.For(
                     0,
                     txs.Length,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (recover: this, txs, releaseSpec, useSignatureChainId),
+                    (recover: this, txs, releaseSpec, skipErrors),
                     RecoverSingle);
             }
             else
             {
                 foreach (Transaction tx in txs)
                 {
-                    Recover(tx, releaseSpec);
+                    TryRecover(tx, releaseSpec, skipErrors);
                 }
             }
         }
 
-        private static (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) RecoverSingle(
+        private static (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors) RecoverSingle(
             int i,
-            (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) state)
+            (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors) state)
         {
-            state.recover.Recover(state.txs[i], state.releaseSpec);
+            state.recover.TryRecover(state.txs[i], state.releaseSpec, state.skipErrors);
             return state;
+        }
+
+        // FOCIL: when skipErrors is set, an inclusion-list tx with valid RLP but invalid signature
+        // leaves SenderAddress null (treated as not-appendable) rather than throwing.
+        private void TryRecover(Transaction tx, IReleaseSpec releaseSpec, bool skipErrors)
+        {
+            try
+            {
+                Recover(tx, releaseSpec);
+            }
+            catch (Exception e) when (skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
+            }
         }
 
         private void Recover(Transaction tx, IReleaseSpec releaseSpec)

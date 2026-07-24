@@ -26,6 +26,8 @@ public class PayloadAttributes
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public byte[][]? InclusionListTransactions { get; set; }
+
     public ulong? SlotNumber { get; set; }
 
     public ulong? TargetGasLimit { get; set; }
@@ -92,7 +94,8 @@ public class PayloadAttributes
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
         + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
-        + (TargetGasLimit is null ? 0 : sizeof(ulong)); // target gas limit
+        + (TargetGasLimit is null ? 0 : sizeof(ulong)) // target gas limit
+        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list digest
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -143,7 +146,28 @@ public class PayloadAttributes
             position += sizeof(ulong);
         }
 
+        if (InclusionListTransactions is not null)
+        {
+            ComputeInclusionListDigest(InclusionListTransactions).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
         return position;
+    }
+
+    private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
+    {
+        // Length-prefix each entry so [empty, tx1] and [tx1] don't collide on the same payload-id.
+        Span<byte> lengthPrefix = stackalloc byte[sizeof(uint)];
+        KeccakHash hash = KeccakHash.Create();
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            byte[] entry = inclusionListTransactions[i] ?? [];
+            BinaryPrimitives.WriteUInt32BigEndian(lengthPrefix, (uint)entry.Length);
+            hash.Update(lengthPrefix);
+            if (entry.Length > 0) hash.Update(entry);
+        }
+        return hash.GenerateValueHash();
     }
 
     /// <summary>
@@ -203,6 +227,11 @@ public class PayloadAttributes
         int actualVersion = this.GetVersion();
         int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
 
+        // EIP-7805: V5's only new field (inclusionListTransactions) is optional, so a null-IL attrs is
+        // shape-identical to V4. Treat it as V5 under a Bogota timestamp so the initial FCUv5 build isn't rejected.
+        if (timestampVersion == PayloadAttributesVersions.V5 && actualVersion == PayloadAttributesVersions.V4)
+            actualVersion = PayloadAttributesVersions.V5;
+
         // When attrs are below the timestamp-implied version and the FCU doesn't accept this
         // combination (i.e. it's not the V2-accepts-V1 backward-compat case), report the
         // specific missing field rather than a generic version-mismatch.
@@ -246,6 +275,7 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
             >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
+            // EIP-7805: inclusionListTransactions is optional — the initial FCUv5 build starts with it null.
             _ => null
         };
     }
@@ -258,6 +288,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            { InclusionListTransactions: not null } => PayloadAttributesVersions.V5,
             { SlotNumber: not null } or { TargetGasLimit: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
             { Withdrawals: not null } => PayloadAttributesVersions.V2,
@@ -267,6 +298,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7805Enabled: true } => PayloadAttributesVersions.V5,
             { IsEip7843Enabled: true } => PayloadAttributesVersions.V4,
             { IsEip4844Enabled: true } => PayloadAttributesVersions.V3,
             { WithdrawalsEnabled: true } => PayloadAttributesVersions.V2,
@@ -280,4 +312,5 @@ public static class PayloadAttributesVersions
     public const int V2 = 2; // Shanghai
     public const int V3 = 3; // Cancun/Prague/Osaka
     public const int V4 = 4; // Amsterdam
+    public const int V5 = 5; // Bogota
 }

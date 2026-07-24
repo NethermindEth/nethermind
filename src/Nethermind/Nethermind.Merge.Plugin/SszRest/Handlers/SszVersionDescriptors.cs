@@ -103,6 +103,15 @@ internal static class ForkchoiceUpdatedHelpers
     public static ulong? FirstTimestamp<TAttr>(TAttr[]? attrs)
         where TAttr : struct, ISszPayloadAttributesWire
         => attrs is { Length: > 0 } a ? a[0].Timestamp : null;
+
+    /// <summary>Packs the optional custody-columns bitfield (EIP-7805 FCU V5) into its byte representation, or <c>null</c>.</summary>
+    public static byte[]? CustodyColumnsToBytes(SszCustodyColumns[]? custody)
+    {
+        if (custody is not { Length: > 0 } c || c[0].Bits is not { } bits) return null;
+        byte[] bytes = new byte[(bits.Length + 7) / 8];
+        bits.CopyTo(bytes, 0);
+        return bytes;
+    }
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV1 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV1RequestWire>

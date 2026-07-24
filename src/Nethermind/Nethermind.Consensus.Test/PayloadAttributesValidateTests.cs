@@ -71,6 +71,27 @@ public class PayloadAttributesValidateTests
         }
     }
 
+    [Test]
+    public void Validate_accepts_null_inclusion_list_at_V5()
+    {
+        // EIP-7805: the proposer's initial FCUv5 has no inclusion list yet (it's an optional V5 field),
+        // so a Bogota attrs shaped like V4 must validate rather than be rejected.
+        ISpecProvider sp = Substitute.For<ISpecProvider>();
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip7805Enabled.Returns(true);
+        spec.IsEip7843Enabled.Returns(true);
+        spec.IsEip4844Enabled.Returns(true);
+        spec.WithdrawalsEnabled.Returns(true);
+        sp.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        PayloadAttributes attrs = BuildAttrs(withSlotNumber: true); // no InclusionListTransactions set
+
+        PayloadAttributesValidationResult result = attrs.Validate(sp, PayloadAttributesVersions.V5, out string error);
+
+        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.Success));
+        Assert.That(error, Is.Null);
+    }
+
     [TestCase(false, PayloadAttributesVersions.V1)]
     [TestCase(true, PayloadAttributesVersions.V4)]
     public void GetVersion_infers_correct_version_from_present_fields(

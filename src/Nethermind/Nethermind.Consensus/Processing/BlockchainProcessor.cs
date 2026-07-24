@@ -149,7 +149,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
         Hash256? blockHash = block.Hash!;
-        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
+        // EIP-7805 (FOCIL): keep the full block for IL-bearing payloads — InclusionListTransactions
+        // aren't in RLP, so a hash-only ref re-resolved from the DB would drop them and pass a censoring payload.
+        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
 
@@ -401,6 +403,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     NotifyFailedOrSkipped(blockRef, block, error);
                 }
+                else if (!processedBlock.IsInclusionListSatisfied)
+                {
+                    // EIP-7805: block was committed normally; signal the CL via newPayload status only.
+                    NotifyInclusionListUnsatisfied(blockRef, processedBlock);
+                }
                 else
                 {
                     if (isTrace) TraceProcessed(block);
@@ -429,6 +436,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
             BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyInclusionListUnsatisfied(BlockRef blockRef, Block block)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Inclusion list unsatisfied for block {block.ToString(Block.Format.Full)}");
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied));
         }
 
         [DoesNotReturn]

@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
@@ -125,6 +124,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual byte[][]? InclusionListTransactions { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -234,73 +240,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return _transactions;
 
-        IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
-        if (rlpDecoder is null) return $"{nameof(Transaction)} decoder is not registered";
-
-        byte[][] txData = Transactions;
-        if (txData.Length >= MinTxsForParallelDecoding && TryDecodeTransactionsParallel(rlpDecoder, txData, out Transaction[] decoded))
-        {
-            return _transactions = decoded;
-        }
-
-        // Serial path doubles as the failure fallback: it reproduces the exact single-threaded
-        // behavior, pinpointing the first invalid transaction.
-        int i = 0;
-        try
-        {
-            Transaction[] transactions = new Transaction[txData.Length];
-
-            for (i = 0; i < transactions.Length; i++)
-            {
-                transactions[i] = DecodeTransaction(rlpDecoder, txData[i]);
-            }
-
-            return _transactions = transactions;
-        }
-        catch (RlpException e)
-        {
-            return $"Transaction {i} is not valid: {e.Message}";
-        }
-        catch (ArgumentException)
-        {
-            return $"Transaction {i} is not valid";
-        }
-    }
-
-    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp)
-    {
-        RlpReader ctx = new(rlp);
-        return rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-    }
-
-    private static bool TryDecodeTransactionsParallel(IRlpDecoder<Transaction> rlpDecoder, byte[][] txData, out Transaction[] transactions)
-    {
-        Transaction[] decoded = new Transaction[txData.Length];
-        bool[] failed = new bool[1];
-
-        ParallelUnbalancedWork.For(
-            0,
-            txData.Length,
-            ParallelUnbalancedWork.DefaultOptions,
-            (rlpDecoder, txData, decoded, failed),
-            static (i, state) =>
-            {
-                try
-                {
-                    state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i]);
-                }
-                catch
-                {
-                    // Any failure defers to the serial fallback, which reproduces the exact
-                    // single-threaded error behavior (first invalid index, exception surface).
-                    Volatile.Write(ref state.failed[0], true);
-                }
-
-                return state;
-            });
-
-        transactions = decoded;
-        return !Volatile.Read(ref failed[0]);
+        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions, skipErrors: false);
+        if (res.Error is not null) return res.Error;
+        return _transactions = res.Transactions;
     }
 
     /// <summary>

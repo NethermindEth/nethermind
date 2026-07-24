@@ -67,6 +67,23 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64B
         PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
 }
 
+// Bogota engine-payload fixtures (EIP-7805 FOCIL). Shipped as a separate EELS release archive
+// from BAL, so we override ArchiveVersion/ArchiveName here.
+public abstract class PyspecBogotaEngineBlockchainTestFixture() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
+{
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.ToTestCases(new TestsSourceLoader(
+            new LoadPyspecTestsStrategy
+            {
+                ArchiveVersion = Constants.FOCIL_ARCHIVE_VERSION,
+                ArchiveName = Constants.FOCIL_ARCHIVE_NAME,
+            },
+            "fixtures/blockchain_tests_engine/for_bogota").LoadTests<BlockchainTest>());
+}
+
 // Loads only `for_amsterdam` because parallel-BAL execution is gated on EIP-7928.
 public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool batchRead) : PyspecLinuxX64BlockchainFixture(parallel, batchRead)
 {

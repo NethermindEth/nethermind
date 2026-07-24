@@ -439,7 +439,11 @@ public abstract class BlockchainTestBase
                 && validationError is null;
 
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
-            string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
+            IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
+            // EIP-7805 (FOCIL): the IL is a separate fixture field; append it as the 5th positional arg for V6.
+            if (newPayloadVersion >= EngineApiVersions.NewPayload.V6 && enginePayload.InclusionListTransactions is { } il)
+                paramsRaw = paramsRaw.Append(JsonSerializer.Serialize(il));
+            string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
 
             string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, npMethod, paramsJson);
@@ -476,12 +480,14 @@ public abstract class BlockchainTestBase
             else
             {
                 PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
-                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.Status);
                 lastStatus = payloadStatus.Status;
                 if (payloadStatus.ValidationError is not null)
                     lastValidationError = payloadStatus.ValidationError;
 
-                if (payloadStatus.Status == PayloadStatus.Valid)
+                // FCU after INCLUSION_LIST_UNSATISFIED too — the block is committed, so the head
+                // must advance to match the fixture's lastblockhash/postState.
+                if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                 {
                     string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
                     AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
@@ -523,6 +529,8 @@ public abstract class BlockchainTestBase
     private static PayloadStatusV1 GetPayloadStatus(JsonRpcResponse response, int payloadVersion) =>
         response switch
         {
+            // newPayloadV6 returns PayloadStatusV2 (derives from V1), preserving inclusionListSatisfied.
+            ResultWrapper<PayloadStatusV2> { Result.ResultType: ResultType.Success } v2Wrapper => v2Wrapper.Data,
             ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
             JsonRpcSuccessResponse { Result: PayloadStatusV1 payloadStatus } => payloadStatus,
             _ => throw new AssertionException($"engine_newPayloadV{payloadVersion} returned unexpected response type {response.GetType().FullName}")
@@ -531,10 +539,18 @@ public abstract class BlockchainTestBase
     private static void AssertExpectedRpcError(int errorCode, string? errorMessage, string? validationError, int payloadVersion) =>
         Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorCode} {errorMessage}");
 
-    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, string? explicitStatus = null)
     {
-        string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
-        Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
+        // A fixture-supplied `status` wins (covers INCLUSION_LIST_UNSATISFIED for FOCIL);
+        // otherwise fall back to the legacy validation-error → INVALID convention.
+        string expectedStatus = explicitStatus ?? (expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid);
+
+        // Normalize V6's VALID + inclusionListSatisfied=false (execution-apis#609) back to the legacy
+        // INCLUSION_LIST_UNSATISFIED that the FOCIL fixtures still assert.
+        string actualStatus = payloadStatus is PayloadStatusV2 { Status: PayloadStatus.Valid, InclusionListSatisfied: false }
+            ? PayloadStatus.InclusionListUnsatisfied
+            : payloadStatus.Status;
+        Assert.That(actualStatus, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {actualStatus}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
 
         if (expectedValidationError is not null)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);

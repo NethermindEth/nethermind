@@ -71,6 +71,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
+        executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
         if (!executionPayload.ValidateFork(_specProvider))
         {
@@ -79,6 +80,16 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+
+        // execution-apis#609: engine_newPayloadV6 is valid only at/after Bogota, and engine_newPayloadV5
+        // must be rejected once Bogota activates. Gate on the fork before structural param validation.
+        if ((version == EngineApiVersions.NewPayload.V6 && !releaseSpec.IsEip7805Enabled) ||
+            (version == EngineApiVersions.NewPayload.V5 && releaseSpec.IsEip7805Enabled))
+        {
+            if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} is not supported at the current fork");
+            return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
+        }
+
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)
         {

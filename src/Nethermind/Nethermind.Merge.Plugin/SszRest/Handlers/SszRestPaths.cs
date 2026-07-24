@@ -24,7 +24,7 @@ public static class SszRestPaths
     /// engine-API version overrides and update the <c>latest</c> argument here.
     /// </remarks>
     private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl =
-        BuildForkSpecsByUrl(Forks.Amsterdam.Instance);
+        BuildForkSpecsByUrl(Forks.Bogota.Instance);
 
     private static Dictionary<string, Forks.NamedReleaseSpec> BuildForkSpecsByUrl(Forks.NamedReleaseSpec latest)
     {
@@ -70,6 +70,8 @@ public static class SszRestPaths
 
     public const string PayloadWithWitness = "payloads/witness";
 
+    public const string InclusionList = "inclusion_list";
+
     /// <summary>How a resource's fork and version are determined by <c>SszMiddleware</c>.</summary>
     public enum ResourceScoping
     {
@@ -101,6 +103,7 @@ public static class SszRestPaths
     public const string PostBlobsV3 = "POST /engine/v2/blobs/v3";
     public const string PostBlobsV4 = "POST /engine/v2/blobs/v4";
     public const string PostPayloadsWitness = "POST /engine/v2/payloads/witness";
+    public const string GetInclusionList = "GET /engine/v2/inclusion_list";
 
     // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
     // (one table per HTTP method). Presence in the table means the (method, resource) pair is a
@@ -120,6 +123,8 @@ public static class SszRestPaths
         {
             [Payloads] = static spec => spec.EngineApiGetPayloadVersion,
             [PayloadBodiesByRange] = static spec => spec.EngineApiPayloadBodiesByRangeVersion,
+            // EIP-7805 (FOCIL): inclusion lists exist only from the Bogota fork onward.
+            [InclusionList] = static spec => spec.IsEip7805Enabled ? 1 : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>>.AlternateLookup<ReadOnlySpan<char>> _postVersionLookup =
