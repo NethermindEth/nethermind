@@ -111,11 +111,20 @@ public static partial class TrieUpdater
             {
                 using RefCountingMemory? targetData = _store.GetTrieNode(chain.TargetKey);
                 BufferWriter targetWriter = new(_memoryProvider, targetData?.GetSpan().Length ?? 0);
-                ApplyStoredGroup(
-                    chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter,
-                    out NodeResult inner, out bool targetChanged, out delta);
+                NodeResult inner;
+                bool targetChanged;
+                try
+                {
+                    ApplyStoredGroup(
+                        chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter,
+                        out inner, out targetChanged, out delta);
 
-                if (targetWriter.Detach() is { } targetBlob) inner = inner.WithBlob(targetBlob);
+                    if (targetWriter.Detach() is { } targetBlob) inner = inner.WithBlob(targetBlob);
+                }
+                finally
+                {
+                    targetWriter.Dispose();
+                }
 
                 // The run points at one group and one only (invariant 2). When the writes leave that group
                 // byte-identical, the run above it is unchanged too — its node hash folds from the target's,
@@ -155,8 +164,17 @@ public static partial class TrieUpdater
             // hash — not the split group's — is what changed against the run this frame replaced.
             TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, targetPath);
             BufferWriter splitWriter = new(_memoryProvider);
-            NodeResult split = ApplyChainSplit(branchKey, entries, chain, plan.AfterJump(), fanout, ref splitWriter, out _, out delta);
-            if (splitWriter.Detach() is { } splitBlob) split = split.WithBlob(splitBlob);
+            NodeResult split;
+            try
+            {
+                split = ApplyChainSplit(branchKey, entries, chain, plan.AfterJump(), fanout, ref splitWriter, out _, out delta);
+                if (splitWriter.Detach() is { } splitBlob) split = split.WithBlob(splitBlob);
+            }
+            finally
+            {
+                splitWriter.Dispose();
+            }
+
             result = WrapIntoChain(depth, branchKey, split, innerBlobStored: false, chain.Stats + delta);
             changed = result.NodeHash() != chain.NodeHash;
         }
@@ -208,7 +226,7 @@ public static partial class TrieUpdater
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
             SeededOccupant occupants = new(seed, targetSlot, StoredBlob.Of(adopted));
-            using PbtFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
+            using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
             PbtNodeCluster.Builder builder = default;

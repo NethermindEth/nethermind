@@ -45,3 +45,27 @@ internal ref struct PbtFrameBuffer<T>
         _rented = null;
     }
 }
+
+/// <summary>
+/// <inheritdoc cref="PbtFrameBuffer{T}" path="/summary"/> For elements that hold a lease, which
+/// disposal releases.
+/// </summary>
+/// <remarks>
+/// The frame settles each slot it fills, taking the leases back as it goes and leaving the slot
+/// <c>default</c>, so on the way out there is normally nothing here to release. What this covers is the
+/// frame that never gets there: a descent unwound by a throwing sibling would otherwise abandon every
+/// lease its slots hold, since nothing below the throw runs again.
+/// </remarks>
+internal ref struct PbtLeasedFrameBuffer<T>(int length) where T : struct, IDisposable
+{
+    private PbtFrameBuffer<T> _buffer = new(length);
+
+    /// <inheritdoc cref="PbtFrameBuffer{T}.Span"/>
+    public Span<T> Span => _buffer.Span;
+
+    public void Dispose()
+    {
+        foreach (ref T element in _buffer.Span) element.Dispose();
+        _buffer.Dispose();
+    }
+}

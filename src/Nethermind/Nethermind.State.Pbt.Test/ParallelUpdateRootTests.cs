@@ -145,16 +145,28 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
         Assert.That(TrackingMemoryProvider.CountUnreleased(harness.HandedOut), Is.Zero, "every buffer the store handed to a read must end up fully released");
     }
 
-    /// <summary>A fold that throws on a worker's bucket must surface that on the calling thread.</summary>
+    /// <summary>
+    /// A fold that throws on a worker's bucket must surface that on the calling thread — and must give
+    /// back every lease the abandoned frames were holding, rather than leaving the buffers behind them
+    /// to the garbage collector. The frames unwound by the throw are the ones the descent never settles,
+    /// so nothing but the unwinding itself can release what their boundary slots and their outstanding
+    /// buckets hold.
+    /// </summary>
     [Test]
-    public void ParallelFold_RethrowsWhatAWorkerThrew()
+    public void ParallelFold_RethrowsWhatAWorkerThrewAndReleasesWhatTheAbandonedFramesHeld()
     {
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = Workers };
+        TrackingMemoryProvider provider = new();
+        PbtTreeHarness harness = new(provider, layout) { RootFoldConcurrency = Workers };
+
+        // a first batch so that the throwing fold descends stored groups, whose blobs the frames it
+        // abandons are holding — a fold over an empty tree reads nothing and would prove less
+        Random rng = new(3);
+        List<(byte[] Key, byte[]? Value)> existing = Writes(rng, accountStems: 2000, contracts: 4, slotsPerContract: 100);
+        ValueHash256 root = harness.ApplyBatch(existing);
 
         // one stem added twice, which the descent rejects once it has consumed the whole stem; the batch
         // is big enough that the bucket holding it is likely to be one a worker took
         using PbtWriteBatch batch = new(estimatedStems: 2048, buckets: null);
-        Random rng = new(3);
         for (int i = 0; i < 2048; i++)
         {
             batch.Add(new Stem(Stem(rng)), PbtStemChanges.Rent().Set(1, new ValueHash256(Value(rng))));
@@ -165,8 +177,12 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
         batch.Add(duplicate, PbtStemChanges.Rent().Set(2, new ValueHash256(Value(rng))));
 
         Assert.That(
-            () => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance, layout, Workers, out _),
+            () => TrieUpdater.UpdateRoot(harness, root, batch, provider, layout, Workers, out _),
             Throws.InstanceOf<InvalidOperationException>());
+
+        Assert.That(provider.Rented, Is.Not.Empty, "the fold must have rented something to check");
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero, "every rented buffer must end up fully released");
+        Assert.That(TrackingMemoryProvider.CountUnreleased(harness.HandedOut), Is.Zero, "every buffer the store handed to a read must end up fully released");
     }
 
     private static void AssertStoresMatch(PbtTreeHarness serial, PbtTreeHarness parallel)
