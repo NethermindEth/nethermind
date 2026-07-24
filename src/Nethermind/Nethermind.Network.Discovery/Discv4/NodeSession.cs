@@ -24,8 +24,6 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     private EndpointBondTable _pendingBondingPings;
     private TaskCompletionSource? _endpointBondChanged;
 
-    // Separate from _endpointBondLock: startBond's synchronous prefix (e.g. OnPingSent) takes that lock, so
-    // invoking it while holding this one too would self-deadlock.
     private readonly Lock _bondCoalesceLock = new();
     private readonly Dictionary<EndpointKey, Task<PongMsg?>> _inFlightBonds = [];
 
