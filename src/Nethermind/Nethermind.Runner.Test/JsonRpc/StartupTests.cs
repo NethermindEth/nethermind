@@ -165,6 +165,28 @@ public class StartupTests
     }
 
     [Test]
+    public async Task ProcessJsonRpcRequest_ContinuesBatchAfterMalformedItem()
+    {
+        string request = $"[{CreateJsonRpcRequest(idJson: "1")},1,{CreateJsonRpcRequest(idJson: "2")}]";
+
+        string response = await ProcessJsonRpcRequest(request);
+
+        AssertJsonResponse(response, static root =>
+        {
+            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(root.GetArrayLength(), Is.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root[0].GetProperty("id").GetInt32(), Is.EqualTo(1));
+                Assert.That(root[1].GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(root[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidRequest));
+                Assert.That(root[2].GetProperty("id").GetInt32(), Is.EqualTo(2));
+                Assert.That(root[2].GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+            }
+        });
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task ProcessJsonRpcRequest_OverMaxRequestBodySize_ReturnsPayloadTooLarge()
     {
