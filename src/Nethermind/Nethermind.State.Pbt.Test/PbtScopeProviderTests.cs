@@ -25,7 +25,7 @@ namespace Nethermind.State.Pbt.Test;
 /// </param>
 [TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]
-[TestFixture(PbtTrieLayout.EightLevelInterleaved, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
+[TestFixture(PbtTrieLayout.EightLevelInterleaved)]
 public class PbtScopeProviderTests(PbtTrieLayout layout)
 {
     private PbtTestContext NewContext() => new(config: new PbtConfig { TrieNodeLayout = layout });

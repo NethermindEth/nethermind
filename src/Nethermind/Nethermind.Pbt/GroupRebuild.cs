@@ -99,13 +99,8 @@ internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
 
     private readonly ReadOnlySpan<(int Slot, Boundary Node)> _changed;
     private readonly PbtTrieNodeGroup<TLayout> _existing;
-    private readonly ReadOnlySpan<ulong> _boundaryPresence;
-    private readonly ReadOnlySpan<ulong> _boundaryStems;
-    private readonly ReadOnlySpan<ulong> _boundaryChains;
-    private readonly ReadOnlySpan<ulong> _changedMask;
-    private readonly BoundarySlotMasks _legacyBoundary;
-    private readonly ulong _legacyChangedMask;
-    private readonly bool _usesLegacyMasks;
+    private readonly BoundarySlotMasks<TLayout> _boundary;
+    private readonly SlotBitmask<TLayout> _changedMask;
     private readonly ValueHash256 _rootHash;
     private readonly PbtGroupFormat _format;
 
@@ -118,43 +113,15 @@ internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
     public GroupRebuild(
         ReadOnlySpan<(int Slot, Boundary Node)> changed,
         PbtTrieNodeGroup<TLayout> existing,
-        ReadOnlySpan<ulong> boundaryPresence,
-        ReadOnlySpan<ulong> boundaryStems,
-        ReadOnlySpan<ulong> boundaryChains,
-        ReadOnlySpan<ulong> changedMask,
+        BoundarySlotMasks<TLayout> boundary,
+        SlotBitmask<TLayout> changedMask,
         ValueHash256 rootHash,
         PbtGroupFormat format)
     {
         _changed = changed;
         _existing = existing;
-        _boundaryPresence = boundaryPresence;
-        _boundaryStems = boundaryStems;
-        _boundaryChains = boundaryChains;
+        _boundary = boundary;
         _changedMask = changedMask;
-        _legacyBoundary = default;
-        _legacyChangedMask = 0;
-        _usesLegacyMasks = false;
-        _rootHash = rootHash;
-        _format = format;
-    }
-
-    public GroupRebuild(
-        ReadOnlySpan<(int Slot, Boundary Node)> changed,
-        PbtTrieNodeGroup<TLayout> existing,
-        BoundarySlotMasks boundary,
-        ulong changedBitmask,
-        ValueHash256 rootHash,
-        PbtGroupFormat format)
-    {
-        _changed = changed;
-        _existing = existing;
-        _boundaryPresence = default;
-        _boundaryStems = default;
-        _boundaryChains = default;
-        _changedMask = default;
-        _legacyBoundary = boundary;
-        _legacyChangedMask = changedBitmask;
-        _usesLegacyMasks = true;
         _rootHash = rootHash;
         _format = format;
     }
@@ -230,10 +197,7 @@ internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
     {
         // sized for the whole encoding up front so the buffer grows once rather than once an entry,
         // nothing else writing to it until the fold is done
-        int bound = _usesLegacyMasks
-            ? PbtTrieNodeGroup<TLayout>.EncodedLengthBound(_legacyBoundary)
-            : PbtTrieNodeGroup<TLayout>.EncodedLengthBound(_boundaryPresence, _boundaryStems, _boundaryChains);
-        _ = writer.GetSpan(bound);
+        _ = writer.GetSpan(PbtTrieNodeGroup<TLayout>.EncodedLengthBound(_boundary));
 
         // an internal group root is folded to a by-value hash and never stored, the parent caching it in
         // its boundary slot; only a stem root is written, and is read back out of the entries — the last
@@ -419,39 +383,17 @@ internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
         writer.Advance(trailerLength);
     }
 
-    private readonly bool IsBoundaryStem(int slot) => _usesLegacyMasks
-        ? (_legacyBoundary.Stems & (1UL << slot)) != 0
-        : PbtBitset.Contains(_boundaryStems, slot);
+    private readonly bool IsBoundaryStem(int slot) => _boundary.Stems[slot];
 
-    private readonly bool IsBoundaryChain(int slot) => _usesLegacyMasks
-        ? (_legacyBoundary.Chains & (1UL << slot)) != 0
-        : PbtBitset.Contains(_boundaryChains, slot);
+    private readonly bool IsBoundaryChain(int slot) => _boundary.Chains[slot];
 
-    private readonly bool IsChanged(int slot) => _usesLegacyMasks
-        ? (_legacyChangedMask & (1UL << slot)) != 0
-        : PbtBitset.Contains(_changedMask, slot);
+    private readonly bool IsChanged(int slot) => _changedMask[slot];
 
-    private readonly bool AnyBoundaryOccupied(int firstSlot, int width) => _usesLegacyMasks
-        ? (_legacyBoundary.Presence & LegacyRange(firstSlot, width)) != 0
-        : PbtBitset.AnyInRange(_boundaryPresence, firstSlot, width);
+    private readonly bool AnyBoundaryOccupied(int firstSlot, int width) => _boundary.Presence.AnyInRange(firstSlot, width);
 
-    private readonly bool AnyChanged(int firstSlot, int width) => _usesLegacyMasks
-        ? (_legacyChangedMask & LegacyRange(firstSlot, width)) != 0
-        : PbtBitset.AnyInRange(_changedMask, firstSlot, width);
+    private readonly bool AnyChanged(int firstSlot, int width) => _changedMask.AnyInRange(firstSlot, width);
 
-    private readonly NodeKind BoundaryKind(int firstSlot, int width)
-    {
-        int occupied = _usesLegacyMasks
-            ? BitOperations.PopCount(_legacyBoundary.Presence & LegacyRange(firstSlot, width))
-            : PbtBitset.PopCountRange(_boundaryPresence, firstSlot, width);
-        if (occupied == 0) return NodeKind.Absent;
-        if (occupied != 1) return NodeKind.Internal;
-
-        int slot = _usesLegacyMasks
-            ? BitOperations.TrailingZeroCount(_legacyBoundary.Presence & LegacyRange(firstSlot, width))
-            : PbtBitset.FirstSetInRange(_boundaryPresence, firstSlot, width);
-        return IsBoundaryStem(slot) ? NodeKind.Stem : NodeKind.Internal;
-    }
+    private readonly NodeKind BoundaryKind(int firstSlot, int width) => _boundary.KindOf(firstSlot, width);
 
     private readonly bool HoldsSkippedInternal(UInt128 presence, UInt128 stems)
     {
@@ -465,7 +407,4 @@ internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
 
         return false;
     }
-
-    private static ulong LegacyRange(int firstSlot, int width) =>
-        width == 64 ? ulong.MaxValue : ((1UL << width) - 1) << firstSlot;
 }

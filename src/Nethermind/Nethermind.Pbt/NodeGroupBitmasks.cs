@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
 using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
 
 namespace Nethermind.Pbt;
@@ -17,27 +16,28 @@ namespace Nethermind.Pbt;
 /// is what it resolves and the fold is driven by. <see cref="Chains"/> is always the latter: a run
 /// hangs from a boundary slot and nowhere else.
 /// <para>
-/// This scalar value remains the representation for four- and six-level groups. Wider groups use
-/// caller-owned word spans through <see cref="PbtTrieNodeGroup{TLayout}.CopyBoundaryShape"/> and
-/// <see cref="GroupRebuild{TLayout}"/>.
+/// The position masks stay scalar because only a tiling of at most 128 positions is read through
+/// them; the boundary ones are <see cref="SlotBitmask{TLayout}"/>, which every tiling fits.
 /// </para>
 /// </remarks>
 public readonly record struct NodeGroupBitmasks(UInt128 Presence, UInt128 Stems, ulong Chains);
 
 /// <summary>
-/// What a trie node group holds at its boundary: bit <c>i</c> is set where boundary slot <c>i</c>
-/// holds a node, where that node is a stem, and where it is a run.
+/// What a trie node group holds at its boundary: the slots holding a node, those whose node is a
+/// stem, and those whose node is a run.
 /// </summary>
-public readonly record struct BoundarySlotMasks(ulong Presence, ulong Stems, ulong Chains)
+internal readonly record struct BoundarySlotMasks<TLayout>(
+    SlotBitmask<TLayout> Presence, SlotBitmask<TLayout> Stems, SlotBitmask<TLayout> Chains)
+    where TLayout : IPbtTileLayout
 {
     /// <summary>
     /// The slots rooting a child group's blob — occupied, and holding neither a stem, whose subtree is
     /// its leaf blob, nor a run, whose bytes the group holds itself.
     /// </summary>
-    public ulong ChildSlots => Presence & ~Stems & ~Chains;
+    public SlotBitmask<TLayout> ChildSlots => Presence.Except(Stems).Except(Chains);
 
     /// <summary>
-    /// The kind of the node the slots <paramref name="rangeBitmask"/> covers fold to — an unoccupied
+    /// The kind of the node the slots <c>[firstSlot, firstSlot + width)</c> fold to — an unoccupied
     /// range is absent, a lone stem stays a stem, hoisting to its shortest unique prefix higher up,
     /// and anything else roots an internal node.
     /// </summary>
@@ -45,14 +45,14 @@ public readonly record struct BoundarySlotMasks(ulong Presence, ulong Stems, ulo
     /// The fold's whole kind algebra, and it needs only the boundary: a node's shape follows from its
     /// own range without walking below it, which is what lets a rebuild emit nodes in encoding order.
     /// </remarks>
-    public NodeKind KindOf(ulong rangeBitmask)
+    public NodeKind KindOf(int firstSlot, int width)
     {
-        ulong occupied = Presence & rangeBitmask;
+        int occupied = Presence.CountInRange(firstSlot, width);
         return occupied == 0 ? NodeKind.Absent
-            : BitOperations.PopCount(occupied) == 1 && (Stems & occupied) != 0 ? NodeKind.Stem
+            : occupied == 1 && Stems[Presence.FirstInRange(firstSlot, width)] ? NodeKind.Stem
             : NodeKind.Internal;
     }
 
     /// <summary>What the whole of the shape folds to, <see cref="KindOf"/> over every slot.</summary>
-    public NodeKind RootKind => KindOf(ulong.MaxValue);
+    public NodeKind RootKind => KindOf(0, TLayout.BoundarySlots);
 }

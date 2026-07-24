@@ -28,8 +28,8 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]
-[TestFixture(PbtTrieLayout.EightLevelInterleaved, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
-[TestFixture(PbtTrieLayout.EightLevelEvery4Depth, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
+[TestFixture(PbtTrieLayout.EightLevelInterleaved)]
+[TestFixture(PbtTrieLayout.EightLevelEvery4Depth)]
 public class PbtTilingTests(PbtTrieLayout layout)
 {
     private static readonly byte[] Value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
@@ -127,9 +127,14 @@ public class PbtTilingTests(PbtTrieLayout layout)
 
     /// <summary>
     /// One contract's storage stems share their first 61 bits, so the trie is single-child from wherever
-    /// the contract parts from others down to the group holding bit 60 — one run whatever the tiling,
-    /// only its target depth moving with the tile width.
+    /// the contract parts from others down to the tile the shared prefix ends in — one run whatever the
+    /// tiling, only its target depth moving with the tile width.
     /// </summary>
+    /// <remarks>
+    /// Below that target the stems part over a few bits, and whether they finish parting inside the
+    /// target tile or carry on into the one under it is a property of where the tile boundaries fall —
+    /// so this bounds the deepest key by where the trie stops branching rather than naming a depth.
+    /// </remarks>
     [Test]
     public void ContractStorageSharingItsStemPrefix_CollapsesToOneChain()
     {
@@ -148,13 +153,22 @@ public class PbtTilingTests(PbtTrieLayout layout)
         Assert.That(chains, Has.Length.EqualTo(1), "the whole shared prefix is one run");
         Assert.That(chains[0].Depth, Is.EqualTo(LevelsPerGroup), "which starts one tile below the root");
 
-        // nothing is keyed anywhere along it (invariant 3), and its target is the tile holding bit 60
-        for (int depth = chains[0].Depth; depth < GroupDepthOf(60); depth += LevelsPerGroup)
+        // where the stems actually part: a shared prefix of 61 bits by construction, and whatever more
+        // of it their hashed suffixes happen to agree on
+        Stem[] stems = [.. writes.Select(write => new Stem(write.Key.AsSpan(0, Stem.Length)))];
+        int[] partings = [.. from left in stems from right in stems
+                            let bit = left.FirstDifferingBit(right, 0)
+                            where bit >= 0
+                            select bit];
+
+        // nothing is keyed anywhere along the run (invariant 3), which reaches the tile they first part in
+        for (int depth = chains[0].Depth; depth < GroupDepthOf(partings.Min()); depth += LevelsPerGroup)
         {
-            Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(depth, new Stem(writes[0].Key.AsSpan(0, Stem.Length)))), Is.False, $"nothing is keyed at depth {depth}");
+            Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(depth, stems[0])), Is.False, $"nothing is keyed at depth {depth}");
         }
 
-        Assert.That(harness.Nodes.Keys.Max(key => key.Depth), Is.EqualTo(GroupDepthOf(60)));
+        // and nothing sits below the tile holding the deepest bit any two of them part at
+        Assert.That(harness.Nodes.Keys.Max(key => key.Depth), Is.LessThanOrEqualTo(GroupDepthOf(partings.Max())));
     }
 
     /// <summary>

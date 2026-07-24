@@ -289,7 +289,7 @@ public class PbtTrieNodeGroupTests
 
     [Test]
     public void BoundaryShape_EmptyGroup_IsUnoccupied() =>
-        Assert.That(default(PbtTrieNodeGroup<Layout>).BoundaryShape(), Is.EqualTo(default(BoundarySlotMasks)));
+        Assert.That(default(PbtTrieNodeGroup<Layout>).BoundaryShape(), Is.EqualTo(default(BoundarySlotMasks<Layout>)));
 
     /// <summary>
     /// A run is held whole by the boundary slot it hangs from, so its entry is longer than the hash a
@@ -336,9 +336,10 @@ public class PbtTrieNodeGroupTests
         Assert.That(group.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(2)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Internal));
         Assert.That(group[PbtLayout.TrieNodeGroupBoundarySlotPosition(2)].Hash, Is.EqualTo(childRoot));
 
-        BoundarySlotMasks boundary = group.BoundaryShape();
-        Assert.That(boundary, Is.EqualTo(new BoundarySlotMasks(0b111UL, 0b001UL, 1UL << chainSlot)));
-        Assert.That(boundary.ChildSlots, Is.EqualTo(1UL << 2), "a run roots no child blob, and neither does a stem");
+        BoundarySlotMasks<Layout> boundary = group.BoundaryShape();
+        Assert.That(boundary, Is.EqualTo(new BoundarySlotMasks<Layout>(
+            SlotBitmask<Layout>.Of(0, 1, 2), SlotBitmask<Layout>.Of(0), SlotBitmask<Layout>.Of(chainSlot))));
+        Assert.That(boundary.ChildSlots, Is.EqualTo(SlotBitmask<Layout>.Of(2)), "a run roots no child blob, and neither does a stem");
 
         // the run bitmap must name an occupied boundary slot that holds no stem
         byte[] valid = encoded[..length];

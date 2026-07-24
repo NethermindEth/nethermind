@@ -148,8 +148,8 @@ public static partial class TrieUpdater
         /// frame branches. A frame whose entries all fall in one bucket would be handing its whole range
         /// over and then waiting on it, which buys nothing.
         /// </summary>
-        private static bool MayQueue(ulong touchedBitmask, in Fanout fanout) =>
-            fanout.CanQueue && !BitOperations.IsPow2(touchedBitmask);
+        private static bool MayQueue(SlotBitmask<TLayout> touched, in Fanout fanout) =>
+            fanout.CanQueue && !touched.HoldsOne;
 
         /// <summary>
         /// Queues <paramref name="bucket"/> as a job for whichever thread reaches it first, adding it to
@@ -182,7 +182,7 @@ public static partial class TrieUpdater
         /// </summary>
         private void Settle(
             in Fanout fanout, ref QueuedBuckets queued, Span<NodeResult> results, ref BoundaryScan scan,
-            ref ulong storedChildBitmask)
+            ref SlotBitmask<TLayout> storedChildren)
         {
             fanout.Wait(in queued);
 
@@ -205,7 +205,7 @@ public static partial class TrieUpdater
 
                 results[job.Slot] = job.Result;
                 scan.Add(job.Slot, job.Result, job.Changed, job.Delta);
-                if (job.StoredChild) storedChildBitmask |= 1u << job.Slot;
+                if (job.StoredChild) storedChildren.Set(job.Slot);
             }
 
             if (error is not null) ExceptionDispatchInfo.Throw(error);

@@ -216,26 +216,15 @@ public readonly ref struct PbtTrieNodeGroup<TLayout> where TLayout : IPbtTileLay
     /// most one <c>min(w, k)</c> term per level of halving width <c>w</c>. A range the fold copies
     /// verbatim rather than rebuilding covers the same slots, so it is bounded alike.
     /// </remarks>
-    internal static int EncodedLengthBound(BoundarySlotMasks boundary)
+    internal static int EncodedLengthBound(in BoundarySlotMasks<TLayout> boundary)
     {
-        int occupiedSlots = BitOperations.PopCount(boundary.Presence);
-        int nodes = occupiedSlots + 1;
-        for (int width = 2; width < TLayout.BoundarySlots; width *= 2) nodes += Math.Min(width, occupiedSlots);
-        return OverheadLength
-            + nodes * HashLength
-            + BitOperations.PopCount(boundary.Stems) * Stem.Length
-            + BitOperations.PopCount(boundary.Chains) * ChainExtraLength;
-    }
-
-    internal static int EncodedLengthBound(ReadOnlySpan<ulong> presence, ReadOnlySpan<ulong> stems, ReadOnlySpan<ulong> chains)
-    {
-        int occupiedSlots = PbtBitset.PopCount(presence);
+        int occupiedSlots = boundary.Presence.Count;
         int nodes = occupiedSlots + 1;
         for (int width = 2; width < TLayout.BoundarySlots; width *= 2) nodes += Math.Min(width, occupiedSlots);
         return MaxOverheadLength
             + nodes * HashLength
-            + PbtBitset.PopCount(stems) * Stem.Length
-            + PbtBitset.PopCount(chains) * ChainExtraLength;
+            + boundary.Stems.Count * Stem.Length
+            + boundary.Chains.Count * ChainExtraLength;
     }
 
     private readonly ReadOnlySpan<byte> _data;
@@ -381,16 +370,13 @@ public readonly ref struct PbtTrieNodeGroup<TLayout> where TLayout : IPbtTileLay
     /// <see cref="PbtGroupFormat"/>; <see cref="Decode"/> keeps the stems and runs bitmaps disjoint
     /// subsets of the presence one, so neither needs masking against it.
     /// </remarks>
-    internal BoundarySlotMasks BoundaryShape()
+    internal BoundarySlotMasks<TLayout> BoundaryShape()
     {
-        if (TLayout.BoundaryMaskWordCount > 1)
-            throw new NotSupportedException("Wide trie node group boundaries require CopyBoundaryShape");
-
-        Span<ulong> presence = stackalloc ulong[1];
-        Span<ulong> stems = stackalloc ulong[1];
-        Span<ulong> chains = stackalloc ulong[1];
-        CopyBoundaryShape(presence, stems, chains);
-        return new BoundarySlotMasks(presence[0], stems[0], chains[0]);
+        SlotBitmask<TLayout> presence = default;
+        SlotBitmask<TLayout> stems = default;
+        SlotBitmask<TLayout> chains = default;
+        CopyBoundaryShape(presence.Words(), stems.Words(), chains.Words());
+        return new BoundarySlotMasks<TLayout>(presence, stems, chains);
     }
 
     /// <summary>

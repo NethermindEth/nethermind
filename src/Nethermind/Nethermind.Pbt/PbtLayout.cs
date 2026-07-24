@@ -81,14 +81,6 @@ public static class PbtLayout
     public static bool StemLeafStoresInternalAtWidth(PbtLeafFormat format, int width) =>
         (width & StemLeafKeptWidths(format)) != 0;
 
-    /// <summary>The bits of the boundary slots <c>[firstSlot, firstSlot + width)</c>.</summary>
-    /// <remarks>
-    /// Built by shifting the all-ones word down rather than up: a tile as wide as the word would
-    /// shift its one bit clean out, which C# would instead wrap back to bit zero.
-    /// </remarks>
-    internal static ulong SlotRange(int firstSlot, int width) =>
-        width == 64 ? ulong.MaxValue : ((1UL << width) - 1) << firstSlot;
-
     /// <summary>The post-order position of boundary slot <paramref name="slot"/>.</summary>
     public static int TrieNodeGroupBoundarySlotPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 

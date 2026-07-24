@@ -130,7 +130,7 @@ public class PbtScannerTests
     /// </remarks>
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
     [TestCase(PbtTrieLayout.SixLevelInterleaved)]
-    [TestCase(PbtTrieLayout.EightLevelInterleaved, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
+    [TestCase(PbtTrieLayout.EightLevelInterleaved)]
     public async Task Scan_ReadsTheSameTreeUnderEveryTiling(PbtTrieLayout layout)
     {
         PbtScanReport report = await ScanTree(layout, BuildWrites(), concurrency: 1);
