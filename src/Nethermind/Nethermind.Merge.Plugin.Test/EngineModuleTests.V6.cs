@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System.Collections;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -8,6 +10,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
@@ -21,6 +24,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Reflection;
+using Nethermind.Facade.Eth;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
@@ -28,6 +33,8 @@ using Nethermind.JsonRpc.Test;
 using System;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
+using Autofac;
+using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -198,6 +205,113 @@ public partial class EngineModuleTests
                     }
                 }
             })));
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_use_json_target_gas_limit()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ulong targetGasLimit = (ulong)chain.BlockTree.Head!.GasLimit - 1;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
+
+        var forkchoiceState = new
+        {
+            headBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            safeBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(true)
+        };
+        var payloadAttributes = new
+        {
+            timestamp = timestamp.ToHexString(true),
+            prevRandao = Keccak.Zero.ToString(true),
+            suggestedFeeRecipient = TestItem.AddressC.ToString(true),
+            withdrawals = Array.Empty<Withdrawal>(),
+            parentBeaconBlockRoot = Keccak.Zero.ToString(true),
+            slotNumber = 1UL.ToHexString(true),
+            targetGasLimit = targetGasLimit.ToHexString(true)
+        };
+
+        string forkchoiceResponse = await RpcTest.TestSerializedRequest(
+            rpc,
+            "engine_forkchoiceUpdatedV4",
+            chain.JsonSerializer.Serialize(forkchoiceState),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        string? payloadId = JsonNode.Parse(forkchoiceResponse)?["result"]?["payloadId"]?.GetValue<string>();
+
+        Assert.That(payloadId, Is.Not.Null);
+
+        string payloadResponse = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV6", payloadId!);
+        string? actualGasLimit = JsonNode.Parse(payloadResponse)?["result"]?["executionPayload"]?["gasLimit"]?.GetValue<string>();
+
+        Assert.That(actualGasLimit, Is.EqualTo(targetGasLimit.ToHexString(true)));
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_reject_json_payload_attributes_without_target_gas_limit()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        var forkchoiceState = new
+        {
+            headBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            safeBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(true)
+        };
+        var payloadAttributes = new
+        {
+            timestamp = Timestamper.UnixTime.Seconds.ToHexString(true),
+            prevRandao = Keccak.Zero.ToString(true),
+            suggestedFeeRecipient = TestItem.AddressC.ToString(true),
+            withdrawals = Array.Empty<Withdrawal>(),
+            parentBeaconBlockRoot = Keccak.Zero.ToString(true),
+            slotNumber = 1UL.ToHexString(true)
+        };
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpc,
+            "engine_forkchoiceUpdatedV4",
+            chain.JsonSerializer.Serialize(forkchoiceState),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+
+        Assert.That(JsonNode.Parse(response)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_accept_zero_json_target_gas_limit()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        var forkchoiceState = new
+        {
+            headBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            safeBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(true)
+        };
+        var payloadAttributes = new
+        {
+            timestamp = Timestamper.UnixTime.Seconds.ToHexString(true),
+            prevRandao = Keccak.Zero.ToString(true),
+            suggestedFeeRecipient = TestItem.AddressC.ToString(true),
+            withdrawals = Array.Empty<Withdrawal>(),
+            parentBeaconBlockRoot = Keccak.Zero.ToString(true),
+            slotNumber = 1UL.ToHexString(true),
+            targetGasLimit = 0UL.ToHexString(true)
+        };
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpc,
+            "engine_forkchoiceUpdatedV4",
+            chain.JsonSerializer.Serialize(forkchoiceState),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+
+        JsonNode? responseJson = JsonNode.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseJson?["error"], Is.Null);
+            Assert.That(responseJson?["result"]?["payloadStatus"]?["status"]?.GetValue<string>(), Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(responseJson?["result"]?["payloadId"]?.GetValue<string>(), Is.Not.Null);
         }
     }
 
@@ -519,6 +633,418 @@ public partial class EngineModuleTests
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
         }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_should_return_requested_cells_and_positional_nulls()
+    {
+        const int numberOfBlobs = 3;
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: Amsterdam.Instance,
+            mergeConfig: new MergeConfig()
+            {
+                NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
+            },
+            configurer: ConfigureBlobPoolAvailable);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Amsterdam.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        AcceptTxResult txResult = chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None);
+        Assert.That(txResult, Is.EqualTo(AcceptTxResult.Accepted));
+
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([0, 5, 127]);
+        byte[][] request =
+        [
+            blobTx.BlobVersionedHashes![0]!,
+            Bytes.FromHexString("0x0100000000000000000000000000000000000000000000000000000000000001"),
+            blobTx.BlobVersionedHashes![1]!,
+        ];
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4(request, ToBitArray(requestedMask));
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] expectedCells), Is.True);
+
+        BlobCellsAndProofs?[] blobsAndProofs = result.Data!.ToArray();
+        int cellsPerBlob = requestedMask.Count;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(blobsAndProofs.Length, Is.EqualTo(request.Length));
+            Assert.That(blobsAndProofs[1], Is.Null);
+            AssertBlobCellsAndProofs(blobsAndProofs[0]!, requestedMask, expectedCells, 0, BlobCellsHelper.SelectProofs(wrapper, 0, requestedMask));
+            AssertBlobCellsAndProofs(blobsAndProofs[2]!, requestedMask, expectedCells, cellsPerBlob, BlobCellsHelper.SelectProofs(wrapper, 1, requestedMask));
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_should_return_null_entries_for_unavailable_cells()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: Amsterdam.Instance,
+            mergeConfig: new MergeConfig()
+            {
+                NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
+            },
+            configurer: ConfigureBlobPoolAvailable);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, spec: Amsterdam.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        BlobCellMask availableMask = BlobCellMask.FromIndices([0]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, availableMask, out byte[][] availableCells), Is.True);
+
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        for (int i = 0; i < emptyBlobs.Length; i++)
+        {
+            emptyBlobs[i] = [];
+        }
+
+        ShardBlobNetworkWrapper sparseWrapper = wrapper with
+        {
+            Blobs = emptyBlobs,
+            CellMask = availableMask,
+            Cells = availableCells,
+        };
+        blobTx.NetworkWrapper = sparseWrapper;
+
+        AcceptTxResult txResult = chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None);
+        Assert.That(txResult, Is.EqualTo(AcceptTxResult.Accepted));
+
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([0, 5]);
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4([blobTx.BlobVersionedHashes![0]!], ToBitArray(requestedMask));
+
+        BlobCellsAndProofs? blobsAndProofs = result.Data!.Single();
+        byte[][] expectedProofs = BlobCellsHelper.SelectProofs(sparseWrapper, 0, requestedMask);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(blobsAndProofs, Is.Not.Null);
+            byte[]?[] blobCells = blobsAndProofs!.BlobCells!;
+            byte[]?[] proofs = blobsAndProofs.Proofs!;
+            Assert.That(blobCells, Has.Length.EqualTo(requestedMask.Count));
+            Assert.That(proofs, Has.Length.EqualTo(requestedMask.Count));
+            Assert.That(blobCells[0], Is.EqualTo(availableCells[0]));
+            Assert.That(proofs[0]!.AsSpan(0, expectedProofs[0].Length).ToArray(), Is.EqualTo(expectedProofs[0]));
+            Assert.That(blobCells[1], Is.Null);
+            Assert.That(proofs[1], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_should_reject_invalid_cell_indices_bitarray()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4([], new BitArray(0));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_should_reject_null_blob_versioned_hashes()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await rpcModule.engine_getBlobsV4(null!, ToBitArray(BlobCellMask.FromIndices([0])));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
+    [Test]
+    public void GetBlobsV4_should_use_bounded_rpc_parameter_converters()
+    {
+        MethodInfo method = typeof(IEngineRpcModule).GetMethod(nameof(IEngineRpcModule.engine_getBlobsV4))!;
+        RpcModuleProvider.ResolvedMethodInfo resolvedMethod = new(ModuleType.Engine, method, true, RpcEndpoint.Http);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolvedMethod.ExpectedParameters[0].TypeInfo?.Converter, Is.TypeOf<BlobVersionedHashesV4Converter>());
+            Assert.That(resolvedMethod.ExpectedParameters[0].ReparseString, Is.True);
+            Assert.That(resolvedMethod.ExpectedParameters[1].TypeInfo?.Converter, Is.TypeOf<BlobCellBitArrayConverter>());
+            Assert.That(resolvedMethod.ExpectedParameters[1].ReparseString, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_should_accept_hex_cell_indices_bitarray_over_json_rpc()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance, configurer: ConfigureBlobPoolAvailable);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            "engine_getBlobsV4",
+            "[]",
+            "0x00000000000000500000000010000400");
+
+        JsonNode? responseJson = JsonNode.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseJson?["error"], Is.Null);
+            Assert.That(responseJson?["result"], Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_should_reject_oversized_parameters_over_json_rpc()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance, configurer: ConfigureBlobPoolAvailable);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        string hash = $"0x{new string('0', Hash256.Size * 2)}";
+        string tooManyHashes = JsonSerializer.Serialize(Enumerable.Repeat(hash, GetBlobsV4Limits.MaxBlobVersionedHashes + 1));
+
+        string tooManyHashesResponse = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            nameof(IEngineRpcModule.engine_getBlobsV4),
+            tooManyHashes,
+            "0x00000000000000500000000010000400");
+        string oversizedMaskResponse = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            nameof(IEngineRpcModule.engine_getBlobsV4),
+            "[]",
+            $"0x{new string('0', 2_048)}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonNode.Parse(tooManyHashesResponse)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(JsonNode.Parse(oversizedMaskResponse)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
+    [Test]
+    public async Task GetBlobsV4_should_serialize_blob_cells_with_spec_name_over_json_rpc()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance, configurer: ConfigureBlobPoolAvailable);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, spec: Amsterdam.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        AcceptTxResult txResult = chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None);
+        Assert.That(txResult, Is.EqualTo(AcceptTxResult.Accepted));
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            "engine_getBlobsV4",
+            chain.JsonSerializer.Serialize(new[] { blobTx.BlobVersionedHashes![0]!.ToHexString(true) }),
+            "0x01000000000000000000000000000000");
+        string serializedEntry = chain.JsonSerializer.Serialize(new BlobCellsAndProofs
+        {
+            Available = true,
+            BlobCells = [new byte[] { 1 }],
+            Proofs = []
+        });
+
+        JsonNode? responseJson = JsonNode.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseJson?["error"], Is.Null);
+            Assert.That(responseJson?["result"]?[0]?["blob_cells"], Is.Not.Null);
+            Assert.That(responseJson?["result"]?[0]?["blob_cells"]?.AsArray(), Has.Count.EqualTo(1));
+            Assert.That(responseJson?["result"]?[0]?["proofs"]?.AsArray(), Has.Count.EqualTo(1));
+            Assert.That(responseJson?["result"]?[0]?["available"], Is.Null);
+            Assert.That(response, Does.Not.Contain("\"blobCells\""));
+            Assert.That(serializedEntry, Does.Contain("\"blob_cells\""));
+            Assert.That(serializedEntry, Does.Not.Contain("\"blobCells\""));
+            Assert.That(serializedEntry, Does.Not.Contain("\"available\""));
+        }
+    }
+
+    [Test]
+    public void BlobsV4DirectResponse_should_not_return_pooled_buffers_twice()
+    {
+        BlobCellsAndProofs?[] entries = ArrayPool<BlobCellsAndProofs?>.Shared.Rent(1);
+        entries[0] = new BlobCellsAndProofs
+        {
+            Available = true,
+            BlobCells = [ArrayPool<byte>.Shared.Rent(CkzgLib.Ckzg.BytesPerCell)],
+            Proofs = [ArrayPool<byte>.Shared.Rent(CkzgLib.Ckzg.BytesPerProof)]
+        };
+        BlobsV4DirectResponse response = new(entries, 1);
+
+        response.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Dispose, Throws.Nothing);
+            Assert.That(() => response[0], Throws.TypeOf<ObjectDisposedException>());
+        }
+    }
+
+    private static void ConfigureBlobPoolAvailable(ContainerBuilder builder)
+    {
+        IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
+        syncingInfo.IsSyncing().Returns(false);
+        builder.AddSingleton(syncingInfo);
+    }
+
+    private static BitArray ToBitArray(BlobCellMask mask)
+    {
+        BitArray result = new(BlobCellMask.CellCount);
+        foreach (int index in mask.EnumerateSetBits())
+        {
+            result.Set(index, true);
+        }
+
+        return result;
+    }
+
+    private static void AssertBlobCellsAndProofs(
+        BlobCellsAndProofs actual,
+        BlobCellMask requestedMask,
+        byte[][] expectedCells,
+        int expectedCellsOffset,
+        byte[][] expectedProofs)
+    {
+        Assert.That(actual.BlobCells, Has.Length.EqualTo(requestedMask.Count));
+        Assert.That(actual.Proofs, Has.Length.EqualTo(requestedMask.Count));
+
+        int expectedIndex = 0;
+        foreach (int _ in requestedMask.EnumerateSetBits())
+        {
+            Assert.That(actual.BlobCells![expectedIndex], Is.EqualTo(expectedCells[expectedCellsOffset + expectedIndex]));
+            Assert.That(actual.Proofs![expectedIndex]!.AsSpan(0, expectedProofs[expectedIndex].Length).ToArray(), Is.EqualTo(expectedProofs[expectedIndex]));
+            expectedIndex++;
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
+
+        BlobCellMask custodyMask = BlobCellMask.FromIndices([1, 4, 9]);
+        ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: ToBitArray(custodyMask));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(custodyMask));
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker_even_when_forkchoice_fails()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
+
+        BlobCellMask custodyMask = BlobCellMask.FromIndices([2, 7]);
+        ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, TestItem.KeccakF, chain.BlockTree.HeadHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: ToBitArray(custodyMask));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidForkchoiceState));
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(custodyMask));
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_reject_invalid_custody_columns_bitarray()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
+
+        ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: new BitArray(0));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(BlobCellMask.Empty));
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_accept_hex_custody_columns_bitarray_over_json_rpc()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
+
+        var forkchoiceState = new
+        {
+            headBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            safeBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(true)
+        };
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            "engine_forkchoiceUpdatedV4",
+            chain.JsonSerializer.Serialize(forkchoiceState),
+            null,
+            "0x00000000000000500000000010000400");
+
+        JsonNode? responseJson = JsonNode.Parse(response);
+        BlobCellMask expectedCustodyMask = BlobCellMask.FromIndices([60, 62, 100, 114]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseJson?["error"], Is.Null);
+            Assert.That(responseJson?["result"], Is.Not.Null);
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(expectedCustodyMask));
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_reject_invalid_hex_custody_columns_over_json_rpc()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        var forkchoiceState = new
+        {
+            headBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            safeBlockHash = chain.BlockTree.HeadHash.ToString(true),
+            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(true)
+        };
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            "engine_forkchoiceUpdatedV4",
+            chain.JsonSerializer.Serialize(forkchoiceState),
+            null,
+            "0x");
+
+        Assert.That(JsonNode.Parse(response)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [Test]

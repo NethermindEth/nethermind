@@ -294,7 +294,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return ValueTask.CompletedTask;
         }
 
-        private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
+        protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
@@ -308,6 +308,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
+
+        protected void ReportReceivedTransaction(in AcceptTxResult accepted) => _floodController.Report(accepted);
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {

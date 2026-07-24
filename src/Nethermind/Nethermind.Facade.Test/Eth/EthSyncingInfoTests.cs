@@ -78,6 +78,22 @@ namespace Nethermind.Facade.Test.Eth
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedResult));
         }
 
+        [Test]
+        public void IsSyncing_ReturnsFalseWhenSynchronizationDisabled()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            SyncConfig syncConfig = new() { SynchronizationEnabled = false };
+            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
+                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
+
+            Assert.That(syncingResult.IsSyncing, Is.False);
+            blockTree.DidNotReceive().FindBestSuggestedHeader();
+        }
+
         [TestCase(false, true, true)]
         [TestCase(true, false, true)]
         [TestCase(false, false, true)]

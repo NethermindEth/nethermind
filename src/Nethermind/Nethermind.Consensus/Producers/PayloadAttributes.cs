@@ -30,8 +30,10 @@ public class PayloadAttributes
 
     public ulong? TargetGasLimit { get; set; }
 
+    public virtual ulong? GetGasLimit() => null;
+
     public virtual ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator)
-        => gasLimitCalculator.GetGasLimit(parent, TargetGasLimit);
+        => GetGasLimit() ?? gasLimitCalculator.GetGasLimit(parent, TargetGasLimit);
 
     public override string ToString() => ToString(string.Empty);
 

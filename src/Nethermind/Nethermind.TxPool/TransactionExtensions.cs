@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
@@ -17,6 +17,11 @@ namespace Nethermind.TxPool
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
 
         public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
+
+        public static int? TryCalculateSparseBlobNetworkSize(this Transaction tx) =>
+            tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 }
+                ? tx.GetLength(shouldCountBlobs: false)
+                : null;
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 

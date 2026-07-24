@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -38,12 +39,18 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
     {
-        // Per execution-apis #793: custody-column updates are best-effort, errors swallowed.
-        // No EL-side custody consumer wired yet — log at trace level so the CL request is auditable.
-        // TODO(custody): once a consumer is wired, validate custodyColumns.Length == 128 here
-        // (the SSZ wire enforces this on REST, but the JSON-RPC signature does not).
-        if (custodyColumns is not null && _logger.IsTrace)
-            _logger.Trace($"engine_forkchoiceUpdatedV4 received custody columns ({custodyColumns.Count} bits) — not yet applied");
+        if (custodyColumns is { Length: not BlobCellMask.CellCount })
+        {
+            return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
+                $"Custody columns must be exactly {BlobCellMask.FixedByteLength} bytes.",
+                ErrorCodes.InvalidParams));
+        }
+
+        if (custodyColumns is not null)
+        {
+            TryUpdateCustodyColumns(custodyColumns);
+        }
+
         return ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
     }
 
@@ -54,6 +61,27 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(ulong start, ulong count)
         => _executionGetPayloadBodiesByRangeV2Handler.Handle(start, count);
 
-    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, System.Collections.BitArray indicesBitarray)
+    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray)
         => _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, indicesBitarray));
+
+    private void TryUpdateCustodyColumns(BitArray custodyColumns)
+    {
+        try
+        {
+            Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
+            for (int i = 0; i < BlobCellMask.CellCount; i++)
+            {
+                if (custodyColumns.Get(i))
+                {
+                    bytes[i >> 3] |= (byte)(1 << (i & 7));
+                }
+            }
+
+            _blobCustodyTracker.Update(BlobCellMask.FromBytes(bytes));
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Failed to update blob custody columns: {ex.Message}");
+        }
+    }
 }

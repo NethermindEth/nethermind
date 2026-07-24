@@ -44,14 +44,14 @@ public class Eth68ProtocolHandler(ISession session,
 {
     private const int MaxPooledTransactionHashesPerRequest = 256;
 
-    private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
-    private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
+    protected readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+    protected readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
-    private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
+    protected readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
         ? long.MaxValue
         : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-    private ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
+    protected ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
 
     public override string Name => "eth68";
 
@@ -206,6 +206,11 @@ public class Eth68ProtocolHandler(ISession session,
 
     protected override void SendNewTransactionCore(Transaction tx)
     {
+        if (IsSparseBlobTransaction(tx))
+        {
+            return;
+        }
+
         if (tx.CanBeBroadcast())
         {
             base.SendNewTransactionCore(tx);
@@ -234,6 +239,11 @@ public class Eth68ProtocolHandler(ISession session,
 
         foreach (Transaction tx in txs)
         {
+            if (IsSparseBlobTransaction(tx))
+            {
+                continue;
+            }
+
             if (hashes.Count == NewPooledTransactionHashesMessage68.MaxCount)
             {
                 SendMessage(types, sizes, hashes);
@@ -269,6 +279,8 @@ public class Eth68ProtocolHandler(ISession session,
         Send(message);
     }
 
+    protected override bool CanServePooledTransaction(Transaction tx) => !IsSparseBlobTransaction(tx);
+
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
     {
         IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
@@ -292,5 +304,25 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     private bool ValidateSizeAndType(Transaction? tx)
-        => tx is not null && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type));
+        => tx is not null
+        && !IsSparseBlobTransaction(tx)
+        && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (MatchesAnnouncedTransactionSize(tx, txShape.Size) && tx.Type == txShape.Type));
+
+    /// <summary>
+    /// Checks a fetched pooled transaction against the size its announcement declared.
+    /// </summary>
+    protected static bool MatchesAnnouncedSize(Transaction tx, int announcedSize)
+    {
+        int actualSize = tx.GetLength();
+        return tx.SupportsBlobs
+            ? Math.Abs(actualSize - announcedSize) <= 8
+            : actualSize == announcedSize;
+    }
+
+    protected virtual bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize) =>
+        MatchesAnnouncedSize(tx, announcedSize);
+
+    private static bool IsSparseBlobTransaction(Transaction tx) =>
+        tx is LightTransaction { ProofVersion: ProofVersion.V1 } lightTx && !lightTx.BlobCellMask.IsFull
+        || tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper && !wrapper.HasFullBlobs();
 }

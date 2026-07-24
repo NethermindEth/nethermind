@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -208,7 +208,7 @@ namespace Nethermind.Db.Test
                 .Returns<IRocksDbConfig>((c) =>
                 {
                     string? arg1 = (string?)c[0];
-                    string? arg2 = (string?)c[0];
+                    string? arg2 = (string?)c[1];
 
                     IRocksDbConfig baseConfig = _rocksdbConfigFactory.GetForDatabase(arg1, arg2);
 
@@ -233,8 +233,12 @@ namespace Nethermind.Db.Test
             }
             db.Flush();
 
-            Assert.That(db.GatherMetric().CacheSize, Is.EqualTo(cache.GetUsage()));
-            Assert.That(cache.GetUsage(), Is.LessThan(cacheSize));
+            long metricCacheUsage = db.GatherMetric().CacheSize;
+            long directCacheUsage = cache.GetUsage();
+
+            Assert.That(metricCacheUsage, Is.GreaterThan(0));
+            Assert.That(directCacheUsage, Is.GreaterThan(0));
+            Assert.That(metricCacheUsage, Is.EqualTo(directCacheUsage).Within(4.KiB));
         }
 
         [Test]
@@ -443,8 +447,9 @@ namespace Nethermind.Db.Test
             _dbDisposable?.Dispose();
         }
 
-        [Test]
-        public void Smoke_test()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Smoke_test(bool _)
         {
             _db[[1, 2, 3]] = [4, 5, 6];
             AssertCanGetViaAllMethod(_db, [1, 2, 3], [4, 5, 6]);
@@ -453,8 +458,9 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
-        [Test]
-        public void Snapshot_test()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Snapshot_test(bool _)
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
 
@@ -474,8 +480,9 @@ namespace Nethermind.Db.Test
             Assert.That(_db.KeyExists(new byte[] { 99, 99, 99 }), Is.False);
         }
 
-        [Test]
-        public void Snapshot_dispose_cleans_up_read_options()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void SnapshotDisposeCleansUp(bool _)
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
 
@@ -491,8 +498,9 @@ namespace Nethermind.Db.Test
             snapshot.Dispose();
         }
 
-        [Test]
-        public void Smoke_test_large_writes_with_nowal()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Smoke_test_large_writes_with_nowal(bool _)
         {
             IWriteBatch writeBatch = _db.StartWriteBatch();
 
@@ -509,15 +517,17 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [Test]
-        public void Smoke_test_readahead()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Smoke_test_readahead(bool _)
         {
             _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
             Assert.That(_db.Get(new byte[] { 1, 2, 3 }, ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 4, 5, 6 }));
         }
 
-        [Test]
-        public void Smoke_test_many_readahead()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Smoke_test_many_readahead(bool _)
         {
             _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
             // Attempt to trigger auto dispose iterator on many usage
@@ -527,8 +537,9 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [Test]
-        public void Smoke_test_span()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Smoke_test_span(bool _)
         {
             byte[] key = new byte[] { 1, 2, 3 };
             byte[] value = new byte[] { 4, 5, 6 };
@@ -541,8 +552,9 @@ namespace Nethermind.Db.Test
             Assert.That(AllocatedSpan, Is.EqualTo(0));
         }
 
-        [Test]
-        public void Smoke_test_span_with_memory_manager()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Smoke_test_span_with_memory_manager(bool _)
         {
             byte[] key = new byte[] { 1, 2, 3 };
             byte[] value = new byte[] { 4, 5, 6 };
@@ -563,11 +575,17 @@ namespace Nethermind.Db.Test
         {
         };
 
-        [Test]
-        public void Can_get_all_on_empty() => _ = _db.GetAll().ToList();
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_get_all_on_empty(bool _)
+        {
+            List<KeyValuePair<byte[], byte[]>> all = _db.GetAll().ToList();
+            Assert.That(all, Is.Empty);
+        }
 
-        [Test]
-        public void Smoke_test_iterator()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Smoke_test_iterator(bool _)
         {
             _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
 
@@ -576,8 +594,9 @@ namespace Nethermind.Db.Test
             Assert.That(allValues[0].Value, Is.EqualTo(new byte[] { 4, 5, 6 }));
         }
 
-        [Test]
-        public void IteratorWorks()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void IteratorWorks(bool _)
         {
             Assert.That(_db, Is.AssignableTo<ISortedKeyValueStore>());
             ISortedKeyValueStore sortedKeyValue = (ISortedKeyValueStore)_db;

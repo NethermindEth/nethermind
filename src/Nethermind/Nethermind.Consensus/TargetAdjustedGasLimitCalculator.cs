@@ -14,7 +14,9 @@ namespace Nethermind.Consensus
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
-        public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit = null)
+        public ulong GetGasLimit(BlockHeader parentHeader) => GetGasLimit(parentHeader, null);
+
+        public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit)
         {
             ulong parentGasLimit = parentHeader.GasLimit;
             ulong gasLimit = parentGasLimit;
