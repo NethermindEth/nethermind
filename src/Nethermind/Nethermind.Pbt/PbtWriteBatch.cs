@@ -26,6 +26,15 @@ namespace Nethermind.Pbt;
 /// </param>
 public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? buckets) : IDisposable
 {
+    /// <summary>The most stems a batch can hold and still take its entry list from the array pool.</summary>
+    /// <remarks>
+    /// <c>ArrayPool&lt;T&gt;.Shared</c> pools arrays of up to 2^20 elements; a longer rent is an exact-size
+    /// allocation the pool neither reuses nor takes back, which at 40 bytes an entry is a 40 MB large
+    /// object allocated and abandoned per batch. Producers that choose their own batch size — the bulk
+    /// rebuild — cap themselves here; a block's writes come nowhere near it.
+    /// </remarks>
+    public const int MaxPooledStems = 1 << 20;
+
     /// <summary>The bounds array of one level, so bucket <c>i</c> is <c>entries[level[i]..level[i + 1]]</c>.</summary>
     public static int BoundsLength<TLayout>() where TLayout : IPbtTileLayout => TLayout.BoundarySlots + 1;
 

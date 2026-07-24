@@ -26,6 +26,13 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 {
     private const int ShardCount = 256;
 
+    /// <summary>
+    /// The stem count above which a shard's entry array is a large object, at the 48 bytes a stem keyed
+    /// by a 32-byte value and mapped to a reference takes: past the 85,000-byte threshold, so it is never
+    /// compacted and only a gen2 collection reclaims it.
+    /// </summary>
+    private const int LargeShardStems = 85_000 / 48;
+
     private readonly Shard[] _shards = CreateShards();
 
     private IPbtResourcePool? _pool;
@@ -46,7 +53,7 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     private sealed class Shard
     {
         internal readonly Lock Lock = new();
-        internal readonly Dictionary<Stem, IPbtStemChanges> Stems = [];
+        internal Dictionary<Stem, IPbtStemChanges> Stems = [];
     }
 
     private static Shard[] CreateShards()
@@ -100,6 +107,40 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
         {
             ref IPbtStemChanges? changes = ref CollectionsMarshal.GetValueRefOrAddDefault(shard.Stems, stem, out bool exists);
             changes = (exists ? changes! : PbtStemChanges.Rent()).SetRange(startSubIndex, values);
+        }
+    }
+
+    /// <summary>
+    /// Folds a whole stem's leaves — <paramref name="subIndices"/> strictly ascending, though not
+    /// necessarily consecutive, and as long as <paramref name="values"/> — into its pooled change map.
+    /// </summary>
+    /// <remarks>
+    /// What a <see cref="SetLeaf"/> per leaf costs and this does not: a map holds one tier's worth of
+    /// leaves and promotes when it fills, so a stem of many leaves rents and returns every tier below its
+    /// own on the way up. Knowing the whole stem up front rents the tier that holds it, once.
+    /// <para>
+    /// Only the first writer of a stem takes that path; leaves for a stem already dirtied fold in one at
+    /// a time, exactly as <see cref="SetLeaf"/> would.
+    /// </para>
+    /// </remarks>
+    public void SetLeaves(in Stem stem, ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values)
+    {
+        // before the map is reached: an empty group must not leave a stem dirtied with no leaves
+        if (subIndices.IsEmpty) return;
+
+        Shard shard = ShardFor(stem);
+        lock (shard.Lock)
+        {
+            ref IPbtStemChanges? changes = ref CollectionsMarshal.GetValueRefOrAddDefault(shard.Stems, stem, out bool exists);
+            if (!exists && subIndices.Length > 1)
+            {
+                changes = PbtStemChanges.RentSeeded(subIndices.Length, subIndices, values);
+                return;
+            }
+
+            IPbtStemChanges map = exists ? changes! : PbtStemChanges.Rent();
+            for (int i = 0; i < subIndices.Length; i++) map = map.Set(subIndices[i], values[i]);
+            changes = map;
         }
     }
 
@@ -206,10 +247,20 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// <remarks>
     /// Lock-free, like the enumeration each caller does first: a fold and a reset both run only once the
     /// scope's parallel storage batches have been joined.
+    /// <para>
+    /// A shard that grew a large-object entry array is replaced rather than cleared, a clear keeping its
+    /// capacity. Otherwise a bulk load — whose ascending stems make one shard at a time the hot one —
+    /// would leave all 256 of them holding a window's worth of large-object space that only the shard
+    /// currently being filled has any use for.
+    /// </para>
     /// </remarks>
     private void ClearShards()
     {
-        foreach (Shard shard in _shards) shard.Stems.Clear();
+        foreach (Shard shard in _shards)
+        {
+            if (shard.Stems.Count > LargeShardStems) shard.Stems = [];
+            else shard.Stems.Clear();
+        }
     }
 
     /// <summary>Returns this builder to the pool it was rented from, which resets it on the way in.</summary>

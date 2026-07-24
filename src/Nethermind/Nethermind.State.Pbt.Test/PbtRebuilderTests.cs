@@ -66,12 +66,12 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         return leaves;
     }
 
-    private async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, StateId targetState, PbtRocksDbPersistence target)
+    private async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, int maxWindowStems, StateId targetState, PbtRocksDbPersistence target)
     {
         ArrayPoolList<RebuildEntry> entries = new(leaves.Count); // ownership passes to Rebuild, which disposes it
         foreach (RebuildEntry leaf in leaves) entries.Add(leaf);
 
-        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, Config) { FlushEntryInterval = flushEntryInterval };
+        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, Config) { FlushEntryInterval = flushEntryInterval, MaxWindowStems = maxWindowStems };
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         channel.Writer.TryWrite(entries);
         channel.Writer.Complete();
@@ -79,13 +79,16 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         return await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None);
     }
 
-    // A flush interval of 1 forces one committed window per leaf, exercising the cross-window merge
-    // (e.g. a header stem folded by a BASIC_DATA leaf, then again by a later header-slot leaf); larger
-    // values fold the whole state in fewer windows. All must yield the same root — batching invariance.
-    [TestCase(1)]
-    [TestCase(3)]
-    [TestCase(1_000)]
-    public async Task Rebuild_matches_reference_root(int flushEntryInterval)
+    // A window seals on whichever of its two bounds it reaches first, and seals on a stem boundary
+    // either way: a leaf bound of 1 commits a window per stem, a stem bound of 1 the same, and larger
+    // values of either fold the state in fewer windows. All must yield the same root — batching
+    // invariance.
+    [TestCase(1, int.MaxValue)]
+    [TestCase(3, int.MaxValue)]
+    [TestCase(1_000, int.MaxValue)]
+    [TestCase(int.MaxValue, 1)]
+    [TestCase(int.MaxValue, 2)]
+    public async Task Rebuild_matches_reference_root(int flushEntryInterval, int maxWindowStems)
     {
         Dictionary<string, byte[]> model = [];
         List<RebuildEntry> leaves = BuildFixture(model);
@@ -97,7 +100,7 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         // the header root the source claims is unrelated to the tree root the fold produces, so the
         // two must be recorded separately rather than one standing in for the other
         StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = await Fold(leaves, flushEntryInterval, targetState, target);
+        ValueHash256 root = await Fold(leaves, flushEntryInterval, maxWindowStems, targetState, target);
 
         Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
 
@@ -129,7 +132,7 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config);
 
-        ValueHash256 root = await Fold(leaves, flushEntryInterval, new StateId(7, TestItem.KeccakA.ValueHash256), target);
+        ValueHash256 root = await Fold(leaves, flushEntryInterval, int.MaxValue, new StateId(7, TestItem.KeccakA.ValueHash256), target);
 
         Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
     }

@@ -43,6 +43,29 @@ public class PbtWriteBatchBuilderTests
     }
 
     /// <summary>
+    /// A whole stem lands in one call, its sub-indices ascending but sparse, whether the stem is new —
+    /// where the leaves seed a single map — or already dirtied, where they fold into the map it has.
+    /// </summary>
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SetLeavesFoldsAWholeStem(bool alreadyDirtied)
+    {
+        using PbtWriteBatchBuilder builder = new();
+        Stem stem = TestStem(0x80, 1);
+        byte[] subIndices = [0, 3, 200, 255];
+
+        builder.SetLeaves(stem, [], []);
+        Assert.That(builder.HasDirtyStems, Is.False, "a group with no leaves dirties nothing");
+
+        if (alreadyDirtied) builder.SetLeaf(stem, 7, Value(7));
+        builder.SetLeaves(stem, subIndices, Values(subIndices));
+
+        using PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
+        Assert.That(batch.Count, Is.EqualTo(1));
+        AssertEntry(batch, stem, alreadyDirtied ? [0, 3, 7, 200, 255] : [0, 3, 200, 255]);
+    }
+
+    /// <summary>
     /// Every write lands when threads race, including on one stem at once (which the shard's lock, held
     /// across the change map's promotion, is what makes safe) and on stems sharing a shard — the stems
     /// here all start 0x80, so they hash to the same shard by construction.
@@ -162,6 +185,31 @@ public class PbtWriteBatchBuilderTests
         return touched;
     }
 
+    /// <summary>
+    /// A shard whose entry array grew large is replaced on drain rather than cleared, so the builder has
+    /// to come out of that empty and usable just as a cleared one does.
+    /// </summary>
+    [Test]
+    public void LargeShardIsReplacedOnDrainAndStaysUsable()
+    {
+        const int stems = 2_000; // past the count at which a shard's entry array becomes a large object
+
+        using PbtWriteBatchBuilder builder = new();
+        for (int i = 0; i < stems; i++) builder.SetLeaf(TestStem(0x80, i), 0, Value(i));
+
+        using (PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel))
+        {
+            Assert.That(batch.Count, Is.EqualTo(stems));
+        }
+
+        Assert.That(builder.HasDirtyStems, Is.False);
+
+        builder.SetLeaf(TestStem(0x80, 0), 1, Value(1));
+        using PbtWriteBatch reused = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
+        Assert.That(reused.Count, Is.EqualTo(1));
+        AssertEntry(reused, TestStem(0x80, 0), [1]);
+    }
+
     /// <summary>A batch a producer fills itself carries no buckets, leaving the descent to partition its entries.</summary>
     [Test]
     public void HandBuiltBatch_CarriesNoBuckets()
@@ -214,6 +262,14 @@ public class PbtWriteBatchBuilderTests
             value.Bytes.CopyTo(values.AsSpan(i * ValueHash256.MemorySize));
         }
 
+        return values;
+    }
+
+    /// <summary><see cref="Value"/> of each of <paramref name="subIndices"/>, as <see cref="PbtWriteBatchBuilder.SetLeaves"/> takes them.</summary>
+    private static ValueHash256[] Values(byte[] subIndices)
+    {
+        ValueHash256[] values = new ValueHash256[subIndices.Length];
+        for (int i = 0; i < subIndices.Length; i++) values[i] = Value(subIndices[i]);
         return values;
     }
 

@@ -38,6 +38,14 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
     /// <summary>Leaves buffered before a window is folded into the tree and committed.</summary>
     internal int FlushEntryInterval { get; init; } = config.ImportWindowSize > 0 ? config.ImportWindowSize : DefaultFlushEntryInterval;
 
+    /// <summary>Stems buffered before a window is folded, whichever of the two bounds a window reaches first.</summary>
+    /// <remarks>
+    /// A leaf bound alone does not bound the batch the window drains to: a window of single-leaf stems
+    /// holds one entry per leaf. Past <see cref="PbtWriteBatch.MaxPooledStems"/> that batch's entry list
+    /// stops being poolable, so every window would allocate and abandon one large object of it.
+    /// </remarks>
+    internal int MaxWindowStems { get; init; } = PbtWriteBatch.MaxPooledStems;
+
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
 
     /// <summary>Rebuilds the tree from <paramref name="source"/> and returns the EIP-8297 root it folded to.</summary>
@@ -121,8 +129,9 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
         // never pooled, so a Dispose would be a no-op
         PbtWriteBatchBuilder builder = new();
+        StemGroup group = new();
         IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
-        int pending = 0;
+        int pending = 0, pendingStems = 0;
         long entries = 0;
         Stem lastStem = default;
 
@@ -136,21 +145,36 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                     for (int i = 0; i < chunk.Count; i++)
                     {
                         RebuildEntry entry = chunk[i];
-                        lastStem = entry.Stem;
-                        builder.SetLeaf(entry.Stem, entry.SubIndex, entry.Leaf);
-                        entries++;
-
-                        if (++pending >= FlushEntryInterval)
+                        if (!group.Continues(entry))
                         {
-                            // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
-                            // drained batch lost to a faulting flusher only drops its pooled maps to the GC
-                            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
-                            writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
-                            pending = 0;
+                            group.Flush(builder);
+
+                            // Sealing here rather than a leaf into a stem is what keeps a window a whole
+                            // number of stems: a stem split over two windows costs the second a
+                            // read-modify-write of the leaf blob the first one wrote.
+                            if (pending >= FlushEntryInterval || pendingStems >= MaxWindowStems)
+                            {
+                                // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
+                                // drained batch lost to a faulting flusher only drops its pooled maps to the GC
+                                await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
+                                writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
+                                (pending, pendingStems) = (0, 0);
+                            }
+
+                            // groups, not distinct stems: an unordered source repeating a stem overshoots
+                            // the count and seals a window early, which costs nothing the bound is for
+                            pendingStems++;
                         }
+
+                        group.Add(entry);
+                        lastStem = entry.Stem;
+                        entries++;
+                        pending++;
                     }
                 }
             }
+
+            group.Flush(builder);
 
             // seal the final (possibly empty) window; the flusher owns its write batch from here
             await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
@@ -175,6 +199,43 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
         if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {entries} leaves, {stems} stems, tree root {root}");
         return root;
+    }
+
+    /// <summary>
+    /// The leaves of one stem, gathered from the consecutive entries carrying them so that the stem
+    /// reaches the builder complete, in one rent of one change map.
+    /// </summary>
+    /// <remarks>
+    /// A group runs while the entries stay on one stem and their sub-indices ascend — which a sorted
+    /// source gives for free and an unsorted one simply breaks into groups of one, both of which
+    /// <see cref="PbtWriteBatchBuilder.SetLeaves"/> takes. Ascending byte sub-indices are also what bound
+    /// a group by the stem's own width.
+    /// </remarks>
+    private sealed class StemGroup
+    {
+        private readonly byte[] _subIndices = new byte[PbtKeyDerivation.StemSubtreeWidth];
+        private readonly ValueHash256[] _values = new ValueHash256[PbtKeyDerivation.StemSubtreeWidth];
+        private Stem _stem;
+        private int _count;
+
+        /// <summary>Whether <paramref name="entry"/> extends the open group rather than starting a new one.</summary>
+        public bool Continues(in RebuildEntry entry) =>
+            _count > 0 && entry.Stem == _stem && entry.SubIndex > _subIndices[_count - 1];
+
+        public void Add(in RebuildEntry entry)
+        {
+            _stem = entry.Stem;
+            _subIndices[_count] = entry.SubIndex;
+            _values[_count] = entry.Leaf;
+            _count++;
+        }
+
+        /// <summary>Hands the open group to <paramref name="builder"/> and empties it; a no-op when none is open.</summary>
+        public void Flush(PbtWriteBatchBuilder builder)
+        {
+            builder.SetLeaves(_stem, _subIndices.AsSpan(0, _count), _values.AsSpan(0, _count));
+            _count = 0;
+        }
     }
 
     /// <summary>A full window handed from the consumer to the flush worker, with the progress counters as of when it was sealed.</summary>
