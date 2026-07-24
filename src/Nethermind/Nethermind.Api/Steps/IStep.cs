@@ -3,9 +3,11 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Attributes;
 
 namespace Nethermind.Api.Steps;
 
+[StableApi]
 public interface IStep
 {
     Task Execute(CancellationToken cancellationToken);
