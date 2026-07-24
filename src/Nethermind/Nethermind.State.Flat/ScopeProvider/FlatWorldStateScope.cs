@@ -35,7 +35,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
-    private readonly StateTree _stateTree;
+    // Diagnostic Patricia cross-check of the sparse root; non-null only under VerifyWithTrie.
+    private readonly StateTree? _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -87,13 +88,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _sparseCache = sparseCache;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
-        _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
+        _stateTree = configuration.VerifyWithTrie
+            ? new StateTree(new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota), logManager)
+            {
+                RootHash = currentStateId.StateRoot.ToCommitment()
+            }
+            : null;
 
         _warmupStateTree = new(
             new StateTrieStoreWarmerAdapter(snapshotBundle),
@@ -179,10 +179,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (_configuration.VerifyWithTrie)
         {
-            _stateTree.UpdateRootHash();
-            if (_stateTree.RootHash != SparseSession.RootHash)
+            _stateTree!.UpdateRootHash();
+            if (_stateTree!.RootHash != SparseSession.RootHash)
             {
-                throw new TrieException($"Sparse state root {SparseSession.RootHash} does not match the Patricia root {_stateTree.RootHash}");
+                throw new TrieException($"Sparse state root {SparseSession.RootHash} does not match the Patricia root {_stateTree!.RootHash}");
             }
         }
     }
@@ -195,7 +195,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (_configuration.VerifyWithTrie)
         {
-            Account? accTrie = _stateTree.Get(address);
+            Account? accTrie = _stateTree!.Get(address);
             if (accTrie != account)
             {
                 throw new TrieException($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
@@ -497,10 +497,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             // The diagnostic Patricia trees re-publish the same node bytes the sparse session
             // stages; identical roots guarantee identical nodes, so the overlap is harmless.
-            _stateTree.Commit();
-            if (_stateTree.RootHash != SparseSession.RootHash)
+            _stateTree!.Commit();
+            if (_stateTree!.RootHash != SparseSession.RootHash)
             {
-                throw new TrieException($"Sparse state root {SparseSession.RootHash} does not match the committed Patricia root {_stateTree.RootHash}");
+                throw new TrieException($"Sparse state root {SparseSession.RootHash} does not match the committed Patricia root {_stateTree!.RootHash}");
             }
         }
 
@@ -603,7 +603,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 if (scope._configuration.VerifyWithTrie)
                 {
-                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree!.BeginSet(_dirtyAccounts.Count);
                     foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                     {
                         stateSetter.Set(kv.Key, kv.Value);
