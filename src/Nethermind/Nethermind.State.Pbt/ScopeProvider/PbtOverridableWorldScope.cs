@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.Trie;
 
@@ -31,14 +32,17 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly IPbtResourcePool _resourcePool;
     private readonly PbtTrieLayout _writeLayout;
     private readonly int _rootFoldConcurrency;
+    private readonly bool _recordDetailedMetrics;
     private bool _isDisposed;
 
-    public PbtOverridableWorldScope([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager manager, IPbtResourcePool resourcePool, IPbtConfig config)
+    public PbtOverridableWorldScope(
+        [KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager manager, IPbtResourcePool resourcePool, IPbtConfig config, IMetricsConfig metricsConfig)
     {
         _manager = manager;
         _resourcePool = resourcePool;
         _writeLayout = config.TrieNodeLayout;
         _rootFoldConcurrency = config.RootFoldConcurrency;
+        _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
         WorldState = new OverridableScopeProvider(this);
@@ -101,7 +105,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             readOnlyBundle = _manager.GatherReadOnlyBundle(current);
             // an override scope never commits to the repository, so its layers come from the
             // read-only pool
-            return new PbtSnapshotBundle(localChain, readOnlyBundle, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+            return new PbtSnapshotBundle(localChain, readOnlyBundle, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, _recordDetailedMetrics);
         }
         catch
         {

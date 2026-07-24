@@ -189,8 +189,8 @@ public class PbtSnapshotBundleTests
     {
         PbtReadOnlySnapshotBundle shared = new(new PbtSnapshotPooledList(0), _reader, recordDetailedMetrics: false);
         shared.TryLease();
-        PbtSnapshotBundle first = new(new PbtSnapshotPooledList(0), shared, _pool, PbtResourcePool.Usage.MainBlockProcessing);
-        PbtSnapshotBundle second = new(new PbtSnapshotPooledList(0), shared, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshotBundle first = new(new PbtSnapshotPooledList(0), shared, _pool, PbtResourcePool.Usage.MainBlockProcessing, recordDetailedMetrics: false);
+        PbtSnapshotBundle second = new(new PbtSnapshotPooledList(0), shared, _pool, PbtResourcePool.Usage.MainBlockProcessing, recordDetailedMetrics: false);
 
         first.Dispose();
         first.Dispose();
@@ -213,6 +213,92 @@ public class PbtSnapshotBundleTests
         Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x11), "which the bundle still reads through its own chain, now decoded from the leaf");
         Assert.That(bundle.TreeRoot, Is.EqualTo(TestItem.KeccakA.ValueHash256), "and the sealed layer's tree root becomes the bundle's");
         Assert.That(bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), default).Content, Is.Not.SameAs(sealed_.Content), "a fresh buffer backs the next block");
+    }
+
+    /// <summary>
+    /// What the cache exists for: the block's flat reads of a stem and the fold's read of its blob share a
+    /// single fetch from the shared view — including when the answer is that the stem is not there.
+    /// </summary>
+    [TestCase(true, TestName = "ReadsOfOneStem_ReachTheSharedViewOnce")]
+    [TestCase(false, TestName = "ReadsOfAnAbsentStem_ReachTheSharedViewOnce")]
+    public void ReadsOfOneStem_ReachTheSharedViewOnce(bool stemExists)
+    {
+        if (stemExists) Seed(_reader, 0x44);
+
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+
+        byte? nonce = bundle.GetAccount(Address) is { } account ? (byte)account.Nonce : null;
+        EvmWord slot = bundle.GetSlot(Address, Slot);
+        EvmWord slotAgain = bundle.GetSlot(Address, Slot);
+        using RefCountingMemory? folded = bundle.GetLeafBlob(HeaderStem);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.LeafBlobReads, Is.EqualTo(1), "one fetch serves both flat reads and the fold");
+            Assert.That(nonce, Is.EqualTo(stemExists ? (byte?)0x44 : null));
+            Assert.That(slot, Is.EqualTo(stemExists ? Word(0x44) : default));
+            Assert.That(slotAgain, Is.EqualTo(slot));
+            Assert.That(folded?.GetSpan().ToArray(), Is.EqualTo(stemExists ? HeaderBlob(0x44) : null));
+        }
+    }
+
+    /// <summary>
+    /// The fold's blob supersedes the cached one it was computed from, and does so without going back to
+    /// the shared view — the tiers above the cache are walked first.
+    /// </summary>
+    [Test]
+    public void ABlobWrittenByTheFold_ShadowsTheCachedOne()
+    {
+        Seed(_reader, 0x44);
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+        Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x44));
+
+        bundle.SetOwnedLeafBlob(HeaderStem, Memory(HeaderBlob(0x11)));
+
+        Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x11));
+        Assert.That(_reader.LeafBlobReads, Is.EqualTo(1), "and the shared view is not asked again");
+    }
+
+    /// <summary>
+    /// Sealing the block drops the cache: a stem the block only read is fetched again for the next one,
+    /// rather than being pinned for a reuse that may never come.
+    /// </summary>
+    [Test]
+    public void SealingTheBlock_DropsTheCachedBlobs()
+    {
+        Seed(_reader, 0x44);
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+        Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x44));
+
+        using PbtSnapshot sealed_ = bundle.CollectSnapshot(default, new StateId(1, default), default);
+        _reader.LeafBlobs[HeaderStem] = HeaderBlob(0x55);
+
+        Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x55));
+        Assert.That(_reader.LeafBlobReads, Is.EqualTo(2), "the second block fetched the stem for itself");
+    }
+
+    /// <summary>
+    /// A blob served out of the cache is leased to its reader, so disposing the bundle — which releases
+    /// the cache's own lease — cannot pull the bytes out from under one.
+    /// </summary>
+    [Test]
+    public void CachedBlobLease_IsIndependentOfTheCache()
+    {
+        Seed(_reader, 0x44);
+        PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+        bundle.GetAccount(Address);
+        RefCountingMemory cached = bundle.GetLeafBlob(HeaderStem)!;
+
+        bundle.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.LeafBlobReads, Is.EqualTo(1), "the second read was served from the cache");
+            Assert.That(cached.GetSpan().ToArray(), Is.EqualTo(HeaderBlob(0x44)), "whose lease still owns readable bytes");
+        }
+
+        ((System.IDisposable)cached).Dispose();
+        Assert.That(cached.AcquireLease, Throws.InvalidOperationException, "and the cache released its own lease on disposal");
     }
 
     /// <summary>
@@ -335,7 +421,8 @@ public class PbtSnapshotBundleTests
         PbtSnapshotPooledList localChain = new(1);
         foreach (PbtSnapshotContent content in localLayers) localChain.Add(Layer(content));
 
-        return new PbtSnapshotBundle(localChain, new PbtReadOnlySnapshotBundle(sharedChain, _reader, recordDetailedMetrics), _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        return new PbtSnapshotBundle(
+            localChain, new PbtReadOnlySnapshotBundle(sharedChain, _reader, recordDetailedMetrics), _pool, PbtResourcePool.Usage.MainBlockProcessing, recordDetailedMetrics);
     }
 
     private PbtSnapshot Layer(PbtSnapshotContent content) =>
@@ -402,11 +489,18 @@ public class PbtSnapshotBundleTests
         public Dictionary<TrieNodeKey, byte[]> TrieNodes { get; } = [];
         public bool Disposed { get; private set; }
 
+        /// <summary>How often a read reached this far, which is what the bundle's leaf blob cache exists to reduce.</summary>
+        public int LeafBlobReads { get; private set; }
+
         public StateId CurrentState => StateId.PreGenesis;
 
         public ValueHash256 CurrentTreeRoot { get; set; }
 
-        public RefCountingMemory? GetLeafBlob(in Stem stem) => LeafBlobs.TryGetValue(stem, out byte[]? blob) ? RefCountingMemory.Wrapping(blob) : null;
+        public RefCountingMemory? GetLeafBlob(in Stem stem)
+        {
+            LeafBlobReads++;
+            return LeafBlobs.TryGetValue(stem, out byte[]? blob) ? RefCountingMemory.Wrapping(blob) : null;
+        }
 
         public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => TrieNodes.TryGetValue(key, out byte[]? node) ? RefCountingMemory.Wrapping(node) : null;
 

@@ -22,21 +22,30 @@ namespace Nethermind.State.Pbt;
 /// The local chain is ordered oldest first and walked backwards, so appending a sealed layer is an
 /// O(1) <see cref="PbtSnapshotPooledList.Add"/> that leaves every existing index alone.
 /// </para>
+/// <para>
+/// Between the layers and the shared view sits a <see cref="PbtLeafBlobCache"/> holding what the block has
+/// already read out of that view — see <see cref="GetAndCacheLeafBlob"/>. It is a cache rather than a tier:
+/// everything above it shadows it, and it holds only answers of a view that cannot change.
+/// </para>
 /// </remarks>
 /// <param name="snapshots">Leased layers sealed by this branch, oldest first; the bundle takes ownership of the leases.</param>
 /// <param name="readOnlyBundle">The shared view below; the bundle takes ownership of one lease on it.</param>
-/// <param name="resourcePool">Pool the write buffer is rented from and returned to.</param>
+/// <param name="resourcePool">Pool the write buffer, the pending writes and the leaf blob cache are rented from and returned to.</param>
 /// <param name="usage">Category to rent the write buffer from; also the category every layer this
 /// bundle seals returns its content to.</param>
+/// <param name="recordDetailedMetrics">Whether the leaf blob cache counts its hits and misses into
+/// <see cref="Metrics.PbtLeafBlobCacheHits"/> and <see cref="Metrics.PbtLeafBlobCacheMisses"/>.</param>
 public class PbtSnapshotBundle(
     PbtSnapshotPooledList snapshots,
     PbtReadOnlySnapshotBundle readOnlyBundle,
     IPbtResourcePool resourcePool,
-    PbtResourcePool.Usage usage) : IDisposable
+    PbtResourcePool.Usage usage,
+    bool recordDetailedMetrics) : IDisposable
 {
     private readonly object _writeOwnershipLock = new();
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
     private PbtPendingFlatWrites? _pendingFlatWrites = resourcePool.GetPendingFlatWrites(usage);
+    private PbtLeafBlobCache? _leafBlobCache = resourcePool.GetLeafBlobCache(usage);
     private volatile bool _isDisposed;
     private int _activeOwnershipTransfers;
 
@@ -62,29 +71,26 @@ public class PbtSnapshotBundle(
         }
     }
 
+    private PbtLeafBlobCache LeafBlobCache
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+            return _leafBlobCache!;
+        }
+    }
+
     /// <remarks>
     /// The write buffer is read as the pending flat writes rather than as blobs: the block in flight has
-    /// no blob until its fold runs. Every tier below decodes from the leaf, and is handed the stem this
-    /// derived rather than the address, so the walk hashes it once however deep it goes.
+    /// no blob until its fold runs. Below it the account is decoded from its header stem's leaf blob, which
+    /// the fold of this block will read again — hence <see cref="GetAndCacheLeafBlob"/>.
     /// </remarks>
     public Account? GetAccount(Address address)
     {
         if (PendingFlatWrites.Accounts.TryGetValue(address, out Account? account)) return account;
 
-        Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
-        if (WriteBuffer.TryGetLeafBlob(stem, out RefCountingMemory? blob)) return DecodeAccount(blob);
-
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].Content.TryGetLeafBlob(stem, out blob)) return DecodeAccount(blob);
-        }
-
-        return readOnlyBundle.GetAccount(stem);
-
-        static Account? DecodeAccount(RefCountingMemory? blob)
-        {
-            using (blob) return blob is null ? null : PbtLeafDecoder.DecodeAccount(blob.GetSpan());
-        }
+        using RefCountingMemory? blob = GetAndCacheLeafBlob(PbtKeyDerivation.AccountHeaderStem(address));
+        return blob is null ? null : PbtLeafDecoder.DecodeAccount(blob.GetSpan());
     }
 
     /// <summary>Returns the slot value; zero when absent or self-destructed.</summary>
@@ -97,33 +103,51 @@ public class PbtSnapshotBundle(
         if (pending.SelfDestructs.ContainsKey(key)) return default;
 
         Stem stem = PbtLeafDecoder.SlotStem(address, slot, out byte subIndex);
-        if (WriteBuffer.TryGetLeafBlob(stem, out RefCountingMemory? blob)) return DecodeSlot(blob, subIndex);
-
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].Content.TryGetLeafBlob(stem, out blob)) return DecodeSlot(blob, subIndex);
-        }
-
-        return readOnlyBundle.GetSlot(stem, subIndex);
-
-        static EvmWord DecodeSlot(RefCountingMemory? blob, byte subIndex)
-        {
-            using (blob) return blob is null ? default : PbtLeafDecoder.DecodeSlot(blob.GetSpan(), subIndex);
-        }
+        using RefCountingMemory? blob = GetAndCacheLeafBlob(stem);
+        return blob is null ? default : PbtLeafDecoder.DecodeSlot(blob.GetSpan(), subIndex);
     }
 
     /// <summary>Returns the complete leaf blob of the stem, or null when the stem does not exist.</summary>
-    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
-    public RefCountingMemory? GetLeafBlob(in Stem stem)
+    /// <remarks>
+    /// Every non-null result is a lease the caller must dispose. This is the fold's read: it takes what the
+    /// block's flat reads left in the cache, but adds nothing to it — a stem only the fold touches is
+    /// written back over the read that fetched it, so caching it would be a lease taken to be dropped.
+    /// </remarks>
+    public RefCountingMemory? GetLeafBlob(in Stem stem) =>
+        TryGetLocalLeafBlob(stem, out RefCountingMemory? blob) ? blob : readOnlyBundle.GetLeafBlob(stem);
+
+    /// <summary>
+    /// As <see cref="GetLeafBlob"/>, but a blob that had to be read from the shared view is kept for the
+    /// rest of the block, so that every further read of the stem — and the fold that closes the block —
+    /// is served from memory.
+    /// </summary>
+    private RefCountingMemory? GetAndCacheLeafBlob(in Stem stem)
     {
-        if (WriteBuffer.TryGetLeafBlob(stem, out RefCountingMemory? blob)) return blob;
+        if (TryGetLocalLeafBlob(stem, out RefCountingMemory? blob)) return blob;
+
+        blob = readOnlyBundle.GetLeafBlob(stem);
+        CacheLeafBlob(stem, blob);
+        return blob;
+    }
+
+    /// <summary>Walks the tiers this bundle owns: the write buffer, this branch's layers newest first, then the cache.</summary>
+    private bool TryGetLocalLeafBlob(in Stem stem, out RefCountingMemory? blob)
+    {
+        if (WriteBuffer.TryGetLeafBlob(stem, out blob)) return true;
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.TryGetLeafBlob(stem, out blob)) return blob;
+            if (snapshots[i].Content.TryGetLeafBlob(stem, out blob)) return true;
         }
 
-        return readOnlyBundle.GetLeafBlob(stem);
+        bool cached = LeafBlobCache.TryGet(stem, out blob);
+        if (recordDetailedMetrics)
+        {
+            if (cached) Metrics.PbtLeafBlobCacheHits++;
+            else Metrics.PbtLeafBlobCacheMisses++;
+        }
+
+        return cached;
     }
 
     /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
@@ -155,12 +179,14 @@ public class PbtSnapshotBundle(
         SetOwnedTrieNode(key, RefCountingMemory.WrappingOrNull(node));
 
     /// <summary>Records a transferred leaf-blob lease produced by the root computation; null marks the stem deleted.</summary>
+    /// <remarks>The write buffer now shadows the stem, so whatever the cache holds for it is dead weight.</remarks>
     internal void SetOwnedLeafBlob(in Stem stem, RefCountingMemory? blob)
     {
-        PbtSnapshotContent buffer = BeginOwnershipTransfer(blob);
+        BeginOwnershipTransfer(blob);
         try
         {
-            buffer.SetLeafBlob(stem, blob);
+            _writeBuffer!.SetLeafBlob(stem, blob);
+            _leafBlobCache!.Remove(stem);
         }
         finally
         {
@@ -171,10 +197,10 @@ public class PbtSnapshotBundle(
     /// <summary>Records a transferred trie-node lease produced by the root computation; null marks it removed.</summary>
     internal void SetOwnedTrieNode(in TrieNodeKey key, RefCountingMemory? node)
     {
-        PbtSnapshotContent buffer = BeginOwnershipTransfer(node);
+        BeginOwnershipTransfer(node);
         try
         {
-            buffer.SetTrieNode(key, node);
+            _writeBuffer!.SetTrieNode(key, node);
         }
         finally
         {
@@ -182,18 +208,51 @@ public class PbtSnapshotBundle(
         }
     }
 
-    private PbtSnapshotContent BeginOwnershipTransfer(RefCountingMemory? value)
+    /// <summary>Caches a blob read from the shared view under a lease of the cache's own.</summary>
+    /// <remarks>
+    /// Counts as an ownership transfer so it cannot land in a cache already reset and handed back to the
+    /// pool, which would carry this bundle's blob into whichever one rents it next. A read racing disposal
+    /// keeps its own answer and drops only the caching, rather than throwing away a lease it holds.
+    /// </remarks>
+    private void CacheLeafBlob(in Stem stem, RefCountingMemory? blob)
+    {
+        if (!TryBeginOwnershipTransfer()) return;
+
+        try
+        {
+            _leafBlobCache!.Add(stem, blob);
+        }
+        finally
+        {
+            EndOwnershipTransfer();
+        }
+    }
+
+    /// <inheritdoc cref="TryBeginOwnershipTransfer"/>
+    /// <param name="transferred">The lease this write takes ownership of.</param>
+    /// <exception cref="ObjectDisposedException">The bundle is disposed; <paramref name="transferred"/> has been released.</exception>
+    private void BeginOwnershipTransfer(RefCountingMemory? transferred)
+    {
+        if (TryBeginOwnershipTransfer()) return;
+
+        // the write was rejected, so nothing will ever release the lease it carried but this
+        ((IDisposable?)transferred)?.Dispose();
+        ObjectDisposedException.ThrowIf(true, this);
+    }
+
+    /// <summary>Holds off disposal for the duration of a write, unless the bundle is already disposed.</summary>
+    /// <remarks>
+    /// The count is taken under the lock, and <see cref="Dispose"/> waits for it to drain before it clears
+    /// the fields — so a caller that got past this may read them without the lock.
+    /// </remarks>
+    private bool TryBeginOwnershipTransfer()
     {
         lock (_writeOwnershipLock)
         {
-            if (_isDisposed)
-            {
-                ((IDisposable?)value)?.Dispose();
-                ObjectDisposedException.ThrowIf(true, this);
-            }
+            if (_isDisposed) return false;
 
             _activeOwnershipTransfers++;
-            return _writeBuffer!;
+            return true;
         }
     }
 
@@ -235,14 +294,16 @@ public class PbtSnapshotBundle(
 
         // the fold that preceded this seal turned every pending write into a blob on the layer just
         // sealed, so the buffer has served its purpose and holding it on would only leak the block's
-        // accounts and slots into the next one's footprint
+        // accounts and slots into the next one's footprint. The cached blobs go with them: the layer
+        // shadows the ones the block dirtied, and the rest would be pinned for a reuse that may never come
         PendingFlatWrites.Reset();
+        LeafBlobCache.Reset();
         return snapshot;
     }
 
     /// <remarks>
-    /// Idempotent: the layer leases, the write buffer and the shared bundle's lease are each released
-    /// exactly once however often this is called. A second release would return a live layer's content
+    /// Idempotent: the layer leases, the write buffer, the cached blob leases and the shared bundle's
+    /// lease are each released exactly once however often this is called. A second release would return a live layer's content
     /// to the pool while another scope still reads it, and would over-release the shared bundle, whose
     /// reader pins a native RocksDB snapshot — reading through a freed one takes the process down.
     /// </remarks>
@@ -250,6 +311,7 @@ public class PbtSnapshotBundle(
     {
         PbtSnapshotContent? buffer;
         PbtPendingFlatWrites? pending;
+        PbtLeafBlobCache? leafBlobCache;
         lock (_writeOwnershipLock)
         {
             if (_isDisposed) return;
@@ -260,6 +322,8 @@ public class PbtSnapshotBundle(
             _writeBuffer = null;
             pending = _pendingFlatWrites;
             _pendingFlatWrites = null;
+            leafBlobCache = _leafBlobCache;
+            _leafBlobCache = null;
         }
 
         try
@@ -267,6 +331,7 @@ public class PbtSnapshotBundle(
             snapshots.Dispose();
             if (buffer is not null) resourcePool.ReturnSnapshotContent(usage, buffer);
             if (pending is not null) resourcePool.ReturnPendingFlatWrites(usage, pending);
+            if (leafBlobCache is not null) resourcePool.ReturnLeafBlobCache(usage, leafBlobCache);
         }
         finally
         {

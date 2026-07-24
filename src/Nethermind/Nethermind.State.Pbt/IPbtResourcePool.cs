@@ -21,6 +21,12 @@ public interface IPbtResourcePool
     /// <inheritdoc cref="ReturnSnapshotContent"/>
     void ReturnPendingFlatWrites(PbtResourcePool.Usage usage, PbtPendingFlatWrites pending);
 
+    /// <summary>Rents an empty leaf blob cache for a bundle's in-flight block.</summary>
+    PbtLeafBlobCache GetLeafBlobCache(PbtResourcePool.Usage usage);
+
+    /// <inheritdoc cref="ReturnSnapshotContent"/>
+    void ReturnLeafBlobCache(PbtResourcePool.Usage usage, PbtLeafBlobCache cache);
+
     /// <summary>Rents an empty builder for a scope's uncommitted per-block state.</summary>
     /// <remarks>Disposing the builder returns it, so callers need not hold on to the pool.</remarks>
     PbtWriteBatchBuilder GetWriteBatchBuilder(PbtResourcePool.Usage usage);
