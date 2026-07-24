@@ -7,9 +7,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Threading;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.Sparse;
@@ -56,18 +58,18 @@ internal readonly record struct SparseTrieStagedNode(TreePath Path, ValueHash256
 /// Node encoding, hex-prefix compact paths, and trie shape follow the Yellow Paper Appendix D
 /// (modified Merkle Patricia trie) with Appendix B RLP; children whose RLP is shorter than
 /// 32 bytes are embedded in the parent, and fixed-length keys leave the seventeenth branch item
-/// empty. Keys are fixed 32 bytes (64 nibbles). One instance has one mutable owner; nothing here
-/// is thread-safe. Reveal is a synchronous multi-round loop: sorted target ranges descend as far as
-/// materialized nodes allow, missing hashed boundaries are collected and resolved in one batch
-/// per round, and only the affected ranges resume. A round that leaves requests unresolved
-/// throws, so the loop cannot stall. Update batches must contain unique keys with final values
-/// (duplicates throw). Deletions may require revealing a surviving sibling to collapse a branch
-/// canonically; those reveals are batched per delete round. Persistable RLP of at least 32 bytes
-/// is encoded directly into a <see cref="SparseTrieStagedNode"/>-owned array and staged; shorter
-/// RLP is embedded in its parent. Staged nodes form a connected region under the root (every
-/// ancestor of a staged node is staged), so <see cref="DrainUnpublished"/> walks only flagged
-/// subtrees and never scans the whole arena; records orphaned by later mutation or deletion are
-/// dropped without publication.
+/// empty. Keys are fixed 32 bytes (64 nibbles). One instance has one external mutable owner;
+/// root encoding may fan out internally across disjoint root children. Reveal is a synchronous
+/// multi-round loop: sorted target ranges descend as far as materialized nodes allow, missing
+/// hashed boundaries are collected and resolved in one batch per round, and only the affected
+/// ranges resume. A round that leaves requests unresolved throws, so the loop cannot stall.
+/// Update batches must contain unique keys with final values (duplicates throw). Deletions may
+/// require revealing a surviving sibling to collapse a branch canonically; those reveals are
+/// batched per delete round. Persistable RLP of at least 32 bytes is encoded directly into a
+/// <see cref="SparseTrieStagedNode"/>-owned array and staged; shorter RLP is embedded in its
+/// parent. Staged nodes form a connected region under the root (every ancestor of a staged node
+/// is staged), so <see cref="DrainUnpublished"/> walks only flagged subtrees and never scans the
+/// whole arena; records orphaned by later mutation or deletion are dropped without publication.
 /// </remarks>
 internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anchorRoot, int nodeCapacityHint = 0) : IDisposable
 {
@@ -78,6 +80,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
     private ISparseTrieNodeSource _source = source;
     private readonly SparseTrieArena _arena = new(nodeCapacityHint);
     private ArrayPoolList<SparseTrieStagedNode>? _staged;
+    private int _concurrentStagedCount;
     private int _rootNode = -1;
     private ValueHash256 _rootHash = anchorRoot;
     private bool _rootDirty;
@@ -99,6 +102,9 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
     public long RentedBytes => _arena.RentedBytes;
     public long DeadBytes => _arena.DeadBytes;
     public int NodeCount => _arena.NodeCount;
+
+    /// <summary>Upper bound for pre-sizing the next <see cref="DrainUnpublished"/> destination.</summary>
+    public int UnpublishedNodeCapacityHint => _staged?.Count ?? 0;
 
     /// <summary>
     /// Reveals the parents the batch touches and applies it: inserts and value updates first,
@@ -168,7 +174,9 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
     /// Re-encodes and hashes every dirty path post-order, staging persistable nodes, and returns
     /// the root hash. Idempotent until the next <see cref="Apply"/>.
     /// </summary>
-    public ValueHash256 CalculateRoot()
+    /// <param name="canBeParallel">Whether disjoint children of a dirty branch root may encode
+    /// concurrently. Callers must prevent nested parallelism.</param>
+    public ValueHash256 CalculateRoot(bool canBeParallel = false)
     {
         if (!_rootDirty)
         {
@@ -177,6 +185,11 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
         if (_rootNode >= 0 && _arena.Node(_rootNode).IsDirty)
         {
+            if (canBeParallel)
+            {
+                EncodeRootChildrenInParallel();
+            }
+
             TreePath path = TreePath.Empty;
             EncodeNode(_rootNode, ref path, isRoot: true);
             _rootHash = _arena.Node(_rootNode).Hash;
@@ -1897,7 +1910,99 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
     // ---------------- Encode ----------------
 
-    private void EncodeNode(int nodeIndex, ref TreePath path, bool isRoot)
+    private void EncodeRootChildrenInParallel()
+    {
+        ref SparseNode root = ref _arena.Node(_rootNode);
+        if (root.Kind != SparseNodeKind.Branch || Environment.ProcessorCount < 2)
+        {
+            return;
+        }
+
+        int dirtyCount = BitOperations.PopCount(root.DirtyMask);
+        if (dirtyCount < 2)
+        {
+            return;
+        }
+
+        // Intermediate calculations already have staged records indexed in the shared list.
+        // Keep them serial instead of adding a per-shard merge/index-remapping mechanism.
+        if (_staged is not null)
+        {
+            return;
+        }
+
+        int dirtyNodeCount = CountDirtyNodes(_rootNode);
+        // Workers fill distinct records below Count; the owner appends the root in the last slot.
+        // Inline nodes leave harmless holes because publication follows each node's StagedRecord.
+        _staged = new ArrayPoolList<SparseTrieStagedNode>(dirtyNodeCount, dirtyNodeCount - 1);
+        _concurrentStagedCount = 0;
+        _arena.PrepareForConcurrentEncoding();
+        ParallelUnbalancedWork.For(
+            0,
+            dirtyCount,
+            this,
+            static (ordinal, trie) =>
+            {
+                trie.EncodeRootChild(ordinal);
+                return trie;
+            });
+
+        root.DirtyMask = 0;
+    }
+
+    private int CountDirtyNodes(int nodeIndex)
+    {
+        ref SparseNode node = ref _arena.Node(nodeIndex);
+        int count = 1;
+        if (node.Kind == SparseNodeKind.Extension)
+        {
+            int entry = node.ChildSlice;
+            return entry >= 0 && _arena.Node(entry).IsDirty
+                ? count + CountDirtyNodes(entry)
+                : count;
+        }
+
+        if (node.Kind != SparseNodeKind.Branch)
+        {
+            return count;
+        }
+
+        int dirtyMask = node.DirtyMask;
+        while (dirtyMask != 0)
+        {
+            int nibble = BitOperations.TrailingZeroCount(dirtyMask);
+            dirtyMask &= dirtyMask - 1;
+            int entry = _arena.ChildSlice(node.ChildSlice, node.ChildCount)[node.ChildSlot(nibble)];
+            if (entry >= 0 && _arena.Node(entry).IsDirty)
+            {
+                count += CountDirtyNodes(entry);
+            }
+        }
+
+        return count;
+    }
+
+    private void EncodeRootChild(int ordinal)
+    {
+        ref SparseNode root = ref _arena.Node(_rootNode);
+        int dirtyMask = root.DirtyMask;
+        int nibble;
+        do
+        {
+            nibble = BitOperations.TrailingZeroCount(dirtyMask);
+            dirtyMask &= dirtyMask - 1;
+        } while (ordinal-- > 0);
+
+        int entry = _arena.ChildSlice(root.ChildSlice, root.ChildCount)[root.ChildSlot(nibble)];
+        if (entry >= 0 && _arena.Node(entry).IsDirty)
+        {
+            TreePath path = TreePath.Empty;
+            path.AppendMut(nibble);
+            EncodeNode(entry, ref path, isRoot: false, concurrent: true);
+        }
+    }
+
+    private void EncodeNode(int nodeIndex, ref TreePath path, bool isRoot, bool concurrent = false)
     {
         ref SparseNode node = ref _arena.Node(nodeIndex);
 
@@ -1909,7 +2014,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
             {
                 int prefixLength = node.PrefixLength;
                 AppendNibbles(ref path, _arena.Bytes(node.PrefixOffset, prefixLength));
-                EncodeNode(entry, ref path, isRoot: false);
+                EncodeNode(entry, ref path, isRoot: false, concurrent);
                 path.TruncateMut(path.Length - prefixLength);
             }
         }
@@ -1924,7 +2029,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
                 if (entry >= 0 && _arena.Node(entry).IsDirty)
                 {
                     path.AppendMut(nibble);
-                    EncodeNode(entry, ref path, isRoot: false);
+                    EncodeNode(entry, ref path, isRoot: false, concurrent);
                     path.TruncateMut(path.Length - 1);
                 }
             }
@@ -1939,13 +2044,9 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
         if (totalLength < 32 && !isRoot)
         {
-            int handle = _arena.AllocBytes(totalLength);
+            int handle = AllocEncodingBytes(totalLength, concurrent);
             WriteNodeRlp(ref node, _arena.Bytes(handle, totalLength), contentLength, childRefLengths);
-            if (node.StagedRecord >= 0)
-            {
-                _staged!.GetRef(node.StagedRecord) = default;
-                node.StagedRecord = -1;
-            }
+            ClearStagedRecord(ref node, concurrent);
 
             // A leaf's previous owned RLP region dies here; a value still aliasing it is moved
             // out first. Branch/extension regions may still back negative child entries, so
@@ -1954,13 +2055,13 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
             {
                 if ((node.Flags & SparseNodeFlags.OwnedValue) == 0)
                 {
-                    int movedValue = _arena.AllocBytes(node.ValueLength);
+                    int movedValue = AllocEncodingBytes(node.ValueLength, concurrent);
                     _arena.Bytes(node.ValueOffset, node.ValueLength).CopyTo(_arena.Bytes(movedValue, node.ValueLength));
                     node.ValueOffset = movedValue;
                     node.Flags |= SparseNodeFlags.OwnedValue;
                 }
 
-                _arena.ReleaseBytes(node.RlpLength);
+                ReleaseEncodingBytes(node.RlpLength, concurrent);
             }
 
             node.RlpOffset = handle;
@@ -1978,15 +2079,77 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         // A node structurally restored to its committed encoding is re-staged; publishing a
         // byte-identical node is an idempotent no-op, and detecting the restore would require
         // retaining every node's original hash.
-        if (node.StagedRecord >= 0)
+        StageNode(ref node, path, rlp, concurrent);
+        node.Flags = (node.Flags | SparseNodeFlags.Unpublished) & ~(SparseNodeFlags.Dirty | SparseNodeFlags.Inline);
+    }
+
+    private int AllocEncodingBytes(int length, bool concurrent)
+    {
+        if (!concurrent)
         {
-            _staged!.GetRef(node.StagedRecord) = default;
+            return _arena.AllocBytes(length);
         }
 
-        _staged ??= new ArrayPoolList<SparseTrieStagedNode>(64);
-        node.StagedRecord = _staged.Count;
-        _staged.Add(new SparseTrieStagedNode(path, node.Hash, rlp));
-        node.Flags = (node.Flags | SparseNodeFlags.Unpublished) & ~(SparseNodeFlags.Dirty | SparseNodeFlags.Inline);
+        lock (_arena)
+        {
+            return _arena.AllocBytes(length);
+        }
+    }
+
+    private void ReleaseEncodingBytes(int length, bool concurrent)
+    {
+        if (!concurrent)
+        {
+            _arena.ReleaseBytes(length);
+            return;
+        }
+
+        lock (_arena)
+        {
+            _arena.ReleaseBytes(length);
+        }
+    }
+
+    private void ClearStagedRecord(ref SparseNode node, bool concurrent)
+    {
+        if (node.StagedRecord < 0)
+        {
+            return;
+        }
+
+        if (!concurrent)
+        {
+            _staged!.GetRef(node.StagedRecord) = default;
+            node.StagedRecord = -1;
+            return;
+        }
+
+        lock (_arena)
+        {
+            _staged!.GetRef(node.StagedRecord) = default;
+            node.StagedRecord = -1;
+        }
+    }
+
+    private void StageNode(ref SparseNode node, in TreePath path, byte[] rlp, bool concurrent)
+    {
+        if (!concurrent)
+        {
+            if (node.StagedRecord >= 0)
+            {
+                _staged!.GetRef(node.StagedRecord) = default;
+            }
+
+            _staged ??= new ArrayPoolList<SparseTrieStagedNode>(64);
+            node.StagedRecord = _staged.Count;
+            _staged.Add(new SparseTrieStagedNode(path, node.Hash, rlp));
+            return;
+        }
+
+        Debug.Assert(node.StagedRecord < 0);
+        int stagedRecord = Interlocked.Increment(ref _concurrentStagedCount) - 1;
+        node.StagedRecord = stagedRecord;
+        _staged!.GetRef(stagedRecord) = new SparseTrieStagedNode(path, node.Hash, rlp);
     }
 
     private int ComputeContentLength(ref SparseNode node, Span<int> childRefLengths)

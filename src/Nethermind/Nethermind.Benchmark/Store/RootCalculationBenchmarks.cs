@@ -17,9 +17,9 @@ using Nethermind.Trie.Sparse;
 namespace Nethermind.Benchmarks.Store;
 
 /// <summary>
-/// Single-threaded root calculation over identical prepared parents and updates, the core
-/// performance gate for trie root-calculation implementations. The Patricia arms are the
-/// reference baseline; comparison arms read the same <see cref="TrieRootFixture"/> inputs.
+/// Root calculation over identical prepared parents and updates, the core performance gate for
+/// trie root-calculation implementations. The Patricia arms are the reference baseline;
+/// comparison arms read the same <see cref="TrieRootFixture"/> inputs.
 /// </summary>
 /// <remarks>
 /// The gate compares a sparse calculate-and-stage arm against <see cref="PatriciaCalculate"/>
@@ -89,13 +89,18 @@ public class RootCalculationBenchmarks
     /// <see cref="PatriciaCalculate"/> the persistable output already exists when this returns.
     /// </summary>
     [Benchmark]
-    public ValueHash256 SparseCalculateAndStage()
+    public ValueHash256 SparseCalculateAndStage() => SparseCalculateAndStage(canBeParallel: false);
+
+    [Benchmark]
+    public ValueHash256 SparseCalculateAndStageParallelRoot() => SparseCalculateAndStage(canBeParallel: true);
+
+    private ValueHash256 SparseCalculateAndStage(bool canBeParallel)
     {
         _sparsePristine.CopyTo(_sparseScratch, 0);
         NodeStorageSparseSource source = new(_fixture.ParentStorage);
         using SparseTrie sparse = new(source, _fixture.ParentRoot.ValueHash256, nodeCapacityHint: _sparseScratch.Length * 4);
         sparse.Apply(_sparseScratch);
-        ValueHash256 root = sparse.CalculateRoot();
+        ValueHash256 root = sparse.CalculateRoot(canBeParallel);
         if (root != _fixture.ExpectedRoot.ValueHash256)
         {
             ThrowRootMismatch(Fixture, root, _fixture.ExpectedRoot);

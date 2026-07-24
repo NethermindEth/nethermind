@@ -36,6 +36,9 @@ internal sealed class FlatSparseTrieSession : IDisposable
     /// <summary>Below this many storage jobs a serial loop beats the parallel-work dispatch cost.</summary>
     private const int ParallelJobThreshold = 4;
 
+    /// <summary>Smallest measured state batch where root-child sharding wins.</summary>
+    private const int ParallelStateRootThreshold = 2_500;
+
     private static readonly AccountDecoder _accountDecoder = new();
 
     private readonly SnapshotBundle _bundle;
@@ -57,6 +60,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
     private SparseTrie? _stateTrie;
     private Hash256 _rootHash;
     private bool _stateDirty;
+    private int _pendingStateUpdateCount;
     private bool _poisoned;
     private bool _generationExtracted;
 
@@ -236,6 +240,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
             _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, address: null), _rootHash.ValueHash256, dirtyAccounts.Count);
             _stateTrie.Apply(updates.AsSpan());
             _stateDirty = true;
+            _pendingStateUpdateCount = (int)Math.Min(int.MaxValue, (long)_pendingStateUpdateCount + dirtyAccounts.Count);
         }
         catch
         {
@@ -252,8 +257,9 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
         try
         {
-            _rootHash = _stateTrie!.CalculateRoot().ToCommitment();
+            _rootHash = _stateTrie!.CalculateRoot(_pendingStateUpdateCount >= ParallelStateRootThreshold).ToCommitment();
             _stateDirty = false;
+            _pendingStateUpdateCount = 0;
         }
         catch
         {
@@ -294,11 +300,12 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
             if (_stateTrie is not null)
             {
-                using ArrayPoolList<SparseTrieStagedNode> staged = new(64);
+                using ArrayPoolList<SparseTrieStagedNode> staged = new(_stateTrie.UnpublishedNodeCapacityHint);
                 _stateTrie.DrainUnpublished(staged);
                 if (staged.Count > 0)
                 {
-                    _bundle.PublishStateNodes([BuildPublicationBuffer(staged)]);
+                    using ArrayPoolListRef<(TreePath, TrieNode)> buffer = BuildPublicationBuffer(staged.AsSpan());
+                    _bundle.PublishStateNodes(buffer.AsSpan());
                 }
 
                 if (!_retentionEnabled)
@@ -342,15 +349,24 @@ internal sealed class FlatSparseTrieSession : IDisposable
     /// <see cref="CappedArray{T}"/> binds the adopting <see cref="TrieNode"/> constructor —
     /// a bare <c>byte[]</c> would bind the <see cref="ReadOnlySpan{T}"/> overload, which
     /// copies every array again.</remarks>
-    internal static List<(TreePath, TrieNode)> BuildPublicationBuffer(ArrayPoolList<SparseTrieStagedNode> staged)
+    internal static ArrayPoolListRef<(TreePath, TrieNode)> BuildPublicationBuffer(ReadOnlySpan<SparseTrieStagedNode> staged)
     {
-        List<(TreePath, TrieNode)> buffer = new(staged.Count);
-        foreach (SparseTrieStagedNode node in staged)
+        ArrayPoolListRef<(TreePath, TrieNode)> buffer = new(staged.Length);
+        try
         {
-            buffer.Add((node.Path, new TrieNode(NodeType.Unknown, node.Hash.ToCommitment(), new CappedArray<byte>(node.Rlp))));
-        }
+            for (int i = 0; i < staged.Length; i++)
+            {
+                ref readonly SparseTrieStagedNode node = ref staged[i];
+                buffer.Add((node.Path, new TrieNode(NodeType.Unknown, node.Hash.ToCommitment(), new CappedArray<byte>(node.Rlp))));
+            }
 
-        return buffer;
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
     }
 
     private void GuardPoisoned()
