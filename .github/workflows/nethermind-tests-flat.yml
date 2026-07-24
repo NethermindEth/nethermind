@@ -15,13 +15,25 @@ env:
   TERM: xterm
   TEST_USE_FLAT: 1
 
+permissions:
+  contents: read
+
 jobs:
+  build:
+    uses: ./.github/workflows/build-test-artifacts.yml
+    with:
+      matrix: >-
+        {"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""}]}
+
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       DOTNET_GCConserveMemory: 9
+      # Only these fixture tests read the src/tests submodule at runtime.
+      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       matrix:
@@ -67,13 +79,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      # Submodule only for fixture tests; the checkout also serves other source files (e.g. Chains/*.json).
       - name: Fetch submodules
+        if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
 
       - name: ${{ matrix.project }}
         id: test
@@ -81,8 +103,7 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          dotnet build ${{ matrix.project }}.csproj -c release
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          dotnet restore ${{ matrix.project }}.csproj
           dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore
 
   # EEST fixtures under the flat state layout (formerly the Ethereum.Blockchain.Pyspec.Test

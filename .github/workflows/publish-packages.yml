@@ -30,10 +30,12 @@ jobs:
       - name: Submit package
         env:
           PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          ASSETS_URL: ${{ github.event.release.assets_url }}
         working-directory: scripts/build/ppa
         run: |
-          version=${{ github.event.release.tag_name }}
-          json=$(curl -sL ${{ github.event.release.assets_url }})
+          version="$TAG_NAME"
+          json=$(curl -sL "$ASSETS_URL")
           arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
           x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-x64.zip"))')
@@ -90,11 +92,13 @@ jobs:
       - name: Submit package
         env:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          ASSETS_URL: ${{ github.event.release.assets_url }}
         run: |
-          $releaseInfo = curl -sL ${{ github.event.release.assets_url }} | ConvertFrom-Json
+          $releaseInfo = curl -sL $env:ASSETS_URL | ConvertFrom-Json
           $releaseUrl = $releaseInfo | Where-Object -Property name -like '*windows-x64.zip' | Select-Object -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
-          ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl
+          ./wingetcreate update Nethermind.Nethermind -s -v $env:TAG_NAME -u $releaseUrl
 
   publish-homebrew:
     name: Publish on Homebrew
@@ -118,13 +122,16 @@ jobs:
           token: ${{ steps.gh-app.outputs.token }}
 
       - name: Update formula file
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          ASSETS_URL: ${{ github.event.release.assets_url }}
         run: |
-          json=$(curl -sL ${{ github.event.release.assets_url }})
+          json=$(curl -sL "$ASSETS_URL")
           arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | shasum -a 256 | awk '{print $1}')
           x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-x64.zip"))')
           x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
-          sed -i "s/version .*/version \"${{ github.event.release.tag_name }}\"/" $FORMULA
+          sed -i "s/version .*/version \"$TAG_NAME\"/" $FORMULA
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url \"'$x64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url \"'$arm64_url'\""); } 1' $FORMULA
           awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$x64_hash'\""); } 1' $FORMULA
@@ -133,16 +140,17 @@ jobs:
       - name: Submit package
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          head_branch=feature/v${{ github.event.release.tag_name }}-${{ github.run_number }}-${{ github.run_attempt }}
-          message="Update for v${{ github.event.release.tag_name }}"
+          head_branch=feature/v$TAG_NAME-${{ github.run_number }}-${{ github.run_attempt }}
+          message="Update for v$TAG_NAME"
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
           git checkout -b $head_branch
           git add $FORMULA
           git commit -am "$message"
           git push origin $head_branch
-          gh pr create -B main -H $head_branch -t "$message" -b "Auto-updated Homebrew formula for Nethermind v${{ github.event.release.tag_name }}"
+          gh pr create -B main -H $head_branch -t "$message" -b "Auto-updated Homebrew formula for Nethermind v$TAG_NAME"
 
   publish-nuget:
     name: Publish NuGet packages
@@ -159,8 +167,10 @@ jobs:
 
       - name: Download Nethermind reference assemblies
         id: download
+        env:
+          ASSETS_URL: ${{ github.event.release.assets_url }}
         run: |
-          json=$(curl -s ${{ github.event.release.assets_url }})
+          json=$(curl -s "$ASSETS_URL")
           asset=$(echo "$json" | jq -r '.[] | select(.name | contains("ref-assemblies"))')
           name=$(echo "$asset" | jq -r '.name')
           url=$(echo "$asset" | jq -r '.browser_download_url')
@@ -194,4 +204,5 @@ jobs:
       - name: Delete asset from release
         env:
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
-        run: gh release delete-asset ${{ github.event.release.tag_name }} ${{ steps.download.outputs.asset-name }} -y
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: gh release delete-asset "$TAG_NAME" "${{ steps.download.outputs.asset-name }}" -y

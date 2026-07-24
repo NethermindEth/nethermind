@@ -18,6 +18,7 @@ using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.History;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
@@ -30,11 +31,11 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         builder
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
-            .AddSingleton<IBlockStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBlockStore)
+            .AddSingleton<IBlockStore, IDb, IHeaderDecoder, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBlockStore)
             .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
-            .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
+            .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
@@ -89,11 +90,11 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredWrites, ctx.Resolve<ILogManager>(), ctx.Resolve<IStatePersistenceBarrier>());
     }
 
-    private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
-        new BlockStore(blocksDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
+    private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IHeaderDecoder headerDecoder, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
+        new BlockStore(blocksDb, headerDecoder, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 
-    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
-        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
+    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig, IHeaderDecoder headerDecoder) =>
+        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100, headerDecoder);
 
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
         new BlockAccessListStore(balDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);

@@ -111,7 +111,7 @@ public class SszMiddlewareTests
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
             new CapabilitiesSszHandler(_specProvider),
 
-            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV1, NewPayloadV5RequestWire>(_engineModule),
+            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
         ];
 
         return new SszMiddleware(
@@ -1145,7 +1145,7 @@ public class SszMiddlewareTests
             new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
             stubWitness);
 
-        _engineModule.engine_newPayloadWithWitness(
+        _engineModule.engine_newPayloadWithWitnessV5(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
@@ -1154,7 +1154,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        await _engineModule.Received(1).engine_newPayloadWithWitness(
+        await _engineModule.Received(1).engine_newPayloadWithWitnessV5(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
             "a VALID status must return 200 OK whether or not a witness was produced");
@@ -1192,7 +1192,7 @@ public class SszMiddlewareTests
         NewPayloadWithWitnessV1Result witnessResult = NewPayloadWithWitnessV1Result.FromPayloadStatus(
             new PayloadStatusV1 { Status = PayloadStatus.Syncing });
 
-        _engineModule.engine_newPayloadWithWitness(
+        _engineModule.engine_newPayloadWithWitnessV5(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
@@ -1229,7 +1229,7 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest),
             "the witness endpoint is gated to Amsterdam+; a recognized pre-EIP-7928 fork is 400 unsupported-fork");
-        await _engineModule.DidNotReceive().engine_newPayloadWithWitness(
+        await _engineModule.DidNotReceive().engine_newPayloadWithWitnessV5(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
     }
 
@@ -1245,7 +1245,7 @@ public class SszMiddlewareTests
     public async Task NewPayloadWithWitness_engine_error_maps_to_http_status(
         int errorCode, string error, int expectedStatus, string expectedTypeUri)
     {
-        _engineModule.engine_newPayloadWithWitness(
+        _engineModule.engine_newPayloadWithWitnessV5(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(error, errorCode));
 

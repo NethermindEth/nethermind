@@ -13,7 +13,6 @@ internal static class XdcConstants
     public const string XDPoSSubnet = nameof(XDPoSSubnet);
 
     public const ulong EpochLength = 900UL; // Default number of blocks after which to checkpoint and reset the pending votes
-
     public const int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
     public const int ExtraSeal = 65;   // Fixed number of extra-data suffix bytes reserved for signer seal
 
@@ -41,6 +40,10 @@ internal static class XdcConstants
     public const int PoolHygieneRound = 10;
     public const int InMemorySignatures = 4096;
 
+    // Suggested blocks are ahead of head while being processed; only treat the node
+    // as syncing once the gap exceeds this, so normal per-block processing doesn't look like a resync.
+    public const int MaxSyncDistanceForConsensus = 2;
+
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
     public static readonly UInt256 DifficultyDefault = UInt256.One;
     public const int MinimumMinerBlockPerEpoch = 1;
@@ -56,6 +59,11 @@ internal static class XdcConstants
     // 4-byte selector + 32-byte block number + 32-byte block hash
     public const int SignTransactionDataLength = 68;
 
+
     // Only sign recent head blocks.
     public const ulong MaxSignableBlockPeriods = 2;
+
+    public const string RpcAccountStatusMasternode = "MasterNode";
+    public const string RpcAccountStatusProtector = "ProtectorNode";
+    public const string RpcAccountStatusObserver = "ObserverNode";
 }

@@ -20,6 +20,7 @@ public class Eip7981Tests
 {
     private static readonly IReleaseSpec Spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
     private static ulong FloorPerToken => Spec.GasCosts.TotalCostFloorPerToken;
+    private static ulong MessageCallFloorBase => GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess;
 
     private static IEnumerable<TestCaseData> AccessListOnlyCases()
     {
@@ -74,7 +75,7 @@ public class Eip7981Tests
             + (ulong)addressCount * Eip8038Constants.AccessListAddressCost
             + (ulong)storageKeyCount * Eip8038Constants.AccessListStorageKeyCost
             + FloorPerToken * expectedTokens;
-        ulong expectedFloor = GasCostOf.TransactionEip2780 + FloorPerToken * expectedTokens;
+        ulong expectedFloor = MessageCallFloorBase + FloorPerToken * expectedTokens;
 
         Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor)));
     }
@@ -86,7 +87,7 @@ public class Eip7981Tests
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
         Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(
             Standard: GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess,
-            FloorGas: GasCostOf.TransactionEip2780)));
+            FloorGas: MessageCallFloorBase)));
     }
 
     [Test]
@@ -146,14 +147,14 @@ public class Eip7981Tests
     [Test]
     public void Calldata_with_access_list_floor_equals_standard_at_exact_tie()
     {
-        // Sized so the standard's fixed recipient + access-entry component exactly equals the
+        // Sized so the standard's fixed access-entry component exactly equals the
         // floor's per-token premium over the standard's per-byte data cost.
         AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).Build();
-        Transaction transaction = new() { To = Address.Zero, Data = new byte[100], AccessList = accessList };
+        Transaction transaction = new() { To = Address.Zero, Data = new byte[50], AccessList = accessList };
 
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
         Assert.That(cost.Standard, Is.EqualTo(cost.FloorGas));
-        Assert.That(cost.MinimalGas, Is.EqualTo(19_680UL));
+        Assert.That(cost.MinimalGas, Is.EqualTo(19_480UL));
     }
 }
