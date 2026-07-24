@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -182,10 +183,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _stateTree!.UpdateRootHash();
             if (_stateTree!.RootHash != SparseSession.RootHash)
             {
-                throw new TrieException($"Sparse state root {SparseSession.RootHash} does not match the Patricia root {_stateTree!.RootHash}");
+                ThrowStateRootMismatch(SparseSession.RootHash, _stateTree!.RootHash, committed: false);
             }
         }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStateRootMismatch(Hash256 sparseRoot, Hash256 patriciaRoot, bool committed) =>
+        throw new TrieException($"Sparse state root {sparseRoot} does not match the {(committed ? "committed " : "")}Patricia root {patriciaRoot}");
 
     public Account? Get(Address address)
     {
@@ -500,7 +505,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _stateTree!.Commit();
             if (_stateTree!.RootHash != SparseSession.RootHash)
             {
-                throw new TrieException($"Sparse state root {SparseSession.RootHash} does not match the committed Patricia root {_stateTree!.RootHash}");
+                ThrowStateRootMismatch(SparseSession.RootHash, _stateTree!.RootHash, committed: true);
             }
         }
 

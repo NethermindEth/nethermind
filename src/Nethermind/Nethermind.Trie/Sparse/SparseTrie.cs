@@ -4,6 +4,8 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -117,7 +119,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         {
             if (i > 0 && updates[i].Key == updates[i - 1].Key)
             {
-                throw new ArgumentException($"Duplicate update key {updates[i].Key}; callers must reduce duplicates to final values", nameof(updates));
+                ThrowDuplicateUpdateKey(updates[i].Key, nameof(updates));
             }
 
             if (updates[i].IsDelete)
@@ -193,7 +195,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
     {
         if (_rootDirty)
         {
-            throw new InvalidOperationException("Cannot publish while updates are pending calculation");
+            ThrowPendingCalculation();
         }
 
         if (_staged is null)
@@ -260,7 +262,20 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         return (index & 1) == 0 ? b >> 4 : b & 0xF;
     }
 
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrie(string message) => throw new TrieException(message);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowDuplicateUpdateKey(in ValueHash256 key, string paramName) =>
+        throw new ArgumentException($"Duplicate update key {key}; callers must reduce duplicates to final values", paramName);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowPendingCalculation() =>
+        throw new InvalidOperationException("Cannot publish while updates are pending calculation");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowMissingNode(in TreePath path, in ValueHash256 hash) =>
+        throw new MissingTrieNodeException($"Missing sparse trie node hash={hash} path={path}", null, path, hash.ToCommitment());
 
     /// <summary>
     /// Rejects a node whose prefix cannot be valid at <paramref name="depth"/>: leaves must
@@ -362,7 +377,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
                 CappedArray<byte> rlp = results[i];
                 if (rlp.IsNull)
                 {
-                    throw new MissingTrieNodeException($"Missing sparse trie node hash={item.Hash} path={item.Path}", null, item.Path, item.Hash.ToCommitment());
+                    ThrowMissingNode(item.Path, item.Hash);
                 }
 
                 int handle = _arena.AllocBytes(rlp.Length);

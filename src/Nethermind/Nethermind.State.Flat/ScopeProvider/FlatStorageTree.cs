@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -213,7 +215,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         {
             if (_diagnosticRoot != _sparseRoot)
             {
-                throw new TrieException($"Sparse storage root {_sparseRoot} of {_address} does not match the Patricia root {_diagnosticRoot}");
+                ThrowStorageRootMismatch(_address, _sparseRoot, _diagnosticRoot);
             }
 
             _diagnosticRoot = null;
@@ -264,6 +266,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         return trie;
     }
 
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageRootMismatch(Address address, Hash256 sparseRoot, Hash256 diagnosticRoot) =>
+        throw new TrieException($"Sparse storage root {sparseRoot} of {address} does not match the Patricia root {diagnosticRoot}");
+
     private class SparseStorageWriteBatch(
         FlatStorageTree storageTree,
         int estimatedEntries,
@@ -288,7 +294,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         public void Clear()
         {
-            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            if (_wasSetCalled) ThrowMustClearFirst();
             _hasClear = true;
 
             diagnosticBatch?.Clear();
@@ -319,5 +325,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 _updates.Dispose();
             }
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowMustClearFirst() =>
+            throw new InvalidOperationException("Must call clear first in a storage write batch");
     }
 }

@@ -3,6 +3,8 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -271,7 +273,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
         if (!_pendingStorageJobs.IsEmpty)
         {
             _poisoned = true;
-            throw new InvalidOperationException("Storage jobs sealed after the storage phase would never be calculated");
+            ThrowStorageJobsSealed();
         }
 
         try
@@ -355,9 +357,14 @@ internal sealed class FlatSparseTrieSession : IDisposable
     {
         if (_poisoned) ThrowPoisoned();
 
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowPoisoned() =>
             throw new InvalidOperationException("Sparse trie session is poisoned by an earlier calculation failure");
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageJobsSealed() =>
+        throw new InvalidOperationException("Storage jobs sealed after the storage phase would never be calculated");
 
     public void Dispose()
     {
