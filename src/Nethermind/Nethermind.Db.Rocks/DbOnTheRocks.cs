@@ -126,6 +126,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
 
         if (_addedMemoryPressure > 0) GC.AddMemoryPressure(_addedMemoryPressure);
+
+        RocksDbNativeDiagnostics.LogLoadedNative(_logger);
     }
 
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)

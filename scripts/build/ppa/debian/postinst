@@ -39,7 +39,16 @@ case "$1" in
     echo "Starting package install..."
     mkdir -p /usr/share/nethermind
     cp -rf nethermind/* /usr/share/nethermind
-    ln -sf /usr/share/nethermind/nethermind /usr/bin/nethermind
+
+    # Launch through tcmalloc; bare soname resolves per-arch. Set NETHERMIND_NO_TCMALLOC=1 to opt out.
+    cat > /usr/bin/nethermind <<'LAUNCHER'
+#!/bin/sh
+if [ -z "$NETHERMIND_NO_TCMALLOC" ]; then
+  export LD_PRELOAD="${LD_PRELOAD:+$LD_PRELOAD }libtcmalloc_minimal.so.4"
+fi
+exec /usr/share/nethermind/nethermind "$@"
+LAUNCHER
+    chmod +x /usr/bin/nethermind
 
     rm -rf nethermind
     rm -f nethermind.zip
