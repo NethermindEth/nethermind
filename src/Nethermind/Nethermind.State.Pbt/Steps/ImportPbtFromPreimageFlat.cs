@@ -81,11 +81,16 @@ public class ImportPbtFromPreimageFlat(
     private static readonly TimeSpan CopyLogInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Stems a phase-two zone scan reads through one leaf-column view before reopening it. Bounds how
+    /// Leaves a phase-two zone scan reads through one leaf-column view before closing it. Bounds how
     /// long a single RocksDB superversion stays pinned — not correctness, which the ascending
     /// scan-ahead-of-fold invariant holds at any chunking (see <see cref="EmitZone"/>).
     /// </summary>
-    internal int ViewStemChunk { get; init; } = 1_000_000;
+    /// <remarks>
+    /// One channel's worth of leaves: the buffer this fills is of the same order as what the entry
+    /// channel already holds in flight. A stem-count bound could not be buffered — one stem holds up to
+    /// <see cref="PbtKeyDerivation.StemSubtreeWidth"/> leaves.
+    /// </remarks>
+    internal int ViewLeafChunk { get; init; } = EntryChunkCapacity * ChunkSize;
 
     /// <summary>
     /// Keys <see cref="ClearInterruptedAttempt"/> deletes through one column view and one write batch
@@ -506,11 +511,13 @@ public class ImportPbtFromPreimageFlat(
 
     /// <summary>Emits the leaves of one zone's blobs, in ascending stem then sub-index order.</summary>
     /// <remarks>
-    /// A blob's leaves are read out into a buffer before any of them is handed on: the enumerator and
-    /// the column's value are both spans over the store, which cannot survive the <c>await</c> that a
-    /// full sink chunk parks on.
+    /// The leaves are read out into a buffer before any of them is handed on, and the view is closed
+    /// before the first is: the enumerator and the column's value are both spans over the store, which
+    /// cannot survive the <c>await</c> that a full sink chunk parks on — and that <c>await</c> waits on
+    /// the fold, so a view held across it would stay open for as long as the fold takes rather than for
+    /// as long as the read does.
     /// <para>
-    /// The column is read live — no snapshot — in <see cref="ViewStemChunk"/>-stem ranges, reopening the
+    /// The column is read live — no snapshot — in <see cref="ViewLeafChunk"/>-leaf ranges, reopening the
     /// view between them so no RocksDB superversion stays pinned across the hours-long fold. This is safe
     /// because the scan runs strictly ahead of the fold it feeds (producer → bounded channel → window →
     /// flush channel → fold), so the fold only ever rewrites the <see cref="PbtLeafFormat.LeavesOnly"/>
@@ -521,53 +528,63 @@ public class ImportPbtFromPreimageFlat(
     /// </remarks>
     private async Task EmitZone(ISortedKeyValueStore column, LeafSink sink, CancellationToken cancellationToken)
     {
-        RebuildEntry[] stemLeaves = new RebuildEntry[PbtKeyDerivation.StemSubtreeWidth];
+        // a stem is read whole, so the buffer overshoots the bound by at most one stem's leaves
+        using ArrayPoolList<RebuildEntry> buffered = new(ViewLeafChunk + PbtKeyDerivation.StemSubtreeWidth);
         byte[] cursor = new byte[Stem.Length];
         byte[] pastEnd = PastEveryKey();
 
         while (true)
         {
-            int stemsRead = 0;
-            byte[] resumeFrom;
+            byte[]? resumeFrom = ReadThroughView(column, cursor, pastEnd, buffered, cancellationToken);
 
-            using (ISortedView view = column.GetViewBetween(cursor, pastEnd))
+            for (int i = 0; i < buffered.Count; i++)
             {
-                while (stemsRead < ViewStemChunk && view.MoveNext())
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    int count = ReadStemLeaves(view, stemLeaves);
-                    for (int i = 0; i < count; i++)
-                    {
-                        await sink.Add(stemLeaves[i]);
-                    }
-                    stemsRead++;
-                }
-
-                // the view drained before the chunk filled, so the zone is exhausted
-                if (stemsRead < ViewStemChunk) return;
-
-                // the loop stopped on the count, not on MoveNext, so the view is still on the last stem
-                // read: resume just past it so the reopened view's first row is the next stem
-                resumeFrom = AfterKey(view.CurrentKey);
+                await sink.Add(buffered[i]);
             }
+
+            buffered.Clear();
+            if (resumeFrom is null) return;
 
             cursor = resumeFrom;
         }
     }
 
-    /// <summary>Reads the leaves of the blob the view sits on into <paramref name="stemLeaves"/>, returning how many there are.</summary>
-    private static int ReadStemLeaves(ISortedView view, RebuildEntry[] stemLeaves)
+    /// <summary>
+    /// Reads whole stems' leaves into <paramref name="buffered"/> through one view over
+    /// <c>[<paramref name="cursor"/>, <paramref name="pastEnd"/>)</c>, up to <see cref="ViewLeafChunk"/>
+    /// of them; returns where to resume, or <c>null</c> when the zone is exhausted.
+    /// </summary>
+    /// <remarks>
+    /// A stem is never split across two view openings, so no stem is ever read after the fold has
+    /// reformatted its blob.
+    /// </remarks>
+    private byte[]? ReadThroughView(
+        ISortedKeyValueStore column, byte[] cursor, byte[] pastEnd, ArrayPoolList<RebuildEntry> buffered, CancellationToken cancellationToken)
+    {
+        using ISortedView view = column.GetViewBetween(cursor, pastEnd);
+        while (buffered.Count < ViewLeafChunk && view.MoveNext())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ReadStemLeaves(view, buffered);
+        }
+
+        // the view drained before the buffer filled, so the zone is exhausted
+        if (buffered.Count < ViewLeafChunk) return null;
+
+        // the loop stopped on the count, not on MoveNext, so the view is still on the last stem read:
+        // resume just past it so the reopened view's first row is the next stem
+        return AfterKey(view.CurrentKey);
+    }
+
+    /// <summary>Appends the leaves of the blob the view sits on to <paramref name="buffered"/>.</summary>
+    private static void ReadStemLeaves(ISortedView view, ArrayPoolList<RebuildEntry> buffered)
     {
         Stem stem = new(view.CurrentKey);
-        int count = 0;
         StemLeafBlob.LeafEnumerator leaves = StemLeafBlob.EnumerateLeavesOnly(view.CurrentValue);
         while (leaves.MoveNext())
         {
-            stemLeaves[count++] = new RebuildEntry(stem, leaves.CurrentSubIndex, new ValueHash256(leaves.CurrentValue));
+            buffered.Add(new RebuildEntry(stem, leaves.CurrentSubIndex, new ValueHash256(leaves.CurrentValue)));
         }
-
-        return count;
     }
 
     /// <summary>
