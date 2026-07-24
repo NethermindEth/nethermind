@@ -32,7 +32,9 @@ internal ref struct PbtFrameBuffer<T>
         }
     }
 
-    public readonly Span<T> Span => _rented is null ? _inline.AsSpan() : _rented.AsSpan(0, _length);
+    // Not readonly: the inline RefList64 is a mutable value whose AsSpan must reach the real field.
+    // A readonly getter would defensively copy it and hand back a span over the throwaway copy.
+    public Span<T> Span => _rented is null ? _inline.AsSpan() : _rented.AsSpan(0, _length);
 
     public void Dispose()
     {
