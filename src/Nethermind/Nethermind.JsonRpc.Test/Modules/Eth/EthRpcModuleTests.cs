@@ -2023,14 +2023,19 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"transaction invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
     }
 
-    [Test]
-    public async Task Send_raw_transaction_returns_invalid_rlp_for_empty_list()
+    [TestCase("c0", TestName = "EmptyList")]
+    [TestCase("d4", TestName = "TruncatedShortList")]
+    [TestCase("09c0", TestName = "UnknownTxType")]
+    [TestCase("03c0", TestName = "Eip4844_TruncatedList")]
+    [TestCase("04c0", TestName = "Eip7702_TruncatedList")]
+    public async Task Send_raw_transaction_returns_invalid_params_for_malformed_rlp(string rawTxHex)
     {
         using Context ctx = await Context.Create();
 
-        string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", "c0");
+        string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTxHex);
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidParams}"));
+        Assert.That(serialized, Does.Contain("Invalid RLP:"));
     }
 
     [TestCaseSource(nameof(SendRawTransactionSyncFailureCases))]
@@ -2048,7 +2053,7 @@ public partial class EthRpcModuleTests
 
     private static IEnumerable<TestCaseData> SendRawTransactionSyncFailureCases()
     {
-        yield return new TestCaseData("c0", null, ErrorCodes.TransactionRejected, "Invalid RLP")
+        yield return new TestCaseData("c0", null, ErrorCodes.InvalidParams, "Invalid RLP")
             .SetName("InvalidRlp");
 
         Transaction tx = Build.A.Transaction
@@ -2510,7 +2515,7 @@ public partial class EthRpcModuleTests
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(invalidSetCodeTx).Bytes));
 
         JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
-        Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
+        Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [Test]

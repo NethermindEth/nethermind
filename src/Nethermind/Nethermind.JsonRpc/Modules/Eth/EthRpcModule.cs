@@ -374,9 +374,9 @@ public partial class EthRpcModule(
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
             return await SendTx(tx);
         }
-        catch (RlpException)
+        catch (RlpException e)
         {
-            return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+            return ResultWrapper<Hash256>.Fail($"Invalid RLP: {e.Message}", ErrorCodes.InvalidParams);
         }
     }
 
