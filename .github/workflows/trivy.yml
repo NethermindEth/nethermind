@@ -9,6 +9,7 @@ on:
     paths:
       - 'Dockerfile'
       - 'src/**'
+      - 'scripts/entrypoint.sh'
       - 'Directory.Packages.props'
       - 'Directory.Build.props'
       - 'Directory.Build.targets'
