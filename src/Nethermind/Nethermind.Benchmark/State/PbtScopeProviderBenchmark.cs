@@ -75,7 +75,7 @@ public class PbtScopeProviderBenchmark
 
     // Writes are flat in the layer count, so pinned to 1.
     /// <summary>Which tiling of the stem trie the PBT backend stores its nodes in; ignored by the trie backend.</summary>
-    [Params(PbtTiling.ClusteredFourLevel, PbtTiling.SixLevel)]
+    [Params(PbtTiling.ClusteredFourLevel, PbtTiling.SixLevel, PbtTiling.EightLevel)]
     public PbtTiling Tiling { get; set; }
 
     [Params(1)]
