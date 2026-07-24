@@ -249,6 +249,8 @@ namespace Nethermind.Merge.Plugin
 
             if (_terminalBlockNumber is not null)
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
+            else if (_chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true)
+                _firstPoSBlockNumber = 0;
         }
 
         private ulong? LoadTerminalBlockNumberFromDb()
