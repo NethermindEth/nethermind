@@ -65,6 +65,10 @@ namespace Nethermind.Config
 
         public int MempoolPreWarmConcurrency { get; set; } = 0;
 
+        public bool SyncBlockAheadPrewarming { get; set; } = false;
+
+        public int SyncBlockAheadDepth { get; set; } = 1;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 

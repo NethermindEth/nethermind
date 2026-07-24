@@ -49,6 +49,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }
 
+    [ConfigItem(Description = "Whether to speculatively warm the next already-downloaded block(s) during no-CL / catch-up sync, using idle cores while the head block commits. Requires `PreWarming` != `None`. Mutually exclusive at runtime with mempool pre-warming (only one applies depending on head freshness).", DefaultValue = "false", HiddenFromDocs = true)]
+    bool SyncBlockAheadPrewarming { get; set; }
+
+    [ConfigItem(Description = "How many blocks ahead to warm when `SyncBlockAheadPrewarming` is enabled. Depth > 1 only usefully warms content-addressed trie/node caches; grandchild value-cache entries are discarded.", DefaultValue = "1", HiddenFromDocs = true)]
+    int SyncBlockAheadDepth { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

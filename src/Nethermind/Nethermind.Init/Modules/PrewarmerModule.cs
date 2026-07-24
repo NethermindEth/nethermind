@@ -88,6 +88,16 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     .AddScoped<MempoolStatePrewarmer>()
                     .ResolveOnServiceActivation<MempoolStatePrewarmer, IBlockCachePreWarmer>();
             }
+
+            if (blocksConfig.SyncBlockAheadPrewarming)
+            {
+                // Warms the next already-downloaded block(s) during no-CL / catch-up sync. Shares the scoped
+                // IBlockCachePreWarmer / PreBlockCaches and is mutually exclusive at runtime with MempoolStatePrewarmer
+                // (head-freshness gated). Eagerly resolved so it subscribes to head updates when processing is wired up.
+                builder
+                    .AddScoped<SyncBlockAheadPrewarmer>()
+                    .ResolveOnServiceActivation<SyncBlockAheadPrewarmer, IBlockCachePreWarmer>();
+            }
         }
 
         private sealed class NoAccessList : IHasAccessList
