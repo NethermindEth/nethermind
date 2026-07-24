@@ -4,6 +4,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -166,14 +167,14 @@ public class PbtPersistenceCoordinator(
         PbtSnapshotContent content = merged.Content;
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, merged.TreeRoot, WriteFlags.None);
 
-        foreach ((Stem stem, byte[] blob) in content.LeafBlobs)
+        foreach ((Stem stem, RefCountingMemory? blob) in content.LeafBlobs)
         {
-            batch.SetLeafBlob(stem, blob);
+            batch.SetLeafBlob(stem, blob is null ? default : blob.GetSpan());
         }
 
-        foreach ((TrieNodeKey key, byte[]? node) in content.TrieNodes)
+        foreach ((TrieNodeKey key, RefCountingMemory? node) in content.TrieNodes)
         {
-            batch.SetTrieNode(key, node);
+            batch.SetTrieNode(key, node is null ? default : node.GetSpan());
         }
     }
 }

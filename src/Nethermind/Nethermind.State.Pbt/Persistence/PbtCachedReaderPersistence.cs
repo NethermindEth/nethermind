@@ -133,9 +133,9 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     /// </remarks>
     private sealed class CacheClearingWriteBatch(IPbtPersistence.IWriteBatch inner, PbtCachedReaderPersistence parent) : IPbtPersistence.IWriteBatch
     {
-        public void SetLeafBlob(in Stem stem, byte[]? blob) => inner.SetLeafBlob(in stem, blob);
+        public void SetLeafBlob(in Stem stem, scoped ReadOnlySpan<byte> blob) => inner.SetLeafBlob(in stem, blob);
 
-        public void SetTrieNode(in TrieNodeKey key, byte[]? node) => inner.SetTrieNode(in key, node);
+        public void SetTrieNode(in TrieNodeKey key, scoped ReadOnlySpan<byte> node) => inner.SetTrieNode(in key, node);
 
         public void Dispose()
         {
