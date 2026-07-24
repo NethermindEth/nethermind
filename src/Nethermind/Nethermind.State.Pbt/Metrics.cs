@@ -46,10 +46,12 @@ public static class Metrics
     /// <remarks>
     /// One observation per read, labelled by the tier that answered it: a layer-chain hit, or the
     /// persistence reader below it, split by whether it had a value. That split matters because an
-    /// absent value costs a full walk plus a database miss, which is the expensive shape.
+    /// absent value costs a full walk plus a database miss, which is the expensive shape. A trie node
+    /// read reaching persistence is split further by the zone partition it is keyed into, the three
+    /// columns differing enough in size and write rate to be worth telling apart.
     /// </remarks>
     [DetailedMetric]
-    [Description("Time of a read through the pbt read-only snapshot bundle, by tier and result (Stopwatch ticks)")]
+    [Description("Time of a read through the pbt read-only snapshot bundle, by tier and result, and by partition for a persisted trie node (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver PbtReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 

@@ -42,8 +42,12 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
     private static readonly StringLabel _readLeafBlobPersistenceLabel = new("leaf_blob_persistence");
     private static readonly StringLabel _readLeafBlobPersistenceNullLabel = new("leaf_blob_persistence_null");
     private static readonly StringLabel _readTrieNodeSnapshotLabel = new("trie_node_snapshot");
-    private static readonly StringLabel _readTrieNodePersistenceLabel = new("trie_node_persistence");
-    private static readonly StringLabel _readTrieNodePersistenceNullLabel = new("trie_node_persistence_null");
+    private static readonly StringLabel _readAccountTrieNodePersistenceLabel = new("account_trie_node_persistence");
+    private static readonly StringLabel _readAccountTrieNodePersistenceNullLabel = new("account_trie_node_persistence_null");
+    private static readonly StringLabel _readCodeTrieNodePersistenceLabel = new("code_trie_node_persistence");
+    private static readonly StringLabel _readCodeTrieNodePersistenceNullLabel = new("code_trie_node_persistence_null");
+    private static readonly StringLabel _readStorageTrieNodePersistenceLabel = new("storage_trie_node_persistence");
+    private static readonly StringLabel _readStorageTrieNodePersistenceNullLabel = new("storage_trie_node_persistence_null");
 
     /// <summary>The EIP-8297 root of the state this bundle views, which the header root it was gathered by does not carry.</summary>
     public ValueHash256 TreeRoot
@@ -148,9 +152,23 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
 
         startTimestamp = StartTiming();
         RefCountingMemory? persisted = reader.GetTrieNode(key);
-        Observe(startTimestamp, persisted is null ? _readTrieNodePersistenceNullLabel : _readTrieNodePersistenceLabel);
+        Observe(startTimestamp, TrieNodePersistenceLabel(in key, persisted is null));
         return persisted;
     }
+
+    /// <summary>The label of the partition a trie node read went down to, and whether it found one.</summary>
+    /// <remarks>
+    /// Trie nodes are keyed into one column per zone, and the three are worth telling apart: the account
+    /// column is rewritten from the root down every block, the storage one takes most of the writes, and
+    /// the code one is read far more than it is written. A reserved zone never reaches here — the read
+    /// above routes by the same zone and rejects one.
+    /// </remarks>
+    private static StringLabel TrieNodePersistenceLabel(in TrieNodeKey key, bool isNull) => key.Path.Zone switch
+    {
+        PbtKeyDerivation.AccountZone => isNull ? _readAccountTrieNodePersistenceNullLabel : _readAccountTrieNodePersistenceLabel,
+        PbtKeyDerivation.CodeZone => isNull ? _readCodeTrieNodePersistenceNullLabel : _readCodeTrieNodePersistenceLabel,
+        _ => isNull ? _readStorageTrieNodePersistenceNullLabel : _readStorageTrieNodePersistenceLabel,
+    };
 
     private long StartTiming() => recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
 

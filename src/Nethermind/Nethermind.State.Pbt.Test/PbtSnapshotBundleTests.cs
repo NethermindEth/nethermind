@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -238,6 +239,59 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle overSelfDestruct = Bundle(sharedLayers: [Content(0x33)], localLayers: [], recordDetailedMetrics);
         overSelfDestruct.SelfDestruct(Address);
         Assert.That(EvmWordSlot.IsZero(overSelfDestruct.GetSlot(Address, Slot)));
+    }
+
+    /// <summary>
+    /// A trie node read that reaches disk is timed under the zone partition it is keyed into, so the
+    /// account, code and storage columns can be told apart — and a miss stays distinct from a hit.
+    /// </summary>
+    [Test]
+    public void TrieNodeReadsReachingPersistence_AreLabelledByPartition()
+    {
+        TrieNodeKey accountNode = new(0, ZoneStem(0x00));
+        TrieNodeKey codeNode = new(0, ZoneStem(0x10));
+        TrieNodeKey storageNode = new(0, ZoneStem(0x80));
+
+        _reader.TrieNodes[accountNode] = [1];
+        _reader.TrieNodes[storageNode] = [2];
+
+        IMetricObserver original = Metrics.PbtReadOnlySnapshotBundleTimes;
+        LabelRecordingObserver recorder = new();
+        Metrics.PbtReadOnlySnapshotBundleTimes = recorder;
+        try
+        {
+            using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: [], recordDetailedMetrics: true);
+            using (RefCountingMemory? account = bundle.GetTrieNode(accountNode)) { }
+            using (RefCountingMemory? storage = bundle.GetTrieNode(storageNode)) { }
+
+            // seeded by neither, so it is the miss shape
+            Assert.That(bundle.GetTrieNode(codeNode), Is.Null);
+        }
+        finally
+        {
+            Metrics.PbtReadOnlySnapshotBundleTimes = original;
+        }
+
+        Assert.That(recorder.Labels, Does.Contain("account_trie_node_persistence"));
+        Assert.That(recorder.Labels, Does.Contain("storage_trie_node_persistence"));
+        Assert.That(recorder.Labels, Does.Contain("code_trie_node_persistence_null"));
+    }
+
+    private static Stem ZoneStem(byte firstByte)
+    {
+        byte[] path = new byte[31];
+        path[0] = firstByte;
+        return new Stem(path);
+    }
+
+    private sealed class LabelRecordingObserver : IMetricObserver
+    {
+        public List<string> Labels { get; } = [];
+
+        public void Observe(double value, IMetricLabels? labels = null)
+        {
+            if (labels is not null) Labels.AddRange(labels.Labels);
+        }
     }
 
     private PbtSnapshotBundle Bundle(IReadOnlyList<PbtSnapshotContent> sharedLayers, IReadOnlyList<PbtSnapshotContent> localLayers, bool recordDetailedMetrics = false)
