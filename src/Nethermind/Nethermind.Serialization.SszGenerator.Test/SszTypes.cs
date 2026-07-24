@@ -8,6 +8,7 @@ using Nethermind.Serialization.Ssz;
 using System;
 using System.Buffers.Binary;
 using System.Collections;
+using System.Collections.Generic;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.SszGenerator.Test
@@ -101,6 +102,46 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         [SszList(4)]
         public ulong[]? Items { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListItself
+    {
+        [SszList(3)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial class ByteListClassItself
+    {
+        [SszList(3)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer]
+    public partial class StaticClassCollectionItem
+    {
+        public ulong Value { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct NonNullableStaticClassContainer
+    {
+        public StaticClassCollectionItem Child { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListListItself
+    {
+        [SszList(3)]
+        public List<byte> Bytes { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteVectorItself
+    {
+        [SszVector(3)]
+        public byte[]? Bytes { get; set; }
     }
 
     [SszContainer]
