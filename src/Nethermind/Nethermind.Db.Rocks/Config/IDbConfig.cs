@@ -146,6 +146,9 @@ public interface IDbConfig : IConfig
     string? FlatFallbackNodesDbRocksDbOptions { get; set; }
     string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
+    string FlatHistoryDbRocksDbOptions { get; set; }
+    string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
+
     string? PreimageDbRocksDbOptions { get; set; }
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 

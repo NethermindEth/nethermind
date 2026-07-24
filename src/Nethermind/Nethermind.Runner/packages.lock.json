@@ -904,6 +904,7 @@
           "Nethermind.Network.Enr": "[1.40.0-unstable, )",
           "Nethermind.Specs": "[1.40.0-unstable, )",
           "Nethermind.State.Flat": "[1.40.0-unstable, )",
+          "Nethermind.State.Flat.History": "[1.40.0-unstable, )",
           "Nethermind.Synchronization": "[1.40.0-unstable, )"
         }
       },
@@ -1178,6 +1179,17 @@
           "Nethermind.Synchronization": "[1.40.0-unstable, )",
           "Nethermind.Trie": "[1.40.0-unstable, )",
           "System.IO.Hashing": "[10.0.10, )"
+        }
+      },
+      "nethermind.state.flat.history": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.40.0-unstable, )",
+          "Nethermind.Db": "[1.40.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
+          "Nethermind.State": "[1.40.0-unstable, )",
+          "Nethermind.State.Flat": "[1.40.0-unstable, )",
+          "Nethermind.Trie": "[1.40.0-unstable, )"
         }
       },
       "nethermind.statediff.core": {

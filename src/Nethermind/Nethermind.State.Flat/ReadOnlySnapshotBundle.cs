@@ -23,7 +23,8 @@ public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
-    PersistedSnapshotStack persistedSnapshots)
+    PersistedSnapshotStack persistedSnapshots,
+    bool isHistorical = false)
     : RefCountingDisposable
 {
     // Cached once — the persisted-snapshot stack is immutable for the bundle's lifetime. Every read
@@ -31,6 +32,12 @@ public sealed class ReadOnlySnapshotBundle(
     // long finality disabled, or none persisted yet) skips the persisted lookups entirely.
     private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
     public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
+
+    /// <summary>
+    /// True when this bundle is backed by the finalized history index (trie-less): it serves account/storage values
+    /// only and has no trie nodes, so post-block state-root recomputation must not traverse it.
+    /// </summary>
+    public bool IsHistorical { get; } = isHistorical;
     private bool _isDisposed;
 
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");

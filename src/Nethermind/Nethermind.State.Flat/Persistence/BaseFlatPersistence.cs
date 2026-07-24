@@ -44,17 +44,17 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public static class BaseFlatPersistence
 {
-    private const int AccountKeyLength = 20;
+    internal const int AccountKeyLength = 20;
 
     private const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
     private const int StorageSlotKeySize = 32;
     private const int StoragePostfixPortion = 16;
-    private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
+    internal const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
-    private const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
+    internal const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
 
-    private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
+    internal static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
         address.Bytes[..AccountKeyLength].CopyTo(buffer);
         return buffer[..AccountKeyLength];
@@ -82,6 +82,13 @@ public static class BaseFlatPersistence
         return buffer[..StorageKeyLength];
     }
 
+    /// <summary>
+    /// Hashed-layout storage key (<c>[4B addrHash | 32B slotHash | 16B addrHash]</c>) — the encoding the history
+    /// columns capture and read.
+    /// </summary>
+    internal static ReadOnlySpan<byte> EncodeStorageKeyHashedWithShortPrefix(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash) =>
+        EncodeStorageKey(buffer, addrHash, slotHash, fullAddressStorageKey: false);
+
     /// <summary>Length of the leading address portion of a storage key, which is also the slot offset.</summary>
     private static int StoragePrefixLength(bool fullAddressStorageKey) =>
         fullAddressStorageKey ? AccountKeyLength : StoragePrefixPortion;
@@ -92,6 +99,24 @@ public static class BaseFlatPersistence
     /// </summary>
     private static ReadOnlySpan<byte> StorageAddressSuffix(in ValueHash256 addrHash, bool fullAddressStorageKey) =>
         fullAddressStorageKey ? default : addrHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)];
+
+    /// <summary>
+    /// Encodes a storage slot value into <paramref name="buffer"/> exactly as the flat Storage column stores it:
+    /// the stripped (leading-zeros-removed) bytes, RLP-wrapped when <paramref name="rlpWrapSlots"/> is set.
+    /// <paramref name="buffer"/> must be at least <see cref="RlpSlotValueBufferSize"/> bytes. Returns the number
+    /// of bytes written. Shared so callers (flat writes and the history changeset) produce byte-identical values.
+    /// </summary>
+    internal static int EncodeSlotValue(in SlotValue slot, bool rlpWrapSlots, Span<byte> buffer)
+    {
+        ReadOnlySpan<byte> withoutLeadingZeros = slot.AsReadOnlySpan.WithoutLeadingZeros();
+        if (!rlpWrapSlots)
+        {
+            withoutLeadingZeros.CopyTo(buffer);
+            return withoutLeadingZeros.Length;
+        }
+
+        return Rlp.Encode(withoutLeadingZeros, buffer);
+    }
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
@@ -293,17 +318,9 @@ public static class BaseFlatPersistence
 
             if (slot.HasValue)
             {
-                ReadOnlySpan<byte> withoutLeadingZeros = slot.Value.AsSpan.WithoutLeadingZeros();
-                if (rlpWrapSlots)
-                {
-                    Span<byte> rlpBuffer = stackalloc byte[RlpSlotValueBufferSize];
-                    int written = Rlp.Encode(withoutLeadingZeros, rlpBuffer);
-                    storage.PutSpan(theKey, rlpBuffer[..written], flags);
-                }
-                else
-                {
-                    storage.PutSpan(theKey, withoutLeadingZeros, flags);
-                }
+                Span<byte> valueBuffer = stackalloc byte[RlpSlotValueBufferSize];
+                int written = EncodeSlotValue(slot.Value, rlpWrapSlots, valueBuffer);
+                storage.PutSpan(theKey, valueBuffer[..written], flags);
             }
             else
             {
