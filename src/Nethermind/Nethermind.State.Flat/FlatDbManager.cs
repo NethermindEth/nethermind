@@ -49,6 +49,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _clearBundleCacheTask;
 
     private readonly int _compactSize;
+    private readonly ulong _commitBatchSize;
+    private readonly ICompactionSchedule _compactionSchedule;
     private readonly TimeSpan _compactorStallTimeout;
 
     // For debugging. Do the compaction synchronously
@@ -67,6 +69,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
         IPersistedSnapshotLoader persistedSnapshotLoader,
+        ICompactionSchedule compactionSchedule,
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
@@ -77,6 +80,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _snapshotRepository = snapshotRepository;
         _resourcePool = resourcePool;
         _persistenceManager = persistenceManager;
+        _compactionSchedule = compactionSchedule;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
@@ -84,7 +88,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         persistedSnapshotLoader.Load();
 
         config.ValidateCompactSize();
+        config.ValidateCommitBatchSize();
         _compactSize = (int)config.CompactSize;
+        _commitBatchSize = config.CommitBatchSize;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
         // least. If block processing is stalled for longer than this, persistence is simply too slow
@@ -373,6 +379,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // The latest block the main processing scope committed; used as the head for forced persists.
         _snapshotRepository.SetLastCommittedStateId(endBlock);
 
+        // Only a materialized (boundary) snapshot advances lastMaterialized: it carries the window's real
+        // state-trie nodes and its To root is the verified root. Interior snapshots (trie-less, empty
+        // StateNodes) must never become the seed for the next window. Gated on batching being enabled so
+        // CommitBatchSize == 1 is a strict no-op (lastMaterialized is never read on that path).
+        if (_commitBatchSize > 1 && IsMaterializationBoundary(endBlock.BlockNumber))
+        {
+            _snapshotRepository.SetLastMaterializedStateId(endBlock);
+        }
+
         if (_inlineCompaction)
         {
             RunCompactJobSync(endBlock, transientResource, _cancelTokenSource.Token).Wait();
@@ -458,6 +473,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
+
+    public ulong CommitBatchSize => _commitBatchSize;
+
+    public bool IsMaterializationBoundary(ulong blockNumber) =>
+        _compactionSchedule.IsMaterializationBoundary(blockNumber, _commitBatchSize);
+
+    public StateId? GetLastMaterializedStateId() => _snapshotRepository.GetLastMaterializedStateId();
+
+    public void SetLastMaterializedStateId(in StateId stateId) => _snapshotRepository.SetLastMaterializedStateId(stateId);
 
     public bool HasStateForBlock(in StateId stateId)
     {

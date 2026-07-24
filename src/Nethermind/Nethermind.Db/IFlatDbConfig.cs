@@ -16,6 +16,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     ulong CompactSize { get; set; }
 
+    [ConfigItem(Description = "Number of blocks per deferred state-root materialization window during sync. 1 = compute the state root every block (default, current behavior). > 1 runs interior blocks flat-only (no per-block trie hashing) and materializes + verifies the trie once per window, collapsing repeated top-of-trie hashing. Must divide CompactSize. Sync-only optimization.", DefaultValue = "1")]
+    ulong CommitBatchSize { get; set; }
+
     [ConfigItem(Description = "Enabled", DefaultValue = "false")]
     bool Enabled { get; set; }
 

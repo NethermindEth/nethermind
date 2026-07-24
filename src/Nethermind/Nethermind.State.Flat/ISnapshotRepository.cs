@@ -121,6 +121,16 @@ public interface ISnapshotRepository
     /// <summary>Returns the most recently committed state, or <c>null</c> if nothing was committed this session.</summary>
     StateId? GetLastCommittedStateId();
 
+    /// <summary>
+    /// Records <paramref name="stateId"/> as the last state whose full trie was materialized (a
+    /// deferred-materialization boundary, or every block when <c>CommitBatchSize == 1</c>). Both the block
+    /// number and the real materialized root are stored so the next window seeds its state tree at this root.
+    /// </summary>
+    void SetLastMaterializedStateId(in StateId stateId);
+
+    /// <summary>Returns the last materialized state (block + real root), or <c>null</c> if none this session.</summary>
+    StateId? GetLastMaterializedStateId();
+
     /// <summary>All registered in-memory state ids at <paramref name="blockNumber"/> (a fork can have
     /// several). Caller disposes the list.</summary>
     ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber);

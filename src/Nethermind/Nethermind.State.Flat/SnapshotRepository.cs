@@ -51,6 +51,13 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private StateId _lastCommittedStateId;
     private bool _hasLastCommitted;
 
+    // Last state whose full trie was materialized (deferred-materialization boundary). Guarded like
+    // _lastCommittedStateId because StateId is larger than a machine word — a torn (block, root) read
+    // would re-seed a boundary state tree at a wrong base and produce a spurious root mismatch.
+    private readonly Lock _lastMaterializedLock = new();
+    private StateId _lastMaterializedStateId;
+    private bool _hasLastMaterialized;
+
     public SnapshotRepository(
         IArenaManager arenaManager,
         BlobArenaManager blobArenaManager,
@@ -279,6 +286,19 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         using Lock.Scope _ = _lastCommittedLock.EnterScope();
         return _hasLastCommitted ? _lastCommittedStateId : null;
+    }
+
+    public void SetLastMaterializedStateId(in StateId stateId)
+    {
+        using Lock.Scope _ = _lastMaterializedLock.EnterScope();
+        _lastMaterializedStateId = stateId;
+        _hasLastMaterialized = true;
+    }
+
+    public StateId? GetLastMaterializedStateId()
+    {
+        using Lock.Scope _ = _lastMaterializedLock.EnterScope();
+        return _hasLastMaterialized ? _lastMaterializedStateId : null;
     }
 
     public bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier)

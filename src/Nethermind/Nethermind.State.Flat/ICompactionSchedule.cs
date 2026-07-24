@@ -48,4 +48,17 @@ public interface ICompactionSchedule
     /// on the wider merge windows (2×, 4×, …) above the persistence boundary.
     /// </summary>
     ulong GetPersistedSnapshotCompactSize(ulong blockNumber);
+
+    /// <summary>
+    /// True when <paramref name="blockNumber"/> is a deferred state-root materialization boundary for the
+    /// given <paramref name="commitBatchSize"/> — i.e. genesis (block 0), or a block where the trie must be
+    /// materialized and its root verified. Uses the same per-instance offset as the persistence boundaries,
+    /// so that (because <c>CompactSize</c> is an exact multiple of <paramref name="commitBatchSize"/>) every
+    /// persistence boundary is guaranteed to also be a materialization boundary regardless of the offset.
+    /// </summary>
+    /// <remarks>
+    /// Returns <c>true</c> for every block when <paramref name="commitBatchSize"/> &lt;= 1, preserving the
+    /// per-block behavior (the trie is materialized and verified every block).
+    /// </remarks>
+    bool IsMaterializationBoundary(ulong blockNumber, ulong commitBatchSize);
 }

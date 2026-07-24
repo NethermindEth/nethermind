@@ -30,4 +30,26 @@ internal static class FlatDbConfigExtensions
         if (!BitOperations.IsPow2(config.PersistedSnapshotMaxCompactSize))
             throw new ArgumentException("Persisted snapshot max compact size must be a power of 2", nameof(config.PersistedSnapshotMaxCompactSize));
     }
+
+    /// <summary>
+    /// Validates the deferred state-root materialization window size
+    /// (<see cref="IFlatDbConfig.CommitBatchSize"/>). It must be at least 1, no larger than
+    /// <see cref="IFlatDbConfig.CompactSize"/>, and an exact divisor of it.
+    /// </summary>
+    /// <remarks>
+    /// The divisor invariant is load-bearing for persistence correctness: persist candidates are only
+    /// ever selected at <c>CompactSize</c> boundaries, so every such boundary must also be a
+    /// materialization boundary — otherwise the persist path would write flat account/storage KVs whose
+    /// backing state-trie nodes were never materialized (interior blocks run trie-less), leaving the
+    /// persisted state root unbacked. <c>CommitBatchSize == 1</c> keeps the current per-block behavior.
+    /// </remarks>
+    public static void ValidateCommitBatchSize(this IFlatDbConfig config)
+    {
+        if (config.CommitBatchSize < 1)
+            throw new ArgumentOutOfRangeException(nameof(config.CommitBatchSize), "Commit batch size must be at least 1");
+        if (config.CommitBatchSize > config.CompactSize)
+            throw new ArgumentOutOfRangeException(nameof(config.CommitBatchSize), "Commit batch size must not exceed CompactSize");
+        if (config.CompactSize % config.CommitBatchSize != 0)
+            throw new ArgumentException("CompactSize must be an exact multiple of CommitBatchSize", nameof(config.CommitBatchSize));
+    }
 }

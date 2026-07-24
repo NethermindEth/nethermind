@@ -21,6 +21,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
         ILogManager logManager)
     {
         config.ValidateCompactSize();
+        config.ValidateCommitBatchSize();
         if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
             throw new ArgumentException("Compact size must be a power of 2");
 
@@ -67,6 +68,18 @@ public sealed class CompactionSchedule : ICompactionSchedule
 
     public ulong GetPersistedSnapshotCompactSize(ulong blockNumber) =>
         blockNumber == 0 ? 1 : Math.Min(ShiftedAlignment(blockNumber), _maxCompactSize);
+
+    public bool IsMaterializationBoundary(ulong blockNumber, ulong commitBatchSize)
+    {
+        // <= 1 disables batching: every block materializes and verifies, matching the current behavior.
+        if (commitBatchSize <= 1) return true;
+        // Genesis is always materialized (loaded and committed by the genesis loader).
+        if (blockNumber == 0) return true;
+        // Offset-shifted, using the SAME offset as the persistence boundaries. Because CompactSize is an
+        // exact multiple of commitBatchSize, every persistence boundary ((b + offset) % CompactSize == 0)
+        // is also a materialization boundary ((b + offset) % commitBatchSize == 0).
+        return (blockNumber + _offset) % commitBatchSize == 0;
+    }
 
     // x & (~x + 1) (two's-complement lowest-set-bit trick; -x is invalid for ulong): returns the
     // largest power of 2 dividing the offset-shifted block number, used by all boundary checks.
