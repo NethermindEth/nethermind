@@ -298,6 +298,27 @@ internal sealed class SparseTrieArena : IDisposable
         return handle;
     }
 
+    /// <summary>
+    /// Pre-grows the byte-chunk directory before disjoint root children encode concurrently.
+    /// Encoding can allocate at most one inline RLP and one moved leaf value per live node.
+    /// Reserving twice that payload plus one chunk also covers bump-allocation tail waste, so
+    /// concurrent allocations never replace and return a directory another encoder may read.
+    /// </summary>
+    public void PrepareForConcurrentEncoding()
+    {
+        const int MaxInlineRlpLength = 31;
+        const int MaxAllocatedBytesPerNode = MaxInlineRlpLength + byte.MaxValue;
+
+        long maximumByteCount = _byteCount
+            + (long)NodeCount * MaxAllocatedBytesPerNode * 2
+            + _byteSize;
+        int requiredChunk = (int)Math.Min(int.MaxValue >> _byteShift, maximumByteCount >> _byteShift);
+        while (requiredChunk >= _byteChunks.Length)
+        {
+            GrowDirectory(ref _byteChunks);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Span<byte> Bytes(int handle, int length) =>
         _byteChunks[handle >> _byteShift].AsSpan(handle & _byteMask, length);

@@ -95,7 +95,8 @@ public class SparseTrieTests
     /// </summary>
     private static void AssertMatchesPatricia(
         IReadOnlyList<(ValueHash256 Key, byte[] Value)> parentEntries,
-        IReadOnlyList<(ValueHash256 Key, byte[]? Value)> updates)
+        IReadOnlyList<(ValueHash256 Key, byte[]? Value)> updates,
+        bool canBeParallel = false)
     {
         (NodeStorage storage, Hash256 parentRoot) = BuildPatricia(parentEntries);
 
@@ -117,10 +118,22 @@ public class SparseTrieTests
         }
 
         sparse.Apply(sparseUpdates);
-        ValueHash256 sparseRoot = sparse.CalculateRoot();
+        ValueHash256 sparseRoot = sparse.CalculateRoot(canBeParallel);
 
         Assert.That(sparseRoot, Is.EqualTo(patricia.RootHash.ValueHash256), "root");
         AssertSameNodes(recorder.Committed, DrainStaged(sparse));
+    }
+
+    [Test]
+    public void Parallel_root_encoding_matches_patricia()
+    {
+        List<(ValueHash256 Key, byte[]? Value)> updates = new(256);
+        for (int i = 0; i < 256; i++)
+        {
+            updates.Add((new ValueHash256($"{i:x2}".PadRight(64, '0')), V(i, 32)));
+        }
+
+        AssertMatchesPatricia([], updates, canBeParallel: true);
     }
 
     private static List<SparseTrieStagedNode> DrainStaged(SparseTrie sparse)
@@ -968,7 +981,11 @@ public class SparseTrieTests
     [TestCase(1, 5, 500, 120)]
     [TestCase(2, 8, 900, 160)]
     [TestCase(3, 6, 1500, 220)]
-    public void Reused_trie_drained_each_generation_matches_patricia(int seed, int generations, int parentCount, int updatesPerGeneration)
+    public void Reused_trie_with_parallel_root_drained_each_generation_matches_patricia(
+        int seed,
+        int generations,
+        int parentCount,
+        int updatesPerGeneration)
     {
         Dictionary<ValueHash256, byte[]> model = [];
         List<(ValueHash256, byte[])> parentEntries = [];
@@ -1001,7 +1018,10 @@ public class SparseTrieTests
             parentRoot = patricia.RootHash;
 
             sparse.Apply(updates);
-            Assert.That(sparse.CalculateRoot(), Is.EqualTo(parentRoot.ValueHash256), $"reused root after generation {generation}");
+            Assert.That(
+                sparse.CalculateRoot(canBeParallel: true),
+                Is.EqualTo(parentRoot.ValueHash256),
+                $"reused root after generation {generation}");
 
             // Publish and clear staging exactly as retention does between blocks, then loop and
             // re-Apply on the same warm instance.

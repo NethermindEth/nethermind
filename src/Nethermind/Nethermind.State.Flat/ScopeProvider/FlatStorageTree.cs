@@ -237,14 +237,16 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         if (_sparseTrie is null) return;
 
-        using ArrayPoolList<SparseTrieStagedNode> staged = new(64);
+        using ArrayPoolList<SparseTrieStagedNode> staged = new(_sparseTrie.UnpublishedNodeCapacityHint);
         _sparseTrie.DrainUnpublished(staged);
         if (staged.Count > 0)
         {
+            using ArrayPoolListRef<(TreePath, TrieNode)> buffer =
+                FlatSparseTrieSession.BuildPublicationBuffer(staged.AsSpan());
             _bundle.PublishStorageNodes(
                 _bundle.GetStorageNodeDestination(_addressHash),
                 _addressHash,
-                [FlatSparseTrieSession.BuildPublicationBuffer(staged)]);
+                buffer.AsSpan());
         }
     }
 

@@ -921,7 +921,8 @@ public class FlatWorldStateScopeProviderTests
             new SparseTrieStagedNode(TreePath.FromHexString("2f"), ValueKeccak.Compute(rlpB), rlpB),
         };
 
-        List<(TreePath, TrieNode)> buffer = FlatSparseTrieSession.BuildPublicationBuffer(staged);
+        using ArrayPoolListRef<(TreePath, TrieNode)> buffer =
+            FlatSparseTrieSession.BuildPublicationBuffer(staged.AsSpan());
 
         using (Assert.EnterMultipleScope())
         {

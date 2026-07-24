@@ -388,6 +388,16 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    internal void PublishStateNodes(ReadOnlySpan<(TreePath Path, TrieNode Node)> buffer)
+    {
+        _changedStateNodes.EnsureCapacity(_changedStateNodes.Count + buffer.Length);
+
+        foreach (ref readonly (TreePath Path, TrieNode Node) entry in buffer)
+        {
+            SetStateNode(in entry.Path, entry.Node);
+        }
+    }
+
     internal AddressStorageNodeDictionary.AddressNodes GetStorageNodeDestination(Hash256 address) =>
         _changedStorageNodes.GetOrAddAddress(address);
 
@@ -423,6 +433,19 @@ public sealed class SnapshotBundle : IDisposable
         foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
         {
             foreach ((TreePath path, TrieNode node) in buffer) SetStorageNode(nodes, address, path, node);
+        }
+    }
+
+    internal void PublishStorageNodes(
+        AddressStorageNodeDictionary.AddressNodes nodes,
+        Hash256 address,
+        ReadOnlySpan<(TreePath Path, TrieNode Node)> buffer)
+    {
+        nodes.EnsureAdditionalCapacity(buffer.Length);
+
+        foreach (ref readonly (TreePath Path, TrieNode Node) entry in buffer)
+        {
+            SetStorageNode(nodes, address, in entry.Path, entry.Node);
         }
     }
 
