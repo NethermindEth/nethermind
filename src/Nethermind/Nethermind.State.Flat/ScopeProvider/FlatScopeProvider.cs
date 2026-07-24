@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -63,15 +64,16 @@ public class FlatScopeProvider(
     public void Dispose()
     {
         if (_warmReadPool is { IsValueCreated: true }) _warmReadPool.Value.Dispose();
-        if (_sparseCache is not null)
-        {
-            ILogger logger = logManager.GetClassLogger<FlatScopeProvider>();
-            if (logger.IsInfo)
-            {
-                logger.Info($"[sparse-retention] checkout hits {_sparseCache.Hits}, misses {_sparseCache.Misses}, rejections {_sparseCache.Rejections}");
-            }
+        if (_sparseCache is not null) LogRetentionStatsAndDispose(_sparseCache);
+    }
 
-            _sparseCache.Dispose();
-        }
+    // Out of line so the cold shutdown log does not bloat Dispose.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LogRetentionStatsAndDispose(FlatSparseTrieCache cache)
+    {
+        ILogger logger = logManager.GetClassLogger<FlatScopeProvider>();
+        if (logger.IsInfo)
+            logger.Info($"[sparse-retention] checkout hits {cache.Hits}, misses {cache.Misses}, rejections {cache.Rejections}");
+        cache.Dispose();
     }
 }
