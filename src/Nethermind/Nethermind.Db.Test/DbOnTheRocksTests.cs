@@ -577,6 +577,105 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Full_enumerations_can_be_repeated_across_batches()
+        {
+            (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
+            IEnumerable<KeyValuePair<byte[], byte[]?>> all = _db.GetAll(ordered: true);
+            IEnumerable<byte[]> keys = _db.GetAllKeys(ordered: true);
+            IEnumerable<byte[]> values = _db.GetAllValues(ordered: true);
+
+            _ = all.Take(1).Single();
+            _ = keys.Take(1).Single();
+            _ = values.Take(1).Single();
+
+            KeyValuePair<byte[], byte[]?>[] firstAll = all.ToArray();
+            KeyValuePair<byte[], byte[]?>[] secondAll = all.ToArray();
+            byte[][] firstKeys = keys.ToArray();
+            byte[][] secondKeys = keys.ToArray();
+            byte[][] firstValues = values.ToArray();
+            byte[][] secondValues = values.ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstAll.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+                Assert.That(firstAll.Select(static item => item.Value), Is.EqualTo(expectedValues));
+                Assert.That(secondAll.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+                Assert.That(secondAll.Select(static item => item.Value), Is.EqualTo(expectedValues));
+                Assert.That(firstKeys, Is.EqualTo(expectedKeys));
+                Assert.That(secondKeys, Is.EqualTo(expectedKeys));
+                Assert.That(firstValues, Is.EqualTo(expectedValues));
+                Assert.That(secondValues, Is.EqualTo(expectedValues));
+            }
+        }
+
+        [Test]
+        public void Full_enumerations_resume_after_deleted_boundary()
+        {
+            (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
+            int boundaryIndex = DbOnTheRocks.FullEnumerationBatchSize - 1;
+
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAll(ordered: true).Select(static item => item.Key),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedKeys[boundaryIndex + 1]);
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAllKeys(ordered: true),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedKeys[boundaryIndex + 1]);
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAllValues(ordered: true),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedValues[boundaryIndex + 1]);
+        }
+
+        private (byte[][] Keys, byte[][] Values) SeedFullEnumerationBatches()
+        {
+            int count = DbOnTheRocks.FullEnumerationBatchSize + 1;
+            byte[][] keys = new byte[count][];
+            byte[][] values = new byte[count][];
+
+            using IWriteBatch batch = _db.StartWriteBatch();
+            for (int i = 0; i < count; i++)
+            {
+                keys[i] = i.ToBigEndianByteArray();
+                values[i] = (i + count).ToBigEndianByteArray();
+                batch.Set(keys[i], values[i]);
+            }
+
+            return (keys, values);
+        }
+
+        private void AssertResumesAfterDeletedBoundary(
+            IEnumerable<byte[]> items,
+            byte[] boundaryKey,
+            byte[] boundaryValue,
+            byte[] expectedNext)
+        {
+            using IEnumerator<byte[]> enumerator = items.GetEnumerator();
+            for (int i = 0; i < DbOnTheRocks.FullEnumerationBatchSize; i++)
+            {
+                if (!enumerator.MoveNext())
+                {
+                    Assert.Fail($"Enumeration stopped at item {i} before reaching the batch boundary.");
+                }
+            }
+
+            _db.Remove(boundaryKey);
+            try
+            {
+                Assert.That(enumerator.MoveNext(), Is.True);
+                Assert.That(enumerator.Current, Is.EqualTo(expectedNext));
+            }
+            finally
+            {
+                _db.Set(boundaryKey, boundaryValue);
+            }
+        }
+
+        [Test]
         public void IteratorWorks()
         {
             Assert.That(_db, Is.AssignableTo<ISortedKeyValueStore>());
