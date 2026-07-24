@@ -174,14 +174,7 @@ public class PbtPersistenceCoordinator(
 
         foreach ((TrieNodeKey key, RefCountingMemory? node) in content.TrieNodes)
         {
-            if (node is null)
-            {
-                batch.SetTrieNode(key, (byte[]?)null);
-            }
-            else
-            {
-                batch.SetTrieNode(key, node.GetSpan());
-            }
+            batch.SetTrieNode(key, node is null ? default : node.GetSpan());
         }
     }
 }
