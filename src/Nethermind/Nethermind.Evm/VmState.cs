@@ -36,24 +36,12 @@ public class VmState<TGasPolicy> : IDisposable
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
     public long StateGasRefundAdvanced;
-    internal long OutputDestination { get; private set; } // TODO: move to CallEnv
-    internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
     public int DataStackHead;
-    public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
-    public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
+    // Mutable frame-lifecycle state: flipped true when a child call returns and this frame resumes.
+    public bool IsContinuation { get; set; }
     private bool _canRestore;
-    public bool IsStatic { get; private set; } // TODO: move to CallEnv
-    public bool IsContinuation { get; set; } // TODO: move to CallEnv
-    public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
-    public bool IsCreateStateGasCharged { get; private set; } // TODO: move to CallEnv
-
-    /// <summary>
-    /// EIP-8037: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for this (dead)
-    /// recipient; on this frame's error/revert no account is created, so the parent refunds it.
-    /// </summary>
-    public bool NewAccountCharged { get; private set; } // TODO: move to CallEnv
 
     private bool _isDisposed = true;
 
@@ -162,19 +150,19 @@ public class VmState<TGasPolicy> : IDisposable
         Gas = gas;
         InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
         StateGasRefundAdvanced = 0;
-        OutputDestination = outputDestination;
-        OutputLength = outputLength;
         Refund = 0;
         DataStackHead = 0;
         ProgramCounter = 0;
-        ExecutionType = executionType;
-        IsTopLevel = isTopLevel;
-        _canRestore = !isTopLevel;
-        IsStatic = isStatic;
         IsContinuation = false;
-        IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-        IsCreateStateGasCharged = isCreateStateGasCharged;
-        NewAccountCharged = newAccountCharged;
+        _canRestore = !isTopLevel;
+        env.OutputDestination = outputDestination;
+        env.OutputLength = outputLength;
+        env.ExecutionType = executionType;
+        env.IsTopLevel = isTopLevel;
+        env.IsStatic = isStatic;
+        env.IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
+        env.IsCreateStateGasCharged = isCreateStateGasCharged;
+        env.NewAccountCharged = newAccountCharged;
 
         if (!_isDisposed)
         {
@@ -199,6 +187,15 @@ public class VmState<TGasPolicy> : IDisposable
 
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
     public bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
+
+    internal long OutputDestination => Env.OutputDestination;
+    internal long OutputLength => Env.OutputLength;
+    public ExecutionType ExecutionType => Env.ExecutionType;
+    public bool IsTopLevel => Env.IsTopLevel;
+    public bool IsStatic => Env.IsStatic;
+    public bool IsCreateOnPreExistingAccount => Env.IsCreateOnPreExistingAccount;
+    public bool IsCreateStateGasCharged => Env.IsCreateStateGasCharged;
+    public bool NewAccountCharged => Env.NewAccountCharged;
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ExecutionEnvironment Env => _env!;

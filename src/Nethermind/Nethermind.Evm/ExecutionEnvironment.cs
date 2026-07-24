@@ -57,6 +57,50 @@ namespace Nethermind.Evm
         /// </summary>
         public ReadOnlyMemory<byte> InputData { get; private set; }
 
+        // The following describe how this frame was invoked. They are populated by
+        // <see cref="VmState{TGasPolicy}"/> when the frame is rented and cleared on Dispose.
+
+        /// <summary>
+        /// Offset in the caller's memory where this frame's output is written.
+        /// </summary>
+        internal long OutputDestination { get; set; }
+
+        /// <summary>
+        /// Number of output bytes the caller expects written back into its memory.
+        /// </summary>
+        internal long OutputLength { get; set; }
+
+        /// <summary>
+        /// The kind of call that created this frame (CALL, DELEGATECALL, CREATE, ...).
+        /// </summary>
+        public ExecutionType ExecutionType { get; internal set; }
+
+        /// <summary>
+        /// Whether this is the top-level frame of the transaction.
+        /// </summary>
+        public bool IsTopLevel { get; internal set; }
+
+        /// <summary>
+        /// Whether this frame executes in a static context (no state modifications allowed).
+        /// </summary>
+        public bool IsStatic { get; internal set; }
+
+        /// <summary>
+        /// Whether this CREATE targets an account that already exists.
+        /// </summary>
+        public bool IsCreateOnPreExistingAccount { get; internal set; }
+
+        /// <summary>
+        /// Whether CREATE state gas has been charged for this frame.
+        /// </summary>
+        public bool IsCreateStateGasCharged { get; internal set; }
+
+        /// <summary>
+        /// EIP-8037: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for this (dead)
+        /// recipient; on this frame's error/revert no account is created, so the parent refunds it.
+        /// </summary>
+        public bool NewAccountCharged { get; internal set; }
+
         private ExecutionEnvironment() { }
 
         /// <summary>
@@ -96,6 +140,14 @@ namespace Nethermind.Evm
                 CallDepth = 0;
                 _value = default;
                 InputData = default;
+                OutputDestination = 0;
+                OutputLength = 0;
+                ExecutionType = default;
+                IsTopLevel = false;
+                IsStatic = false;
+                IsCreateOnPreExistingAccount = false;
+                IsCreateStateGasCharged = false;
+                NewAccountCharged = false;
                 _pool.Enqueue(this);
             }
 #if DEBUG
