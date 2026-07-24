@@ -287,6 +287,34 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task Ping_concurrent_calls_to_same_unbonded_node_share_one_wire_ping(CancellationToken token)
+        {
+            TaskCompletionSource pongGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _msgSender
+                .SendMsg(Arg.Any<PingMsg>())
+                .Returns(async ci =>
+                {
+                    PingMsg sent = (PingMsg)ci[0]!;
+                    await pongGate.Task;
+                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+                    PongMsg pong = new(msg.FarPublicKey!, _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value, null);
+                    pong.FarAddress = sent.FarAddress;
+                    await _adapter.OnIncomingMsg(pong);
+                });
+
+            Task<bool> first = _adapter.Ping(_receiver, token);
+            Task<bool> second = _adapter.Ping(_receiver, token);
+            pongGate.SetResult();
+
+            bool[] results = await Task.WhenAll(first, second);
+
+            Assert.That(results, Is.All.True);
+            await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task Ping_should_not_publish_tcp_endpoint_learned_from_neighbours(CancellationToken token)
         {
             ConfigureBondCallback();
