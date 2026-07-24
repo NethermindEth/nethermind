@@ -18,8 +18,7 @@ public class PbtConfig : IPbtConfig
     public int ImportWindowSize { get; set; }
     public bool ScanTree { get; set; }
     public int ScanTreeConcurrency { get; set; }
-    public PbtGroupFormat TrieNodeLevels { get; set; } = PbtGroupFormat.Interleaved;
-    public PbtTiling TrieNodeTiling { get; set; } = PbtTiling.ClusteredFourLevel;
+    public PbtTrieLayout TrieNodeLayout { get; set; } = PbtTrieLayout.ClusteredFourLevelInterleaved;
     public int RootFoldConcurrency { get; set; }
 
     public string RocksDbOptions { get; set; } =

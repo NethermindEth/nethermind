@@ -65,10 +65,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
         new(CodeDb, Manager, ChildHeaders, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
-            TrieFormat, Config.RootFoldConcurrency);
-
-    /// <summary>The format the configured tiling and levels amount to, as the plugin's own extension derives it.</summary>
-    public PbtTrieFormat TrieFormat => new(Config.TrieNodeTiling, Config.TrieNodeLevels);
+            Config.TrieNodeLayout, Config.RootFoldConcurrency);
 
     public async ValueTask DisposeAsync()
     {

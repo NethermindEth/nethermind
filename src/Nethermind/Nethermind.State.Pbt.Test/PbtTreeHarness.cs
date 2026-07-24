@@ -16,11 +16,11 @@ namespace Nethermind.State.Pbt.Test;
 /// key/value writes are packed into a <see cref="PbtWriteBatch"/> and applied over dictionary-backed
 /// node/blob stores that persist across batches.
 /// </summary>
-/// <param name="writeFormat">
-/// Which encoding the batches write; settable through <see cref="WriteFormat"/> so that one store can
+/// <param name="writeLayout">
+/// Which layout the batches write; settable through <see cref="WriteLayout"/> so that one store can
 /// be driven across a format switch, as a node whose configuration changed does.
 /// </param>
-public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, PbtTrieFormat writeFormat) : IPbtStore
+public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, PbtTrieLayout writeLayout) : IPbtStore
 {
     private readonly Dictionary<TrieNodeKey, byte[]> _nodes = [];
     private readonly Dictionary<Stem, byte[]> _blobs = [];
@@ -33,8 +33,8 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     private readonly Lock _lock = new();
     private ValueHash256 _root;
 
-    /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtTrieFormat)" path="/param[@name='writeFormat']"/>
-    public PbtTrieFormat WriteFormat { get; set; } = writeFormat;
+    /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtTrieLayout)" path="/param[@name='writeLayout']"/>
+    public PbtTrieLayout WriteLayout { get; set; } = writeLayout;
 
     /// <summary>
     /// <inheritdoc cref="TrieUpdater.UpdateRoot" path="/param[@name='concurrency']"/> Serial by default,
@@ -83,8 +83,12 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         Dictionary<TrieNodeKey, byte[]> flattened = [];
         foreach ((TrieNodeKey key, byte[] blob) in _nodes)
         {
-            if (WriteFormat.Tiling == PbtTiling.SixLevel) Flatten<PbtSixLevelTileLayout>(flattened, key, blob);
-            else Flatten<PbtClusteredTileLayout>(flattened, key, blob);
+            switch (WriteLayout.Tiling())
+            {
+                case PbtTiling.SixLevel: Flatten<PbtSixLevelTileLayout>(flattened, key, blob); break;
+                case PbtTiling.EightLevel: Flatten<PbtEightLevelTileLayout>(flattened, key, blob); break;
+                default: Flatten<PbtClusteredTileLayout>(flattened, key, blob); break;
+            }
         }
 
         return flattened;
@@ -172,7 +176,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         using PbtWriteBatch batch = new(estimatedStems: grouped.Count, buckets: null);
         foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, RootFoldConcurrency, out _);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteLayout, RootFoldConcurrency, out _);
         return _root;
     }
 
@@ -194,8 +198,8 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
             builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
         }
 
-        using PbtWriteBatch batch = builder.DrainToWriteBatch(WriteFormat.Tiling);
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, RootFoldConcurrency, out _);
+        using PbtWriteBatch batch = builder.DrainToWriteBatch(WriteLayout.Tiling());
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteLayout, RootFoldConcurrency, out _);
         return _root;
     }
 }

@@ -47,7 +47,7 @@ public static partial class TrieUpdater
     /// blobs and trie node groups to <paramref name="store"/>, and returns the new root (32 zero
     /// bytes for an empty tree). An empty batch returns <paramref name="currentRoot"/> untouched.
     /// </summary>
-    /// <param name="format">
+    /// <param name="layout">
     /// The tiling the store is written in, and which encoding to write the groups this batch rebuilds
     /// in — and with them the leaf blobs (see <see cref="PbtLeafFormat"/>). The tiling is a property of
     /// the whole store and must not change over one; the encodings may, all folding to the same root
@@ -62,7 +62,7 @@ public static partial class TrieUpdater
     /// </param>
     public static ValueHash256 UpdateRoot(
         IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider,
-        PbtTrieFormat format, int concurrency, out PbtSubtreeStats delta)
+        PbtTrieLayout layout, int concurrency, out PbtSubtreeStats delta)
     {
         if (changes.Count == 0)
         {
@@ -70,12 +70,13 @@ public static partial class TrieUpdater
             return currentRoot;
         }
 
-        return format.Tiling switch
+        PbtGroupFormat groupFormat = layout.GroupFormat();
+        return layout.Tiling() switch
         {
-            PbtTiling.ClusteredFourLevel => new Updater<PbtClusteredTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
-            PbtTiling.SixLevel => new Updater<PbtSixLevelTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
-            PbtTiling.EightLevel => new Updater<PbtEightLevelTileLayout>(store, memoryProvider, format.GroupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
-            _ => throw new ArgumentOutOfRangeException(nameof(format)),
+            PbtTiling.ClusteredFourLevel => new Updater<PbtClusteredTileLayout>(store, memoryProvider, groupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
+            PbtTiling.SixLevel => new Updater<PbtSixLevelTileLayout>(store, memoryProvider, groupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
+            PbtTiling.EightLevel => new Updater<PbtEightLevelTileLayout>(store, memoryProvider, groupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
+            _ => throw new ArgumentOutOfRangeException(nameof(layout)),
         };
     }
 

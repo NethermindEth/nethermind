@@ -38,7 +38,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
     {
         _db = db;
         EnsureLayoutVersion(db);
-        EnsureTiling(db, config.TrieNodeTiling);
+        EnsureTiling(db, config.TrieNodeLayout.Tiling());
     }
 
     /// <summary>Stamps a fresh database with <see cref="LayoutVersion"/>, and rejects one written under any other layout.</summary>
@@ -89,7 +89,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
         {
             if (storedTiling != tiling)
             {
-                throw new InvalidDataException($"The pbt database was written with the {storedTiling} trie tiling, but this node is configured for {tiling}. Delete the pbt database and re-import, or set Pbt.TrieNodeTiling to {storedTiling}.");
+                throw new InvalidDataException($"The pbt database was written with the {storedTiling} trie tiling, but this node is configured for {tiling}. Delete the pbt database and re-import, or set Pbt.TrieNodeLayout to a layout of the {storedTiling} tiling.");
             }
 
             if (stored is not null) return;

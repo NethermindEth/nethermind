@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
@@ -115,6 +116,33 @@ public class PbtScannerTests
             Assert.That(report.TrieNodeKeyBytes, Is.EqualTo(3 * TrieNodeKey.Length));
             Assert.That(report.AccountLeaves.KeyBytes, Is.EqualTo(AccountLeafCounts.Length * Stem.Length));
             Assert.That(report.StorageLeaves.KeyBytes, Is.EqualTo(StorageLeafCounts.Length * Stem.Length));
+        });
+    }
+
+    /// <summary>
+    /// The scanner decodes a group under the tiling the database was written in, so a tree written under
+    /// any of them must read back as the tree it is: the stems it holds, the leaves under them, and the
+    /// stem count every stored node caches.
+    /// </summary>
+    /// <remarks>
+    /// The counts above are the four-level tree's shape and do not carry over to a tile of another
+    /// width, so only what every tiling shares is asserted here.
+    /// </remarks>
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.SixLevelInterleaved)]
+    [TestCase(PbtTrieLayout.EightLevelInterleaved, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
+    public async Task Scan_ReadsTheSameTreeUnderEveryTiling(PbtTrieLayout layout)
+    {
+        PbtScanReport report = await ScanTree(layout, BuildWrites(), concurrency: 1);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(report.StemCount, Is.EqualTo(6), "four account stems and two storage stems");
+            Assert.That(report.RootSubtreeStemCount, Is.EqualTo(report.StemCount));
+            Assert.That(report.StemCountAgrees, Is.True);
+            Assert.That(report.AccountLeaves.LeafCount, Is.EqualTo(AccountLeafCounts.Sum()));
+            Assert.That(report.StorageLeaves.LeafCount, Is.EqualTo(StorageLeafCounts.Sum()));
+            Assert.That(report.CodeNodes.IsEmpty, Is.True, "nothing was written to the code zone");
         });
     }
 
@@ -406,9 +434,12 @@ public class PbtScannerTests
         });
     }
 
-    private static Task<PbtScanReport> ScanTree(PbtGroupFormat format, List<(byte[] Key, byte[]? Value)> writes, int concurrency)
+    private static Task<PbtScanReport> ScanTree(PbtGroupFormat format, List<(byte[] Key, byte[]? Value)> writes, int concurrency) =>
+        ScanTree(PbtTestFormats.Clustered(format), writes, concurrency);
+
+    private static Task<PbtScanReport> ScanTree(PbtTrieLayout layout, List<(byte[] Key, byte[]? Value)> writes, int concurrency)
     {
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format));
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, layout);
         harness.ApplyBatch(writes);
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
@@ -422,7 +453,7 @@ public class PbtScannerTests
             db.GetColumnDb(LeafColumn(blob.Key))[blob.Key.Bytes.ToArray()] = blob.Value;
         }
 
-        return new PbtScanner(db, new PbtConfig { ScanTreeConcurrency = concurrency }, LimboLogs.Instance).Scan(default);
+        return new PbtScanner(db, new PbtConfig { ScanTreeConcurrency = concurrency, TrieNodeLayout = layout }, LimboLogs.Instance).Scan(default);
     }
 
     /// <summary>Routes a stem to its leaf column by zone, as the persistence layer does.</summary>

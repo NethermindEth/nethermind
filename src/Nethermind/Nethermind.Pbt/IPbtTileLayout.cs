@@ -7,7 +7,7 @@ namespace Nethermind.Pbt;
 /// <remarks>
 /// Unlike <see cref="PbtGroupFormat"/>, which two blobs of one tree may differ in, this fixes the
 /// keys the tree is stored under: a tree cannot hold blobs of both. It is stamped on the database and
-/// checked on the way in.
+/// checked on the way in. Which of these a node writes is half of its <see cref="PbtTrieLayout"/>.
 /// </remarks>
 public enum PbtTiling : byte
 {
@@ -20,9 +20,6 @@ public enum PbtTiling : byte
     /// <summary>8-level tiles, each its own blob (<see cref="PbtEightLevelTileLayout"/>).</summary>
     EightLevel = 2,
 }
-
-/// <summary>What a trie node group's encoding is written in: its tiling, and which levels it stores.</summary>
-public readonly record struct PbtTrieFormat(PbtTiling Tiling, PbtGroupFormat GroupFormat);
 
 /// <summary>
 /// The shape of one tiling of the stem trie: how many levels a tile covers, how a stem picks the slot

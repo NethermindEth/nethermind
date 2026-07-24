@@ -19,15 +19,16 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <param name="tiling">
+/// <param name="layout">
 /// The whole component stack — scope, snapshot, compaction, persistence — over each tiling of the
 /// trie underneath it, all folding to the same reference roots.
 /// </param>
-[TestFixture(PbtTiling.ClusteredFourLevel)]
-[TestFixture(PbtTiling.SixLevel)]
-public class PbtScopeProviderTests(PbtTiling tiling)
+[TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+[TestFixture(PbtTrieLayout.SixLevelInterleaved)]
+[TestFixture(PbtTrieLayout.EightLevelInterleaved, Ignore = PbtTestFormats.EightLevelFoldUnfinished)]
+public class PbtScopeProviderTests(PbtTrieLayout layout)
 {
-    private PbtTestContext NewContext() => new(config: new PbtConfig { TrieNodeTiling = tiling });
+    private PbtTestContext NewContext() => new(config: new PbtConfig { TrieNodeLayout = layout });
 
     private static readonly IReleaseSpec Spec = Prague.Instance;
 
