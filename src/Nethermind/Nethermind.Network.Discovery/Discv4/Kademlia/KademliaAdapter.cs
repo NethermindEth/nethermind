@@ -222,8 +222,7 @@ public class KademliaAdapter(
         return true;
     }
 
-    // Coalesced via NodeSession.GetOrStartBond: concurrent lookups can each decide the same endpoint needs
-    // bonding at the same time, so callers share one in-flight ping rather than each sending their own.
+   
     private Task<PongMsg?> TryBond(Node receiver, NodeSession session, CancellationToken token)
     {
         IPEndPoint endpoint = receiver.DiscoveryAddress;
