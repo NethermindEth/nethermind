@@ -186,8 +186,16 @@ public class ImportPbtFromPreimageFlatTests
     /// fold starts from an empty root, so every stem is structurally new and its stale blob is
     /// overwritten instead of read.
     /// </summary>
-    [Test]
-    public async Task Rerunning_after_an_interrupted_import_reproduces_the_root()
+    /// <param name="clearKeyChunk">
+    /// <see cref="ImportPbtFromPreimageFlat.ClearKeyChunk"/> 1 reopens the column view and its write
+    /// batch after every key the discarding sweep deletes, so each key past the first is read from a
+    /// freshly reopened view whose lower bound is the exclusive successor of the previous one — and is
+    /// read after the previous key's delete has been committed to the very column being scanned.
+    /// Reproducing the root proves the reopen skips exactly the key just deleted, no more and no less.
+    /// </param>
+    [TestCase(10_000)]
+    [TestCase(1)]
+    public async Task Rerunning_after_an_interrupted_import_reproduces_the_root(int clearKeyChunk)
     {
         PbtConfig config = new();
 
@@ -213,7 +221,10 @@ public class ImportPbtFromPreimageFlatTests
         async Task<ValueHash256> Import()
         {
             RecordingExitSource exitSource = new();
-            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
+            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance)
+            {
+                ClearKeyChunk = clearKeyChunk,
+            };
             await step.Execute(CancellationToken.None);
             Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
