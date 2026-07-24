@@ -126,7 +126,7 @@ public class PbtWriteBatchBuilderTests
 
         // each level caches which of its buckets are non-empty, so the descent never re-derives it
         Assert.That(
-            PbtWriteBatch.ReadTouchedBitmask<Layout>(nibbles), Is.EqualTo(TouchedMaskOf(nibbles)), "nibble level touched mask");
+            PbtWriteBatch.ReadTouchedMask<Layout>(nibbles), Is.EqualTo(TouchedMaskOf(nibbles)), "nibble level touched mask");
 
         for (int nibble = 0; nibble < Layout.BoundarySlots; nibble++)
         {
@@ -144,19 +144,19 @@ public class PbtWriteBatchBuilderTests
             }
 
             Assert.That(
-                PbtWriteBatch.ReadTouchedBitmask<Layout>(group), Is.EqualTo(TouchedMaskOf(group)), $"byte group {nibble} touched mask");
+                PbtWriteBatch.ReadTouchedMask<Layout>(group), Is.EqualTo(TouchedMaskOf(group)), $"byte group {nibble} touched mask");
         }
 
         // 0x00, 0x0F and 0x10 fall in nibbles 0 and 1, 0x80 in 8 and 0xFF in 15
-        Assert.That(PbtWriteBatch.ReadTouchedBitmask<Layout>(nibbles), Is.EqualTo(0b1000_0001_0000_0011UL));
+        Assert.That(PbtWriteBatch.ReadTouchedMask<Layout>(nibbles), Is.EqualTo(SlotBitmask<Layout>.Of(0, 1, 8, 15)));
     }
 
-    private static ulong TouchedMaskOf(ReadOnlySpan<int> level)
+    private static SlotBitmask<Layout> TouchedMaskOf(ReadOnlySpan<int> level)
     {
-        ulong touched = 0;
+        SlotBitmask<Layout> touched = default;
         for (int bucket = 0; bucket < Layout.BoundarySlots; bucket++)
         {
-            if (level[bucket] != level[bucket + 1]) touched |= 1UL << bucket;
+            if (level[bucket] != level[bucket + 1]) touched.Set(bucket);
         }
 
         return touched;

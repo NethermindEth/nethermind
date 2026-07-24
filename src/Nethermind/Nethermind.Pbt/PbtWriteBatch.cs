@@ -35,8 +35,8 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
     /// consumer never re-derives it by scanning the bounds.
     /// </summary>
     /// <remarks>
-    /// Two entries, low half first: a wide tiling's mask does not fit the <c>int</c> the bounds — which
-    /// are entry indices — make the level out of.
+    /// <see cref="TouchedWordCount"/> entries, least significant first: a tiling's mask does not fit the
+    /// <c>int</c> the bounds — which are entry indices — make the level out of.
     /// </remarks>
     public static int TouchedMaskIndex<TLayout>() where TLayout : IPbtTileLayout => BoundsLength<TLayout>();
 
@@ -78,21 +78,22 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
         level[word] = (int)((uint)level[word] | (1u << (slot & 31)));
     }
 
-    /// <summary>Writes the touched slots of a layout whose boundary fits in 64 bits.</summary>
-    public static void WriteTouched<TLayout>(Span<int> level, ulong touched) where TLayout : IPbtTileLayout
-    {
-        int index = TouchedMaskIndex<TLayout>();
-        ClearTouched<TLayout>(level);
-        level[index] = (int)(uint)touched;
-        level[index + 1] = (int)(uint)(touched >> 32);
-    }
-
-    /// <summary>Reads the touched slots of a layout whose boundary fits in 64 bits back as a bitmask.</summary>
-    /// <remarks>The inverse of <see cref="WriteTouched"/>; the low two mask words are always present, since <see cref="TouchedWordCount"/> is at least two.</remarks>
-    public static ulong ReadTouchedBitmask<TLayout>(scoped ReadOnlySpan<int> level) where TLayout : IPbtTileLayout
+    /// <summary>Reads the touched slots back as the set the descent walks.</summary>
+    /// <remarks>
+    /// The mask is cached in 32-bit words because a level is an <c>int</c> array — the bounds being
+    /// entry indices — so this is where the two halves of each 64-bit word are put back together.
+    /// </remarks>
+    internal static SlotBitmask<TLayout> ReadTouchedMask<TLayout>(scoped ReadOnlySpan<int> level) where TLayout : IPbtTileLayout
     {
         ReadOnlySpan<int> touched = ReadTouched<TLayout>(level);
-        return (uint)touched[0] | ((ulong)(uint)touched[1] << 32);
+        SlotBitmask<TLayout> mask = default;
+        Span<ulong> words = mask.Words();
+        for (int word = 0; word < words.Length; word++)
+        {
+            words[word] = (uint)touched[2 * word] | ((ulong)(uint)touched[2 * word + 1] << 32);
+        }
+
+        return mask;
     }
 
     /// <param name="Stem">The 31-byte stem shared by every write in <paramref name="Changes"/>.</param>

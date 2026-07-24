@@ -192,8 +192,9 @@ public static partial class TrieUpdater
                 ? NewInternalNode(targetHash)
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
             // a seeded run is the one occupant a frame can start with that is not a pointer to a blob
-            ulong occupantsOccupied = 1UL << targetSlot;
-            BoundarySlotMasks occupantsShape = new(occupantsOccupied, Stems: 0, directChild ? 0 : occupantsOccupied);
+            SlotBitmask<TLayout> occupantsOccupied = SlotBitmask<TLayout>.Of(targetSlot);
+            BoundarySlotMasks<TLayout> occupantsShape = new(
+                occupantsOccupied, Stems: default, directChild ? default : occupantsOccupied);
 
             // The group this split makes real clusters its children where its depth says so, and the target
             // is one of them: its blob moves out of the key the run left it under and into the cluster
@@ -213,11 +214,10 @@ public static partial class TrieUpdater
             PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, fanout, results, ref writer, ref builder)
-                .MergeUntouched(occupantsShape);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsShape, plan, fanout, results, ref writer, ref builder);
             // The seeded run is held by no encoding, so nothing can read it back later: it rides on in
             // `results` unless the descent already refreshed its slot.
-            if ((shape.TouchedBitmask >> targetSlot & 1) == 0)
+            if (!shape.Touched[targetSlot])
             {
                 NodeResult seeded = seed;
 

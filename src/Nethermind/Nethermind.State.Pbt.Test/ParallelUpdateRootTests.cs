@@ -15,11 +15,18 @@ namespace Nethermind.State.Pbt.Test;
 /// folded on one. Nothing about the result is allowed to depend on which thread took which bucket, so
 /// every assertion here compares a parallel fold against a serial one over the same writes.
 /// </summary>
-/// <param name="format"><inheritdoc cref="StemTrieTests" path="/param[@name='format']"/></param>
-[TestFixture(PbtGroupFormat.EveryLevel)]
-[TestFixture(PbtGroupFormat.Interleaved)]
-[TestFixture(PbtGroupFormat.BoundaryOnly)]
-public class ParallelUpdateRootTests(PbtGroupFormat format)
+/// <remarks>
+/// Run under every layout: a job settles its result into its parent's boundary by slot, so a tiling
+/// whose boundary is wider than a machine word is what a slot-indexed mask has to be right about.
+/// </remarks>
+/// <param name="layout"><inheritdoc cref="PbtTilingTests" path="/param[@name='layout']"/></param>
+[TestFixture(PbtTrieLayout.ClusteredFourLevelEveryLevel)]
+[TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+[TestFixture(PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
+[TestFixture(PbtTrieLayout.SixLevelInterleaved)]
+[TestFixture(PbtTrieLayout.EightLevelInterleaved)]
+[TestFixture(PbtTrieLayout.EightLevelEvery4Depth)]
+public class ParallelUpdateRootTests(PbtTrieLayout layout)
 {
     private const int Workers = 8;
 
@@ -40,8 +47,8 @@ public class ParallelUpdateRootTests(PbtGroupFormat format)
             Random rng = new(repeat);
             List<(byte[] Key, byte[]? Value)> writes = Writes(rng, accountStems, contracts, slotsPerContract);
 
-            PbtTreeHarness serial = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format)) { RootFoldConcurrency = 1 };
-            PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format)) { RootFoldConcurrency = Workers };
+            PbtTreeHarness serial = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = 1 };
+            PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = Workers };
 
             Assert.That(parallel.ApplyBatch(writes), Is.EqualTo(serial.ApplyBatch(writes)), $"root mismatch on repeat {repeat}");
             AssertStoresMatch(serial, parallel);
@@ -61,8 +68,8 @@ public class ParallelUpdateRootTests(PbtGroupFormat format)
             Random rng = new(repeat);
             List<(byte[] Key, byte[]? Value)> writes = Writes(rng, accountStems: 1000, contracts: 8, slotsPerContract: 200);
 
-            PbtTreeHarness serial = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format)) { RootFoldConcurrency = 1 };
-            PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format)) { RootFoldConcurrency = Workers };
+            PbtTreeHarness serial = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = 1 };
+            PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = Workers };
 
             Assert.That(parallel.ApplyDrainedBatch(writes), Is.EqualTo(serial.ApplyDrainedBatch(writes)), $"root mismatch on repeat {repeat}");
             AssertStoresMatch(serial, parallel);
@@ -82,8 +89,8 @@ public class ParallelUpdateRootTests(PbtGroupFormat format)
         for (int repeat = 0; repeat < Repeats; repeat++)
         {
             Random rng = new(repeat);
-            PbtTreeHarness serial = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format)) { RootFoldConcurrency = 1 };
-            PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format)) { RootFoldConcurrency = Workers };
+            PbtTreeHarness serial = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = 1 };
+            PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = Workers };
 
             List<(byte[] Key, byte[]? Value)> live = Writes(rng, accountStems: 2000, contracts: 8, slotsPerContract: 100);
             serial.ApplyBatch(live);
@@ -122,7 +129,7 @@ public class ParallelUpdateRootTests(PbtGroupFormat format)
     {
         Random rng = new(17);
         TrackingMemoryProvider provider = new();
-        PbtTreeHarness harness = new(provider, PbtTestFormats.Clustered(format)) { RootFoldConcurrency = Workers };
+        PbtTreeHarness harness = new(provider, layout) { RootFoldConcurrency = Workers };
 
         List<(byte[] Key, byte[]? Value)> live = Writes(rng, accountStems: 2000, contracts: 8, slotsPerContract: 100);
         harness.ApplyBatch(live);
@@ -142,7 +149,7 @@ public class ParallelUpdateRootTests(PbtGroupFormat format)
     [Test]
     public void ParallelFold_RethrowsWhatAWorkerThrew()
     {
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format)) { RootFoldConcurrency = Workers };
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = Workers };
 
         // one stem added twice, which the descent rejects once it has consumed the whole stem; the batch
         // is big enough that the bucket holding it is likely to be one a worker took
@@ -158,7 +165,7 @@ public class ParallelUpdateRootTests(PbtGroupFormat format)
         batch.Add(duplicate, PbtStemChanges.Rent().Set(2, new ValueHash256(Value(rng))));
 
         Assert.That(
-            () => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format), Workers, out _),
+            () => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance, layout, Workers, out _),
             Throws.InstanceOf<InvalidOperationException>());
     }
 

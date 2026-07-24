@@ -87,12 +87,11 @@ public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
     {
         if (IsBare) return default;
 
-        ulong bit = 1UL << slot;
-        ulong childSlotsBitmask = ChildSlotsBitmask(group);
-        if ((childSlotsBitmask & bit) == 0) return default;
+        SlotBitmask<TLayout> childSlots = group.BoundaryShape().ChildSlots;
+        if (!childSlots[slot]) return default;
 
-        int tableOffset = GroupOffset - BitOperations.PopCount(childSlotsBitmask) * OffsetLength;
-        int index = BitOperations.PopCount(childSlotsBitmask & (bit - 1));
+        int tableOffset = GroupOffset - childSlots.Count * OffsetLength;
+        int index = childSlots.CountBelow(slot);
         return (index == 0 ? 0 : ChildEnd(tableOffset, index - 1))..ChildEnd(tableOffset, index);
     }
 
@@ -119,8 +118,7 @@ public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
         if (groupOffset <= 0) throw new InvalidDataException($"Trie node cluster of {data.Length} bytes says its group is {GroupLength(data)}");
 
         group = PbtTrieNodeGroup<TLayout>.Decode(data[groupOffset..^TrailerLength]);
-        ulong childSlotsBitmask = ChildSlotsBitmask(group);
-        int count = BitOperations.PopCount(childSlotsBitmask);
+        int count = group.BoundaryShape().ChildSlots.Count;
         if (count == 0) throw new InvalidDataException("Trie node cluster holds a group that roots no child blob");
 
         int tableOffset = groupOffset - count * OffsetLength;
@@ -141,12 +139,6 @@ public readonly ref struct PbtNodeCluster(ReadOnlySpan<byte> data)
 
         return cluster;
     }
-
-    /// <summary>
-    /// The boundary slots rooting a blob of their own: a group's boundary internals, exactly. A slot
-    /// holding a stem or a run roots none — both live in the group's own encoding.
-    /// </summary>
-    private static ulong ChildSlotsBitmask<TLayout>(in PbtTrieNodeGroup<TLayout> group) where TLayout : IPbtTileLayout => group.BoundaryShape().ChildSlots;
 
     private static int GroupLength(ReadOnlySpan<byte> data) => BinaryPrimitives.ReadUInt16LittleEndian(data[^TrailerLength..]);
 

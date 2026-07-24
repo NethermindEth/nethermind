@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -19,15 +20,14 @@ internal static class PbtBitset
     public static void Set(Span<ulong> words, int bit) =>
         words[bit / BitsPerWord] |= 1UL << (bit % BitsPerWord);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Clear(Span<ulong> words, int bit) =>
-        words[bit / BitsPerWord] &= ~(1UL << (bit % BitsPerWord));
-
-    public static void Copy(ReadOnlySpan<ulong> source, Span<ulong> destination) => source.CopyTo(destination);
-
     public static void Or(Span<ulong> destination, ReadOnlySpan<ulong> source)
     {
         for (int i = 0; i < destination.Length; i++) destination[i] |= source[i];
+    }
+
+    public static void And(Span<ulong> destination, ReadOnlySpan<ulong> source)
+    {
+        for (int i = 0; i < destination.Length; i++) destination[i] &= source[i];
     }
 
     public static void AndNot(Span<ulong> destination, ReadOnlySpan<ulong> excluded)
@@ -75,35 +75,66 @@ internal static class PbtBitset
         return -1;
     }
 
-    public static int PopCountRange(ReadOnlySpan<ulong> words, int firstBit, int width)
+    /// <summary>
+    /// The one word holding <c>[firstBit, firstBit + width)</c>, masked to that range; <c>false</c>
+    /// where the range spans more than one.
+    /// </summary>
+    /// <remarks>
+    /// The fold asks about power-of-two ranges aligned to their own width, so every range up to a word
+    /// wide takes this path and the loops below run only for a tiling wider than one — where that same
+    /// alignment leaves them whole words to walk, which is what they assume.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryRangeWord(ReadOnlySpan<ulong> words, int firstBit, int width, out ulong masked)
     {
-        int count = 0;
-        int end = firstBit + width;
-        int word = firstBit / BitsPerWord;
         int offset = firstBit % BitsPerWord;
-
-        while (firstBit < end)
+        if (offset + width > BitsPerWord)
         {
-            int bits = Math.Min(BitsPerWord - offset, end - firstBit);
-            ulong mask = ulong.MaxValue >> (BitsPerWord - bits) << offset;
-            count += BitOperations.PopCount(words[word] & mask);
-            firstBit += bits;
-            word++;
-            offset = 0;
+            Debug.Assert(offset == 0 && width % BitsPerWord == 0, "a range past one word must be word-aligned");
+            masked = 0;
+            return false;
         }
 
+        // a range as wide as the word shifts its one bit clean out, which C# wraps back to bit zero
+        ulong mask = width == BitsPerWord ? ulong.MaxValue : ((1UL << width) - 1) << offset;
+        masked = words[firstBit / BitsPerWord] & mask;
+        return true;
+    }
+
+    public static int PopCountRange(ReadOnlySpan<ulong> words, int firstBit, int width)
+    {
+        if (TryRangeWord(words, firstBit, width, out ulong single)) return BitOperations.PopCount(single);
+
+        int count = 0;
+        int end = firstBit + width;
+        for (int word = firstBit / BitsPerWord; word < end / BitsPerWord; word++) count += BitOperations.PopCount(words[word]);
         return count;
     }
 
-    public static bool AnyInRange(ReadOnlySpan<ulong> words, int firstBit, int width) =>
-        PopCountRange(words, firstBit, width) != 0;
+    public static bool AnyInRange(ReadOnlySpan<ulong> words, int firstBit, int width)
+    {
+        if (TryRangeWord(words, firstBit, width, out ulong single)) return single != 0;
+
+        int end = firstBit + width;
+        for (int word = firstBit / BitsPerWord; word < end / BitsPerWord; word++)
+        {
+            if (words[word] != 0) return true;
+        }
+
+        return false;
+    }
 
     public static int FirstSetInRange(ReadOnlySpan<ulong> words, int firstBit, int width)
     {
-        int end = firstBit + width;
-        for (int bit = firstBit; bit < end; bit++)
+        if (TryRangeWord(words, firstBit, width, out ulong single))
         {
-            if (Contains(words, bit)) return bit;
+            return single == 0 ? -1 : firstBit / BitsPerWord * BitsPerWord + BitOperations.TrailingZeroCount(single);
+        }
+
+        int end = firstBit + width;
+        for (int word = firstBit / BitsPerWord; word < end / BitsPerWord; word++)
+        {
+            if (words[word] != 0) return word * BitsPerWord + BitOperations.TrailingZeroCount(words[word]);
         }
 
         return -1;
