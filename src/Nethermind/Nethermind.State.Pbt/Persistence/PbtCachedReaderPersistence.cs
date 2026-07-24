@@ -24,6 +24,15 @@ namespace Nethermind.State.Pbt.Persistence;
 /// prunes the layers a stale floor would still be walked to. A snapshot also pins the SST files it was
 /// taken over, holding off compaction, so the cache is dropped periodically even when nothing is
 /// written.
+/// <para>
+/// The entry is also what keeps a reader from ever observing a half-applied batch: it is taken before
+/// the batch starts and pinned until after the batch is disposed, so nothing takes a snapshot while
+/// the columns are being written. Not every backend applies a batch atomically across the columns -
+/// the in-memory column store commits one column at a time, and rocksdb splits a
+/// <see cref="WriteFlags.DisableWAL"/> batch into chunks - and a torn snapshot is worse than a stale
+/// one: a metadata column ahead of the leaf columns yields a reader whose <c>CurrentState</c> is a
+/// floor the layers holding the missing writes sit below, so they are walked past rather than read.
+/// </para>
 /// </remarks>
 public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposable
 {
@@ -35,6 +44,11 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     private readonly Task _clearWorker;
 
     private SharedReader? _cachedReader;
+
+    /// <summary>How many write batches are open, and so must keep <see cref="_cachedReader"/> as it is.</summary>
+    /// <remarks>Read and written under <see cref="_cacheLock"/> only.</remarks>
+    private int _pinDepth;
+
     private int _isDisposed;
 
     public PbtCachedReaderPersistence(IPbtPersistence inner, IProcessExitSource processExitSource)
@@ -47,6 +61,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     /// <remarks>
     /// The returned reader may be shared with other callers; disposing it releases only this caller's
     /// lease, and the snapshot underneath lives until the cache drops it and every lease is gone.
+    /// While a write batch is open the entry is pinned, so this hands back the snapshot taken before
+    /// that batch rather than taking one of its own.
     /// </remarks>
     public IPbtPersistence.IReader CreateReader()
     {
@@ -62,26 +78,92 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         return _cachedReader;
     }
 
-    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 toTreeRoot, WriteFlags flags) =>
-        new CacheClearingWriteBatch(_inner.CreateWriteBatch(from, to, toTreeRoot, flags), this);
+    /// <remarks>
+    /// Takes the shared snapshot before handing the batch out, so every reader for the batch's
+    /// lifetime is served the state it started from and none is taken while it is being applied.
+    /// </remarks>
+    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 toTreeRoot, WriteFlags flags)
+    {
+        PinReaderCache();
+        try
+        {
+            return new CacheClearingWriteBatch(_inner.CreateWriteBatch(from, to, toTreeRoot, flags), this);
+        }
+        catch
+        {
+            // a batch that was never handed out will never be disposed, and a pin left behind would
+            // keep the cache from ever dropping a snapshot again
+            UnpinReaderCache();
+            throw;
+        }
+    }
 
     public void Flush() => _inner.Flush();
 
-    /// <remarks>
-    /// Unpublishes before releasing, so a concurrent <see cref="CreateReader"/> either leases the entry
-    /// while it is still published, or misses it and takes a fresh snapshot. Readers already handed out
-    /// keep their snapshot alive on their own leases.
-    /// </remarks>
-    private void ClearReaderCache()
+    /// <summary>Publishes a snapshot if there is none, and holds whatever is published against being dropped.</summary>
+    private void PinReaderCache()
     {
-        SharedReader? cached;
+        using Lock.Scope _ = _cacheLock.EnterScope();
+
+        // the cache holds a lease of its own for as long as it publishes an entry, so the pin alone
+        // is enough to keep this reader alive and current for every caller until it is released
+        _cachedReader ??= new SharedReader(_inner.CreateReader());
+        _pinDepth++;
+    }
+
+    /// <summary>Releases one pin, dropping the snapshot once it was the last one.</summary>
+    /// <remarks>
+    /// The batch that took the pin has committed by the time this runs, which is what makes the
+    /// snapshot stale, so the last release drops it rather than leaving it published.
+    /// </remarks>
+    private void UnpinReaderCache()
+    {
+        SharedReader? cached = null;
         using (_cacheLock.EnterScope())
         {
-            cached = _cachedReader;
-            _cachedReader = null;
+            if (--_pinDepth == 0) cached = Unpublish();
         }
 
         cached?.Dispose();
+    }
+
+    /// <summary>Drops the published snapshot unless a write batch is holding it.</summary>
+    private void ClearReaderCache()
+    {
+        SharedReader? cached = null;
+        using (_cacheLock.EnterScope())
+        {
+            if (_pinDepth == 0) cached = Unpublish();
+        }
+
+        cached?.Dispose();
+    }
+
+    /// <summary>Drops the published snapshot whether or not a write batch is holding it.</summary>
+    /// <remarks>
+    /// For shutdown, where a batch that outlives this decorator would otherwise leak the snapshot;
+    /// its <see cref="UnpinReaderCache"/> then finds nothing published and is a no-op.
+    /// </remarks>
+    private void DropReaderCache()
+    {
+        SharedReader? cached;
+        using (_cacheLock.EnterScope()) cached = Unpublish();
+
+        cached?.Dispose();
+    }
+
+    /// <summary>Takes the entry out of the cache, passing the cache's own lease on to the caller.</summary>
+    /// <remarks>
+    /// Must be called under <see cref="_cacheLock"/>, and the entry disposed outside it. Unpublishing
+    /// before releasing means a concurrent <see cref="CreateReader"/> either leases the entry while it
+    /// is still published, or misses it and takes a fresh snapshot. Readers already handed out keep
+    /// their snapshot alive on their own leases.
+    /// </remarks>
+    private SharedReader? Unpublish()
+    {
+        SharedReader? cached = _cachedReader;
+        _cachedReader = null;
+        return cached;
     }
 
     private async Task RunClearWorker()
@@ -105,12 +187,12 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
 
         await _stopSource.CancelAsync();
         await _clearWorker;
-        ClearReaderCache();
+        DropReaderCache();
         _stopSource.Dispose();
     }
 
     /// <summary>A reader over a snapshot shared by everyone holding a lease on it.</summary>
-    /// <remarks>Constructed with the one lease the cache itself holds; <see cref="ClearReaderCache"/> releases it.</remarks>
+    /// <remarks>Constructed with the one lease the cache itself holds; whoever <see cref="Unpublish"/> hands it to releases it.</remarks>
     private sealed class SharedReader(IPbtPersistence.IReader inner) : RefCountingDisposable, IPbtPersistence.IReader
     {
         public StateId CurrentState => inner.CurrentState;
@@ -127,9 +209,10 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     }
 
     /// <remarks>
-    /// The commit is what makes the cached snapshot stale, so the cache is dropped on disposal rather
-    /// than on creation: a reader taken while the batch is still open sees the state the batch started
-    /// from, which is exactly what the writer itself reads back.
+    /// The commit is what makes the pinned snapshot stale, so the pin is released after the inner
+    /// batch is disposed and not before: until then every reader sees the state the batch started
+    /// from, which is exactly what the writer itself reads back, and no reader can catch the columns
+    /// mid-apply.
     /// </remarks>
     private sealed class CacheClearingWriteBatch(IPbtPersistence.IWriteBatch inner, PbtCachedReaderPersistence parent) : IPbtPersistence.IWriteBatch
     {
@@ -140,7 +223,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public void Dispose()
         {
             inner.Dispose();
-            parent.ClearReaderCache();
+            parent.UnpinReaderCache();
         }
     }
 }
