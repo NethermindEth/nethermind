@@ -138,6 +138,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void CommitTree(ulong blockNumber)
         => State.CommitTree(blockNumber);
 
+    public virtual bool ShouldComputeStateRoot(BlockHeader header)
+        => State.ShouldComputeStateRoot(header);
+
     public virtual ArrayPoolList<AddressAsKey>? GetAccountChanges()
         => State.GetAccountChanges();
 

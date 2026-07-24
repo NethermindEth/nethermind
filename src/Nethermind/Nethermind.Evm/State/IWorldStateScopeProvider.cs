@@ -31,6 +31,19 @@ public interface IWorldStateScopeProvider
         void UpdateRootHash();
 
         /// <summary>
+        /// Whether the block processor should compute and verify the state root for the block described by
+        /// <paramref name="header"/>. Defaults to <c>true</c> (compute every block). A deferred-materialization
+        /// backend (see <c>FlatDb.CommitBatchSize</c>) returns <c>false</c> for interior blocks of a window so
+        /// their trusted downloaded root is kept unverified, and <c>true</c> at window boundaries where the trie is
+        /// materialized and the recomputed root must be verified.
+        /// </summary>
+        /// <remarks>
+        /// Called once per block before its commit, so a backend may also use it to capture the block's trusted
+        /// header root for keying the interior snapshot it produces in <see cref="Commit"/>.
+        /// </remarks>
+        bool ShouldComputeStateRoot(BlockHeader header) => true;
+
+        /// <summary>
         /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
         /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
         /// </summary>

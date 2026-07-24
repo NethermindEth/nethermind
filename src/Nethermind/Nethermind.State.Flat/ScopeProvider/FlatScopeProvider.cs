@@ -44,7 +44,10 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             warmReadPool: _warmReadPool,
-            isReadOnly: isReadOnly);
+            isReadOnly: isReadOnly,
+            // Deferred state-root materialization (FlatDb.CommitBatchSize > 1) applies only to the writable
+            // main block-processing scope; read-only envs need the real root per block, so batching is off there.
+            batchManager: isReadOnly ? null : flatDbManager);
     }
 
     public void Dispose()

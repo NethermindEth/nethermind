@@ -115,7 +115,11 @@ public partial class BlockProcessor(
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
-        !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
+        (!header.IsGenesis || !_specProvider.GenesisStateUnavailable)
+        // Deferred-materialization backends (FlatDb.CommitBatchSize > 1) skip interior blocks of a window,
+        // keeping the trusted downloaded root, and verify only at boundaries. A no-op (returns true) for the
+        // default backend and when CommitBatchSize == 1.
+        && _stateProvider.ShouldComputeStateRoot(header);
 
     protected virtual BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec) =>
         new(header, spec);

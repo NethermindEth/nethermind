@@ -37,6 +37,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public void UpdateRootHash() => baseScope.UpdateRootHash();
 
+        public bool ShouldComputeStateRoot(BlockHeader header) => baseScope.ShouldComputeStateRoot(header);
+
         public Account? Get(Address address) => baseScope.Get(address);
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);

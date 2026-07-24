@@ -124,6 +124,8 @@ public class PrewarmerScopeProvider(
 
         public Hash256 RootHash => baseScope.RootHash;
 
+        public bool ShouldComputeStateRoot(BlockHeader header) => baseScope.ShouldComputeStateRoot(header);
+
         public void UpdateRootHash()
         {
             if (!_measureMetric)

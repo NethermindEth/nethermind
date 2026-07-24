@@ -148,6 +148,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CommitTree(int blockNumber) => CommitTree((ulong)blockNumber);
 
+    /// <summary>
+    /// Whether the block processor should compute and verify the state root for <paramref name="header"/>.
+    /// Defaults to <c>true</c>. A deferred-materialization backend (see <c>FlatDb.CommitBatchSize</c>) returns
+    /// <c>false</c> for interior blocks of a window (their downloaded root is kept unverified) and <c>true</c> at
+    /// window boundaries where the trie is materialized and the recomputed root is verified.
+    /// </summary>
+    bool ShouldComputeStateRoot(BlockHeader header) => true;
+
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
     void ResetTransient();

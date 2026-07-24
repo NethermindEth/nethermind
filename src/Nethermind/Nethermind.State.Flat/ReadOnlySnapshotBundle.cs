@@ -220,6 +220,27 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
+    /// <summary>
+    /// Feeds the in-memory snapshots ending after <paramref name="windowStartBlock"/> into the deferred-
+    /// materialization window dirty union (see <see cref="SnapshotBundle.CollectWindowDirtyUnion"/>). The
+    /// persisted tier is at or below the last materialized boundary, hence pre-window, so it is not visited.
+    /// </summary>
+    internal void CollectWindowDirtyUnion(
+        ulong windowStartBlock,
+        HashSet<AddressAsKey> dirtyAccounts,
+        Dictionary<AddressAsKey, HashSet<UInt256>> dirtyStorage,
+        HashSet<AddressAsKey> selfDestructedInWindow)
+    {
+        GuardDispose();
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            Snapshot s = snapshots[i];
+            if (s.To.BlockNumber > windowStartBlock)
+                SnapshotBundle.CollectDirty(s.Accounts, s.Storages, s.SelfDestructedStorageAddresses,
+                    dirtyAccounts, dirtyStorage, selfDestructedInWindow);
+        }
+    }
+
     private void GuardDispose()
     {
         if (_isDisposed) throw new ObjectDisposedException($"{nameof(ReadOnlySnapshotBundle)} is disposed");

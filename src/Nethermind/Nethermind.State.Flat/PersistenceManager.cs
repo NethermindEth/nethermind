@@ -53,6 +53,7 @@ public class PersistenceManager(
         configuration.EnableLongFinality ? configuration.LongFinalityMaxReorgDepth : configuration.MaxReorgDepth,
         configuration.MinReorgDepth + configuration.CompactSize);
     private readonly ulong _compactSize = configuration.CompactSize;
+    private readonly ulong _commitBatchSize = configuration.CommitBatchSize;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
@@ -139,7 +140,13 @@ public class PersistenceManager(
                 (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
                     new StateId(nextBoundary, canonicalRoot), currentPersistedState, _compactSize);
                 if (persisted is not null || inMemory is not null)
-                    return (persisted, inMemory, null);
+                {
+                    if (IsMaterializationBoundary(persisted?.To ?? inMemory!.To))
+                        return (persisted, inMemory, null);
+                    // Interior (unmaterialized) candidate; drop and wait for a boundary-ending one.
+                    persisted?.Dispose();
+                    inMemory?.Dispose();
+                }
             }
         }
 
@@ -158,10 +165,17 @@ public class PersistenceManager(
                 snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null)
             {
-                if (_logger.IsWarn) _logger.Warn(
-                    $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}; " +
-                    $"forcing persistence to bound memory (finalized block {finalizedBlockNumber}).");
-                return (persisted, inMemory, null);
+                // Never force-persist an unmaterialized interior root; wait for the next boundary candidate
+                // (at most CommitBatchSize blocks away, so memory stays bounded).
+                if (IsMaterializationBoundary(persisted?.To ?? inMemory!.To))
+                {
+                    if (_logger.IsWarn) _logger.Warn(
+                        $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}; " +
+                        $"forcing persistence to bound memory (finalized block {finalizedBlockNumber}).");
+                    return (persisted, inMemory, null);
+                }
+                persisted?.Dispose();
+                inMemory?.Dispose();
             }
         }
 
@@ -213,7 +227,9 @@ public class PersistenceManager(
         {
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
 
-            if (IsOnDisk(baseSnap!.From, currentPersistedState))
+            // Skip interior (unmaterialized) bases: converting one would move an unbacked root into the
+            // persisted tier. No-op when CommitBatchSize == 1.
+            if (IsOnDisk(baseSnap!.From, currentPersistedState) && IsMaterializationBoundary(baseSnap.To))
             {
                 return new ConversionCandidate(Compacted: null, baseSnap);
             }
@@ -225,6 +241,14 @@ public class PersistenceManager(
 
     private bool IsOnDisk(in StateId state, in StateId currentPersistedState) =>
         state == currentPersistedState || snapshotRepository.HasBasePersistedSnapshot(state);
+
+    // A snapshot ending at a deferred-materialization interior block carries flat KVs but no state-trie
+    // nodes for its (unverified) root, so persisting/converting it would leave the persisted root unbacked.
+    // Only snapshots ending at a materialization boundary may be flushed. CompactSize % CommitBatchSize == 0
+    // makes every persist boundary a materialization boundary, so this is a no-op guard in normal operation
+    // (and always true when CommitBatchSize == 1). See FlatDbConfigExtensions.ValidateCommitBatchSize.
+    private bool IsMaterializationBoundary(in StateId to) =>
+        schedule.IsMaterializationBoundary(to.BlockNumber, _commitBatchSize);
 
     internal sealed record ConversionCandidate(Snapshot? Compacted, Snapshot? Base);
 
@@ -433,6 +457,16 @@ public class PersistenceManager(
             (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
                 snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
 
+            // Never flush to an unmaterialized interior root: stop at the last boundary (the remaining
+            // interior blocks re-sync from there). No-op when CommitBatchSize == 1.
+            if ((persisted is not null || snapshotToPersist is not null)
+                && !IsMaterializationBoundary(persisted?.To ?? snapshotToPersist!.To))
+            {
+                persisted?.Dispose();
+                snapshotToPersist?.Dispose();
+                break;
+            }
+
             if (persisted is not null)
             {
                 using PersistedSnapshot persistedScope = persisted;
@@ -474,6 +508,10 @@ public class PersistenceManager(
 
     internal void PersistSnapshot(Snapshot snapshot)
     {
+        // Belt and suspenders: selection paths above already reject interior (unmaterialized) targets, so a
+        // trie-less snapshot must never reach here — its root would be persisted without backing trie nodes.
+        Debug.Assert(IsMaterializationBoundary(snapshot.To), $"Persisting unmaterialized interior snapshot {snapshot.To}");
+
         // Make this block's deferred block-data durable before its state (see IStatePersistenceBarrier).
         // A throw must abort the persist (state not yet written, so the invariant holds); log first because
         // the background persistence loop that unwinds this does not otherwise report it.

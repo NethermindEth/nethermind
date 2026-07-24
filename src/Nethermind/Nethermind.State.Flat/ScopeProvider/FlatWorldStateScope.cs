@@ -29,6 +29,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
 
+    // Deferred state-root materialization (FlatDb.CommitBatchSize > 1). In batch mode the scope runs every block
+    // trie-less during execution and materializes + verifies the trie once per window at its boundary.
+    private readonly IFlatDbManager? _batchManager;
+    private readonly bool _batchMode;
+    // The trusted downloaded state root of the block currently being committed, captured in
+    // ShouldComputeStateRoot; used to key interior (unverified) snapshots since their real root is never computed.
+    private Hash256? _pendingTrustedStateRoot;
+    // Set once the current boundary block's window has been materialized (in UpdateRootHash) so Commit does not
+    // redo it; reset per block at the end of Commit.
+    private bool _boundaryReady;
+
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
@@ -48,8 +59,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
-    // A history-backed scope is trie-less: it performs flat reads/writes (overlay + columns) but ZERO trie node
-    // loads, writes or hashing. Read by FlatStorageTree to skip storage-trie bulk writes/root computation.
+    // A trie-less scope performs flat reads/writes (overlay + columns) but ZERO per-block trie node loads,
+    // writes or hashing. True for a history-backed scope and for a deferred-materialization (batch) scope.
+    // Read by FlatStorageTree to skip storage-trie bulk writes/root computation.
     internal bool Trieless => _trieless;
 
     public FlatWorldStateScope(
@@ -61,7 +73,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        IFlatDbManager? batchManager = null)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
@@ -93,8 +106,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
 
-        // A history-backed scope is trie-less: post-block state-root recomputation must not traverse the state trie.
-        _trieless = snapshotBundle.IsHistorical;
+        // Deferred state-root materialization only applies to the writable main processing scope; a read-only env
+        // (eth_call, block production trial, overridable/simulate) always needs the real root per block.
+        _batchManager = batchManager;
+        _batchMode = !isReadOnly && batchManager is { CommitBatchSize: > 1 };
+
+        // Trie-less during execution when history-backed OR deferring materialization: post-block state-root
+        // recomputation must not traverse the (unmaterialized) state trie per block. Batch scopes instead
+        // materialize + verify once per window at its boundary (see MaterializeBoundary).
+        _trieless = snapshotBundle.IsHistorical || _batchMode;
     }
 
     public void Dispose()
@@ -148,7 +168,125 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void UpdateRootHash()
     {
-        if (!_trieless) _stateTree.UpdateRootHash();
+        if (_batchMode)
+        {
+            // Interior blocks keep their trusted downloaded root (no per-block trie work). At a window boundary,
+            // materialize the window's dirty union onto the last-materialized root and compute the real root so
+            // the block processor can verify it against the header.
+            if (IsCurrentBlockBoundary()) MaterializeBoundary();
+        }
+        else if (!_trieless)
+        {
+            _stateTree.UpdateRootHash();
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool ShouldComputeStateRoot(BlockHeader header)
+    {
+        if (!_batchMode) return true;
+
+        // Capture the block's trusted downloaded root so the interior snapshot produced by Commit can be keyed
+        // by it (an interior block's real root is deliberately never computed). Called once per block before
+        // its commit; refreshed for every block in a multi-block branch scope.
+        _pendingTrustedStateRoot = header.StateRoot;
+        return _batchManager!.IsMaterializationBoundary((ulong)header.Number);
+    }
+
+    private bool IsCurrentBlockBoundary() =>
+        _batchManager!.IsMaterializationBoundary(_currentStateId.BlockNumber + 1);
+
+    /// <summary>
+    /// Materializes the deferred window (last-materialized boundary, current boundary block] into the state trie
+    /// and computes its real root. Seeds the state tree at the last-materialized root, rebuilds every dirty
+    /// account (and its storage trie) from the CURRENT flat values across the window, and hashes the result.
+    /// The block processor then verifies the computed root against the downloaded header at this boundary.
+    /// </summary>
+    private void MaterializeBoundary()
+    {
+        // The trie warmer may still be draining hints that touch the bundle; quiesce it before we rebuild trees.
+        _pausePrewarmer = true;
+        WaitForOutstandingWarmups();
+
+        StateId? lastMaterialized = _batchManager!.GetLastMaterializedStateId();
+        Hash256 seedRoot = lastMaterialized is { } lm ? lm.StateRoot.ToCommitment() : Keccak.EmptyTreeHash;
+        // Exclusive window start: snapshots ending at or before the last materialized boundary are already folded
+        // into the seed root. Genesis (no prior boundary) seeds the empty tree and takes only the current content.
+        ulong windowStartBlock = lastMaterialized?.BlockNumber ?? 0;
+
+        // Re-root at the last materialized boundary (its nodes resolve from the snapshot chain / persisted tier),
+        // discarding the stale interior seed carried since scope construction.
+        _stateTree.RootHash = seedRoot;
+
+        HashSet<AddressAsKey> dirtyAccounts = [];
+        Dictionary<AddressAsKey, HashSet<UInt256>> dirtyStorage = [];
+        HashSet<AddressAsKey> selfDestructedInWindow = [];
+        _snapshotBundle.CollectWindowDirtyUnion(windowStartBlock, dirtyAccounts, dirtyStorage, selfDestructedInWindow);
+
+        // Recompute each dirty account's storage root from current flat slot values, seeded at its pre-window
+        // storage root — or the empty root when it self-destructed in-window, so wiped slots do not survive.
+        Dictionary<AddressAsKey, Hash256> newStorageRoots = new(dirtyStorage.Count);
+        foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> entry in dirtyStorage)
+        {
+            Address address = entry.Key.Value;
+            if (_snapshotBundle.GetAccount(address) is null) continue; // deleted; storage association is gone
+
+            Hash256 preWindowRoot = selfDestructedInWindow.Contains(entry.Key)
+                ? Keccak.EmptyTreeHash
+                : _stateTree.Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+
+            newStorageRoots[entry.Key] = RecomputeStorageRoot(address, preWindowRoot, entry.Value);
+        }
+
+        // Determine each dirty account's authoritative storage root BEFORE opening the bulk setter (trie reads
+        // must not interleave with BeginSet). Storage-changed accounts use the recomputed root. For accounts
+        // changed only in balance/nonce the flat account's StorageRoot is STALE in trie-less batch mode (it is
+        // never updated when storage changes in an interior block, and a later balance-only write propagates the
+        // stale value), so it must not be trusted — read the account's storage root from the materialized seed
+        // tree instead: storage was unchanged this window, so that root is still current.
+        Dictionary<AddressAsKey, Account?> reconciled = new(dirtyAccounts.Count);
+        foreach (AddressAsKey addressKey in dirtyAccounts)
+        {
+            Address address = addressKey.Value;
+            Account? account = _snapshotBundle.GetAccount(address);
+            if (account is not null)
+            {
+                Hash256 storageRoot = newStorageRoots.TryGetValue(addressKey, out Hash256? recomputed)
+                    ? recomputed
+                    : _stateTree.Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+                account = account.WithChangedStorageRoot(storageRoot);
+            }
+            reconciled[addressKey] = account;
+        }
+
+        // A null read means self-destruct or EIP-158 empty, i.e. delete.
+        using (StateTree.StateTreeBulkSetter setter = _stateTree.BeginSet(dirtyAccounts.Count))
+        {
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in reconciled)
+                setter.Set(kv.Key.Value, kv.Value);
+        }
+
+        _stateTree.UpdateRootHash();
+        _boundaryReady = true;
+    }
+
+    private Hash256 RecomputeStorageRoot(Address address, Hash256 preWindowRoot, HashSet<UInt256> dirtySlots)
+    {
+        Hash256 addressHash = address.ToAccountPath.ToHash256();
+        StorageTree storageTree = new(
+            new StorageTrieStoreAdapter(_snapshotBundle, _concurrencyQuota, addressHash),
+            preWindowRoot,
+            _logManager);
+
+        int selfDestructIdx = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+        foreach (UInt256 slot in dirtySlots)
+        {
+            byte[]? value = _snapshotBundle.GetSlot(address, slot, selfDestructIdx);
+            storageTree.Set(slot, value is null || value.Length == 0 ? StorageTree.ZeroBytes : value);
+        }
+
+        storageTree.Commit();
+        return storageTree.RootHash;
     }
 
     public Account? Get(Address address)
@@ -440,14 +578,38 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        // Storage tree commits already happened during WriteBatch.Dispose() via
-        // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        if (!_trieless) _stateTree.Commit();
+        Hash256 committedRoot;
+        if (_batchMode)
+        {
+            if (_batchManager!.IsMaterializationBoundary(blockNumber))
+            {
+                // Fallback for a path reaching Commit without a prior ComputeStateRoot (e.g. genesis load).
+                if (!_boundaryReady) MaterializeBoundary();
+                // Persist the materialized window's trie nodes and key by the real, verified root.
+                _stateTree.Commit();
+                committedRoot = _stateTree.RootHash;
+            }
+            else
+            {
+                // Interior block: no trie nodes are produced. Key by the trusted downloaded root so the next
+                // block's scope (gathered at that root) chains onto this snapshot. Verification is deferred to
+                // the next window boundary.
+                committedRoot = _pendingTrustedStateRoot ?? _stateTree.RootHash;
+            }
+            _boundaryReady = false;
+        }
+        else
+        {
+            // Storage tree commits already happened during WriteBatch.Dispose() via
+            // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
+            if (!_trieless) _stateTree.Commit();
+            committedRoot = _stateTree.RootHash;
+        }
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
 
-        StateId newStateId = new(blockNumber, RootHash);
+        StateId newStateId = new(blockNumber, committedRoot);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
 

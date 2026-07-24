@@ -447,6 +447,77 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
+    /// <summary>
+    /// Collects the deferred-materialization window's dirty union: every account address, per-account dirty
+    /// storage slot, and in-window self-destruct across the current (uncommitted) block plus every snapshot
+    /// ending after <paramref name="windowStartBlock"/> — this bundle's own committed snapshots and those
+    /// gathered from earlier scopes into the read-only chain. Persisted snapshots sit at or below the last
+    /// materialized boundary, so they are pre-window and skipped.
+    /// </summary>
+    /// <remarks>
+    /// Invariant: no snapshot straddles a materialization boundary (consecutive boundaries are exactly
+    /// CommitBatchSize apart and no wider compaction tier aligns strictly between them), so a
+    /// <c>To.BlockNumber &gt; windowStartBlock</c> filter yields exactly the in-window snapshots without pulling
+    /// in pre-window keys. Values are read at their current (block-b) state by the caller via
+    /// <see cref="GetAccount(Address)"/>/<see cref="GetSlot"/>; this only enumerates which keys changed.
+    /// </remarks>
+    internal void CollectWindowDirtyUnion(
+        ulong windowStartBlock,
+        HashSet<AddressAsKey> dirtyAccounts,
+        Dictionary<AddressAsKey, HashSet<UInt256>> dirtyStorage,
+        HashSet<AddressAsKey> selfDestructedInWindow)
+    {
+        GuardDispose();
+
+        // Current (uncommitted) block's writes.
+        CollectDirty(
+            _currentPooledContent.Accounts,
+            _currentPooledContent.Storages,
+            _currentPooledContent.SelfDestructedStorageAddresses,
+            dirtyAccounts, dirtyStorage, selfDestructedInWindow);
+
+        // In-window snapshots this bundle committed earlier in the branch.
+        for (int i = 0; i < _snapshots.Count; i++)
+        {
+            Snapshot s = _snapshots[i];
+            if (s.To.BlockNumber > windowStartBlock)
+                CollectDirty(s.Accounts, s.Storages, s.SelfDestructedStorageAddresses,
+                    dirtyAccounts, dirtyStorage, selfDestructedInWindow);
+        }
+
+        // In-window snapshots committed by earlier scopes, gathered into the read-only chain.
+        _readOnlySnapshotBundle.CollectWindowDirtyUnion(windowStartBlock, dirtyAccounts, dirtyStorage, selfDestructedInWindow);
+    }
+
+    internal static void CollectDirty(
+        IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> accounts,
+        IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> storages,
+        IEnumerable<KeyValuePair<HashedKey<Address>, bool>> selfDestructs,
+        HashSet<AddressAsKey> dirtyAccounts,
+        Dictionary<AddressAsKey, HashSet<UInt256>> dirtyStorage,
+        HashSet<AddressAsKey> selfDestructedInWindow)
+    {
+        foreach (KeyValuePair<HashedKey<Address>, Account?> kv in accounts)
+            dirtyAccounts.Add(kv.Key.Key);
+
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in storages)
+        {
+            (Address addr, UInt256 slot) = kv.Key.Key;
+            AddressAsKey key = addr;
+            dirtyAccounts.Add(key);
+            if (!dirtyStorage.TryGetValue(key, out HashSet<UInt256>? slots))
+                dirtyStorage[key] = slots = [];
+            slots.Add(slot);
+        }
+
+        foreach (KeyValuePair<HashedKey<Address>, bool> kv in selfDestructs)
+        {
+            AddressAsKey key = kv.Key.Key;
+            dirtyAccounts.Add(key);
+            selfDestructedInWindow.Add(key);
+        }
+    }
+
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot

@@ -225,6 +225,9 @@ namespace Nethermind.State
             _persistentStorageProvider.ClearStorageMap();
         }
 
+        public bool ShouldComputeStateRoot(BlockHeader header) =>
+            _currentScope?.ShouldComputeStateRoot(header) ?? true;
+
         public ulong GetNonce(Address address)
         {
             DebugGuardInScope();
