@@ -38,7 +38,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 {
     protected ILogger _logger;
 
+    internal ILogger Logger => _logger;
+
     private string? _fullPath;
+
+    internal string FullPath => _fullPath ?? throw new InvalidOperationException("DB path not initialized");
 
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
@@ -90,6 +94,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
     private readonly List<IDisposable> _metricsUpdaters = [];
+
+    private readonly Dictionary<string, ColumnFamilyOptions> _columnFamilyOptionsByName = [];
+
+    internal ColumnFamilyOptions? GetColumnFamilyOptions(string columnFamilyName) =>
+        _columnFamilyOptionsByName.GetValueOrDefault(columnFamilyName);
 
     internal CacheLinePaddedLong _allocatedSpan;
     private CacheLinePaddedLong _totalReads;
@@ -177,6 +186,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
                     if (columnFamily == "Default") columnFamily = "default";
                     columnFamilies.Add(columnFamily, options);
+                    _columnFamilyOptionsByName[columnFamily] = options;
                 }
             }
 
