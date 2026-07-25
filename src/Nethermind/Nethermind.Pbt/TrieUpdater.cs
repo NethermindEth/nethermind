@@ -1109,7 +1109,7 @@ public static partial class TrieUpdater
             }
 
             private PbtTrieNodeGroup.Slot Slot =>
-                _memory is null ? default : PbtTrieNodeGroup.SlotAt(_memory.GetSpan(), _node.Kind, _node.Offset);
+                _memory is null ? default : PbtTrieNodeGroup.SlotAt(_memory.GetSpan()[_node.Offset..], _node.Kind);
 
             public void Dispose() => ((IDisposable?)_memory)?.Dispose();
         }
