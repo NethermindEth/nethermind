@@ -72,8 +72,6 @@ namespace Nethermind.State
             ComputeKey(index, out key);
         }
 
-        private static byte[] EncodeValue(byte[]? value) => value.IsZero() ? [] : EncodeNonZeroValue(value);
-
         private static byte[] EncodeNonZeroValue(byte[] value)
         {
             byte[] encoded = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
@@ -81,7 +79,8 @@ namespace Nethermind.State
             return encoded;
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value) => new(in key, EncodeValue(value));
+        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value) =>
+            new(in key, value.IsZero() ? [] : EncodeNonZeroValue(value));
 
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
