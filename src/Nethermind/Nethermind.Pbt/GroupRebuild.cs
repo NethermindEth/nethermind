@@ -208,7 +208,7 @@ internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
         {
             Debug.Assert(root.Kind == NodeKind.Stem, "an internal root is folded, never stored");
 
-            PbtTrieNodeGroup.Slot rootSlot = PbtTrieNodeGroup.SlotAt(writer.WrittenSpan[^_offset..], root.Kind, root.Offset);
+            PbtTrieNodeGroup.Slot rootSlot = PbtTrieNodeGroup.SlotAt(writer.WrittenSpan[^_offset..][root.Offset..], root.Kind);
             rootStem = rootSlot.Stem;
             hash = rootSlot.Hash;
         }

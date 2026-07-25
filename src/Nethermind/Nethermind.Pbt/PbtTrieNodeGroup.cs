@@ -135,12 +135,12 @@ public static class PbtTrieNodeGroup
     /// out of the encoding <paramref name="data"/>, for a producer holding an entry offset rather than
     /// a position.
     /// </summary>
-    internal static Slot SlotAt(ReadOnlySpan<byte> data, NodeKind kind, int offset) => kind switch
+    internal static Slot SlotAt(ReadOnlySpan<byte> data, NodeKind kind) => kind switch
     {
         NodeKind.Absent => default,
-        NodeKind.Stem => new Slot(data.Slice(offset, Slot.StemLength)),
-        NodeKind.Chain => new Slot(data.Slice(offset, Slot.ChainLength)),
-        _ => new Slot(data.Slice(offset, Slot.InternalLength)),
+        NodeKind.Stem => new Slot(data[..Slot.StemLength]),
+        NodeKind.Chain => new Slot(data[..Slot.ChainLength]),
+        _ => new Slot(data[..Slot.InternalLength]),
     };
 }
 
@@ -274,7 +274,7 @@ public readonly ref struct PbtTrieNodeGroup<TLayout> where TLayout : IPbtTileLay
         get
         {
             PbtTrieNodeGroup.NodeKind kind = KindAt(position);
-            return kind == PbtTrieNodeGroup.NodeKind.Absent ? default : PbtTrieNodeGroup.SlotAt(_data, kind, EntryOffset(position));
+            return kind == PbtTrieNodeGroup.NodeKind.Absent ? default : PbtTrieNodeGroup.SlotAt(_data[EntryOffset(position)..], kind);
         }
     }
 
