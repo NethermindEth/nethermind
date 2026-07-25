@@ -232,7 +232,9 @@ public static partial class TrieUpdater
             PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsShape, plan, fanout, results, ref writer, ref builder);
+            GroupShape shape = TLayout.IsClusteringDepth(depth)
+                ? ResolveClusteredBoundaries(key, entries, occupants, occupantsShape, plan, fanout, results, ref writer, ref builder)
+                : ResolveBoundaries(key, entries, occupants, occupantsShape, plan, fanout, results);
             // The seeded run is held by no encoding, so nothing can read it back later: it rides on in
             // `results` unless the descent already refreshed its slot.
             if (!shape.Touched[targetSlot])
