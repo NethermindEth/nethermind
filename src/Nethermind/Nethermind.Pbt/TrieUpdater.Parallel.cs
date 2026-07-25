@@ -91,11 +91,15 @@ public static partial class TrieUpdater
         /// <remarks>One bucket of one frame, folded on whichever thread got to it.</remarks>
         public void Execute(ref BucketJob job, Updater<TLayout> state, WorkStealingExecutor<Updater<TLayout>, BucketJob>.JobQueue queue)
         {
+            using RefCountingMemory? memory = job.Memory;
             BucketPlan plan = new(
                 job.BucketLength == 0 ? default : state._buckets!.AsSpan(job.BucketStart, job.BucketLength),
                 job.BranchDepth);
+            Occupant occupant = memory is null
+                ? default
+                : new Occupant(memory.GetSpan()[job.Node.Offset..], job.Node.Kind);
             state.ApplyKeyedChild(
-                job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), job.BoundaryNode.Read(), plan, new Fanout(queue),
+                job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), occupant, plan, new Fanout(queue),
                 out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
 
             job.Result = result;
@@ -157,8 +161,9 @@ public static partial class TrieUpdater
         /// bucket itself.
         /// </summary>
         private bool TryQueue(
-            int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in BoundaryNode occupant,
-            scoped BucketPlan childPlan, in Fanout fanout, ref QueuedBuckets queued)
+            int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket,
+            RefCountingMemory? memory, in NodeRef node, scoped BucketPlan childPlan,
+            in Fanout fanout, ref QueuedBuckets queued)
         {
             ReadOnlySpan<int> precalculated = childPlan.Precalculated;
             BucketJob job = new()
@@ -170,7 +175,8 @@ public static partial class TrieUpdater
                 BucketStart = precalculated.IsEmpty ? 0 : IndexOf(_buckets!, precalculated),
                 BucketLength = precalculated.Length,
                 BranchDepth = childPlan.BranchDepth,
-                BoundaryNode = occupant,
+                Memory = memory,
+                Node = node,
             };
 
             return fanout.TryQueue(in job, ref queued);
@@ -298,8 +304,11 @@ public static partial class TrieUpdater
 
             public int BranchDepth { get; init; }
 
-            /// <summary>The node the parent's boundary slot holds, borrowed from the encoding the parent frame is reading.</summary>
-            public BoundaryNode BoundaryNode { get; init; }
+            /// <summary>The copied boundary-node encoding whose initial lease this job owns; <c>null</c> for an absent node.</summary>
+            public RefCountingMemory? Memory { get; init; }
+
+            /// <summary>The boundary node within <see cref="Memory"/>; <c>default</c> for an absent node.</summary>
+            public NodeRef Node { get; init; }
 
             public NodeResult Result { get; set; }
 

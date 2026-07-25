@@ -56,6 +56,9 @@ public static class PbtTrieNodeGroup
             _ => NodeKind.Chain,
         };
 
+        /// <summary>This node's exact encoding, borrowed from the group.</summary>
+        internal ReadOnlySpan<byte> Encoding => _data;
+
         /// <summary>This node's 31-byte stem, sliced from the entry; valid only when <see cref="Kind"/> is <see cref="NodeKind.Stem"/>.</summary>
         public Stem Stem
         {

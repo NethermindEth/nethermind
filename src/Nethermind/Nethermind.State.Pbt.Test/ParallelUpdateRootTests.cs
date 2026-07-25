@@ -83,7 +83,6 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
     /// wrote, so this is what pins that a worker's reads and its buffered writes stay in step.
     /// </summary>
     [Test]
-    [Ignore("Parallel bucket hand-off is temporarily disabled: TryQueue needs a storable BoundaryNode, which IOccupants[slot] no longer returns after the Occupant-view refactor. The fold still lands the correct tree, but on the calling thread alone, so the >1-thread assertion cannot hold until the hand-off is restored.")]
     public void ParallelFold_OverASequenceOfBatches_LandsTheSameTreeAsTheSerialOne()
     {
         int mostReadThreads = 0;
