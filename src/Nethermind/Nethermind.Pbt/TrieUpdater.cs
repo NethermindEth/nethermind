@@ -116,9 +116,7 @@ public static partial class TrieUpdater
         /// <summary>
         /// A stored blob as the descent reads it: its bytes, and where they sit in the memory holding
         /// them. A blob the store handed over is all of its memory; one the frame above holds in a
-        /// <see cref="PbtNodeCluster"/> is a slice of that frame's, and the entry offsets a
-        /// <see cref="BoundaryNode"/> keeps are into the memory rather than the blob, which is why the two
-        /// travel together.
+        /// <see cref="PbtNodeCluster"/> is a slice of that frame's.
         /// </summary>
         private readonly struct StoredBlob(RefCountingMemory? memory, int offset, int length)
         {
@@ -628,13 +626,24 @@ public static partial class TrieUpdater
                     TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
                     BucketPlan childPlan = plan.ForChild(slot, branchDepth);
 
-                    // TODO: the hand-off needs a storable BoundaryNode, which occupants[slot] no longer is —
-                    // disabled until the job carries one it builds itself rather than an Occupant view.
-                    // if (MayQueue(touched, in fanout) && bucket.Length >= _minQueueEntries
-                    //     && TryQueue(slot, childKey, bucket, occupant, childPlan, in fanout, ref queued))
-                    // {
-                    //     continue;
-                    // }
+                    if (MayQueue(touched, in fanout) && bucket.Length >= _minQueueEntries)
+                    {
+                        ReadOnlySpan<byte> encoding = occupant.Encoding;
+                        RefCountingMemory? memory = encoding.IsEmpty ? null : _memoryProvider.Rent(encoding.Length);
+                        try
+                        {
+                            if (memory is not null) encoding.CopyTo(memory.GetSpan());
+                            if (TryQueue(slot, childKey, bucket, memory, new NodeRef(occupant.Kind, 0), childPlan, in fanout, ref queued))
+                            {
+                                memory = null;
+                                continue;
+                            }
+                        }
+                        finally
+                        {
+                            ((IDisposable?)memory)?.Dispose();
+                        }
+                    }
 
                     ref NodeResult result = ref results[slot];
                     ApplyKeyedChild(childKey, bucket, occupant, childPlan, fanout, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
@@ -1062,31 +1071,10 @@ public static partial class TrieUpdater
             }
         }
 
-        // Internal rather than private, this and the two structs below, only so that BucketJob — which
-        // Updater has to name, and so cannot be private — may carry them. Naming any of them still means
-        // naming Updater, which is private, so nothing outside this class sees them either way.
+        // Internal rather than private only so that BucketJob — which Updater has to name, and so cannot
+        // be private — may carry it. Naming it still means naming Updater, which is private, so nothing
+        // outside this class sees it either way.
         internal readonly record struct NodeRef(NodeKind Kind, int Offset);
-
-        /// <summary>
-        /// The storable, owning form of a boundary node carried by a <see cref="BucketJob"/> across a thread
-        /// hand-off: a lease on the memory its encoding sits in, and an index to the entry within it. An
-        /// absent node holds nothing, so <c>default</c> is one.
-        /// </summary>
-        /// <remarks>
-        /// <see cref="Read"/> materialises the <see cref="Occupant"/> view of its bytes on whichever thread
-        /// folds it. A boundary node is always backed by an encoding, so it never carries a by-value hash.
-        /// </remarks>
-        internal readonly struct BoundaryNode(NodeRef node, RefCountingMemory? memory) : IDisposable
-        {
-            private readonly NodeRef _node = node;
-            private readonly RefCountingMemory? _memory = memory;
-
-            /// <summary>The entry's fields, decoded from the memory holding it; <c>default</c> for an absent node.</summary>
-            public Occupant Read() =>
-                _memory is null ? default : new Occupant(_memory.GetSpan()[_node.Offset..], _node.Kind);
-
-            public void Dispose() => ((IDisposable?)_memory)?.Dispose();
-        }
 
         /// <summary>
         /// A boundary node's encoding as the descent reads it — its bytes decoded to the fields the fold
@@ -1116,6 +1104,9 @@ public static partial class TrieUpdater
             };
 
             public NodeKind Kind => _kind;
+
+            /// <summary>This node's exact encoding, borrowed from the memory holding it.</summary>
+            public ReadOnlySpan<byte> Encoding => Slot.Encoding;
 
             /// <inheritdoc cref="PbtTrieNodeGroup.Slot.Stem"/>
             public Stem Stem => Slot.Stem;
