@@ -566,11 +566,11 @@ public static partial class TrieUpdater
         /// that this frame plants or removes.
         /// </summary>
         /// <remarks>
-        /// The one frame that hands work to another thread, its children being the only ones that fold
-        /// into a buffer of their own: a clustered frame's go straight into the blob it is assembling, in
-        /// an order only it can keep. A bucket big enough to be worth the hand-off
-        /// (<see cref="_minQueueEntries"/>) is handed to whichever thread reaches it first;
-        /// everything else is folded here and now.
+        /// A frame whose children are stored under their own keys naturally gives each child a buffer of
+        /// its own. A clustered frame normally folds straight into its parent's blob, but its parallel path
+        /// gives each touched child a temporary buffer and assembles them in slot order afterward. A bucket
+        /// big enough to be worth the hand-off (<see cref="_minQueueEntries"/>) is handed to whichever
+        /// thread reaches it first; everything else is folded here and now.
         /// </remarks>
         /// <returns>
         /// The whole frame's shape, which <see cref="RebuildNode"/> needs: the slots this descended, and
@@ -703,6 +703,17 @@ public static partial class TrieUpdater
 
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            if (MayQueue(touched, in fanout))
+            {
+                foreach (int slot in touched)
+                {
+                    if (bounds[slot + 1] - bounds[slot] < _minQueueEntries) continue;
+
+                    return ResolveClusteredBoundariesParallel(
+                        key, entries, occupants, untouched, plan, fanout, results, level, branchDepth, ref writer, ref cluster);
+                }
+            }
+
             BoundaryScan scan = default;
 
             // The slots whose child the frame holds and no key reaches, so the walk visits them alongside
@@ -748,6 +759,110 @@ public static partial class TrieUpdater
 
             // a child this frame holds is under no key of its own, so none of them was read from the store
             return scan.ToShape(touched, storedChildren: default, untouched);
+        }
+
+        /// <summary>
+        /// Resolves a clustered frame's touched children independently, then appends their encodings in
+        /// boundary-slot order. Independence lets workers fold children concurrently; ordered assembly
+        /// keeps the cluster byte-identical to a serial fold.
+        /// </summary>
+        private GroupShape ResolveClusteredBoundariesParallel(
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader occupants,
+            in BoundarySlotMasks<TLayout> untouched, scoped BucketPlan plan, in Fanout fanout,
+            Span<NodeResult> results, scoped ReadOnlySpan<int> level, int branchDepth,
+            ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
+        {
+            PbtTrieNodeGroup<TLayout> existing = occupants.Group();
+            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            SlotBitmask<TLayout> childSlots = default;
+            for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
+            {
+                if (occupants.HasChild(slot, existing)) childSlots.Set(slot);
+            }
+
+            BoundaryScan scan = default;
+            SlotBitmask<TLayout> unusedStoredChildren = default;
+            QueuedBuckets queued = default;
+            try
+            {
+                foreach (int slot in touched)
+                {
+                    TreeReader reader = occupants.Reader(slot, existing);
+                    TreeReader child = occupants.Child(slot, existing);
+                    Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
+                    TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
+                    BucketPlan childPlan = plan.ForChild(slot, branchDepth);
+
+                    if (bucket.Length >= _minQueueEntries &&
+                        TryQueue(slot, childKey, bucket, reader, child, childPlan, in fanout, ref queued))
+                    {
+                        continue;
+                    }
+
+                    ref NodeResult result = ref results[slot];
+                    ApplyClusteredChild(
+                        childKey, bucket, reader, child, childPlan, fanout,
+                        out result, out bool childChanged, out PbtSubtreeStats childDelta);
+                    scan.Add(slot, result, childChanged, childDelta);
+                }
+            }
+            catch
+            {
+                if (!queued.IsEmpty) Discard(in fanout, ref queued);
+                throw;
+            }
+
+            if (!queued.IsEmpty) Settle(in fanout, ref queued, results, ref scan, ref unusedStoredChildren);
+
+            foreach (int slot in touched | childSlots)
+            {
+                if (!touched[slot])
+                {
+                    cluster.AppendChild(ref writer, occupants.Child(slot, existing).Data);
+                    continue;
+                }
+
+                NodeResult result = results[slot];
+                if (result.Kind == NodeKind.Internal)
+                {
+                    Debug.Assert(result.Blob is not null, "an independently folded clustered child carries its encoding");
+                    cluster.AppendChild(ref writer, result.Blob!.GetSpan());
+                }
+            }
+
+            return scan.ToShape(touched, storedChildren: default, untouched);
+        }
+
+        /// <summary>Folds one clustered child into an independently owned buffer.</summary>
+        private void ApplyClusteredChild(
+            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in TreeReader reader,
+            in TreeReader existingData, scoped BucketPlan childPlan, in Fanout fanout,
+            out NodeResult result, out bool changed, out PbtSubtreeStats delta)
+        {
+            BufferWriter owned = new(_memoryProvider);
+            Occupant occupant = reader.Occupant;
+            try
+            {
+                if (occupant.Kind == NodeKind.Internal)
+                {
+                    ApplyGroup(childKey, bucket, existingData, occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
+                }
+                else if (occupant.Kind == NodeKind.Chain)
+                {
+                    ApplyChain(childKey, bucket, reader, childPlan, fanout, ref owned, out result, out changed, out delta);
+                }
+                else
+                {
+                    ApplyPushedStem(childKey, bucket, reader, childPlan, fanout, ref owned, out result, out changed, out delta);
+                }
+
+                if (owned.Detach() is { } blob) result = result.WithBlob(blob);
+            }
+            finally
+            {
+                owned.Dispose();
+            }
         }
 
         /// <summary>

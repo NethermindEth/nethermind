@@ -121,6 +121,67 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
     }
 
     /// <summary>
+    /// Writes sharing the root slot reach the clustering frame at depth four before they branch. Its
+    /// children must still fold on workers, and their independently buffered encodings must be assembled
+    /// in slot order into exactly the serial cluster.
+    /// </summary>
+    [Test]
+    public void ParallelFold_BranchesAndQueuesInsideACluster()
+    {
+        if (layout.Tiling() != PbtTiling.ClusteredFourLevel) return;
+
+        Random rng = new(29);
+        List<(byte[] Key, byte[]? Value)> writes = WritesBranchingInsideCluster(rng, stemsPerSlot: 128);
+        PbtTreeHarness serial = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = 1 };
+        PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = Workers };
+
+        serial.ApplyBatch(writes);
+        parallel.ApplyBatch(writes);
+        serial.ResetReadThreads();
+        parallel.ResetReadThreads();
+
+        Assert.That(parallel.ApplyBatch(writes), Is.EqualTo(serial.ApplyBatch(writes)));
+        AssertStoresMatch(serial, parallel);
+        Assert.That(parallel.ReadThreadCount, Is.GreaterThan(1), "the clustering frame did not hand a child to a worker");
+        Assert.That(serial.ReadThreadCount, Is.EqualTo(1), "the serial fold must retain its direct path");
+    }
+
+    /// <summary>
+    /// Upper buckets can run in parallel while every child inside their clustering frames is too small to
+    /// queue. Those frames must keep writing directly into their cluster rather than renting one temporary
+    /// buffer per child when none can run concurrently.
+    /// </summary>
+    [Test]
+    public void ParallelFold_DoesNotBufferAClusterWhoseChildrenAreBelowTheQueueThreshold()
+    {
+        if (layout.Tiling() != PbtTiling.ClusteredFourLevel) return;
+
+        Random rng = new(31);
+        List<(byte[] Key, byte[]? Value)> writes = WritesBranchingInsideClusters(rng, stemsPerSlot: 4);
+        TrackingMemoryProvider serialProvider = new();
+        TrackingMemoryProvider parallelProvider = new();
+        PbtTreeHarness serial = new(serialProvider, layout) { RootFoldConcurrency = 1 };
+        PbtTreeHarness parallel = new(parallelProvider, layout) { RootFoldConcurrency = Workers };
+
+        serial.ApplyBatch(writes);
+        parallel.ApplyBatch(writes);
+        int serialRents = serialProvider.Rented.Count;
+        int parallelRents = parallelProvider.Rented.Count;
+        parallel.ResetReadThreads();
+
+        Assert.That(parallel.ApplyBatch(writes), Is.EqualTo(serial.ApplyBatch(writes)));
+        AssertStoresMatch(serial, parallel);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parallel.ReadThreadCount, Is.GreaterThan(1), "upper buckets did not run in parallel");
+            Assert.That(
+                parallelProvider.Rented.Count - parallelRents,
+                Is.EqualTo(serialProvider.Rented.Count - serialRents),
+                "clusters with no queueable children rented temporary child buffers");
+        }
+    }
+
+    /// <summary>
     /// Every buffer a parallel fold rents is released, whichever worker rented it: a fold that leaked one
     /// per bucket would starve the pool a thread at a time.
     /// </summary>
@@ -169,10 +230,14 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
         using PbtWriteBatch batch = new(estimatedStems: 2048, buckets: null);
         for (int i = 0; i < 2048; i++)
         {
-            batch.Add(new Stem(Stem(rng)), PbtStemChanges.Rent().Set(1, new ValueHash256(Value(rng))));
+            byte[] stem = Stem(rng);
+            stem[0] = (byte)(0xA0 | (i & 0xF));
+            batch.Add(new Stem(stem), PbtStemChanges.Rent().Set(1, new ValueHash256(Value(rng))));
         }
 
-        Stem duplicate = new(Stem(rng));
+        byte[] duplicateBytes = Stem(rng);
+        duplicateBytes[0] = 0xA5;
+        Stem duplicate = new(duplicateBytes);
         batch.Add(duplicate, PbtStemChanges.Rent().Set(1, new ValueHash256(Value(rng))));
         batch.Add(duplicate, PbtStemChanges.Rent().Set(2, new ValueHash256(Value(rng))));
 
@@ -219,6 +284,31 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
                 stem[^2] = (byte)rng.Next(256);
                 stem[^1] = (byte)rng.Next(256);
                 writes.Add(([.. stem, (byte)rng.Next(256)], Value(rng)));
+            }
+        }
+
+        return writes;
+    }
+
+    private static List<(byte[] Key, byte[]? Value)> WritesBranchingInsideCluster(Random rng, int stemsPerSlot) =>
+        WritesBranchingInsideClusters(rng, stemsPerSlot, rootSlot: 0xA);
+
+    private static List<(byte[] Key, byte[]? Value)> WritesBranchingInsideClusters(
+        Random rng, int stemsPerSlot, int? rootSlot = null)
+    {
+        List<(byte[] Key, byte[]? Value)> writes = [];
+        int firstRootSlot = rootSlot ?? 0;
+        int rootSlotCount = rootSlot.HasValue ? 1 : 16;
+        for (int root = firstRootSlot; root < firstRootSlot + rootSlotCount; root++)
+        {
+            for (int slot = 0; slot < 16; slot++)
+            {
+                for (int i = 0; i < stemsPerSlot; i++)
+                {
+                    byte[] stem = Stem(rng);
+                    stem[0] = (byte)((root << 4) | slot);
+                    writes.Add(([.. stem, (byte)rng.Next(256)], Value(rng)));
+                }
             }
         }
 
