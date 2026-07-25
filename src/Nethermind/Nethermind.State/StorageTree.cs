@@ -71,21 +71,19 @@ namespace Nethermind.State
             ComputeKey(index, out key);
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value)
+        private static byte[] EncodeValue(byte[]? value)
         {
-            byte[] encodedValue;
             if (value.IsZero())
             {
-                encodedValue = [];
-            }
-            else
-            {
-                encodedValue = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
-                Rlp.Encode(value, encodedValue);
+                return [];
             }
 
-            return new BulkSetEntry(in key, encodedValue);
+            byte[] encoded = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
+            Rlp.Encode(value, encoded);
+            return encoded;
         }
+
+        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value) => new(in key, EncodeValue(value));
 
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
@@ -161,16 +159,10 @@ namespace Nethermind.State
 
         private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
         {
-            ReadOnlySpan<byte> rawKey = hash.Bytes;
-            if (value.IsZero())
-            {
-                Set(rawKey, []);
-            }
-            else
-            {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
-                Set(rawKey, rlpEncoded);
-            }
+            byte[] encodedValue = value.IsZero() ?
+                [] :
+                rlpEncode ? EncodeValue(value) : value;
+            Set(hash.Bytes, encodedValue);
         }
     }
 }
