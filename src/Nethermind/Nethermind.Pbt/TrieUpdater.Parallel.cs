@@ -95,7 +95,7 @@ public static partial class TrieUpdater
                 job.BucketLength == 0 ? default : state._buckets!.AsSpan(job.BucketStart, job.BucketLength),
                 job.BranchDepth);
             state.ApplyKeyedChild(
-                job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), job.BoundaryNode, plan, new Fanout(queue),
+                job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), job.BoundaryNode.Read(), plan, new Fanout(queue),
                 out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
 
             job.Result = result;
