@@ -19,12 +19,12 @@ public static partial class TrieUpdater
         /// <paramref name="targetDepth"/>, whose subtree amounts to <paramref name="stats"/>, in memory of
         /// its own: until an ancestor writes it into its own encoding, no group's holds it.
         /// </summary>
-        private Occupant NewChainNode(
+        private BoundaryNode NewChainNode(
             int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats)
         {
             RefCountingMemory memory = _memoryProvider.Rent(PbtNodeChain.EncodedLength);
             PbtNodeChain.Write<TLayout>(memory.GetSpan(), startDepth, targetDepth, targetPath, targetHash, stats);
-            return new Occupant(new NodeRef(NodeKind.Chain, 0), memory);
+            return new BoundaryNode(new NodeRef(NodeKind.Chain, 0), memory);
         }
 
         /// <summary>
@@ -43,11 +43,11 @@ public static partial class TrieUpdater
         /// Builds the boundary internal caching <paramref name="hash"/> in memory of its own, for a
         /// pointer to a stored group that no group's encoding holds yet.
         /// </summary>
-        private Occupant NewInternalNode(in ValueHash256 hash)
+        private BoundaryNode NewInternalNode(in ValueHash256 hash)
         {
             RefCountingMemory memory = _memoryProvider.Rent(PbtTrieNodeGroup.Slot.InternalLength);
             hash.Bytes.CopyTo(memory.GetSpan());
-            return new Occupant(new NodeRef(NodeKind.Internal, 0), memory);
+            return new BoundaryNode(new NodeRef(NodeKind.Internal, 0), memory);
         }
 
         /// <summary>
@@ -206,7 +206,7 @@ public static partial class TrieUpdater
             // key — a boundary internal points at the target, and the remainder has never been a blob.
             int targetSlot = TLayout.SlotOf(targetPath, depth);
             bool directChild = childDepth == chain.TargetDepth;
-            using Occupant seed = directChild
+            using BoundaryNode seed = directChild
                 ? NewInternalNode(targetHash)
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
             // a seeded run is the one occupant a frame can start with that is not a pointer to a blob

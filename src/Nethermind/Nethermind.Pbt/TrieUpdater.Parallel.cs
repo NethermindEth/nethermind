@@ -95,7 +95,7 @@ public static partial class TrieUpdater
                 job.BucketLength == 0 ? default : state._buckets!.AsSpan(job.BucketStart, job.BucketLength),
                 job.BranchDepth);
             state.ApplyKeyedChild(
-                job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), job.Occupant, plan, new Fanout(queue),
+                job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), job.BoundaryNode, plan, new Fanout(queue),
                 out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
 
             job.Result = result;
@@ -157,7 +157,7 @@ public static partial class TrieUpdater
         /// bucket itself.
         /// </summary>
         private bool TryQueue(
-            int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in Occupant occupant,
+            int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in BoundaryNode occupant,
             scoped BucketPlan childPlan, in Fanout fanout, ref QueuedBuckets queued)
         {
             ReadOnlySpan<int> precalculated = childPlan.Precalculated;
@@ -170,7 +170,7 @@ public static partial class TrieUpdater
                 BucketStart = precalculated.IsEmpty ? 0 : IndexOf(_buckets!, precalculated),
                 BucketLength = precalculated.Length,
                 BranchDepth = childPlan.BranchDepth,
-                Occupant = occupant,
+                BoundaryNode = occupant,
             };
 
             return fanout.TryQueue(in job, ref queued);
@@ -299,7 +299,7 @@ public static partial class TrieUpdater
             public int BranchDepth { get; init; }
 
             /// <summary>The node the parent's boundary slot holds, borrowed from the encoding the parent frame is reading.</summary>
-            public Occupant Occupant { get; init; }
+            public BoundaryNode BoundaryNode { get; init; }
 
             public NodeResult Result { get; set; }
 
