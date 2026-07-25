@@ -97,20 +97,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
-        if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
-
-        // Join before clearing so an old-parent pass cannot repopulate caches after a mismatch clear.
+        // Join ahead of the gate: the session's spec comes from a synthetic next-block header, so it can enable warming
+        // for a spec this block disables (a fork boundary), and no pass may run into execution.
         CancelAndJoinSpeculative();
+
+        if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
 
         bool skipReactiveWarming = ShouldSkipReactiveWarming(suggestedBlock, spec);
         if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
         {
+            // Handoff taken: the caches already hold this parent's state, so keep RLP caching on for execution.
             _nodeStorageCache.Enabled = true;
         }
         else
         {
             _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
+            // No handoff means nothing warm to serve, so a block below the threshold executes with RLP caching off.
             if (skipReactiveWarming) return Task.CompletedTask;
             _nodeStorageCache.Enabled = true;
         }

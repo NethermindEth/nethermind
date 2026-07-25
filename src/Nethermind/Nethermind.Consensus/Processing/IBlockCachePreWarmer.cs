@@ -12,6 +12,14 @@ namespace Nethermind.Consensus.Processing;
 
 public interface IBlockCachePreWarmer : IDisposable
 {
+    /// <summary>Prepares the block-processing caches for <paramref name="suggestedBlock"/> and, where worthwhile, warms them.</summary>
+    /// <remarks>
+    /// Called for every block, and owns the pre-block cache lifecycle: before returning, an implementation must either
+    /// clear the caches or establish that their contents are valid for <paramref name="suggestedBlock"/>'s parent.
+    /// <see cref="ClearCaches"/> is not called before execution, so declining to warm — for a block with too few
+    /// transactions to be worth it, say — must not decline that decision.
+    /// </remarks>
+    /// <returns>A task that completes when warming has finished; the caller awaits it before clearing the caches.</returns>
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default);
 
     /// <summary>Clears the block-processing caches.</summary>

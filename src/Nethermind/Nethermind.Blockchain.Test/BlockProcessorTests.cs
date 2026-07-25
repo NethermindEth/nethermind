@@ -438,14 +438,17 @@ public class BlockProcessorTests
     [Test]
     public async Task BranchProcessor_tiny_block_handoff_matches_cold_state_root()
     {
-        (Hash256? coldStateRoot, bool coldHandoff) = await ProcessTinyBlock(useHandoff: false);
-        (Hash256? hotStateRoot, bool hotHandoff) = await ProcessTinyBlock(useHandoff: true);
+        (Hash256? coldStateRoot, bool coldHandoff, ulong coldGasUsed) = await ProcessTinyBlock(useHandoff: false);
+        (Hash256? hotStateRoot, bool hotHandoff, ulong hotGasUsed) = await ProcessTinyBlock(useHandoff: true);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(coldHandoff, Is.False, "precondition: cold execution must clear the caches");
             Assert.That(hotHandoff, Is.True,
                 "precondition: the tiny block must execute with the matching-parent handoff");
+            // Without this the roots could match on a rejected transaction, comparing two no-op executions.
+            Assert.That(coldGasUsed, Is.EqualTo(GasCostOf.Transaction), "precondition: the transaction must execute");
+            Assert.That(hotGasUsed, Is.EqualTo(coldGasUsed), "the handoff must not change what executed");
             Assert.That(coldStateRoot, Is.Not.Null, "cold execution must produce a state root");
             Assert.That(hotStateRoot, Is.EqualTo(coldStateRoot),
                 "a matching-parent txpool-cache handoff must not change block execution");
@@ -605,12 +608,17 @@ public class BlockProcessorTests
         public void Dispose() { }
     }
 
-    private static async Task<(Hash256? StateRoot, bool HandoffObserved)> ProcessTinyBlock(bool useHandoff)
+    private static async Task<(Hash256? StateRoot, bool HandoffObserved, ulong GasUsed)> ProcessTinyBlock(bool useHandoff)
     {
         TestSpecProvider specProvider = new(MuirGlacier.Instance) { AllowTestChainOverride = false };
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(specProvider)
-            .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.PreWarmStateConcurrency = 2));
+            .Intercept<IBlocksConfig>(blocksConfig =>
+            {
+                blocksConfig.PreWarmStateConcurrency = 2;
+                // The test drives speculative warming itself; leave the mempool prewarmer out of the generation race.
+                blocksConfig.PreWarming = PreWarmMode.Block;
+            }));
 
         Block parent = chain.BlockTree.Head!;
         Block block = Build.A.Block
@@ -643,14 +651,22 @@ public class BlockProcessorTests
 
         NodeStorageCache nodeStorageCache = processingContext.LifetimeScope.Resolve<NodeStorageCache>();
         bool handoffObserved = false;
+        ulong gasUsed = 0;
         chain.BranchProcessor.BlockProcessing += (_, _) => handoffObserved = nodeStorageCache.Enabled;
+        chain.BranchProcessor.BlockProcessed += (_, e) =>
+        {
+            foreach (TxReceipt receipt in e.TxReceipts)
+            {
+                gasUsed += receipt.GasUsed;
+            }
+        };
         Block processed = chain.BranchProcessor.Process(
             parent.Header,
             [block],
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance)[0];
 
-        return (processed.StateRoot, handoffObserved);
+        return (processed.StateRoot, handoffObserved, gasUsed);
     }
 
     public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()

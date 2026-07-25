@@ -543,6 +543,31 @@ public class BlockCachePreWarmerTests
             "the tiny-block handoff marker must only be honored once");
     }
 
+    /// <summary>
+    /// A session's spec comes from a synthetic next-block header, so it can be started for a spec that enables warming
+    /// and then met by a block whose spec disables it — a fork boundary. The join must happen either way, or the pass
+    /// runs alongside main execution with nothing left to join it until the block is done.
+    /// </summary>
+    [Test]
+    public void PreWarmCaches_WhenSpecDisablesPreWarming_StillJoinsSpeculativeSession()
+    {
+        BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
+        using (preWarmer)
+        {
+            BlockHeader head = BuildParentHeader();
+            using CancellationTokenSource cancellation = new();
+            // Osaka has no block-level access lists, so warming is enabled and the session starts.
+            Task session = preWarmer.StartSpeculativePreWarm(
+                head, Osaka.Instance, generation: 1, _ => null, idlePassDelayMs: 5, cancellation.Token);
+            Assert.That(session.IsCompleted, Is.False, "precondition: the speculative session must be running");
+
+            // Amsterdam enables them, which disables warming for this configuration.
+            preWarmer.PreWarmCaches(BuildChildBlock(head), head, Amsterdam.Instance).GetAwaiter().GetResult();
+
+            Assert.That(session.IsCompleted, Is.True, "a speculative session must never outlive the reactive path");
+        }
+    }
+
     [Test]
     public void StartSpeculativePreWarm_CachesCommittedBaseState_NotSpeculativeWrites()
     {

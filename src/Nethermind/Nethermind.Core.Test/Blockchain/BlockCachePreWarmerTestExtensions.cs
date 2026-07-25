@@ -29,17 +29,18 @@ public static class BlockCachePreWarmerTestExtensions
             idlePassDelayMs: 5,
             cancellation.Token);
 
+        bool published;
         try
         {
-            Assert.That(
-                SpinWait.SpinUntil(markerPublished, TimeSpan.FromSeconds(5)),
-                Is.True,
-                "precondition: speculative warming must publish a handoff marker");
+            published = SpinWait.SpinUntil(markerPublished, TimeSpan.FromSeconds(5));
         }
         finally
         {
             cancellation.Cancel();
             task.GetAwaiter().GetResult();
         }
+
+        // Asserted after the join so a faulted session cannot mask the timeout.
+        Assert.That(published, Is.True, "precondition: speculative warming must publish a handoff marker");
     }
 }
