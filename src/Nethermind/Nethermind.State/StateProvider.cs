@@ -917,17 +917,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
     }
 
-    private enum ChangeType
-    {
-        Null = 0,
-        JustCache,
-        Touch,
-        Update,
-        New,
-        Delete,
-        RecreateEmpty,
-    }
-
     private readonly struct Change(Address address, Account? account, ChangeType type, int prevIdx)
     {
         public readonly Address Address = address;
