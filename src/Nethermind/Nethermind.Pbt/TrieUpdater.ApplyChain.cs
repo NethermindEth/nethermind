@@ -19,12 +19,12 @@ public static partial class TrieUpdater
         /// <paramref name="targetDepth"/>, whose subtree amounts to <paramref name="stats"/>, in memory of
         /// its own: until an ancestor writes it into its own encoding, no group's holds it.
         /// </summary>
-        private BoundaryNode NewChainNode(
+        private RefCountingMemory NewChainNode(
             int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats)
         {
             RefCountingMemory memory = _memoryProvider.Rent(PbtNodeChain.EncodedLength);
             PbtNodeChain.Write<TLayout>(memory.GetSpan(), startDepth, targetDepth, targetPath, targetHash, stats);
-            return new BoundaryNode(new NodeRef(NodeKind.Chain, 0), memory);
+            return memory;
         }
 
         /// <summary>
@@ -43,11 +43,11 @@ public static partial class TrieUpdater
         /// Builds the boundary internal caching <paramref name="hash"/> in memory of its own, for a
         /// pointer to a stored group that no group's encoding holds yet.
         /// </summary>
-        private BoundaryNode NewInternalNode(in ValueHash256 hash)
+        private RefCountingMemory NewInternalNode(in ValueHash256 hash)
         {
             RefCountingMemory memory = _memoryProvider.Rent(PbtTrieNodeGroup.Slot.InternalLength);
             hash.Bytes.CopyTo(memory.GetSpan());
-            return new BoundaryNode(new NodeRef(NodeKind.Internal, 0), memory);
+            return memory;
         }
 
         /// <summary>
@@ -206,9 +206,11 @@ public static partial class TrieUpdater
             // key — a boundary internal points at the target, and the remainder has never been a blob.
             int targetSlot = TLayout.SlotOf(targetPath, depth);
             bool directChild = childDepth == chain.TargetDepth;
-            using BoundaryNode seed = directChild
+            NodeKind seedKind = directChild ? NodeKind.Internal : NodeKind.Chain;
+            using RefCountingMemory seed = directChild
                 ? NewInternalNode(targetHash)
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
+            Occupant seedOccupant = new(seed.GetSpan(), seedKind);
             // a seeded run is the one occupant a frame can start with that is not a pointer to a blob
             SlotBitmask<TLayout> occupantsOccupied = SlotBitmask<TLayout>.Of(targetSlot);
             BoundarySlotMasks<TLayout> occupantsShape = new(
@@ -225,7 +227,7 @@ public static partial class TrieUpdater
 
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
-            SeededOccupant occupants = new(seed.Read(), targetSlot, StoredBlob.Of(adopted));
+            SeededOccupant occupants = new(seedOccupant, targetSlot, StoredBlob.Of(adopted));
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
@@ -239,7 +241,9 @@ public static partial class TrieUpdater
             // `results` unless the descent already refreshed its slot.
             if (!shape.Touched[targetSlot])
             {
-                NodeResult seeded = seed;
+                NodeResult seeded = seedKind == NodeKind.Chain
+                    ? NodeResult.Chain(seed)
+                    : NodeResult.Internal(seedOccupant.Hash);
 
                 // only a run's result keeps hold of the memory, so only it takes a lease of its own — a
                 // boundary internal promotes to a pure value, leaving the seed's lease with the seed
@@ -285,7 +289,7 @@ public static partial class TrieUpdater
                             innerBlob.AcquireLease();
                             _store.SetTrieNode(innerKey, innerBlob);
                         }
-                        return NewChainNode(startDepth, innerKey.Depth, innerKey.Path, inner.Hash, stats);
+                        return NodeResult.Chain(NewChainNode(startDepth, innerKey.Depth, innerKey.Path, inner.Hash, stats));
                     }
                 default:
                     PbtNodeChain absorbed = PbtNodeChain.Decode<TLayout>(inner.ChainData, innerKey.Depth);
@@ -294,7 +298,7 @@ public static partial class TrieUpdater
                     ValueHash256 targetHash = absorbed.TargetHash;
                     Debug.Assert(absorbed.Stats == stats, "an absorbed run reaches the same subtree the run absorbing it does");
                     if (innerBlobStored) _store.SetTrieNode(innerKey, null);
-                    using (inner) return NewChainNode(startDepth, targetDepth, targetPath, targetHash, stats);
+                    using (inner) return NodeResult.Chain(NewChainNode(startDepth, targetDepth, targetPath, targetHash, stats));
             }
         }
     }
