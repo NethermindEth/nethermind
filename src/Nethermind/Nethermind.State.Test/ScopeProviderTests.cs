@@ -83,7 +83,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [TestCase(1)]
-    [TestCase(17)]
+    [TestCase(TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)]
     public void Test_CanSaveToStorage(int estimatedEntries)
     {
         using Context ctx = new(useFlat);

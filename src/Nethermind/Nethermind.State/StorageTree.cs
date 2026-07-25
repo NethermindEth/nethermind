@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -71,13 +72,10 @@ namespace Nethermind.State
             ComputeKey(index, out key);
         }
 
-        private static byte[] EncodeValue(byte[]? value)
-        {
-            if (value.IsZero())
-            {
-                return [];
-            }
+        private static byte[] EncodeValue(byte[]? value) => value.IsZero() ? [] : EncodeNonZeroValue(value);
 
+        private static byte[] EncodeNonZeroValue(byte[] value)
+        {
             byte[] encoded = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
             Rlp.Encode(value, encoded);
             return encoded;
@@ -159,10 +157,17 @@ namespace Nethermind.State
 
         private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
         {
-            byte[] encodedValue = value.IsZero() ?
-                [] :
-                rlpEncode ? EncodeValue(value) : value;
-            Set(hash.Bytes, encodedValue);
+            ReadOnlySpan<byte> rawKey = hash.Bytes;
+            if (value.IsZero())
+            {
+                Set(rawKey, []);
+            }
+            else
+            {
+                // Bind the CappedArray overload the Rlp one used to forward to, so a non-zero write
+                // keeps bypassing the virtual byte[] entry point that HealingStorageTree overrides.
+                Set(rawKey, new CappedArray<byte>(rlpEncode ? EncodeNonZeroValue(value) : value));
+            }
         }
     }
 }
