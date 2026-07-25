@@ -91,17 +91,29 @@ public static partial class TrieUpdater
         /// <remarks>One bucket of one frame, folded on whichever thread got to it.</remarks>
         public void Execute(ref BucketJob job, Updater<TLayout> state, WorkStealingExecutor<Updater<TLayout>, BucketJob>.JobQueue queue)
         {
-            using RefCountingMemory? memory = job.Reader.Memory;
+            using RefCountingMemory? readerMemory = job.Reader.Memory;
+            using RefCountingMemory? childMemory = job.ExistingData.Memory;
             BucketPlan plan = new(
                 job.BucketLength == 0 ? default : state._buckets!.AsSpan(job.BucketStart, job.BucketLength),
                 job.BranchDepth);
+            if (job.IsClusteredChild)
+            {
+                state.ApplyClusteredChild(
+                    job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), job.Reader, job.ExistingData,
+                    plan, new Fanout(queue), out NodeResult result, out bool changed, out PbtSubtreeStats delta);
+                job.Result = result;
+                job.Changed = changed;
+                job.Delta = delta;
+                return;
+            }
+
             state.ApplyKeyedChild(
                 job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), job.Reader, plan, new Fanout(queue),
-                out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
+                out NodeResult keyedResult, out bool keyedChanged, out PbtSubtreeStats keyedDelta, out bool storedChild);
 
-            job.Result = result;
-            job.Changed = changed;
-            job.Delta = delta;
+            job.Result = keyedResult;
+            job.Changed = keyedChanged;
+            job.Delta = keyedDelta;
             job.StoredChild = storedChild;
         }
 
@@ -159,9 +171,22 @@ public static partial class TrieUpdater
         /// </summary>
         private bool TryQueue(
             int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket,
-            in TreeReader reader, scoped BucketPlan childPlan, in Fanout fanout, ref QueuedBuckets queued)
+            in TreeReader reader, scoped BucketPlan childPlan, in Fanout fanout, ref QueuedBuckets queued) =>
+            TryQueue(slot, childKey, bucket, reader, default, childPlan, isClusteredChild: false, fanout, ref queued);
+
+        private bool TryQueue(
+            int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket,
+            in TreeReader reader, in TreeReader existingData, scoped BucketPlan childPlan,
+            in Fanout fanout, ref QueuedBuckets queued) =>
+            TryQueue(slot, childKey, bucket, reader, existingData, childPlan, isClusteredChild: true, fanout, ref queued);
+
+        private bool TryQueue(
+            int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket,
+            in TreeReader reader, in TreeReader existingData, scoped BucketPlan childPlan, bool isClusteredChild,
+            in Fanout fanout, ref QueuedBuckets queued)
         {
             TreeReader leasedReader = reader.Lease();
+            TreeReader leasedExistingData = existingData.Lease();
             bool transferred = false;
             try
             {
@@ -176,6 +201,8 @@ public static partial class TrieUpdater
                     BucketLength = precalculated.Length,
                     BranchDepth = childPlan.BranchDepth,
                     Reader = leasedReader,
+                    ExistingData = leasedExistingData,
+                    IsClusteredChild = isClusteredChild,
                 };
 
                 transferred = fanout.TryQueue(in job, ref queued);
@@ -183,7 +210,11 @@ public static partial class TrieUpdater
             }
             finally
             {
-                if (!transferred) ((IDisposable?)leasedReader.Memory)?.Dispose();
+                if (!transferred)
+                {
+                    ((IDisposable?)leasedReader.Memory)?.Dispose();
+                    ((IDisposable?)leasedExistingData.Memory)?.Dispose();
+                }
             }
         }
 
@@ -311,6 +342,11 @@ public static partial class TrieUpdater
 
             /// <summary>The boundary reader whose explicitly acquired lease this job owns.</summary>
             public TreeReader Reader { get; init; }
+
+            /// <summary>The clustered child encoding whose explicitly acquired lease this job owns.</summary>
+            public TreeReader ExistingData { get; init; }
+
+            public bool IsClusteredChild { get; init; }
 
             public NodeResult Result { get; set; }
 

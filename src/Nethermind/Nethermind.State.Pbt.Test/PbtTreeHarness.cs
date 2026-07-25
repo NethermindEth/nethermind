@@ -69,6 +69,12 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
     }
 
+    /// <summary>Forgets prior read threads so a test can measure one batch in isolation.</summary>
+    public void ResetReadThreads()
+    {
+        lock (_lock) _readThreads.Clear();
+    }
+
     /// <summary>
     /// Every node the store holds, keyed by where it sits in the trie — the children inside a cluster
     /// and the runs inside a group flattened back out to the keys they would have had of their own.
