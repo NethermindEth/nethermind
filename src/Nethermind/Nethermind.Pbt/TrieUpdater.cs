@@ -313,7 +313,7 @@ public static partial class TrieUpdater
             PbtNodeCluster.Builder bare = default;
 
             StoredOccupants occupants = new(existing, existingData, default);
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, existing.BoundaryShape(), plan, fanout, results, ref writer, ref bare);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, existing.BoundaryShape(), plan, fanout, results);
             result = RebuildNode(
                 key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref bare, mark,
                 out changed, out delta);
@@ -338,7 +338,8 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.Span;
 
             StoredOccupants occupants = new(existing, existingData, cluster);
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, existing.BoundaryShape(), plan, fanout, results, ref writer, ref builder);
+            GroupShape shape = ResolveClusteredBoundaries(
+                key, entries, occupants, existing.BoundaryShape(), plan, fanout, results, ref writer, ref builder);
             result = RebuildNode(
                 key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref builder, mark: 0,
                 out changed, out delta);
@@ -520,9 +521,11 @@ public static partial class TrieUpdater
             // `buckets` carries the level partitioned above where there was none to start with, and
             // `entriesBranch` lets the resolve fill one itself where nothing was partitioned at all, so the
             // range is bucketed once however this frame reached here.
-            GroupShape shape = ResolveBoundaries(
-                key, entries, occupants, new BoundarySlotMasks<TLayout>(occupantsOccupied, occupantsOccupied, Chains: default),
-                new BucketPlan(buckets, entriesBranch), fanout, results, ref writer, ref builder);
+            BoundarySlotMasks<TLayout> untouched = new(occupantsOccupied, occupantsOccupied, Chains: default);
+            BucketPlan resolvePlan = new(buckets, entriesBranch);
+            GroupShape shape = TLayout.IsClusteringDepth(depth)
+                ? ResolveClusteredBoundaries(key, entries, occupants, untouched, resolvePlan, fanout, results, ref writer, ref builder)
+                : ResolveBoundaries(key, entries, occupants, untouched, resolvePlan, fanout, results);
             // A frame with no stored encoding leaves the rebuild nothing but `results` to read a boundary
             // out of, so the pushed stem rides on in its slot unless the descent already refreshed it. It
             // promotes to a pure value, so it carries no lease.
@@ -538,8 +541,8 @@ public static partial class TrieUpdater
         /// rebuild reads.
         /// </summary>
         /// <remarks>
-        /// Covers every slot, not just the descended ones: <see cref="ResolveBoundaries"/> is handed the
-        /// shape the frame started with and folds the slots it never visited back in as it builds this,
+        /// Covers every slot, not just the descended ones: each boundary resolver is handed the shape the
+        /// frame started with and folds the slots it never visited back in as it builds this,
         /// so <see cref="RebuildNode"/> — which needs them all — cannot be handed a half-built one.
         /// </remarks>
         private readonly record struct GroupShape(
@@ -549,8 +552,17 @@ public static partial class TrieUpdater
         /// <summary>
         /// Descends only the non-empty buckets of the group at <paramref name="key"/>, applying each touched
         /// slot's writes to its child and settling the result into <paramref name="results"/>. An untouched
-        /// slot is left alone entirely — it keeps its occupant, which the settle reads on demand.
+        /// slot is left alone entirely — it keeps its occupant, which the settle reads on demand. This is
+        /// for a frame whose children are stored under their own keys, each folding into a buffer of its own
+        /// that this frame plants or removes.
         /// </summary>
+        /// <remarks>
+        /// The one frame that hands work to another thread, its children being the only ones that fold
+        /// into a buffer of their own: a clustered frame's go straight into the blob it is assembling, in
+        /// an order only it can keep. A bucket big enough to be worth the hand-off
+        /// (<see cref="_minQueueEntries"/>) is handed to whichever thread reaches it first;
+        /// everything else is folded here and now.
+        /// </remarks>
         /// <returns>
         /// The whole frame's shape, which <see cref="RebuildNode"/> needs: the slots this descended, and
         /// <paramref name="untouched"/>'s over the rest.
@@ -566,12 +578,10 @@ public static partial class TrieUpdater
         /// </param>
         /// <param name="plan"><inheritdoc cref="BucketPlan" path="/summary"/></param>
         /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
-        /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
-        /// <param name="cluster">The blob this frame is assembling, where its depth holds its children inside it.</param>
         private GroupShape ResolveBoundaries<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
             in BoundarySlotMasks<TLayout> untouched, scoped BucketPlan plan, in Fanout fanout,
-            Span<NodeResult> results, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
+            Span<NodeResult> results)
             where TOccupants : IOccupants, allows ref struct
         {
             int depth = key.Depth;
@@ -600,25 +610,91 @@ public static partial class TrieUpdater
 
             AssertTouchedMaskMatchesBounds(level);
 
-            return TLayout.IsClusteringDepth(depth)
-                ? ResolveClusteredChildren(key, entries, occupants, untouched, plan, fanout, results, level, branchDepth, ref writer, ref cluster)
-                : ResolveKeyedChildren(key, entries, occupants, untouched, plan, fanout, results, level, branchDepth);
+            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            SlotBitmask<TLayout> storedChildren = default;
+            BoundaryScan scan = default;
+
+            // The buckets this frame handed out, which the settle below takes back whatever it can
+            // still do itself.
+            QueuedBuckets queued = default;
+
+            try
+            {
+                foreach (int slot in touched)
+                {
+                    Occupant occupant = occupants[slot];
+                    Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
+                    TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
+                    BucketPlan childPlan = plan.ForChild(slot, branchDepth);
+
+                    // TODO: the hand-off needs a storable BoundaryNode, which occupants[slot] no longer is —
+                    // disabled until the job carries one it builds itself rather than an Occupant view.
+                    // if (MayQueue(touched, in fanout) && bucket.Length >= _minQueueEntries
+                    //     && TryQueue(slot, childKey, bucket, occupant, childPlan, in fanout, ref queued))
+                    // {
+                    //     continue;
+                    // }
+
+                    ref NodeResult result = ref results[slot];
+                    ApplyKeyedChild(childKey, bucket, occupant, childPlan, fanout, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
+                    if (storedChild) storedChildren.Set(slot);
+                    scan.Add(slot, result, childChanged, childDelta);
+                }
+            }
+            catch
+            {
+                // A frame this thread has given up on still has buckets being folded on other threads,
+                // reading the entries and writing the store as they go. They are seen through here rather
+                // than left to race the unwinding fold, and what they produced is released with them.
+                if (!queued.IsEmpty) Discard(in fanout, ref queued);
+                throw;
+            }
+
+            if (!queued.IsEmpty) Settle(in fanout, ref queued, results, ref scan, ref storedChildren);
+
+            return scan.ToShape(touched, storedChildren, untouched);
         }
 
         /// <summary>
-        /// <inheritdoc cref="ResolveBoundaries" path="/summary"/> For a frame whose blob holds its
-        /// children, so the walk covers every slot rooting one on top of those a write touches: an
+        /// Descends the non-empty buckets of a frame whose blob holds its children, applying each touched
+        /// slot's writes and settling the result. The walk covers every slot rooting a child on top of those
+        /// a write touches: an
         /// untouched child is carried over from the blob being replaced, its bytes living nowhere else.
         /// Both masks are ascending and walked as one, which is what keeps the children going into the
         /// blob in the order they are read back out of it.
         /// </summary>
-        private GroupShape ResolveClusteredChildren<TOccupants>(
+        /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
+        /// <param name="cluster">The blob this frame is assembling around its children.</param>
+        private GroupShape ResolveClusteredBoundaries<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
             in BoundarySlotMasks<TLayout> untouched, scoped BucketPlan plan, in Fanout fanout,
-            Span<NodeResult> results, scoped ReadOnlySpan<int> level, int branchDepth,
-            ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
+            Span<NodeResult> results, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
             where TOccupants : IOccupants, allows ref struct
         {
+            int depth = key.Depth;
+            AssertBranchDepthSound(entries, depth, plan.BranchDepth);
+
+            Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
+            scoped ReadOnlySpan<int> level;
+            int branchDepth = plan.BranchDepth;
+            if (!plan.Precalculated.IsEmpty)
+            {
+                level = plan.Precalculated[^PbtWriteBatch.LevelStride<TLayout>()..];
+            }
+            else if (branchDepth > depth)
+            {
+                FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
+                level = computed;
+            }
+            else
+            {
+                branchDepth = Partition(entries, depth, computed);
+                level = computed;
+            }
+
+            AssertTouchedMaskMatchesBounds(level);
+
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
             BoundaryScan scan = default;
@@ -665,69 +741,6 @@ public static partial class TrieUpdater
 
             // a child this frame holds is under no key of its own, so none of them was read from the store
             return scan.ToShape(touched, storedChildren: default, untouched);
-        }
-
-        /// <summary>
-        /// <inheritdoc cref="ResolveBoundaries" path="/summary"/> For a frame whose children are stored
-        /// under their own keys, each folding into a buffer of its own that this frame plants or removes.
-        /// </summary>
-        /// <remarks>
-        /// The one frame that hands work to another thread, its children being the only ones that fold
-        /// into a buffer of their own: a clustered frame's go straight into the blob it is assembling, in
-        /// an order only it can keep. A bucket big enough to be worth the hand-off
-        /// (<see cref="_minQueueEntries"/>) is handed to whichever thread reaches it first;
-        /// everything else is folded here and now.
-        /// </remarks>
-        private GroupShape ResolveKeyedChildren<TOccupants>(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
-            in BoundarySlotMasks<TLayout> untouched, scoped BucketPlan plan, in Fanout fanout,
-            Span<NodeResult> results, scoped ReadOnlySpan<int> level, int branchDepth)
-            where TOccupants : IOccupants, allows ref struct
-        {
-            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
-            SlotBitmask<TLayout> storedChildren = default;
-            BoundaryScan scan = default;
-
-            // The buckets this frame handed out, which the settle below takes back whatever it can
-            // still do itself.
-            QueuedBuckets queued = default;
-
-            try
-            {
-                foreach (int slot in touched)
-                {
-                    Occupant occupant = occupants[slot];
-                    Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
-                    TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
-                    BucketPlan childPlan = plan.ForChild(slot, branchDepth);
-
-                    // TODO: the hand-off needs a storable BoundaryNode, which occupants[slot] no longer is —
-                    // disabled until the job carries one it builds itself rather than an Occupant view.
-                    // if (MayQueue(touched, in fanout) && bucket.Length >= _minQueueEntries
-                    //     && TryQueue(slot, childKey, bucket, occupant, childPlan, in fanout, ref queued))
-                    // {
-                    //     continue;
-                    // }
-
-                    ref NodeResult result = ref results[slot];
-                    ApplyKeyedChild(childKey, bucket, occupant, childPlan, fanout, out result, out bool childChanged, out PbtSubtreeStats childDelta, out bool storedChild);
-                    if (storedChild) storedChildren.Set(slot);
-                    scan.Add(slot, result, childChanged, childDelta);
-                }
-            }
-            catch
-            {
-                // A frame this thread has given up on still has buckets being folded on other threads,
-                // reading the entries and writing the store as they go. They are seen through here rather
-                // than left to race the unwinding fold, and what they produced is released with them.
-                if (!queued.IsEmpty) Discard(in fanout, ref queued);
-                throw;
-            }
-
-            if (!queued.IsEmpty) Settle(in fanout, ref queued, results, ref scan, ref storedChildren);
-
-            return scan.ToShape(touched, storedChildren, untouched);
         }
 
         /// <summary>
@@ -824,7 +837,7 @@ public static partial class TrieUpdater
 
         /// <summary>
         /// Settles this frame's node from the boundary <paramref name="results"/> and their
-        /// <paramref name="shape"/> that <see cref="ResolveBoundaries"/> produced — collapse to a run, hoist
+        /// <paramref name="shape"/> that its boundary resolver produced — collapse to a run, hoist
         /// a stem, skip an unchanged group, or fold a fresh one — and persists each child's blob, returning
         /// the node now occupying this frame's key. An untouched slot is read back from
         /// <paramref name="occupants"/> on demand, bar what a seeded caller wrote into
@@ -860,7 +873,7 @@ public static partial class TrieUpdater
         /// descent leave that child unread — an absolute count could not.
         /// </param>
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
-        /// <param name="cluster"><inheritdoc cref="ResolveBoundaries" path="/param[@name='cluster']"/></param>
+        /// <param name="cluster"><inheritdoc cref="ResolveClusteredBoundaries" path="/param[@name='cluster']"/></param>
         /// <param name="mark">
         /// Where this frame's bytes start in <paramref name="writer"/>, which it rolls back to when it
         /// settles into a node no key holds — a run, or a hoisting stem. Nothing written past it is a group
