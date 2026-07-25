@@ -52,7 +52,7 @@ public static partial class TrieUpdater
 
         /// <summary>
         /// Applies <paramref name="entries"/> to the run of single-child levels at <paramref name="key"/>,
-        /// whose content is <paramref name="chainData"/> — the <see cref="PbtNodeChain"/> encoding the
+        /// whose content is <paramref name="chainReader"/> — the <see cref="PbtNodeChain"/> encoding the
         /// parent group holds at this slot, or the rest of a run an enclosing frame is descending.
         /// </summary>
         /// <remarks>
@@ -71,14 +71,14 @@ public static partial class TrieUpdater
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyChain(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, ReadOnlySpan<byte> chainData,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader chainReader,
             scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer, out NodeResult result,
             out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty);
 
-            PbtNodeChain chain = PbtNodeChain.Decode<TLayout>(chainData, depth);
+            PbtNodeChain chain = PbtNodeChain.Decode<TLayout>(chainReader.Data, depth);
             int targetDepth = chain.TargetDepth;
             Stem targetPath = chain.TargetPath;
 
@@ -116,7 +116,7 @@ public static partial class TrieUpdater
                 try
                 {
                     ApplyStoredGroup(
-                        chain.TargetKey, entries, StoredBlob.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter,
+                        chain.TargetKey, entries, TreeReader.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter,
                         out inner, out targetChanged, out delta);
 
                     if (targetWriter.Detach() is { } targetBlob) inner = inner.WithBlob(targetBlob);
@@ -134,7 +134,7 @@ public static partial class TrieUpdater
                 {
                     inner.Dispose();
                     Debug.Assert(delta.IsZero, "an unchanged target subtree moves no statistic");
-                    result = CopyChainNode(chainData);
+                    result = CopyChainNode(chainReader.Data);
                     changed = false;
                     return;
                 }
@@ -210,11 +210,7 @@ public static partial class TrieUpdater
             using RefCountingMemory seed = directChild
                 ? NewInternalNode(targetHash)
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
-            Occupant seedOccupant = new(seed.GetSpan(), seedKind);
-            // a seeded run is the one occupant a frame can start with that is not a pointer to a blob
-            SlotBitmask<TLayout> occupantsOccupied = SlotBitmask<TLayout>.Of(targetSlot);
-            BoundarySlotMasks<TLayout> occupantsShape = new(
-                occupantsOccupied, Stems: default, directChild ? default : occupantsOccupied);
+            TreeReader seedReader = TreeReader.Of(seed).AsNode(seedKind);
 
             // The group this split makes real clusters its children where its depth says so, and the target
             // is one of them: its blob moves out of the key the run left it under and into the cluster
@@ -227,7 +223,7 @@ public static partial class TrieUpdater
 
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
-            SeededOccupant occupants = new(seedOccupant, targetSlot, StoredBlob.Of(adopted));
+            TreeReader occupants = seedReader.WithSeed(targetSlot, TreeReader.Of(adopted));
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
@@ -235,23 +231,12 @@ public static partial class TrieUpdater
             int mark = writer.WrittenCount;
 
             GroupShape shape = TLayout.IsClusteringDepth(depth)
-                ? ResolveClusteredBoundaries(key, entries, occupants, occupantsShape, plan, fanout, results, ref writer, ref builder)
-                : ResolveBoundaries(key, entries, occupants, occupantsShape, plan, fanout, results);
-            // The seeded run is held by no encoding, so nothing can read it back later: it rides on in
-            // `results` unless the descent already refreshed its slot.
-            if (!shape.Touched[targetSlot])
-            {
-                NodeResult seeded = seedKind == NodeKind.Chain
-                    ? NodeResult.Chain(seed)
-                    : NodeResult.Internal(seedOccupant.Hash);
-
-                // only a run's result keeps hold of the memory, so only it takes a lease of its own — a
-                // boundary internal promotes to a pure value, leaving the seed's lease with the seed
-                results[targetSlot] = seeded.Lease();
-            }
+                ? ResolveClusteredBoundaries(key, entries, occupants, occupants.BoundaryShape(), plan, fanout, results, ref writer, ref builder)
+                : ResolveBoundaries(key, entries, occupants, occupants.BoundaryShape(), plan, fanout, results);
+            occupants.MergeUntouchedSeed(results, shape.Touched);
 
             return RebuildNode(
-                key, occupants, default, results, shape, chain.NodeHash, chain.Stats, ref writer, ref builder, mark,
+                key, occupants, results, shape, chain.NodeHash, chain.Stats, ref writer, ref builder, mark,
                 out changed, out delta);
         }
 

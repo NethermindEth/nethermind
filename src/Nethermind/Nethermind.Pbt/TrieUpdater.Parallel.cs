@@ -91,15 +91,12 @@ public static partial class TrieUpdater
         /// <remarks>One bucket of one frame, folded on whichever thread got to it.</remarks>
         public void Execute(ref BucketJob job, Updater<TLayout> state, WorkStealingExecutor<Updater<TLayout>, BucketJob>.JobQueue queue)
         {
-            using RefCountingMemory? memory = job.Memory;
+            using RefCountingMemory? memory = job.Reader.Memory;
             BucketPlan plan = new(
                 job.BucketLength == 0 ? default : state._buckets!.AsSpan(job.BucketStart, job.BucketLength),
                 job.BranchDepth);
-            Occupant occupant = memory is null
-                ? default
-                : new Occupant(memory.GetSpan()[job.Node.Offset..], job.Node.Kind);
             state.ApplyKeyedChild(
-                job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), occupant, plan, new Fanout(queue),
+                job.Key, state._entries.AsSpan(job.EntryStart, job.EntryCount), job.Reader, plan, new Fanout(queue),
                 out NodeResult result, out bool changed, out PbtSubtreeStats delta, out bool storedChild);
 
             job.Result = result;
@@ -162,24 +159,32 @@ public static partial class TrieUpdater
         /// </summary>
         private bool TryQueue(
             int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket,
-            RefCountingMemory? memory, in NodeRef node, scoped BucketPlan childPlan,
-            in Fanout fanout, ref QueuedBuckets queued)
+            in TreeReader reader, scoped BucketPlan childPlan, in Fanout fanout, ref QueuedBuckets queued)
         {
-            ReadOnlySpan<int> precalculated = childPlan.Precalculated;
-            BucketJob job = new()
+            TreeReader leasedReader = reader.Lease();
+            bool transferred = false;
+            try
             {
-                Slot = slot,
-                Key = childKey,
-                EntryStart = IndexOf(_entries, bucket),
-                EntryCount = bucket.Length,
-                BucketStart = precalculated.IsEmpty ? 0 : IndexOf(_buckets!, precalculated),
-                BucketLength = precalculated.Length,
-                BranchDepth = childPlan.BranchDepth,
-                Memory = memory,
-                Node = node,
-            };
+                ReadOnlySpan<int> precalculated = childPlan.Precalculated;
+                BucketJob job = new()
+                {
+                    Slot = slot,
+                    Key = childKey,
+                    EntryStart = IndexOf(_entries, bucket),
+                    EntryCount = bucket.Length,
+                    BucketStart = precalculated.IsEmpty ? 0 : IndexOf(_buckets!, precalculated),
+                    BucketLength = precalculated.Length,
+                    BranchDepth = childPlan.BranchDepth,
+                    Reader = leasedReader,
+                };
 
-            return fanout.TryQueue(in job, ref queued);
+                transferred = fanout.TryQueue(in job, ref queued);
+                return transferred;
+            }
+            finally
+            {
+                if (!transferred) ((IDisposable?)leasedReader.Memory)?.Dispose();
+            }
         }
 
         /// <summary>
@@ -304,11 +309,8 @@ public static partial class TrieUpdater
 
             public int BranchDepth { get; init; }
 
-            /// <summary>The copied boundary-node encoding whose initial lease this job owns; <c>null</c> for an absent node.</summary>
-            public RefCountingMemory? Memory { get; init; }
-
-            /// <summary>The boundary node within <see cref="Memory"/>; <c>default</c> for an absent node.</summary>
-            public NodeRef Node { get; init; }
+            /// <summary>The boundary reader whose explicitly acquired lease this job owns.</summary>
+            public TreeReader Reader { get; init; }
 
             public NodeResult Result { get; set; }
 
