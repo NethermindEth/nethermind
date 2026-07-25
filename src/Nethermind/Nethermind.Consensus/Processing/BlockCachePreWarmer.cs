@@ -29,6 +29,8 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
+    private const int MinTransactionsForReactiveWarming = 3;
+
     private readonly int _concurrencyLevel;
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
     private readonly int _speculativeConcurrencyLevel;
@@ -97,23 +99,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
 
+        // Join before clearing so an old-parent pass cannot repopulate caches after a mismatch clear.
         CancelAndJoinSpeculative();
 
+        bool skipReactiveWarming = ShouldSkipReactiveWarming(suggestedBlock, spec);
         if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
         {
             _nodeStorageCache.Enabled = true;
         }
         else
         {
-            CacheType result = _preBlockCaches.ClearCaches();
+            _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
+            if (skipReactiveWarming) return Task.CompletedTask;
             _nodeStorageCache.Enabled = true;
-            if (result != default)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
-            }
         }
 
+        if (skipReactiveWarming) return Task.CompletedTask;
         return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, _systemAccessLists);
     }
 
@@ -246,11 +248,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out ISet<Hash256>? warmedTxHashes)
     {
         WarmMarker? marker = Volatile.Read(ref _warmMarker);
+        Volatile.Write(ref _warmMarker, null);
         // ReferenceEquals on the per-fork spec singleton: a mismatch only disables the handoff, never a correctness issue.
         if (marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec))
         {
             warmedTxHashes = marker.WarmedTxHashes;
-            Volatile.Write(ref _warmMarker, null);
             return true;
         }
 
@@ -262,6 +264,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         => !_parallelExecutionEnabled
         || !spec.BlockLevelAccessListsEnabled
         || IsBalReadWarmingEnabled(spec);
+
+    // Tiny blocks normally don't justify reactive warming overhead. BAL read warming is cheap
+    // and remains useful regardless of transaction count.
+    private bool ShouldSkipReactiveWarming(Block block, IReleaseSpec spec)
+        => block.Transactions.Length < MinTransactionsForReactiveWarming
+        && !(IsBalReadWarmingEnabled(spec) && block.BlockAccessList is not null);
 
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;

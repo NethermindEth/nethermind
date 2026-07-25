@@ -13,7 +13,15 @@ namespace Nethermind.Consensus.Processing;
 public interface IBlockCachePreWarmer : IDisposable
 {
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default);
+
+    /// <summary>Clears the block-processing caches.</summary>
+    /// <returns>
+    /// The built-in implementation only reports <see cref="CacheType.Rlp"/>, which means that RLP node-storage caching
+    /// was enabled, not necessarily that it contained entries. The storage, state, and precompile caches do not report
+    /// whether they contained entries.
+    /// </returns>
     CacheType ClearCaches();
+
     bool IsBalReadWarmingEnabled(IReleaseSpec spec);
 
     /// <summary>
