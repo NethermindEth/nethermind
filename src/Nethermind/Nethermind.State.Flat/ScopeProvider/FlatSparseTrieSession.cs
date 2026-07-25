@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
@@ -24,12 +25,13 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// and publishes every staged node into the bundle at commit.
 /// </summary>
 /// <remarks>
-/// Single mutable owner per trie: inner storage batches only seal jobs (no trie access), the
-/// storage phase gives each job's trie to exactly one worker, and the state trie is only touched
-/// from the outer write-batch/commit path. Any calculation or publication exception poisons the
-/// session; every later mutation, calculation, and publication entry point throws, so a poisoned
-/// scope can never commit a root that may not match the applied writes. <see cref="RootHash"/>
-/// stays readable and always holds the last successfully calculated root (or the anchor).
+/// Single mutable owner per trie: inner storage batches only seal jobs (no trie access), each
+/// storage trie has one apply owner, and root encoding shares only disjoint subtrees after apply.
+/// The state trie is only touched from the outer write-batch/commit path. Any calculation or
+/// publication exception poisons the session; every later mutation, calculation, and publication
+/// entry point throws, so a poisoned scope can never commit a root that may not match the applied
+/// writes. <see cref="RootHash"/> stays readable and always holds the last successfully calculated
+/// root (or the anchor).
 /// </remarks>
 internal sealed class FlatSparseTrieSession : IDisposable
 {
@@ -150,8 +152,8 @@ internal sealed class FlatSparseTrieSession : IDisposable
     internal void Poison() => _poisoned = true;
 
     /// <summary>
-    /// Drains the sealed storage jobs, calculates each account's whole storage trie, and reports
-    /// every completed root through its job's callback.
+    /// Drains the sealed storage jobs, applies each one to its account's trie, calculates every
+    /// storage root together, and reports each completed root through its job's callback.
     /// </summary>
     /// <param name="getFinalAccount">The batch-final account per address; a job whose final
     /// account is deleted is discarded (the Flat clear and account deletion are already
@@ -188,24 +190,45 @@ internal sealed class FlatSparseTrieSession : IDisposable
                 }
             }
 
-            if (jobs.Count >= ParallelJobThreshold)
+            if (jobs.Count == 0) return;
+
+            SparseTrie.RootCalculation[] calculations =
+                SafeArrayPool<SparseTrie.RootCalculation>.Shared.Rent(jobs.Count);
+            try
             {
-                ParallelUnbalancedWork.For(
-                    0,
-                    jobs.Count,
-                    jobs,
-                    static (i, jobs) =>
+                if (jobs.Count >= ParallelJobThreshold)
+                {
+                    ParallelUnbalancedWork.For(
+                        0,
+                        jobs.Count,
+                        RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                        (Jobs: jobs, Calculations: calculations),
+                        static (i, state) =>
+                        {
+                            SparseTrie trie = state.Jobs[i].Tree.ApplySparseJob(state.Jobs[i]);
+                            state.Calculations[i] = trie.PrepareRootCalculation();
+                            return state;
+                        });
+                }
+                else
+                {
+                    for (int i = 0; i < jobs.Count; i++)
                     {
-                        jobs[i].Tree.ProcessSparseJob(jobs[i], canBeParallel: false);
-                        return jobs;
-                    });
-            }
-            else
-            {
+                        SparseTrie trie = jobs[i].Tree.ApplySparseJob(jobs[i]);
+                        calculations[i] = trie.PrepareRootCalculation();
+                    }
+                }
+
+                SparseTrie.CalculateRoots(calculations, jobs.Count);
                 for (int i = 0; i < jobs.Count; i++)
                 {
-                    jobs[i].Tree.ProcessSparseJob(jobs[i], canBeParallel: true);
+                    jobs[i].Tree.CompleteSparseJob(jobs[i]);
                 }
+            }
+            finally
+            {
+                calculations.AsSpan(0, jobs.Count).Clear();
+                SafeArrayPool<SparseTrie.RootCalculation>.Shared.Return(calculations);
             }
         }
         catch

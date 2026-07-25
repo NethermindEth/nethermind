@@ -138,6 +138,96 @@ public class SparseTrieTests
         AssertMatchesPatricia([], updates, canBeParallel: true);
     }
 
+    [Test]
+    public void Batched_parallel_roots_match_patricia_for_skewed_tries()
+    {
+        const int trieCount = 6;
+        SparseTrie[] tries = new SparseTrie[trieCount];
+        SparseTrie.RootCalculation[] calculations = new SparseTrie.RootCalculation[trieCount];
+        ValueHash256[] expectedRoots = new ValueHash256[trieCount];
+        TrieRootFixture.RecordingTrieStore[] recorders = new TrieRootFixture.RecordingTrieStore[trieCount];
+
+        try
+        {
+            for (int trieIndex = 0; trieIndex < trieCount; trieIndex++)
+            {
+                int updateCount = trieIndex switch
+                {
+                    0 => 1024,
+                    1 => 128,
+                    2 => 33,
+                    3 => 7,
+                    4 => 1,
+                    _ => 17,
+                };
+
+                NodeStorage expectedStorage = new(new MemDb());
+                recorders[trieIndex] = new TrieRootFixture.RecordingTrieStore(new RawScopedTrieStore(expectedStorage));
+                PatriciaTree expected = new(
+                    recorders[trieIndex],
+                    Keccak.EmptyTreeHash,
+                    true,
+                    NullLogManager.Instance);
+                SparseTrieUpdate[] updates = new SparseTrieUpdate[updateCount];
+                for (int i = 0; i < updateCount; i++)
+                {
+                    ValueHash256 key = trieIndex == 0
+                        ? K($"abcd{i:x8}")
+                        : DeriveKey(71, trieIndex, i);
+                    byte[] value = V(trieIndex * 31 + i, 32);
+                    expected.Set(key.Bytes, value);
+                    updates[i] = new SparseTrieUpdate(key, value);
+                }
+
+                tries[trieIndex] = new SparseTrie(
+                    new NodeStorageSource(new NodeStorage(new MemDb())),
+                    ValueKeccak.EmptyTreeHash);
+                tries[trieIndex].Apply(updates);
+
+                if (trieIndex == 1)
+                {
+                    tries[trieIndex].CalculateRoot();
+                    ValueHash256 key = DeriveKey(71, trieIndex, 0);
+                    byte[] replacement = V(999, 32);
+                    tries[trieIndex].Apply([new SparseTrieUpdate(key, replacement)]);
+                    expected.Set(key.Bytes, replacement);
+                }
+                else if (trieIndex == trieCount - 1)
+                {
+                    tries[trieIndex].CalculateRoot();
+                }
+
+                expected.Commit();
+                expectedRoots[trieIndex] = expected.RootHash.ValueHash256;
+                calculations[trieIndex] = tries[trieIndex].PrepareRootCalculation();
+            }
+
+            SparseTrie.CalculateRoots(calculations, calculations.Length);
+
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 0; i < trieCount; i++)
+                {
+                    Assert.That(tries[i].RootHash, Is.EqualTo(expectedRoots[i]), $"trie {i}");
+                }
+            }
+
+            // A shared record reservation can collide or leave holes while every root still
+            // matches, so each trie's publication set is compared as well.
+            for (int i = 0; i < trieCount; i++)
+            {
+                AssertSameNodes(recorders[i].Committed, DrainStaged(tries[i]));
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < tries.Length; i++)
+            {
+                tries[i]?.Dispose();
+            }
+        }
+    }
+
     private static List<SparseTrieStagedNode> DrainStaged(SparseTrie sparse)
     {
         using ArrayPoolList<SparseTrieStagedNode> drained = new(16);

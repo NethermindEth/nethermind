@@ -79,6 +79,15 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
     private const byte ExtensionChildNibble = 0xFF;
     private const int MaxLeafValueLength = byte.MaxValue;
 
+    /// <summary>Children a single branch split can yield, and so the frontier's per-split growth.</summary>
+    private const int MaxBranchSplitFanout = 16;
+
+    /// <summary>A branch plus two children: the smallest shape that can yield two disjoint tasks.</summary>
+    private const int MinSplittableDirtyNodeCount = 3;
+
+    /// <summary>Whole-trie tasks below this count stay serial rather than pay the dispatch.</summary>
+    private const int MinParallelWholeTrieCount = 4;
+
     private ISparseTrieNodeSource _source = source;
     private readonly SparseTrieArena _arena = new(nodeCapacityHint);
     private ArrayPoolList<SparseTrieStagedNode>? _staged;
@@ -185,13 +194,26 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
             return _rootHash;
         }
 
-        if (_rootNode >= 0 && _arena.Node(_rootNode).IsDirty)
+        if (canBeParallel)
         {
-            if (canBeParallel)
+            // One trie is just a single-entry batch; the shared scheduler decides serial or fan-out.
+            RootCalculation[] single = ArrayPool<RootCalculation>.Shared.Rent(1);
+            try
             {
-                EncodeDirtySubtreesInParallel();
+                single[0] = PrepareRootCalculation();
+                CalculateRoots(single, 1);
+            }
+            finally
+            {
+                single.AsSpan(0, 1).Clear();
+                ArrayPool<RootCalculation>.Shared.Return(single);
             }
 
+            return _rootHash;
+        }
+
+        if (_rootNode >= 0 && _arena.Node(_rootNode).IsDirty)
+        {
             TreePath path = TreePath.Empty;
             EncodeNode(_rootNode, ref path, isRoot: true);
             _rootHash = _arena.Node(_rootNode).Hash;
@@ -199,6 +221,270 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
         _rootDirty = false;
         return _rootHash;
+    }
+
+    /// <summary>
+    /// Measures this trie's pending root calculation so a caller can schedule several tries
+    /// together, and returns the plan entry <see cref="CalculateRoots"/> consumes.
+    /// </summary>
+    /// <remarks>
+    /// Runs while the caller still owns the trie (an apply worker may call it for its own trie),
+    /// and records the dirty-subtree weights the frontier splits on. Those weights live in the
+    /// dirty nodes until the matching <see cref="CalculateRoots"/> encodes them, so exactly one
+    /// call must follow, on the array this entry was written into: no mutation may intervene.
+    /// </remarks>
+    internal RootCalculation PrepareRootCalculation()
+    {
+        if (!_rootDirty || _rootNode < 0 || !_arena.Node(_rootNode).IsDirty)
+        {
+            return new RootCalculation(this, 0, canSplit: false);
+        }
+
+        if (_staged is not null)
+        {
+            // Splitting would replace the staging list that existing records index into, so an
+            // intermediate root stays a whole-trie task. Weighing it by the arena deliberately
+            // over-estimates: scheduling a small task early costs its own duration, while
+            // under-weighing a heavy one leaves it last and every worker waits for it.
+            return new RootCalculation(this, Math.Max(1, _arena.NodeCount), canSplit: false);
+        }
+
+        int dirtyNodeCount = CountAndMarkDirtyNodes(_rootNode);
+        return new RootCalculation(
+            this,
+            dirtyNodeCount,
+            canSplit: dirtyNodeCount >= MinSplittableDirtyNodeCount);
+    }
+
+    /// <summary>
+    /// Calculates the root of every prepared trie, sharing one bounded work frontier of disjoint
+    /// dirty subtrees across all of them.
+    /// </summary>
+    /// <remarks>
+    /// The heaviest task is repeatedly split at its next dirty branch until roughly two tasks per
+    /// worker exist, then all tasks run under a single <see cref="ParallelUnbalancedWork"/> call,
+    /// largest first. A trie too small or too narrow to split encodes whole on one worker; the
+    /// owner then serially encodes each split trie's remaining dirty ancestors. Callers must
+    /// prevent nested parallelism: nothing here may dispatch again.
+    /// </remarks>
+    internal static void CalculateRoots(RootCalculation[] calculations, int count)
+    {
+        Debug.Assert((uint)count <= (uint)calculations.Length);
+        if (count == 0) return;
+        int maxWorkers = RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16.MaxDegreeOfParallelism;
+        if (maxWorkers < 2)
+        {
+            CalculateRootsSerially(calculations, count);
+            return;
+        }
+
+        int initialWorkCount = 0;
+        int totalDirtyNodeCount = 0;
+        bool hasSplittableWork = false;
+        for (int i = 0; i < count; i++)
+        {
+            if (calculations[i].DirtyNodeCount > 0)
+            {
+                initialWorkCount++;
+                totalDirtyNodeCount += calculations[i].DirtyNodeCount;
+                hasSplittableWork |= calculations[i].CanSplit;
+            }
+        }
+
+        if (initialWorkCount == 0)
+        {
+            CalculateRootsSerially(calculations, count);
+            return;
+        }
+
+        // Preserve the established whole-trie crossover for a few tiny roots, while any trie
+        // with a splittable dirty shape bypasses it regardless of update count.
+        if (initialWorkCount < MinParallelWholeTrieCount && !hasSplittableWork)
+        {
+            CalculateRootsSerially(calculations, count);
+            return;
+        }
+
+        // Existing whole-root jobs plus a fixed fanout allowance keep queue size independent
+        // of trie depth and never increase the worker count.
+        int targetWorkCount = Math.Min(totalDirtyNodeCount, initialWorkCount + maxWorkers * 2 - 1);
+        int workCapacity = Math.Min(totalDirtyNodeCount, targetWorkCount + MaxBranchSplitFanout - 1);
+        Debug.Assert(initialWorkCount <= workCapacity);
+        ParallelRootWork[] work = ArrayPool<ParallelRootWork>.Shared.Rent(workCapacity);
+        int workCount = 0;
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                ref RootCalculation calculation = ref calculations[i];
+                if (calculation.DirtyNodeCount == 0) continue;
+
+                work[workCount++] = new ParallelRootWork(
+                    calculationIndex: i,
+                    new ParallelEncodeWork(
+                        calculation.Trie._rootNode,
+                        TreePath.Empty,
+                        calculation.DirtyNodeCount,
+                        calculation.CanSplit));
+            }
+
+            Debug.Assert(workCount == initialWorkCount);
+            Span<ParallelEncodeWork> split = stackalloc ParallelEncodeWork[MaxBranchSplitFanout];
+            while (workCount < targetWorkCount)
+            {
+                int workIndex = FindHeaviestSplittableWork(work, workCount);
+                if (workIndex < 0)
+                {
+                    break;
+                }
+
+                ref ParallelRootWork parent = ref work[workIndex];
+                ref RootCalculation calculation = ref calculations[parent.CalculationIndex];
+                int splitCount = calculation.Trie.SplitAtNextDirtyBranch(parent.EncodeWork, split);
+                if (splitCount < 2)
+                {
+                    parent.EncodeWork.CanSplit = false;
+                    continue;
+                }
+
+                int splitNodeCount = 0;
+                for (int i = 0; i < splitCount; i++)
+                {
+                    splitNodeCount += split[i].NodeCount;
+                }
+
+                calculation.ParallelNodeCount = calculation.IsSplit
+                    ? calculation.ParallelNodeCount - parent.EncodeWork.NodeCount + splitNodeCount
+                    : splitNodeCount;
+                calculation.IsSplit = true;
+
+                int calculationIndex = parent.CalculationIndex;
+                parent = new ParallelRootWork(calculationIndex, split[0]);
+                Debug.Assert(workCount + splitCount - 1 <= workCapacity);
+                for (int i = 1; i < splitCount; i++)
+                {
+                    work[workCount++] = new ParallelRootWork(calculationIndex, split[i]);
+                }
+            }
+
+            work.AsSpan(0, workCount).Sort(default(ParallelRootWorkByDescendingNodeCount));
+            for (int i = 0; i < count; i++)
+            {
+                PrepareParallelEncoding(ref calculations[i]);
+            }
+
+            if (workCount == 1)
+            {
+                ExecuteRootWork(0, calculations, work);
+            }
+            else
+            {
+                ParallelUnbalancedWork.For(
+                    0,
+                    workCount,
+                    RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                    (Calculations: calculations, Work: work),
+                    static (index, state) =>
+                    {
+                        ExecuteRootWork(index, state.Calculations, state.Work);
+                        return state;
+                    });
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                ref RootCalculation calculation = ref calculations[i];
+                Debug.Assert(!calculation.IsSplit ||
+                    calculation.Trie._concurrentStagedCount <= calculation.ParallelNodeCount);
+                calculation.Trie.CalculateRoot();
+            }
+        }
+        finally
+        {
+            ArrayPool<ParallelRootWork>.Shared.Return(work);
+        }
+    }
+
+    private static void CalculateRootsSerially(RootCalculation[] calculations, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            calculations[i].Trie.CalculateRoot();
+        }
+    }
+
+    private static void PrepareParallelEncoding(ref RootCalculation calculation)
+    {
+        if (!calculation.IsSplit) return;
+
+        Debug.Assert(calculation.ParallelNodeCount < calculation.DirtyNodeCount);
+        SparseTrie trie = calculation.Trie;
+        // Workers own exactly the reserved descendant records; the owner appends the omitted
+        // dirty ancestor skeleton after the barrier.
+        trie._staged = new ArrayPoolList<SparseTrieStagedNode>(
+            calculation.DirtyNodeCount,
+            calculation.ParallelNodeCount);
+        trie._concurrentStagedCount = 0;
+        trie._arena.PrepareForConcurrentEncoding();
+    }
+
+    /// <summary>One trie's entry in a batched root calculation, from prepare through completion.</summary>
+    internal struct RootCalculation(SparseTrie trie, int dirtyNodeCount, bool canSplit)
+    {
+        internal readonly SparseTrie Trie = trie;
+        internal readonly int DirtyNodeCount = dirtyNodeCount;
+        internal readonly bool CanSplit = canSplit;
+
+        /// <summary>Dirty nodes the frontier owns, and so the staging records workers reserve.</summary>
+        internal int ParallelNodeCount;
+        internal bool IsSplit;
+    }
+
+    private struct ParallelRootWork(int calculationIndex, in ParallelEncodeWork encodeWork)
+    {
+        public readonly int CalculationIndex = calculationIndex;
+        public ParallelEncodeWork EncodeWork = encodeWork;
+    }
+
+    private readonly struct ParallelRootWorkByDescendingNodeCount : IComparer<ParallelRootWork>
+    {
+        public int Compare(ParallelRootWork x, ParallelRootWork y) =>
+            y.EncodeWork.NodeCount.CompareTo(x.EncodeWork.NodeCount);
+    }
+
+    private static int FindHeaviestSplittableWork(ParallelRootWork[] work, int workCount)
+    {
+        int heaviestIndex = -1;
+        int heaviestCount = 0;
+        for (int i = 0; i < workCount; i++)
+        {
+            ref ParallelEncodeWork candidate = ref work[i].EncodeWork;
+            if (candidate.CanSplit && candidate.NodeCount > heaviestCount)
+            {
+                heaviestIndex = i;
+                heaviestCount = candidate.NodeCount;
+            }
+        }
+
+        return heaviestIndex;
+    }
+
+    private static void ExecuteRootWork(
+        int index,
+        RootCalculation[] calculations,
+        ParallelRootWork[] work)
+    {
+        ref ParallelRootWork item = ref work[index];
+        ref RootCalculation calculation = ref calculations[item.CalculationIndex];
+        if (calculation.IsSplit)
+        {
+            calculation.Trie.EncodeParallelSubtree(item.EncodeWork);
+        }
+        else
+        {
+            // Serial by contract: this already runs on a scheduler worker.
+            calculation.Trie.CalculateRoot();
+        }
     }
 
     /// <summary>
@@ -1912,143 +2198,23 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
 
     // ---------------- Encode ----------------
 
-    private struct ParallelEncodeWork(int nodeIndex, in TreePath path, int nodeCount)
+    private struct ParallelEncodeWork(int nodeIndex, in TreePath path, int nodeCount, bool canSplit = true)
     {
         public readonly int NodeIndex = nodeIndex;
         public readonly TreePath Path = path;
         public readonly int NodeCount = nodeCount;
-        public bool CanSplit = true;
+        public bool CanSplit = canSplit && nodeCount >= MinSplittableDirtyNodeCount;
     }
 
-    private void EncodeDirtySubtreesInParallel()
-    {
-        int maxWorkers = RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16.MaxDegreeOfParallelism;
-        if (maxWorkers < 2)
-        {
-            return;
-        }
-
-        // Intermediate calculations already have staged records indexed in the shared list.
-        // Keep them serial instead of adding a per-shard merge/index-remapping mechanism.
-        if (_staged is not null)
-        {
-            return;
-        }
-
-        int dirtyNodeCount = CountAndMarkDirtyNodes(_rootNode);
-        if (dirtyNodeCount < 3)
-        {
-            return;
-        }
-
-        int targetWorkCount = Math.Min(dirtyNodeCount, maxWorkers * 2);
-        Span<ParallelEncodeWork> split = stackalloc ParallelEncodeWork[16];
-        int initialWorkCount = SplitAtNextDirtyBranch(
-            new ParallelEncodeWork(_rootNode, TreePath.Empty, dirtyNodeCount),
-            split);
-        if (initialWorkCount < 2)
-        {
-            return;
-        }
-
-        int workCapacity = Math.Min(dirtyNodeCount, targetWorkCount + 15);
-        ParallelEncodeWork[] work = ArrayPool<ParallelEncodeWork>.Shared.Rent(workCapacity);
-        int workCount = initialWorkCount;
-        Debug.Assert(workCount <= workCapacity);
-        split[..initialWorkCount].CopyTo(work);
-        try
-        {
-            while (workCount < targetWorkCount)
-            {
-                int workIndex = FindHeaviestSplittableWork(work, workCount);
-                if (workIndex < 0)
-                {
-                    break;
-                }
-
-                int splitCount = SplitAtNextDirtyBranch(work[workIndex], split);
-                if (splitCount < 2)
-                {
-                    work[workIndex].CanSplit = false;
-                    continue;
-                }
-
-                work[workIndex] = split[0];
-                Debug.Assert(workCount + splitCount - 1 <= workCapacity);
-                split[1..splitCount].CopyTo(work.AsSpan(workCount));
-                workCount += splitCount - 1;
-            }
-
-            SortByDescendingNodeCount(work.AsSpan(0, workCount));
-
-            int parallelNodeCount = 0;
-            for (int i = 0; i < workCount; i++)
-            {
-                parallelNodeCount += work[i].NodeCount;
-            }
-
-            Debug.Assert(parallelNodeCount < dirtyNodeCount);
-            Debug.Assert(parallelNodeCount >= workCount);
-
-            // Workers fill distinct records below Count; the owner appends the dirty ancestor
-            // skeleton afterward. Inline nodes leave harmless holes because publication follows
-            // each node's StagedRecord.
-            _staged = new ArrayPoolList<SparseTrieStagedNode>(dirtyNodeCount, parallelNodeCount);
-            _concurrentStagedCount = 0;
-            _arena.PrepareForConcurrentEncoding();
-            ParallelUnbalancedWork.For(
-                0,
-                workCount,
-                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                (Trie: this, Work: work),
-                static (index, state) =>
-                {
-                    state.Trie.EncodeParallelSubtree(state.Work[index]);
-                    return state;
-                });
-            Debug.Assert(_concurrentStagedCount <= parallelNodeCount);
-        }
-        finally
-        {
-            ArrayPool<ParallelEncodeWork>.Shared.Return(work);
-        }
-    }
-
-    private static int FindHeaviestSplittableWork(ParallelEncodeWork[] work, int workCount)
-    {
-        int heaviestIndex = -1;
-        int heaviestCount = 0;
-        for (int i = 0; i < workCount; i++)
-        {
-            ref ParallelEncodeWork candidate = ref work[i];
-            if (candidate.CanSplit && candidate.NodeCount > heaviestCount)
-            {
-                heaviestIndex = i;
-                heaviestCount = candidate.NodeCount;
-            }
-        }
-
-        return heaviestIndex;
-    }
-
-    private static void SortByDescendingNodeCount(Span<ParallelEncodeWork> work)
-    {
-        for (int i = 1; i < work.Length; i++)
-        {
-            ParallelEncodeWork item = work[i];
-            int j = i - 1;
-            while (j >= 0 && work[j].NodeCount < item.NodeCount)
-            {
-                work[j + 1] = work[j];
-                j--;
-            }
-
-            work[j + 1] = item;
-        }
-    }
-
+    /// <summary>
+    /// Splits one task into the dirty children of its next dirty branch, following extensions and
+    /// single-dirty-child branches through, and returns how many entries were written.
+    /// </summary>
+    /// <remarks>Reads the subtree weights <see cref="CountAndMarkDirtyNodes"/> left in the dirty
+    /// nodes, so it runs only before staging records exist.</remarks>
     private int SplitAtNextDirtyBranch(in ParallelEncodeWork work, Span<ParallelEncodeWork> split)
     {
+        Debug.Assert(_staged is null, "weights would read as staging records");
         int nodeIndex = work.NodeIndex;
         TreePath path = work.Path;
 

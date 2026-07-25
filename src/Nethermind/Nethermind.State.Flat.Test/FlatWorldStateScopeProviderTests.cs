@@ -816,7 +816,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void FiveStorageTries_RunTheParallelJobPhase_AndPropagateEveryRoot()
     {
-        // Five jobs exceed the serial threshold, so this exercises the ParallelUnbalancedWork path.
+        // Five jobs exercise parallel apply followed by the shared fixed-budget root scheduler.
         using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
