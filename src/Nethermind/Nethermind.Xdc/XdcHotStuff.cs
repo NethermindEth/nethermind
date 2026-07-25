@@ -485,8 +485,7 @@ namespace Nethermind.Xdc
         private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
             epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
 
-        // TODO: consider using a another sync indicator
-        private bool IsSynced() => !_blockTree.IsSyncing().isSyncing && _blockTree.Head is not null;
+        private bool IsSynced() => !_blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing && _blockTree.Head is not null;
 
         /// <summary>
         /// True when this node is the round-1 leader on a freshly bootstrapped chain where
