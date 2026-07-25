@@ -205,7 +205,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
             }
             finally
             {
-                single.AsSpan(0, 1).Clear();
+                single[0] = default; // drop the trie reference before the array goes back
                 ArrayPool<RootCalculation>.Shared.Return(single);
             }
 
