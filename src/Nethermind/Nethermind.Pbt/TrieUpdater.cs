@@ -1068,56 +1068,22 @@ public static partial class TrieUpdater
         internal readonly record struct NodeRef(NodeKind Kind, int Offset);
 
         /// <summary>
-        /// The storable, owning form of a boundary node: a lease on the memory its encoding sits in, and an
-        /// index to the entry within it. Synthesised to seed a frame — a run, a boundary pointer — or carried
-        /// by a <see cref="BucketJob"/> across a thread hand-off, neither of which an <see cref="Occupant"/>
-        /// span view can be. An absent node holds nothing, so <c>default</c> is one.
+        /// The storable, owning form of a boundary node carried by a <see cref="BucketJob"/> across a thread
+        /// hand-off: a lease on the memory its encoding sits in, and an index to the entry within it. An
+        /// absent node holds nothing, so <c>default</c> is one.
         /// </summary>
         /// <remarks>
         /// <see cref="Read"/> materialises the <see cref="Occupant"/> view of its bytes on whichever thread
-        /// folds it. A boundary node is always backed by an encoding, so it never carries a by-value hash; a
-        /// seeded one promotes to a result — a run handing its lease over — through the implicit conversion below.
+        /// folds it. A boundary node is always backed by an encoding, so it never carries a by-value hash.
         /// </remarks>
         internal readonly struct BoundaryNode(NodeRef node, RefCountingMemory? memory) : IDisposable
         {
             private readonly NodeRef _node = node;
             private readonly RefCountingMemory? _memory = memory;
 
-            /// <summary>
-            /// Promotes a seeded boundary node to a result, handing its lease over: a run takes the memory it
-            /// was seeded in as a chain result, a boundary pointer becomes a pure internal value.
-            /// </summary>
-            public static implicit operator NodeResult(BoundaryNode handle)
-            {
-                switch (handle.Kind)
-                {
-                    case NodeKind.Chain:
-                        return NodeResult.Chain(handle.SeedMemory);
-                    case NodeKind.Stem:
-                        Occupant view = handle.Read();
-                        return NodeResult.StemNode(view.Stem, view.Hash);
-                    case NodeKind.Internal:
-                        return NodeResult.Internal(handle.Read().Hash);
-                    default:
-                        return default;
-                }
-            }
-
-            public NodeKind Kind => _node.Kind;
-
             /// <summary>The entry's fields, decoded from the memory holding it; <c>default</c> for an absent node.</summary>
             public Occupant Read() =>
                 _memory is null ? default : new Occupant(_memory.GetSpan()[_node.Offset..], _node.Kind);
-
-            /// <summary>The whole of the memory behind a seeded run, which its result takes over.</summary>
-            private RefCountingMemory SeedMemory
-            {
-                get
-                {
-                    Debug.Assert(_node.Offset == 0, "a run read out of a group's encoding is no encoding of its own");
-                    return _memory!;
-                }
-            }
 
             public void Dispose() => ((IDisposable?)_memory)?.Dispose();
         }
@@ -1172,7 +1138,7 @@ public static partial class TrieUpdater
         /// carried by value instead — see <see cref="Unstored"/>.
         /// </summary>
         /// <remarks>
-        /// The descent's output, distinct from its input <see cref="BoundaryNode"/>. A group's encoding is not
+        /// The descent's output, distinct from its <see cref="Occupant"/> input. A group's encoding is not
         /// among what it carries: the frame folded that into a <see cref="BufferWriter"/>, so it is either
         /// the blob of the group above already, or a buffer <see cref="BufferWriter.Detach"/> hands over for the parent
         /// to plant. What a result does hold is a node with nowhere else to live — a run whose
