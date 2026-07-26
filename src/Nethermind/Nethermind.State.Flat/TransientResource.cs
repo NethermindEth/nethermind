@@ -43,11 +43,26 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
 
+    /// <summary>
+    /// Releases one lease; the final release returns the resource to the pool it was checked out from.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="Dispose"/> (the <c>RefCountingDisposable</c> convention): the pool's
+    /// <c>IDisposable</c> contract reserves <see cref="Dispose"/> for destroying an over-capacity resource
+    /// (freeing the <see cref="BloomFilter"/>), so it cannot double as the return-to-pool path.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The final release found no return pool registered,
+    /// i.e. the resource was not checked out through <see cref="ResourcePool.GetCachedResource"/>.</exception>
     internal void ReleaseLease()
     {
         if (RefCountingLease.ReleaseOnce(ref _leases))
         {
-            _returnPool?.ReturnCachedResource(_returnUsage, this);
+            if (_returnPool is null)
+            {
+                throw new InvalidOperationException($"{nameof(TransientResource)} final lease released without a registered return pool");
+            }
+
+            _returnPool.ReturnCachedResource(_returnUsage, this);
         }
     }
 

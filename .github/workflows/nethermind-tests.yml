@@ -89,6 +89,7 @@ jobs:
           - Nethermind.Shutter.Test
           - Nethermind.Sockets.Test
           - Nethermind.Specs.Test
+          - Nethermind.State.Flat.Test
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
           - Nethermind.Synchronization.Test

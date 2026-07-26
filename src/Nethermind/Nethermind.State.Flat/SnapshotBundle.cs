@@ -56,7 +56,6 @@ public sealed class SnapshotBundle : IDisposable
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
-        _transientResource.OnRented(resourcePool, usage);
 
         ExpandCurrentPooledContent();
 
@@ -215,11 +214,13 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
-    // retired resource that was already re-rented by another bundle, so the identity re-check below is
-    // required before trusting the acquire. The current resource always holds its owner lease (installed by
-    // OnRented and kept across SwapTransientResource) until Dispose, so the only way the acquire never
-    // succeeds is a disposed bundle whose transient will not be replaced -- the _isDisposed check bails there
-    // instead of spinning forever (the target has no whole-bundle lease deferring that release).
+    // retired resource that was already re-rented by another bundle, so the acquire cannot be trusted on
+    // its own: the identity re-check catches a resource swapped out by CollectAndApplySnapshot, and the
+    // disposed re-check catches one released by Dispose, which leaves _transientResource pointing at the
+    // recycled instance. The current resource always holds its owner lease (armed at pool checkout and
+    // kept across SwapTransientResource) until Dispose, so the only way the acquire never succeeds is a
+    // disposed bundle whose transient will not be replaced - the _isDisposed check bails there instead of
+    // spinning forever (the target has no whole-bundle lease deferring that release).
     private TransientResource? TryLeaseTransientResourceForWarmer()
     {
         SpinWait spinWait = default;
@@ -230,7 +231,12 @@ public sealed class SnapshotBundle : IDisposable
             TransientResource transientResource = Volatile.Read(ref _transientResource);
             if (transientResource.TryAcquireLease())
             {
-                if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)) return transientResource;
+                if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)
+                    && !Volatile.Read(ref _isDisposed))
+                {
+                    return transientResource;
+                }
+
                 transientResource.ReleaseLease();
             }
 
@@ -580,12 +586,8 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    private void SwapTransientResource()
-    {
-        TransientResource fresh = _resourcePool.GetCachedResource(_usage);
-        fresh.OnRented(_resourcePool, _usage);
-        Volatile.Write(ref _transientResource, fresh);
-    }
+    private void SwapTransientResource() =>
+        Volatile.Write(ref _transientResource, _resourcePool.GetCachedResource(_usage));
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
 

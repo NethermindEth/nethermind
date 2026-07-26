@@ -37,10 +37,10 @@ public class SnapshotBundleWarmerTests
     private SnapshotBundle NewBundle(Action<SnapshotContent>? persisted = null) =>
         new(FlatTestHelpers.MakeBundle(_pool, persisted), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
 
-    // The trie warmer warms nodes from persistence only, so it must never read the recyclable _snapshots /
-    // _transientResource: those are the writes a concurrent block scope recycles under it. A node that only
-    // exists as a pending in-memory write is visible to a normal read but Unknown to the warmer; a node in
-    // persistence is returned by both.
+    // The trie warmer never reads the recyclable _snapshots / pending write buffer; it reads persistence
+    // plus the _transientResource node cache (which it also warms), pinned by a per-read lease. A node that
+    // only exists as a pending in-memory write is visible to a normal read but Unknown to the warmer; a
+    // node in persistence is returned by both.
     [Test]
     public void Trie_warmer_reads_persistence_only_and_ignores_in_memory_writes()
     {
@@ -74,8 +74,9 @@ public class SnapshotBundleWarmerTests
 
     // Regression for the warmer recycle-under-reader race: warmer-shaped readers hold only a
     // ReadOnlySnapshotBundle lease (as the real warmer job does) while the owner churns and disposes bundles.
-    // Because the warmer reads persistence only, it must never crash or observe a foreign node here. A version
-    // that read the recyclable _snapshots / _transientResource could return a torn or foreign value under churn.
+    // The per-read transient lease plus the ABA re-checks must keep each read on the owning bundle's live
+    // resource or fall back to persistence-only; a version reading the transient without them could return
+    // a torn or foreign value under churn.
     [Test]
     public void Trie_warmer_reads_survive_owner_churn_without_foreign_values()
     {

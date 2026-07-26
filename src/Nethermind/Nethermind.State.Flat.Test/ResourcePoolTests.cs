@@ -115,6 +115,25 @@ public class ResourcePoolTests
     }
 
     [Test]
+    public void Test_ReleaseLease_FinalRelease_ReturnsResourceToCheckoutPool()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        TransientResource resource = _resourcePool.GetCachedResource(usage);
+
+        resource.ReleaseLease();
+
+        Assert.That(_resourcePool.GetCachedResource(usage), Is.SameAs(resource));
+    }
+
+    [Test]
+    public void Test_ReleaseLease_WithoutPoolCheckout_Throws()
+    {
+        using TransientResource resource = new(new TransientResource.Size(1024, 1));
+
+        Assert.That(resource.ReleaseLease, Throws.InvalidOperationException);
+    }
+
+    [Test]
     public void Test_ReturnCachedResource_RecyclesInstance()
     {
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
