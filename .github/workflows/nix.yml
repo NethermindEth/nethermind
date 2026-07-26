@@ -72,13 +72,15 @@ jobs:
         uses: actions/checkout@v6
       - name: Install Nix
         uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
-      - name: Disable non-nuget.org feeds
+      - name: Disable non-nuget.org feeds in a source copy
         run: |
-          dotnet nuget disable source dotnet-tools --configfile nuget.config
-          dotnet nuget disable source nugettest.org --configfile nuget.config
+          mkdir "$RUNNER_TEMP/lockfile-src"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/lockfile-src"
+          dotnet nuget disable source dotnet-tools --configfile "$RUNNER_TEMP/lockfile-src/nuget.config"
+          dotnet nuget disable source nugettest.org --configfile "$RUNNER_TEMP/lockfile-src/nuget.config"
       - name: Regenerate nuget-deps.json
         run: |
-          nix build .#nethermind.fetch-deps --out-link fetch-deps --print-build-logs
+          nix build "path:$RUNNER_TEMP/lockfile-src#nethermind.fetch-deps" --out-link fetch-deps --print-build-logs
           ./fetch-deps regenerated-nuget-deps.json
       - name: Compare with committed nix/nuget-deps.json
         run: |
