@@ -309,6 +309,26 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public async Task DualStackMappedSender_IsAcceptedAndNormalizedToIPv4()
+        {
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
+
+            DiscoveryMsg? received = null;
+            _ = adapter.OnIncomingMsg(Arg.Do<DiscoveryMsg>(x => received = x));
+
+            IPEndPoint mappedSender = new(IPAddress.Parse("::ffff:127.0.0.2"), _address2.Port);
+            byte[] data = SerializePing(service);
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), mappedSender, _address));
+
+            await SleepWhileWaiting();
+
+            await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+            ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
+            Assert.That(received?.FarAddress?.Address, Is.EqualTo(IPAddress.Parse("127.0.0.2")));
+        }
+
+        [Test]
         public async Task GlobalInboundRateLimiter_Drops_Messages_AboveBurstLimit()
         {
             (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(globalInboundMessageBurst: 2);

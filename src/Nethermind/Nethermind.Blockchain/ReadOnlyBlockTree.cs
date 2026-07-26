@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain
             => _wrapped.Accept(blockTreeVisitor, cancellationToken);
 
         public ChainLevelInfo FindLevel(ulong number) => _wrapped.FindLevel(number);
-        public BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
+        public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
 
         public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers,
             BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>

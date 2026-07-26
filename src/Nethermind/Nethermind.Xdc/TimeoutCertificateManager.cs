@@ -86,8 +86,12 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         BroadcastTimeout(timeout);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        if (collectedTimeouts.Count < epochSwitchInfo.Masternodes.Length * spec.CertificateThreshold)
+        double requiredTimeouts = epochSwitchInfo.Masternodes.Length * spec.CertificateThreshold;
+        if (collectedTimeouts.Count < requiredTimeouts)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Round {timeout.Round}: {collectedTimeouts.Count}/{requiredTimeouts} timeout votes collected.");
             return Task.CompletedTask;
+        }
 
         if (!_tcBuildStartedByRound.TryAdd(timeout.Round, 0))
             return Task.CompletedTask;
@@ -258,18 +262,31 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     internal bool FilterTimeout(Timeout timeout)
     {
-        if (timeout.Round < _consensusContext.CurrentRound) return false;
+        if (timeout.Round < _consensusContext.CurrentRound)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Discarded stale timeout for round {timeout.Round}, current round is {_consensusContext.CurrentRound}.");
+            return false;
+        }
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
-        if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
+        if (snapshot is null || snapshot.NextEpochCandidates.Length == 0)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected timeout for round {timeout.Round}: no snapshot/candidates for gap {timeout.GapNumber}.");
+            return false;
+        }
 
         if (timeout.Signature is null || !timeout.Signature.HasLowS())
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected timeout for round {timeout.Round}: missing or malleable signature.");
             return false;
+        }
 
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
         Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
         timeout.Signer = signer;
 
-        return snapshot.NextEpochCandidates.Contains(signer);
+        bool isKnownSigner = snapshot.NextEpochCandidates.Contains(signer);
+        if (!isKnownSigner && _logger.IsDebug) _logger.Debug($"Rejected timeout for round {timeout.Round}: signer {signer} not in candidate set.");
+        return isKnownSigner;
     }
 
     internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC);

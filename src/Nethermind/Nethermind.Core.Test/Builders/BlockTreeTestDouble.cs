@@ -189,7 +189,7 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash) =>
         Inner?.GetInfo(number, blockHash) ?? (null, null);
     public virtual ChainLevelInfo? FindLevel(ulong number) => Inner?.FindLevel(number);
-    public virtual BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => Inner?.FindCanonicalBlockInfo(blockNumber) ?? null!;
+    public virtual BlockInfo? FindCanonicalBlockInfo(ulong blockNumber) => Inner?.FindCanonicalBlockInfo(blockNumber);
     public virtual Hash256? FindHash(ulong blockNumber) => Inner?.FindHash(blockNumber);
     public virtual IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) =>
         Inner?.FindHeaders(hash, numberOfBlocks, skip, reverse) ?? new ArrayPoolList<BlockHeader>(0);

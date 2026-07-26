@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Threading;
@@ -13,6 +14,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -96,6 +98,7 @@ namespace Nethermind.Hive.Test
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
 
             blockTree.Genesis.Returns(genesis.Header);
+            blockTree.FindHeader(genesis.Hash!, BlockTreeLookupOptions.None, Arg.Any<ulong?>()).Returns(genesis.Header);
             blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(new ValueTask<AddBlockResult>(AddBlockResult.AlreadyKnown));
             fileSystem.File.Exists(Arg.Any<string>()).Returns(false);
@@ -140,6 +143,112 @@ namespace Nethermind.Hive.Test
                 .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == invalidBlock.Hash), Arg.Any<BlockTreeSuggestOptions>());
             _ = blockTree.Received(1)
                 .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == validSibling.Hash), Arg.Any<BlockTreeSuggestOptions>());
+        }
+
+        [Test]
+        public async Task Side_chain_blocks_in_blocks_dir_are_validated_against_their_own_parent()
+        {
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block mainChainBlock = Build.A.Block
+                .WithParent(genesis.Header)
+                .WithExtraData([0x01])
+                .TestObject;
+            Block sideChainBlock = Build.A.Block
+                .WithParent(genesis.Header)
+                .WithExtraData([0x02])
+                .TestObject;
+            Block sideChainParent = Build.A.Block
+                .WithParent(sideChainBlock.Header)
+                .WithExtraData([0x03])
+                .TestObject;
+            Block invalidSideChainBlock = Build.A.Block
+                .WithParent(sideChainParent.Header)
+                .WithExtraData([0x04])
+                .TestObject;
+            Block validSideChainBlock = Build.A.Block
+                .WithParent(sideChainParent.Header)
+                .WithExtraData([0x05])
+                .TestObject;
+
+            using TempPath blocksDir = TempPath.GetTempDirectory(Path.Combine(nameof(HivePluginTests), Guid.NewGuid().ToString("N")));
+            Directory.CreateDirectory(blocksDir.Path);
+
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(mainChainBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(sideChainBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0003.rlp"), Rlp.Encode(sideChainParent).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0004.rlp"), Rlp.Encode(invalidSideChainBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0005.rlp"), Rlp.Encode(validSideChainBlock).Bytes);
+
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+            IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            Dictionary<Hash256, BlockHeader> headers = new()
+            {
+                [genesis.Hash!] = genesis.Header,
+                [mainChainBlock.Hash!] = mainChainBlock.Header,
+                [sideChainBlock.Hash!] = sideChainBlock.Header,
+                [sideChainParent.Hash!] = sideChainParent.Header,
+            };
+
+            blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, Arg.Any<ulong?>())
+                .Returns(callInfo => headers.GetValueOrDefault(callInfo.ArgAt<Hash256>(0)));
+            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(new ValueTask<AddBlockResult>(AddBlockResult.AlreadyKnown));
+            fileSystem.File.Exists(Arg.Any<string>()).Returns(false);
+
+            blockValidator
+                .ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string>())
+                .Returns(callInfo =>
+                {
+                    Block block = callInfo.ArgAt<Block>(0);
+                    bool isValid = block.Hash != invalidSideChainBlock.Hash;
+                    callInfo[2] = isValid ? null : "invalid";
+                    return isValid;
+                });
+
+            HiveRunner hiveRunner = new(
+                blockTree,
+                blockProcessingQueue,
+                new HiveConfig
+                {
+                    BlocksDir = blocksDir.Path,
+                    ChainFile = Path.Combine(blocksDir.Path, "missing.rlp"),
+                },
+                LimboLogs.Instance,
+                fileSystem,
+                blockValidator);
+
+            await hiveRunner.Start(CancellationToken.None);
+
+            Received.InOrder(() =>
+            {
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == mainChainBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == genesis.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == sideChainBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == genesis.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == sideChainParent.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == sideChainBlock.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == invalidSideChainBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == sideChainParent.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == validSideChainBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == sideChainParent.Header.Hash),
+                    out Arg.Any<string>());
+            });
+
+            _ = blockTree.DidNotReceive()
+                .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == invalidSideChainBlock.Hash), Arg.Any<BlockTreeSuggestOptions>());
+            _ = blockTree.Received(1)
+                .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == validSideChainBlock.Hash), Arg.Any<BlockTreeSuggestOptions>());
         }
     }
 }

@@ -14,6 +14,12 @@ namespace Nethermind.Core.Collections
     {
         public static int LockPartitions { get; } = Environment.ProcessorCount * 16;
 
+        /// <summary>Default capacity above which <c>ClearAndTrim</c> shrinks a collection's backing storage.</summary>
+        public const int DefaultTrimAboveCapacity = 8192;
+
+        /// <summary>Default capacity <c>ClearAndTrim</c> shrinks a collection back to once <see cref="DefaultTrimAboveCapacity"/> is exceeded.</summary>
+        public const int DefaultTrimToCapacity = 1024;
+
         public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
         {
             switch (items)
@@ -73,6 +79,15 @@ namespace Nethermind.Core.Collections
             for (int index = 0; index < items.Length; index++)
             {
                 list.Add(items[index]);
+            }
+        }
+
+        public static void ClearAndTrim<T>(this HashSet<T> set, int trimAboveCapacity = DefaultTrimAboveCapacity, int trimToCapacity = DefaultTrimToCapacity)
+        {
+            set.Clear();
+            if (set.Capacity > trimAboveCapacity)
+            {
+                set.TrimExcess(trimToCapacity);
             }
         }
 
