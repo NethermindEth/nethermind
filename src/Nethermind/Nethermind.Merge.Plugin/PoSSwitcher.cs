@@ -237,8 +237,9 @@ namespace Nethermind.Merge.Plugin
 
         private void LoadTerminalBlock()
         {
+            ulong? mergeBlockNumber = _specProvider.MergeBlockNumber?.BlockNumber;
             _terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
-                                   _specProvider.MergeBlockNumber?.BlockNumber - 1;
+                                   (mergeBlockNumber is > 0 ? mergeBlockNumber - 1 : null);
 
             _terminalBlockExplicitSpecified = _terminalBlockNumber is not null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
