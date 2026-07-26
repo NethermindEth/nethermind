@@ -57,7 +57,7 @@ public class SstIngestionTests
     private static SlotValue Slot(byte v) => SlotValue.FromSpanWithoutLeadingZero(new byte[] { v });
     private static StateId State(ulong number, byte seed) => new(number, ValueKeccak.Compute(new byte[] { seed }));
 
-    private void Reopen()
+    private void Reopen(bool persistViaSstIngestion = true)
     {
         _db.Dispose();
         _db = new ColumnsDb<FlatDbColumns>(
@@ -67,7 +67,7 @@ public class SstIngestionTests
             new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<FlatDbColumns>());
-        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = persistViaSstIngestion });
     }
 
     private string[] StagedSstFiles()
@@ -346,8 +346,9 @@ public class SstIngestionTests
         Assert.That(reader.TryLoadStorageRlp(storageAccount, storagePath, ReadFlags.None), Is.EqualTo(payload));
     }
 
-    [Test]
-    public void Crash_between_column_ingests_rolls_forward_on_reopen()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Crash_between_column_ingests_rolls_forward_on_reopen(bool reopenWithIngestionEnabled)
     {
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
@@ -380,7 +381,7 @@ public class SstIngestionTests
             storageBatch.Dispose();
         }
 
-        Reopen();
+        Reopen(reopenWithIngestionEnabled);
 
         Assert.That(_db.GetColumnDb(FlatDbColumns.Account).Get(accountKey), Is.EqualTo(new byte[] { 0xa2 }));
         Assert.That(_db.GetColumnDb(FlatDbColumns.Storage).Get(storageKey), Is.EqualTo(new byte[] { 0xb2 }));
