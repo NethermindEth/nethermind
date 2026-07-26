@@ -14,8 +14,8 @@
     "SnapSync": true,
     "AncientBodiesBarrier": 105235063,
     "AncientReceiptsBarrier": 105235063,
-    "PivotNumber": 154400000,
-    "PivotHash": "0xc86fd163d08c45fa587d551af76c7da69cd9c73348a990bbbf0d20e82f8df2d5"
+    "PivotNumber": 154700000,
+    "PivotHash": "0x1287926fc79499d08ce28ab730338c6109519a42dd56900d3abb04e58fcce9a0"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
