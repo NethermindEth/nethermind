@@ -545,12 +545,13 @@ public class BlockCachePreWarmerTests
 
     /// <summary>
     /// A session's spec comes from a synthetic next-block header, so it can be started for a spec that enables warming
-    /// and then met by a block whose spec disables it — a fork boundary. The join must happen either way, or the pass
-    /// runs alongside main execution with nothing left to join it until the block is done.
+    /// and then met by a block whose spec disables it — a fork boundary. Joining is not enough there: the session's
+    /// entries describe the head it warmed, so a block on a different parent must not read them.
     /// </summary>
     [Test]
-    public void PreWarmCaches_WhenSpecDisablesPreWarming_StillJoinsSpeculativeSession()
+    public void PreWarmCaches_WhenSpecDisablesPreWarming_StillJoinsAndClearsOtherHeadEntries()
     {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
         using (preWarmer)
         {
@@ -561,10 +562,21 @@ public class BlockCachePreWarmerTests
                 head, Osaka.Instance, generation: 1, _ => null, idlePassDelayMs: 5, cancellation.Token);
             Assert.That(session.IsCompleted, Is.False, "precondition: the speculative session must be running");
 
-            // Amsterdam enables them, which disables warming for this configuration.
-            preWarmer.PreWarmCaches(BuildChildBlock(head), head, Amsterdam.Instance).GetAwaiter().GetResult();
+            AddressAsKey sentinel = TestItem.AddressD;
+            preBlockCaches.StateCache.Set(in sentinel, new Account(123));
 
-            Assert.That(session.IsCompleted, Is.True, "a speculative session must never outlive the reactive path");
+            // A side branch: this block's parent is not the head the session warmed.
+            Block sideBranch = Build.A.Block.WithTransactions(BuildTwoSenderBlock().Transactions)
+                .WithGasLimit(30_000_000).WithParentHash(TestItem.KeccakA).TestObject;
+            // Amsterdam enables access lists, which disables warming for this configuration.
+            preWarmer.PreWarmCaches(sideBranch, head, Amsterdam.Instance).GetAwaiter().GetResult();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.IsCompleted, Is.True, "a speculative session must never outlive the reactive path");
+                Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.False,
+                    "entries warmed against another head must not survive into execution");
+            }
         }
     }
 

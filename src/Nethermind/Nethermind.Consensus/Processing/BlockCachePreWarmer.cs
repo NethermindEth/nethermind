@@ -101,9 +101,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // for a spec this block disables (a fork boundary), and no pass may run into execution.
         CancelAndJoinSpeculative();
 
-        if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
+        if (_preBlockCaches is null) return Task.CompletedTask;
 
-        bool skipReactiveWarming = ShouldSkipReactiveWarming(suggestedBlock, spec);
+        // A spec that disables warming still needs the clear-or-retain decision below: joining stops a session from
+        // writing further, but its entries describe the head it warmed, which need not be this block's parent.
+        bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
         if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
         {
             // Handoff taken: the caches already hold this parent's state, so keep RLP caching on for execution.
