@@ -191,6 +191,24 @@ public class RecentRootStoreTests
     }
 
     [Test]
+    public void AreReferencesValid_true_for_duplicate_valid_references()
+    {
+        IWorldState state = CreateState(out IDisposable scope);
+        using (scope)
+        {
+            RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
+            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+
+            (ValueHash256, ulong, ValueHash256)[] references =
+            [
+                (sourceId, 100UL, Root),
+                (sourceId, 100UL, Root)
+            ];
+            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.True);
+        }
+    }
+
+    [Test]
     public void AreReferencesValid_false_over_the_reference_cap()
     {
         IWorldState state = CreateState(out IDisposable scope);
