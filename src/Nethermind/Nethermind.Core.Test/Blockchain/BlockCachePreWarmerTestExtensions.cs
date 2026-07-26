@@ -42,9 +42,16 @@ public static class BlockCachePreWarmerTestExtensions
             idlePassDelayMs: 5,
             cancellation.Token);
 
-        bool published = SpinWait.SpinUntil(markerPublished, TimeSpan.FromSeconds(5));
-        cancellation.Cancel();
-        task.GetAwaiter().GetResult();
+        bool published = false;
+        try
+        {
+            published = SpinWait.SpinUntil(markerPublished, TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            cancellation.Cancel();
+            task.GetAwaiter().GetResult();
+        }
 
         Assert.That(published, Is.True, "precondition: speculative warming must publish a handoff marker");
     }
