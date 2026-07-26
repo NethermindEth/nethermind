@@ -154,6 +154,10 @@ public class KeyedNonceManagerTests
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: 42), Is.False);
     }
 
+    [TestCaseSource(nameof(MalformedKeySets))]
+    public void IsNonceSetValid_false_for_malformed_sets(UInt256[] nonceKeys) =>
+        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, nonceKeys, nonceSeq: 0), Is.False);
+
     [Test]
     public void IsNonceSetValid_false_at_max_nonce_seq() =>
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
