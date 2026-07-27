@@ -1,0 +1,70 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics.CodeAnalysis;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Consensus.Receipts;
+
+/// <summary>
+/// Serves receipts that are not on disk by re-executing their block, so an archive can drop stored receipt bodies
+/// for any range it still holds state history for.
+/// </summary>
+/// <remarks>
+/// Decorates the read path only. Block processing writes through <see cref="IReceiptStorage"/>, which is left
+/// untouched, so nothing here can affect what gets persisted. A block with transactions but no stored receipts is
+/// the signal to regenerate; regeneration that fails its root check falls through to the stored (empty) result
+/// rather than substituting unverified receipts.
+/// </remarks>
+public sealed class RegeneratingReceiptFinder(
+    IReceiptFinder inner,
+    IBlockFinder blockFinder,
+    ReceiptsRegenerator regenerator) : IReceiptFinder
+{
+    public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
+
+    public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
+
+    public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
+    {
+        TxReceipt[] stored = inner.Get(block, recover, recoverSender);
+        return stored.Length > 0 || !TryRegenerate(block, out TxReceipt[]? regenerated) ? stored : regenerated;
+    }
+
+    public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
+    {
+        TxReceipt[] stored = inner.Get(blockHash, recover);
+        return stored.Length > 0 || !TryRegenerate(FindBlock(blockHash), out TxReceipt[]? regenerated) ? stored : regenerated;
+    }
+
+    public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+    {
+        if (inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator)) return true;
+        if (!TryRegenerate(FindBlock(blockHash), out TxReceipt[]? regenerated)) return false;
+
+        // The array-backed iterator is the same one InMemoryReceiptStorage uses; the obsoletion targets the
+        // storage-side callers that should stream from disk, which a regenerated block by definition cannot.
+#pragma warning disable 618
+        iterator = new ReceiptsIterator(regenerated);
+#pragma warning restore 618
+        return true;
+    }
+
+    private Block? FindBlock(Hash256 blockHash) =>
+        blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+    private bool TryRegenerate(Block? block, [NotNullWhen(true)] out TxReceipt[]? receipts)
+    {
+        if (block is null || block.Transactions.Length == 0)
+        {
+            receipts = null;
+            return false;
+        }
+
+        return regenerator.TryRegenerate(block, out receipts);
+    }
+}

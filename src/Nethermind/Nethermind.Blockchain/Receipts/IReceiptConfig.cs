@@ -10,6 +10,9 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether to store receipts after a new block is processed. This setting is independent from downloading receipts in fast sync mode.", DefaultValue = "true")]
     bool StoreReceipts { get; set; }
 
+    [ConfigItem(Description = "Whether to serve receipts that are not on disk by re-executing their block over its parent state. Intended for archive nodes that drop stored receipt bodies; a regenerated set is served only when it reproduces the block header's receipts root. Requires state history for the queried block.", DefaultValue = "false")]
+    bool RecoverReceiptsFromState { get; set; }
+
     [ConfigItem(Description = "Whether to migrate the receipts database to the new schema.", DefaultValue = "false")]
     bool ReceiptsMigration { get; set; }
 

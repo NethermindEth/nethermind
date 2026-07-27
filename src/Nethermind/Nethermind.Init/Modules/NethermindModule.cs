@@ -102,6 +102,11 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
 
+        if (configProvider.GetConfig<IReceiptConfig>().RecoverReceiptsFromState)
+        {
+            builder.AddModule(new ReceiptRegenerationModule());
+        }
+
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.
