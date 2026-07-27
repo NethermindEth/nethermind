@@ -59,13 +59,13 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         int headerCheck = decoderContext.Position + headerSequenceLength;
 
         // Common fields
-        Hash256? parentHash = decoderContext.DecodeKeccak();
-        Hash256? unclesHash = decoderContext.DecodeKeccak();
-        Address? beneficiary = decoderContext.DecodeAddress();
-        Hash256? stateRoot = decoderContext.DecodeKeccak();
-        Hash256? transactionsRoot = decoderContext.DecodeKeccak();
-        Hash256? receiptsRoot = decoderContext.DecodeKeccak();
-        Bloom? bloom = decoderContext.DecodeBloom();
+        Hash256 parentHash = DecodeRequiredKeccak(ref decoderContext);
+        Hash256 unclesHash = DecodeRequiredKeccak(ref decoderContext);
+        Address beneficiary = DecodeRequiredAddress(ref decoderContext);
+        Hash256 stateRoot = DecodeRequiredKeccak(ref decoderContext);
+        Hash256 transactionsRoot = DecodeRequiredKeccak(ref decoderContext);
+        Hash256 receiptsRoot = DecodeRequiredKeccak(ref decoderContext);
+        Bloom bloom = DecodeRequiredBloom(ref decoderContext);
         UInt256 difficulty = decoderContext.DecodeUInt256();
         ulong number = decoderContext.DecodeULong();
         ulong gasLimit = decoderContext.DecodeULong();
@@ -84,7 +84,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         header.GasUsed = gasUsed;
         header.Hash = Keccak.Compute(headerRlp);
 
-        header.MixHash = decoderContext.DecodeKeccak();
+        header.MixHash = DecodeRequiredKeccak(ref decoderContext);
         header.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
 
         DecodeHeaderSpecificFields(ref decoderContext, header, rlpBehaviors, headerCheck);
@@ -173,6 +173,39 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             throw new InvalidOperationException(
                 $"{GetType().Name} can only encode {typeof(TH).Name} or a plain {nameof(BlockHeader)}, but got {header.GetType().Name}.");
         }
+    }
+
+    private static Hash256 DecodeRequiredKeccak(ref RlpReader decoderContext)
+    {
+        ReadOnlySpan<byte> keccakSpan = decoderContext.DecodeByteArraySpan(RlpLimit.L32, Hash256.Size);
+        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+        {
+            return Keccak.OfAnEmptyString;
+        }
+
+        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+        {
+            return Keccak.EmptyTreeHash;
+        }
+
+        if (keccakSpan.SequenceEqual(Keccak.Zero.Bytes))
+        {
+            return Keccak.Zero;
+        }
+
+        return new Hash256(keccakSpan);
+    }
+
+    private static Address DecodeRequiredAddress(ref RlpReader decoderContext)
+    {
+        ReadOnlySpan<byte> addressSpan = decoderContext.DecodeByteArraySpan(size: Address.Size);
+        return addressSpan.SequenceEqual(Address.Zero.Bytes) ? Address.Zero : new Address(addressSpan);
+    }
+
+    private static Bloom DecodeRequiredBloom(ref RlpReader decoderContext)
+    {
+        ReadOnlySpan<byte> bloomSpan = decoderContext.DecodeByteArraySpan(RlpLimit.Bloom, Bloom.ByteLength);
+        return bloomSpan.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomSpan);
     }
 
     private int GetContentLength(TH header, RlpBehaviors rlpBehaviors)

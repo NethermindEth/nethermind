@@ -228,6 +228,70 @@ public class HeaderDecoderTests
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
 
+    [Test]
+    public void Should_reject_bloom_encoded_as_rlp_list()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        byte[] validRlp = Rlp.Encode(header).Bytes;
+
+        byte[] canonicalBloom = new byte[3 + Bloom.ByteLength];
+        canonicalBloom[0] = 0xB9;
+        canonicalBloom[1] = 0x01;
+        header.Bloom!.Bytes.CopyTo(canonicalBloom.AsSpan(3));
+
+        byte[] listFormBloom = new byte[5 + Bloom.ByteLength];
+        listFormBloom[0] = 0xF9;
+        listFormBloom[1] = 0x01;
+        listFormBloom[2] = 0x02;
+        listFormBloom[3] = 0x81;
+        listFormBloom[4] = 0x7F;
+        header.Bloom.Bytes.CopyTo(listFormBloom.AsSpan(5));
+
+        byte[] crafted = ReplaceFieldEncoding(validRlp, canonicalBloom, listFormBloom);
+
+        Assert.Throws<RlpException>(() => Rlp.Decode<BlockHeader>(crafted));
+    }
+
+    [Test]
+    public void Should_reject_empty_rlp_string_for_prev_randao()
+    {
+        Hash256 mixHash = Keccak.Compute("mix_hash");
+        BlockHeader header = Build.A.BlockHeader
+            .WithMixHash(mixHash)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .TestObject;
+        byte[] validRlp = Rlp.Encode(header).Bytes;
+
+        byte[] canonicalMixHash = new byte[33];
+        canonicalMixHash[0] = 0xA0;
+        mixHash.Bytes.CopyTo(canonicalMixHash.AsSpan(1));
+
+        byte[] crafted = ReplaceFieldEncoding(validRlp, canonicalMixHash, [0x80]);
+
+        Assert.Throws<RlpException>(() => Rlp.Decode<BlockHeader>(crafted));
+    }
+
+    private static byte[] ReplaceFieldEncoding(byte[] headerRlp, byte[] originalField, byte[] craftedField)
+    {
+        int fieldIndex = headerRlp.AsSpan().IndexOf(originalField);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fieldIndex, Is.GreaterThanOrEqualTo(3), "setup: field encoding not found");
+            Assert.That(headerRlp[0], Is.EqualTo(0xF9), "setup: expected a two-byte sequence length prefix");
+        }
+
+        byte[] result = new byte[headerRlp.Length + craftedField.Length - originalField.Length];
+        headerRlp.AsSpan(0, fieldIndex).CopyTo(result);
+        craftedField.CopyTo(result.AsSpan(fieldIndex));
+        headerRlp.AsSpan(fieldIndex + originalField.Length).CopyTo(result.AsSpan(fieldIndex + craftedField.Length));
+
+        int contentLength = ((headerRlp[1] << 8) | headerRlp[2]) + craftedField.Length - originalField.Length;
+        result[1] = (byte)(contentLength >> 8);
+        result[2] = (byte)contentLength;
+        return result;
+    }
+
     public static IEnumerable<object?[]> CancunFieldsSource()
     {
         yield return new object?[] { null, null, null };
