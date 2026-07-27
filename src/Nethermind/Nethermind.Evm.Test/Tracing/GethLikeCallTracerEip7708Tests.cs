@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
@@ -15,6 +14,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
+using static Nethermind.Evm.Test.Tracing.GethLikeCallTracerTests;
 
 namespace Nethermind.Evm.Test.Tracing;
 
@@ -23,18 +23,10 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
 {
     protected override ISpecProvider SpecProvider => new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = true });
 
-    private const string WithLog = """{"withLog":true}""";
-
     private const byte TopValue = 1;
     private const byte InnerValue = 2;
 
     private static readonly Address Precompile = IdentityPrecompile.Address;
-
-    private static GethTraceOptions GetGethTraceOptions(string? config) => GethTraceOptions.Default with
-    {
-        Tracer = NativeCallTracer.CallTracer,
-        TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
-    };
 
     private static NativeCallTracerLogEntry ExpectedTransferLog(Address from, Address to, byte value, ulong position) => new(
         TransferLog.Sender, data: Hash256.FromBytesWithPadding([value]).BytesToArray(),

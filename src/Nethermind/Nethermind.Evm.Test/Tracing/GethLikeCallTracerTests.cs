@@ -23,9 +23,9 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLikeCallTracerTests : VirtualMachineTestsBase
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n" };
-    private const string? WithLog = """{"withLog":true}""";
-    private const string? OnlyTopCall = """{"onlyTopCall":true}""";
-    private const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
+    internal const string? WithLog = """{"withLog":true}""";
+    internal const string? OnlyTopCall = """{"onlyTopCall":true}""";
+    internal const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
 
     private string ExecuteCallTrace(byte[] code, string? tracerConfig = null)
     {
@@ -35,7 +35,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions);
     }
 
-    private static GethTraceOptions GetGethTraceOptions(string? config) => GethTraceOptions.Default with
+    internal static GethTraceOptions GetGethTraceOptions(string? config) => GethTraceOptions.Default with
     {
         Tracer = NativeCallTracer.CallTracer,
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
