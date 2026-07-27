@@ -113,6 +113,17 @@ public class FlatSnapServerTests
         Assert.That(result.Count, Is.LessThan(RequestCount));
     }
 
+    [Test]
+    public void GetTrieNodes_EmptyPathGroup_ReturnsNull()
+    {
+        // A path group with no paths is a malformed request; the whole response must be null.
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = [] }]);
+
+        IByteArrayList? result = _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None);
+
+        Assert.That(result, Is.Null);
+    }
+
     private static byte[] BuildRootRlp(out Hash256 rootHash)
     {
         using MemDb trieDb = new();

@@ -42,12 +42,12 @@ public static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
                 goto OutOfGas;
 
-            ZeroPaddedSpan slice = source.SliceWithZeroPadding(in b, (int)result);
-            vm.VmState.Memory.SaveAfterGas(in a, in slice);
+            vm.VmState.Memory.CopyFromZeroExtendedAfterGas(in a, source, in b, (int)result);
 
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportMemoryChange(a, in slice);
+                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in a, (ulong)result);
+                vm.TxTracer.ReportMemoryChange(a, in memoryChange);
             }
         }
 
@@ -115,12 +115,13 @@ public static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, ref vm.VmState.Memory))
                 goto OutOfGas;
 
-            ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
-            vm.VmState.Memory.SaveAfterGas(in destOffset, in slice);
+            ReadOnlySpan<byte> source = returnDataBuffer.Span.Slice((int)sourceOffset, (int)size);
+            vm.VmState.Memory.SaveAfterGas(in destOffset, source);
 
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportMemoryChange(destOffset, in slice);
+                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in destOffset, (ulong)size);
+                vm.TxTracer.ReportMemoryChange(destOffset, in memoryChange);
             }
         }
 
@@ -192,14 +193,13 @@ public static partial class EvmInstructions
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
 
-            // Slice the external code starting at the source offset with appropriate zero-padding.
-            ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
-            vm.VmState.Memory.SaveAfterGas(in a, in slice);
+            vm.VmState.Memory.CopyFromZeroExtendedAfterGas(in a, externalCode, in b, (int)result);
 
             // Report memory changes if tracing is enabled.
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportMemoryChange(a, in slice);
+                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in a, (ulong)result);
+                vm.TxTracer.ReportMemoryChange(a, in memoryChange);
             }
         }
         else

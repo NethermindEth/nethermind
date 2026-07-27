@@ -68,6 +68,20 @@ public class BlockAccessListSequentialValidationTests
             () => RunSequentialValidation(tampered));
     }
 
+    [TestCase(ProcessingOptions.NoValidation)]
+    [TestCase(ProcessingOptions.ForceSequentialBlockAccessList)]
+    public void Sequential_validation_defers_mismatched_bal_when_requested(ProcessingOptions processingOptions)
+    {
+        ReadOnlyBlockAccessList tampered = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads((UInt256)1)
+                .TestObject)
+            .TestObject;
+
+        Assert.DoesNotThrow(() => RunSequentialValidation(tampered, processingOptions));
+    }
+
     /// <summary>
     /// Runs the block once on the sequential path with no suggested BAL so the executor
     /// constructs the generated BAL, then re-encodes it as a wire <see cref="ReadOnlyBlockAccessList"/>.
@@ -85,7 +99,9 @@ public class BlockAccessListSequentialValidationTests
         return Rlp.Decode<ReadOnlyBlockAccessList>(encoded);
     }
 
-    private static BlockAccessListManager RunSequentialValidation(ReadOnlyBlockAccessList suggested)
+    private static BlockAccessListManager RunSequentialValidation(
+        ReadOnlyBlockAccessList suggested,
+        ProcessingOptions processingOptions = ProcessingOptions.None)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
@@ -93,11 +109,16 @@ public class BlockAccessListSequentialValidationTests
 
         Block block = BuildBlock();
         block.Header.BlockAccessListHash = Keccak.Zero;
-        RunSequential(stateProvider, balManager, block, suggested);
+        RunSequential(stateProvider, balManager, block, suggested, processingOptions);
         return balManager;
     }
 
-    private static void RunSequential(IWorldState stateProvider, BlockAccessListManager balManager, Block block, ReadOnlyBlockAccessList? blockAccessList)
+    private static void RunSequential(
+        IWorldState stateProvider,
+        BlockAccessListManager balManager,
+        Block block,
+        ReadOnlyBlockAccessList? blockAccessList,
+        ProcessingOptions processingOptions = ProcessingOptions.None)
     {
         block.BlockAccessList = blockAccessList;
 
@@ -110,14 +131,15 @@ public class BlockAccessListSequentialValidationTests
             LimboLogs.Instance);
 
         BlockExecutionContext executionContext = new(block.Header, Amsterdam.Instance);
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, processingOptions);
         executor.SetBlockExecutionContext(executionContext);
         balManager.Setup(block);
 
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
 
-        executor.ProcessTransactions(block, ProcessingOptions.None, tracer, CancellationToken.None);
+        executor.ProcessTransactions(block, processingOptions, tracer, CancellationToken.None);
+        balManager.SetBlockAccessList(block);
     }
 
     private static (IWorldState, BlockAccessListManager) CreateFundedAmsterdamSetup()
@@ -131,7 +153,7 @@ public class BlockAccessListSequentialValidationTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            static worldState => new EthereumCodeInfoRepository(worldState));
         return (stateProvider, balManager);
     }
 

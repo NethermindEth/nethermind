@@ -1,16 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -35,36 +32,18 @@ namespace Nethermind.Merge.AuRa
     /// Plugin for AuRa -> PoS migration
     /// </summary>
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : MergePlugin(chainSpec, mergeConfig)
+    public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethermindPlugin
     {
-        private readonly IMergeConfig _mergeConfig = mergeConfig;
-        private readonly ChainSpec _chainSpec = chainSpec;
-
-        public override string Name => "AuRaMerge";
-        public override string Description => "AuRa Merge plugin for ETH1-ETH2";
-        protected override bool MergeEnabled => _mergeConfig.Enabled && _chainSpec.SealEngineType == SealEngineType.AuRa;
-
-        public override async Task Init(INethermindApi nethermindApi)
-        {
-            _api = nethermindApi;
-            if (MergeEnabled)
-            {
-                await base.Init(nethermindApi);
-
-                // this runs before all init steps that use tx filters
-                TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
-                    originalFilter is MinGasPriceContractTxFilter ? originalFilter
-                    : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
-            }
-        }
-
-        public override IModule Module => new AuRaMergeModule();
+        public string Name => "AuRaMerge";
+        public string Description => "AuRa Merge plugin for ETH1-ETH2";
+        public string Author => "Nethermind";
+        public bool Enabled => mergeConfig.Enabled && chainSpec.SealEngineType == SealEngineType.AuRa;
+        public bool MustInitialize => true;
+        public IModule Module => new AuRaMergeModule();
     }
 
     /// <summary>
     /// Note: <see cref="AuRaMergeModule"/> is applied also when <see cref="AuRaModule"/> is applied.
-    /// Note: <see cref="AuRaMergePlugin"/> subclasses <see cref="MergePlugin"/>, but some component that is set
-    /// in <see cref="MergePlugin"/> is replaced later by standard AuRa components.
     /// </summary>
     public class AuRaMergeModule : Module
     {
@@ -73,8 +52,8 @@ namespace Nethermind.Merge.AuRa
 
                 .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 
-                // Aura (non merge) use `BlockProducerStarter` directly.
-                .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
+                // The post-merge env uses the plain AuRa tx pool source (no posdao/randomness txs).
+                .Bind<IBlockProducerTxSourceFactory, AuRaTxPoolTxSourceFactory>()
 
                 // Post-merge block production decorates the AuRa engine factory (from AuRaModule).
                 .AddSingleton<ManualTimestamper>()
@@ -105,6 +84,8 @@ namespace Nethermind.Merge.AuRa
                 // Merge-aware override: skips wiring the branch processor on post-merge chains so
                 // the AuRa finalization manager's startup catch-up walk never runs.
                 .AddStep(typeof(InitializeBlockchainAuRaMerge))
+
+                .AddStep(typeof(InitializeAuRaMergePlugin))
 
                 .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>()
                 ;

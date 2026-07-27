@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using G2 = Nethermind.Crypto.Bls.P2;
+using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -54,10 +55,8 @@ public partial class Bls12381G2MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        // skip clear as whole buffer is filled in point decoding
-        // dest) is fully written by Zero()+Decode() during point decoding, so the pool's zero-clear
-        // is wasted. Dead infinity slots are never read.
-        using ArrayPoolList<long> pointBuffer = new(SafeArrayPool<long>.Shared, nItems * G2.Sz, nItems * G2.Sz, clearFirst: false);
+        // clearFirst: false — every slot MultiMultAffine reads is written during decode below
+        using ArrayPoolList<long> pointBuffer = new(SafeArrayPool<long>.Shared, nItems * G2Affine.Sz, nItems * G2Affine.Sz, clearFirst: false);
         using ArrayPoolList<byte> scalarBuffer = new(SafeArrayPool<byte>.Shared, nItems * 32, nItems * 32, clearFirst: false);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
@@ -109,7 +108,7 @@ public partial class Bls12381G2MsmPrecompile
             return result.Error!;
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
-        G2 res = new G2(stackalloc long[G2.Sz]).MultiMult(pointBuffer.AsSpan(), scalarBuffer.AsSpan(), npoints);
+        G2 res = new G2(stackalloc long[G2.Sz]).MultiMultAffine(pointBuffer.AsSpan(), scalarBuffer.AsSpan(), npoints);
         return res.EncodeRaw();
     }
 }

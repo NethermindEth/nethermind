@@ -19,12 +19,15 @@ public sealed class GCScheduler
     private const int BlocksBacklogTriggeringManualGC = 4;
     private const int MaxBlocksWithoutGC = 250;
     private const int MinSecondsBetweenForcedGC = 120;
+    // 4 GiB ≈ 256 typical 30 MGas mainnet blocks
+    internal const long SustainedSweepAllocationBytes = 4L * 1024 * 1024 * 1024;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
 
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
+    private readonly Timer? _sustainedSweepTimer;
     private readonly Stopwatch _stopwatch = new();
     private Task _lastGcTask = Task.CompletedTask;
     private bool _isNextGcBlocking = false;
@@ -34,13 +37,26 @@ public sealed class GCScheduler
     private long _countToGC = 0L;
 
     private bool _skipNextGC = false;
+    private long _sweepBaselineAllocatedBytes;
+    private int _forcedGCExclusions;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
 
-    private GCScheduler() =>
+    private GCScheduler() : this(sustainedSweepEnabled: true)
+    {
+    }
+
+    // Test ctor: a private instance without the sweep timer cannot race assertions on its state.
+    internal GCScheduler(bool sustainedSweepEnabled)
+    {
         // Initialize the timer without starting it
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
+        if (sustainedSweepEnabled)
+        {
+            _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+    }
 
     /// <summary>
     /// Activates background garbage collection when the processing queue is idle.
@@ -169,9 +185,14 @@ public sealed class GCScheduler
     /// <param name="mode">The garbage collection mode.</param>
     /// <param name="blocking">Whether the GC should be blocking.</param>
     /// <param name="compacting">Whether the GC should compact the large object heap.</param>
-    /// <returns>True if GC was performed; false if another GC was in progress.</returns>
+    /// <returns>True if GC was performed; false if another GC was in progress or forced collections are excluded (e.g. during pruning).</returns>
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting)
     {
+        if (Volatile.Read(ref _forcedGCExclusions) > 0)
+        {
+            return false;
+        }
+
         if (!MarkGCPaused())
         {
             // Skip if another GC is in progress
@@ -180,6 +201,11 @@ public sealed class GCScheduler
 
         // Reset the block counter after GC
         _countToGC = MaxBlocksWithoutGC;
+        // Scheduler-issued gen2 restarts the sustained-sweep budget; runtime-initiated ones don't.
+        if (generation >= GC.MaxGeneration)
+        {
+            Volatile.Write(ref _sweepBaselineAllocatedBytes, GC.GetTotalAllocatedBytes(precise: false));
+        }
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         // Also trim native memory used by Db
         MallocHelper.Instance.MallocTrim((uint)1.MiB);
@@ -190,4 +216,32 @@ public sealed class GCScheduler
     }
 
     public void SkipNextGC() => Volatile.Write(ref _skipNextGC, true);
+
+    /// <summary>Excludes forced collections for the scope's lifetime (e.g. while pruning).</summary>
+    public ForcedGCExclusionScope ExcludeForcedGC()
+    {
+        Interlocked.Increment(ref _forcedGCExclusions);
+        return new ForcedGCExclusionScope(this);
+    }
+
+    public readonly struct ForcedGCExclusionScope(GCScheduler scheduler) : IDisposable
+    {
+        public void Dispose() => Interlocked.Decrement(ref scheduler._forcedGCExclusions);
+    }
+
+    // Keeps gen2 small when blocks stream back-to-back and the idle-window sweeps never engage,
+    // preventing the runtime's multi-second blocking gen2 escalation.
+    internal void SweepIfAllocationBudgetExceeded()
+    {
+        long allocated = GC.GetTotalAllocatedBytes(precise: false);
+        if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
+
+        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+    }
+
+    internal long SweepBaselineAllocatedBytes
+    {
+        get => Volatile.Read(ref _sweepBaselineAllocatedBytes);
+        set => Volatile.Write(ref _sweepBaselineAllocatedBytes, value);
+    }
 }

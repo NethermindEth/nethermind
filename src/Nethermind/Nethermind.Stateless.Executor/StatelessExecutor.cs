@@ -53,7 +53,7 @@ public static class StatelessExecutor
         {
             try
             {
-                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
+                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig, payload.ProtocolFork, payload.Block.Header);
                 IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
 #if !ZK_EVM
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
@@ -162,28 +162,21 @@ public static class StatelessExecutor
             ChainId = 0,
             ActiveFork = new ForkConfig
             {
-                Fork = 0,
-                Activation = new() { BlockNumber = [], Timestamp = [] },
-                BlobSchedule = []
+                Activation = new() { BlockNumber = [], Timestamp = [] }
             }
         }
     };
 
-    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
+    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig, ProtocolFork protocolFork, BlockHeader header)
     {
-        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider);
+        if (!chainConfig.ActiveFork.Activation.IsActive(header))
+            throw new ArgumentException("ChainConfig active fork is not active for the payload.", nameof(chainConfig));
 
-        // No ActiveFork: nothing to pin, so use the chain's own schedule; an unknown chain id can't proceed.
-        if (chainConfig.ActiveFork.Fork == 0 &&
-            chainConfig.ActiveFork.Activation.BlockNumber.Length == 0 &&
-            chainConfig.ActiveFork.Activation.Timestamp.Length == 0)
-        {
-            return baseProvider ?? throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
-        }
+        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider);
 
         // ActiveFork pins the spec by name on any compatible schedule; unknown chains (e.g. devnets) use Mainnet rules.
         baseProvider ??= MainnetSpecProvider.Instance;
 
-        return StatelessSpecProvider.Create(baseProvider, chainConfig.ChainId, chainConfig.ActiveFork);
+        return StatelessSpecProvider.Create(baseProvider, chainConfig.ChainId, chainConfig.ActiveFork, protocolFork);
     }
 }

@@ -160,7 +160,11 @@ public sealed class ArenaManager : IArenaManager
         // file. OnWriteCompleted / OnWriteCancelledShared re-adds the id if room remains.
         // Dedicated files never enter the mutable pool. Route off file.Small (not the small
         // arg) so the remove always targets the same pool the file was scanned from.
-        if (!dedicated) PoolFor(file).Remove(file.Id);
+        if (!dedicated)
+        {
+            PoolFor(file).Remove(file.Id);
+            file.WriterActive = true;
+        }
         FileStream stream = file.CreateWriteStream(offset);
         return new ArenaWriter(this, file, dedicated, offset, stream);
     }
@@ -180,6 +184,7 @@ public sealed class ArenaManager : IArenaManager
     internal void OnWriteCompleted(ArenaFile file, long newFrontier, bool hasHeadroom)
     {
         using Lock.Scope scope = _lock.EnterScope();
+        file.WriterActive = false;
         file.Frontier = newFrontier;
         if (hasHeadroom) PoolFor(file).Add(file.Id);
         // Ratchet ArenaAllocatedBytes up to file.Frontier (post-write high-water): push the
@@ -200,6 +205,12 @@ public sealed class ArenaManager : IArenaManager
     internal void OnWriteCancelledShared(ArenaFile file)
     {
         using Lock.Scope scope = _lock.EnterScope();
+        file.WriterActive = false;
+        if (!_disposed && file.Frontier > 0 && file.DeadBytes >= file.Frontier)
+        {
+            RemoveFullyDeadArena(file);
+            return;
+        }
         PoolFor(file).Add(file.Id);
     }
 
@@ -255,7 +266,13 @@ public sealed class ArenaManager : IArenaManager
         // Sole caller is ArenaReservation.CleanUp, so one call == one reservation released.
         if (_logger.IsDebug) _logger.Debug($"Released arena reservation on arena {file.Id} ({deadSize} bytes)");
         file.DeadBytes += deadSize;
-        if (file.DeadBytes < file.Frontier) return true;
+        if (file.DeadBytes < file.Frontier || file.WriterActive) return true;
+        RemoveFullyDeadArena(file);
+        return false;
+    }
+
+    private void RemoveFullyDeadArena(ArenaFile file)
+    {
         PoolFor(file).Remove(file.Id);
         if (_arenas.TryRemove(file.Id, out _))
         {
@@ -263,7 +280,6 @@ public sealed class ArenaManager : IArenaManager
             file.ReportRemoved();
             file.Dispose();
         }
-        return false;
     }
 
     /// <inheritdoc/>

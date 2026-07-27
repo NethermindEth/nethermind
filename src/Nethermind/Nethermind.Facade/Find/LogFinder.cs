@@ -27,6 +27,8 @@ namespace Nethermind.Facade.Find
         private static int ParallelExecutions = 0;
         private static int ParallelLock = 0;
 
+        public static bool IsParallelScanSlotHeld => Volatile.Read(ref ParallelLock) != 0;
+
         private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
@@ -85,47 +87,42 @@ namespace Nethermind.Facade.Find
                 return source.SelectMany(worker);
             }
 
-            static IEnumerable<T> ReleaseLockOnDispose(IEnumerable<T> source, bool runParallel, CancellationToken ct)
-            {
-                try
-                {
-                    foreach (T item in source)
-                    {
-                        yield return item;
-                        ct.ThrowIfCancellationRequested();
-                    }
-                }
-                finally
-                {
-                    if (runParallel)
-                    {
-                        Interlocked.CompareExchange(ref ParallelLock, 0, 1);
-                    }
-                    Interlocked.Decrement(ref ParallelExecutions);
-                }
-            }
-
             // we want to support one parallel eth_getLogs call for maximum performance
             // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
-            int parallelLock = Interlocked.CompareExchange(ref ParallelLock, 1, 0);
+            return RunParallelLazy(source, worker, cancellationToken);
+        }
+
+        // Must stay a lazy iterator: the lock is acquired on the first MoveNext and released in the finally,
+        // so acquire and release share one enumerator lifetime. An eager version would leak the lock when the
+        // result is never enumerated.
+        private IEnumerable<FilterLog> RunParallelLazy<T>(IEnumerable<T> source, Func<T, IEnumerable<FilterLog>> worker, CancellationToken cancellationToken)
+        {
+            bool canRunParallel = Interlocked.CompareExchange(ref ParallelLock, 1, 0) == 0;
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
-            bool canRunParallel = parallelLock == 0;
-
-            IEnumerable<T> wrapped = ReleaseLockOnDispose(source, canRunParallel, cancellationToken);
-
-            if (canRunParallel)
+            try
             {
-                if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
-                wrapped = wrapped.AsParallel() // can yield big performance improvements
-                    .AsOrdered() // we want to keep block order
-                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
-            }
+                if (_logger.IsTrace) _logger.Trace(canRunParallel
+                    ? $"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}."
+                    : $"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
 
-            return wrapped.SelectMany(worker);
+                IEnumerable<T> wrapped = canRunParallel
+                    ? source.AsParallel().AsOrdered().WithDegreeOfParallelism(_rpcConfigGetLogsThreads)
+                    : source;
+
+                foreach (FilterLog log in wrapped.SelectMany(worker))
+                {
+                    yield return log;
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+            }
+            finally
+            {
+                if (canRunParallel)
+                {
+                    Interlocked.CompareExchange(ref ParallelLock, 0, 1);
+                }
+                Interlocked.Decrement(ref ParallelExecutions);
+            }
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)

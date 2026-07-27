@@ -68,6 +68,9 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
+            // Sequences deferred block-data flushing before state persistence (see IStatePersistenceBarrier).
+            .AddSingleton<IStatePersistenceBarrier, StatePersistenceBarrier>()
+
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INodeKeyManager>().LoadNodeKey())
             .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()

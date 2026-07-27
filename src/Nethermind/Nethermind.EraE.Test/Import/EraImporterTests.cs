@@ -46,6 +46,13 @@ public class EraImporterTests
         {
             Assert.That(env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"block {i} should have been imported");
         }
+
+        Block expectedFinalizedBlock = env.SourceCtx.Resolve<IBlockTree>().FindBlock((ulong)chainLength - 1)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.TargetTree.FinalizedHash, Is.EqualTo(expectedFinalizedBlock.Hash));
+            Assert.That(env.TargetTree.LastFinalizedBlockLevel, Is.EqualTo((ulong)chainLength - 1));
+        }
     }
 
     [Test]

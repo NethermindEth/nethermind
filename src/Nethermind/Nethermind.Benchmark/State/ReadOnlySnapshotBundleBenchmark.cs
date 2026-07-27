@@ -52,11 +52,23 @@ public class ReadOnlySnapshotBundleBenchmark
     private const int SnapshotCount = 8;
     private const int ArraySize = 32;
 
+    // false: bundle over mutable (ConcurrentDictionary) snapshots. true: over sorted (SortedSnapshotContent)
+    // snapshots — the compacted form most bundle snapshots have in production, and where the dictionary load
+    // factor affects lookups.
+    [Params(false, true)]
+    public bool SortedContent;
+
     [GlobalSetup]
     public void Setup()
     {
-        FlatDbConfig config = new();
+        FlatDbConfig config = new() { CompactionOffset = 0 };
         ResourcePool resourcePool = new(config);
+        // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
+        // repository itself does not use the arena managers, so the persisted tier can stay unwired.
+        SnapshotCompactor compactor = new(
+            config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
+            resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, NullLogManager.Instance),
+            NullLogManager.Instance);
         List<FlatSnapshot> allSnapshots = new(SnapshotCount);
         StateId currentStateId = new(0, Keccak.EmptyTreeHash);
 
@@ -159,8 +171,16 @@ public class ReadOnlySnapshotBundleBenchmark
         SnapshotPooledList finalSnapshots = new(allSnapshots.Count);
         foreach (FlatSnapshot s in allSnapshots)
         {
-            s.TryAcquire();
-            finalSnapshots.Add(s);
+            if (SortedContent)
+            {
+                s.TryAcquire();
+                finalSnapshots.Add(compactor.CompactSnapshotBundle(new SnapshotPooledList(1) { s }));
+            }
+            else
+            {
+                s.TryAcquire();
+                finalSnapshots.Add(s);
+            }
         }
 
         // Build final ReadOnlySnapshotBundle with all 8 snapshots

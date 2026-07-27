@@ -24,6 +24,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
@@ -90,9 +91,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
-    internal long _allocatedSpan = 0;
-    private long _totalReads;
-    private long _totalWrites;
+    internal CacheLinePaddedLong _allocatedSpan;
+    private CacheLinePaddedLong _totalReads;
+    private CacheLinePaddedLong _totalWrites;
 
     private readonly IteratorManager _iteratorManager;
     private ulong _writeBufferSize;
@@ -185,7 +186,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             if (dbConfig.EnableMetricsUpdater)
             {
-                DbMetricsUpdater<DbOptions> metricUpdater = new(Name, DbOptions, db, null, dbConfig, _logger);
+                DbMetricsUpdater<DbOptions> metricUpdater = new(Name, DbOptions, db, null, dbConfig, _isUsingSharedBlockCache, _logger);
                 metricUpdater.StartUpdating();
                 _metricsUpdaters.Add(metricUpdater);
 
@@ -197,7 +198,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                         if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
                         {
                             DbMetricsUpdater<ColumnFamilyOptions> columnMetricUpdater = new(
-                                Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _logger);
+                                Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _isUsingSharedBlockCache, _logger);
                             columnMetricUpdater.StartUpdating();
                             _metricsUpdaters.Add(columnMetricUpdater);
                         }
@@ -223,7 +224,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException x)
         {
-            CreateMarkerIfCorrupt(x);
+            HandleFatalDbError(x);
             throw;
         }
     }
@@ -307,21 +308,38 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)
+    private void HandleFatalDbError(RocksDbSharpException rocksDbException)
     {
-        if (rocksDbException.Message.Contains("Corruption:") || rocksDbException.Message.Contains("IO error"))
+        bool corruption = rocksDbException.Message.Contains("Corruption:", StringComparison.Ordinal);
+        bool ioError = rocksDbException.Message.Contains("IO error", StringComparison.Ordinal);
+        if (!corruption && !ioError)
+        {
+            return;
+        }
+
+        // Only genuine on-disk corruption (RocksDB reports it as "Corruption:") gets the marker,
+        // which schedules the lossy rocksdb_repair_db on the next start. A transient/environmental
+        // "IO error" (fd exhaustion, a full disk, revoked permissions) is not on-disk corruption:
+        // repair cannot fix it and running it against an otherwise-healthy DB destroys data, so we
+        // never write the marker for it. Either way we fast-shutdown, because continuing past a
+        // failed write would apply later writes as if it had succeeded and corrupt state at the
+        // application layer even when the DB files themselves are intact.
+        if (corruption)
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
-
-            // Don't kill tests checking corruption response
-            if (!rocksDbException.Message.Equals("Corruption: test corruption", StringComparison.Ordinal))
-            {
-                _logger.Error($"Fast shutdown due to {Name} DB corruption. Please restart.");
-                Environment.Exit(ExitCodes.DbCorruption);
-            }
         }
+        else if (_logger.IsWarn)
+        {
+            _logger.Warn($"IO error on DB path {_fullPath}. Shutting down without repair; please restart Nethermind.");
+        }
+
+        _logger.Error($"Fast shutdown due to {Name} DB {(corruption ? "corruption" : "IO error")}. Please restart.");
+        FatalShutdown();
     }
+
+    /// <summary>Terminates the process after a fatal DB error. Overridden in tests to observe the call without exiting.</summary>
+    protected virtual void FatalShutdown() => Environment.Exit(ExitCodes.DbCorruption);
 
     private void RepairIfCorrupted(DbOptions dbOptions)
     {
@@ -339,9 +357,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem.File.Delete(corruptMarker);
     }
 
-    protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads);
+    protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads.Value);
 
-    protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites);
+    protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
 
     protected virtual long FetchTotalPropertyValue(string propertyName) =>
         long.TryParse(_db.GetProperty(propertyName), out long parsedValue)
@@ -358,8 +376,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 CacheSize = 0,
                 IndexSize = 0,
                 MemtableSize = 0,
-                TotalReads = _totalReads,
-                TotalWrites = _totalWrites,
+                TotalReads = _totalReads.Value,
+                TotalWrites = _totalWrites.Value,
             };
         }
         return new IDbMeta.DbMetric()
@@ -368,8 +386,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CacheSize = GetCacheSize(),
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
-            TotalReads = _totalReads,
-            TotalWrites = _totalWrites,
+            TotalReads = _totalReads.Value,
+            TotalWrites = _totalWrites.Value,
         };
     }
 
@@ -881,7 +899,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -905,7 +923,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             catch (RocksDbSharpException e)
             {
-                CreateMarkerIfCorrupt(e);
+                HandleFatalDbError(e);
                 throw;
             }
         }
@@ -923,14 +941,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             if (!span.IsNullOrEmpty())
             {
-                Interlocked.Increment(ref _allocatedSpan);
+                Interlocked.Increment(ref _allocatedSpan.Value);
                 GC.AddMemoryPressure(span.Length);
             }
             return span;
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -997,7 +1015,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1014,7 +1032,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1023,7 +1041,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         if (!span.IsNullOrEmpty())
         {
-            Interlocked.Decrement(ref _allocatedSpan);
+            Interlocked.Decrement(ref _allocatedSpan.Value);
             GC.RemoveMemoryPressure(span.Length);
         }
         _db.DangerousReleaseMemory(span);
@@ -1092,7 +1110,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1120,7 +1138,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1149,7 +1167,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1162,7 +1180,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1175,7 +1193,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1246,7 +1264,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
             throw;
         }
     }
@@ -1331,7 +1349,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             catch (RocksDbSharpException e)
             {
-                _dbOnTheRocks.CreateMarkerIfCorrupt(e);
+                _dbOnTheRocks.HandleFatalDbError(e);
                 throw;
             }
         }
@@ -1392,7 +1410,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             catch (RocksDbSharpException e)
             {
-                _dbOnTheRocks.CreateMarkerIfCorrupt(e);
+                _dbOnTheRocks.HandleFatalDbError(e);
                 throw;
             }
         }
@@ -1427,7 +1445,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            // Fast-shuts down on corruption or IO error; anything else falls through, so log it
+            // rather than swallowing the flush failure silently.
+            HandleFatalDbError(e);
+            if (_logger.IsWarn) _logger.Warn($"Failed to flush {Name} DB: {e.Message}");
         }
     }
 
@@ -1439,7 +1460,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            CreateMarkerIfCorrupt(e);
+            HandleFatalDbError(e);
+            if (_logger.IsWarn) _logger.Warn($"Failed to flush {Name} DB: {e.Message}");
         }
     }
 

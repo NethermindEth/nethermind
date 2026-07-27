@@ -408,6 +408,7 @@ public class LongFinalityIntegrationTests
             finalized,
             persistence,
             tier.Repository,
+            NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             Substitute.For<IPersistedSnapshotCompactor>(),
             tier.Loader,

@@ -78,8 +78,7 @@ public static partial class EvmInstructions
 
         if (copyLength > 0)
         {
-            ZeroPaddedSpan callOutput = outputData.Span.SliceWithZeroPadding(0, copyLength);
-            if (!vm.VmState.Memory.TrySave(in outputOffset, in callOutput))
+            if (!vm.VmState.Memory.TrySave(in outputOffset, outputData.Span[..copyLength]))
             {
                 result = EvmExceptionType.OutOfGas;
                 return true;

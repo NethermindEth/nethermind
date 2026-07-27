@@ -42,7 +42,7 @@ public static partial class EvmInstructions
             EvmStack.WriteUInt256ToSlot(ref topRef, in result);
         }
 
-        if (TTracingInst.IsActive) stack.ReportPushUInt256(ref topRef);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
     StackUnderflow:
         // Jump forward to be unpredicted by the branch predictor

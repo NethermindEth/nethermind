@@ -35,9 +35,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong GetPreRefundGas(in TSelf gas, ulong txGasLimit)
     {
-        Debug.Assert((long)txGasLimit - (long)TSelf.GetRemainingGas(in gas) - TSelf.GetStateReservoir(in gas) >= 0,
-            $"Gas invariant violated: remaining ({TSelf.GetRemainingGas(in gas)}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
-        return txGasLimit - TSelf.GetRemainingGas(in gas) - (ulong)TSelf.GetStateReservoir(in gas);
+        ulong remainingGas = TSelf.GetRemainingGas(in gas);
+        Debug.Assert((long)txGasLimit - (long)remainingGas - TSelf.GetStateReservoir(in gas) >= 0,
+            $"Gas invariant violated: remaining ({remainingGas}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
+        return txGasLimit - remainingGas - (ulong)TSelf.GetStateReservoir(in gas);
     }
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
@@ -59,11 +60,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual long GetStateGasUsed(in TSelf gas) => 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual long GetStateGasSpill(in TSelf gas) => 0;
-    // Tx-wide cumulative spill paid via gas_left in reverted child frames; never undone.
-    // Used by top-level halt to reattribute burned spill from state to regular dimension.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long GetStateGasSpillBurned(in TSelf gas) => 0;
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CalculateStateGasSpill(in TSelf gas, long stateGasCost)
     {
@@ -226,12 +222,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // Drop state-gas from block-state accounting without refunding to the gas budget;
     // reverted state charges stay paid by the tx but don't contribute to committed state gas.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) => amount;
+    static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) => amount;
 
+    /// <summary>Credits a speculative state-gas refund to the frame, continuing the source-based
+    /// LIFO refill: gas_left up to the frame's unrefunded spill, the remainder to the reservoir.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund) =>
-        TSelf.UpdateGasUp(ref gas, (ulong)amount);
+    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund)
+        => TSelf.UpdateGasUp(ref gas, (ulong)amount);
 
+    /// <summary>Revokes a speculative refund credited by <see cref="AddStateGasRefundToReservoir"/>.</summary>
+    /// <remarks>Claws the full amount from the reservoir (negative if needed); the gas_left-refilled
+    /// portion stays there, its permanent spill-refund mark keeping the net spill consistent.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 
@@ -239,6 +240,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // post-reset StateGasUsed feeds SpentGas so the user doesn't pay for uncommitted state.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void ResetForHalt(ref TSelf gas, long initialStateReservoir, long initialStateGasUsed) { }
+
+    /// <summary>Folds EIP-8037 top-frame state gas into the rollback baseline.</summary>
+    /// <remarks>Used for preparation charges, such as EIP-7702 authorization writes, that survive execution rollback.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void FoldTopFrameStateGas(ref TSelf gas, ref TSelf baseline, long stateGasUsed) { }
 
     // EIP-7702 code-insert refund regular-gas portion. Pre-EIP-8037: (NewAccount - PerAuthBaseCost) each.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -308,6 +314,9 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
     public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
+
+    public ulong StandardGas => TGasPolicy.GetRemainingGas(Standard) + (ulong)TGasPolicy.GetStateReservoir(Standard);
+    public ulong MinRequiredGasLimit => Math.Max(StandardGas, TGasPolicy.GetRemainingGas(FloorGas));
 
     /// <summary>
     /// EIP-8037: rejects a transaction whose intrinsic regular or floor gas exceeds <paramref name="cap"/>.

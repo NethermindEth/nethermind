@@ -49,7 +49,8 @@ public class DebugBridge : IDebugBridge
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore)
+        IBadBlockStore badBlockStore,
+        IBlockStore blockStore)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -59,9 +60,11 @@ public class DebugBridge : IDebugBridge
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
+        // Use the shared singleton store, not a private one over the raw DB, so debug reads observe the
+        // deferred-body overlay (a private store would miss a block whose body write is still queued).
+        _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
-        IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
         IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
         IDb metadataDb = dbProvider.MetadataDb ?? throw new ArgumentNullException(nameof(dbProvider.MetadataDb));
@@ -75,8 +78,6 @@ public class DebugBridge : IDebugBridge
             {DbNames.Metadata, metadataDb},
             {DbNames.Code, codeDb},
         };
-
-        _blockStore = new BlockStore(blocksDb);
 
         IColumnsDb<ReceiptsColumns> receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
         foreach (ReceiptsColumns receiptsDbColumnKey in receiptsDb.ColumnKeys)

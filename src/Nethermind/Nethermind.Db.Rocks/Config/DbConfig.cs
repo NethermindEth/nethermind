@@ -412,4 +412,7 @@ public class DbConfig : IDbConfig
 
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
+
+    public string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; } = "";
+    public string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }

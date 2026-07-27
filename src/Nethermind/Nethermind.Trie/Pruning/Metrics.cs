@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie.Pruning
 {
     public static class Metrics
     {
+        private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
+
         [GaugeMetric]
         [Description("Nodes that are currently kept in cache (either persisted or not)")]
         public static long DirtyNodesCount { get; set; }
@@ -42,11 +47,21 @@ namespace Nethermind.Trie.Pruning
 
         [CounterMetric]
         [Description("Number of DB reads.")]
-        public static long LoadedFromDbNodesCount { get; set; }
+        public static long LoadedFromDbNodesCount => _mainLoadedFromDbNodesCount.Value + _otherLoadedFromDbNodesCount.Value;
+        private static CacheLinePaddedLong _mainLoadedFromDbNodesCount;
+        private static CacheLinePaddedLong _otherLoadedFromDbNodesCount;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void IncrementLoadedFromDbNodesCount() =>
+            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromDbNodesCount.Value : ref _otherLoadedFromDbNodesCount.Value);
 
         [CounterMetric]
         [Description("Number of reads from the node cache.")]
-        public static long LoadedFromCacheNodesCount { get; set; }
+        public static long LoadedFromCacheNodesCount => _mainLoadedFromCacheNodesCount.Value + _otherLoadedFromCacheNodesCount.Value;
+        private static CacheLinePaddedLong _mainLoadedFromCacheNodesCount;
+        private static CacheLinePaddedLong _otherLoadedFromCacheNodesCount;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void IncrementLoadedFromCacheNodesCount() =>
+            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromCacheNodesCount.Value : ref _otherLoadedFromCacheNodesCount.Value);
 
         [CounterMetric]
         [Description("Number of reads from the RLP cache.")]

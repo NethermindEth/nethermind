@@ -46,10 +46,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         // Multiple threads trying to complete the same TaskCompletionSource
         // and unsubscribe the same event handler multiple times
 
-        using MergeTestBlockchain chain = await CreateBlockchain(mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 5000 // Long timeout to allow race condition to occur
-        });
+        using MergeTestBlockchain chain = await CreateBlockchain();
 
         // Create a block to process that will trigger the event handling mechanism
         Block block = Build.A.Block

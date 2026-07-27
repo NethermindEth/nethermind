@@ -193,6 +193,51 @@ public class TimeoutCertificateManagerTests
         Assert.That(tcManager.GetTimeoutsCount(timeout), Is.EqualTo(0));
     }
 
+    [Test]
+    public async Task HandleTimeoutVote_ThresholdReached_RetainsRecentTimeouts()
+    {
+        PrivateKey[] keys = new PrivateKeyGenerator().Generate(3).ToArray();
+        Address[] masternodes = keys.Select(key => key.Address).ToArray();
+        const ulong round = 1;
+        const ulong gap = 0;
+
+        XdcConsensusContext context = new() { CurrentRound = round };
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(new Block(header, new BlockBody()));
+
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.GetEpochSwitchInfo(header)
+            .Returns(new EpochSwitchInfo(masternodes, [], [], new BlockRoundInfo(header.Hash!, round, header.Number)));
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+
+        TimeoutCertificateManager manager = new(
+            context,
+            Substitute.For<ITimeoutTimer>(),
+            Substitute.For<ISyncPeerPool>(),
+            Substitute.For<ISnapshotManager>(),
+            epochSwitchManager,
+            specProvider,
+            blockTree,
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
+
+        foreach (PrivateKey key in keys)
+            await manager.HandleTimeoutVote(XdcTestHelper.BuildSignedTimeout(key, round, gap));
+
+        IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Timeout>> retainedTimeouts = manager.GetReceivedTimeouts();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.CurrentRound, Is.EqualTo(round + 1));
+            Assert.That(retainedTimeouts, Has.Count.EqualTo(1));
+            Assert.That(retainedTimeouts.Single().Value, Has.Count.EqualTo(keys.Length));
+        }
+    }
+
     [TestCase(99UL, 0UL, true, false)]     // Round smaller than current round
     [TestCase(100UL, 1000UL, true, false)] // Incorrect gap number, snapshot is null
     [TestCase(100UL, 0UL, false, false)]   // Signer not in masternodes candidates

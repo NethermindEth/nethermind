@@ -201,6 +201,92 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Receipt_recovery_hashes_encoded_legacy_and_typed_transactions_without_decoding()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.AccessList).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBaseFeePerGas(1)
+            .WithTransactions(transactions)
+            .WithWithdrawals(2)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithMixHash(Keccak.EmptyTreeHash)
+            .TestObject;
+
+        BlockDecoder decoder = new();
+        byte[] encoded = decoder.Encode(block).Bytes;
+        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)
+            ?? throw new AssertionException("encoded block should decode for receipt recovery");
+
+        try
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(recovery.GetNextTransactionHash(), Is.EqualTo(transactions[i].Hash), $"transaction {i}");
+            }
+
+            Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    [Test]
+    public void Receipt_recovery_calculates_a_missing_in_memory_transaction_hash()
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(1)
+            .Signed()
+            .TestObject;
+        Hash256 expectedHash = transaction.CalculateHash();
+        transaction.Hash = null;
+        ReceiptRecoveryBlock recovery = new(Build.A.Block.WithTransactions(transaction).TestObject);
+        Hash256 actualHash = recovery.GetNextTransactionHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualHash, Is.EqualTo(expectedHash));
+            Assert.That(transaction.Hash, Is.EqualTo(expectedHash), "the calculated hash should be cached on the transaction");
+        }
+    }
+
+    public static byte[][] MalformedRecoveryTransactions =
+    [
+        [],
+        [0xc0],
+        [0x80],
+        [0x01],
+        [0x81, 0x01],
+        [0x82, 0x00, 0xc0],
+        [0x82, 0x80, 0xc0],
+        [0x82, 0x01],
+        [0xc2, 0x80],
+        [0xb8, 0x38],
+        [0xb8, 0x01, 0x01],
+    ];
+
+    [TestCaseSource(nameof(MalformedRecoveryTransactions))]
+    public void Receipt_recovery_rejects_malformed_transaction_envelopes(byte[] transactionData)
+    {
+        ReceiptRecoveryBlock recovery = new(
+            null,
+            Build.A.BlockHeader.TestObject,
+            transactionData,
+            transactionCount: 1);
+
+        Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+    }
+
+    [Test]
     public void Get_length_null()
     {
         BlockDecoder decoder = new();

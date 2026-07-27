@@ -22,7 +22,7 @@ public static class EthereumEcdsaExtensions
     /// content or signature after the hash is set.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
-    private static readonly ClockCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
+    private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
 
     /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
     internal static void ClearSenderCache() => _senderCache.Clear();

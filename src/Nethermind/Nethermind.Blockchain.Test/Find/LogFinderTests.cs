@@ -114,6 +114,19 @@ public class LogFinderTests
         Assert.That(indexes, Is.EqualTo([0, 1, 0, 1, 2]));
     }
 
+    [Test]
+    [NonParallelizable]
+    public void Unenumerated_parallel_getLogs_does_not_leak_parallel_slot()
+    {
+        SetUp(allowReceiptIterator: true, chainLength: Environment.ProcessorCount + 2);
+
+        bool before = LogFinder.IsParallelScanSlotHeld;
+
+        _ = _logFinder.FindLogs(AllBlockFilter().Build());
+
+        Assert.That(LogFinder.IsParallelScanSlotHeld, Is.EqualTo(before), "building an unenumerated parallel getLogs result must not acquire the process-wide parallel slot");
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void throw_exception_when_receipts_are_missing()
     {

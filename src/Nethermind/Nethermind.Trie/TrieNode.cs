@@ -483,7 +483,7 @@ namespace Nethermind.Trie
 
         private bool DecodeRlp(RlpReader rlpReader, ICappedArrayPool bufferPool, out int itemsCount)
         {
-            Metrics.TreeNodeRlpDecodings++;
+            Metrics.IncrementTreeNodeRlpDecodings();
 
             rlpReader.ReadSequenceLength();
 
@@ -558,7 +558,7 @@ namespace Nethermind.Trie
              * */
             if (rlp.Length >= 32 || isRoot)
             {
-                Metrics.TreeNodeHashCalculations++;
+                Metrics.IncrementTreeNodeHashCalculations();
                 return Nethermind.Core.Crypto.Keccak.Compute(rlp.AsSpan());
             }
 

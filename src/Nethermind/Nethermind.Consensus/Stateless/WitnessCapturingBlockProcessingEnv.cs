@@ -84,7 +84,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             .AddScoped<IWorldState>(recorder)
             .AddScoped<IHeaderFinder>(recordingFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            .AddScoped<ICodeCache>(NoopCodeCache.Instance)
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
                 ctx.Resolve<ISpecProvider>(),
@@ -92,7 +92,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
+                codeInfoRepositoryFactory: ctx.Resolve<CodeInfoRepositoryFactory>(),
                 transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
             // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
             .AddModule(validationModules));

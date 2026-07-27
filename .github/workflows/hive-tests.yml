@@ -91,6 +91,7 @@ jobs:
     name: Build and run tests (${{ matrix.name || matrix.suite }})
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

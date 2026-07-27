@@ -4,7 +4,6 @@
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
@@ -36,6 +35,5 @@ namespace Nethermind.Api
         ITxValidator? HeadTxValidator { get; }
 
         IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
-        ICensorshipDetector CensorshipDetector { get; set; }
     }
 }

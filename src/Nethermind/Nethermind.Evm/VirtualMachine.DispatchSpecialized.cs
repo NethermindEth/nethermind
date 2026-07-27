@@ -144,10 +144,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.JUMP:
-                            exceptionType = EvmInstructions.InstructionJump(this, ref stack, ref gas, ref pc);
+                            exceptionType = TTracingInst.IsActive
+                                ? EvmInstructions.InstructionJump(this, ref stack, ref gas, ref pc)
+                                : EvmInstructions.InstructionJumpAndSkipJumpDest(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.JUMPI:
-                            exceptionType = EvmInstructions.InstructionJumpIf(this, ref stack, ref gas, ref pc);
+                            exceptionType = TTracingInst.IsActive
+                                ? EvmInstructions.InstructionJumpIf(this, ref stack, ref gas, ref pc)
+                                : EvmInstructions.InstructionJumpIfAndSkipJumpDest(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.JUMPDEST:
                             exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref pc);

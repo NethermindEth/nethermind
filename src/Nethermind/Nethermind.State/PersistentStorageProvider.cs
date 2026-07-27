@@ -48,9 +48,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void Reset(bool resetBlockChanges = true)
     {
         base.Reset();
-        _originalValues.Clear();
-        _committedThisRound.Clear();
-        _destroyedThisRound.Clear();
+        _originalValues.ClearAndTrim();
+        _committedThisRound.ClearAndTrim();
+        _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -90,15 +90,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
 
-        if (_transactionChangesSnapshots.TryPeek(out int snapshot))
+        if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
+            if (head.CurrentIdx <= currentSnapshot)
             {
-                if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
-                {
-                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
-                }
+                // Untouched this transaction — the current value is the tx original.
+                return head.Value;
             }
+
+            // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
+            return head.OriginalIdx != -1 ? _changes[head.OriginalIdx].Value : value;
         }
 
         return value;
@@ -121,7 +123,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         int currentPosition = _changes.Count - 1;
         if (currentPosition < 0)
         {
-            _destroyedThisRound.Clear();
+            _destroyedThisRound.ClearAndTrim();
             return;
         }
         if (_changes[currentPosition].IsNull)
@@ -138,20 +140,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             trace = [];
         }
 
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         for (int i = 0; i <= currentPosition; i++)
         {
-            Change change = _changes[currentPosition - i];
-            if (_committedThisRound.Contains(change!.StorageCell))
+            ref readonly Change change = ref changes[currentPosition - i];
+            if (!_committedThisRound.Add(change!.StorageCell))
             {
                 continue;
             }
 
-            _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].Pop();
-            if (forAssertion != currentPosition - i)
-            {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
-            }
+            // Debug-only: A broken index surfaces anyway as a storage-root mismatch on the block.
+            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == currentPosition - i,
+                $"Expected the cached index to equal {currentPosition} - {i}");
 
             if (change.ChangeType == ChangeType.Update)
             {
@@ -230,9 +230,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         base.CommitCore(tracer);
-        _originalValues.Clear();
-        _committedThisRound.Clear();
-        _destroyedThisRound.Clear();
+        _originalValues.ClearAndTrim();
+        _committedThisRound.ClearAndTrim();
+        _destroyedThisRound.ClearAndTrim();
 
         if (isTracing)
         {
@@ -371,10 +371,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                 }
 
-                _originalValues.Clear();
+                _originalValues.ClearAndTrim();
             }
 
-            _destroyedThisRound.Clear();
+            _destroyedThisRound.ClearAndTrim();
             return;
         }
 
@@ -414,12 +414,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
-        public int Capacity => _dictionary.Capacity;
 
-        public void Reset()
+        public void Reset(int capacity)
         {
             _missingAreDefault = false;
-            _dictionary.Clear();
+            _dictionary.ClearAndTrim(capacity, capacity);
         }
         public void ClearAndSetMissingAsDefault()
         {
@@ -669,11 +668,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             public static void Return(PerContractState item)
             {
-                const int MaxItemSize = 512;
+                const int PooledDictionaryCapacity = 512;
                 const int MaxPooledCount = 2048;
-
-                if (item.BlockChange.Capacity > MaxItemSize)
-                    return;
 
                 // shared pool fallback
                 if (Interlocked.Increment(ref _poolCount) > MaxPooledCount)
@@ -682,7 +678,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     return;
                 }
 
-                item.BlockChange.Reset();
+                item.BlockChange.Reset(PooledDictionaryCapacity);
                 _pool.Enqueue(item);
             }
         }

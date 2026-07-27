@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -15,14 +16,30 @@ using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Blockchain.BlockAccessLists;
 
-public class BlockAccessListStore(
-    [KeyFilter(DbNames.BlockAccessLists)] IDb balDb,
-    BlockAccessListDecoder? decoder = null)
-    : IBlockAccessListStore
+public class BlockAccessListStore : IBlockAccessListStore
 {
     private const int KeyLength = 40;
 
-    private readonly BlockAccessListDecoder _balDecoder = decoder ?? new();
+    private readonly IDb _balDb;
+    private readonly BlockAccessListDecoder _balDecoder;
+    // Like a block body, a lost BAL cannot be regenerated, so the barrier must make it durable before state. Null when off.
+    private readonly DeferredWriteOverlay<byte[]>? _pending;
+
+    public BlockAccessListStore(
+        [KeyFilter(DbNames.BlockAccessLists)] IDb balDb,
+        BlockAccessListDecoder? decoder = null,
+        IDeferredBlockDataWriter? deferredWriter = null,
+        IStatePersistenceBarrier? persistenceBarrier = null)
+    {
+        _balDb = balDb;
+        _balDecoder = decoder ?? new();
+
+        if (deferredWriter is { Enabled: true })
+        {
+            _pending = new DeferredWriteOverlay<byte[]>(deferredWriter, (number, hash, rlp) => Insert(number, hash, rlp));
+            (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _balDb.Flush(onlyWal: true));
+        }
+    }
 
     [SkipLocalsInit]
     public void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal)
@@ -30,7 +47,7 @@ public class BlockAccessListStore(
         using ArrayPoolSpan<byte> rlp = _balDecoder.EncodeToArrayPoolSpan(bal);
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        balDb.PutSpan(key, rlp);
+        _balDb.PutSpan(key, rlp);
     }
 
     [SkipLocalsInit]
@@ -38,7 +55,7 @@ public class BlockAccessListStore(
     {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        balDb.PutSpan(key, encodedBal);
+        _balDb.PutSpan(key, encodedBal);
     }
 
     [SkipLocalsInit]
@@ -46,23 +63,55 @@ public class BlockAccessListStore(
     {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        balDb.PutSpan(key, encodedBal);
+        _balDb.PutSpan(key, encodedBal);
+    }
+
+    public void InsertFromBlockDeferred(Block block)
+    {
+        if (_pending is null)
+        {
+            ((IBlockAccessListStore)this).InsertFromBlock(block);
+            return;
+        }
+
+        Hash256 blockHash = block.Hash ?? throw new ArgumentException("Block hash is required to persist a block access list.", nameof(block));
+
+        // Reuse the block's owned encoding. The fallback must also be owned because the overlay and its
+        // non-owning read views can outlive this call, so a pool-rented buffer could be returned too early.
+        byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? encoded
+            : block.BlockAccessList is { } bal ? BlockAccessListDecoder.EncodeToBytes(bal)
+            : null;
+
+        block.GeneratedBlockAccessList = null;
+        block.EncodedBlockAccessList = null;
+
+        if (rlp is null) return;
+
+        _pending.Publish(block.Number, blockHash, rlp);
     }
 
     [SkipLocalsInit]
     public MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
+        // Non-owning wrapper: disposing the returned manager must not free the still-pending overlay buffer.
+        if (_pending is not null && _pending.TryGet(blockHash, out byte[] pendingRlp))
+        {
+            return ArrayMemoryManager.From(pendingRlp);
+        }
+
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        return balDb.GetOwnedMemory(key);
+        return _balDb.GetOwnedMemory(key);
     }
 
     [SkipLocalsInit]
     public bool Exists(ulong blockNumber, Hash256 blockHash)
     {
+        if (_pending?.Contains(blockHash) == true) return true;
+
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        return balDb.KeyExists(key);
+        return _balDb.KeyExists(key);
     }
 
     public ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash)
@@ -74,8 +123,21 @@ public class BlockAccessListStore(
     [SkipLocalsInit]
     public void Delete(ulong blockNumber, Hash256 blockHash)
     {
+        if (_pending is not null)
+        {
+            _pending.Remove(blockHash, () => Remove(blockNumber, blockHash));
+        }
+        else
+        {
+            Remove(blockNumber, blockHash);
+        }
+    }
+
+    [SkipLocalsInit]
+    private void Remove(ulong blockNumber, Hash256 blockHash)
+    {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        balDb.Remove(key);
+        _balDb.Remove(key);
     }
 }

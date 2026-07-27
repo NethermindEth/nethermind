@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using System;
 using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -103,7 +104,9 @@ public class WorldStateManagerTests
 
             stateDb = ctx.ResolveKeyed<IDb>(DbNames.State);
             blockInfosDb = ctx.ResolveKeyed<IDb>(DbNames.BlockInfos);
-            IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;
+            MainProcessingContext mainProcessingContext = (MainProcessingContext)ctx.Resolve<IMainProcessingContext>();
+            IWorldState worldState = mainProcessingContext.WorldState;
+            PreBlockCaches preBlockCaches = mainProcessingContext.LifetimeScope.ResolveOptional<PreBlockCaches>();
 
             Hash256 stateRoot;
 
@@ -123,7 +126,7 @@ public class WorldStateManagerTests
                     .TestObject;
 
                 // Model production: the driver clears prewarmer caches between blocks; do the same here.
-                (worldState.ScopeProvider as IPreBlockCaches)?.Caches?.ClearCaches();
+                preBlockCaches?.ClearCaches();
                 using (worldState.BeginScope(baseBlock))
                 {
                     worldState.IncrementNonce(TestItem.AddressA, 1);

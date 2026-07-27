@@ -138,16 +138,22 @@ public class SnapshotCompactorTests
 
         // Verify all data types are preserved
         Assert.That(compacted.AccountsCount, Is.EqualTo(2));
-        AssertAccountSame(new Account(1, 100), compacted.Content.Accounts[address1]);
-        AssertAccountSame(new Account(2, 200), compacted.Content.Accounts[address2]);
+        Assert.That(compacted.TryGetAccount(address1, out Account? account1), Is.True);
+        AssertAccountSame(new Account(1, 100), account1);
+        Assert.That(compacted.TryGetAccount(address2, out Account? account2), Is.True);
+        AssertAccountSame(new Account(2, 200), account2);
 
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
-        AssertSlotValueEqual(slotValue1, compacted.Content.Storages[(address1, storageIndex1)]);
-        AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address2, storageIndex2)]);
+        Assert.That(compacted.TryGetStorage((address1, storageIndex1), out SlotValue? storedSlot1), Is.True);
+        AssertSlotValueEqual(slotValue1, storedSlot1);
+        Assert.That(compacted.TryGetStorage((address2, storageIndex2), out SlotValue? storedSlot2), Is.True);
+        AssertSlotValueEqual(slotValue2, storedSlot2);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
-        Assert.That(compacted.Content.StateNodes[statePath1].Keccak, Is.EqualTo(storageNodeHash1));
-        Assert.That(compacted.Content.StateNodes[statePath2].Keccak, Is.EqualTo(storageNodeHash2));
+        Assert.That(compacted.TryGetStateNode(statePath1, out TrieNode? stateNode1), Is.True);
+        Assert.That(stateNode1!.Keccak, Is.EqualTo(storageNodeHash1));
+        Assert.That(compacted.TryGetStateNode(statePath2, out TrieNode? stateNode2), Is.True);
+        Assert.That(stateNode2!.Keccak, Is.EqualTo(storageNodeHash2));
 
         Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
     }
@@ -240,10 +246,12 @@ public class SnapshotCompactorTests
 
         // Verify latest values override earlier ones
         Assert.That(compacted.AccountsCount, Is.EqualTo(1));
-        AssertAccountSame(new Account(2, 200), compacted.Content.Accounts[address]);
+        Assert.That(compacted.TryGetAccount(address, out Account? account), Is.True);
+        AssertAccountSame(new Account(2, 200), account);
 
         Assert.That(compacted.StoragesCount, Is.EqualTo(1));
-        AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address, storageIndex)]);
+        Assert.That(compacted.TryGetStorage((address, storageIndex), out SlotValue? storedSlot), Is.True);
+        AssertSlotValueEqual(slotValue2, storedSlot);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
         Assert.That(compacted.StorageNodesCount, Is.EqualTo(1));
@@ -279,9 +287,65 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Self-destructed address should be tracked, and its storage cleared
-        // Storage nodes are not cleared — orphaned nodes are skipped during trie traversal
-        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Count, Is.GreaterThan(0));
+        Assert.That(compacted.SelfDestructedStorageAddresses.Count(), Is.GreaterThan(0));
         Assert.That(compacted.StoragesCount, Is.EqualTo(0));
+    }
+
+    [TestCase(false, TestName = "SelfDestructBoundary_KeepsWritesAtOrAfterTheClear")]
+    [TestCase(true, TestName = "SelfDestructBoundary_LaterClearRaisesTheBoundary")]
+    public void CompactSnapshotBundle_SelfDestructBoundary(bool selfDestructAgainInLastSnapshot)
+    {
+        Address a = new("0x1111111111111111111111111111111111111111");
+        Address b = new("0x2222222222222222222222222222222222222222");
+        Hash256 aHash = a.ToAccountPath.ToCommitment();
+        Hash256 bHash = b.ToAccountPath.ToCommitment();
+        TreePath pBefore = TreePath.FromHexString("01");
+        TreePath pSame = TreePath.FromHexString("02");
+        TreePath pAfter = TreePath.FromHexString("03");
+        TreePath pB = TreePath.FromHexString("04");
+        static SlotValue Slot(byte marker) => new(new byte[] { marker });
+        static TrieNode Node() => new(NodeType.Leaf, Keccak.Zero);
+
+        // Block 0 -> 1: A gets a slot/node written before it is ever self-destructed; B is unrelated.
+        using Snapshot s0 = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv);
+        s0.Content.Storages[(a, new UInt256(1))] = Slot(0xA0);
+        s0.Content.StorageNodes[(aHash, pBefore)] = Node();
+        s0.Content.Storages[(b, new UInt256(1))] = Slot(0xBB);
+        s0.Content.StorageNodes[(bHash, pB)] = Node();
+
+        // Block 1 -> 2: A is self-destructed and re-written in the same snapshot (add after clear survives).
+        using Snapshot s1 = _resourcePool.CreateSnapshot(new(1, Keccak.Zero), new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv);
+        s1.Content.SelfDestructedStorageAddresses[a] = false;
+        s1.Content.Storages[(a, new UInt256(2))] = Slot(0xA2);
+        s1.Content.StorageNodes[(aHash, pSame)] = Node();
+
+        // Block 2 -> 3: A is written again, optionally self-destructed again (which raises the boundary).
+        using Snapshot s2 = _resourcePool.CreateSnapshot(new(2, Keccak.Zero), new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv);
+        if (selfDestructAgainInLastSnapshot) s2.Content.SelfDestructedStorageAddresses[a] = false;
+        s2.Content.Storages[(a, new UInt256(3))] = Slot(0xA3);
+        s2.Content.StorageNodes[(aHash, pAfter)] = Node();
+
+        SnapshotPooledList snapshots = new(3) { s0, s1, s2 };
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
+
+        // Written strictly before the first clear: always removed.
+        Assert.That(compacted.TryGetStorage((a, new UInt256(1)), out _), Is.False);
+        Assert.That(compacted.TryGetStorageNode((aHash, pBefore), out _), Is.False);
+
+        // Written after the last clear: always kept.
+        Assert.That(compacted.TryGetStorage((a, new UInt256(3)), out SlotValue? slotAfter), Is.True);
+        AssertSlotValueEqual(Slot(0xA3), slotAfter);
+        Assert.That(compacted.TryGetStorageNode((aHash, pAfter), out _), Is.True);
+
+        // Written in the first-clear block: kept unless a later clear raises the boundary past it.
+        bool slotSameKept = !selfDestructAgainInLastSnapshot;
+        Assert.That(compacted.TryGetStorage((a, new UInt256(2)), out _), Is.EqualTo(slotSameKept));
+        Assert.That(compacted.TryGetStorageNode((aHash, pSame), out _), Is.EqualTo(slotSameKept));
+
+        // Unrelated address is never touched by another address's self-destruct.
+        Assert.That(compacted.TryGetStorage((b, new UInt256(1)), out SlotValue? slotB), Is.True);
+        AssertSlotValueEqual(Slot(0xBB), slotB);
+        Assert.That(compacted.TryGetStorageNode((bHash, pB), out _), Is.True);
     }
 
     [Test]
@@ -307,9 +371,9 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // New account marked as self-destructed should be tracked
-        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Count, Is.GreaterThan(0));
+        Assert.That(compacted.SelfDestructedStorageAddresses.Count(), Is.GreaterThan(0));
         // Verify at least one entry has true value
-        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Any(static kvp => kvp.Value), Is.True);
+        Assert.That(compacted.SelfDestructedStorageAddresses.Any(static kvp => kvp.Value), Is.True);
     }
 
     [Test]
@@ -604,4 +668,5 @@ public class SnapshotCompactorTests
 
         Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact16));
     }
+
 }

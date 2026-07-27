@@ -23,9 +23,7 @@ public class FlatSnapServer(
     public bool CanServe => true;
 
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapServer>();
-
-    private const long HardResponseByteLimit = 2000000;
-    private const int HardResponseNodeLimit = 100000;
+    private readonly SnapCodeServer _codeServer = new(codeDb);
 
     // Flat state uses HintCacheMiss since it has different I/O patterns than Patricia
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
@@ -54,9 +52,10 @@ public class FlatSnapServer(
         {
             if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
 
-            byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
             int pathLength = pathSet.Count;
-            ArrayPoolList<byte[]> response = new(pathLength);
+            using DeferredRlpItemList.Builder builder = new(pathLength);
+            DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
             ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
             StateTree tree = new(trieStore, logManager);
             bool abort = false;
@@ -68,13 +67,12 @@ public class FlatSnapServer(
                 switch (requestedPath.Length)
                 {
                     case 0:
-                        response.Dispose();
                         return null;
                     case 1:
                         try
                         {
                             byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), stateId.StateRoot.ToCommitment());
-                            response.Add(rlp ?? []);
+                            writer.WriteValue(rlp);
                             responseSize += rlp?.Length ?? 0;
                         }
                         catch (MissingTrieNodeException)
@@ -98,7 +96,7 @@ public class FlatSnapServer(
                                 for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
                                 {
                                     byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
-                                    response.Add(sRlp ?? []);
+                                    writer.WriteValue(sRlp);
                                     responseSize += sRlp?.Length ?? 0;
                                 }
                             }
@@ -111,44 +109,13 @@ public class FlatSnapServer(
                 }
             }
 
-            return response.Count == 0 ? EmptyByteArrayList.Instance : new ByteArrayListAdapter(response);
+            writer.Dispose();
+            return new RlpByteArrayList(builder.ToRlpItemList());
         }
     }
 
-    public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
-    {
-        long currentByteCount = 0;
-        ArrayPoolList<byte[]> response = new(requestedHashes.Count);
-
-        if (byteLimit > HardResponseByteLimit)
-        {
-            byteLimit = HardResponseByteLimit;
-        }
-
-        foreach (ValueHash256 codeHash in requestedHashes)
-        {
-            if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-
-            if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-            {
-                response.Add([]);
-                currentByteCount += 1;
-                continue;
-            }
-
-            byte[]? code = codeDb[codeHash.Bytes];
-            if (code is not null)
-            {
-                response.Add(code);
-                currentByteCount += code.Length;
-            }
-        }
-
-        return new ByteArrayListAdapter(response);
-    }
+    public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken) =>
+        _codeServer.GetByteCodes(requestedHashes, byteLimit, cancellationToken);
 
     public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
         Hash256 rootHash,
@@ -162,7 +129,7 @@ public class FlatSnapServer(
 
         using (bundle)
         {
-            byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
 
             AccountCollector accounts = new();
             (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
@@ -194,7 +161,7 @@ public class FlatSnapServer(
 
         using (bundle)
         {
-            byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
 
             ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
             ValueHash256 limitHash1 = limitHash ?? ValueKeccak.MaxValue;
@@ -275,7 +242,7 @@ public class FlatSnapServer(
     {
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
         PatriciaTree tree = new(trieStore, logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 

@@ -30,7 +30,7 @@ namespace Nethermind.Trie
             [SkipLocalsInit]
             public static CappedArray<byte> EncodeExtension(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
-                Metrics.TreeNodeRlpEncodings++;
+                Metrics.IncrementTreeNodeRlpEncodings();
 
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
@@ -98,7 +98,7 @@ namespace Nethermind.Trie
             [SkipLocalsInit]
             public static CappedArray<byte> EncodeLeaf(TrieNode node, ICappedArrayPool? pool)
             {
-                Metrics.TreeNodeRlpEncodings++;
+                Metrics.IncrementTreeNodeRlpEncodings();
 
                 if (node.Key is null)
                 {
@@ -139,7 +139,7 @@ namespace Nethermind.Trie
 
             public static CappedArray<byte> RlpEncodeBranch(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? pool, bool canBeParallel)
             {
-                Metrics.TreeNodeRlpEncodings++;
+                Metrics.IncrementTreeNodeRlpEncodings();
 
                 const int valueRlpLength = 1;
                 int contentLength = valueRlpLength + (UseParallel(canBeParallel, item) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool, canBeParallel));

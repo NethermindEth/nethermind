@@ -138,14 +138,10 @@ public static partial class EvmInstructions
         if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
-        if (TEip8037.IsActive && !TGasPolicy.ConsumeCreateStateGas(ref gas))
-            goto OutOfGas;
-
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
-            RefundCreateStateGas(ref gas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
         }
@@ -154,21 +150,9 @@ public static partial class EvmInstructions
         ulong accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
-            RefundCreateStateGas(ref gas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
         }
-
-        // Get remaining gas for the create operation.
-        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
-        // End tracing if enabled, prior to switching to the new call frame.
-        if (TTracingInst.IsActive)
-            vm.EndInstructionTrace(gasAvailable);
-
-        // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
-        if (!TGasPolicy.TryReserveChildGas(ref gas, spec, out ulong callGas))
-            goto OutOfGas;
 
         // Compute the contract address:
         // - For CREATE: based on the executing account and its current nonce.
@@ -183,20 +167,42 @@ public static partial class EvmInstructions
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
+        bool isNonZeroAccount = state.IsNonZeroAccount(contractAddress, out bool accountExists);
+        bool isAliveAccount = !state.IsDeadAccount(contractAddress);
+        bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount;
+
+        if (chargeCreateStateGas && !TGasPolicy.ConsumeCreateStateGas(ref gas))
+            goto OutOfGas;
+
+        // Get remaining gas for the create operation.
+        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+
+        // End tracing if enabled, prior to switching to the new call frame.
+        if (TTracingInst.IsActive)
+            vm.EndInstructionTrace(gasAvailable);
+
+        // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
+        if (!TGasPolicy.TryReserveChildGas(ref gas, spec, out ulong callGas))
+            goto OutOfGas;
+
         // Increment the nonce of the executing account to reflect the contract creation.
         state.IncrementNonce(env.ExecutingAccount);
-
-        // Analyze and compile the initialization code.
-        CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
 
+        // Analyze and compile the initialization code.
+        CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
+
         // EIP-7610: If the account already exists and is non-zero, then the creation fails.
         // Collision behaves as an immediate exceptional halt — burned callGas counts as block_regular.
-        if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
+        if (isNonZeroAccount)
         {
-            RefundCreateStateGas(ref gas);
+            if (chargeCreateStateGas)
+            {
+                vm.CreditStateGasRefund(ref gas, TGasPolicy.GetCreateStateCost());
+            }
+
             vm.ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
         }
@@ -232,7 +238,8 @@ public static partial class EvmInstructions
             isCreateOnPreExistingAccount: accountExists,
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
-            snapshot: in snapshot);
+            snapshot: in snapshot,
+            isCreateStateGasCharged: chargeCreateStateGas);
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
@@ -243,13 +250,5 @@ public static partial class EvmInstructions
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void RefundCreateStateGas(ref TGasPolicy gasState)
-        {
-            if (TEip8037.IsActive)
-            {
-                vm.CreditStateGasRefund(ref gasState, TGasPolicy.GetCreateStateCost());
-            }
-        }
     }
 }

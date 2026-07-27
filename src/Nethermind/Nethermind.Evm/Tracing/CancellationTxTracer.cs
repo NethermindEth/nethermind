@@ -251,15 +251,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportStackPush(in ZeroPaddedSpan stackItem)
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
-        {
-            innerTracer.ReportStackPush(stackItem);
-        }
-    }
-
     public void ReportStackPush(byte stackItem)
     {
         token.ThrowIfCancellationRequested();
@@ -297,15 +288,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     }
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
-        {
-            innerTracer.ReportMemoryChange(offset, data);
-        }
-    }
-
-    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
