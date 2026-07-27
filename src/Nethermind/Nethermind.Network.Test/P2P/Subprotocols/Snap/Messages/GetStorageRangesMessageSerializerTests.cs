@@ -8,7 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
-using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.State.Snap;
