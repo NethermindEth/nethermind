@@ -60,6 +60,11 @@ public static class KeyedNonceManager
         }
     }
 
+    /// <summary>Checks whether <paramref name="nonceKeys"/> is a well-formed <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> nonce-key set.</summary>
+    /// <remarks>
+    /// Well-formed means: length in <c>[1, <see cref="Eip8250Constants.MaxNonceKeys"/>]</c>; key 0 appears only as the
+    /// singleton set <c>[0]</c>; and any multi-key set is strictly increasing, which also excludes a later 0.
+    /// </remarks>
     public static bool AreNonceKeysWellFormed(ReadOnlySpan<UInt256> nonceKeys)
     {
         if (nonceKeys.Length < 1 || nonceKeys.Length > Eip8250Constants.MaxNonceKeys)
@@ -85,6 +90,12 @@ public static class KeyedNonceManager
         return true;
     }
 
+    /// <summary>Checks whether <paramref name="nonceKeys"/>/<paramref name="nonceSeq"/> is a valid set to consume against <paramref name="sender"/>'s current state.</summary>
+    /// <remarks>
+    /// Requires all of: <paramref name="nonceKeys"/> is well-formed (see <see cref="AreNonceKeysWellFormed"/>),
+    /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, and every key in the set is
+    /// currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
+    /// </remarks>
     public static bool IsNonceSetValid(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {
         if (!AreNonceKeysWellFormed(nonceKeys))
@@ -97,7 +108,7 @@ public static class KeyedNonceManager
             return false;
         }
 
-        foreach (UInt256 nonceKey in nonceKeys)
+        foreach (ref readonly UInt256 nonceKey in nonceKeys)
         {
             if (CurrentNonceSeq(state, sender, nonceKey) != nonceSeq)
             {
