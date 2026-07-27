@@ -105,6 +105,30 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
     }
 
     [Test]
+    public void Can_process_contract_creation_with_max_valid_nonce()
+    {
+        // EIP-2681/EELS: only nonce 2^64-1 overflows; 2^64-2 is valid for contract creation
+        // (amsterdam transactions.py raises NonceOverflowError only when nonce >= U64.MAX_VALUE).
+        _stateProvider.SetNonce(TestItem.AddressA, ulong.MaxValue - 1);
+
+        ulong gasLimit = 100000ul;
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .WithCode(Prepare.EvmCode.Op(Instruction.STOP).Done)
+            .WithNonce(ulong.MaxValue - 1)
+            .WithGasLimit(gasLimit)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(10 * gasLimit).TestObject;
+
+        TransactionResult result = Execute(tx, block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.EqualTo(TransactionResult.NonceOverflow));
+            Assert.That(result.TransactionExecuted, Is.True);
+        }
+    }
+
+    [Test]
     public void Can_handle_quick_fail_on_missing_sender()
     {
         Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithGasLimit(100000).TestObject;
