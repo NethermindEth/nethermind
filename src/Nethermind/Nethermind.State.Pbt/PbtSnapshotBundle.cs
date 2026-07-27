@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -164,6 +165,35 @@ public class PbtSnapshotBundle(
         }
 
         return readOnlyBundle.GetTrieNode(key);
+    }
+
+    /// <summary>Starts physical read-ahead of every dirty stem for the root fold.</summary>
+    /// <remarks>
+    /// The full-depth trie lookup intentionally misses: its path places the final RocksDB block needed
+    /// by the updater in the block cache. The caller must observe the task before disposing this bundle.
+    /// </remarks>
+    internal Task PrefetchDirtyStems(PbtWriteBatchSet changes)
+    {
+        int count = changes.Count;
+        if (count == 0) return Task.CompletedTask;
+
+        Stem[] stems = ArrayPool<Stem>.Shared.Rent(count);
+        int index = 0;
+        foreach (PbtPartition partition in PbtPartitions.All)
+        foreach (PbtWriteBatch.StemEntry entry in changes[partition].Entries)
+            stems[index++] = entry.Stem;
+
+        return Task.Run(() =>
+        {
+            try
+            {
+                for (int i = 0; i < count; i++) readOnlyBundle.PrefetchStem(stems[i]);
+            }
+            finally
+            {
+                ArrayPool<Stem>.Shared.Return(stems);
+            }
+        });
     }
 
     public void SetAccount(Address address, Account? account) => PendingFlatWrites.Accounts[address] = account;
