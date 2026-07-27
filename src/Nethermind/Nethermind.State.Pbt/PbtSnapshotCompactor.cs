@@ -62,21 +62,24 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
             {
                 PbtSnapshotContent content = chainOldestFirst[i].Content;
 
-                foreach ((Stem stem, RefCountingMemory? blob) in content.LeafBlobs)
+                foreach (PbtSnapshotContent.Partition partition in content.Partitions)
                 {
-                    blob?.AcquireLease();
-                    merged.SetLeafBlob(stem, blob);
-                }
+                    foreach ((Stem stem, RefCountingMemory? blob) in partition.LeafBlobs)
+                    {
+                        blob?.AcquireLease();
+                        merged.SetLeafBlob(stem, blob);
+                    }
 
-                foreach ((TrieNodeKey key, RefCountingMemory? node) in content.TrieNodes)
-                {
-                    node?.AcquireLease();
-                    merged.SetTrieNode(key, node);
+                    foreach ((TrieNodeKey key, RefCountingMemory? node) in partition.TrieNodes)
+                    {
+                        node?.AcquireLease();
+                        merged.SetTrieNode(key, node);
+                    }
                 }
             }
 
             PbtSnapshot newest = chainOldestFirst[^1];
-            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
+            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.PartitionRoots, merged, resourcePool, usage);
         }
         catch
         {

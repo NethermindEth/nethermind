@@ -9,8 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
-using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
-
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtWriteBatchBuilderTests
@@ -30,15 +28,15 @@ public class PbtWriteBatchBuilderTests
 
         Assert.That(builder.HasDirtyStems, Is.True);
 
-        using (PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel))
+        using (PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.ClusteredFourLevel))
         {
-            Assert.That(batch.Count, Is.EqualTo(2));
-            AssertEntry(batch, first, [10, 11, 12, 40]);
-            AssertEntry(batch, second, [7]);
+            Assert.That(batches.Count, Is.EqualTo(2));
+            AssertEntry(batches[PbtPartition.Storage], first, [10, 11, 12, 40]);
+            AssertEntry(batches[PbtPartition.Account], second, [7]);
         }
 
         Assert.That(builder.HasDirtyStems, Is.False, "the drain hands every map to the batch");
-        using PbtWriteBatch drained = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
+        using PbtWriteBatchSet drained = builder.DrainToWriteBatches(PbtTiling.ClusteredFourLevel);
         Assert.That(drained.Count, Is.Zero);
     }
 
@@ -60,7 +58,8 @@ public class PbtWriteBatchBuilderTests
         if (alreadyDirtied) builder.SetLeaf(stem, 7, Value(7));
         builder.SetLeaves(stem, subIndices, Values(subIndices));
 
-        using PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.ClusteredFourLevel);
+        PbtWriteBatch batch = batches[PbtPartition.Storage];
         Assert.That(batch.Count, Is.EqualTo(1));
         AssertEntry(batch, stem, alreadyDirtied ? [0, 3, 7, 200, 255] : [0, 3, 200, 255]);
     }
@@ -93,7 +92,8 @@ public class PbtWriteBatchBuilderTests
 
         Parallel.ForEach(work, item => builder.SetLeaf(TestStem(0x80, item.Stem), (byte)item.SubIndex, Value(item.Stem * subIndices + item.SubIndex)));
 
-        using PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.ClusteredFourLevel);
+        PbtWriteBatch batch = batches[PbtPartition.Storage];
         Assert.That(batch.Count, Is.EqualTo(stems));
         for (int s = 0; s < stems; s++)
         {
@@ -107,82 +107,30 @@ public class PbtWriteBatchBuilderTests
         }
     }
 
-    /// <summary>
-    /// The drain hands over the bucket bounds the tree's first two levels would otherwise derive: the
-    /// entries ascend by stem first byte, the nibble level bounds them by that byte's high nibble, and
-    /// each byte group bounds its own nibble's slice — counted from that nibble's start, which is what
-    /// lets the descent take a group as its bounds unchanged.
-    /// </summary>
     [Test]
-    public void DrainRecordsTheBucketBoundsOfBothLevels()
+    public void DrainSeparatesPartitionBatchesWithoutGlobalBuckets()
     {
-        // empty shards leading, trailing and mid-group, and several stems sharing a shard
         byte[] firstBytes = [0x00, 0x00, 0x0F, 0x10, 0x80, 0x80, 0x80, 0xFF];
 
         using PbtWriteBatchBuilder builder = new();
         for (int i = 0; i < firstBytes.Length; i++) builder.SetLeaf(TestStem(firstBytes[i], i), 0, Value(i));
 
-        using PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
-        Assert.That(batch.Count, Is.EqualTo(firstBytes.Length));
-
-        ReadOnlySpan<int> table = batch.Buckets;
-        Assert.That(table.Length, Is.EqualTo(Layout.BoundarySlots * PbtWriteBatch.LevelStride<Layout>() + PbtWriteBatch.LevelStride<Layout>()));
-
-        // The drain emits entries ordered by first byte.
-        for (int i = 1; i < batch.Count; i++)
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.ClusteredFourLevel);
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(batch.Entries[i].Stem.Bytes[0], Is.GreaterThanOrEqualTo(batch.Entries[i - 1].Stem.Bytes[0]));
-        }
-
-        ReadOnlySpan<int> nibbles = table[(Layout.BoundarySlots * PbtWriteBatch.LevelStride<Layout>())..];
-        Assert.That(nibbles[0], Is.Zero);
-        for (int nibble = 0; nibble < Layout.BoundarySlots; nibble++)
-        {
-            int expected = 0;
-            foreach (byte first in firstBytes)
+            Assert.That(batches[PbtPartition.Account].Count, Is.EqualTo(3));
+            Assert.That(batches[PbtPartition.Code].Count, Is.EqualTo(1));
+            Assert.That(batches[PbtPartition.Storage].Count, Is.EqualTo(4));
+            foreach (PbtPartition partition in PbtPartitions.All)
             {
-                if (first >> 4 <= nibble) expected++;
-            }
-
-            Assert.That(nibbles[nibble + 1], Is.EqualTo(expected), $"nibble level bound {nibble}");
-        }
-
-        // Each level caches its non-empty buckets.
-        Assert.That(
-            PbtWriteBatch.ReadTouchedMask<Layout>(nibbles), Is.EqualTo(TouchedMaskOf(nibbles)), "nibble level touched mask");
-
-        for (int nibble = 0; nibble < Layout.BoundarySlots; nibble++)
-        {
-            ReadOnlySpan<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride<Layout>(), PbtWriteBatch.LevelStride<Layout>());
-            Assert.That(group[0], Is.Zero, $"byte group {nibble} counts from its own nibble");
-            for (int low = 0; low < Layout.BoundarySlots; low++)
-            {
-                int expected = 0;
-                foreach (byte first in firstBytes)
+                PbtWriteBatch batch = batches[partition];
+                Assert.That(batch.Buckets.Length, Is.Zero, $"{partition} buckets");
+                foreach (PbtWriteBatch.StemEntry entry in batch.Entries)
                 {
-                    if (first >> 4 == nibble && (first & 0xF) <= low) expected++;
+                    Assert.That(PbtPartitions.Of(entry.Stem), Is.EqualTo(partition), $"{partition} entry");
                 }
-
-                Assert.That(group[low + 1], Is.EqualTo(expected), $"byte group {nibble} bound {low}");
             }
-
-            Assert.That(
-                PbtWriteBatch.ReadTouchedMask<Layout>(group), Is.EqualTo(TouchedMaskOf(group)), $"byte group {nibble} touched mask");
         }
-
-        // 0x00, 0x0F and 0x10 fall in nibbles 0 and 1, 0x80 in 8 and 0xFF in 15
-        Assert.That(PbtWriteBatch.ReadTouchedMask<Layout>(nibbles), Is.EqualTo(SlotBitmask<Layout>.Of(0, 1, 8, 15)));
-    }
-
-    private static SlotBitmask<Layout> TouchedMaskOf(ReadOnlySpan<int> level)
-    {
-        SlotBitmask<Layout> touched = default;
-        for (int bucket = 0; bucket < Layout.BoundarySlots; bucket++)
-        {
-            if (level[bucket] != level[bucket + 1]) touched.Set(bucket);
-        }
-
-        return touched;
     }
 
     /// <summary>
@@ -197,17 +145,17 @@ public class PbtWriteBatchBuilderTests
         using PbtWriteBatchBuilder builder = new();
         for (int i = 0; i < stems; i++) builder.SetLeaf(TestStem(0x80, i), 0, Value(i));
 
-        using (PbtWriteBatch batch = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel))
+        using (PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.ClusteredFourLevel))
         {
-            Assert.That(batch.Count, Is.EqualTo(stems));
+            Assert.That(batches[PbtPartition.Storage].Count, Is.EqualTo(stems));
         }
 
         Assert.That(builder.HasDirtyStems, Is.False);
 
         builder.SetLeaf(TestStem(0x80, 0), 1, Value(1));
-        using PbtWriteBatch reused = builder.DrainToWriteBatch(PbtTiling.ClusteredFourLevel);
-        Assert.That(reused.Count, Is.EqualTo(1));
-        AssertEntry(reused, TestStem(0x80, 0), [1]);
+        using PbtWriteBatchSet reused = builder.DrainToWriteBatches(PbtTiling.ClusteredFourLevel);
+        Assert.That(reused[PbtPartition.Storage].Count, Is.EqualTo(1));
+        AssertEntry(reused[PbtPartition.Storage], TestStem(0x80, 0), [1]);
     }
 
     /// <summary>A batch a producer fills itself carries no buckets, leaving the descent to partition its entries.</summary>

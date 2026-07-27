@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
+using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
 
@@ -18,14 +19,17 @@ namespace Nethermind.State.Pbt;
 /// last lease, because a content returned to a category it was not rented from is never detected —
 /// it just starves one pool and inflates another.
 /// </remarks>
-public class PbtSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot, PbtSnapshotContent content, IPbtResourcePool resourcePool, PbtResourcePool.Usage usage)
+public class PbtSnapshot(in StateId from, in StateId to, in PbtPartitionRoots partitionRoots, PbtSnapshotContent content, IPbtResourcePool resourcePool, PbtResourcePool.Usage usage)
     : RefCountingDisposable
 {
     public StateId From { get; } = from;
     public StateId To { get; } = to;
 
-    /// <summary>The EIP-8297 root of the state at <see cref="To"/>, as opposed to the header root <see cref="StateId.StateRoot"/> keys it by.</summary>
-    public ValueHash256 TreeRoot { get; } = treeRoot;
+    /// <summary>The three partition roots of the state at <see cref="To"/>.</summary>
+    public PbtPartitionRoots PartitionRoots { get; } = partitionRoots;
+
+    /// <summary>The EIP-8297 root derived from <see cref="PartitionRoots"/>.</summary>
+    public ValueHash256 TreeRoot => PartitionRoots.Root;
 
     public PbtSnapshotContent Content { get; } = content;
 

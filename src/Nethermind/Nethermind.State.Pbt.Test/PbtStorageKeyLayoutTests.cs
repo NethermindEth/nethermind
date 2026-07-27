@@ -38,7 +38,7 @@ public class PbtStorageKeyLayoutTests
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         Stem stem = StemOf(TestItem.AddressA, slot, out byte subIndex);
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
         {
             batch.SetLeafBlob(stem, Blob(subIndex, 0xAB));
         }
@@ -53,7 +53,7 @@ public class PbtStorageKeyLayoutTests
 
         Assert.That(db.GetColumnDb(expectedColumn)[stem.Bytes.ToArray()], Is.Not.Null);
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, TestItem.KeccakA.ValueHash256), new StateId(2, TestItem.KeccakB.ValueHash256), default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, TestItem.KeccakA.ValueHash256), new StateId(2, TestItem.KeccakB.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
         {
             batch.SetLeafBlob(stem, default);
         }
@@ -81,7 +81,7 @@ public class PbtStorageKeyLayoutTests
         // sets, not lists: an account's header slots share one stem, and so do the 256 slots of a tree index
         HashSet<Stem> headerStems = [];
         HashSet<Stem> storageStems = [];
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
         {
             foreach (Address address in addresses)
             {
@@ -111,7 +111,7 @@ public class PbtStorageKeyLayoutTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
         {
             batch.SetLeafBlob(StemOf(TestItem.AddressA, 1, out byte subIndex), Blob(subIndex, 0xAB));
         }
@@ -147,7 +147,7 @@ public class PbtStorageKeyLayoutTests
         PbtConfig written = new() { TrieNodeLayout = PbtTrieLayout.ClusteredFourLevelInterleaved };
         PbtRocksDbPersistence persistence = new(db, written);
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
         {
             batch.SetLeafBlob(StemOf(TestItem.AddressA, 1, out byte subIndex), Blob(subIndex, 0xAB));
         }

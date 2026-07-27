@@ -283,8 +283,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
         public StateId CurrentState => StateId.PreGenesis;
 
-        // the empty tree's EIP-8297 root is 32 zero bytes
-        public ValueHash256 CurrentTreeRoot => default;
+        public PbtPartitionRoots CurrentPartitionRoots => PbtPartitionRoots.Empty;
 
         public RefCountingMemory? GetLeafBlob(in Stem stem) => null;
         public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => null;

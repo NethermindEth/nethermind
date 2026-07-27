@@ -10,8 +10,6 @@ using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 
-using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
-
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtColumnRoutingTests
@@ -44,37 +42,31 @@ public class PbtColumnRoutingTests
         AssertOnlyIn(db, StorageStem.Bytes.ToArray(), PbtColumns.StorageLeaves, storageBlob, LeafColumns);
     }
 
-    /// <summary>The depth-0 root has no zone nibble yet, so it shares the account column.</summary>
     [Test]
-    public void TrieNodes_AreStoredInTheirZoneColumn_WithTheRootUnderAccount()
+    public void PartitionRootTrieNodes_AreStoredInTheirZoneColumns()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-
-        TrieNodeKey accountKey = TrieNodeKey.For(Layout.LevelsPerGroup, AccountStem);
-        TrieNodeKey codeKey = TrieNodeKey.For(Layout.LevelsPerGroup, CodeStem);
-        TrieNodeKey storageKey = TrieNodeKey.For(Layout.LevelsPerGroup, StorageStem);
-
-        byte[] rootNode = Bytes.FromHexString("0x11");
+        TrieNodeKey accountKey = PbtPartitions.RootKey(PbtPartition.Account);
+        TrieNodeKey codeKey = PbtPartitions.RootKey(PbtPartition.Code);
+        TrieNodeKey storageKey = PbtPartitions.RootKey(PbtPartition.Storage);
         byte[] accountNode = Bytes.FromHexString("0x22");
         byte[] codeNode = Bytes.FromHexString("0x33");
         byte[] storageNode = Bytes.FromHexString("0x44");
 
         using (IPbtPersistence.IWriteBatch batch = StartBatch(db))
         {
-            batch.SetTrieNode(TrieNodeKey.Root, rootNode);
             batch.SetTrieNode(accountKey, accountNode);
             batch.SetTrieNode(codeKey, codeNode);
             batch.SetTrieNode(storageKey, storageNode);
         }
 
-        AssertOnlyIn(db, TrieNodeKey.Root.ToDbKey(), PbtColumns.AccountTrieNodes, rootNode, TrieNodeColumns);
         AssertOnlyIn(db, accountKey.ToDbKey(), PbtColumns.AccountTrieNodes, accountNode, TrieNodeColumns);
         AssertOnlyIn(db, codeKey.ToDbKey(), PbtColumns.CodeTrieNodes, codeNode, TrieNodeColumns);
         AssertOnlyIn(db, storageKey.ToDbKey(), PbtColumns.StorageTrieNodes, storageNode, TrieNodeColumns);
     }
 
     private static IPbtPersistence.IWriteBatch StartBatch(SnapshotableMemColumnsDb<PbtColumns> db) =>
-        new PbtRocksDbPersistence(db, new PbtConfig()).CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256), default, WriteFlags.None);
+        new PbtRocksDbPersistence(db, new PbtConfig()).CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None);
 
     private static void AssertOnlyIn(SnapshotableMemColumnsDb<PbtColumns> db, byte[] key, PbtColumns expected, byte[] value, PbtColumns[] candidates)
     {

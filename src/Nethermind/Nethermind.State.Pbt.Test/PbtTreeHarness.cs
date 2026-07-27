@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -29,7 +28,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
 
     // Parallel folds access all test-store state concurrently.
     private readonly Lock _lock = new();
-    private ValueHash256 _root;
+    private PbtPartitionRoots _roots = PbtPartitionRoots.Empty;
 
     /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtTrieLayout)" path="/param[@name='writeLayout']"/>
     public PbtTrieLayout WriteLayout { get; set; } = writeLayout;
@@ -39,6 +38,9 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// so that a test measuring what the descent read or wrote sees one thread's worth of it.
     /// </summary>
     public int RootFoldConcurrency { get; set; } = 1;
+
+    /// <summary>The partition roots after the latest batch.</summary>
+    public PbtPartitionRoots Roots => _roots;
 
     /// <summary>The blobs as the store keeps them, a run or a clustered child having no entry of its own.</summary>
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
@@ -166,22 +168,17 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// <summary>Applies key/value writes (empty/zero value = clear) and returns the new root.</summary>
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes)
     {
-        // A write batch requires each stem exactly once.
-        Dictionary<Stem, IPbtStemChanges> grouped = [];
+        using PbtWriteBatchBuilder builder = new();
         foreach ((byte[] key, byte[]? value) in writes)
         {
-            Stem stem = new(key.AsSpan(0, Stem.Length));
             ValueHash256 leaf = default;
             value?.CopyTo(leaf.BytesAsSpan);
-            ref IPbtStemChanges? changes = ref CollectionsMarshal.GetValueRefOrAddDefault(grouped, stem, out _);
-            changes = (changes ?? PbtStemChanges.Rent()).Set(key[Stem.Length], leaf);
+            builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
         }
 
-        using PbtWriteBatch batch = new(estimatedStems: grouped.Count, buckets: null);
-        foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
-
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteLayout, RootFoldConcurrency, out _);
-        return _root;
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(WriteLayout.Tiling());
+        _roots = TrieUpdater.UpdateRoot(this, _roots, batches, memoryProvider, WriteLayout, RootFoldConcurrency, out _);
+        return _roots.Root;
     }
 
     /// <summary>
@@ -202,8 +199,8 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
             builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
         }
 
-        using PbtWriteBatch batch = builder.DrainToWriteBatch(WriteLayout.Tiling());
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteLayout, RootFoldConcurrency, out _);
-        return _root;
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(WriteLayout.Tiling());
+        _roots = TrieUpdater.UpdateRoot(this, _roots, batches, memoryProvider, WriteLayout, RootFoldConcurrency, out _);
+        return _roots.Root;
     }
 }

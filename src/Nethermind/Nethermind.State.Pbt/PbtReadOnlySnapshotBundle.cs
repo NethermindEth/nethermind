@@ -59,15 +59,17 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
     private static readonly StringLabel _readStorageTrieNodePersistenceLabel = new("storage_trie_node_persistence");
     private static readonly StringLabel _readStorageTrieNodePersistenceNullLabel = new("storage_trie_node_persistence_null");
 
-    /// <summary>The EIP-8297 root of the state this bundle views, which the header root it was gathered by does not carry.</summary>
-    public ValueHash256 TreeRoot
+    /// <summary>The three partition roots of the state this bundle views.</summary>
+    public PbtPartitionRoots PartitionRoots
     {
         get
         {
             GuardDispose();
-            return snapshots.Count > 0 ? snapshots[^1].TreeRoot : reader.CurrentTreeRoot;
+            return snapshots.Count > 0 ? snapshots[^1].PartitionRoots : reader.CurrentPartitionRoots;
         }
     }
+
+    public ValueHash256 TreeRoot => PartitionRoots.Root;
 
     /// <remarks>Decoded from the account's header stem leaf blob; see <see cref="PbtLeafDecoder"/>.</remarks>
     public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AccountHeaderStem(address));

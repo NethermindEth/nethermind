@@ -12,10 +12,8 @@ using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
 namespace Nethermind.Pbt;
 
 /// <summary>
-/// Applies a batch of EIP-8297 tree-key writes and returns the new root. It folds each affected
-/// stem's leaf blob (<see cref="StemLeafBlob"/>), then maintains the top-level binary trie of stems
-/// stored as 4-level <see cref="PbtTrieNodeGroup"/> tiles, with single-child runs between them
-/// collapsed into <see cref="PbtNodeChain"/> blobs.
+/// Applies EIP-8297 tree-key writes independently below the account, code, and storage partition
+/// prefixes, and derives the full state root from the resulting partition roots.
 /// </summary>
 /// <remarks>
 /// The stem trie is the canonical binary trie of the stem set: an internal node exists at every
@@ -60,24 +58,44 @@ public static partial class TrieUpdater
     /// calling thread alone. A batch too small to be worth splitting folds on the calling thread
     /// whatever this says.
     /// </param>
-    public static ValueHash256 UpdateRoot(
-        IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider,
+    public static PbtPartitionRoots UpdateRoot(
+        IPbtStore store, PbtPartitionRoots currentRoots, PbtWriteBatchSet changes, IRefCountingMemoryProvider memoryProvider,
         PbtTrieLayout layout, int concurrency, out PbtSubtreeStats delta)
+    {
+        delta = default;
+        PbtPartitionRoots roots = currentRoots;
+        foreach (PbtPartition partition in PbtPartitions.All)
+        {
+            PbtWriteBatch batch = changes[partition];
+            if (batch.Count == 0) continue;
+
+            roots = UpdateRoot(store, roots, partition, batch, memoryProvider, layout, concurrency, out PbtSubtreeStats partitionDelta);
+            delta += partitionDelta;
+        }
+
+        return roots;
+    }
+
+    /// <summary>Applies one partition's disjoint batch and replaces only that partition root.</summary>
+    public static PbtPartitionRoots UpdateRoot(
+        IPbtStore store, PbtPartitionRoots currentRoots, PbtPartition partition, PbtWriteBatch changes,
+        IRefCountingMemoryProvider memoryProvider, PbtTrieLayout layout, int concurrency, out PbtSubtreeStats delta)
     {
         if (changes.Count == 0)
         {
             delta = default;
-            return currentRoot;
+            return currentRoots;
         }
 
         PbtGroupFormat groupFormat = layout.GroupFormat();
-        return layout.Tiling() switch
+        PbtPartitionRoot root = layout.Tiling() switch
         {
-            PbtTiling.ClusteredFourLevel => new Updater<PbtClusteredTileLayout>(store, memoryProvider, groupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
-            PbtTiling.SixLevel => new Updater<PbtSixLevelTileLayout>(store, memoryProvider, groupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
-            PbtTiling.EightLevel => new Updater<PbtEightLevelTileLayout>(store, memoryProvider, groupFormat, changes, concurrency).Run(currentRoot, changes, out delta),
+            PbtTiling.ClusteredFourLevel => new Updater<PbtClusteredTileLayout>(store, memoryProvider, groupFormat, changes, concurrency, partition).Run(currentRoots[partition], changes, out delta),
+            PbtTiling.SixLevel => new Updater<PbtSixLevelTileLayout>(store, memoryProvider, groupFormat, changes, concurrency, partition).Run(currentRoots[partition], changes, out delta),
+            PbtTiling.EightLevel => new Updater<PbtEightLevelTileLayout>(store, memoryProvider, groupFormat, changes, concurrency, partition).Run(currentRoots[partition], changes, out delta),
             _ => throw new ArgumentOutOfRangeException(nameof(layout)),
         };
+        return currentRoots.With(partition, root);
     }
 
     /// <summary>
@@ -103,6 +121,8 @@ public static partial class TrieUpdater
         private readonly IPbtStore _store;
         private readonly IRefCountingMemoryProvider _memoryProvider;
         private readonly PbtGroupFormat _writeFormat;
+        private readonly int _rootDepth;
+        private readonly TrieNodeKey _rootKey;
 
         /// <summary>The batch's entries, which the frames permute in place — each job over its own range of them.</summary>
         private readonly PbtWriteBatch.StemEntry[] _entries;
@@ -251,18 +271,18 @@ public static partial class TrieUpdater
             }
         }
 
-        private ValueHash256 Descend(
-            in ValueHash256 currentRoot, PbtWriteBatch changes, in Fanout fanout, out PbtSubtreeStats delta)
+        private PbtPartitionRoot Descend(
+            in PbtPartitionRoot currentRoot, PbtWriteBatch changes, in Fanout fanout, out PbtSubtreeStats delta)
         {
-            using RefCountingMemory? rootData = _store.GetTrieNode(TrieNodeKey.Root);
+            using RefCountingMemory? rootData = _store.GetTrieNode(_rootKey);
             BufferWriter writer = new(_memoryProvider);
             NodeResult root;
             bool changed;
             try
             {
                 ApplyGroup(
-                    TrieNodeKey.Root, changes.Entries, TreeReader.Of(rootData), currentRoot,
-                    new BucketPlan(changes.Buckets, branchDepth: 0), fanout, ref writer, out root, out changed, out delta);
+                    _rootKey, changes.Entries, TreeReader.Of(rootData), currentRoot.Hash,
+                    new BucketPlan(changes.Buckets, _rootDepth), fanout, ref writer, out root, out changed, out delta);
                 if (writer.Detach() is { } folded) root = root.WithBlob(folded);
             }
             finally
@@ -272,20 +292,40 @@ public static partial class TrieUpdater
 
             using (root)
             {
-                // The root has no parent to persist it, so the top frame does: plant its rebuilt blob, or
-                // remove the key when the tree has emptied out.
                 if (changed && root.Blob is { } rootBlob)
                 {
                     rootBlob.AcquireLease();
-                    _store.SetTrieNode(TrieNodeKey.Root, rootBlob);
+                    _store.SetTrieNode(_rootKey, rootBlob);
                 }
                 else if (changed && root.Kind == NodeKind.Absent && rootData is not null)
                 {
-                    _store.SetTrieNode(TrieNodeKey.Root, null);
+                    _store.SetTrieNode(_rootKey, null);
                 }
 
-                return root.NodeHash();
+                return new PbtPartitionRoot(root.Kind, root.NodeHash());
             }
+        }
+
+        private bool IsGroupDepth(int depth) => depth >= _rootDepth && (depth - _rootDepth) % TLayout.LevelsPerGroup == 0;
+
+        private int GroupDepthOf(int bit) =>
+            _rootDepth + (bit - _rootDepth) / TLayout.LevelsPerGroup * TLayout.LevelsPerGroup;
+
+        private int MaxGroupDepth =>
+            _rootDepth + (Stem.LengthInBits - _rootDepth - 1) / TLayout.LevelsPerGroup * TLayout.LevelsPerGroup;
+
+        private bool IsClusteringDepth(int depth) => TLayout.IsClusteringDepth(depth - _rootDepth);
+
+        private static int SlotOf(in Stem stem, int depth)
+        {
+            int slot = 0;
+            for (int bit = 0; bit < TLayout.LevelsPerGroup; bit++)
+            {
+                int stemBit = depth + bit;
+                slot = slot << 1 | (stemBit < Stem.LengthInBits ? stem.GetBit(stemBit) : 0);
+            }
+
+            return slot;
         }
 
         /// <summary>
@@ -320,9 +360,9 @@ public static partial class TrieUpdater
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
-            Debug.Assert(!entries.IsEmpty && depth % TLayout.LevelsPerGroup == 0);
-            Debug.Assert(depth <= TLayout.MaxGroupDepth);
-            Debug.Assert(!TLayout.IsClusteringDepth(depth), "a group holding its children goes through ApplyClustered");
+            Debug.Assert(!entries.IsEmpty && IsGroupDepth(depth));
+            Debug.Assert(depth <= MaxGroupDepth);
+            Debug.Assert(!IsClusteringDepth(depth), "a group holding its children goes through ApplyClustered");
 
             TreeReader occupants = existingData.AsGroup();
             PbtTrieNodeGroup<TLayout> existing = occupants.Group();
@@ -345,9 +385,9 @@ public static partial class TrieUpdater
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
-            Debug.Assert(!entries.IsEmpty && depth % TLayout.LevelsPerGroup == 0);
-            Debug.Assert(depth <= TLayout.MaxGroupDepth);
-            Debug.Assert(TLayout.IsClusteringDepth(depth), "a group holding no child goes through ApplyGroup");
+            Debug.Assert(!entries.IsEmpty && IsGroupDepth(depth));
+            Debug.Assert(depth <= MaxGroupDepth);
+            Debug.Assert(IsClusteringDepth(depth), "a group holding no child goes through ApplyGroup");
 
             TreeReader occupants = existingData.AsGroup();
             PbtTrieNodeGroup<TLayout> existing = occupants.Group();
@@ -376,7 +416,7 @@ public static partial class TrieUpdater
             in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
-            if (TLayout.IsClusteringDepth(key.Depth))
+            if (IsClusteringDepth(key.Depth))
             {
                 ApplyClustered(key, entries, existingData, beforeHash, plan, fanout, ref writer, out result, out changed, out delta);
             }
@@ -407,7 +447,7 @@ public static partial class TrieUpdater
         {
             int depth = key.Depth;
             Occupant pushed = pushedReader.Occupant;
-            Debug.Assert(!entries.IsEmpty && depth % TLayout.LevelsPerGroup == 0);
+            Debug.Assert(!entries.IsEmpty && IsGroupDepth(depth));
             // a chain routes to ApplyChain instead: it is a whole subtree, not a node to place, and the
             // collapse below would drop it
             Debug.Assert(pushed.Kind is NodeKind.Absent or NodeKind.Stem);
@@ -445,7 +485,7 @@ public static partial class TrieUpdater
             // PbtWriteBatch requires of it. Nothing is left to partition on, so this must not descend.
             if (depth >= Stem.LengthInBits) throw new InvalidOperationException($"Stem {stem} written more than once in a single batch");
 
-            Debug.Assert(depth <= TLayout.MaxGroupDepth);
+            Debug.Assert(depth <= MaxGroupDepth);
 
             // Nothing is stored at this key or below it — a stem node lives in its parent group's encoding
             // and its subtree in a leaf blob keyed by the stem — so the groups from here down to wherever
@@ -482,15 +522,15 @@ public static partial class TrieUpdater
             {
                 // The pushed stem is as much of this subtree as the writes are, so it bounds the run too.
                 int diff = pushed.Stem.FirstDifferingBit(stem, depth);
-                int pushedBranch = (uint)diff < Stem.LengthInBits ? TLayout.GroupDepthOf(diff) : Stem.LengthInBits;
+                int pushedBranch = (uint)diff < Stem.LengthInBits ? GroupDepthOf(diff) : Stem.LengthInBits;
                 if (pushedBranch < branchDepth) branchDepth = pushedBranch;
             }
 
             // Stems that never part leave the branch past the trie's last group, which no key names: that
             // is the duplicate-stem batch, left to the descent to reject where it already does.
-            if (branchDepth > depth && branchDepth <= TLayout.MaxGroupDepth)
+            if (depth > _rootDepth && branchDepth > depth && branchDepth <= MaxGroupDepth)
             {
-                Debug.Assert(depth > 0, "a run starts past the root (invariant 4)");
+                Debug.Assert(depth > _rootDepth, "a run starts past the partition root (invariant 4)");
                 TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, stem);
 
                 // The same frame again at the group the run ends in, which is the ordinary descent from
@@ -521,7 +561,7 @@ public static partial class TrieUpdater
                 return;
             }
 
-            int seedSlot = pushed.Kind == NodeKind.Stem ? TLayout.SlotOf(pushed.Stem, depth) : -1;
+            int seedSlot = pushed.Kind == NodeKind.Stem ? SlotOf(pushed.Stem, depth) : -1;
 
             // a pushed stem roots no blob of its own: its subtree is its leaf blob, keyed by the stem
             TreeReader occupants = pushedReader.WithSeed(seedSlot);
@@ -535,7 +575,7 @@ public static partial class TrieUpdater
             // `entriesBranch` lets the resolve fill one itself where nothing was partitioned at all, so the
             // range is bucketed once however this frame reached here.
             BucketPlan resolvePlan = new(buckets, entriesBranch);
-            GroupShape shape = TLayout.IsClusteringDepth(depth)
+            GroupShape shape = IsClusteringDepth(depth)
                 ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results, ref writer, ref builder)
                 : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results);
             occupants.MergeUntouchedSeed(results, shape.Touched);
@@ -607,7 +647,7 @@ public static partial class TrieUpdater
             }
             else if (branchDepth > depth)
             {
-                FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
+                FillSingleBucket(SlotOf(entries[0].Stem, depth), entries.Length, computed);
                 level = computed;
             }
             else
@@ -691,7 +731,7 @@ public static partial class TrieUpdater
             }
             else if (branchDepth > depth)
             {
-                FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
+                FillSingleBucket(SlotOf(entries[0].Stem, depth), entries.Length, computed);
                 level = computed;
             }
             else
@@ -1009,8 +1049,8 @@ public static partial class TrieUpdater
             in PbtSubtreeStats beforeStats, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster,
             int mark, out bool changed, out PbtSubtreeStats delta)
         {
-            bool isRoot = key.Depth == 0;
-            bool headsCluster = TLayout.IsClusteringDepth(key.Depth);
+            bool isRoot = key.Depth == _rootDepth;
+            bool headsCluster = IsClusteringDepth(key.Depth);
             BoundarySlotMasks<TLayout> boundary = shape.Boundary;
             (SlotBitmask<TLayout> occupied, SlotBitmask<TLayout> stems, SlotBitmask<TLayout> chains) = boundary;
             SlotBitmask<TLayout> changedSlots = shape.Changed;
@@ -1478,7 +1518,7 @@ public static partial class TrieUpdater
         /// is a bound, not an equality.
         /// </remarks>
         [Conditional("DEBUG")]
-        private static void AssertBranchDepthSound(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, int claimed)
+        private void AssertBranchDepthSound(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, int claimed)
         {
             if (claimed <= depth) return;
 
@@ -1491,7 +1531,7 @@ public static partial class TrieUpdater
             }
 
             Debug.Assert(
-                claimed <= (TLayout.GroupDepthOf(splitDepth)),
+                claimed <= GroupDepthOf(splitDepth),
                 "the inherited branch depth reaches past where the range parts");
         }
 
@@ -1513,7 +1553,7 @@ public static partial class TrieUpdater
         /// share its slot — the levels between hold a single child apiece, so a caller free to skip
         /// them can jump straight to the group that branches.
         /// </returns>
-        private static int Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
+        private int Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
             Span<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             // Only the levels the producer left unbucketed reach here, which for a batch drained from
@@ -1538,7 +1578,7 @@ public static partial class TrieUpdater
             for (int i = 0; i < entries.Length; i++)
             {
                 Stem stem = entries[i].Stem;
-                counts[TLayout.SlotOf(stem, depth)]++;
+                counts[SlotOf(stem, depth)]++;
                 if (splitDepth > floor)
                 {
                     // FirstDifferingBit reports -1 for a stem that never parts — the reference against
@@ -1570,7 +1610,7 @@ public static partial class TrieUpdater
             if (populatedBuckets == 1)
             {
                 Debug.Assert(splitDepth >= floor, "one populated bucket means nothing parts within this group");
-                return TLayout.GroupDepthOf(splitDepth);
+                return GroupDepthOf(splitDepth);
             }
 
             // In-place American-flag permutation: each swap places one entry into its final bucket.
@@ -1580,7 +1620,7 @@ public static partial class TrieUpdater
             {
                 while (heads[bucket] < bounds[bucket + 1])
                 {
-                    int target = TLayout.SlotOf(entries[heads[bucket]].Stem, depth);
+                    int target = SlotOf(entries[heads[bucket]].Stem, depth);
                     if (target == bucket)
                     {
                         heads[bucket]++;
@@ -1605,7 +1645,7 @@ public static partial class TrieUpdater
         /// a contiguous run, so the bounds fill as a handful of vectorized spans rather than a per-slot
         /// loop over a counts array.
         /// </remarks>
-        private static int SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
+        private int SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
             Debug.Assert(!entries.IsEmpty && entries.Length <= TinyRange);
 
@@ -1623,7 +1663,7 @@ public static partial class TrieUpdater
             for (int i = 0; i < slots.Length; i++)
             {
                 Stem stem = entries[i].Stem;
-                slots[i] = TLayout.SlotOf(stem, depth);
+                slots[i] = SlotOf(stem, depth);
                 PbtWriteBatch.SetTouched<TLayout>(level, slots[i]);
                 int diff = stem.FirstDifferingBit(reference, depth);
                 if ((uint)diff < (uint)splitDepth) splitDepth = diff;
@@ -1648,7 +1688,7 @@ public static partial class TrieUpdater
 
             // Parting inside this group's own four levels rounds back down to it, which is what says the
             // range branches here and there is nothing to jump over.
-            return TLayout.GroupDepthOf(splitDepth);
+            return GroupDepthOf(splitDepth);
         }
 
         private static void CompareAndSwap(Span<PbtWriteBatch.StemEntry> entries, Span<int> slots, int i, int j)

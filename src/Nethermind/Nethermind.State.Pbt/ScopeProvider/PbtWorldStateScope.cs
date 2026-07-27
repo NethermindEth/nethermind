@@ -37,7 +37,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
 
     private StateId _currentStateId;
-    private ValueHash256 _treeRoot;
+    private PbtPartitionRoots _partitionRoots;
     private Hash256 _rootHash;
     private Hash256? _authoritativeRoot;
 
@@ -69,7 +69,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _isReadOnly = isReadOnly;
         _writeLayout = writeLayout;
         _rootFoldConcurrency = rootFoldConcurrency;
-        _treeRoot = bundle.TreeRoot;
+        _partitionRoots = bundle.PartitionRoots;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, _pendingCode);
     }
@@ -118,15 +118,15 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         if (!_rootDirty) return;
 
         long start = Stopwatch.GetTimestamp();
-        using (PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch(_writeLayout.Tiling()))
+        using (PbtWriteBatchSet changes = _writeBatchBuilder.DrainToWriteBatches(_writeLayout.Tiling()))
         {
-            _treeRoot = TrieUpdater.UpdateRoot(
-                this, _treeRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeLayout, _rootFoldConcurrency, out _);
+            _partitionRoots = TrieUpdater.UpdateRoot(
+                this, _partitionRoots, changes, PooledRefCountingMemoryProvider.Instance, _writeLayout, _rootFoldConcurrency, out _);
         }
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
 
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
-        _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
+        _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _partitionRoots.Root.ToHash256();
         _rootDirty = false;
     }
 
@@ -145,7 +145,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         StateId newStateId = new(blockNumber, _rootHash);
         if (newStateId != _currentStateId)
         {
-            PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot);
+            PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _partitionRoots);
             if (_isReadOnly)
             {
                 snapshot.Dispose();

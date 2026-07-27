@@ -38,8 +38,8 @@ public class PbtSnapshotCompactorTests
 
         using PbtSnapshot merged = Compact(older, newer);
 
-        AssertMemory(merged.Content.LeafBlobs[StemA], 0x22);
-        AssertMemory(merged.Content.TrieNodes[nodeKey], 0x22);
+        AssertMemory(merged.Content, StemA, 0x22);
+        AssertMemory(merged.Content, nodeKey, 0x22);
     }
 
     [Test]
@@ -61,8 +61,8 @@ public class PbtSnapshotCompactorTests
 
         using PbtSnapshot merged = Compact(older, newer);
 
-        AssertMemory(merged.Content.LeafBlobs[StemA], 0x11);
-        AssertMemory(merged.Content.LeafBlobs[StemB], 0x22);
+        AssertMemory(merged.Content, StemA, 0x11);
+        AssertMemory(merged.Content, StemB, 0x22);
     }
 
     /// <summary>
@@ -81,7 +81,7 @@ public class PbtSnapshotCompactorTests
         {
             PbtSnapshotContent layer = new();
             layer.SetLeafBlob(StemA, Memory((byte)block));
-            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), default, layer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), PbtPartitionRoots.Empty, layer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
             compactor.DoCompactSnapshot(State(block));
         }
 
@@ -92,7 +92,7 @@ public class PbtSnapshotCompactorTests
         Assert.That(repository.TryLeaseChain(State(8), State(0), chain), Is.True);
         Assert.That(chain.Count, Is.EqualTo(1), "the 8-wide layer at block 8 spans the whole window");
         Assert.That(chain[0].From, Is.EqualTo(State(0)));
-        AssertMemory(chain[0].Content.LeafBlobs[StemA], 8);
+        AssertMemory(chain[0].Content, StemA, 8);
     }
 
     /// <summary>
@@ -108,7 +108,7 @@ public class PbtSnapshotCompactorTests
 
         for (ulong block = 1; block <= 4; block++)
         {
-            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), default, new PbtSnapshotContent(), _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), PbtPartitionRoots.Empty, new PbtSnapshotContent(), _pool, PbtResourcePool.Usage.MainBlockProcessing));
             compactor.DoCompactSnapshot(State(block));
         }
 
@@ -147,7 +147,7 @@ public class PbtSnapshotCompactorTests
         using PbtSnapshotPooledList chain = new(layers.Length);
         for (int i = 0; i < layers.Length; i++)
         {
-            chain.Add(new PbtSnapshot(State((ulong)i + 1), State((ulong)i + 2), default, layers[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            chain.Add(new PbtSnapshot(State((ulong)i + 1), State((ulong)i + 2), PbtPartitionRoots.Empty, layers[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
         }
 
         return NewCompactor(new PbtSnapshotRepository()).Compact(chain);
@@ -158,12 +158,24 @@ public class PbtSnapshotCompactorTests
 
     private static RefCountingMemory Memory(params byte[] value) => RefCountingMemory.Wrapping(value);
 
-    private static void AssertMemory(RefCountingMemory? actual, params byte[] expected)
+    private static void AssertMemory(PbtSnapshotContent content, in Stem stem, params byte[] expected)
     {
+        Assert.That(content.TryGetLeafBlob(stem, out RefCountingMemory? actual), Is.True);
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual.AcquireLease, Throws.Nothing, "the merged layer owns a lease independent of its disposed sources");
-        ((System.IDisposable)actual).Dispose();
-        Assert.That(actual.GetSpan().ToArray(), Is.EqualTo(expected));
+        using (actual!)
+        {
+            Assert.That(actual!.GetSpan().ToArray(), Is.EqualTo(expected));
+        }
+    }
+
+    private static void AssertMemory(PbtSnapshotContent content, in TrieNodeKey key, params byte[] expected)
+    {
+        Assert.That(content.TryGetTrieNode(key, out RefCountingMemory? actual), Is.True);
+        Assert.That(actual, Is.Not.Null);
+        using (actual!)
+        {
+            Assert.That(actual!.GetSpan().ToArray(), Is.EqualTo(expected));
+        }
     }
 
     // offset 0 pins which blocks align; left to itself it is rolled per node and the levels move

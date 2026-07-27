@@ -104,8 +104,8 @@ public class PbtFormatInteropTests
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelEveryLevel);
         harness.ApplyBatch([.. groupA, .. groupB]);
-        TrieNodeKey keyA = TrieNodeKey.Root.ChildGroup(0, Layout.LevelsPerGroup);
-        TrieNodeKey keyB = TrieNodeKey.Root.ChildGroup(1, Layout.LevelsPerGroup);
+        TrieNodeKey keyA = PbtPartitions.RootKey(PbtPartition.Account).ChildGroup(0, Layout.LevelsPerGroup);
+        TrieNodeKey keyB = PbtPartitions.RootKey(PbtPartition.Account).ChildGroup(1, Layout.LevelsPerGroup);
         Assert.That(PbtTrieNodeGroup<Layout>.Decode(harness.Nodes[keyA]).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
 
         harness.WriteLayout = PbtTrieLayout.ClusteredFourLevelInterleaved;
@@ -126,7 +126,8 @@ public class PbtFormatInteropTests
     private static byte[] TileSlotKey(byte path)
     {
         byte[] key = new byte[Stem.Length + 1];
-        key[0] = path;
+        key[0] = (byte)(path >> 4);
+        key[1] = (byte)(path << 4);
         return key;
     }
 
@@ -138,6 +139,7 @@ public class PbtFormatInteropTests
         {
             byte[] key = new byte[Stem.Length + 1];
             random.NextBytes(key);
+            key[0] &= 0x0F;
             byte[] value = new byte[32];
             random.NextBytes(value);
             writes.Add((key, value));

@@ -19,11 +19,11 @@ public class PbtRocksDbPersistence : IPbtPersistence
     private static ReadOnlySpan<byte> LayoutVersionKey => "layoutVersion"u8;
     private static ReadOnlySpan<byte> TrieTilingKey => "trieTiling"u8;
 
-    /// <summary>Block number, state root, and EIP-8297 tree root.</summary>
-    private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
+    /// <summary>Block number, state root, and partition roots.</summary>
+    private const int CurrentStateLength = sizeof(ulong) + ValueHash256.MemorySize + PbtPartitionRoots.EncodedLength;
 
     /// <summary>On-disk column layout version; increment it when key or value encodings change.</summary>
-    private const int LayoutVersion = 5;
+    private const int LayoutVersion = 6;
 
     private readonly IColumnsDb<PbtColumns> _db;
 
@@ -51,8 +51,8 @@ public class PbtRocksDbPersistence : IPbtPersistence
             return;
         }
 
-        // A missing stamp is valid only for an empty database.
-        if (ReadCurrentState(metadata).State != StateId.PreGenesis)
+        // A missing stamp is valid only for an empty database. Do not decode legacy state metadata.
+        if (metadata.Get(CurrentStateKey) is not null)
         {
             throw new InvalidDataException($"The pbt database predates layout version {LayoutVersion} and cannot be read by this build. Delete the pbt database and re-import.");
         }
@@ -91,7 +91,6 @@ public class PbtRocksDbPersistence : IPbtPersistence
         _ => throw new NotSupportedException($"Zone {stem.Zone} is reserved"),
     };
 
-    /// <remarks>The depth-0 root's path is all zeros, so it falls into the account column.</remarks>
     private static PbtColumns TrieNodeColumn(in TrieNodeKey key) => key.Path.Zone switch
     {
         0x0 => PbtColumns.AccountTrieNodes,
@@ -102,7 +101,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
 
     public IPbtPersistence.IReader CreateReader() => new Reader(_db.CreateSnapshot());
 
-    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 toTreeRoot, WriteFlags flags)
+    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in PbtPartitionRoots toPartitionRoots, WriteFlags flags)
     {
         StateId currentState = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata)).State;
         if (currentState != from)
@@ -110,36 +109,36 @@ public class PbtRocksDbPersistence : IPbtPersistence
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, db state: {currentState}");
         }
 
-        return new WriteBatch(_db, to, toTreeRoot, flags);
+        return new WriteBatch(_db, to, toPartitionRoots, flags);
     }
 
     public void Flush() => _db.Flush();
 
-    internal static (StateId State, ValueHash256 TreeRoot) ReadCurrentState(IReadOnlyKeyValueStore metadata)
+    internal static (StateId State, PbtPartitionRoots PartitionRoots) ReadCurrentState(IReadOnlyKeyValueStore metadata)
     {
         byte[]? value = metadata.Get(CurrentStateKey);
         return value is null
-            ? (StateId.PreGenesis, default)
+            ? (StateId.PreGenesis, PbtPartitionRoots.Empty)
             : (new StateId(BinaryPrimitives.ReadUInt64BigEndian(value), new ValueHash256(value.AsSpan(sizeof(ulong), ValueHash256.MemorySize))),
-                new ValueHash256(value.AsSpan(sizeof(ulong) + ValueHash256.MemorySize, ValueHash256.MemorySize)));
+                PbtPartitionRoots.Decode(value.AsSpan(sizeof(ulong) + ValueHash256.MemorySize)));
     }
 
-    private static void WriteCurrentState(IWriteOnlyKeyValueStore metadata, in StateId stateId, in ValueHash256 treeRoot, WriteFlags flags)
+    private static void WriteCurrentState(IWriteOnlyKeyValueStore metadata, in StateId stateId, PbtPartitionRoots partitionRoots, WriteFlags flags)
     {
         Span<byte> value = stackalloc byte[CurrentStateLength];
         BinaryPrimitives.WriteUInt64BigEndian(value, stateId.BlockNumber);
         stateId.StateRoot.Bytes.CopyTo(value[sizeof(ulong)..]);
-        treeRoot.Bytes.CopyTo(value[(sizeof(ulong) + ValueHash256.MemorySize)..]);
+        partitionRoots.WriteTo(value[(sizeof(ulong) + ValueHash256.MemorySize)..]);
         metadata.PutSpan(CurrentStateKey, value, flags);
     }
 
     private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot) : IPbtPersistence.IReader
     {
-        private readonly (StateId State, ValueHash256 TreeRoot) _current = ReadCurrentState(snapshot.GetColumn(PbtColumns.Metadata));
+        private readonly (StateId State, PbtPartitionRoots PartitionRoots) _current = ReadCurrentState(snapshot.GetColumn(PbtColumns.Metadata));
 
         public StateId CurrentState => _current.State;
 
-        public ValueHash256 CurrentTreeRoot => _current.TreeRoot;
+        public PbtPartitionRoots CurrentPartitionRoots => _current.PartitionRoots;
 
         public RefCountingMemory? GetLeafBlob(in Stem stem) => ReadOwned(snapshot.GetColumn(LeafColumn(stem)), stem.Bytes);
 
@@ -173,7 +172,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
     }
 
     /// <remarks>Every operation carries <paramref name="flags"/> because the shared RocksDB batch uses its last write options.</remarks>
-    private sealed class WriteBatch(IColumnsDb<PbtColumns> db, StateId to, ValueHash256 toTreeRoot, WriteFlags flags) : IPbtPersistence.IWriteBatch
+    private sealed class WriteBatch(IColumnsDb<PbtColumns> db, StateId to, PbtPartitionRoots toPartitionRoots, WriteFlags flags) : IPbtPersistence.IWriteBatch
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
@@ -207,7 +206,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
 
         public void Dispose()
         {
-            WriteCurrentState(_batch.GetColumnBatch(PbtColumns.Metadata), to, toTreeRoot, flags);
+            WriteCurrentState(_batch.GetColumnBatch(PbtColumns.Metadata), to, toPartitionRoots, flags);
             _batch.Dispose();
 
             // WAL-disabled batches become durable only when the caller flushes.

@@ -16,10 +16,7 @@ public enum PbtColumns
     /// <summary>Stem leaf blobs of the storage zones (0x8-0xF), keyed by stem.</summary>
     StorageLeaves,
 
-    /// <summary>
-    /// Stem trie nodes of the account header zone (0x0), keyed by (path bits, depth), plus the
-    /// depth-0 root group, whose path has no zone nibble yet.
-    /// </summary>
+    /// <summary>Stem trie nodes of the account header zone (0x0), keyed by (path bits, depth).</summary>
     AccountTrieNodes,
 
     /// <summary>Stem trie nodes of the content-addressed code zone (0x1), keyed by (path bits, depth).</summary>

@@ -204,25 +204,25 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
         // Seed stored groups so abandoned frames hold leases when the fold throws.
         Random rng = new(3);
         List<(byte[] Key, byte[]? Value)> existing = Writes(rng, accountStems: 2000, contracts: 4, slotsPerContract: 100);
-        ValueHash256 root = harness.ApplyBatch(existing);
+        harness.ApplyBatch(existing);
 
         // Duplicate stems fail after descent; the batch is large enough to involve a worker.
         using PbtWriteBatch batch = new(estimatedStems: 2048, buckets: null);
         for (int i = 0; i < 2048; i++)
         {
-            byte[] stem = Stem(rng);
-            stem[0] = (byte)(0xA0 | (i & 0xF));
+            byte[] stem = AccountStem(rng);
+            stem[0] = (byte)(i & 0xF);
             batch.Add(new Stem(stem), PbtStemChanges.Rent().Set(1, new ValueHash256(Value(rng))));
         }
 
-        byte[] duplicateBytes = Stem(rng);
-        duplicateBytes[0] = 0xA5;
+        byte[] duplicateBytes = AccountStem(rng);
+        duplicateBytes[0] = 0x05;
         Stem duplicate = new(duplicateBytes);
         batch.Add(duplicate, PbtStemChanges.Rent().Set(1, new ValueHash256(Value(rng))));
         batch.Add(duplicate, PbtStemChanges.Rent().Set(2, new ValueHash256(Value(rng))));
 
         Assert.That(
-            () => TrieUpdater.UpdateRoot(harness, root, batch, provider, layout, Workers, out _),
+            () => TrieUpdater.UpdateRoot(harness, harness.Roots, PbtPartition.Account, batch, provider, layout, Workers, out _),
             Throws.InstanceOf<InvalidOperationException>());
 
         Assert.That(provider.Rented, Is.Not.Empty, "the fold must have rented something to check");
@@ -251,11 +251,11 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
     private static List<(byte[] Key, byte[]? Value)> Writes(Random rng, int accountStems, int contracts, int slotsPerContract)
     {
         List<(byte[] Key, byte[]? Value)> writes = [];
-        for (int i = 0; i < accountStems; i++) writes.Add(([.. Stem(rng), (byte)rng.Next(256)], Value(rng)));
+        for (int i = 0; i < accountStems; i++) writes.Add(([.. AccountStem(rng), (byte)rng.Next(256)], Value(rng)));
 
         for (int contract = 0; contract < contracts; contract++)
         {
-            byte[] prefix = Stem(rng);
+            byte[] prefix = StorageStem(rng);
             for (int slot = 0; slot < slotsPerContract; slot++)
             {
                 // Vary only the last two bytes so the group branches at depth 240.
@@ -284,8 +284,9 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
             {
                 for (int i = 0; i < stemsPerSlot; i++)
                 {
-                    byte[] stem = Stem(rng);
-                    stem[0] = (byte)((root << 4) | slot);
+                    byte[] stem = AccountStem(rng);
+                    stem[0] = (byte)root;
+                    stem[1] = (byte)((slot << 4) | (stem[1] & 0x0F));
                     writes.Add(([.. stem, (byte)rng.Next(256)], Value(rng)));
                 }
             }
@@ -294,10 +295,19 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
         return writes;
     }
 
-    private static byte[] Stem(Random rng)
+    private static byte[] AccountStem(Random rng)
     {
         byte[] stem = new byte[Nethermind.Pbt.Stem.Length];
         rng.NextBytes(stem);
+        stem[0] &= 0x0F;
+        return stem;
+    }
+
+    private static byte[] StorageStem(Random rng)
+    {
+        byte[] stem = new byte[Nethermind.Pbt.Stem.Length];
+        rng.NextBytes(stem);
+        stem[0] |= 0x80;
         return stem;
     }
 

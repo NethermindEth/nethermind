@@ -14,11 +14,11 @@ public interface IPbtPersistence
     IReader CreateReader();
 
     /// <summary>Starts an atomic batch advancing the persisted state from <paramref name="from"/> to <paramref name="to"/>.</summary>
-    /// <param name="toTreeRoot">The EIP-8297 root of <paramref name="to"/>, which <see cref="StateId.StateRoot"/> does not carry.</param>
+    /// <param name="toPartitionRoots">The partition roots of <paramref name="to"/>, which <see cref="StateId.StateRoot"/> does not carry.</param>
     /// <param name="flags">
     /// Applied to every write. <see cref="WriteFlags.DisableWAL"/> requires <see cref="Flush"/> for crash durability.
     /// </param>
-    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 toTreeRoot, WriteFlags flags);
+    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in PbtPartitionRoots toPartitionRoots, WriteFlags flags);
 
     /// <summary>Makes preceding <see cref="WriteFlags.DisableWAL"/> writes crash-durable.</summary>
     void Flush();
@@ -27,8 +27,8 @@ public interface IPbtPersistence
     {
         StateId CurrentState { get; }
 
-        /// <summary>Gets the EIP-8297 root of <see cref="CurrentState"/>.</summary>
-        ValueHash256 CurrentTreeRoot { get; }
+        /// <summary>Gets the partition roots of <see cref="CurrentState"/>.</summary>
+        PbtPartitionRoots CurrentPartitionRoots { get; }
 
         RefCountingMemory? GetLeafBlob(in Stem stem);
         RefCountingMemory? GetTrieNode(in TrieNodeKey key);
