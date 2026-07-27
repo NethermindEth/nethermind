@@ -23,9 +23,18 @@ internal static class StreamInterpreter
     public static volatile bool ForceAllContexts;
 
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
-    // EXPERIMENT: 1 to force build on first execution (per-instance _streamHits never reaches 4 on the
-    // eth_call path — instances are not shared across calls). Diagnostic for stream-engagement.
-    public static int BuildThreshold = 1;
+    public static int BuildThreshold = 4;
+
+    // DIAGNOSTIC: per-branch counters for GetOrBuildStream, dumped to stderr every 5s so a benchmark
+    // node log reveals exactly why streams do (not) engage. Remove before shipping.
+    public static long DiagUnavail, DiagCacheHit, DiagBelow, DiagCasWon, DiagCasLost,
+        DiagBuildOk, DiagFailTryBuild, DiagFailSize, DiagFailHash;
+    private static readonly System.Threading.Timer _diagTimer = new(_ =>
+        Console.Error.WriteLine(
+            $"[STREAMDIAG] unavail={DiagUnavail} cacheHit={DiagCacheHit} below={DiagBelow} " +
+            $"casWon={DiagCasWon} casLost={DiagCasLost} buildOk={DiagBuildOk} " +
+            $"failTryBuild={DiagFailTryBuild} failSize={DiagFailSize} failHash={DiagFailHash}"),
+        null, 5000, 5000);
 
     // Streams over this size aren't retained (fall back to the metered loop); 256 KiB covers any EIP-170 contract.
     public const int MaxStreamRetainedBytes = 256 * 1024;
