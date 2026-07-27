@@ -194,12 +194,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 {
                     if (!_currentState.IsContinuation)
                     {
-                        AddTransferLog(_currentState);
-
-                        // Start transaction tracing for non-continuation frames if tracing is enabled.
-                        if (_isTracingActionsCached)
+                        if (_currentState.IsTopLevel) // Top frame: report the action first
                         {
-                            TraceTransactionActionStart(_currentState);
+                            if (_isTracingActionsCached) TraceTransactionActionStart(_currentState);
+                            AddTransferLog(_currentState);
+                        }
+                        else // Nested frame: attach transfer log to the caller frame
+                        {
+                            AddTransferLog(_currentState);
+                            if (_isTracingActionsCached) TraceTransactionActionStart(_currentState);
                         }
                     }
 

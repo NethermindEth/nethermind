@@ -455,18 +455,18 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
             }
 
+            // Report frame start before EIP-7708 transfer log so the log attaches to the top-level call frame
+            if (isTracingActions)
+            {
+                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+            }
+
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && hasValueTransfer && !senderIsRecipient && !newAccountOutOfGas)
             {
                 LogEntry transferLog = TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value);
                 logs = [transferLog];
                 if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
-            }
-
-            // Keep tracer event order aligned with VirtualMachine.ExecuteCall.
-            if (isTracingActions)
-            {
-                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
             }
 
             TransactionSubstate substate = new(
