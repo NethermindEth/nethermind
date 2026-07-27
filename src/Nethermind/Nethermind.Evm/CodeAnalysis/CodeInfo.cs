@@ -83,28 +83,28 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;
 
+        // Elect a single builder and build inline on the crossing call so the stream is used
+        // immediately and deterministically. A fire-and-forget ThreadPool build can be starved
+        // under a saturated eth_call load and, with the one-shot CAS, never re-fires — pinning the
+        // contract to the metered loop for the process lifetime. Losers of the CAS keep metering for
+        // the few executions until the winner publishes to the cache, then hit the fast path above.
         if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
-            ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
+            return BuildStream();
 
         return null;
     }
 
-    private void BuildStream()
+    private InstructionStream? BuildStream()
     {
         InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
         if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
         {
             InstructionStreamCache.Set(CodeHash, stream);
+            return stream;
         }
-        else
-        {
-            Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
-        }
-    }
 
-    private sealed class StreamBuilder(CodeInfo codeInfo) : IThreadPoolWorkItem
-    {
-        public void Execute() => codeInfo.BuildStream();
+        Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
+        return null;
     }
 
     /// <summary>
