@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
+using CoreCollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.Core.Test.BlockAccessLists;
 
@@ -107,6 +109,32 @@ public class BlockAccessListItemCountTests
 
         Assert.That(bal.ItemCount, Is.EqualTo(5),
             "block 2: 1 account + 4 storage reads, no carryover from block 1");
+    }
+
+    [Test]
+    public void Reset_trims_oversized_account_dictionary()
+    {
+        const int OversizedCapacity = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;
+
+        GeneratedBlockAccessList bal = new();
+        object accountChanges = typeof(GeneratedBlockAccessList).GetField(
+            "_accountChanges",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(bal)!;
+        MethodInfo ensureCapacity = accountChanges.GetType().GetMethod(
+            nameof(Dictionary<int, int>.EnsureCapacity),
+            [typeof(int)])!;
+        PropertyInfo capacity = accountChanges.GetType().GetProperty(nameof(Dictionary<int, int>.Capacity))!;
+        ensureCapacity.Invoke(accountChanges, [OversizedCapacity]);
+        int capacityBeforeReset = (int)capacity.GetValue(accountChanges)!;
+
+        bal.Reset();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capacityBeforeReset, Is.GreaterThan(CoreCollectionExtensions.DefaultTrimAboveCapacity));
+            Assert.That(capacity.GetValue(accountChanges), Is.GreaterThan(0));
+            Assert.That(capacity.GetValue(accountChanges), Is.LessThan(capacityBeforeReset));
+        }
     }
 
     /// <summary>

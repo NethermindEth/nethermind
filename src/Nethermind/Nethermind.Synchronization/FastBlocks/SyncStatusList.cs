@@ -52,17 +52,26 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_statuses.TrySet(currentNumber, FastBlockStatus.Sent, out FastBlockStatus status))
                 {
-                    if (_cache.TryGet(currentNumber, out BlockInfo blockInfo))
+                    BlockInfo? blockInfo;
+                    if (_cache.TryGet(currentNumber, out BlockInfo cachedInfo))
                     {
                         _cache.Delete(currentNumber);
+                        blockInfo = cachedInfo;
                     }
                     else
                     {
                         blockInfo = _blockTree.FindCanonicalBlockInfo(currentNumber);
                     }
 
-                    blockInfos[collected] = blockInfo;
-                    collected++;
+                    if (blockInfo is null)
+                    {
+                        _statuses.TrySet(currentNumber, FastBlockStatus.Pending);
+                    }
+                    else
+                    {
+                        blockInfos[collected] = blockInfo;
+                        collected++;
+                    }
                 }
                 else if (status == FastBlockStatus.Inserted)
                 {

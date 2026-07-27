@@ -47,6 +47,23 @@ namespace Nethermind.Config.Test
             Assert.That(action, Throws.TypeOf<ArgumentException>());
         }
 
+        [Test]
+        public void info_normalizes_ipv4_mapped_ipv6_host()
+        {
+            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            IPAddress mapped = IPAddress.Parse("::ffff:192.168.2.54");
+            Enode enode = new(publicKey, mapped, 0, 40306);
+
+            // HostIp is preserved verbatim (matches legacy persisted-node decoding behavior)...
+            Assert.That(enode.HostIp, Is.EqualTo(mapped));
+
+            // ...but Info must bracket-free normalize it to plain IPv4, otherwise it produces an
+            // invalid URI that fails to reload as a persisted node on the next startup.
+            Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
+            Enode reparsed = new(enode.Info);
+            Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse("192.168.2.54")));
+        }
+
         public static IEnumerable Ipv4vs6TestCases
         {
             get

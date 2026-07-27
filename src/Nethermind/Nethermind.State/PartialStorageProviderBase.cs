@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
@@ -161,7 +162,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
-            _intraBlockCache.Clear();
+            _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
         }
 
@@ -263,16 +264,6 @@ namespace Nethermind.State
             public readonly byte[] Value = value;
             public readonly int CurrentIdx = currentIdx;
             public readonly int OriginalIdx = originalIdx;
-        }
-
-        /// <summary>
-        /// Type of change to track
-        /// </summary>
-        protected enum ChangeType
-        {
-            Null = 0,
-            JustCache,
-            Update,
         }
     }
 }

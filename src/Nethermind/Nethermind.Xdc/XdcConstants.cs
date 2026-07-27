@@ -40,6 +40,10 @@ internal static class XdcConstants
     public const int PoolHygieneRound = 10;
     public const int InMemorySignatures = 4096;
 
+    // Suggested blocks are ahead of head while being processed; only treat the node
+    // as syncing once the gap exceeds this, so normal per-block processing doesn't look like a resync.
+    public const int MaxSyncDistanceForConsensus = 2;
+
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
     public static readonly UInt256 DifficultyDefault = UInt256.One;
     public const int MinimumMinerBlockPerEpoch = 1;
