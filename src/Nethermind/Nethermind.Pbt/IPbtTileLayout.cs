@@ -30,6 +30,9 @@ public interface IPbtTileLayout
 {
     static abstract PbtTiling Tiling { get; }
 
+    /// <summary>The depth at which this layout's tile grid starts.</summary>
+    static abstract int RootDepth { get; }
+
     /// <summary>Trie levels covered by one tile: a tile rooted at depth d has its boundary slots at depth d + this.</summary>
     static abstract int LevelsPerGroup { get; }
 

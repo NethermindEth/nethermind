@@ -8,6 +8,8 @@ public readonly struct PbtEightLevelTileLayout : IPbtTileLayout
 {
     public static PbtTiling Tiling => PbtTiling.EightLevel;
 
+    public static int RootDepth => 0;
+
     public static int LevelsPerGroup => 8;
 
     public static int BoundarySlots => 1 << LevelsPerGroup;

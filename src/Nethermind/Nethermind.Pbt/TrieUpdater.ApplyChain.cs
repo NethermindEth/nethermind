@@ -23,7 +23,7 @@ public static partial class TrieUpdater
             int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats)
         {
             RefCountingMemory memory = _memoryProvider.Rent(PbtNodeChain.EncodedLength);
-            PbtNodeChain.Write<TLayout>(memory.GetSpan(), startDepth, targetDepth, targetPath, targetHash, stats, _rootDepth);
+            PbtNodeChain.Write<TLayout>(memory.GetSpan(), startDepth, targetDepth, targetPath, targetHash, stats);
             return memory;
         }
 
@@ -78,7 +78,7 @@ public static partial class TrieUpdater
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty);
 
-            PbtNodeChain chain = PbtNodeChain.Decode<TLayout>(chainReader.Data, depth, _rootDepth);
+            PbtNodeChain chain = PbtNodeChain.Decode<TLayout>(chainReader.Data, depth);
             int targetDepth = chain.TargetDepth;
             Stem targetPath = chain.TargetPath;
 
@@ -277,7 +277,7 @@ public static partial class TrieUpdater
                         return NodeResult.Chain(NewChainNode(startDepth, innerKey.Depth, innerKey.Path, inner.Hash, stats));
                     }
                 default:
-                    PbtNodeChain absorbed = PbtNodeChain.Decode<TLayout>(inner.ChainData, innerKey.Depth, _rootDepth);
+                    PbtNodeChain absorbed = PbtNodeChain.Decode<TLayout>(inner.ChainData, innerKey.Depth);
                     int targetDepth = absorbed.TargetDepth;
                     Stem targetPath = absorbed.TargetPath;
                     ValueHash256 targetHash = absorbed.TargetHash;
