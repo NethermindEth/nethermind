@@ -4,6 +4,8 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -302,6 +304,47 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(reader.CurrentPartitionRoots.Root, Is.EqualTo(PbtReferenceModel.Root(model)), "reopening the view mid-zone must fold to the same root");
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)).ToArray(), Is.EqualTo(((UInt256)0x55).ToBigEndian()));
+    }
+
+    [Test]
+    public async Task Importer_bypasses_cached_persistence_wrapper()
+    {
+        PbtConfig config = new();
+        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
+        {
+            batch.SetAccount(TestItem.AddressA, new Account(1, 100));
+        }
+
+        SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
+        PbtRocksDbPersistence rawPersistence = new(pbtDb, config);
+        IPbtPersistence cachedWrapper = NSubstitute.Substitute.For<IPbtPersistence>();
+        RecordingExitSource exitSource = new();
+
+        ContainerBuilder builder = new();
+        builder
+            .AddSingleton<IPersistence>(flatSource)
+            .AddKeyedSingleton<IDb>(DbNames.Code, new MemDb())
+            .AddSingleton<IColumnsDb<PbtColumns>>(pbtDb)
+            .AddSingleton<PbtRocksDbPersistence>(rawPersistence)
+            .AddSingleton<IPbtPersistence>(rawPersistence)
+            .AddDecorator<IPbtPersistence>((_, _) => cachedWrapper)
+            .AddSingleton<IPbtConfig>(config)
+            .AddSingleton<IProcessExitSource>(exitSource)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<PbtRebuilder>();
+        builder.RegisterType<ImportPbtFromPreimageFlat>().WithAttributeFiltering();
+        using IContainer container = builder.Build();
+
+        ImportPbtFromPreimageFlat step = container.Resolve<ImportPbtFromPreimageFlat>();
+        Assert.That(container.Resolve<IPbtPersistence>(), Is.SameAs(cachedWrapper));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
+        using IPbtPersistence.IReader reader = rawPersistence.CreateReader();
+        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
     }
 
     [Test]

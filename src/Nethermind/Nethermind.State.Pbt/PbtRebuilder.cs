@@ -31,7 +31,7 @@ namespace Nethermind.State.Pbt;
 /// Because each window folds against the previously committed windows, a stem split across windows is
 /// merged correctly (the updater reads its prior leaf blob and folds the new leaves in).
 /// </remarks>
-public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager, IPbtConfig config)
+public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logManager, IPbtConfig config)
 {
     private const int DefaultFlushEntryInterval = 2_000_000;
 
