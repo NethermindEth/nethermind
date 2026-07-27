@@ -72,7 +72,7 @@ public static partial class TrieUpdater
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyChain(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader chainReader,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader<TLayout> chainReader,
             scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer, out NodeResult result,
             out bool changed, out PbtSubtreeStats delta)
         {
@@ -117,7 +117,7 @@ public static partial class TrieUpdater
                 try
                 {
                     ApplyStoredGroup(
-                        chain.TargetKey, entries, TreeReader.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter,
+                        chain.TargetKey, entries, TreeReader<TLayout>.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter,
                         out inner, out targetChanged, out delta);
 
                     if (targetWriter.Detach() is { } targetBlob) inner = inner.WithBlob(targetBlob);
@@ -211,7 +211,7 @@ public static partial class TrieUpdater
             using RefCountingMemory seed = directChild
                 ? NewInternalNode(targetHash)
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
-            TreeReader seedReader = TreeReader.Of(seed).AsNode(seedKind);
+            TreeReader<TLayout> seedReader = TreeReader<TLayout>.Of(seed).AsNode(seedKind);
 
             // The group this split makes real clusters its children where its depth says so, and the target
             // is one of them: its blob moves out of the key the run left it under and into the cluster
@@ -224,7 +224,7 @@ public static partial class TrieUpdater
 
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
-            TreeReader occupants = seedReader.WithSeed(targetSlot, TreeReader.Of(adopted));
+            TreeReader<TLayout> occupants = seedReader.WithSeed(targetSlot, TreeReader<TLayout>.Of(adopted));
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
@@ -234,7 +234,7 @@ public static partial class TrieUpdater
             GroupShape shape = TLayout.IsClusteringDepth(depth)
                 ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results, ref writer, ref builder)
                 : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results);
-            occupants.MergeUntouchedSeed(results, shape.Touched);
+            MergeUntouchedSeed(occupants, results, shape.Touched);
 
             return RebuildNode(
                 key, occupants, default, results, shape, chain.NodeHash, chain.Stats, ref writer, ref builder, mark,

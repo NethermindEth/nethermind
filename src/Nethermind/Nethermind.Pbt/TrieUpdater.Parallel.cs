@@ -180,22 +180,22 @@ public static partial class TrieUpdater
         /// </summary>
         private bool TryQueue(
             int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket,
-            in TreeReader reader, scoped BucketPlan childPlan, in Fanout fanout, ref QueuedBuckets queued) =>
+            in TreeReader<TLayout> reader, scoped BucketPlan childPlan, in Fanout fanout, ref QueuedBuckets queued) =>
             TryQueue(slot, childKey, bucket, reader, default, childPlan, isClusteredChild: false, fanout, ref queued);
 
         private bool TryQueue(
             int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket,
-            in TreeReader reader, in TreeReader existingData, scoped BucketPlan childPlan,
+            in TreeReader<TLayout> reader, in TreeReader<TLayout> existingData, scoped BucketPlan childPlan,
             in Fanout fanout, ref QueuedBuckets queued) =>
             TryQueue(slot, childKey, bucket, reader, existingData, childPlan, isClusteredChild: true, fanout, ref queued);
 
         private bool TryQueue(
             int slot, in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket,
-            in TreeReader reader, in TreeReader existingData, scoped BucketPlan childPlan, bool isClusteredChild,
+            in TreeReader<TLayout> reader, in TreeReader<TLayout> existingData, scoped BucketPlan childPlan, bool isClusteredChild,
             in Fanout fanout, ref QueuedBuckets queued)
         {
-            TreeReader leasedReader = reader.Lease();
-            TreeReader leasedExistingData = existingData.Lease();
+            TreeReader<TLayout> leasedReader = reader.Lease();
+            TreeReader<TLayout> leasedExistingData = existingData.Lease();
             bool transferred = false;
             try
             {
@@ -357,10 +357,10 @@ public static partial class TrieUpdater
             public bool IsSorted { get; init; }
 
             /// <summary>The boundary reader whose explicitly acquired lease this job owns.</summary>
-            public TreeReader Reader { get; init; }
+            public TreeReader<TLayout> Reader { get; init; }
 
             /// <summary>The clustered child encoding whose explicitly acquired lease this job owns.</summary>
-            public TreeReader ExistingData { get; init; }
+            public TreeReader<TLayout> ExistingData { get; init; }
 
             public bool IsClusteredChild { get; init; }
 

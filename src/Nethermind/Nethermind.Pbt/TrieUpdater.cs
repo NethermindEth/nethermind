@@ -121,18 +121,12 @@ public static partial class TrieUpdater
         out PbtSubtreeStats delta)
         where TLayout : IPbtTileLayout => partition switch
         {
-            PbtPartition.Account or PbtPartition.Code => UpdateRootedPartition<PbtRootedTileLayout<TLayout, PbtDepth4>>(store, currentRoot, memoryProvider, groupFormat, changes, concurrency, partition, out delta),
-            PbtPartition.Storage => UpdateRootedPartition<PbtRootedTileLayout<TLayout, PbtDepth1>>(store, currentRoot, memoryProvider, groupFormat, changes, concurrency, partition, out delta),
+            PbtPartition.Account or PbtPartition.Code => new Updater<PbtRootedTileLayout<TLayout, PbtDepth4>>(store, memoryProvider, groupFormat, changes, concurrency, partition)
+                .Run(currentRoot, changes, out delta),
+            PbtPartition.Storage => new Updater<PbtRootedTileLayout<TLayout, PbtDepth1>>(store, memoryProvider, groupFormat, changes, concurrency, partition)
+                .Run(currentRoot, changes, out delta),
             _ => throw new ArgumentOutOfRangeException(nameof(partition)),
         };
-
-    private static PbtPartitionRoot UpdateRootedPartition<TLayout>(
-        IPbtStore store, in PbtPartitionRoot currentRoot, IRefCountingMemoryProvider memoryProvider,
-        PbtGroupFormat groupFormat, PbtWriteBatch changes, int concurrency, PbtPartition partition,
-        out PbtSubtreeStats delta)
-        where TLayout : IPbtTileLayout =>
-        new Updater<TLayout>(store, memoryProvider, groupFormat, changes, concurrency, partition)
-            .Run(currentRoot, changes, out delta);
 
     /// <summary>
     /// The walk down the tree, as one thread runs it: the frames, the settings they fold by, and the
@@ -171,144 +165,6 @@ public static partial class TrieUpdater
         /// <summary>The smallest bucket worth handing to another thread; <see cref="int.MaxValue"/> on a fold that stays on the calling thread.</summary>
         private readonly int _minQueueEntries;
 
-        /// <summary>
-        /// A non-owning, copyable view of bytes the descent reads. The owner of <see cref="Memory"/> keeps
-        /// its lease for the lifetime of the view; a view handed to another thread must be leased explicitly.
-        /// </summary>
-        internal readonly struct TreeReader
-        {
-            private readonly RefCountingMemory? _memory;
-            private readonly int _offset;
-            private readonly int _length;
-            private readonly NodeKind _kind;
-            private readonly bool _hasStoredEncoding;
-            private readonly int _seedSlotPlusOne;
-            private readonly RefCountingMemory? _adoptedMemory;
-            private readonly int _adoptedOffset;
-            private readonly int _adoptedLength;
-
-            private TreeReader(
-                RefCountingMemory? memory, int offset, int length, NodeKind kind = NodeKind.Absent,
-                bool hasStoredEncoding = false, int seedSlot = -1, TreeReader adopted = default)
-            {
-                _memory = memory;
-                _offset = offset;
-                _length = length;
-                _kind = kind;
-                _hasStoredEncoding = hasStoredEncoding;
-                _seedSlotPlusOne = seedSlot + 1;
-                _adoptedMemory = adopted._memory;
-                _adoptedOffset = adopted._offset;
-                _adoptedLength = adopted._length;
-            }
-
-            /// <summary>The whole of <paramref name="memory"/>, as the store hands a blob over; the absent reader for <c>null</c>.</summary>
-            public static TreeReader Of(RefCountingMemory? memory) =>
-                memory is null ? default : new(memory, 0, memory.GetSpan().Length);
-
-            public bool IsEmpty => _memory is null;
-
-            public bool HasStoredEncoding => _hasStoredEncoding;
-
-            public RefCountingMemory? Memory => _memory;
-
-            public ReadOnlySpan<byte> Data => _memory is null ? default : _memory.GetSpan().Slice(_offset, _length);
-
-            public Occupant Occupant => _kind == NodeKind.Absent ? default : new(Data, _kind);
-
-            public TreeReader AsGroup() => new(_memory, _offset, _length, hasStoredEncoding: !IsEmpty);
-
-            public TreeReader WithSeed(int slot, TreeReader adopted = default) =>
-                new(_memory, _offset, _length, _kind, seedSlot: slot, adopted: adopted);
-
-            public PbtTrieNodeGroup<TLayout> Group()
-            {
-                if (!_hasStoredEncoding) return default;
-                PbtNodeCluster.Decode<TLayout>(Data, out PbtTrieNodeGroup<TLayout> group);
-                return group;
-            }
-
-            public BoundarySlotMasks<TLayout> BoundaryShape()
-            {
-                if (_hasStoredEncoding) return Group().BoundaryShape();
-                if (_seedSlotPlusOne == 0) return default;
-
-                SlotBitmask<TLayout> occupied = SlotBitmask<TLayout>.Of(_seedSlotPlusOne - 1);
-                return new BoundarySlotMasks<TLayout>(
-                    occupied,
-                    _kind == NodeKind.Stem ? occupied : default,
-                    _kind == NodeKind.Chain ? occupied : default);
-            }
-
-            public TreeReader Reader(int slot, in PbtTrieNodeGroup<TLayout> group)
-            {
-                if (!_hasStoredEncoding) return slot + 1 == _seedSlotPlusOne ? AsNode(_kind) : default;
-
-                PbtNodeCluster cluster = new(Data);
-                int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
-                NodeKind kind = group.KindAt(position);
-                return kind == NodeKind.Absent
-                    ? default
-                    : Slice((cluster.GroupOffset + group.EntryOffset(position))..).AsNode(kind);
-            }
-
-            public TreeReader Child(int slot, in PbtTrieNodeGroup<TLayout> group)
-            {
-                if (!_hasStoredEncoding)
-                {
-                    return slot + 1 == _seedSlotPlusOne && _adoptedMemory is not null
-                        ? new TreeReader(_adoptedMemory, _adoptedOffset, _adoptedLength)
-                        : default;
-                }
-
-                return Slice(new PbtNodeCluster(Data).Child(slot, group));
-            }
-
-            public bool HasChild(int slot, in PbtTrieNodeGroup<TLayout> group)
-            {
-                if (!_hasStoredEncoding) return slot + 1 == _seedSlotPlusOne && _adoptedMemory is not null;
-
-                return !new PbtNodeCluster(Data).IsBare
-                    && group.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(slot)) == NodeKind.Internal;
-            }
-
-            public void MergeUntouchedSeed(Span<NodeResult> results, SlotBitmask<TLayout> touched)
-            {
-                if (_seedSlotPlusOne == 0) return;
-
-                int slot = _seedSlotPlusOne - 1;
-                if (touched[slot]) return;
-
-                Occupant seed = Occupant;
-                results[slot] = seed.Kind switch
-                {
-                    NodeKind.Internal => NodeResult.Internal(seed.Hash),
-                    NodeKind.Stem => NodeResult.StemNode(seed.Stem, seed.Hash),
-                    NodeKind.Chain => NodeResult.Chain(_memory!).Lease(),
-                    _ => default,
-                };
-            }
-
-            /// <summary>The reader <paramref name="range"/> of these bytes holds; the absent reader for an empty range.</summary>
-            public TreeReader Slice(Range range)
-            {
-                (int start, int sliceLength) = range.GetOffsetAndLength(_length);
-                return sliceLength == 0 ? default : new TreeReader(_memory, _offset + start, sliceLength);
-            }
-
-            public TreeReader AsNode(NodeKind nodeKind)
-            {
-                int nodeLength = new Occupant(Data, nodeKind).Encoding.Length;
-                return new TreeReader(_memory, _offset, nodeLength, nodeKind);
-            }
-
-            public TreeReader Lease()
-            {
-                _memory?.AcquireLease();
-                return this;
-            }
-        }
-
         private PbtPartitionRoot Descend(
             in PbtPartitionRoot currentRoot, PbtWriteBatch changes, in Fanout fanout, out PbtSubtreeStats delta)
         {
@@ -319,7 +175,7 @@ public static partial class TrieUpdater
             try
             {
                 ApplyGroup(
-                    _rootKey, changes.Entries, TreeReader.Of(rootData), currentRoot.Hash,
+                    _rootKey, changes.Entries, TreeReader<TLayout>.Of(rootData), currentRoot.Hash,
                     new BucketPlan(changes.Buckets, TLayout.RootDepth, isSorted: false), fanout, ref writer, out root, out changed, out delta);
                 if (writer.Detach() is { } folded) root = root.WithBlob(folded);
             }
@@ -371,7 +227,7 @@ public static partial class TrieUpdater
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         [SkipLocalsInit]
         private void ApplyGroup(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, TreeReader existingData,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, TreeReader<TLayout> existingData,
             in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
@@ -380,7 +236,7 @@ public static partial class TrieUpdater
             Debug.Assert(depth <= TLayout.MaxGroupDepth);
             Debug.Assert(!TLayout.IsClusteringDepth(depth), "a group holding its children goes through ApplyClustered");
 
-            TreeReader occupants = existingData.AsGroup();
+            TreeReader<TLayout> occupants = existingData.AsGroup();
             PbtTrieNodeGroup<TLayout> existing = occupants.Group();
 
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
@@ -396,7 +252,7 @@ public static partial class TrieUpdater
 
         [SkipLocalsInit]
         private void ApplyClustered(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, TreeReader existingData,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, TreeReader<TLayout> existingData,
             in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
@@ -405,7 +261,7 @@ public static partial class TrieUpdater
             Debug.Assert(depth <= TLayout.MaxGroupDepth);
             Debug.Assert(TLayout.IsClusteringDepth(depth), "a group holding no child goes through ApplyGroup");
 
-            TreeReader occupants = existingData.AsGroup();
+            TreeReader<TLayout> occupants = existingData.AsGroup();
             PbtTrieNodeGroup<TLayout> existing = occupants.Group();
 
             PbtNodeCluster.Builder builder = default;
@@ -428,7 +284,7 @@ public static partial class TrieUpdater
         /// leaving <see cref="ApplyClustered"/> — and the blob format it reads — out of its descent.
         /// </remarks>
         private void ApplyStoredGroup(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, TreeReader existingData,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, TreeReader<TLayout> existingData,
             in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
@@ -457,7 +313,7 @@ public static partial class TrieUpdater
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         [SkipLocalsInit]
         private void ApplyPushedStem(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader pushedReader,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader<TLayout> pushedReader,
             scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer, out NodeResult result,
             out bool changed, out PbtSubtreeStats delta)
         {
@@ -583,7 +439,7 @@ public static partial class TrieUpdater
             int seedSlot = pushed.Kind == NodeKind.Stem ? TLayout.SlotOf(pushed.Stem, depth) : -1;
 
             // a pushed stem roots no blob of its own: its subtree is its leaf blob, keyed by the stem
-            TreeReader occupants = pushedReader.WithSeed(seedSlot);
+            TreeReader<TLayout> occupants = pushedReader.WithSeed(seedSlot);
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
@@ -597,7 +453,7 @@ public static partial class TrieUpdater
             GroupShape shape = TLayout.IsClusteringDepth(depth)
                 ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results, ref writer, ref builder)
                 : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results);
-            occupants.MergeUntouchedSeed(results, shape.Touched);
+            MergeUntouchedSeed(occupants, results, shape.Touched);
 
             result = RebuildNode(
                 key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, ref writer, ref builder, mark,
@@ -647,7 +503,7 @@ public static partial class TrieUpdater
         /// <param name="plan"><inheritdoc cref="BucketPlan" path="/summary"/></param>
         /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
         private GroupShape ResolveBoundaries(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader occupants,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader<TLayout> occupants,
             in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
             scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results)
         {
@@ -698,7 +554,7 @@ public static partial class TrieUpdater
                 int entryOffset = 0;
                 foreach (int slot in touched)
                 {
-                    TreeReader reader = occupants.Reader(slot, existing);
+                    TreeReader<TLayout> reader = occupants.Reader(slot, existing);
                     int count = counts[countIndex++];
                     Span<PbtWriteBatch.StemEntry> bucket = entries.Slice(entryOffset, count);
                     entryOffset += count;
@@ -743,7 +599,7 @@ public static partial class TrieUpdater
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="cluster">The blob this frame is assembling around its children.</param>
         private GroupShape ResolveClusteredBoundaries(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader occupants,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader<TLayout> occupants,
             in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
             scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results, ref BufferWriter writer,
             ref PbtNodeCluster.Builder cluster)
@@ -815,7 +671,7 @@ public static partial class TrieUpdater
                     continue;
                 }
 
-                TreeReader reader = occupants.Reader(slot, existing);
+                TreeReader<TLayout> reader = occupants.Reader(slot, existing);
                 Occupant occupant = reader.Occupant;
                 ref NodeResult result = ref results[slot];
                 int count = counts[serialCountIndex++];
@@ -852,7 +708,7 @@ public static partial class TrieUpdater
         /// keeps the cluster byte-identical to a serial fold.
         /// </summary>
         private GroupShape ResolveClusteredBoundariesParallel(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader occupants,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader<TLayout> occupants,
             in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
             scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results,
             scoped ReadOnlySpan<int> level, int branchDepth, bool isSorted, ref BufferWriter writer,
@@ -876,8 +732,8 @@ public static partial class TrieUpdater
                 int entryOffset = 0;
                 foreach (int slot in touched)
                 {
-                    TreeReader reader = occupants.Reader(slot, existing);
-                    TreeReader child = occupants.Child(slot, existing);
+                    TreeReader<TLayout> reader = occupants.Reader(slot, existing);
+                    TreeReader<TLayout> child = occupants.Child(slot, existing);
                     int count = counts[countIndex++];
                     Span<PbtWriteBatch.StemEntry> bucket = entries.Slice(entryOffset, count);
                     entryOffset += count;
@@ -926,8 +782,8 @@ public static partial class TrieUpdater
 
         /// <summary>Folds one clustered child into an independently owned buffer.</summary>
         private void ApplyClusteredChild(
-            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in TreeReader reader,
-            in TreeReader existingData, scoped BucketPlan childPlan, in Fanout fanout,
+            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in TreeReader<TLayout> reader,
+            in TreeReader<TLayout> existingData, scoped BucketPlan childPlan, in Fanout fanout,
             out NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             BufferWriter owned = new(_memoryProvider);
@@ -968,7 +824,7 @@ public static partial class TrieUpdater
         /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
         /// <param name="storedChild">Whether the store held a blob at <paramref name="childKey"/>, which the parent's rebuild needs to know to settle a collapse onto it.</param>
         private void ApplyKeyedChild(
-            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in TreeReader reader,
+            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in TreeReader<TLayout> reader,
             scoped BucketPlan childPlan, in Fanout fanout, out NodeResult result, out bool changed,
             out PbtSubtreeStats delta, out bool storedChild)
         {
@@ -983,7 +839,7 @@ public static partial class TrieUpdater
                     // old root hash, which the child no longer stores itself
                     using RefCountingMemory? childData = _store.GetTrieNode(childKey);
                     storedChild = childData is not null;
-                    ApplyStoredGroup(childKey, bucket, TreeReader.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
+                    ApplyStoredGroup(childKey, bucket, TreeReader<TLayout>.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
                     if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
 
                     // No frame writes its own key; the parent settles each child's: a stored one the writes
@@ -1093,7 +949,7 @@ public static partial class TrieUpdater
         /// </param>
         [SkipLocalsInit]
         private NodeResult RebuildNode(
-            in TrieNodeKey key, in TreeReader occupants, in PbtTrieNodeGroup<TLayout> existing,
+            in TrieNodeKey key, in TreeReader<TLayout> occupants, in PbtTrieNodeGroup<TLayout> existing,
             Span<NodeResult> results, in GroupShape shape, in ValueHash256 beforeHash,
             in PbtSubtreeStats beforeStats, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster,
             int mark, out bool changed, out PbtSubtreeStats delta)
@@ -1165,7 +1021,7 @@ public static partial class TrieUpdater
             {
                 int hoistedSlot = rootKind == NodeKind.Absent ? -1 : occupied.First;
                 NodeResult hoisted = hoistedSlot < 0 ? default
-                    : results[hoistedSlot].Kind != NodeKind.Absent ? results[hoistedSlot] : occupants.Reader(hoistedSlot, existing).Occupant;
+                    : results[hoistedSlot].Kind != NodeKind.Absent ? results[hoistedSlot] : PromoteOccupant(occupants.Reader(hoistedSlot, existing).Occupant);
                 changed = hoisted.NodeHash() != beforeHash;
                 Release(results, hoistedSlot);
                 writer.Reset(mark);
@@ -1251,7 +1107,26 @@ public static partial class TrieUpdater
         /// encoding it sits in — which the frame reading it is about to replace — into memory of its own.
         /// </summary>
         private NodeResult AdoptOccupant(in Occupant occupant) =>
-            occupant.Kind == NodeKind.Chain ? CopyChainNode(occupant.ChainData) : occupant;
+            occupant.Kind == NodeKind.Chain ? CopyChainNode(occupant.ChainData) : PromoteOccupant(occupant);
+
+        private static NodeResult PromoteOccupant(in Occupant occupant) => occupant.Kind switch
+        {
+            NodeKind.Internal => NodeResult.Internal(occupant.Hash),
+            NodeKind.Stem => NodeResult.StemNode(occupant.Stem, occupant.Hash),
+            _ => default,
+        };
+
+        private static void MergeUntouchedSeed(
+            in TreeReader<TLayout> occupants, Span<NodeResult> results, SlotBitmask<TLayout> touched)
+        {
+            int slot = occupants.SeedSlot;
+            if (slot < 0 || touched[slot]) return;
+
+            Occupant seed = occupants.Occupant;
+            results[slot] = seed.Kind == NodeKind.Chain
+                ? NodeResult.Chain(occupants.Memory!).Lease()
+                : PromoteOccupant(seed);
+        }
 
         /// <summary>
         /// Releases the leases <paramref name="nodes"/> hold once a frame is done with them, bar slot
@@ -1271,53 +1146,6 @@ public static partial class TrieUpdater
                 if (slot != handedUp) nodes[slot].Dispose();
                 nodes[slot] = default;
             }
-        }
-
-        /// <summary>
-        /// A boundary node's encoding as the descent reads it — its bytes decoded to the fields the fold
-        /// needs. A span view, so it borrows the memory holding it rather than a lease of its own and never
-        /// outlives the read that made it.
-        /// </summary>
-        /// <remarks>
-        /// The descent's input, distinct from its output <see cref="NodeResult"/>. It promotes to a result —
-        /// a stored node is a valid one — through the implicit conversion below, bar a run: a run read out of
-        /// a group's encoding owns no memory to hand over, so <see cref="AdoptOccupant"/> copies it instead.
-        /// </remarks>
-        internal readonly ref struct Occupant(ReadOnlySpan<byte> data, NodeKind kind)
-        {
-            private readonly ReadOnlySpan<byte> _data = data;
-            private readonly NodeKind _kind = kind;
-
-            /// <summary>
-            /// Promotes an occupant to a result. A stem or internal, already persisted where it sits, becomes
-            /// a pure value with no blob of its own; a run has no value form here — <see cref="AdoptOccupant"/>
-            /// copies its encoding — so it converts to nothing.
-            /// </summary>
-            public static implicit operator NodeResult(Occupant occupant) => occupant.Kind switch
-            {
-                NodeKind.Stem => NodeResult.StemNode(occupant.Stem, occupant.Hash),
-                NodeKind.Internal => NodeResult.Internal(occupant.Hash),
-                _ => default,
-            };
-
-            public NodeKind Kind => _kind;
-
-            /// <summary>This node's exact encoding, borrowed from the memory holding it.</summary>
-            public ReadOnlySpan<byte> Encoding => Slot.Encoding;
-
-            /// <inheritdoc cref="PbtTrieNodeGroup.Slot.Stem"/>
-            public Stem Stem => Slot.Stem;
-
-            /// <inheritdoc cref="PbtTrieNodeGroup.Slot.ChainData"/>
-            public ReadOnlySpan<byte> ChainData => Slot.ChainData;
-
-            /// <inheritdoc cref="PbtTrieNodeGroup.Slot.Hash"/>
-            public ValueHash256 Hash => Slot.Hash;
-
-            /// <inheritdoc cref="PbtTrieNodeGroup.Slot.NodeHash"/>
-            public ValueHash256 NodeHash() => Slot.NodeHash();
-
-            private PbtTrieNodeGroup.Slot Slot => PbtTrieNodeGroup.SlotAt(_data, _kind);
         }
 
         /// <summary>
@@ -1451,7 +1279,7 @@ public static partial class TrieUpdater
         /// </remarks>
         [Conditional("DEBUG")]
         private static void AssertUntouchedMerged(
-            in TreeReader occupants, in PbtTrieNodeGroup<TLayout> existing,
+            in TreeReader<TLayout> occupants, in PbtTrieNodeGroup<TLayout> existing,
             in BoundarySlotMasks<TLayout> boundary, SlotBitmask<TLayout> touched)
         {
             for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
