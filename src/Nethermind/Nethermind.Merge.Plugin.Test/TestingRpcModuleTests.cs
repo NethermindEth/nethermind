@@ -67,6 +67,49 @@ public class TestingRpcModuleTests
     }
 
     [Test]
+    public async Task Build_block_uses_deterministic_testing_gas_limit()
+    {
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule();
+
+        ResultWrapper<object> result = await module.testing_buildBlockV1(
+            parentHash, CreateDefaultPayloadAttributes(parentHeader), [], []);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+        ulong expectedGasLimit = parentHeader.GasLimit + parentHeader.GasLimit / Osaka.Instance.GasLimitBoundDivisor - 1;
+        Assert.That(payloadResult.ExecutionPayload.GasLimit, Is.EqualTo(expectedGasLimit));
+    }
+
+    [Test]
+    public async Task Build_block_uses_deterministic_testing_gas_limit_when_parent_is_above_target()
+    {
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule();
+        parentHeader.GasLimit = 200_000_000;
+
+        ResultWrapper<object> result = await module.testing_buildBlockV1(
+            parentHash, CreateDefaultPayloadAttributes(parentHeader), [], []);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+        Assert.That(payloadResult.ExecutionPayload.GasLimit, Is.EqualTo(199_804_689));
+    }
+
+    [Test]
+    public async Task Build_block_preserves_explicit_target_gas_limit()
+    {
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule();
+        parentHeader.GasLimit = 50_000_000;
+        PayloadAttributes payloadAttributes = CreateDefaultPayloadAttributes(parentHeader);
+        payloadAttributes.TargetGasLimit = 42_000_000;
+
+        ResultWrapper<object> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, [], []);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+        Assert.That(payloadResult.ExecutionPayload.GasLimit, Is.EqualTo(49_951_173));
+    }
+
+    [Test]
     public async Task Json_rpc_accepts_omitted_extraData()
     {
         (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule();
@@ -352,9 +395,6 @@ public class TestingRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? Osaka.Instance);
 
-        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
-        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Returns(parentHeader.GasLimit);
-
         IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess, onProcessWithOptions);
 
         IBlockProducerEnv blockProducerEnv = Substitute.For<IBlockProducerEnv>();
@@ -372,7 +412,7 @@ public class TestingRpcModuleTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockTree tree = blockTree ?? Substitute.For<IBlockTree>();
 
-        TestingRpcModule module = new(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        TestingRpcModule module = new(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         _disposables.Add(module);
         return (module, tree, blockFinder, parentHeader);
     }
