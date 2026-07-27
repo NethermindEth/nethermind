@@ -511,36 +511,13 @@ public static partial class TrieUpdater
             AssertBranchDepthSound(entries, depth, plan.BranchDepth);
 
             Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
-            scoped ReadOnlySpan<int> level;
-            bool isSorted = plan.IsSorted;
-            int branchDepth = plan.BranchDepth;
-            if (!plan.Precalculated.IsEmpty)
-            {
-                level = plan.Precalculated[^PbtWriteBatch.LevelStride<TLayout>()..];
-            }
-            else if (branchDepth > depth)
-            {
-                FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
-                level = computed;
-            }
-            else if (isSorted)
-            {
-                branchDepth = PopulateSortedLevel(entries, depth, computed);
-                level = computed;
-            }
-            else
-            {
-                PartitionOutcome outcome = Partition(entries, depth, computed);
-                branchDepth = outcome.BranchDepth;
-                isSorted = outcome.IsSorted;
-                level = computed;
-            }
+            scoped PartitionOutcome outcome = plan.BucketSort(entries, depth, computed);
 
-            AssertCompactLevel(level, entries.Length);
+            AssertCompactLevel(outcome, entries.Length);
 
-            PbtWriteBatch.BucketLevel<TLayout> buckets = PbtWriteBatch.ReadLevel<TLayout>(level);
+            PbtWriteBatch.BucketLevel<TLayout> buckets = outcome.IterateBuckets();
             SlotBitmask<TLayout> touched = buckets.Touched;
-            PartitionResult partition = new(plan, branchDepth, isSorted);
+            PartitionResult partition = new(plan, outcome.BranchDepth, outcome.IsSorted);
             SlotBitmask<TLayout> storedChildren = default;
             BoundaryScan scan = default;
 
@@ -604,36 +581,13 @@ public static partial class TrieUpdater
             AssertBranchDepthSound(entries, depth, plan.BranchDepth);
 
             Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
-            scoped ReadOnlySpan<int> level;
-            bool isSorted = plan.IsSorted;
-            int branchDepth = plan.BranchDepth;
-            if (!plan.Precalculated.IsEmpty)
-            {
-                level = plan.Precalculated[^PbtWriteBatch.LevelStride<TLayout>()..];
-            }
-            else if (branchDepth > depth)
-            {
-                FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
-                level = computed;
-            }
-            else if (isSorted)
-            {
-                branchDepth = PopulateSortedLevel(entries, depth, computed);
-                level = computed;
-            }
-            else
-            {
-                PartitionOutcome outcome = Partition(entries, depth, computed);
-                branchDepth = outcome.BranchDepth;
-                isSorted = outcome.IsSorted;
-                level = computed;
-            }
+            scoped PartitionOutcome outcome = plan.BucketSort(entries, depth, computed);
 
-            AssertCompactLevel(level, entries.Length);
+            AssertCompactLevel(outcome, entries.Length);
 
-            PbtWriteBatch.BucketLevel<TLayout> buckets = PbtWriteBatch.ReadLevel<TLayout>(level);
+            PbtWriteBatch.BucketLevel<TLayout> buckets = outcome.IterateBuckets();
             SlotBitmask<TLayout> touched = buckets.Touched;
-            PartitionResult partition = new(plan, branchDepth, isSorted);
+            PartitionResult partition = new(plan, outcome.BranchDepth, outcome.IsSorted);
             if (MayQueue(touched, in fanout))
             {
                 foreach ((_, Range range) in buckets)
@@ -642,7 +596,7 @@ public static partial class TrieUpdater
 
                     return ResolveClusteredBoundariesParallel(
                         key, entries, occupants, existing, untouched,
-                        plan, fanout, results, level, branchDepth, isSorted, ref writer, ref cluster);
+                        plan, fanout, results, outcome, ref writer, ref cluster);
                 }
             }
 
@@ -706,12 +660,11 @@ public static partial class TrieUpdater
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader<TLayout> occupants,
             in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
             scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results,
-            scoped ReadOnlySpan<int> level, int branchDepth, bool isSorted, ref BufferWriter writer,
-            ref PbtNodeCluster.Builder cluster)
+            scoped PartitionOutcome outcome, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
         {
-            PbtWriteBatch.BucketLevel<TLayout> buckets = PbtWriteBatch.ReadLevel<TLayout>(level);
+            PbtWriteBatch.BucketLevel<TLayout> buckets = outcome.IterateBuckets();
             SlotBitmask<TLayout> touched = buckets.Touched;
-            PartitionResult partition = new(plan, branchDepth, isSorted);
+            PartitionResult partition = new(plan, outcome.BranchDepth, outcome.IsSorted);
             SlotBitmask<TLayout> childSlots = default;
             for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
             {
@@ -1297,9 +1250,9 @@ public static partial class TrieUpdater
         /// so the count order, positivity, total and zero tail are all validated together.
         /// </remarks>
         [Conditional("DEBUG")]
-        private static void AssertCompactLevel(ReadOnlySpan<int> level, int entryCount)
+        private static void AssertCompactLevel(scoped PartitionOutcome outcome, int entryCount)
         {
-            PbtWriteBatch.BucketLevel<TLayout> buckets = PbtWriteBatch.ReadLevel<TLayout>(level);
+            PbtWriteBatch.BucketLevel<TLayout> buckets = outcome.IterateBuckets();
             int total = 0;
             foreach ((_, Range range) in buckets)
             {
@@ -1309,7 +1262,7 @@ public static partial class TrieUpdater
             }
 
             Debug.Assert(total == entryCount, "compact counts must cover the frame's entries");
-            ReadOnlySpan<int> unusedCounts = level[buckets.Touched.Count..PbtWriteBatch.BoundsLength<TLayout>()];
+            ReadOnlySpan<int> unusedCounts = outcome.Level[buckets.Touched.Count..PbtWriteBatch.BoundsLength<TLayout>()];
             foreach (int count in unusedCounts)
             {
                 Debug.Assert(count == 0, "the unused compact-count tail must be zero");
@@ -1365,6 +1318,26 @@ public static partial class TrieUpdater
 
             /// <summary>Whether the complete stems are in ascending lexicographic order.</summary>
             public bool IsSorted { get; } = isSorted;
+
+            public PartitionOutcome BucketSort(
+                Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> computed)
+            {
+                if (!Precalculated.IsEmpty)
+                {
+                    return new PartitionOutcome(
+                        Precalculated[^PbtWriteBatch.LevelStride<TLayout>()..], BranchDepth, IsSorted);
+                }
+
+                if (BranchDepth > depth)
+                {
+                    FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
+                    return new PartitionOutcome(computed, BranchDepth, IsSorted);
+                }
+
+                return IsSorted
+                    ? new PartitionOutcome(computed, PopulateSortedLevel(entries, depth, computed), true)
+                    : Partition(entries, depth, computed);
+            }
 
             /// <summary>
             /// The plan for the child group under boundary slot <paramref name="slot"/>, whose range this
@@ -1448,15 +1421,25 @@ public static partial class TrieUpdater
         /// share its slot — the levels between hold a single child apiece, so a caller free to skip
         /// them can jump straight to the group that branches.
         /// </returns>
-        private readonly record struct PartitionOutcome(int BranchDepth, bool IsSorted);
+        private readonly ref struct PartitionOutcome(
+            ReadOnlySpan<int> level, int branchDepth, bool isSorted)
+        {
+            public ReadOnlySpan<int> Level { get; } = level;
 
-        private PartitionOutcome Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
+            public int BranchDepth { get; } = branchDepth;
+
+            public bool IsSorted { get; } = isSorted;
+
+            public PbtWriteBatch.BucketLevel<TLayout> IterateBuckets() => PbtWriteBatch.ReadLevel<TLayout>(Level);
+        }
+
+        private static PartitionOutcome Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
             if (entries.Length <= TinyRange) return SortTiny(entries, depth, level);
             if (entries.Length <= FullSortThreshold)
             {
                 SortByStem(entries);
-                return new PartitionOutcome(PopulateSortedLevel(entries, depth, level), true);
+                return new PartitionOutcome(level, PopulateSortedLevel(entries, depth, level), true);
             }
 
             Span<int> slotCounts = stackalloc int[TLayout.BoundarySlots];
@@ -1498,7 +1481,7 @@ public static partial class TrieUpdater
             if (countIndex == 1)
             {
                 Debug.Assert(splitDepth >= floor, "one populated bucket means nothing parts within this group");
-                return new PartitionOutcome(TLayout.GroupDepthOf(splitDepth), false);
+                return new PartitionOutcome(level, TLayout.GroupDepthOf(splitDepth), false);
             }
 
             Span<int> heads = stackalloc int[TLayout.BoundarySlots];
@@ -1520,10 +1503,10 @@ public static partial class TrieUpdater
                 }
             }
 
-            return new PartitionOutcome(depth, false);
+            return new PartitionOutcome(level, depth, false);
         }
 
-        private int PopulateSortedLevel(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
+        private static int PopulateSortedLevel(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
             Span<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             counts.Clear();
@@ -1551,7 +1534,7 @@ public static partial class TrieUpdater
             return TLayout.GroupDepthOf(splitDepth);
         }
 
-        private PartitionOutcome SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
+        private static PartitionOutcome SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
             Debug.Assert(!entries.IsEmpty && entries.Length <= TinyRange);
             if (entries.Length > 1)
@@ -1564,7 +1547,7 @@ public static partial class TrieUpdater
                 }
             }
 
-            return new PartitionOutcome(PopulateSortedLevel(entries, depth, level), true);
+            return new PartitionOutcome(level, PopulateSortedLevel(entries, depth, level), true);
         }
 
         private static void SortByStem(Span<PbtWriteBatch.StemEntry> entries) => entries.Sort(StemEntryComparer.Instance);
