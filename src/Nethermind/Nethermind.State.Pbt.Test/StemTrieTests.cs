@@ -330,7 +330,7 @@ public class StemTrieTests(PbtGroupFormat format)
         TrieNodeKey[] chains = [.. nodes.Keys.Where(key => PbtNodeChain.IsChain(nodes[key]))];
         Assert.That(chains, Has.Length.EqualTo(1));
 
-        PbtNodeChain chain = PbtNodeChain.Decode<Layout>(nodes[chains[0]], chains[0].Depth, PbtPartitions.RootDepth(PbtPartitions.Of(chains[0])));
+        PbtNodeChain chain = DecodeChain(nodes[chains[0]], chains[0]);
         int levels = chain.TargetDepth - chains[0].Depth;
         for (int depth = chains[0].Depth; depth < chain.TargetDepth; depth += Layout.LevelsPerGroup)
         {
@@ -440,7 +440,7 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(chains, Has.Length.EqualTo(2));
         foreach (TrieNodeKey key in chains)
         {
-            Assert.That(PbtNodeChain.Decode<Layout>(nodes[key], key.Depth, PbtPartitions.RootDepth(PbtPartitions.Of(key))).TargetDepth, Is.EqualTo(61));
+            Assert.That(DecodeChain(nodes[key], key).TargetDepth, Is.EqualTo(61));
         }
     }
 
@@ -1019,7 +1019,7 @@ public class StemTrieTests(PbtGroupFormat format)
 
         if (PbtNodeChain.IsChain(blob))
         {
-            PbtNodeChain chain = PbtNodeChain.Decode<Layout>(blob, key.Depth, PbtPartitions.RootDepth(PbtPartitions.Of(key)));
+            PbtNodeChain chain = DecodeChain(blob, key);
             long reached = CountStems(nodes, chain.TargetKey);
             Assert.That(chain.Stats.StemCount, Is.EqualTo(reached), $"run at {key}");
             return reached;
@@ -1047,6 +1047,11 @@ public class StemTrieTests(PbtGroupFormat format)
         return counted;
     }
 
+    private static PbtNodeChain DecodeChain(ReadOnlySpan<byte> blob, in TrieNodeKey key) =>
+        PbtPartitions.Of(key) == PbtPartition.Storage
+            ? PbtNodeChain.Decode<PbtRootedTileLayout<Layout, PbtDepth1>>(blob, key.Depth)
+            : PbtNodeChain.Decode<PbtRootedTileLayout<Layout, PbtDepth4>>(blob, key.Depth);
+
     /// <summary>
     /// Every run reaches a stored group, and holds every level down to it (<see cref="PbtNodeChain"/>
     /// invariants 2 and 3).
@@ -1063,7 +1068,7 @@ public class StemTrieTests(PbtGroupFormat format)
         {
             if (!PbtNodeChain.IsChain(blob)) continue;
 
-            PbtNodeChain chain = PbtNodeChain.Decode<Layout>(blob, key.Depth, PbtPartitions.RootDepth(PbtPartitions.Of(key)));
+            PbtNodeChain chain = DecodeChain(blob, key);
             for (int depth = key.Depth + Layout.LevelsPerGroup; depth < chain.TargetDepth; depth += Layout.LevelsPerGroup)
             {
                 Assert.That(nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"{key} spans depth {depth}, which must hold no node");

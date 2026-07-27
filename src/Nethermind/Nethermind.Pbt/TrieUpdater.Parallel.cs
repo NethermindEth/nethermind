@@ -56,7 +56,6 @@ public static partial class TrieUpdater
             _store = store;
             _memoryProvider = memoryProvider;
             _writeFormat = writeFormat;
-            _rootDepth = PbtPartitions.RootDepth(partition);
             _rootKey = PbtPartitions.RootKey(partition);
 
             // held as arrays rather than as the batch: a bucket is a range of entry indices, which is
@@ -83,7 +82,6 @@ public static partial class TrieUpdater
             _store = main._store;
             _memoryProvider = main._memoryProvider;
             _writeFormat = main._writeFormat;
-            _rootDepth = main._rootDepth;
             _rootKey = main._rootKey;
             _entries = main._entries;
             _buckets = main._buckets;

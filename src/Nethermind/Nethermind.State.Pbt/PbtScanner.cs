@@ -183,31 +183,24 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     }
 
     /// <summary>Counts the entries of one partition's trie node column into that partition's statistics.</summary>
-    private ScanEntry TrieNodeScanner(PbtTreePartition partition) => config.TrieNodeLayout.Tiling() switch
+    private ScanEntry TrieNodeScanner(PbtTreePartition partition) => (config.TrieNodeLayout.Tiling(), partition) switch
     {
-        PbtTiling.SixLevel => TrieNodeScanner<PbtSixLevelTileLayout>(partition),
-        PbtTiling.EightLevel => TrieNodeScanner<PbtEightLevelTileLayout>(partition),
-        _ => TrieNodeScanner<PbtClusteredTileLayout>(partition),
+        (PbtTiling.SixLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtSixLevelTileLayout, PbtDepth4>>(partition),
+        (PbtTiling.SixLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtSixLevelTileLayout, PbtDepth1>>(partition),
+        (PbtTiling.EightLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtEightLevelTileLayout, PbtDepth4>>(partition),
+        (PbtTiling.EightLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtEightLevelTileLayout, PbtDepth1>>(partition),
+        (PbtTiling.ClusteredFourLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtClusteredTileLayout, PbtDepth4>>(partition),
+        (PbtTiling.ClusteredFourLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtClusteredTileLayout, PbtDepth1>>(partition),
+        _ => throw new ArgumentOutOfRangeException(nameof(partition)),
     };
 
-    private static ScanEntry TrieNodeScanner<TLayout>(PbtTreePartition partition) where TLayout : IPbtTileLayout
-    {
-        int rootDepth = PbtPartitions.RootDepth(ToPbtPartition(partition));
-        return (report, key, value) =>
+    private static ScanEntry TrieNodeScanner<TLayout>(PbtTreePartition partition) where TLayout : IPbtTileLayout =>
+        (report, key, value) =>
         {
             // the key is the node's position: the zero-padded path, then the depth byte
             int depth = key[Stem.Length];
-            ScanTrieNode<TLayout>(value, key.Length, depth, rootDepth, partition, report);
+            ScanTrieNode<TLayout>(value, key.Length, depth, partition, report);
         };
-    }
-
-    private static PbtPartition ToPbtPartition(PbtTreePartition partition) => partition switch
-    {
-        PbtTreePartition.Account => PbtPartition.Account,
-        PbtTreePartition.Code => PbtPartition.Code,
-        PbtTreePartition.Storage => PbtPartition.Storage,
-        _ => throw new ArgumentOutOfRangeException(nameof(partition)),
-    };
 
     /// <summary>
     /// Counts one trie node blob as the nodes it holds — the group at the key's depth, the runs hanging
@@ -218,7 +211,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     /// <paramref name="keyBytes"/> is counted for this blob alone, as the nodes riding in it — a run, a
     /// clustered child — are precisely the ones that cost no key of their own.
     /// </remarks>
-    private static void ScanTrieNode<TLayout>(ReadOnlySpan<byte> value, int keyBytes, int depth, int rootDepth, PbtTreePartition partition, PbtScanReport report)
+    private static void ScanTrieNode<TLayout>(ReadOnlySpan<byte> value, int keyBytes, int depth, PbtTreePartition partition, PbtScanReport report)
         where TLayout : IPbtTileLayout
     {
         PbtScanReport.TrieNodeStats stats = report[partition];
@@ -227,7 +220,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
         PbtNodeCluster cluster = PbtNodeCluster.Decode(value, out PbtTrieNodeGroup<TLayout> group);
         ReadOnlySpan<byte> groupBytes = value[cluster.Group];
-        ScanGroup(group, groupBytes.Length, depth, rootDepth, stats, report);
+        ScanGroup(group, groupBytes.Length, depth, stats, report);
         if (cluster.IsBare) return;
 
         stats.ClusterCount++;
@@ -246,7 +239,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
             // a clustered child is a bare group, never a cluster of its own: the level a cluster holds is
             // the level that does not itself cluster (see PbtLayout.IsClusteringDepth)
-            ScanGroup(PbtTrieNodeGroup<TLayout>.Decode(child), child.Length, childDepth, rootDepth, stats, report);
+            ScanGroup(PbtTrieNodeGroup<TLayout>.Decode(child), child.Length, childDepth, stats, report);
         }
 
         stats.ClusterFramingBytes += value.Length - groupBytes.Length - childBytes;
@@ -288,10 +281,10 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         return max;
     }
 
-    private static void ScanChain<TLayout>(ReadOnlySpan<byte> entry, int startDepth, int rootDepth, PbtScanReport.TrieNodeStats stats)
+    private static void ScanChain<TLayout>(ReadOnlySpan<byte> entry, int startDepth, PbtScanReport.TrieNodeStats stats)
         where TLayout : IPbtTileLayout
     {
-        PbtNodeChain chain = PbtNodeChain.Decode<TLayout>(entry, startDepth, rootDepth);
+        PbtNodeChain chain = PbtNodeChain.Decode<TLayout>(entry, startDepth);
         int span = chain.TargetDepth - startDepth;
 
         stats.ChainCount++;
@@ -319,7 +312,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     /// group below the group holding it.
     /// </summary>
     private static void ScanGroup<TLayout>(
-        in PbtTrieNodeGroup<TLayout> group, int bytes, int depth, int rootDepth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
+        in PbtTrieNodeGroup<TLayout> group, int bytes, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
         where TLayout : IPbtTileLayout
     {
         // A run's entry is the run's, not the group's, as a clustered child's blob is the child's: the two
@@ -332,7 +325,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
             ReadOnlySpan<byte> chain = group[position].ChainData;
             chainBytes += chain.Length;
-            ScanChain<TLayout>(chain, depth + TLayout.LevelsPerGroup, rootDepth, stats);
+            ScanChain<TLayout>(chain, depth + TLayout.LevelsPerGroup, stats);
         }
 
         stats.GroupCount++;
@@ -342,7 +335,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         if (group.Format == PbtGroupFormat.Interleaved) stats.InterleavedGroupCount++;
         if (group.Format == PbtGroupFormat.BoundaryOnly) stats.BoundaryOnlyGroupCount++;
         if (group.Format == PbtGroupFormat.Every4Depth) stats.Every4DepthGroupCount++;
-        if (depth == rootDepth) report.RootSubtreeStemCount += group.Stats.StemCount;
+        if (depth == TLayout.RootDepth) report.RootSubtreeStemCount += group.Stats.StemCount;
 
         WalkPosition(group, TLayout.RootPosition, TLayout.BoundarySlots, depth, stats);
     }

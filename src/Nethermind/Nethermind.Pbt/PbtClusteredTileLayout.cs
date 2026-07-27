@@ -14,6 +14,8 @@ public readonly struct PbtClusteredTileLayout : IPbtTileLayout
 {
     public static PbtTiling Tiling => PbtTiling.ClusteredFourLevel;
 
+    public static int RootDepth => 0;
+
     public static int LevelsPerGroup => 4;
 
     public static int BoundarySlots => 1 << 4;

@@ -88,15 +88,26 @@ public static partial class TrieUpdater
         }
 
         PbtGroupFormat groupFormat = layout.GroupFormat();
-        PbtPartitionRoot root = layout.Tiling() switch
+        PbtPartitionRoot root = (layout.Tiling(), partition) switch
         {
-            PbtTiling.ClusteredFourLevel => new Updater<PbtClusteredTileLayout>(store, memoryProvider, groupFormat, changes, concurrency, partition).Run(currentRoots[partition], changes, out delta),
-            PbtTiling.SixLevel => new Updater<PbtSixLevelTileLayout>(store, memoryProvider, groupFormat, changes, concurrency, partition).Run(currentRoots[partition], changes, out delta),
-            PbtTiling.EightLevel => new Updater<PbtEightLevelTileLayout>(store, memoryProvider, groupFormat, changes, concurrency, partition).Run(currentRoots[partition], changes, out delta),
+            (PbtTiling.ClusteredFourLevel, PbtPartition.Account or PbtPartition.Code) => UpdatePartition<PbtRootedTileLayout<PbtClusteredTileLayout, PbtDepth4>>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
+            (PbtTiling.ClusteredFourLevel, PbtPartition.Storage) => UpdatePartition<PbtRootedTileLayout<PbtClusteredTileLayout, PbtDepth1>>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
+            (PbtTiling.SixLevel, PbtPartition.Account or PbtPartition.Code) => UpdatePartition<PbtRootedTileLayout<PbtSixLevelTileLayout, PbtDepth4>>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
+            (PbtTiling.SixLevel, PbtPartition.Storage) => UpdatePartition<PbtRootedTileLayout<PbtSixLevelTileLayout, PbtDepth1>>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
+            (PbtTiling.EightLevel, PbtPartition.Account or PbtPartition.Code) => UpdatePartition<PbtRootedTileLayout<PbtEightLevelTileLayout, PbtDepth4>>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
+            (PbtTiling.EightLevel, PbtPartition.Storage) => UpdatePartition<PbtRootedTileLayout<PbtEightLevelTileLayout, PbtDepth1>>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
             _ => throw new ArgumentOutOfRangeException(nameof(layout)),
         };
         return currentRoots.With(partition, root);
     }
+
+    private static PbtPartitionRoot UpdatePartition<TLayout>(
+        IPbtStore store, in PbtPartitionRoot currentRoot, IRefCountingMemoryProvider memoryProvider,
+        PbtGroupFormat groupFormat, PbtWriteBatch changes, int concurrency, PbtPartition partition,
+        out PbtSubtreeStats delta)
+        where TLayout : IPbtTileLayout =>
+        new Updater<TLayout>(store, memoryProvider, groupFormat, changes, concurrency, partition)
+            .Run(currentRoot, changes, out delta);
 
     /// <summary>
     /// The walk down the tree, as one thread runs it: the frames, the settings they fold by, and the
@@ -121,7 +132,6 @@ public static partial class TrieUpdater
         private readonly IPbtStore _store;
         private readonly IRefCountingMemoryProvider _memoryProvider;
         private readonly PbtGroupFormat _writeFormat;
-        private readonly int _rootDepth;
         private readonly TrieNodeKey _rootKey;
 
         /// <summary>The batch's entries, which the frames permute in place — each job over its own range of them.</summary>
@@ -282,7 +292,7 @@ public static partial class TrieUpdater
             {
                 ApplyGroup(
                     _rootKey, changes.Entries, TreeReader.Of(rootData), currentRoot.Hash,
-                    new BucketPlan(changes.Buckets, _rootDepth), fanout, ref writer, out root, out changed, out delta);
+                    new BucketPlan(changes.Buckets, TLayout.RootDepth), fanout, ref writer, out root, out changed, out delta);
                 if (writer.Detach() is { } folded) root = root.WithBlob(folded);
             }
             finally
@@ -306,27 +316,15 @@ public static partial class TrieUpdater
             }
         }
 
-        private bool IsGroupDepth(int depth) => depth >= _rootDepth && (depth - _rootDepth) % TLayout.LevelsPerGroup == 0;
+        private static bool IsGroupDepth(int depth) => depth >= TLayout.RootDepth && (depth - TLayout.RootDepth) % TLayout.LevelsPerGroup == 0;
 
-        private int GroupDepthOf(int bit) =>
-            _rootDepth + (bit - _rootDepth) / TLayout.LevelsPerGroup * TLayout.LevelsPerGroup;
+        private static int GroupDepthOf(int bit) => TLayout.GroupDepthOf(bit);
 
-        private int MaxGroupDepth =>
-            _rootDepth + (Stem.LengthInBits - _rootDepth - 1) / TLayout.LevelsPerGroup * TLayout.LevelsPerGroup;
+        private static int MaxGroupDepth => TLayout.MaxGroupDepth;
 
-        private bool IsClusteringDepth(int depth) => TLayout.IsClusteringDepth(depth - _rootDepth);
+        private static bool IsClusteringDepth(int depth) => TLayout.IsClusteringDepth(depth);
 
-        private static int SlotOf(in Stem stem, int depth)
-        {
-            int slot = 0;
-            for (int bit = 0; bit < TLayout.LevelsPerGroup; bit++)
-            {
-                int stemBit = depth + bit;
-                slot = slot << 1 | (stemBit < Stem.LengthInBits ? stem.GetBit(stemBit) : 0);
-            }
-
-            return slot;
-        }
+        private static int SlotOf(in Stem stem, int depth) => TLayout.SlotOf(stem, depth);
 
         /// <summary>
         /// Applies <paramref name="entries"/> — a non-empty range of one-per-stem writes sharing bits
@@ -528,9 +526,9 @@ public static partial class TrieUpdater
 
             // Stems that never part leave the branch past the trie's last group, which no key names: that
             // is the duplicate-stem batch, left to the descent to reject where it already does.
-            if (depth > _rootDepth && branchDepth > depth && branchDepth <= MaxGroupDepth)
+            if (depth > TLayout.RootDepth && branchDepth > depth && branchDepth <= MaxGroupDepth)
             {
-                Debug.Assert(depth > _rootDepth, "a run starts past the partition root (invariant 4)");
+                Debug.Assert(depth > TLayout.RootDepth, "a run starts past the partition root (invariant 4)");
                 TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, stem);
 
                 // The same frame again at the group the run ends in, which is the ordinary descent from
@@ -1049,7 +1047,7 @@ public static partial class TrieUpdater
             in PbtSubtreeStats beforeStats, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster,
             int mark, out bool changed, out PbtSubtreeStats delta)
         {
-            bool isRoot = key.Depth == _rootDepth;
+            bool isRoot = key.Depth == TLayout.RootDepth;
             bool headsCluster = IsClusteringDepth(key.Depth);
             BoundarySlotMasks<TLayout> boundary = shape.Boundary;
             (SlotBitmask<TLayout> occupied, SlotBitmask<TLayout> stems, SlotBitmask<TLayout> chains) = boundary;

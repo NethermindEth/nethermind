@@ -27,6 +27,8 @@ public readonly struct PbtSixLevelTileLayout : IPbtTileLayout
 {
     public static PbtTiling Tiling => PbtTiling.SixLevel;
 
+    public static int RootDepth => 0;
+
     public static int LevelsPerGroup => 6;
 
     public static int BoundarySlots => 1 << 6;
