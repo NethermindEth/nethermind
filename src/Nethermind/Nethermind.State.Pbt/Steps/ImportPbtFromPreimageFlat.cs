@@ -38,7 +38,7 @@ public class ImportPbtFromPreimageFlat(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IColumnsDb<PbtColumns> pbtDb,
     PbtRebuilder rebuilder,
-    IPbtPersistence pbtPersistence,
+    PbtRocksDbPersistence pbtPersistence,
     IPbtConfig config,
     IProcessExitSource exitSource,
     ILogManager logManager
