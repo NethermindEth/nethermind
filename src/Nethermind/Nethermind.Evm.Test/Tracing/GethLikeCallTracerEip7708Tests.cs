@@ -36,13 +36,16 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
     private static byte[] ForwardValueCode(Address target) =>
         Prepare.EvmCode.CallWithValue(target, 50_000, InnerValue).STOP().Done;
 
-    public sealed record TransferLogScenario(byte[]? RecipientCode, Address? InnerTarget);
+    private static byte[] CreateValueCode() =>
+        Prepare.EvmCode.Create(Prepare.EvmCode.STOP().Done, InnerValue).STOP().Done;
+
+    public sealed record TransferLogScenario(byte[]? RecipientCode, bool HasInner, string? Config = WithLog);
 
     [TestCaseSource(nameof(TransferLogCases))]
-    public void ValueTransfer_WithLog_AttachesLogToCorrectFrame(TransferLogScenario scenario)
+    public void ValueTransfer_WithLog_AddsLogsToCorrectFrames(TransferLogScenario scenario)
     {
         (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, scenario.RecipientCode, value: TopValue);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(scenario.Config));
 
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
@@ -53,28 +56,35 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer());
-            Assert.That(topFrame.Calls, Has.Count.EqualTo(scenario.InnerTarget is null ? 0 : 1));
+            Assert.That(topFrame.Calls, Has.Count.EqualTo(scenario.HasInner ? 1 : 0));
         }
 
-        if (scenario.InnerTarget is not null)
+        if (scenario.HasInner)
         {
-            NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, scenario.InnerTarget, InnerValue, 0UL);
-            Assert.That(topFrame.Calls[0].Logs, Is.EqualTo([expectedInner]).UsingPropertiesComparer());
+            NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
+            NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 0UL);
+            Assert.That(childFrame.Logs, Is.EqualTo([expectedInner]).UsingPropertiesComparer());
         }
     }
 
     private static IEnumerable<TestCaseData> TransferLogCases()
     {
-        yield return new TestCaseData(new TransferLogScenario(null, null))
+        yield return new TestCaseData(new TransferLogScenario(null, false))
             .SetName("top-level value transfer to EOA (simple-transfer fast path)");
 
-        yield return new TestCaseData(new TransferLogScenario(Prepare.EvmCode.STOP().Done, null))
+        yield return new TestCaseData(new TransferLogScenario(Prepare.EvmCode.STOP().Done, false))
             .SetName("top-level value transfer to contract (EVM path)");
 
-        yield return new TestCaseData(new TransferLogScenario(ForwardValueCode(TestItem.AddressC), TestItem.AddressC))
+        yield return new TestCaseData(new TransferLogScenario(ForwardValueCode(TestItem.AddressC), true))
             .SetName("nested value transfer to EOA");
 
-        yield return new TestCaseData(new TransferLogScenario(ForwardValueCode(Precompile), Precompile))
+        yield return new TestCaseData(new TransferLogScenario(ForwardValueCode(Precompile), true))
             .SetName("nested value transfer to precompile");
+
+        yield return new TestCaseData(new TransferLogScenario(CreateValueCode(), true))
+            .SetName("nested value transfer to CREATE");
+
+        yield return new TestCaseData(new TransferLogScenario(ForwardValueCode(TestItem.AddressC), false, WithLogAndOnlyTopCall))
+            .SetName("nested value transfer is not hoisted into top frame under onlyTopCall");
     }
 }
