@@ -9,7 +9,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
-using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+using Layout = Nethermind.Pbt.Tiles.PbtClusteredTileLayout;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt.Test;
 

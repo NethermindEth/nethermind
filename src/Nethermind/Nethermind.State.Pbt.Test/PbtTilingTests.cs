@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using NUnit.Framework;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt.Test;
 

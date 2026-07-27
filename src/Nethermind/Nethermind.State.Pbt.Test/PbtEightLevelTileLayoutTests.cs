@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Pbt;
 using NUnit.Framework;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt.Test;
 

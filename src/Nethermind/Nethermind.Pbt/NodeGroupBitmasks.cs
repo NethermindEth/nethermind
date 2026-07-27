@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.Pbt;
 

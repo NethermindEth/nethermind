@@ -8,6 +8,7 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.Pbt;
 

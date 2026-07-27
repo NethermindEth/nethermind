@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Pbt;
+using Nethermind.Pbt;
+
+namespace Nethermind.Pbt.Tiles;
 
 /// <summary>A compile-time tile-grid root depth.</summary>
 public interface IPbtTileRoot

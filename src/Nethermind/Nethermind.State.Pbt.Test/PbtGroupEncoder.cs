@@ -6,7 +6,8 @@ using System.Diagnostics;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 
-using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
+using Layout = Nethermind.Pbt.Tiles.PbtClusteredTileLayout;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt.Test;
 
