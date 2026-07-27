@@ -3,6 +3,8 @@
 
 using System.Diagnostics;
 using System.Runtime;
+using Autofac;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat;
@@ -12,28 +14,36 @@ namespace Nethermind.State.Flat;
 /// already collected within the interval, so promotion happens in many small pauses instead of
 /// rare multi-second ones.
 /// </summary>
-public static class GcPacer
+public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : IStartable
 {
-    // Bootstrap-time console logger: the pacer is a process-wide static utility started before/independent
-    // of the DI log pipeline, so it uses the same fallback sink as Runner startup.
-    private static readonly ILogger Logger = new(SimpleConsoleLogger.Instance);
+    private readonly ILogger _logger = logManager.GetClassLogger<GcPacer>();
 
-    private static int s_started;
+    private int _started;
 
-    /// <summary>Starts the process-wide pacer threads; only the first call wins.</summary>
-    /// <returns><c>true</c> when this call started the pacer, <c>false</c> when it was already running.</returns>
-    public static bool Start(long intervalMs, long warmupSeconds, long gen2IntervalMs, long gen0IntervalMs)
+    void IStartable.Start() => TryStart();
+
+    /// <summary>Starts the pacer threads for the configured cadences; only the first call wins.</summary>
+    /// <returns><c>true</c> when this call started the pacer, <c>false</c> when pacing is disabled by
+    /// configuration or was already started.</returns>
+    public bool TryStart()
     {
-        if (Interlocked.CompareExchange(ref s_started, 1, 0) != 0) return false;
+        long intervalMs = flatConfig.GcPaceIntervalMs;
+        long gen0IntervalMs = flatConfig.GcPaceGen0IntervalMs;
 
         // gen1 and gen0 pacing start independently: a gen0-only config (gen1 interval left at 0) must
-        // still start the gen0 fission thread. Thread.Sleep(TimeSpan) rejects millisecond values above
-        // int.MaxValue, so clamp each sleep-driving interval so an out-of-range setting can't turn a
-        // paced loop into a busy exception-retry loop.
+        // still start the gen0 fission thread.
+        if (intervalMs <= 0 && gen0IntervalMs <= 0) return false;
+        if (Interlocked.CompareExchange(ref _started, 1, 0) != 0) return false;
+
+        // Thread.Sleep(TimeSpan) rejects millisecond values above int.MaxValue, so clamp each
+        // sleep-driving interval so an out-of-range setting can't turn a paced loop into a busy
+        // exception-retry loop.
         if (intervalMs > 0)
         {
             long gen1Interval = Math.Clamp(intervalMs, 1, int.MaxValue);
-            Thread thread = new(() => Run(gen1Interval, warmupSeconds * 1000, gen2IntervalMs))
+            long warmupMs = flatConfig.GcPaceWarmupSeconds * 1000;
+            long gen2IntervalMs = flatConfig.GcPaceGen2IntervalMs;
+            Thread thread = new(() => Run(gen1Interval, warmupMs, gen2IntervalMs))
             {
                 // Must stay at normal priority: below-normal starves under saturated block processing.
                 IsBackground = true,
@@ -69,7 +79,7 @@ public static class GcPacer
         return true;
     }
 
-    private static void RunGen0(long gen0IntervalMs)
+    private void RunGen0(long gen0IntervalMs)
     {
         int lastGen0Count = GC.CollectionCount(0);
         while (true)
@@ -90,12 +100,12 @@ public static class GcPacer
             catch (Exception e)
             {
                 // Never let an unhandled throw silently kill this daemon thread; keep pacing.
-                if (Logger.IsError) Logger.Error("GC pacer gen0 loop threw; continuing.", e);
+                if (_logger.IsError) _logger.Error("GC pacer gen0 loop threw; continuing.", e);
             }
         }
     }
 
-    private static void Run(long intervalMs, long warmupMs, long gen2IntervalMs)
+    private void Run(long intervalMs, long warmupMs, long gen2IntervalMs)
     {
         Stopwatch uptime = Stopwatch.StartNew();
         int lastGen1Count = GC.CollectionCount(1);
@@ -166,7 +176,7 @@ public static class GcPacer
             catch (Exception e)
             {
                 // Never let an unhandled throw silently kill this daemon thread; keep pacing.
-                if (Logger.IsError) Logger.Error("GC pacer loop threw; continuing.", e);
+                if (_logger.IsError) _logger.Error("GC pacer loop threw; continuing.", e);
             }
         }
     }
