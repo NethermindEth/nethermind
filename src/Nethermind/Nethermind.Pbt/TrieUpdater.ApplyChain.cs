@@ -231,12 +231,12 @@ public static partial class TrieUpdater
             int mark = writer.WrittenCount;
 
             GroupShape shape = TLayout.IsClusteringDepth(depth)
-                ? ResolveClusteredBoundaries(key, entries, occupants, occupants.BoundaryShape(), plan, fanout, results, ref writer, ref builder)
-                : ResolveBoundaries(key, entries, occupants, occupants.BoundaryShape(), plan, fanout, results);
+                ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results, ref writer, ref builder)
+                : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results);
             occupants.MergeUntouchedSeed(results, shape.Touched);
 
             return RebuildNode(
-                key, occupants, results, shape, chain.NodeHash, chain.Stats, ref writer, ref builder, mark,
+                key, occupants, default, results, shape, chain.NodeHash, chain.Stats, ref writer, ref builder, mark,
                 out changed, out delta);
         }
 
