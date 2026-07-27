@@ -221,9 +221,10 @@ public class PbtSnapshotBundleTests
         Assert.That(bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), PbtPartitionRoots.Empty).Content, Is.Not.SameAs(sealed_.Content), "a fresh buffer backs the next block");
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void PrefetchDirtyStems_ReadsLeavesAndFullStemTriePathsFromPersistence(bool valuesExist)
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(true, true)]
+    public void PrefetchDirtyStems_ReadsLeavesAndFullStemTriePathsFromPersistence(bool valuesExist, bool cancel)
     {
         Stem accountStem = ZoneStem(0x01);
         Stem storageStem = ZoneStem(0x81);
@@ -242,19 +243,24 @@ public class PbtSnapshotBundleTests
         shared.SetTrieNode(accountFullPath, Memory(0x66));
         using PbtSnapshotBundle bundle = Bundle(sharedLayers: [shared], localLayers: []);
         using PbtWriteBatchSet changes = Batches(accountStem, storageStem);
+        using CancellationTokenSource cancellation = new();
+        if (cancel) cancellation.Cancel();
 
-        bundle.PrefetchDirtyStems(changes).GetAwaiter().GetResult();
+        bundle.PrefetchDirtyStems(changes, cancellation.Token).GetAwaiter().GetResult();
         RefCountingMemory[] prefetchedValues = _reader.ReturnedValues.ToArray();
 
         using RefCountingMemory? storage = bundle.GetLeafBlob(storageStem);
+        Stem[] expectedLeafStems = cancel ? [storageStem] : [accountStem, storageStem, storageStem];
+        TrieNodeKey[] expectedTrieNodeKeys = cancel ? [] : [accountFullPath, storageFullPath];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(prefetchedValues, Has.Length.EqualTo(valuesExist ? 4 : 0));
+            int prefetchReadCount = cancel ? 0 : 2;
+            Assert.That(prefetchedValues, Has.Length.EqualTo(valuesExist && !cancel ? 4 : 0));
             foreach (RefCountingMemory value in prefetchedValues)
                 Assert.That(value.AcquireLease, Throws.InvalidOperationException, "prefetched values are released immediately");
-            Assert.That(_reader.LeafBlobReads, Is.EqualTo(3), "both prefetches and the later uncached read reach persistence");
-            Assert.That(_reader.LeafStems, Is.EquivalentTo(new[] { accountStem, storageStem, storageStem }));
-            Assert.That(_reader.TrieNodeKeys, Is.EquivalentTo(new[] { accountFullPath, storageFullPath }));
+            Assert.That(_reader.LeafBlobReads, Is.EqualTo(prefetchReadCount + 1), "prefetch stops on cancellation; the later uncached read still reaches persistence");
+            Assert.That(_reader.LeafStems, Is.EquivalentTo(expectedLeafStems));
+            Assert.That(_reader.TrieNodeKeys, Is.EquivalentTo(expectedTrieNodeKeys));
             Assert.That(storage?.GetSpan().ToArray(), Is.EqualTo(valuesExist ? (byte[])[0x22] : null));
         }
     }

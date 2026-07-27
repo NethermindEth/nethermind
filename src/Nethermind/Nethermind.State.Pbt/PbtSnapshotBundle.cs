@@ -172,7 +172,7 @@ public class PbtSnapshotBundle(
     /// The full-depth trie lookup intentionally misses: its path places the final RocksDB block needed
     /// by the updater in the block cache. The caller must observe the task before disposing this bundle.
     /// </remarks>
-    internal Task PrefetchDirtyStems(PbtWriteBatchSet changes)
+    internal Task PrefetchDirtyStems(PbtWriteBatchSet changes, CancellationToken cancellationToken)
     {
         int count = changes.Count;
         if (count == 0) return Task.CompletedTask;
@@ -187,7 +187,8 @@ public class PbtSnapshotBundle(
         {
             try
             {
-                for (int i = 0; i < count; i++) readOnlyBundle.PrefetchStem(stems[i]);
+                for (int i = 0; i < count && !cancellationToken.IsCancellationRequested; i++)
+                    readOnlyBundle.PrefetchStem(stems[i], cancellationToken);
             }
             finally
             {

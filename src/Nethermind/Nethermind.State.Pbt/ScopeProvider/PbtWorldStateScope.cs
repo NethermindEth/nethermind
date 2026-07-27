@@ -120,8 +120,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
         long start = Stopwatch.GetTimestamp();
         using (PbtWriteBatchSet changes = _writeBatchBuilder.DrainToWriteBatches(_writeLayout.Tiling()))
+        using (CancellationTokenSource prefetchCancellation = new())
         {
-            Task prefetch = Bundle.PrefetchDirtyStems(changes);
+            Task prefetch = Bundle.PrefetchDirtyStems(changes, prefetchCancellation.Token);
             Exception? updateError = null;
             try
             {
@@ -133,6 +134,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
                 updateError = exception;
             }
 
+            prefetchCancellation.Cancel();
             try
             {
                 prefetch.GetAwaiter().GetResult();
