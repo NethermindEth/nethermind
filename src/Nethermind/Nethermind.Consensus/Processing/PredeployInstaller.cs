@@ -33,6 +33,23 @@ public static class PredeployInstaller
     ];
 
     /// <summary>
+    /// Returns whether <paramref name="spec"/> activates any declared predeploy, i.e. whether
+    /// <see cref="Install"/> can write anything for a block using this spec.
+    /// </summary>
+    internal static bool HasActivePredeploys(IReleaseSpec spec)
+    {
+        foreach (Predeploy predeploy in Predeploys)
+        {
+            if (predeploy.IsActive(spec))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Ensures every predeploy activated by <paramref name="spec"/> has its canonical code + nonce present.
     /// </summary>
     /// <remarks>
