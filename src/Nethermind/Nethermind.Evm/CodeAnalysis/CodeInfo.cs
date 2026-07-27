@@ -77,58 +77,34 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     internal InstructionStream? GetOrBuildStream()
     {
         if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
-        {
-            Interlocked.Increment(ref StreamInterpreter.DiagUnavail);
             return null;
-        }
         if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
-        {
-            Interlocked.Increment(ref StreamInterpreter.DiagCacheHit);
             return cached;
-        }
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
-        {
-            Interlocked.Increment(ref StreamInterpreter.DiagBelow);
             return null;
-        }
 
-        // Elect a single builder and build inline on the crossing call so the stream is used
-        // immediately and deterministically. A fire-and-forget ThreadPool build can be starved
-        // under a saturated eth_call load and, with the one-shot CAS, never re-fires — pinning the
-        // contract to the metered loop for the process lifetime. Losers of the CAS keep metering for
-        // the few executions until the winner publishes to the cache, then hit the fast path above.
         if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
-        {
-            Interlocked.Increment(ref StreamInterpreter.DiagCasWon);
-            return BuildStream();
-        }
+            ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
 
-        Interlocked.Increment(ref StreamInterpreter.DiagCasLost);
         return null;
     }
 
-    private InstructionStream? BuildStream()
+    private void BuildStream()
     {
         InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
-        if (stream is null)
-            Interlocked.Increment(ref StreamInterpreter.DiagFailTryBuild);
-        else if (CodeHash == default)
-            Interlocked.Increment(ref StreamInterpreter.DiagFailHash);
-        else if (stream.RetainedBytes > StreamInterpreter.MaxStreamRetainedBytes)
+        if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
         {
-            Interlocked.Increment(ref StreamInterpreter.DiagFailSize);
-            Console.Error.WriteLine($"[STREAMDIAG] size-reject codeHash={CodeHash} retained={stream.RetainedBytes} code={Code.Length}");
+            InstructionStreamCache.Set(CodeHash, stream);
         }
         else
         {
-            Interlocked.Increment(ref StreamInterpreter.DiagBuildOk);
-            InstructionStreamCache.Set(CodeHash, stream);
-            Console.Error.WriteLine($"[STREAMDIAG] build-ok codeHash={CodeHash} retained={stream.RetainedBytes} code={Code.Length}");
-            return stream;
+            Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
         }
+    }
 
-        Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
-        return null;
+    private sealed class StreamBuilder(CodeInfo codeInfo) : IThreadPoolWorkItem
+    {
+        public void Execute() => codeInfo.BuildStream();
     }
 
     /// <summary>

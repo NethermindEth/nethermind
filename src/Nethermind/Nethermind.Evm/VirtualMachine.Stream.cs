@@ -25,19 +25,11 @@ internal static class StreamInterpreter
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
 
-    // DIAGNOSTIC: per-branch counters for GetOrBuildStream, dumped to stderr every 5s so a benchmark
-    // node log reveals exactly why streams do (not) engage. Remove before shipping.
-    public static long DiagUnavail, DiagCacheHit, DiagBelow, DiagCasWon, DiagCasLost,
-        DiagBuildOk, DiagFailTryBuild, DiagFailSize, DiagFailHash;
-    private static readonly System.Threading.Timer _diagTimer = new(_ =>
-        Console.Error.WriteLine(
-            $"[STREAMDIAG] unavail={DiagUnavail} cacheHit={DiagCacheHit} below={DiagBelow} " +
-            $"casWon={DiagCasWon} casLost={DiagCasLost} buildOk={DiagBuildOk} " +
-            $"failTryBuild={DiagFailTryBuild} failSize={DiagFailSize} failHash={DiagFailHash}"),
-        null, 5000, 5000);
-
-    // Streams over this size aren't retained (fall back to the metered loop); 256 KiB covers any EIP-170 contract.
-    public const int MaxStreamRetainedBytes = 256 * 1024;
+    // Streams over this size aren't retained (fall back to the metered loop). The retained form is ~15-16x
+    // the bytecode, so a max EIP-170 contract (24 KiB) builds a ~400 KiB stream; 256 KiB silently excluded
+    // the largest ~21-24 KiB DeFi contracts (Uniswap/Balancer/Aave routers) — precisely the compute-heavy
+    // ones — pinning them to the metered loop. 512 KiB covers any valid contract with margin.
+    public const int MaxStreamRetainedBytes = 512 * 1024;
 
     // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
     // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and
