@@ -3,7 +3,9 @@
 
 using System.Buffers.Binary;
 
-namespace Nethermind.Pbt;
+using Nethermind.Pbt;
+
+namespace Nethermind.Pbt.Tiles;
 
 /// <summary>
 /// 4-level tiles, every other depth holding its children's blobs so that a single store lookup serves

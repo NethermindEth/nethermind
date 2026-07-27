@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.Pbt;
 

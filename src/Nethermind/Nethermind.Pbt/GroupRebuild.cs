@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.Pbt;
 

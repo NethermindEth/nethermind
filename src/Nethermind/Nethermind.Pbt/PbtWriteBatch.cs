@@ -4,6 +4,7 @@
 using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.Pbt;
 

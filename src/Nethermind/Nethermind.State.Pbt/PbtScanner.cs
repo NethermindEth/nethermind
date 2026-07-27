@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt;
 

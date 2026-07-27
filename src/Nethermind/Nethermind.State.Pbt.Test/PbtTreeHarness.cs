@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt.Test;
 

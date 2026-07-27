@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Pbt;
+using Nethermind.Pbt;
+
+namespace Nethermind.Pbt.Tiles;
 
 /// <summary>8-level tiles, each its own blob: one byte of a stem selects each tile's boundary slot.</summary>
 public readonly struct PbtEightLevelTileLayout : IPbtTileLayout

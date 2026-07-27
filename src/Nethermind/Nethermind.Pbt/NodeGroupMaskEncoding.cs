@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.IO;
 using System.Numerics;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.Pbt;
 

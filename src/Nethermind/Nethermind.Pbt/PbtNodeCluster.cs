@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Collections;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.Pbt;
 

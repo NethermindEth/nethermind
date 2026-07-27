@@ -3,7 +3,9 @@
 
 using System.Buffers.Binary;
 
-namespace Nethermind.Pbt;
+using Nethermind.Pbt;
+
+namespace Nethermind.Pbt.Tiles;
 
 /// <summary>
 /// 6-level tiles, each its own blob: one store lookup serves six trie levels and no blob holds
