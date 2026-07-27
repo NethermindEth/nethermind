@@ -232,6 +232,44 @@ public ref struct RlpReader
         return new Hash256(keccakSpan);
     }
 
+    public Hash256 DecodeRequiredKeccak()
+    {
+        ReadOnlySpan<byte> keccakSpan = DecodeByteArraySpan(RlpLimit.L32, Hash256.Size);
+        return CreateKeccak(keccakSpan);
+    }
+
+    public Hash256? DecodeOptionalKeccak()
+    {
+        ReadOnlySpan<byte> keccakSpan = DecodeByteArraySpan(RlpLimit.L32);
+        if (keccakSpan.Length == 0)
+        {
+            return null;
+        }
+
+        GuardSize(keccakSpan.Length, Hash256.Size);
+        return CreateKeccak(keccakSpan);
+    }
+
+    private static Hash256 CreateKeccak(ReadOnlySpan<byte> keccakSpan)
+    {
+        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+        {
+            return Keccak.OfAnEmptyString;
+        }
+
+        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+        {
+            return Keccak.EmptyTreeHash;
+        }
+
+        if (keccakSpan.SequenceEqual(Keccak.Zero.Bytes))
+        {
+            return Keccak.Zero;
+        }
+
+        return new Hash256(keccakSpan);
+    }
+
     public ValueHash256? DecodeValueKeccak()
     {
         int prefix = ReadByte();
@@ -383,6 +421,12 @@ public ref struct RlpReader
         return new Address(Read(20));
     }
 
+    public Address DecodeRequiredAddress()
+    {
+        ReadOnlySpan<byte> addressSpan = DecodeByteArraySpan(size: Address.Size);
+        return addressSpan.SequenceEqual(Address.Zero.Bytes) ? Address.Zero : new Address(addressSpan);
+    }
+
     public void DecodeAddressStructRef(out AddressStructRef address)
     {
         int prefix = ReadByte();
@@ -467,7 +511,7 @@ public ref struct RlpReader
     {
         ReadOnlySpan<byte> bloomBytes;
 
-        // tks: not sure why but some nodes send us Blooms in a sequence form
+        // Legacy workaround for receipt blooms sent in sequence form:
         // https://github.com/NethermindEth/nethermind/issues/113
         if (Data[Position] == 249)
         {
@@ -491,11 +535,17 @@ public ref struct RlpReader
         return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
     }
 
+    public Bloom DecodeRequiredBloom()
+    {
+        ReadOnlySpan<byte> bloomSpan = DecodeByteArraySpan(RlpLimit.Bloom, Bloom.ByteLength);
+        return bloomSpan.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomSpan);
+    }
+
     public void DecodeBloomStructRef(out BloomStructRef bloom)
     {
         ReadOnlySpan<byte> bloomBytes;
 
-        // tks: not sure why but some nodes send us Blooms in a sequence form
+        // Legacy workaround for receipt blooms sent in sequence form:
         // https://github.com/NethermindEth/nethermind/issues/113
         if (Data[Position] == 249)
         {

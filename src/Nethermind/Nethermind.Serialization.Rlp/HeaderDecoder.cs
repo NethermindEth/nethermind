@@ -30,13 +30,13 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Hash256 parentHash = DecodeRequiredKeccak(ref decoderContext);
-            Hash256 unclesHash = DecodeRequiredKeccak(ref decoderContext);
-            Address beneficiary = DecodeRequiredAddress(ref decoderContext);
-            Hash256 stateRoot = DecodeRequiredKeccak(ref decoderContext);
-            Hash256 transactionsRoot = DecodeRequiredKeccak(ref decoderContext);
-            Hash256 receiptsRoot = DecodeRequiredKeccak(ref decoderContext);
-            Bloom bloom = DecodeRequiredBloom(ref decoderContext);
+            Hash256 parentHash = decoderContext.DecodeRequiredKeccak();
+            Hash256 unclesHash = decoderContext.DecodeRequiredKeccak();
+            Address beneficiary = decoderContext.DecodeRequiredAddress();
+            Hash256 stateRoot = decoderContext.DecodeRequiredKeccak();
+            Hash256 transactionsRoot = decoderContext.DecodeRequiredKeccak();
+            Hash256 receiptsRoot = decoderContext.DecodeRequiredKeccak();
+            Bloom bloom = decoderContext.DecodeRequiredBloom();
             UInt256 difficulty = decoderContext.DecodeUInt256();
             ulong number = decoderContext.DecodeULong();
             ulong gasLimit = decoderContext.DecodeULong();
@@ -54,12 +54,12 @@ namespace Nethermind.Serialization.Rlp
             blockHeader.Hash = Keccak.Compute(headerRlp);
 
             if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
-            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = DecodeRequiredKeccak(ref decoderContext);
+            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeRequiredKeccak();
             if (decoderContext.Position != headerCheck) blockHeader.BlobGasUsed = decoderContext.DecodeULong();
             if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
-            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = DecodeRequiredKeccak(ref decoderContext);
-            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = DecodeRequiredKeccak(ref decoderContext);
-            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = DecodeRequiredKeccak(ref decoderContext);
+            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeOptionalKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeOptionalKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeOptionalKeccak();
             if (decoderContext.Position != headerCheck) blockHeader.SlotNumber = decoderContext.DecodeULong();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -91,46 +91,13 @@ namespace Nethermind.Serialization.Rlp
             ulong timestamp,
             byte[] extraData)
         {
-            Hash256 mixHash = DecodeRequiredKeccak(ref decoderContext);
+            Hash256 mixHash = decoderContext.DecodeRequiredKeccak();
             ulong nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
             return new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
             {
                 MixHash = mixHash,
                 Nonce = nonce,
             };
-        }
-
-        private static Hash256 DecodeRequiredKeccak(ref RlpReader decoderContext)
-        {
-            ReadOnlySpan<byte> keccakSpan = decoderContext.DecodeByteArraySpan(RlpLimit.L32, Hash256.Size);
-            if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-            {
-                return Keccak.OfAnEmptyString;
-            }
-
-            if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-            {
-                return Keccak.EmptyTreeHash;
-            }
-
-            if (keccakSpan.SequenceEqual(Keccak.Zero.Bytes))
-            {
-                return Keccak.Zero;
-            }
-
-            return new Hash256(keccakSpan);
-        }
-
-        private static Address DecodeRequiredAddress(ref RlpReader decoderContext)
-        {
-            ReadOnlySpan<byte> addressSpan = decoderContext.DecodeByteArraySpan(size: Address.Size);
-            return addressSpan.SequenceEqual(Address.Zero.Bytes) ? Address.Zero : new Address(addressSpan);
-        }
-
-        private static Bloom DecodeRequiredBloom(ref RlpReader decoderContext)
-        {
-            ReadOnlySpan<byte> bloomSpan = decoderContext.DecodeByteArraySpan(RlpLimit.Bloom, Bloom.ByteLength);
-            return bloomSpan.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomSpan);
         }
 
         /// <summary>Encodes the seal section. The base implementation writes <c>mixHash</c> + <c>nonce</c>.</summary>

@@ -229,7 +229,44 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Should_reject_bloom_encoded_as_rlp_list()
+    public void Can_encode_decode_with_null_optional_hashes_when_later_fields_are_present()
+    {
+        AssertRoundtripHeader(Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(null)
+            .WithRequestsHash(TestItem.KeccakA)
+            .TestObject);
+
+        AssertRoundtripHeader(Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakA)
+            .WithRequestsHash(null)
+            .WithBlockAccessListHash(TestItem.KeccakB)
+            .TestObject);
+
+        AssertRoundtripHeader(Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakA)
+            .WithRequestsHash(TestItem.KeccakB)
+            .WithBlockAccessListHash(null)
+            .WithSlotNumber(1)
+            .TestObject);
+    }
+
+    [Test]
+    public void Should_reject_legacy_sequence_form_bloom_in_header()
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
         byte[] validRlp = Rlp.Encode(header).Bytes;
@@ -272,12 +309,22 @@ public class HeaderDecoderTests
         Assert.Throws<RlpException>(() => Rlp.Decode<BlockHeader>(crafted));
     }
 
+    private static void AssertRoundtripHeader(BlockHeader header)
+    {
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
+    }
+
     private static byte[] ReplaceFieldEncoding(byte[] headerRlp, byte[] originalField, byte[] craftedField)
     {
         int fieldIndex = headerRlp.AsSpan().IndexOf(originalField);
+        int nextFieldIndex = fieldIndex < 0 ? -1 : headerRlp.AsSpan(fieldIndex + 1).IndexOf(originalField);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fieldIndex, Is.GreaterThanOrEqualTo(3), "setup: field encoding not found");
+            Assert.That(nextFieldIndex, Is.EqualTo(-1), "setup: field encoding should be unique");
             Assert.That(headerRlp[0], Is.EqualTo(0xF9), "setup: expected a two-byte sequence length prefix");
         }
 
