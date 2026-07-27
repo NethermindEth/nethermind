@@ -230,6 +230,30 @@ public class PbtTilingTests(PbtTrieLayout layout)
     }
 
     /// <summary>
+    /// Reverse-ordered ranges on both sides of the full-sort heuristic retain complete stem order through
+    /// sparse upper slots, shared parent slots, and deeper branches.
+    /// </summary>
+    [TestCase(false)]
+    [TestCase(true)]
+    public void UnorderedRangeAtFullSortThreshold_MatchesReferenceAndCanonicalStore(bool atThreshold)
+    {
+        int boundarySlots = 1 << LevelsPerGroup;
+        int count = atThreshold ? boundarySlots : Math.Min(8, boundarySlots - 1);
+        List<(byte[] Key, byte[]? Value)> writes = [];
+        for (int i = count - 1; i >= 0; i--)
+        {
+            byte[] key = PbtKeyDerivation.StorageKey(
+                TestItem.AddressA,
+                (UInt256)(PbtKeyDerivation.HeaderStorageOffset + (i << 8))).ToByteArray();
+            writes.Add((key, i % 2 == 0 ? Value : Rewritten));
+        }
+
+        PbtTreeHarness harness = NewHarness();
+        Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
+        AssertCanonical(harness, writes);
+    }
+
+    /// <summary>
     /// The tilings describe the same trie, so the same writes fold to the same root under any of them —
     /// which is the whole claim a second tiling rests on.
     /// </summary>
