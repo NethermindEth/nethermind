@@ -60,6 +60,11 @@ JB_CONCURRENCY="${JB_CONCURRENCY:-5}"        # compare mode
 JB_TIMEOUT="${JB_TIMEOUT:-30}"               # compare mode, per-request seconds
 JB_VALIDATE_SCHEMA="${JB_VALIDATE_SCHEMA:-false}"
 JB_HTML_REPORT="${JB_HTML_REPORT:-true}"
+# Deep-check: after the timed load, replay every workload request once and store
+# the raw responses (deep-check-<label>.jsonl) so a later cross-client pass can
+# diff them — catching wrong/partial/malformed results that the k6 `checks`
+# (has-a-response only) cannot. Off by default; benchmark mode only.
+JB_DEEP_CHECK="${JB_DEEP_CHECK:-false}"
 # Response differences are reported (and warned about) by default; opt in to
 # failing the step on any diff once the method set is curated for the clients.
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
@@ -317,6 +322,54 @@ else
     ${html[@]+"${html[@]}"} \
     ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log" \
     || tool_failed=1
+fi
+
+# ---------------------------------------------------------------------------
+# Deep-check capture: replay every workload request ONCE (node still up) and
+# store raw responses for offline cross-client equality diffing. Runs after the
+# timed load so it never perturbs the k6 metrics. Keyed by a request fingerprint
+# so captures from independent single-client runs align. Non-fatal.
+# ---------------------------------------------------------------------------
+if [[ "$JB_DEEP_CHECK" == "true" && "$JB_MODE" == "benchmark" ]]; then
+  dc_out="$OUT_DIR/deep-check-$LABEL.jsonl"
+  log "Deep-check: capturing responses for every workload request (client=$LABEL) -> $(basename "$dc_out")..."
+  JB_RPC_URL="$RPC_URL" JB_SRC="$work/src" \
+  python3 - "$work/io/benchmark.yaml" "$dc_out" <<'PY' || log "::warning::deep-check capture failed (continuing)"
+import os, sys, json, hashlib, urllib.request, yaml
+cfg_path, out_path = sys.argv[1], sys.argv[2]
+rpc, src = os.environ["JB_RPC_URL"], os.environ["JB_SRC"]
+with open(cfg_path) as f:
+    cfg = yaml.safe_load(f) or {}
+reqs = []  # (method, params) in workload order
+for call in cfg.get("calls", []) or []:
+    fpath = call.get("file")
+    if fpath:
+        with open(os.path.join(src, fpath.lstrip("./"))) as jf:
+            for line in jf:
+                line = line.strip()
+                if line:
+                    o = json.loads(line)
+                    reqs.append((o.get("method"), o.get("params", [])))
+    else:
+        reqs.append((call.get("method"), call.get("params", [])))
+def post(method, params):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    req = urllib.request.Request(rpc, data=body, headers={"content-type": "application/json"})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        return json.loads(r.read())
+n = 0
+with open(out_path, "w") as out:
+    for method, params in reqs:
+        fp = hashlib.sha256(json.dumps([method, params], sort_keys=True, default=str).encode()).hexdigest()[:16]
+        try:
+            resp = post(method, params)
+        except Exception as e:
+            resp = {"_capture_error": str(e)}
+        out.write(json.dumps({"seq": n, "fp": fp, "method": method, "response": resp}) + "\n")
+        n += 1
+print(f"deep-check: captured {n} responses -> {out_path}")
+PY
+  chmod a+rw "$dc_out" 2>/dev/null || true
 fi
 
 # ---------------------------------------------------------------------------
