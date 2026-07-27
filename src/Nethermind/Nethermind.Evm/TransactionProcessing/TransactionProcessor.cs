@@ -455,7 +455,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
             }
 
-            // Report frame start before EIP-7708 transfer log so the log attaches to the top-level call frame
             if (isTracingActions)
             {
                 TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);

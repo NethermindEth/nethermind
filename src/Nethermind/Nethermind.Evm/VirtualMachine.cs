@@ -194,16 +194,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 {
                     if (!_currentState.IsContinuation)
                     {
-                        if (_currentState.IsTopLevel) // Top frame: report the action first
-                        {
-                            if (_isTracingActionsCached) TraceTransactionActionStart(_currentState);
-                            AddTransferLog(_currentState);
-                        }
-                        else // Nested frame: attach transfer log to the caller frame
-                        {
-                            AddTransferLog(_currentState);
-                            if (_isTracingActionsCached) TraceTransactionActionStart(_currentState);
-                        }
+                        // Report frame start before the EIP-7708 transfer log so it attaches to the frame being entered
+                        if (_isTracingActionsCached) TraceTransactionActionStart(_currentState);
+                        AddTransferLog(_currentState);
                     }
 
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
@@ -834,8 +827,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// </returns>
     protected virtual CallResult ExecutePrecompile(VmState<TGasPolicy> currentState, bool isTracingActions, out Exception? failure, out string? substateError)
     {
-        AddTransferLog(currentState);
-
         // Report the precompile action if tracing is enabled.
         if (isTracingActions)
         {
@@ -848,6 +839,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 currentState.ExecutionType,
                 true);
         }
+
+        AddTransferLog(currentState);
 
         // Execute the precompile operation with the current state.
         CallResult callResult = RunPrecompile(currentState);
