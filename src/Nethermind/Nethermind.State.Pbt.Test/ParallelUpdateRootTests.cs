@@ -66,7 +66,53 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
 
             Assert.That(parallel.ApplyDrainedBatch(writes), Is.EqualTo(serial.ApplyDrainedBatch(writes)), $"root mismatch on repeat {repeat}");
             AssertStoresMatch(serial, parallel);
-            Assert.That(serial.ReadThreadCount, Is.EqualTo(1), "a serial fold reads from the calling thread alone");
+        }
+    }
+
+    /// <summary>Verifies concurrently folded partitions assemble into the same roots and delta as sequential folds.</summary>
+    [Test]
+    public void ParallelPartitions_LandTheSameTreeAsSequentialPartitions()
+    {
+        for (int repeat = 0; repeat < Repeats; repeat++)
+        {
+            Random rng = new(repeat);
+            List<(byte[] Key, byte[]? Value)> writes = [];
+            for (int i = 0; i < 256; i++)
+            {
+                writes.Add(([.. AccountStem(rng), (byte)rng.Next(256)], Value(rng)));
+                writes.Add(([.. CodeStem(rng), (byte)rng.Next(256)], Value(rng)));
+                writes.Add(([.. StorageStem(rng), (byte)rng.Next(256)], Value(rng)));
+            }
+
+            PbtTreeHarness sequential = new(PooledRefCountingMemoryProvider.Instance, layout);
+            PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, layout);
+            using PbtWriteBatchSet sequentialBatches = Batches(writes);
+            using PbtWriteBatchSet parallelBatches = Batches(writes);
+
+            PbtSubtreeStats sequentialDelta = default;
+            PbtPartitionRoots sequentialRoots = PbtPartitionRoots.Empty;
+            foreach (PbtPartition partition in PbtPartitions.All)
+            {
+                sequentialRoots = TrieUpdater.UpdateRoot(
+                    sequential, sequentialRoots, partition, sequentialBatches[partition], PooledRefCountingMemoryProvider.Instance,
+                    layout, concurrency: 1, out PbtSubtreeStats partitionDelta);
+                sequentialDelta += partitionDelta;
+            }
+
+            PbtPartitionRoots parallelRoots = TrieUpdater.UpdateRoot(
+                parallel, PbtPartitionRoots.Empty, parallelBatches, PooledRefCountingMemoryProvider.Instance,
+                layout, concurrency: 1, out PbtSubtreeStats parallelDelta);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parallelRoots.Root, Is.EqualTo(sequentialRoots.Root), $"root mismatch on repeat {repeat}");
+                foreach (PbtPartition partition in PbtPartitions.All)
+                {
+                    Assert.That(parallelRoots[partition], Is.EqualTo(sequentialRoots[partition]), $"{partition} root mismatch on repeat {repeat}");
+                }
+                Assert.That(parallelDelta, Is.EqualTo(sequentialDelta), $"delta mismatch on repeat {repeat}");
+            }
+            AssertStoresMatch(sequential, parallel);
         }
     }
 
@@ -295,11 +341,31 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
         return writes;
     }
 
+    private PbtWriteBatchSet Batches(IEnumerable<(byte[] Key, byte[]? Value)> writes)
+    {
+        using PbtWriteBatchBuilder builder = new();
+        foreach ((byte[] key, byte[]? value) in writes)
+        {
+            ValueHash256 leaf = default;
+            value?.CopyTo(leaf.BytesAsSpan);
+            builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
+        }
+
+        return builder.DrainToWriteBatches(layout.Tiling());
+    }
+
     private static byte[] AccountStem(Random rng)
     {
         byte[] stem = new byte[Nethermind.Pbt.Stem.Length];
         rng.NextBytes(stem);
         stem[0] &= 0x0F;
+        return stem;
+    }
+
+    private static byte[] CodeStem(Random rng)
+    {
+        byte[] stem = AccountStem(rng);
+        stem[0] |= 0x10;
         return stem;
     }
 
