@@ -16,7 +16,8 @@ namespace Nethermind.State.Pbt.Persistence;
 /// <remarks>
 /// Creating a snapshot across all columns is expensive, but snapshots pin SST files and delay
 /// compaction, so the cache is periodically cleared. A write batch pins the pre-batch snapshot until
-/// disposal to prevent readers from observing a partially applied multi-column batch.
+/// disposal to prevent readers from observing a partially applied multi-column batch, then replaces
+/// it with a post-batch snapshot.
 /// </remarks>
 public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposable
 {
@@ -31,6 +32,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
 
     // Accessed only under _cacheLock.
     private int _pinDepth;
+    private bool _refreshPending;
 
     private int _isDisposed;
 
@@ -65,8 +67,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         }
         catch
         {
-            // An unreturned batch cannot release its pin.
-            UnpinReaderCache();
+            // No write started, so the prepared reader is still current.
+            ReleaseReaderCachePin(refresh: false);
             throw;
         }
     }
@@ -81,16 +83,29 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         _pinDepth++;
     }
 
-    /// <remarks>The last pin is released after its batch commits, so the now-stale snapshot is dropped.</remarks>
-    private void UnpinReaderCache()
+    /// <remarks>The last pin is released after its batch commits, then the stale snapshot is replaced.</remarks>
+    private void ReleaseReaderCachePin(bool refresh)
     {
-        SharedReader? cached = null;
-        using (_cacheLock.EnterScope())
+        SharedReader? stale = null;
+        try
         {
-            if (--_pinDepth == 0) cached = Unpublish();
-        }
+            using Lock.Scope _ = _cacheLock.EnterScope();
+            _refreshPending |= refresh;
+            if (--_pinDepth == 0)
+            {
+                if (_refreshPending && Volatile.Read(ref _isDisposed) == 0)
+                {
+                    stale = Unpublish();
+                    _cachedReader = new SharedReader(_inner.CreateReader());
+                }
 
-        cached?.Dispose();
+                _refreshPending = false;
+            }
+        }
+        finally
+        {
+            stale?.Dispose();
+        }
     }
 
     private void ClearReaderCache()
@@ -161,17 +176,27 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         protected override void CleanUp() => inner.Dispose();
     }
 
-    /// <remarks>Releases the pin after applying the inner batch so readers cannot observe a partial batch.</remarks>
+    /// <remarks>Refreshes the cached reader only after applying the inner batch.</remarks>
     private sealed class CacheClearingWriteBatch(IPbtPersistence.IWriteBatch inner, PbtCachedReaderPersistence parent) : IPbtPersistence.IWriteBatch
     {
+        private int _disposed;
+
         public void SetLeafBlob(in Stem stem, scoped ReadOnlySpan<byte> blob) => inner.SetLeafBlob(in stem, blob);
 
         public void SetTrieNode(in TrieNodeKey key, scoped ReadOnlySpan<byte> node) => inner.SetTrieNode(in key, node);
 
         public void Dispose()
         {
-            inner.Dispose();
-            parent.UnpinReaderCache();
+            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
+            try
+            {
+                inner.Dispose();
+            }
+            finally
+            {
+                parent.ReleaseReaderCachePin(refresh: true);
+            }
         }
     }
 }

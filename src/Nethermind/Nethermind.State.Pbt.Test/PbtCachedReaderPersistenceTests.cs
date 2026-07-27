@@ -63,9 +63,9 @@ public class PbtCachedReaderPersistenceTests
         ctx.Reader.Received(1).Dispose();
     }
 
-    /// <summary>Readers use the pre-batch snapshot while a non-atomic column batch is open.</summary>
+    /// <summary>Readers use the prepared snapshot during a batch, which is refreshed only after the batch completes.</summary>
     [Test]
-    public async Task Snapshot_IsTakenBeforeTheWriteBatch_AndSharedForItsLifetime()
+    public async Task Snapshot_IsPreparedBeforeTheWriteBatch_AndRefreshedAfterItCompletes()
     {
         Context ctx = new();
         await using PbtCachedReaderPersistence persistence = ctx.Build();
@@ -84,12 +84,21 @@ public class PbtCachedReaderPersistenceTests
         Assert.That(alsoDuringBatch, Is.SameAs(duringBatch));
         ctx.Inner.Received(1).CreateReader();
 
+        ctx.Batch.ClearReceivedCalls();
+        ctx.Inner.ClearReceivedCalls();
         batch.Dispose();
+
+        Received.InOrder(() =>
+        {
+            ctx.Batch.Dispose();
+            ctx.Inner.CreateReader();
+        });
+        ctx.Inner.Received(1).CreateReader();
 
         using IPbtPersistence.IReader afterCommit = persistence.CreateReader();
 
         Assert.That(afterCommit, Is.Not.SameAs(duringBatch));
-        ctx.Inner.Received(2).CreateReader();
+        ctx.Inner.Received(1).CreateReader();
     }
 
     /// <summary>A snapshot becomes stale only after all writing batches close.</summary>
@@ -106,12 +115,32 @@ public class PbtCachedReaderPersistenceTests
         first.Dispose();
 
         using (IPbtPersistence.IReader stillPinned = persistence.CreateReader()) Assert.That(stillPinned, Is.SameAs(pinned));
+        ctx.Inner.Received(1).CreateReader();
 
         second.Dispose();
+        ctx.Inner.Received(2).CreateReader();
 
         using IPbtPersistence.IReader afterLastCommit = persistence.CreateReader();
 
         Assert.That(afterLastCommit, Is.Not.SameAs(pinned));
+        ctx.Inner.Received(2).CreateReader();
+    }
+
+    [Test]
+    public async Task WriteBatch_ThatThrowsOnDispose_StillRefreshesTheSnapshot()
+    {
+        Context ctx = new();
+        ctx.Batch.When(static batch => batch.Dispose()).Do(static _ => throw new InvalidOperationException("flush failed"));
+        await using PbtCachedReaderPersistence persistence = ctx.Build();
+
+        using IPbtPersistence.IReader beforeCommit = persistence.CreateReader();
+        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedPartitionRoots, WriteFlags.None);
+
+        Assert.That(() => batch.Dispose(), Throws.InvalidOperationException);
+        using IPbtPersistence.IReader afterCommit = persistence.CreateReader();
+
+        Assert.That(afterCommit, Is.Not.SameAs(beforeCommit));
+        ctx.Inner.Received(2).CreateReader();
     }
 
     /// <summary>Disposing an unclaimed batch releases its cache pin.</summary>
@@ -159,12 +188,14 @@ public class PbtCachedReaderPersistenceTests
 
         public IPbtPersistence.IReader Reader { get; } = Substitute.For<IPbtPersistence.IReader>();
 
+        public IPbtPersistence.IWriteBatch Batch { get; } = Substitute.For<IPbtPersistence.IWriteBatch>();
+
         public Context()
         {
             // Return distinct snapshots so cache invalidation remains observable.
             Inner.CreateReader().Returns(_ => Reader, _ => Substitute.For<IPbtPersistence.IReader>());
             Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<PbtPartitionRoots>(), Arg.Any<WriteFlags>())
-                .Returns(Substitute.For<IPbtPersistence.IWriteBatch>());
+                .Returns(Batch);
         }
 
         public PbtCachedReaderPersistence Build() => new(Inner, Substitute.For<IProcessExitSource>());
