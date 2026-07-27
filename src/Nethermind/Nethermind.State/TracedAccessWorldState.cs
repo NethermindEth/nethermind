@@ -157,6 +157,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         oldBalance = 0;
 
+        // Intentionally not gated on read suppression: system transactions debit Address.SystemUser
+        // as their sender, and that zero touch must stay out of BALs.
         if (address == Address.SystemUser && balanceChange.IsZero)
         {
             return;

@@ -409,18 +409,29 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
-    [Test]
-    public void AddToBalanceAndCreateIfNotExists_DoesNotRecordSystemUserZeroChangeDuringSuppression()
+    [TestCase(true, true, TestName = "AddToBalance suppressed")]
+    [TestCase(true, false, TestName = "AddToBalanceAndCreateIfNotExists suppressed")]
+    [TestCase(false, true, TestName = "AddToBalance not suppressed")]
+    [TestCase(false, false, TestName = "AddToBalanceAndCreateIfNotExists not suppressed")]
+    public void Zero_balance_credit_to_system_user_recorded_only_outside_suppression(bool suppressed, bool plainAdd)
     {
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState();
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(Address.SystemUser, 0));
         using (scope)
         {
-            using IDisposable? systemAccountReadSuppression = tws.BeginSystemAccountReadSuppression();
+            using IDisposable? systemAccountReadSuppression = suppressed ? tws.BeginSystemAccountReadSuppression() : null;
 
-            tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+            if (plainAdd)
+            {
+                tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
+            }
+            else
+            {
+                tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+            }
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(Address.SystemUser);
-            Assert.That(ac, Is.Null);
+            Assert.That(ac, suppressed ? Is.Null : Is.Not.Null);
         }
     }
 
