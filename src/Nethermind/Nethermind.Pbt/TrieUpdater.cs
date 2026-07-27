@@ -63,15 +63,31 @@ public static partial class TrieUpdater
         IPbtStore store, PbtPartitionRoots currentRoots, PbtWriteBatchSet changes, IRefCountingMemoryProvider memoryProvider,
         PbtTrieLayout layout, int concurrency, out PbtSubtreeStats delta)
     {
+        PbtPartitionRoot[] partitionRoots = new PbtPartitionRoot[PbtPartitions.Count];
+        PbtSubtreeStats[] partitionDeltas = new PbtSubtreeStats[PbtPartitions.Count];
+        for (int i = 0; i < PbtPartitions.Count; i++)
+        {
+            partitionRoots[i] = currentRoots[(PbtPartition)i];
+        }
+
+        Parallel.For(0, PbtPartitions.Count, i =>
+        {
+            PbtPartition partition = (PbtPartition)i;
+            PbtWriteBatch batch = changes[partition];
+            if (batch.Count == 0) return;
+
+            PbtPartitionRoots updatedRoots = UpdateRoot(
+                store, currentRoots, partition, batch, memoryProvider, layout, concurrency, out PbtSubtreeStats partitionDelta);
+            partitionRoots[i] = updatedRoots[partition];
+            partitionDeltas[i] = partitionDelta;
+        });
+
         delta = default;
         PbtPartitionRoots roots = currentRoots;
-        foreach (PbtPartition partition in PbtPartitions.All)
+        for (int i = 0; i < PbtPartitions.Count; i++)
         {
-            PbtWriteBatch batch = changes[partition];
-            if (batch.Count == 0) continue;
-
-            roots = UpdateRoot(store, roots, partition, batch, memoryProvider, layout, concurrency, out PbtSubtreeStats partitionDelta);
-            delta += partitionDelta;
+            roots = roots.With((PbtPartition)i, partitionRoots[i]);
+            delta += partitionDeltas[i];
         }
 
         return roots;
