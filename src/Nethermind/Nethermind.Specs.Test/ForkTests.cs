@@ -87,4 +87,12 @@ public class ForkTests
             Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
         }
     }
+
+    [TestCase("Bogota")]
+    [TestCase("bogota")]
+    public void SpecNameParser_resolves_bogota(string name)
+    {
+        IReleaseSpec spec = SpecNameParser.Parse(name);
+        Assert.That(spec, Is.SameAs(Bogota.Instance));
+    }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using Evm.T8n.Errors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -35,6 +36,19 @@ public class InputData
             for (int i = 0; i < Txs.Length; i++)
             {
                 Transaction transaction = (Transaction)Txs[i].ToTransaction();
+
+                if (transaction.Type.SupportsFrames())
+                {
+                    LegacyTransactionForRpc frameTransactionForRpc = (LegacyTransactionForRpc)Txs[i];
+                    transaction.SenderAddress = frameTransactionForRpc.From;
+                    transaction.ChainId ??= chainId;
+                    SignFrameTransaction(transaction, TransactionMetaDataList[i]);
+                    transaction.Hash = transaction.CalculateHash();
+
+                    transactions.Add(transaction);
+                    continue;
+                }
+
                 transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
 
                 SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc)Txs[i]);
@@ -64,6 +78,50 @@ public class InputData
         else if (txLegacy.R.HasValue && txLegacy.S.HasValue && txLegacy.V.HasValue)
         {
             transaction.Signature = new Signature(txLegacy.R.Value, txLegacy.S.Value, txLegacy.V.Value.ToUInt64(null));
+        }
+    }
+
+    private static void SignFrameTransaction(Transaction transaction, TransactionMetaData transactionMetaData)
+    {
+        if (transactionMetaData.SecretKey is null || transaction.FrameSignatures is null)
+        {
+            return;
+        }
+
+        PrivateKey privateKey = new(transactionMetaData.SecretKey);
+        if (transaction.SenderAddress is null)
+        {
+            transaction.SenderAddress = privateKey.Address;
+        }
+        else if (transaction.SenderAddress != privateKey.Address)
+        {
+            throw new T8nException("frame transaction sender does not match secretKey", T8nErrorCodes.ErrorJson);
+        }
+
+        Ecdsa ecdsa = new();
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(transaction);
+
+        for (int i = 0; i < transaction.FrameSignatures.Length; i++)
+        {
+            TxFrameSignature signature = transaction.FrameSignatures[i];
+            if (signature.Scheme != TxFrameSignature.SchemeSecp256k1 ||
+                !signature.SignsCanonicalHash ||
+                !signature.Signature.IsEmpty)
+            {
+                continue;
+            }
+
+            if (signature.Signer is not null && signature.Signer != privateKey.Address)
+            {
+                throw new T8nException("frame signature signer does not match secretKey", T8nErrorCodes.ErrorJson);
+            }
+
+            Signature ecdsaSignature = ecdsa.Sign(privateKey, in sigHash);
+            byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            vrs[0] = ecdsaSignature.RecoveryId;
+            ecdsaSignature.Bytes.CopyTo(vrs.AsSpan(1));
+
+            transaction.FrameSignatures[i] = new TxFrameSignature(signature.Scheme, signature.Signer, signature.Msg, vrs);
         }
     }
 }

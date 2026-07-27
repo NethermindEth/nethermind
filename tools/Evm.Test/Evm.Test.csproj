@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Evm.Test</RootNamespace>
+    <AssemblyName>Evm.Test</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Evm/Evm.csproj" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+  </ItemGroup>
+
+</Project>
