@@ -51,11 +51,13 @@ public static partial class TrieUpdater
         /// </remarks>
         public Updater(
             IPbtStore store, IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat,
-            PbtWriteBatch changes, int concurrency)
+            PbtWriteBatch changes, int concurrency, PbtPartition partition)
         {
             _store = store;
             _memoryProvider = memoryProvider;
             _writeFormat = writeFormat;
+            _rootDepth = PbtPartitions.RootDepth(partition);
+            _rootKey = PbtPartitions.RootKey(partition);
 
             // held as arrays rather than as the batch: a bucket is a range of entry indices, which is
             // what lets one thread hand it to another
@@ -81,6 +83,8 @@ public static partial class TrieUpdater
             _store = main._store;
             _memoryProvider = main._memoryProvider;
             _writeFormat = main._writeFormat;
+            _rootDepth = main._rootDepth;
+            _rootKey = main._rootKey;
             _entries = main._entries;
             _buckets = main._buckets;
             _minQueueEntries = main._minQueueEntries;
@@ -128,7 +132,7 @@ public static partial class TrieUpdater
         /// descendants hand out. Every write they buffered is replayed here, on the calling thread,
         /// which is what keeps <see cref="IPbtStore"/> a single-threaded interface.
         /// </remarks>
-        public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
+        public PbtPartitionRoot Run(in PbtPartitionRoot currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
             WorkStealingExecutor<Updater<TLayout>, BucketJob>? executor = _executor;
             if (executor is null) return Descend(currentRoot, changes, default, out delta);
@@ -137,7 +141,7 @@ public static partial class TrieUpdater
 
             try
             {
-                ValueHash256 root = Descend(currentRoot, changes, new Fanout(executor.MainQueue), out delta);
+                PbtPartitionRoot root = Descend(currentRoot, changes, new Fanout(executor.MainQueue), out delta);
                 executor.Complete();
                 return root;
             }

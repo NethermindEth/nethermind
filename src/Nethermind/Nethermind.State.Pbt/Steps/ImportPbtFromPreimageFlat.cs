@@ -199,7 +199,7 @@ public class ImportPbtFromPreimageFlat(
 
                 // Limit each source snapshot and write batch to one range.
                 using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
-                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
+                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, PbtPartitionRoots.Empty, WriteFlags.DisableWAL))
                 {
                     CopyAccounts(reader, batch, leaves, start, end, ref accounts, ref slots, cancellationToken);
                 }

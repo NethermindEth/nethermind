@@ -138,11 +138,11 @@ public readonly ref struct PbtNodeChain
     /// </summary>
     public static void Write<TLayout>(
         Span<byte> destination, int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash,
-        in PbtSubtreeStats stats)
+        in PbtSubtreeStats stats, int rootDepth = 0)
         where TLayout : IPbtTileLayout
     {
         Debug.Assert(destination.Length == EncodedLength);
-        Debug.Assert(IsWellFormed<TLayout>(startDepth, targetDepth, targetPath, targetHash, stats));
+        Debug.Assert(IsWellFormed<TLayout>(startDepth, targetDepth, targetPath, targetHash, stats, rootDepth));
 
         destination[TargetDepthOffset] = (byte)targetDepth;
         targetPath.Bytes.CopyTo(destination[TargetPathOffset..]);
@@ -157,13 +157,13 @@ public readonly ref struct PbtNodeChain
     /// <paramref name="data"/>.
     /// </summary>
     /// <param name="startDepth">The depth of the boundary slot <paramref name="data"/> was read from.</param>
-    public static PbtNodeChain Decode<TLayout>(ReadOnlySpan<byte> data, int startDepth) where TLayout : IPbtTileLayout
+    public static PbtNodeChain Decode<TLayout>(ReadOnlySpan<byte> data, int startDepth, int rootDepth = 0) where TLayout : IPbtTileLayout
     {
         if (data.Length != EncodedLength) throw new InvalidDataException($"Trie node chain length {data.Length} is not {EncodedLength}");
         if (data[FormatOffset] != FormatByte) throw new InvalidDataException($"Trie node chain: unexpected format byte 0x{data[FormatOffset]:x2}");
 
         PbtNodeChain chain = new(data, startDepth);
-        if (!IsWellFormed<TLayout>(startDepth, chain.TargetDepth, chain.TargetPath, chain.TargetHash, chain.Stats))
+        if (!IsWellFormed<TLayout>(startDepth, chain.TargetDepth, chain.TargetPath, chain.TargetHash, chain.Stats, rootDepth))
         {
             throw new InvalidDataException($"Invalid trie node chain from depth {startDepth} to {chain.TargetDepth}");
         }
@@ -187,13 +187,14 @@ public readonly ref struct PbtNodeChain
     /// boundary slots hold a stem each at the least, which is the fewest a run can reach.
     /// </remarks>
     private static bool IsWellFormed<TLayout>(
-        int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats)
+        int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats,
+        int rootDepth)
         where TLayout : IPbtTileLayout =>
-        startDepth > 0
+        startDepth > rootDepth
         && startDepth < targetDepth
-        && targetDepth <= TLayout.MaxGroupDepth
-        && startDepth % TLayout.LevelsPerGroup == 0
-        && targetDepth % TLayout.LevelsPerGroup == 0
+        && targetDepth <= rootDepth + (Stem.LengthInBits - rootDepth - 1) / TLayout.LevelsPerGroup * TLayout.LevelsPerGroup
+        && (startDepth - rootDepth) % TLayout.LevelsPerGroup == 0
+        && (targetDepth - rootDepth) % TLayout.LevelsPerGroup == 0
         && targetHash != default
         && stats.StemCount >= 2
         && TrieNodeKey.For(targetDepth, targetPath).Path == targetPath;

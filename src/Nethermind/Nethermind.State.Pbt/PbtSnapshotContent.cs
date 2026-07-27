@@ -27,23 +27,35 @@ namespace Nethermind.State.Pbt;
 /// </remarks>
 public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
-    private readonly ConcurrentDictionary<Stem, RefCountingMemory?> _leafBlobs = new();
-    private readonly ConcurrentDictionary<TrieNodeKey, RefCountingMemory?> _trieNodes = new();
+    private readonly Partition[] _partitions = [new(), new(), new()];
 
-    internal IReadOnlyDictionary<Stem, RefCountingMemory?> LeafBlobs => _leafBlobs;
-    internal IReadOnlyDictionary<TrieNodeKey, RefCountingMemory?> TrieNodes => _trieNodes;
+    /// <summary>The tree writes of one independently folded partition.</summary>
+    internal Partition this[PbtPartition partition] => _partitions[(int)partition];
+
+    /// <summary>Every partition's tree writes, for a consumer that walks the complete layer.</summary>
+    internal ReadOnlySpan<Partition> Partitions => _partitions;
+
+    internal sealed class Partition
+    {
+        internal readonly ConcurrentDictionary<Stem, RefCountingMemory?> LeafBlobs = new();
+        internal readonly ConcurrentDictionary<TrieNodeKey, RefCountingMemory?> TrieNodes = new();
+    }
 
     /// <summary>Stores a transferred lease on a complete stem blob; null marks the stem deleted.</summary>
-    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob) => SetOwned(_leafBlobs, stem, blob);
+    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob) =>
+        SetOwned(this[PbtPartitions.Of(stem)].LeafBlobs, stem, blob);
 
     /// <summary>Stores a transferred lease on a trie node; null marks the node removed.</summary>
-    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) => SetOwned(_trieNodes, key, node);
+    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) =>
+        SetOwned(this[PbtPartitions.Of(key)].TrieNodes, key, node);
 
     /// <summary>Returns whether this layer contains the stem and acquires a lease on a non-null blob.</summary>
-    public bool TryGetLeafBlob(in Stem stem, out RefCountingMemory? blob) => TryGetLeased(_leafBlobs, stem, out blob);
+    public bool TryGetLeafBlob(in Stem stem, out RefCountingMemory? blob) =>
+        TryGetLeased(this[PbtPartitions.Of(stem)].LeafBlobs, stem, out blob);
 
     /// <summary>Returns whether this layer contains the key and acquires a lease on a non-null node.</summary>
-    public bool TryGetTrieNode(in TrieNodeKey key, out RefCountingMemory? node) => TryGetLeased(_trieNodes, key, out node);
+    public bool TryGetTrieNode(in TrieNodeKey key, out RefCountingMemory? node) =>
+        TryGetLeased(this[PbtPartitions.Of(key)].TrieNodes, key, out node);
 
     private static void SetOwned<TKey>(ConcurrentDictionary<TKey, RefCountingMemory?> values, TKey key, RefCountingMemory? value)
         where TKey : notnull
@@ -104,11 +116,14 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// </remarks>
     public void Reset()
     {
-        foreach ((_, RefCountingMemory? blob) in _leafBlobs) Release(blob);
-        foreach ((_, RefCountingMemory? node) in _trieNodes) Release(node);
+        foreach (Partition partition in _partitions)
+        {
+            foreach ((_, RefCountingMemory? blob) in partition.LeafBlobs) Release(blob);
+            foreach ((_, RefCountingMemory? node) in partition.TrieNodes) Release(node);
 
-        _leafBlobs.NoLockClear();
-        _trieNodes.NoLockClear();
+            partition.LeafBlobs.NoLockClear();
+            partition.TrieNodes.NoLockClear();
+        }
     }
 
     private static void Release(RefCountingMemory? memory) => ((IDisposable?)memory)?.Dispose();

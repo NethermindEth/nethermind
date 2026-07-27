@@ -73,7 +73,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             SingleWriter = true,
         });
 
-        ValueHash256 root = default;
+        PbtPartitionRoots roots = PbtPartitionRoots.Empty;
         long stems = 0;
 
         // Progress is logged off the just-committed window so throughput tracks durable work rather
@@ -103,7 +103,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
             await foreach (FlushBatch batch in flushChannel.Reader.ReadAllAsync(pipelineCts.Token))
             {
-                root = FlushAndCommit(batch.WriteBatch, root, batch.Changes, out PbtSubtreeStats stemDelta);
+                roots = FlushAndCommit(batch.WriteBatch, roots, batch.Changes, out PbtSubtreeStats stemDelta);
                 stems += stemDelta.StemCount;
                 (entries, lastStem) = (batch.Entries, batch.LastStem);
 
@@ -129,7 +129,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
         PbtWriteBatchBuilder builder = new();
         StemGroup group = new();
-        IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
+        IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, PbtPartitionRoots.Empty, WriteFlags.DisableWAL);
         int pending = 0, pendingStems = 0;
         long entries = 0;
         Stem lastStem = default;
@@ -153,10 +153,9 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                             // read-modify-write of the leaf blob the first one wrote.
                             if (pending >= FlushEntryInterval || pendingStems >= MaxWindowStems)
                             {
-                                // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
-                                // drained batch lost to a faulting flusher only drops its pooled maps to the GC
-                                await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
-                                writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
+                                // A drained batch lost to a faulting flusher only drops its pooled maps to the GC.
+                                await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
+                                writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, PbtPartitionRoots.Empty, WriteFlags.DisableWAL);
                                 (pending, pendingStems) = (0, 0);
                             }
 
@@ -176,7 +175,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             group.Flush(builder);
 
             // seal the final (possibly empty) window; the flusher owns its write batch from here
-            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
+            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
             writeBatch = null;
             flushChannel.Writer.Complete();
             await flusher;
@@ -194,10 +193,10 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         target.Flush();
 
         // atomically advance the persisted-state pointer to the rebuilt state
-        using (target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None)) { }
+        using (target.CreateWriteBatch(StateId.PreGenesis, targetState, roots, WriteFlags.None)) { }
 
-        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {entries} leaves, {stems} stems, tree root {root}");
-        return root;
+        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {entries} leaves, {stems} stems, tree root {roots.Root}");
+        return roots.Root;
     }
 
     /// <summary>
@@ -239,7 +238,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
     /// <summary>A full window handed from the consumer to the flush worker, with the progress counters as of when it was sealed.</summary>
     private readonly record struct FlushBatch(
-        PbtWriteBatch Changes,
+        PbtWriteBatchSet Changes,
         IPbtPersistence.IWriteBatch WriteBatch,
         long Entries,
         Stem LastStem);
@@ -249,7 +248,9 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
     /// <paramref name="stemDelta"/> reports the change this window makes to the tree's stem count
     /// (zero for an empty window).
     /// </summary>
-    private ValueHash256 FlushAndCommit(IPbtPersistence.IWriteBatch writeBatch, ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats stemDelta)
+    private PbtPartitionRoots FlushAndCommit(
+        IPbtPersistence.IWriteBatch writeBatch, PbtPartitionRoots currentRoots, PbtWriteBatchSet changes,
+        out PbtSubtreeStats stemDelta)
     {
         stemDelta = default;
         using (changes)
@@ -260,11 +261,11 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                 // and blobs and writes the new ones into this window's still-open batch
                 using IPbtPersistence.IReader reader = target.CreateReader();
                 PersistenceBackedPbtStore store = new(reader, writeBatch);
-                currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeLayout, config.RootFoldConcurrency, out stemDelta);
+                currentRoots = TrieUpdater.UpdateRoot(store, currentRoots, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeLayout, config.RootFoldConcurrency, out stemDelta);
             }
         }
 
         writeBatch.Dispose();
-        return currentRoot;
+        return currentRoots;
     }
 }

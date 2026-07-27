@@ -19,7 +19,7 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtCachedReaderPersistenceTests
 {
     private static readonly StateId _committedState = new(1, TestItem.KeccakA);
-    private static readonly ValueHash256 _committedTreeRoot = TestItem.KeccakB;
+    private static readonly PbtPartitionRoots _committedPartitionRoots = PbtPartitionRoots.Empty;
 
     /// <summary>Readers of the same persisted state share a snapshot until a commit invalidates it.</summary>
     [Test]
@@ -34,7 +34,7 @@ public class PbtCachedReaderPersistenceTests
         Assert.That(second, Is.SameAs(first));
         ctx.Inner.Received(1).CreateReader();
 
-        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedTreeRoot, WriteFlags.None).Dispose();
+        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedPartitionRoots, WriteFlags.None).Dispose();
 
         using IPbtPersistence.IReader afterCommit = persistence.CreateReader();
 
@@ -54,7 +54,7 @@ public class PbtCachedReaderPersistenceTests
 
         ctx.Reader.DidNotReceive().Dispose();
 
-        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedTreeRoot, WriteFlags.None).Dispose();
+        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedPartitionRoots, WriteFlags.None).Dispose();
 
         ctx.Reader.DidNotReceive().Dispose();
 
@@ -70,12 +70,12 @@ public class PbtCachedReaderPersistenceTests
         Context ctx = new();
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
-        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedTreeRoot, WriteFlags.None);
+        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedPartitionRoots, WriteFlags.None);
 
         Received.InOrder(() =>
         {
             ctx.Inner.CreateReader();
-            ctx.Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>());
+            ctx.Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<PbtPartitionRoots>(), Arg.Any<WriteFlags>());
         });
 
         using IPbtPersistence.IReader duringBatch = persistence.CreateReader();
@@ -99,8 +99,8 @@ public class PbtCachedReaderPersistenceTests
         Context ctx = new();
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
-        IPbtPersistence.IWriteBatch first = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedTreeRoot, WriteFlags.None);
-        IPbtPersistence.IWriteBatch second = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedTreeRoot, WriteFlags.None);
+        IPbtPersistence.IWriteBatch first = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedPartitionRoots, WriteFlags.None);
+        IPbtPersistence.IWriteBatch second = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedPartitionRoots, WriteFlags.None);
 
         using IPbtPersistence.IReader pinned = persistence.CreateReader();
         first.Dispose();
@@ -119,16 +119,16 @@ public class PbtCachedReaderPersistenceTests
     public async Task WriteBatch_ThatFailedToOpen_LeavesTheSnapshotInvalidatable()
     {
         Context ctx = new();
-        ctx.Inner.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
+        ctx.Inner.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, Arg.Any<PbtPartitionRoots>(), Arg.Any<WriteFlags>())
             .Throws(new InvalidOperationException("wrong base state"));
 
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
-        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, _committedTreeRoot, WriteFlags.None),
+        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, _committedPartitionRoots, WriteFlags.None),
             Throws.InvalidOperationException);
 
         using IPbtPersistence.IReader beforeCommit = persistence.CreateReader();
-        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedTreeRoot, WriteFlags.None).Dispose();
+        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedPartitionRoots, WriteFlags.None).Dispose();
 
         using IPbtPersistence.IReader afterCommit = persistence.CreateReader();
 
@@ -142,14 +142,14 @@ public class PbtCachedReaderPersistenceTests
         Stem stem = PbtKeyDerivation.AccountHeaderStem(TestItem.AddressA);
         RefCountingMemory blob = RefCountingMemory.Wrapping([0x11]);
         ctx.Reader.CurrentState.Returns(_committedState);
-        ctx.Reader.CurrentTreeRoot.Returns(_committedTreeRoot);
+        ctx.Reader.CurrentPartitionRoots.Returns(_committedPartitionRoots);
         ctx.Reader.GetLeafBlob(stem).Returns(blob);
 
         await using PbtCachedReaderPersistence persistence = ctx.Build();
         using IPbtPersistence.IReader reader = persistence.CreateReader();
 
         Assert.That(reader.CurrentState, Is.EqualTo(_committedState));
-        Assert.That(reader.CurrentTreeRoot, Is.EqualTo(_committedTreeRoot));
+        Assert.That(reader.CurrentPartitionRoots, Is.EqualTo(_committedPartitionRoots));
         Assert.That(reader.GetLeafBlob(stem), Is.SameAs(blob));
     }
 
@@ -163,7 +163,7 @@ public class PbtCachedReaderPersistenceTests
         {
             // Return distinct snapshots so cache invalidation remains observable.
             Inner.CreateReader().Returns(_ => Reader, _ => Substitute.For<IPbtPersistence.IReader>());
-            Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
+            Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<PbtPartitionRoots>(), Arg.Any<WriteFlags>())
                 .Returns(Substitute.For<IPbtPersistence.IWriteBatch>());
         }
 

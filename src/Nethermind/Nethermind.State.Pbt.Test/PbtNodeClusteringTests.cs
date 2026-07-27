@@ -41,7 +41,8 @@ public class PbtNodeClusteringTests
         for (int level = 0; level < Levels; level++)
         {
             byte[] stem = new byte[Stem.Length];
-            stem[level >> 1] = (byte)((level & 1) == 0 ? 0x10 : 0x01);
+            int nibble = level + 1;
+            stem[nibble >> 1] = (byte)((nibble & 1) == 0 ? 0x10 : 0x01);
             writes.Add(([.. stem, 5], Value));
         }
 
@@ -52,15 +53,15 @@ public class PbtNodeClusteringTests
         harness.ApplyBatch(writes);
 
         int[] nodeDepths = [.. harness.FlattenedNodes().Keys.Select(key => (int)key.Depth).Order()];
-        Assert.That(nodeDepths, Is.EqualTo(Enumerable.Range(0, Levels).Select(level => level * Layout.LevelsPerGroup)));
+        Assert.That(nodeDepths, Is.EqualTo(Enumerable.Range(0, Levels).Select(level => PbtKeyDerivation.ZoneBits + level * Layout.LevelsPerGroup)));
         Assert.That(
             harness.Nodes.Keys.Select(key => (int)key.Depth).Order(),
-            Is.EqualTo(nodeDepths.Where(depth => depth == 0 || !Layout.IsClusteringDepth(depth - Layout.LevelsPerGroup))),
+            Is.EqualTo(nodeDepths.Where(depth => depth == PbtKeyDerivation.ZoneBits || !Layout.IsClusteringDepth(depth - Layout.LevelsPerGroup - PbtKeyDerivation.ZoneBits))),
             "a group whose parent clusters has no key of its own; the root has no parent");
 
         // and the bytes at the key that does hold it are the child's own encoding, verbatim
-        TrieNodeKey clusteredChildKey = new TrieNodeKey((byte)Layout.LevelsPerGroup, default).ChildGroup(0, Layout.LevelsPerGroup);
-        byte[] blob = harness.Nodes[new TrieNodeKey((byte)Layout.LevelsPerGroup, default)];
+        TrieNodeKey clusteredChildKey = PbtPartitions.RootKey(PbtPartition.Account).ChildGroup(0, Layout.LevelsPerGroup).ChildGroup(0, Layout.LevelsPerGroup);
+        byte[] blob = harness.Nodes[PbtPartitions.RootKey(PbtPartition.Account).ChildGroup(0, Layout.LevelsPerGroup)];
         PbtNodeCluster cluster = PbtNodeCluster.Decode<Layout>(blob, out PbtTrieNodeGroup<Layout> group);
         Assert.That(blob[cluster.Child(0, group)], Is.EqualTo(harness.FlattenedNodes()[clusteredChildKey]));
     }
@@ -70,8 +71,8 @@ public class PbtNodeClusteringTests
     /// that group holds its own children — which is the whole reason the parity is the depth's rather
     /// than the descent's.
     /// </summary>
-    [TestCase(20, false, TestName = "ChainTargetAtAClusteringDepth_HoldsItsChild")]
-    [TestCase(24, true, TestName = "ChainTargetBelowOne_LeavesItsChildAKey")]
+    [TestCase(24, false, TestName = "ChainTargetAtAClusteringDepth_HoldsItsChild")]
+    [TestCase(28, true, TestName = "ChainTargetBelowOne_LeavesItsChildAKey")]
     public void ChainTarget_ClustersByItsOwnDepth(int targetDepth, bool childHasKey)
     {
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.Interleaved));
@@ -93,19 +94,19 @@ public class PbtNodeClusteringTests
     {
         // the run reaches depth 24, so a stem parting at bit 20 makes a clustering group at depth 20
         // whose direct child the target is
-        List<(byte[], byte[]?)> writes = BranchingUnder(24);
+        List<(byte[], byte[]?)> writes = BranchingUnder(28);
         byte[] splitStem = new byte[Stem.Length];
-        splitStem[2] = 0x08; // bit 20
+        splitStem[3] = 0x80; // bit 24
         (byte[], byte[]?) split = ([.. splitStem, 5], Value);
 
         TrackingMemoryProvider provider = new();
         PbtTreeHarness harness = new(provider, PbtTestFormats.Clustered(PbtGroupFormat.Interleaved));
         harness.ApplyBatch(writes);
-        TrieNodeKey target = TrieNodeKey.For(24, default);
+        TrieNodeKey target = TrieNodeKey.For(28, default);
         Assert.That(harness.Nodes.Keys, Does.Contain(target));
 
         harness.ApplyBatch([split]);
-        Assert.That(harness.Nodes.Keys, Does.Contain(TrieNodeKey.For(20, default)), "the split group is where the run ended");
+        Assert.That(harness.Nodes.Keys, Does.Contain(TrieNodeKey.For(24, default)), "the split group is where the run ended");
         Assert.That(harness.Nodes.ContainsKey(target), Is.False, "and it has taken its target's bytes off that key");
         Assert.That(harness.FlattenedNodes().Keys, Does.Contain(target));
 
@@ -113,7 +114,7 @@ public class PbtNodeClusteringTests
         // and the target it was holding needs its key back
         harness.ApplyBatch([(split.Item1, null)]);
         Assert.That(harness.Nodes.Keys, Does.Contain(target), "the collapse hands the target back its key");
-        Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(20, default)), Is.False);
+        Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(24, default)), Is.False);
         AssertMatchesFreshRebuild(harness, writes);
 
         // both crossings copy the target's bytes into memory of their own, which is a lease to balance
@@ -126,8 +127,8 @@ public class PbtNodeClusteringTests
     /// holds its whole encoding, whether or not that group also clusters its child groups — which a run is
     /// none of, being no blob of the store's at all.
     /// </summary>
-    [TestCase(0, TestName = "ARunUnderTheRoot_IsHeldByIt")]
-    [TestCase(4, TestName = "ARunUnderAClusteringGroup_IsHeldBesideTheChildrenItClusters")]
+    [TestCase(4, TestName = "ARunUnderTheRoot_IsHeldByIt")]
+    [TestCase(8, TestName = "ARunUnderAClusteringGroup_IsHeldBesideTheChildrenItClusters")]
     public void ARunHasNoKeyOfItsOwn(int parentDepth)
     {
         List<(byte[], byte[]?)> writes = RunUnder(parentDepth);
@@ -146,7 +147,7 @@ public class PbtNodeClusteringTests
         Assert.That(group.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Chain));
         Assert.That(parentBlob[cluster.Child(0, group)], Is.Empty, "a run is the group's own entry, never one of the children it clusters");
         Assert.That(
-            PbtNodeCluster.HoldsChildren(parentBlob), Is.EqualTo(Layout.IsClusteringDepth(parentDepth)),
+            PbtNodeCluster.HoldsChildren(parentBlob), Is.EqualTo(Layout.IsClusteringDepth(parentDepth - PbtKeyDerivation.ZoneBits)),
             "the group beside it is clustered or keyed by depth, as it would be with no run there");
         Assert.That(harness.Nodes.Keys, Does.Contain(TrieNodeKey.For(RunTargetDepth, default)), "the run's target keeps a key of its own");
 
@@ -179,7 +180,7 @@ public class PbtNodeClusteringTests
         PbtTreeHarness harness = new(provider, PbtTestFormats.Clustered(PbtGroupFormat.Interleaved));
         harness.ApplyBatch(writes);
 
-        TrieNodeKey clusterKey = TrieNodeKey.For(Layout.LevelsPerGroup, default);
+        TrieNodeKey clusterKey = PbtPartitions.RootKey(PbtPartition.Account).ChildGroup(0, Layout.LevelsPerGroup);
         Assert.That(PbtNodeCluster.HoldsChildren(harness.Nodes[clusterKey]), "the depth-4 group holds both its children");
 
         // empty slot 0 and rewrite under slot 1 in one batch: the group is left with the one boundary,
@@ -201,14 +202,15 @@ public class PbtNodeClusteringTests
     private static byte[] TwoBytePrefixed(byte first, byte second)
     {
         byte[] key = new byte[Stem.Length + 1];
-        key[0] = first;
-        key[1] = second;
+        key[0] = (byte)(first >> 4);
+        key[1] = (byte)((first << 4) | (second >> 4));
+        key[2] = (byte)(second << 4);
         key[^1] = 5;
         return key;
     }
 
     /// <summary>The bit two stems part at, which is where every run these build lands.</summary>
-    private const int RunTargetDepth = 24;
+    private const int RunTargetDepth = 28;
 
     /// <summary>
     /// Writes whose trie branches at every group depth down to <paramref name="parentDepth"/> — each of
@@ -222,7 +224,7 @@ public class PbtNodeClusteringTests
         SetBit(parted, RunTargetDepth);
 
         List<(byte[], byte[]?)> writes = [([.. corridor, 5], Value), ([.. parted, 5], Value)];
-        for (int depth = 0; depth <= parentDepth; depth += Layout.LevelsPerGroup)
+        for (int depth = PbtKeyDerivation.ZoneBits; depth <= parentDepth; depth += Layout.LevelsPerGroup)
         {
             // a pair parting one group below the branch, so the slot beside the run roots a group
             byte[] sibling = new byte[Stem.Length];

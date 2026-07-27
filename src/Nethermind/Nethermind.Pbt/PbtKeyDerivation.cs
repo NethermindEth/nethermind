@@ -23,7 +23,10 @@ public static class PbtKeyDerivation
     public const int AccountZone = 0;
     public const int CodeZone = 1;
 
-    private const int ZoneBits = 4;
+    public const int ZoneBits = 4;
+    public const int ZoneCount = 1 << ZoneBits;
+    public const int FirstStorageZone = 8;
+
     private const int StorageAddressPrefixBits = 60;
     private const int StorageSuffixBits = 187;
 
@@ -63,6 +66,8 @@ public static class PbtKeyDerivation
     /// <summary>Builds a non-storage stem: a 4-bit zone followed by the high 244 bits of <paramref name="digest"/>.</summary>
     public static Stem ZoneStem(int zone, ReadOnlySpan<byte> digest)
     {
+        if ((uint)zone >= ZoneCount) throw new ArgumentOutOfRangeException(nameof(zone));
+
         Span<byte> stem = stackalloc byte[Stem.Length];
         stem[0] = (byte)((zone << ZoneBits) | (digest[0] >> ZoneBits));
         for (int i = 1; i < Stem.Length; i++)

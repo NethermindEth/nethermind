@@ -207,12 +207,16 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
         Seed(bundle, 0x11);
 
-        using PbtSnapshot sealed_ = bundle.CollectSnapshot(default, new StateId(1, default), TestItem.KeccakA.ValueHash256);
+        using PbtSnapshot sealed_ = bundle.CollectSnapshot(default, new StateId(1, default), PbtPartitionRoots.Empty);
 
-        Assert.That(sealed_.Content.LeafBlobs[HeaderStem]!.GetSpan().ToArray(), Is.EqualTo(HeaderBlob(0x11)), "the sealed layer took the buffer's writes");
+        Assert.That(sealed_.Content.TryGetLeafBlob(HeaderStem, out RefCountingMemory? sealedBlob), Is.True);
+        using (sealedBlob!)
+        {
+            Assert.That(sealedBlob!.GetSpan().ToArray(), Is.EqualTo(HeaderBlob(0x11)), "the sealed layer took the buffer's writes");
+        }
         Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x11), "which the bundle still reads through its own chain, now decoded from the leaf");
-        Assert.That(bundle.TreeRoot, Is.EqualTo(TestItem.KeccakA.ValueHash256), "and the sealed layer's tree root becomes the bundle's");
-        Assert.That(bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), default).Content, Is.Not.SameAs(sealed_.Content), "a fresh buffer backs the next block");
+        Assert.That(bundle.TreeRoot, Is.EqualTo(PbtPartitionRoots.Empty.Root), "and the sealed layer's tree root becomes the bundle's");
+        Assert.That(bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), PbtPartitionRoots.Empty).Content, Is.Not.SameAs(sealed_.Content), "a fresh buffer backs the next block");
     }
 
     /// <summary>
@@ -270,7 +274,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
         Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x44));
 
-        using PbtSnapshot sealed_ = bundle.CollectSnapshot(default, new StateId(1, default), default);
+        using PbtSnapshot sealed_ = bundle.CollectSnapshot(default, new StateId(1, default), PbtPartitionRoots.Empty);
         _reader.LeafBlobs[HeaderStem] = HeaderBlob(0x55);
 
         Assert.That((byte)bundle.GetAccount(Address)!.Nonce, Is.EqualTo(0x55));
@@ -468,7 +472,7 @@ public class PbtSnapshotBundleTests
     }
 
     private PbtSnapshot Layer(PbtSnapshotContent content) =>
-        new(default, default, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        new(default, default, PbtPartitionRoots.Empty, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
 
     private static PbtSnapshotContent Content(byte marker)
     {
@@ -536,7 +540,7 @@ public class PbtSnapshotBundleTests
 
         public StateId CurrentState => StateId.PreGenesis;
 
-        public ValueHash256 CurrentTreeRoot { get; set; }
+        public PbtPartitionRoots CurrentPartitionRoots => PbtPartitionRoots.Empty;
 
         public RefCountingMemory? GetLeafBlob(in Stem stem)
         {

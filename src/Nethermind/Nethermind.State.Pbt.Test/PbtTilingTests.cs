@@ -42,15 +42,14 @@ public class PbtTilingTests(PbtTrieLayout layout)
         _ => PbtClusteredTileLayout.LevelsPerGroup,
     };
 
-    private int MaxGroupDepth => layout.Tiling() switch
-    {
-        PbtTiling.SixLevel => PbtSixLevelTileLayout.MaxGroupDepth,
-        PbtTiling.EightLevel => PbtEightLevelTileLayout.MaxGroupDepth,
-        _ => PbtClusteredTileLayout.MaxGroupDepth,
-    };
+    private const PbtPartition Partition = PbtPartition.Storage;
+
+    private int RootDepth => PbtPartitions.RootDepth(Partition);
+
+    private int MaxGroupDepth => RootDepth + (Stem.LengthInBits - RootDepth - 1) / LevelsPerGroup * LevelsPerGroup;
 
     /// <summary>The depth of the tile holding trie level <paramref name="bit"/>, which is where a key for it sits.</summary>
-    private int GroupDepthOf(int bit) => bit - bit % LevelsPerGroup;
+    private int GroupDepthOf(int bit) => RootDepth + (bit - RootDepth) / LevelsPerGroup * LevelsPerGroup;
 
     private PbtTreeHarness NewHarness() => new(PooledRefCountingMemoryProvider.Instance, layout);
 
@@ -70,15 +69,15 @@ public class PbtTilingTests(PbtTrieLayout layout)
     [TestCase(247)]  // the last stem bit: the six-level tiling's deepest tile reaches past it
     public void StemsPartingAtAnyBit_FoldToTheReferenceRootAndCollapseBack(int divergenceBit)
     {
-        byte[] stemA = new byte[Stem.Length];
-        byte[] stemB = new byte[Stem.Length];
-        stemB[divergenceBit >> 3] = (byte)(1 << (7 - (divergenceBit & 7)));
+        byte[] stemA = StorageStem();
+        byte[] stemB = (byte[])stemA.Clone();
+        stemB[divergenceBit >> 3] |= (byte)(1 << (7 - (divergenceBit & 7)));
         (byte[] Key, byte[]? Value) a = ([.. stemA, (byte)5], Value);
         (byte[] Key, byte[]? Value) b = ([.. stemB, (byte)7], Rewritten);
 
         PbtTreeHarness harness = NewHarness();
         Assert.That(harness.ApplyBatch([a]), Is.EqualTo(ReferenceRoot([a])));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(1), "a lone stem is the root group and nothing else");
+        Assert.That(harness.Nodes, Has.Count.EqualTo(1), "a lone stem is the partition root group and nothing else");
 
         Assert.That(harness.ApplyBatch([b]), Is.EqualTo(ReferenceRoot([a, b])));
         AssertCanonical(harness, [a, b]);
@@ -104,9 +103,9 @@ public class PbtTilingTests(PbtTrieLayout layout)
     [Test]
     public void StemsPartingAtTheLastBit_BuildNoNodeBelowTheStemLevel()
     {
-        byte[] stemA = new byte[Stem.Length];
-        byte[] stemB = new byte[Stem.Length];
-        stemB[^1] = 1;
+        byte[] stemA = StorageStem();
+        byte[] stemB = (byte[])stemA.Clone();
+        stemB[^1] |= 1;
         (byte[] Key, byte[]? Value) a = ([.. stemA, (byte)5], Value);
         (byte[] Key, byte[]? Value) b = ([.. stemB, (byte)7], Rewritten);
 
@@ -121,7 +120,7 @@ public class PbtTilingTests(PbtTrieLayout layout)
         duplicate.Add(new Stem(stemA), PbtStemChanges.Rent().Set(5, leaf));
         duplicate.Add(new Stem(stemA), PbtStemChanges.Rent().Set(7, leaf));
         Assert.That(
-            () => TrieUpdater.UpdateRoot(NewHarness(), default, duplicate, PooledRefCountingMemoryProvider.Instance, layout, concurrency: 1, out _),
+            () => TrieUpdater.UpdateRoot(NewHarness(), PbtPartitionRoots.Empty, Partition, duplicate, PooledRefCountingMemoryProvider.Instance, layout, concurrency: 1, out _),
             Throws.InstanceOf<InvalidOperationException>());
     }
 
@@ -151,7 +150,7 @@ public class PbtTilingTests(PbtTrieLayout layout)
         Dictionary<TrieNodeKey, byte[]> nodes = harness.FlattenedNodes();
         TrieNodeKey[] chains = [.. nodes.Keys.Where(key => PbtNodeChain.IsChain(nodes[key]))];
         Assert.That(chains, Has.Length.EqualTo(1), "the whole shared prefix is one run");
-        Assert.That(chains[0].Depth, Is.EqualTo(LevelsPerGroup), "which starts one tile below the root");
+        Assert.That(chains[0].Depth, Is.EqualTo(RootDepth + LevelsPerGroup), "which starts one tile below the partition root");
 
         // where the stems actually part: a shared prefix of 61 bits by construction, and whatever more
         // of it their hashed suffixes happen to agree on
@@ -260,9 +259,9 @@ public class PbtTilingTests(PbtTrieLayout layout)
         Assert.That(other.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
     }
 
-    /// <summary>A key whose path leads into boundary <paramref name="slot"/> of the first tile below the root.</summary>
+    /// <summary>A key whose path leads into boundary <paramref name="slot"/> of the first tile below the partition root.</summary>
     private byte[] BoundaryKey(int slot) =>
-        [.. TrieNodeKey.Root.ChildGroup(0, LevelsPerGroup).ChildGroup(slot, LevelsPerGroup).Path.Bytes, (byte)5];
+        [.. PbtPartitions.RootKey(Partition).ChildGroup(0, LevelsPerGroup).ChildGroup(slot, LevelsPerGroup).Path.Bytes, (byte)5];
 
     /// <summary>Either a fresh random key, or one already live, so that updates and deletes hit something.</summary>
     private static byte[] RandomKey(Random random, Dictionary<string, byte[]> live)
@@ -276,10 +275,17 @@ public class PbtTilingTests(PbtTrieLayout layout)
         byte[] key = new byte[32];
         random.NextBytes(key);
 
-        // an account-zone stem, so that a good share of the keys share prefixes rather than spreading
-        // over the whole space
-        key[0] = (byte)(random.Next(2) == 0 ? 0x00 : key[0] & 0x0F);
+        // An account-zone stem, so that a good share of the keys share prefixes rather than spreading
+        // over the whole space.
+        key[0] &= 0x0F;
         return key;
+    }
+
+    private static byte[] StorageStem()
+    {
+        byte[] stem = new byte[Stem.Length];
+        stem[0] = 0x80;
+        return stem;
     }
 
     private static byte[] RandomValue(Random random)

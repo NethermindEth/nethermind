@@ -29,10 +29,10 @@ namespace Nethermind.State.Pbt.Test;
 public class StemTrieTests(PbtGroupFormat format)
 {
     // A split stores its root and divergent groups, with one run between non-adjacent groups.
-    [TestCase(3, 1)] // divergence inside the root group: both stems at its boundary slots
+    [TestCase(3, 2)] // divergence inside the root group: both stems at its boundary slots
     [TestCase(5, 2)] // stems at an inner position of the depth-4 group
     [TestCase(7, 2)] // stems exactly on a group boundary (depth 8)
-    [TestCase(8, 3)] // stems just past a group boundary (depth 9): the chain appears, spanning depth 4 to 8
+    [TestCase(8, 2)] // stems just past a group boundary (depth 9): the chain appears, spanning depth 4 to 8
     [TestCase(10, 3)] // stems mid-group (depth 11)
     [TestCase(163, 3)] // deep divergence just inside a group (depth 160)
     [TestCase(164, 3)] // and just past that boundary (depth 164), which only lengthens the chain
@@ -40,8 +40,8 @@ public class StemTrieTests(PbtGroupFormat format)
     public void InsertSplitDeleteHoist_MaintainsCanonicalStructureAndRoots(int divergenceBit, int splitGroupCount)
     {
         // The stems share the prefix before divergenceBit.
-        byte[] stemA = new byte[31];
-        byte[] stemB = new byte[31];
+        byte[] stemA = StorageStem();
+        byte[] stemB = StorageStem();
         stemB[divergenceBit >> 3] = (byte)(1 << (7 - (divergenceBit & 7)));
         byte[] keyA = [.. stemA, 5];
         byte[] keyB = [.. stemB, 7];
@@ -78,8 +78,8 @@ public class StemTrieTests(PbtGroupFormat format)
     [Test]
     public void StemsPartingAtTheLastBit_TakeFurtherSubIndices()
     {
-        byte[] stemA = new byte[31];
-        byte[] stemB = new byte[31];
+        byte[] stemA = StorageStem();
+        byte[] stemB = StorageStem();
         stemB[30] = 1; // bit 247, the last bit of a stem
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
@@ -105,7 +105,7 @@ public class StemTrieTests(PbtGroupFormat format)
     {
         // the producer must merge a stem's writes itself; two entries for one stem partition
         // together all the way to bit 248, where nothing is left to tell them apart
-        Stem stem = new(new byte[31]);
+        Stem stem = new(StorageStem());
         ValueHash256 value = new(Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111"));
 
         using PbtWriteBatch batch = new(estimatedStems: 2, buckets: null);
@@ -113,7 +113,7 @@ public class StemTrieTests(PbtGroupFormat format)
         batch.Add(stem, PbtStemChanges.Rent().Set(7, value));
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format));
-        Assert.That(() => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.EveryLevel), concurrency: 1, out _),
+        Assert.That(() => TrieUpdater.UpdateRoot(harness, PbtPartitionRoots.Empty, PbtPartitions.Of(stem), batch, PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.EveryLevel), concurrency: 1, out _),
             Throws.InstanceOf<InvalidOperationException>());
     }
 
@@ -122,8 +122,8 @@ public class StemTrieTests(PbtGroupFormat format)
     {
         // A and B diverge deep (bit 20), so inserting B splits a chain off A — the case where the new
         // stem is reached with an absent pushed slot and the existing stem is re-hung by cached hash
-        byte[] stemA = new byte[31];
-        byte[] stemB = new byte[31];
+        byte[] stemA = StorageStem();
+        byte[] stemB = StorageStem();
         stemB[2] = 0x08; // bit 20
         byte[] keyA5 = [.. stemA, 5];
         byte[] keyA6 = [.. stemA, 6];
@@ -160,11 +160,11 @@ public class StemTrieTests(PbtGroupFormat format)
         // A and B diverge deep (bit 20: stems in the depth-20 group, six groups down the shared
         // path); C splits off shallow (bit 6: an inner stem of the depth-4 group, next to the
         // internal path descending towards A and B)
-        byte[] stemA = new byte[31];
-        byte[] stemB = new byte[31];
+        byte[] stemA = StorageStem();
+        byte[] stemB = StorageStem();
         stemB[2] = 0x08;
-        byte[] stemC = new byte[31];
-        stemC[0] = 0x02;
+        byte[] stemC = StorageStem();
+        stemC[0] |= 0x02;
         byte[] keyA = [.. stemA, 1];
         byte[] keyB = [.. stemB, 2];
         byte[] keyC = [.. stemC, 3];
@@ -201,11 +201,11 @@ public class StemTrieTests(PbtGroupFormat format)
         // A1 and A2 share their first 40 bits, so a run of single-child levels spans depths 8 to 40 —
         // eight groups' worth. B parts from them at bit 7, landing in the depth-4 group beside the slot
         // that run descends from.
-        byte[] stemA1 = new byte[31];
-        byte[] stemA2 = new byte[31];
+        byte[] stemA1 = StorageStem();
+        byte[] stemA2 = StorageStem();
         stemA2[5] = 0x80; // bit 40
-        byte[] stemB = new byte[31];
-        stemB[0] = 0x01; // bit 7
+        byte[] stemB = StorageStem();
+        stemB[0] |= 0x01; // bit 7
         byte[] keyA1 = [.. stemA1, 1];
         byte[] keyA2 = [.. stemA2, 2];
         byte[] keyB = [.. stemB, 3];
@@ -219,7 +219,7 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(root, Is.EqualTo(ReferenceRoot(all)));
         // the root group, the depth-4 group holding B, the run from 8 to 40, and the group where A1/A2 part
         Assert.That(NodeCount(harness), Is.EqualTo(4));
-        Assert.That(harness.FlattenedNodes().Keys, Has.Some.Matches<TrieNodeKey>(key => key.Depth == 8), "the run is stored where it starts");
+        Assert.That(harness.FlattenedNodes().Keys, Has.Some.Matches<TrieNodeKey>(key => key.Depth == 9), "the run is stored where it starts");
         AssertStoreMatchesFreshRebuild(harness, all);
 
         // Delete B and the depth-4 group is left with one child this batch never descended into. Only
@@ -244,10 +244,10 @@ public class StemTrieTests(PbtGroupFormat format)
     {
         // A1/A2 part at bit 40, so a run spans depths 4 to 40. C parts from them at bit 9 — inside the
         // depth-8 group, which the run reaches only by skipping the frame at depth 4.
-        byte[] stemA1 = new byte[31];
-        byte[] stemA2 = new byte[31];
+        byte[] stemA1 = StorageStem();
+        byte[] stemA2 = StorageStem();
         stemA2[5] = 0x80; // bit 40
-        byte[] stemC = new byte[31];
+        byte[] stemC = StorageStem();
         stemC[1] = 0x40; // bit 9
         byte[] keyA1 = [.. stemA1, 1];
         byte[] keyA2 = [.. stemA2, 2];
@@ -282,11 +282,11 @@ public class StemTrieTests(PbtGroupFormat format)
     {
         // A1/A2 part at bit 8, the shortest run there is: depth 4 to 8, one group's worth. D then parts at
         // bit 5, splitting it against a target that is already its direct child.
-        byte[] stemA1 = new byte[31];
-        byte[] stemA2 = new byte[31];
+        byte[] stemA1 = StorageStem();
+        byte[] stemA2 = StorageStem();
         stemA2[1] = 0x80; // bit 8
-        byte[] stemD = new byte[31];
-        stemD[0] = 0x04; // bit 5
+        byte[] stemD = StorageStem();
+        stemD[0] |= 0x04; // bit 5
         byte[] keyA1 = [.. stemA1, 1];
         byte[] keyA2 = [.. stemA2, 2];
         byte[] keyD = [.. stemD, 3];
@@ -296,12 +296,12 @@ public class StemTrieTests(PbtGroupFormat format)
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format));
         harness.ApplyBatch([(keyA1, valueA1), (keyA2, valueA2)]);
-        Assert.That(NodeCount(harness), Is.EqualTo(3), "the root group, the run from 4 to 8, and the group at 8");
+        Assert.That(NodeCount(harness), Is.EqualTo(2), "the partition root group and the group at depth 5");
 
         (byte[], byte[]?)[] all = [(keyA1, valueA1), (keyA2, valueA2), (keyD, valueD)];
         Assert.That(harness.ApplyBatch([(keyD, valueD)]), Is.EqualTo(ReferenceRoot(all)));
-        // the run is gone: its four levels are the depth-4 group now, pointing straight at what it targeted
-        Assert.That(NodeCount(harness), Is.EqualTo(3));
+        // the run is gone: its four levels are the partition-root group now, pointing straight at what it targeted
+        Assert.That(NodeCount(harness), Is.EqualTo(2));
         AssertStoreMatchesFreshRebuild(harness, all);
     }
 
@@ -330,7 +330,7 @@ public class StemTrieTests(PbtGroupFormat format)
         TrieNodeKey[] chains = [.. nodes.Keys.Where(key => PbtNodeChain.IsChain(nodes[key]))];
         Assert.That(chains, Has.Length.EqualTo(1));
 
-        PbtNodeChain chain = PbtNodeChain.Decode<Layout>(nodes[chains[0]], chains[0].Depth);
+        PbtNodeChain chain = PbtNodeChain.Decode<Layout>(nodes[chains[0]], chains[0].Depth, PbtPartitions.RootDepth(PbtPartitions.Of(chains[0])));
         int levels = chain.TargetDepth - chains[0].Depth;
         for (int depth = chains[0].Depth; depth < chain.TargetDepth; depth += Layout.LevelsPerGroup)
         {
@@ -341,8 +341,8 @@ public class StemTrieTests(PbtGroupFormat format)
         // the root group down to the depth-60 group where the suffix starts branching. That is fourteen
         // groups — 14 * (11 + 4 * 32) = 1946 bytes of single-child levels, each group's root folded away —
         // held in 97, inside the root group's own blob.
-        Assert.That(chains[0].Depth, Is.EqualTo(Layout.LevelsPerGroup));
-        Assert.That(chain.TargetDepth, Is.EqualTo(60));
+        Assert.That(chains[0].Depth, Is.EqualTo(PbtPartitions.RootDepth(PbtPartition.Storage) + Layout.LevelsPerGroup));
+        Assert.That(chain.TargetDepth, Is.EqualTo(61));
         Assert.That(levels / Layout.LevelsPerGroup, Is.EqualTo(14));
         Assert.That(nodes[chains[0]], Has.Length.EqualTo(PbtNodeChain.EncodedLength));
     }
@@ -359,10 +359,10 @@ public class StemTrieTests(PbtGroupFormat format)
         const int branchBit = 100;
         const int deepBit = 140;
 
-        byte[] stemBase = new byte[31];
-        byte[] stemDeep = new byte[31];
+        byte[] stemBase = StorageStem();
+        byte[] stemDeep = StorageStem();
         stemDeep[deepBit >> 3] = (byte)(1 << (7 - (deepBit & 7)));
-        byte[] stemFar = new byte[31];
+        byte[] stemFar = StorageStem();
         stemFar[branchBit >> 3] = (byte)(1 << (7 - (branchBit & 7)));
         byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
 
@@ -392,8 +392,8 @@ public class StemTrieTests(PbtGroupFormat format)
         const int pushedBit = 60;
         const int deepBit = 140;
 
-        byte[] stemBase = new byte[31];
-        byte[] stemPushed = new byte[31];
+        byte[] stemBase = StorageStem();
+        byte[] stemPushed = StorageStem();
         stemPushed[pushedBit >> 3] = (byte)(1 << (7 - (pushedBit & 7)));
         byte[] value = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
@@ -401,7 +401,7 @@ public class StemTrieTests(PbtGroupFormat format)
         List<(byte[], byte[]?)> writes = [([.. stemBase, 5], value)];
         for (int i = 0; i < deepStems; i++)
         {
-            byte[] stemDeep = new byte[31];
+            byte[] stemDeep = StorageStem();
             stemDeep[deepBit >> 3] = (byte)(1 << (7 - (deepBit & 7)));
             stemDeep[30] = (byte)i;
             writes.Add(([.. stemDeep, 6], value));
@@ -440,7 +440,7 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(chains, Has.Length.EqualTo(2));
         foreach (TrieNodeKey key in chains)
         {
-            Assert.That(PbtNodeChain.Decode<Layout>(nodes[key], key.Depth).TargetDepth, Is.EqualTo(60));
+            Assert.That(PbtNodeChain.Decode<Layout>(nodes[key], key.Depth, PbtPartitions.RootDepth(PbtPartitions.Of(key))).TargetDepth, Is.EqualTo(61));
         }
     }
 
@@ -478,9 +478,9 @@ public class StemTrieTests(PbtGroupFormat format)
     [Test]
     public void DeleteOnlyBatchOnEmptyTree_AndInPlaceStemUpdate()
     {
-        byte[] stemA = new byte[31];
-        byte[] stemB = new byte[31];
-        stemB[0] = 0x80;
+        byte[] stemA = StorageStem();
+        byte[] stemB = StorageStem();
+        stemB[0] = 0xC0;
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
@@ -511,13 +511,14 @@ public class StemTrieTests(PbtGroupFormat format)
         List<byte[]> stems = [];
         for (int i = 0; i < 8; i++)
         {
-            byte[] baseStem = new byte[31];
+            byte[] baseStem = StorageStem();
             rng.NextBytes(baseStem);
+            baseStem[0] |= 0x80;
             stems.Add(baseStem);
             for (int j = 0; j < 3; j++)
             {
                 byte[] variant = (byte[])baseStem.Clone();
-                int bit = rng.Next(Stem.LengthInBits);
+                int bit = rng.Next(PbtKeyDerivation.ZoneBits, Stem.LengthInBits);
                 variant[bit >> 3] ^= (byte)(1 << (7 - (bit & 7)));
                 stems.Add(variant);
             }
@@ -573,8 +574,9 @@ public class StemTrieTests(PbtGroupFormat format)
         List<byte[]> bases = [];
         for (int i = 0; i < 8; i++)
         {
-            byte[] baseStem = new byte[31];
+            byte[] baseStem = StorageStem();
             rng.NextBytes(baseStem);
+            baseStem[0] |= 0x80;
             bases.Add(baseStem);
         }
 
@@ -582,11 +584,15 @@ public class StemTrieTests(PbtGroupFormat format)
         Dictionary<string, byte[]> model = [];
         for (int i = 0; i < 300; i++)
         {
-            byte[] stem = rng.Next(2) == 0 ? new byte[31] : (byte[])bases[rng.Next(bases.Count)].Clone();
-            if (stem.AsSpan().IsZero() || rng.Next(2) == 0) rng.NextBytes(stem);
+            byte[] stem = rng.Next(2) == 0 ? StorageStem() : (byte[])bases[rng.Next(bases.Count)].Clone();
+            if (stem.AsSpan().IsZero() || rng.Next(2) == 0)
+            {
+                rng.NextBytes(stem);
+                stem[0] |= 0x80;
+            }
             else
             {
-                int bit = rng.Next(Stem.LengthInBits);
+                int bit = rng.Next(PbtKeyDerivation.ZoneBits, Stem.LengthInBits);
                 stem[bit >> 3] ^= (byte)(1 << (7 - (bit & 7)));
             }
 
@@ -648,18 +654,19 @@ public class StemTrieTests(PbtGroupFormat format)
         yield return Fixture("one first byte, diverging below depth 8", OneFirstByte(0x80, 20));
 
         // every shard, so every bucket of both levels is occupied
-        byte[][] everyByte = new byte[256][];
-        for (int i = 0; i < everyByte.Length; i++) everyByte[i] = MakeStem((byte)i, 0);
-        yield return Fixture("every first byte", everyByte);
+        byte[][] everyByte = new byte[160][];
+        for (int i = 0; i < 32; i++) everyByte[i] = RawStem((byte)i, 0);
+        for (int i = 32; i < everyByte.Length; i++) everyByte[i] = RawStem((byte)(i + 96), 0);
+        yield return Fixture("every valid first byte", everyByte);
 
         // the extremes alone: the longest runs of empty shards, and the widest gap between a byte
         // group's nibble-local ends and the batch-global ones
-        yield return Fixture("first bytes at the extremes", [MakeStem(0x00, 0), MakeStem(0xFF, 0)]);
+        yield return Fixture("first bytes at the extremes", [RawStem(0x00, 0), RawStem(0xFF, 0)]);
 
         // empty shards leading, trailing, and inside a nibble group
-        byte[] sparse = [0x00, 0x0F, 0x10, 0x7F, 0x80, 0xF0, 0xFF];
+        byte[] sparse = [0x00, 0x0F, 0x10, 0x1F, 0x80, 0xF0, 0xFF];
         byte[][] sparseStems = new byte[sparse.Length][];
-        for (int i = 0; i < sparse.Length; i++) sparseStems[i] = MakeStem(sparse[i], 0);
+        for (int i = 0; i < sparse.Length; i++) sparseStems[i] = RawStem(sparse[i], 0);
         yield return Fixture("sparse first bytes", sparseStems);
     }
 
@@ -678,7 +685,7 @@ public class StemTrieTests(PbtGroupFormat format)
         List<(byte[], byte[]?)> writes = [];
         for (int i = 0; i < secondBytes.Length; i++)
         {
-            byte[] stem = new byte[Stem.Length];
+            byte[] stem = StorageStem();
             stem[0] = 0x80; // one shard, so the producer's own two levels never tell these apart
             stem[1] = secondBytes[i];
             stem[^1] = (byte)i; // parts stems sharing a second byte, far below the divergence under test
@@ -726,7 +733,7 @@ public class StemTrieTests(PbtGroupFormat format)
         // one stem per boundary slot of the depth-4 group: they share the depth-0 nibble and differ in
         // the depth-4 one, so that group branches sixteen ways rather than collapsing or nesting
         List<(byte[] Key, byte[]? Value)> writes = [];
-        for (byte slot = 0; slot < Layout.BoundarySlots; slot++) writes.Add(([.. MakeStem(slot, 0), 5], value));
+        for (byte slot = 0; slot < Layout.BoundarySlots; slot++) writes.Add(([.. DenseGroupStem(slot), 5], value));
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format));
         harness.ApplyBatch(writes);
@@ -741,7 +748,7 @@ public class StemTrieTests(PbtGroupFormat format)
             if (!PbtLayout.TrieNodeGroupIsSkippedPosition(format, position)) storedPositions++;
         }
 
-        PbtTrieNodeGroup<Layout> dense = PbtTrieNodeGroup<Layout>.Decode(harness.Nodes[TrieNodeKey.Root.ChildGroup(0, Layout.LevelsPerGroup)]);
+        PbtTrieNodeGroup<Layout> dense = PbtTrieNodeGroup<Layout>.Decode(harness.Nodes[PbtPartitions.RootKey(PbtPartition.Storage).ChildGroup(0, Layout.LevelsPerGroup)]);
         Assert.That(
             CountPresentPositions(dense), Is.EqualTo(storedPositions),
             "the setup must really fill the group, or nothing here is clean enough to be copied");
@@ -766,12 +773,12 @@ public class StemTrieTests(PbtGroupFormat format)
         // Every stem shares the root's first slot, so the group under test is the one at depth 4: a run
         // from depth 8 down to the group at bit 24 in its slot 0, a stem beside it in slot 1, and a third
         // stem in slot 4 — the other half of the tile, so rewriting it leaves the run's half untouched.
-        byte[] corridor = new byte[Stem.Length];
-        byte[] parted = new byte[Stem.Length];
+        byte[] corridor = StorageStem();
+        byte[] parted = StorageStem();
         parted[3] = 0x80; // bit 24
-        byte[] beside = new byte[Stem.Length];
+        byte[] beside = StorageStem();
         beside[0] = 0x01;
-        byte[] far = new byte[Stem.Length];
+        byte[] far = StorageStem();
         far[0] = 0x04;
 
         List<(byte[] Key, byte[]? Value)> writes =
@@ -781,8 +788,9 @@ public class StemTrieTests(PbtGroupFormat format)
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format));
         harness.ApplyBatch(writes);
+        Dictionary<TrieNodeKey, byte[]> nodes = harness.FlattenedNodes();
         Assert.That(
-            PbtNodeChain.IsChain(harness.FlattenedNodes()[TrieNodeKey.For(8, default)]),
+            nodes.Keys, Has.Some.Matches<TrieNodeKey>(key => key.Depth == 5 && PbtNodeChain.IsChain(nodes[key])),
             "the setup must really leave a run in the copied half");
 
         writes[3] = (writes[3].Key, rewritten);
@@ -806,7 +814,7 @@ public class StemTrieTests(PbtGroupFormat format)
         (byte[], byte[]?)[] single = [([.. MakeStem(0x00, 0), 5], value)];
         PbtTreeHarness one = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format));
         Assert.That(one.ApplyBatch(single), Is.EqualTo(ReferenceRoot(single)));
-        PbtTrieNodeGroup<Layout> rootGroup = PbtTrieNodeGroup<Layout>.Decode(one.Nodes[TrieNodeKey.Root]);
+        PbtTrieNodeGroup<Layout> rootGroup = PbtTrieNodeGroup<Layout>.Decode(one.Nodes[PbtPartitions.RootKey(PbtPartition.Storage)]);
         Assert.That(rootGroup.KindAt(Layout.RootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Absent), "the root position is never stored");
         Assert.That(rootGroup.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), "the lone stem sits at its boundary slot");
 
@@ -816,7 +824,7 @@ public class StemTrieTests(PbtGroupFormat format)
         PbtTreeHarness two = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(format));
         Assert.That(two.ApplyBatch(branch), Is.EqualTo(ReferenceRoot(branch)));
         Assert.That(
-            PbtTrieNodeGroup<Layout>.Decode(two.Nodes[TrieNodeKey.Root]).KindAt(Layout.RootPosition),
+            PbtTrieNodeGroup<Layout>.Decode(two.Nodes[PbtPartitions.RootKey(PbtPartition.Storage)]).KindAt(Layout.RootPosition),
             Is.EqualTo(PbtTrieNodeGroup.NodeKind.Absent), "a branching group's internal root is folded, not stored");
     }
 
@@ -839,12 +847,35 @@ public class StemTrieTests(PbtGroupFormat format)
         return stems;
     }
 
+    private static byte[] StorageStem()
+    {
+        byte[] stem = new byte[Stem.Length];
+        stem[0] = 0x80;
+        return stem;
+    }
+
     /// <summary>A stem in the shard <paramref name="firstByte"/> keys, told apart from its shard-mates by <paramref name="tail"/>.</summary>
     private static byte[] MakeStem(byte firstByte, byte tail)
+    {
+        byte[] stem = StorageStem();
+        stem[0] = (byte)(firstByte < 0x20 ? firstByte | 0x80 : firstByte);
+        stem[^1] = tail;
+        return stem;
+    }
+
+    private static byte[] RawStem(byte firstByte, byte tail)
     {
         byte[] stem = new byte[Stem.Length];
         stem[0] = firstByte;
         stem[^1] = tail;
+        return stem;
+    }
+
+    private static byte[] DenseGroupStem(byte slot)
+    {
+        byte[] stem = StorageStem();
+        stem[0] |= (byte)(slot >> 1);
+        stem[1] = (byte)(slot << 7);
         return stem;
     }
 
@@ -902,8 +933,8 @@ public class StemTrieTests(PbtGroupFormat format)
     /// <summary>A stem told apart from its fellows only by <paramref name="b0"/> and <paramref name="b1"/>, so it parts from them above depth 16.</summary>
     private static byte[] TwoByteStem(byte b0, byte b1)
     {
-        byte[] stem = new byte[Stem.Length];
-        stem[0] = b0;
+        byte[] stem = StorageStem();
+        stem[0] |= b0;
         stem[1] = b1;
         return stem;
     }
@@ -916,11 +947,11 @@ public class StemTrieTests(PbtGroupFormat format)
     [Test]
     public void UpdateRoot_BalancesTheLeasesOnEveryBufferItRents()
     {
-        byte[] stemA = new byte[31];
-        byte[] stemB = new byte[31];
+        byte[] stemA = StorageStem();
+        byte[] stemB = StorageStem();
         stemB[20] = 0x01; // diverges deep, so the split leaves a run spanning many group boundaries
-        byte[] stemC = new byte[31];
-        stemC[0] = 0x01; // parts at bit 7, into the depth-4 group beside the slot the run descends from
+        byte[] stemC = StorageStem();
+        stemC[0] |= 0x01; // parts at bit 7, into the depth-4 group beside the slot the run descends from
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
         byte[] valueC = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
@@ -961,7 +992,7 @@ public class StemTrieTests(PbtGroupFormat format)
 
         Dictionary<TrieNodeKey, byte[]> nodes = harness.FlattenedNodes();
         AssertChainsAreMaximal(nodes);
-        Assert.That(CountStems(nodes, TrieNodeKey.Root), Is.EqualTo(harness.Blobs.Count), "the root subtree is every stem");
+        Assert.That(CountPartitionStems(nodes), Is.EqualTo(harness.Blobs.Count), "the root subtree is every stem");
     }
 
     /// <summary>
@@ -970,6 +1001,13 @@ public class StemTrieTests(PbtGroupFormat format)
     /// — its child groups, and it is the shape of the trie these tests are about.
     /// </summary>
     private static int NodeCount(PbtTreeHarness harness) => harness.FlattenedNodes().Count;
+
+    private static long CountPartitionStems(Dictionary<TrieNodeKey, byte[]> nodes)
+    {
+        long counted = 0;
+        foreach (PbtPartition partition in PbtPartitions.All) counted += CountStems(nodes, PbtPartitions.RootKey(partition));
+        return counted;
+    }
 
     /// <summary>
     /// The stems under <paramref name="key"/>, counted from the store rather than hoisted, asserting
@@ -981,7 +1019,7 @@ public class StemTrieTests(PbtGroupFormat format)
 
         if (PbtNodeChain.IsChain(blob))
         {
-            PbtNodeChain chain = PbtNodeChain.Decode<Layout>(blob, key.Depth);
+            PbtNodeChain chain = PbtNodeChain.Decode<Layout>(blob, key.Depth, PbtPartitions.RootDepth(PbtPartitions.Of(key)));
             long reached = CountStems(nodes, chain.TargetKey);
             Assert.That(chain.Stats.StemCount, Is.EqualTo(reached), $"run at {key}");
             return reached;
@@ -1025,7 +1063,7 @@ public class StemTrieTests(PbtGroupFormat format)
         {
             if (!PbtNodeChain.IsChain(blob)) continue;
 
-            PbtNodeChain chain = PbtNodeChain.Decode<Layout>(blob, key.Depth);
+            PbtNodeChain chain = PbtNodeChain.Decode<Layout>(blob, key.Depth, PbtPartitions.RootDepth(PbtPartitions.Of(key)));
             for (int depth = key.Depth + Layout.LevelsPerGroup; depth < chain.TargetDepth; depth += Layout.LevelsPerGroup)
             {
                 Assert.That(nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"{key} spans depth {depth}, which must hold no node");

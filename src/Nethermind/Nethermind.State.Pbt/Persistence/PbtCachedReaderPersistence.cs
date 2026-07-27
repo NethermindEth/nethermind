@@ -5,7 +5,6 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -57,12 +56,12 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     }
 
     /// <remarks>Pins the pre-batch snapshot until the batch is disposed.</remarks>
-    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 toTreeRoot, WriteFlags flags)
+    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in PbtPartitionRoots toPartitionRoots, WriteFlags flags)
     {
         PinReaderCache();
         try
         {
-            return new CacheClearingWriteBatch(_inner.CreateWriteBatch(from, to, toTreeRoot, flags), this);
+            return new CacheClearingWriteBatch(_inner.CreateWriteBatch(from, to, toPartitionRoots, flags), this);
         }
         catch
         {
@@ -151,7 +150,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     {
         public StateId CurrentState => inner.CurrentState;
 
-        public ValueHash256 CurrentTreeRoot => inner.CurrentTreeRoot;
+        public PbtPartitionRoots CurrentPartitionRoots => inner.CurrentPartitionRoots;
 
         public RefCountingMemory? GetLeafBlob(in Stem stem) => inner.GetLeafBlob(in stem);
 

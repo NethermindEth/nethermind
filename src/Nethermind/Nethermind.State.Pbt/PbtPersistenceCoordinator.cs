@@ -159,16 +159,19 @@ public class PbtPersistenceCoordinator(
     private void Persist(PbtSnapshot merged)
     {
         PbtSnapshotContent content = merged.Content;
-        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, merged.TreeRoot, WriteFlags.None);
+        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, merged.PartitionRoots, WriteFlags.None);
 
-        foreach ((Stem stem, RefCountingMemory? blob) in content.LeafBlobs)
+        foreach (PbtSnapshotContent.Partition partition in content.Partitions)
         {
-            batch.SetLeafBlob(stem, blob is null ? default : blob.GetSpan());
-        }
+            foreach ((Stem stem, RefCountingMemory? blob) in partition.LeafBlobs)
+            {
+                batch.SetLeafBlob(stem, blob is null ? default : blob.GetSpan());
+            }
 
-        foreach ((TrieNodeKey key, RefCountingMemory? node) in content.TrieNodes)
-        {
-            batch.SetTrieNode(key, node is null ? default : node.GetSpan());
+            foreach ((TrieNodeKey key, RefCountingMemory? node) in partition.TrieNodes)
+            {
+                batch.SetTrieNode(key, node is null ? default : node.GetSpan());
+            }
         }
     }
 }

@@ -45,8 +45,8 @@ public class PbtResourcePoolTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(content.LeafBlobs, Is.Empty);
-            Assert.That(content.TrieNodes, Is.Empty);
+            Assert.That(content.TryGetLeafBlob(stem, out _), Is.False);
+            Assert.That(content.TryGetTrieNode(nodeKey, out _), Is.False);
             Assert.That(blob.AcquireLease, Throws.InvalidOperationException, "reset releases the blob");
             Assert.That(node.AcquireLease, Throws.InvalidOperationException, "reset releases the node");
         }
@@ -144,7 +144,7 @@ public class PbtResourcePoolTests
     public void Snapshot_ReturnsItsContent_ToTheUsageItWasRentedFrom()
     {
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        PbtSnapshot snapshot = new(default, default, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshot snapshot = new(default, default, PbtPartitionRoots.Empty, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
         snapshot.TryLease();
 
         snapshot.Dispose();

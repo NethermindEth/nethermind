@@ -49,9 +49,11 @@ public class PbtSnapshotBundle(
     private volatile bool _isDisposed;
     private int _activeOwnershipTransfers;
 
-    /// <inheritdoc cref="PbtReadOnlySnapshotBundle.TreeRoot"/>
-    /// <remarks>The write buffer has no root of its own: it is unfolded until a scope seals it.</remarks>
-    public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
+    /// <inheritdoc cref="PbtReadOnlySnapshotBundle.PartitionRoots"/>
+    /// <remarks>The write buffer has no roots of its own: it is unfolded until a scope seals it.</remarks>
+    public PbtPartitionRoots PartitionRoots => snapshots.Count > 0 ? snapshots[^1].PartitionRoots : readOnlyBundle.PartitionRoots;
+
+    public ValueHash256 TreeRoot => PartitionRoots.Root;
 
     private PbtSnapshotContent WriteBuffer
     {
@@ -283,10 +285,10 @@ public class PbtSnapshotBundle(
     /// Seals the write buffer into a snapshot, appends it as this branch's newest layer (leased),
     /// and starts a fresh buffer for the next block.
     /// </summary>
-    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
+    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in PbtPartitionRoots partitionRoots)
     {
         // The snapshot owns the buffer after sealing and returns it when its last lease drops.
-        PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
+        PbtSnapshot snapshot = new(from, to, partitionRoots, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _writeBuffer = resourcePool.GetSnapshotContent(usage);

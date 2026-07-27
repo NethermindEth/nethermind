@@ -27,12 +27,11 @@ public class PbtScannerTests
     /// <summary>
     /// The tree the tests scan:
     /// <list type="bullet">
-    /// <item>four account stems (zone 0) differing in the second nibble, so they share the root's slot
-    /// 0 and branch across the boundary of one group at depth 4;</item>
-    /// <item>two storage stems (zone 8) agreeing to bit 42, so the run from depth 4 down to depth 40
-    /// has a single child throughout and collapses into one chain.</item>
+    /// <item>four account stems (zone 0) differing in the first nibble below their depth-4 root;</item>
+    /// <item>two storage stems (zone 8) agreeing to bit 42, so the run below their depth-1 root
+    /// collapses into one chain.</item>
     /// </list>
-    /// That gives three groups (depths 0, 4 and 40), one chain and six stems.
+    /// That gives three groups, one chain and six stems.
     /// </summary>
     private static List<(byte[] Key, byte[]? Value)> BuildWrites()
     {
@@ -89,29 +88,30 @@ public class PbtScannerTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(report.GroupCount, Is.EqualTo(3), "groups at depths 0, 4 and 40");
-            Assert.That(report.Root.GroupsByDepth[0], Is.EqualTo(1), "the root group is above every zone");
-            Assert.That(report.AccountNodes.GroupsByDepth[4], Is.EqualTo(1), "the account stems' group is in zone 0");
-            Assert.That(report.StorageNodes.GroupsByDepth[40], Is.EqualTo(1), "the storage stems' group is in zone 8");
+            Assert.That(report.GroupCount, Is.EqualTo(3), "the account root, storage root, and the storage chain's target");
+            Assert.That(report.Root.IsEmpty, Is.True, "partition roots replace the stored depth-0 root");
+            Assert.That(report.AccountNodes.GroupsByDepth[PbtPartitions.RootDepth(PbtPartition.Account)], Is.EqualTo(1));
+            Assert.That(report.StorageNodes.GroupsByDepth[PbtPartitions.RootDepth(PbtPartition.Storage)], Is.EqualTo(1));
+            Assert.That(report.StorageNodes.GroupCount, Is.EqualTo(2), "the storage root and the group its chain lands on");
             Assert.That(report.CodeNodes.IsEmpty, Is.True, "nothing was written to the code zone");
 
             Assert.That(report.StemCount, Is.EqualTo(6), "four account stems and two storage stems");
-            Assert.That(report.AccountNodes.StemsByDepth[8], Is.EqualTo(4), "the account stems sit on the depth-4 group's boundary");
-            Assert.That(report.StorageNodes.StemsByDepth[44], Is.EqualTo(2), "and the storage stems on the depth-40 group's");
+            Assert.That(report.AccountNodes.StemsByDepth[8], Is.EqualTo(4), "the account stems sit on their root group's boundary");
+            Assert.That(report.StorageNodes.StemsByDepth[45], Is.EqualTo(2), "and the storage stems on the chain target's boundary");
 
             // the internal nodes the groups root, at every level of every occupied path but the stems'
-            Assert.That(report.Root.IntermediateNodeCount, Is.EqualTo(7), "the root branches at once, so both its paths hold a node per level");
-            Assert.That(report.AccountNodes.IntermediateNodeCount, Is.EqualTo(5), "one per level of the depth-4 group, which branches on its last");
-            Assert.That(report.StorageNodes.IntermediateNodeCount, Is.EqualTo(36 + 4), "the levels the chain stands for, then the depth-40 group's");
-            Assert.That(report.IntermediateNodeCount, Is.EqualTo(7 + 5 + 40));
+            Assert.That(report.Root.IntermediateNodeCount, Is.EqualTo(0));
+            Assert.That(report.AccountNodes.IntermediateNodeCount, Is.EqualTo(5));
+            Assert.That(report.StorageNodes.IntermediateNodeCount, Is.EqualTo(45), "the storage root, chain, then chain target");
+            Assert.That(report.IntermediateNodeCount, Is.EqualTo(50));
 
-            // every stored node caches its subtree's stem count, so the root's is an independent check
+            // every partition root caches its subtree's stem count, so their sum is an independent check
             Assert.That(report.RootSubtreeStemCount, Is.EqualTo(report.StemCount));
             Assert.That(report.StemCountAgrees, Is.True);
 
-            Assert.That(report.Root.GroupBytesByDepth[0], Is.GreaterThan(0), "average size per depth needs the byte totals");
+            Assert.That(report.AccountNodes.GroupBytesByDepth[4], Is.GreaterThan(0), "average size per depth needs the byte totals");
 
-            // the chain rides in the root group's blob, so the three groups are the only keyed entries
+            // the chain rides in the storage root's blob, so the three groups are the only keyed entries
             Assert.That(report.TrieNodeBlobCount, Is.EqualTo(3));
             Assert.That(report.TrieNodeKeyBytes, Is.EqualTo(3 * TrieNodeKey.Length));
             Assert.That(report.AccountLeaves.KeyBytes, Is.EqualTo(AccountLeafCounts.Length * Stem.Length));
@@ -148,32 +148,30 @@ public class PbtScannerTests
 
     /// <summary>
     /// The interleaved encoding leaves an internal node unstored at every odd group-relative level
-    /// whose subtree is occupied — four such positions in the root group, three in the account group
-    /// and two in the storage group — the boundary-only encoding at every level of the tile, which is
-    /// every level those groups hold an intermediate node at, and the every-level encoding at none.
+    /// whose subtree is occupied — three in the account root, and four across the storage root and
+    /// target group. Boundary-only skips every internal node in each group, while every-level skips none.
     /// </summary>
-    [TestCase(PbtGroupFormat.EveryLevel, 0, 0, 0)]
-    [TestCase(PbtGroupFormat.Interleaved, 4, 3, 2)]
-    [TestCase(PbtGroupFormat.BoundaryOnly, 7, 5, 4)]
-    public async Task Scan_CountsSkippedLevelsPerPartition(PbtGroupFormat format, long root, long account, long storage)
+    [TestCase(PbtGroupFormat.EveryLevel, 0, 0)]
+    [TestCase(PbtGroupFormat.Interleaved, 3, 5)]
+    [TestCase(PbtGroupFormat.BoundaryOnly, 5, 9)]
+    public async Task Scan_CountsSkippedLevelsPerPartition(PbtGroupFormat format, long account, long storage)
     {
         PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
 
         Assert.Multiple(() =>
         {
-            Assert.That(report.Root.SkippedLevelNodes, Is.EqualTo(root));
+            Assert.That(report.Root.SkippedLevelNodes, Is.EqualTo(0));
             Assert.That(report.AccountNodes.SkippedLevelNodes, Is.EqualTo(account));
             Assert.That(report.StorageNodes.SkippedLevelNodes, Is.EqualTo(storage));
-            Assert.That(report.SkippedLevelNodes, Is.EqualTo(root + account + storage));
-            Assert.That(report.Root.InterleavedGroupCount, Is.EqualTo(format == PbtGroupFormat.Interleaved ? 1 : 0));
-            Assert.That(report.Root.BoundaryOnlyGroupCount, Is.EqualTo(format == PbtGroupFormat.BoundaryOnly ? 1 : 0));
+            Assert.That(report.SkippedLevelNodes, Is.EqualTo(account + storage));
+            Assert.That(report.AccountNodes.InterleavedGroupCount, Is.EqualTo(format == PbtGroupFormat.Interleaved ? 1 : 0));
+            Assert.That(report.AccountNodes.BoundaryOnlyGroupCount, Is.EqualTo(format == PbtGroupFormat.BoundaryOnly ? 1 : 0));
         });
     }
 
     /// <summary>
-    /// The single-child run below the root's storage slot collapses into one chain, and both the
-    /// levels it elides and the entries it saves follow from its span. It is a storage-zone spine, so
-    /// none of it lands on any other partition — though the root group, which is in none, holds it.
+    /// The single-child run below the storage root collapses into one chain, and both the levels it
+    /// elides and the entries it saves follow from its span.
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
@@ -189,10 +187,10 @@ public class PbtScannerTests
             Assert.That(storage.ChainCount, Is.EqualTo(1), "the spine is storage's, as chains generally are");
             Assert.That(report.AccountNodes.ChainCount, Is.EqualTo(0));
 
-            Assert.That(storage.ChainsByStartDepth[4], Is.EqualTo(1), "the root group branches, so the run starts below it");
-            Assert.That(storage.ChainsBySpan[36], Is.EqualTo(1), "and lands on the group at depth 40");
+            Assert.That(storage.ChainsByStartDepth[5], Is.EqualTo(1), "the run starts below the depth-1 storage root");
+            Assert.That(storage.ChainsBySpan[36], Is.EqualTo(1), "and lands on the group at depth 41");
 
-            // the nodes at depths 5..39: the run's own node is the chain and the target's is the group
+            // the nodes at depths 6..40: the run's own node is the chain and the target's is the group
             Assert.That(storage.ChainSkippedNodes, Is.EqualTo(35));
 
             // nine every-level groups would have stored four hashes each; the chain stores two
@@ -331,24 +329,22 @@ public class PbtScannerTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(report.GroupCount, Is.EqualTo(3), "groups at depths 0, 4 and 8");
+            Assert.That(report.GroupCount, Is.EqualTo(2), "groups at depths 4 and 8");
+            Assert.That(report.Root.IsEmpty, Is.True, "partition roots replace the stored depth-0 root");
             Assert.That(report.AccountNodes.GroupsByDepth[4], Is.EqualTo(1));
-            Assert.That(report.AccountNodes.GroupsByDepth[8], Is.EqualTo(1), "the clustered child is counted at its own depth");
-            Assert.That(report.ClusterCount, Is.EqualTo(1), "the depth-4 blob holds the depth-8 group");
-            Assert.That(report.ClusteredGroupCount, Is.EqualTo(1));
-            Assert.That(report.TrieNodeBlobCount, Is.EqualTo(2), "the clustered child is stored under no key of its own");
-            Assert.That(report.AccountNodes.KeyBytes, Is.EqualTo(TrieNodeKey.Length), "so zone 0 pays for the depth-4 blob alone");
-            Assert.That(report.AccountNodes.ClustersByDepth[4], Is.EqualTo(1), "a cluster counts at the depth of the group it holds");
-            Assert.That(report.AccountNodes.ClusteredGroupsByDepth[4], Is.EqualTo(1), "and its children beside it, not at their own depth");
+            Assert.That(report.AccountNodes.GroupsByDepth[8], Is.EqualTo(1));
+            Assert.That(report.ClusterCount, Is.EqualTo(0), "the partition root cannot cluster");
+            Assert.That(report.ClusteredGroupCount, Is.EqualTo(0));
+            Assert.That(report.TrieNodeBlobCount, Is.EqualTo(2));
+            Assert.That(report.AccountNodes.KeyBytes, Is.EqualTo(2 * TrieNodeKey.Length));
+            Assert.That(report.AccountNodes.ClustersByDepth[4], Is.EqualTo(0));
+            Assert.That(report.AccountNodes.ClusteredGroupsByDepth[4], Is.EqualTo(0));
             Assert.That(report.ChainCount, Is.EqualTo(0), "nothing here collapses, so the blob is its two groups and the framing");
-            Assert.That(
-                report.AccountNodes.ClusterBytesByDepth[4],
-                Is.EqualTo(report.AccountNodes.GroupBytesByDepth[4] + report.AccountNodes.GroupBytesByDepth[8] + report.AccountNodes.ClusterFramingBytes),
-                "the cluster's size is the whole stored value, child blob and framing included");
+            Assert.That(report.AccountNodes.ClusterBytesByDepth[4], Is.EqualTo(0));
             Assert.That(report.StemCount, Is.EqualTo(3));
             Assert.That(report.StemCountAgrees, Is.True);
-            Assert.That(report.Format(), Does.Contain("Clusters by depth"));
-            Assert.That(report.Format(), Does.Contain("Cluster blobs by depth"));
+            Assert.That(report.Format(), Does.Not.Contain("Clusters by depth"));
+            Assert.That(report.Format(), Does.Not.Contain("Cluster blobs by depth"));
         });
     }
 
@@ -374,7 +370,7 @@ public class PbtScannerTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(report, Does.Contain("--- Root ---"));
+            Assert.That(report, Does.Not.Contain("--- Root ---"), "partition roots are included in their own statistics");
             Assert.That(report, Does.Contain("--- Account ---"));
             Assert.That(report, Does.Contain("--- Storage ---"));
             Assert.That(report, Does.Not.Contain("--- Code ---"), "an empty partition is left out");
