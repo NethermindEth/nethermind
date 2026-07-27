@@ -128,8 +128,8 @@ public static partial class TrieUpdater
         /// </summary>
         /// <remarks>
         /// The calling thread runs the root frame, and the rest only ever run what it and its
-        /// descendants hand out. Every write they buffered is replayed here, on the calling thread,
-        /// which is what keeps <see cref="IPbtStore"/> a single-threaded interface.
+        /// descendants hand out. Worker threads read from and write to <see cref="IPbtStore"/> directly,
+        /// so the store must support concurrent access for a parallel run.
         /// </remarks>
         public PbtPartitionRoot Run(in PbtPartitionRoot currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
