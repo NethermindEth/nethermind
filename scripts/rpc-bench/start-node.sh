@@ -60,6 +60,11 @@ HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
 JSONRPC_MODULES="${JSONRPC_MODULES:-Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug}"
 GETH_HTTP_API="${GETH_HTTP_API:-eth,net,web3,debug,txpool}"
 RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
+# eth_call gas cap applied identically to every client so a heavy call (e.g. a
+# deep Multicall3 aggregation from EthCallChaos) is served, not truncated, on all
+# of them — geth/reth default to 50M and Nethermind to 100M, which would make
+# cross-client timings incomparable. 1 Ggas covers the corpus's heaviest cases.
+RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
@@ -230,6 +235,7 @@ case "$CLIENT" in
       "--JsonRpc.Port=8545"
       "--JsonRpc.EnabledModules=$JSONRPC_MODULES"
       "--JsonRpc.Timeout=600000"
+      "--JsonRpc.GasCap=$RPC_GAS_CAP"
       # Park the node at the snapshot head: no peers, no discovery, no sync writes.
       "--Init.DiscoveryEnabled=false"
       "--Network.MaxActivePeers=0"
@@ -253,6 +259,7 @@ case "$CLIENT" in
       "--http" "--http.addr=0.0.0.0" "--http.port=8545"
       "--http.api=$GETH_HTTP_API"
       "--http.vhosts=*"
+      "--rpc.gascap=$RPC_GAS_CAP"
       # Park the node at the snapshot head: no peers, no discovery.
       "--nodiscover" "--maxpeers=0"
       "--ipcdisable"
@@ -265,6 +272,7 @@ case "$CLIENT" in
       "--datadir=$DATA_DIR_TARGET"
       "--http" "--http.addr=0.0.0.0" "--http.port=8545"
       "--http.api=$RETH_HTTP_API"
+      "--rpc.gascap=$RPC_GAS_CAP"
       # Park the node at the snapshot head: no peers, no discovery.
       "--disable-discovery" "--max-outbound-peers=0" "--max-inbound-peers=0"
     )
