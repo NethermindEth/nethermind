@@ -104,17 +104,17 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(result.TransactionExecuted, Is.False);
     }
 
-    [Test]
-    public void Can_process_contract_creation_with_max_valid_nonce()
+    [TestCase(ulong.MaxValue - 1, true)]
+    [TestCase(ulong.MaxValue, false)]
+    public void Can_process_contract_creation_at_nonce_overflow_boundary(ulong nonce, bool executed)
     {
-        // EIP-2681/EELS: only nonce 2^64-1 overflows; 2^64-2 is valid for contract creation
-        // (amsterdam transactions.py raises NonceOverflowError only when nonce >= U64.MAX_VALUE).
-        _stateProvider.SetNonce(TestItem.AddressA, ulong.MaxValue - 1);
+        // EIP-2681 rejects only a transaction nonce of 2^64-1, so 2^64-2 remains usable for contract creation.
+        _stateProvider.SetNonce(TestItem.AddressA, nonce);
 
         ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .WithCode(Prepare.EvmCode.Op(Instruction.STOP).Done)
-            .WithNonce(ulong.MaxValue - 1)
+            .WithNonce(nonce)
             .WithGasLimit(gasLimit)
             .TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(10 * gasLimit).TestObject;
@@ -123,8 +123,15 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.Not.EqualTo(TransactionResult.NonceOverflow));
-            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(result.TransactionExecuted, Is.EqualTo(executed));
+            if (executed)
+            {
+                Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(ulong.MaxValue));
+            }
+            else
+            {
+                Assert.That(result, Is.EqualTo(TransactionResult.NonceOverflow));
+            }
         }
     }
 
