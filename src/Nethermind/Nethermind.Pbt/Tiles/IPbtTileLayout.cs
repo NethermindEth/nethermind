@@ -29,6 +29,9 @@ public interface IPbtTileLayout
     /// <summary>The deepest tile root depth, which is the deepest key this tiling ever writes.</summary>
     static abstract int MaxGroupDepth { get; }
 
+    /// <summary>Whether <paramref name="depth"/> is a tile root depth in this layout's grid.</summary>
+    static abstract bool IsGroupDepth(int depth);
+
     /// <summary>Whether the tile at <paramref name="depth"/> holds its children's blobs inside its own.</summary>
     static abstract bool IsClusteringDepth(int depth);
 

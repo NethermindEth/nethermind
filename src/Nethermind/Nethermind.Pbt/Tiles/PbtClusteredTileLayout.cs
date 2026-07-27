@@ -39,6 +39,8 @@ public readonly struct PbtClusteredTileLayout : IPbtTileLayout
 
     public static int MaskTrailerLength => MaxMaskTrailerLength;
 
+    public static bool IsGroupDepth(int depth) => depth >= RootDepth && depth % LevelsPerGroup == 0;
+
     /// <summary>Whether the tile holds child blobs.</summary>
     /// <remarks>Absolute depth prevents a splitting run from re-keying descendants.</remarks>
     public static bool IsClusteringDepth(int depth) => (depth & LevelsPerGroup) != 0;

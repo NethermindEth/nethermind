@@ -152,7 +152,7 @@ public static partial class TrieUpdater
             // along that prefix (invariant 3), so the deeper group is unbucketed and partitions for itself.
             // A deeper group has a run minted above it, so it is one no blob of this frame's holds: it owns
             // its own, however the run this frame replaces was held.
-            int branchDepth = GroupDepthOf(splitDepth);
+            int branchDepth = TLayout.GroupDepthOf(splitDepth);
             bool branchesHere = branchDepth == depth;
             if (branchesHere)
             {
@@ -205,7 +205,7 @@ public static partial class TrieUpdater
             // The run below this frame, at the one slot its path passes through: the target group itself
             // when it is the direct child, otherwise what is left of the run. Neither is stored under that
             // key — a boundary internal points at the target, and the remainder has never been a blob.
-            int targetSlot = SlotOf(targetPath, depth);
+            int targetSlot = TLayout.SlotOf(targetPath, depth);
             bool directChild = childDepth == chain.TargetDepth;
             NodeKind seedKind = directChild ? NodeKind.Internal : NodeKind.Chain;
             using RefCountingMemory seed = directChild
@@ -217,7 +217,7 @@ public static partial class TrieUpdater
             // is one of them: its blob moves out of the key the run left it under and into the cluster
             // this frame is about to write. A run below the child depth is not stored anywhere to begin
             // with, and rides in the seed as it always has.
-            using RefCountingMemory? adopted = directChild && IsClusteringDepth(depth)
+            using RefCountingMemory? adopted = directChild && TLayout.IsClusteringDepth(depth)
                 ? _store.GetTrieNode(chain.TargetKey)
                 : null;
             if (adopted is not null) _store.SetTrieNode(chain.TargetKey, null);
@@ -231,7 +231,7 @@ public static partial class TrieUpdater
             PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
 
-            GroupShape shape = IsClusteringDepth(depth)
+            GroupShape shape = TLayout.IsClusteringDepth(depth)
                 ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results, ref writer, ref builder)
                 : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results);
             occupants.MergeUntouchedSeed(results, shape.Touched);
