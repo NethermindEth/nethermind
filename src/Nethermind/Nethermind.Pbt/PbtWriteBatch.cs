@@ -63,7 +63,7 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
 
     /// <summary>The little-endian 32-bit words caching which buckets in <paramref name="level"/> are non-empty.</summary>
     public static ReadOnlySpan<int> ReadTouched<TLayout>(ReadOnlySpan<int> level) where TLayout : IPbtTileLayout =>
-        level.Slice(TouchedMaskIndex<TLayout>(), TouchedWordCount<TLayout>());
+        level[^TouchedWordCount<TLayout>()..];
 
     public static bool ContainsTouched<TLayout>(scoped ReadOnlySpan<int> level, int slot) where TLayout : IPbtTileLayout =>
         ((uint)ReadTouched<TLayout>(level)[slot >> 5] & (1u << (slot & 31))) != 0;
@@ -83,11 +83,11 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
     }
 
     public static void ClearTouched<TLayout>(Span<int> level) where TLayout : IPbtTileLayout =>
-        level.Slice(TouchedMaskIndex<TLayout>(), TouchedWordCount<TLayout>()).Clear();
+        level[^TouchedWordCount<TLayout>()..].Clear();
 
     public static void SetTouched<TLayout>(Span<int> level, int slot) where TLayout : IPbtTileLayout
     {
-        int word = TouchedMaskIndex<TLayout>() + (slot >> 5);
+        int word = level.Length - TouchedWordCount<TLayout>() + (slot >> 5);
         level[word] = (int)((uint)level[word] | (1u << (slot & 31)));
     }
 
@@ -119,7 +119,7 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
 
         internal BucketLevel(ReadOnlySpan<int> level)
         {
-            _counts = level[..BoundsLength<TLayout>()];
+            _counts = level[..^TouchedWordCount<TLayout>()];
             Touched = ReadTouchedMask<TLayout>(level);
         }
 
