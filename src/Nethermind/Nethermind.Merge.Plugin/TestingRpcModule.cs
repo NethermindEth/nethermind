@@ -32,7 +32,6 @@ namespace Nethermind.Merge.Plugin;
 public class TestingRpcModule(
     IBlockProducerEnvFactory blockProducerEnvFactory,
     IMainStateBlockProducerEnvFactory mainStateBlockProducerEnvFactory,
-    IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
@@ -40,13 +39,33 @@ public class TestingRpcModule(
     ILogManager logManager)
     : ITestingRpcModule, IDisposable
 {
+    // Keep testing_buildBlockV1 deterministic across client configurations. This target matches
+    // the execution-spec-tests fixture generator; explicit payload targetGasLimit still overrides it.
+    internal const ulong DefaultTestingGasLimit = 60_000_000;
+
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
     private readonly SemaphoreSlim _commitLock = new(1, 1);
+    private readonly IGasLimitCalculator _testingGasLimitCalculator = new TargetAdjustedGasLimitCalculator(
+        specProvider, new BlocksConfig { TargetBlockGasLimit = DefaultTestingGasLimit });
 
     // The commit pass updates the head without re-processing, so it must run on the main
     // world state to persist the produced post-state. Reuse across calls is safe because
     // BranchProcessor.Process opens a fresh world-state scope on entry.
     private readonly IBlockProducerEnv _commitEnv = mainStateBlockProducerEnvFactory.CreatePersistent();
+
+    public TestingRpcModule(
+        IBlockProducerEnvFactory blockProducerEnvFactory,
+        IMainStateBlockProducerEnvFactory mainStateBlockProducerEnvFactory,
+        IGasLimitCalculator gasLimitCalculator,
+        ISpecProvider specProvider,
+        IBlockFinder blockFinder,
+        IBlockTree blockTree,
+        IProcessExitSource processExitSource,
+        ILogManager logManager)
+        : this(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, specProvider, blockFinder,
+            blockTree, processExitSource, logManager)
+    {
+    }
 
     public void Dispose() => _commitLock.Dispose();
 
@@ -194,7 +213,7 @@ public class TestingRpcModule(
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            payloadAttributes.GetGasLimit(parent, gasLimitCalculator),
+            payloadAttributes.GetGasLimit(parent, _testingGasLimitCalculator),
             payloadAttributes.Timestamp,
             extraData ?? [])
         {
