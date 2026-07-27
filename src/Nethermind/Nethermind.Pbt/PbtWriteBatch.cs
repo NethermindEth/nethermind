@@ -109,6 +109,54 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
         return mask;
     }
 
+    /// <summary>Reads one encoded level as its touched slots and their contiguous entry ranges.</summary>
+    internal static BucketLevel<TLayout> ReadLevel<TLayout>(ReadOnlySpan<int> level) where TLayout : IPbtTileLayout =>
+        new(level);
+
+    internal readonly ref struct BucketLevel<TLayout> where TLayout : IPbtTileLayout
+    {
+        private readonly ReadOnlySpan<int> _counts;
+
+        internal BucketLevel(ReadOnlySpan<int> level)
+        {
+            _counts = level[..BoundsLength<TLayout>()];
+            Touched = ReadTouchedMask<TLayout>(level);
+        }
+
+        public SlotBitmask<TLayout> Touched { get; }
+
+        public Enumerator GetEnumerator() => new(_counts, Touched);
+
+        public ref struct Enumerator
+        {
+            private readonly ReadOnlySpan<int> _counts;
+            private SlotBitmask<TLayout>.Enumerator _slots;
+            private int _countIndex;
+            private int _entryOffset;
+
+            internal Enumerator(ReadOnlySpan<int> counts, SlotBitmask<TLayout> touched)
+            {
+                _counts = counts;
+                _slots = touched.GetEnumerator();
+                _countIndex = 0;
+                _entryOffset = 0;
+                Current = default;
+            }
+
+            public (int Slot, Range Range) Current { get; private set; }
+
+            public bool MoveNext()
+            {
+                if (!_slots.MoveNext()) return false;
+
+                int count = _counts[_countIndex++];
+                Current = (_slots.Current, _entryOffset..(_entryOffset + count));
+                _entryOffset += count;
+                return true;
+            }
+        }
+    }
+
     /// <param name="Stem">The 31-byte stem shared by every write in <paramref name="Changes"/>.</param>
     /// <param name="Changes">The stem's sub-index → 32-byte value writes; a zero value clears the leaf.</param>
     internal readonly record struct StemEntry(Stem Stem, IPbtStemChanges Changes);

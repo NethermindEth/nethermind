@@ -538,8 +538,8 @@ public static partial class TrieUpdater
 
             AssertCompactLevel(level, entries.Length);
 
-            ReadOnlySpan<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            PbtWriteBatch.BucketLevel<TLayout> buckets = PbtWriteBatch.ReadLevel<TLayout>(level);
+            SlotBitmask<TLayout> touched = buckets.Touched;
             PartitionResult partition = new(plan, branchDepth, isSorted);
             SlotBitmask<TLayout> storedChildren = default;
             BoundaryScan scan = default;
@@ -550,14 +550,10 @@ public static partial class TrieUpdater
 
             try
             {
-                int countIndex = 0;
-                int entryOffset = 0;
-                foreach (int slot in touched)
+                foreach ((int slot, Range range) in buckets)
                 {
                     TreeReader<TLayout> reader = occupants.Reader(slot, existing);
-                    int count = counts[countIndex++];
-                    Span<PbtWriteBatch.StemEntry> bucket = entries.Slice(entryOffset, count);
-                    entryOffset += count;
+                    Span<PbtWriteBatch.StemEntry> bucket = entries[range];
                     TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
                     BucketPlan childPlan = partition.GetChildPlan(slot);
 
@@ -635,15 +631,14 @@ public static partial class TrieUpdater
 
             AssertCompactLevel(level, entries.Length);
 
-            ReadOnlySpan<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            PbtWriteBatch.BucketLevel<TLayout> buckets = PbtWriteBatch.ReadLevel<TLayout>(level);
+            SlotBitmask<TLayout> touched = buckets.Touched;
             PartitionResult partition = new(plan, branchDepth, isSorted);
             if (MayQueue(touched, in fanout))
             {
-                int countIndex = 0;
-                foreach (int slot in touched)
+                foreach ((_, Range range) in buckets)
                 {
-                    if (counts[countIndex++] < _minQueueEntries) continue;
+                    if (range.End.Value - range.Start.Value < _minQueueEntries) continue;
 
                     return ResolveClusteredBoundariesParallel(
                         key, entries, occupants, existing, untouched,
@@ -661,8 +656,7 @@ public static partial class TrieUpdater
                 if (occupants.HasChild(slot, existing)) childSlots.Set(slot);
             }
 
-            int serialCountIndex = 0;
-            int entryOffset = 0;
+            PbtWriteBatch.BucketLevel<TLayout>.Enumerator bucketEnumerator = buckets.GetEnumerator();
             foreach (int slot in touched | childSlots)
             {
                 if (!touched[slot])
@@ -671,12 +665,13 @@ public static partial class TrieUpdater
                     continue;
                 }
 
+                bucketEnumerator.MoveNext();
+                (int bucketSlot, Range range) = bucketEnumerator.Current;
+                Debug.Assert(bucketSlot == slot, "the level's buckets and touched slots must have the same order");
                 TreeReader<TLayout> reader = occupants.Reader(slot, existing);
                 Occupant occupant = reader.Occupant;
                 ref NodeResult result = ref results[slot];
-                int count = counts[serialCountIndex++];
-                Span<PbtWriteBatch.StemEntry> bucket = entries.Slice(entryOffset, count);
-                entryOffset += count;
+                Span<PbtWriteBatch.StemEntry> bucket = entries[range];
                 TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
                 BucketPlan childPlan = partition.GetChildPlan(slot);
                 bool childChanged;
@@ -714,8 +709,8 @@ public static partial class TrieUpdater
             scoped ReadOnlySpan<int> level, int branchDepth, bool isSorted, ref BufferWriter writer,
             ref PbtNodeCluster.Builder cluster)
         {
-            ReadOnlySpan<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            PbtWriteBatch.BucketLevel<TLayout> buckets = PbtWriteBatch.ReadLevel<TLayout>(level);
+            SlotBitmask<TLayout> touched = buckets.Touched;
             PartitionResult partition = new(plan, branchDepth, isSorted);
             SlotBitmask<TLayout> childSlots = default;
             for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
@@ -728,15 +723,11 @@ public static partial class TrieUpdater
             QueuedBuckets queued = default;
             try
             {
-                int countIndex = 0;
-                int entryOffset = 0;
-                foreach (int slot in touched)
+                foreach ((int slot, Range range) in buckets)
                 {
                     TreeReader<TLayout> reader = occupants.Reader(slot, existing);
                     TreeReader<TLayout> child = occupants.Child(slot, existing);
-                    int count = counts[countIndex++];
-                    Span<PbtWriteBatch.StemEntry> bucket = entries.Slice(entryOffset, count);
-                    entryOffset += count;
+                    Span<PbtWriteBatch.StemEntry> bucket = entries[range];
                     TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
                     BucketPlan childPlan = partition.GetChildPlan(slot);
 
@@ -1308,19 +1299,20 @@ public static partial class TrieUpdater
         [Conditional("DEBUG")]
         private static void AssertCompactLevel(ReadOnlySpan<int> level, int entryCount)
         {
-            ReadOnlySpan<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            int countIndex = 0;
+            PbtWriteBatch.BucketLevel<TLayout> buckets = PbtWriteBatch.ReadLevel<TLayout>(level);
             int total = 0;
-            foreach (int _ in PbtWriteBatch.ReadTouchedMask<TLayout>(level))
+            foreach ((_, Range range) in buckets)
             {
-                Debug.Assert(counts[countIndex] > 0, "a touched slot must have a positive compact count");
-                total += counts[countIndex++];
+                int count = range.End.Value - range.Start.Value;
+                Debug.Assert(count > 0, "a touched slot must have a positive compact count");
+                total += count;
             }
 
             Debug.Assert(total == entryCount, "compact counts must cover the frame's entries");
-            for (; countIndex < counts.Length; countIndex++)
+            ReadOnlySpan<int> unusedCounts = level[buckets.Touched.Count..PbtWriteBatch.BoundsLength<TLayout>()];
+            foreach (int count in unusedCounts)
             {
-                Debug.Assert(counts[countIndex] == 0, "the unused compact-count tail must be zero");
+                Debug.Assert(count == 0, "the unused compact-count tail must be zero");
             }
         }
 
