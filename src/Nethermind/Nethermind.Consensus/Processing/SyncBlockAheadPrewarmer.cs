@@ -100,10 +100,14 @@ public sealed class SyncBlockAheadPrewarmer : IDisposable
                 {
                     if (token.IsCancellationRequested || IsStale(generation) || warmed >= _depth) return null;
                     ulong target = number + (ulong)warmed;
-                    warmed++;
                     Block? best = _blockTree.BestSuggestedBody;
+                    // Not downloaded yet: don't consume the depth budget on a transient miss, otherwise a
+                    // single early miss (N+1 not yet suggested) permanently ends warming for this head.
                     if (best is not null && target > (ulong)best.Number) return null;
-                    return _blockTree.FindBlock(target, BlockTreeLookupOptions.None);
+                    Block? block = _blockTree.FindBlock(target, BlockTreeLookupOptions.None);
+                    if (block is null) return null;
+                    warmed++;
+                    return block;
                 },
                 IdlePassDelayMs,
                 _cts.Token);
