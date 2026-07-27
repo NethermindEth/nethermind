@@ -80,7 +80,7 @@ public class PbtScopeProviderBenchmark
     [Params(1)]
     public int ChainDepth { get; set; }
 
-    // PBT only: 1 folds on the calling thread; 0 uses processor count. Batches under 128 stems fold serially.
+    // PBT only: 1 folds on the calling thread; 0 uses processor count. Batches under 1024 stems fold serially.
     [Params(1, 0)]
     public int RootFoldConcurrency { get; set; }
 

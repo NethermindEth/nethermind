@@ -332,9 +332,9 @@ public static partial class TrieUpdater
             int mark = writer.WrittenCount;
             PbtNodeCluster.Builder bare = default;
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, existing.BoundaryShape(), plan, fanout, results);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, existing, existing.BoundaryShape(), plan, fanout, results);
             result = RebuildNode(
-                key, occupants, results, shape, beforeHash, existing.Stats, ref writer, ref bare, mark,
+                key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref bare, mark,
                 out changed, out delta);
         }
 
@@ -357,9 +357,9 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.Span;
 
             GroupShape shape = ResolveClusteredBoundaries(
-                key, entries, occupants, existing.BoundaryShape(), plan, fanout, results, ref writer, ref builder);
+                key, entries, occupants, existing, existing.BoundaryShape(), plan, fanout, results, ref writer, ref builder);
             result = RebuildNode(
-                key, occupants, results, shape, beforeHash, existing.Stats, ref writer, ref builder, mark: 0,
+                key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref builder, mark: 0,
                 out changed, out delta);
         }
 
@@ -536,12 +536,12 @@ public static partial class TrieUpdater
             // range is bucketed once however this frame reached here.
             BucketPlan resolvePlan = new(buckets, entriesBranch);
             GroupShape shape = TLayout.IsClusteringDepth(depth)
-                ? ResolveClusteredBoundaries(key, entries, occupants, occupants.BoundaryShape(), resolvePlan, fanout, results, ref writer, ref builder)
-                : ResolveBoundaries(key, entries, occupants, occupants.BoundaryShape(), resolvePlan, fanout, results);
+                ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results, ref writer, ref builder)
+                : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results);
             occupants.MergeUntouchedSeed(results, shape.Touched);
 
             result = RebuildNode(
-                key, occupants, results, shape, pushed.NodeHash(), beforeStats, ref writer, ref builder, mark,
+                key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, ref writer, ref builder, mark,
                 out changed, out delta);
         }
 
@@ -580,6 +580,7 @@ public static partial class TrieUpdater
         /// The frame's boundary occupants, read on demand from a stored group encoding or from the one
         /// node a run-split or pushed stem seeds.
         /// </param>
+        /// <param name="existing">The already decoded stored group; default for a seeded frame with no stored group.</param>
         /// <param name="untouched">
         /// The boundary the frame started with, from which the slots no write reaches carry over: a stored
         /// group's own shape, or the lone occupant a run-split or pushed stem seeds.
@@ -588,12 +589,11 @@ public static partial class TrieUpdater
         /// <param name="fanout"><inheritdoc cref="ApplyGroup" path="/param[@name='fanout']"/></param>
         private GroupShape ResolveBoundaries(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader occupants,
-            in BoundarySlotMasks<TLayout> untouched, scoped BucketPlan plan, in Fanout fanout,
-            Span<NodeResult> results)
+            in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
+            scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results)
         {
             int depth = key.Depth;
             AssertBranchDepthSound(entries, depth, plan.BranchDepth);
-            PbtTrieNodeGroup<TLayout> existing = occupants.Group();
 
             // A precalculated level is already a bounds array over this very range, so it is read where it
             // lies; a range known not to part until deeper than this group falls in one bucket, so its
@@ -670,16 +670,17 @@ public static partial class TrieUpdater
         /// Both masks are ascending and walked as one, which is what keeps the children going into the
         /// blob in the order they are read back out of it.
         /// </summary>
+        /// <param name="existing"><inheritdoc cref="ResolveBoundaries" path="/param[@name='existing']"/></param>
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
         /// <param name="cluster">The blob this frame is assembling around its children.</param>
         private GroupShape ResolveClusteredBoundaries(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader occupants,
-            in BoundarySlotMasks<TLayout> untouched, scoped BucketPlan plan, in Fanout fanout,
-            Span<NodeResult> results, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
+            in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
+            scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results, ref BufferWriter writer,
+            ref PbtNodeCluster.Builder cluster)
         {
             int depth = key.Depth;
             AssertBranchDepthSound(entries, depth, plan.BranchDepth);
-            PbtTrieNodeGroup<TLayout> existing = occupants.Group();
 
             Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
             scoped ReadOnlySpan<int> level;
@@ -710,7 +711,7 @@ public static partial class TrieUpdater
                     if (bounds[slot + 1] - bounds[slot] < _minQueueEntries) continue;
 
                     return ResolveClusteredBoundariesParallel(
-                        key, entries, occupants, untouched, plan, fanout, results, level, branchDepth, ref writer, ref cluster);
+                        key, entries, occupants, existing, untouched, plan, fanout, results, level, branchDepth, ref writer, ref cluster);
                 }
             }
 
@@ -768,11 +769,11 @@ public static partial class TrieUpdater
         /// </summary>
         private GroupShape ResolveClusteredBoundariesParallel(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader occupants,
-            in BoundarySlotMasks<TLayout> untouched, scoped BucketPlan plan, in Fanout fanout,
-            Span<NodeResult> results, scoped ReadOnlySpan<int> level, int branchDepth,
-            ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
+            in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
+            scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results,
+            scoped ReadOnlySpan<int> level, int branchDepth, ref BufferWriter writer,
+            ref PbtNodeCluster.Builder cluster)
         {
-            PbtTrieNodeGroup<TLayout> existing = occupants.Group();
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
             SlotBitmask<TLayout> childSlots = default;
@@ -977,6 +978,7 @@ public static partial class TrieUpdater
         /// carries that occupant into <paramref name="results"/> when no write touches its slot.
         /// </remarks>
         /// <param name="occupants"><inheritdoc cref="ResolveBoundaries" path="/param[@name='occupants']"/></param>
+        /// <param name="existing"><inheritdoc cref="ResolveBoundaries" path="/param[@name='existing']"/></param>
         /// <param name="beforeHash">The hash the root position contributed before, against which <paramref name="changed"/> is decided.</param>
         /// <param name="beforeStats">
         /// What this frame's subtree amounted to before the writes, which <paramref name="delta"/> is
@@ -1002,11 +1004,11 @@ public static partial class TrieUpdater
         /// </param>
         [SkipLocalsInit]
         private NodeResult RebuildNode(
-            in TrieNodeKey key, in TreeReader occupants, Span<NodeResult> results, in GroupShape shape,
-            in ValueHash256 beforeHash, in PbtSubtreeStats beforeStats, ref BufferWriter writer,
-            ref PbtNodeCluster.Builder cluster, int mark, out bool changed, out PbtSubtreeStats delta)
+            in TrieNodeKey key, in TreeReader occupants, in PbtTrieNodeGroup<TLayout> existing,
+            Span<NodeResult> results, in GroupShape shape, in ValueHash256 beforeHash,
+            in PbtSubtreeStats beforeStats, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster,
+            int mark, out bool changed, out PbtSubtreeStats delta)
         {
-            PbtTrieNodeGroup<TLayout> existing = occupants.Group();
             bool isRoot = key.Depth == 0;
             bool headsCluster = TLayout.IsClusteringDepth(key.Depth);
             BoundarySlotMasks<TLayout> boundary = shape.Boundary;

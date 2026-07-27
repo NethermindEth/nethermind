@@ -70,7 +70,9 @@ public static partial class TrieUpdater
             _minQueueEntries = threadCount == 1
                 ? int.MaxValue
                 : Math.Max(HardMinimumStems, changes.Count / threadCount / TargetJobsPerThread);
-            _executor = new WorkStealingExecutor<Updater<TLayout>, BucketJob>(threadCount, this, this, this);
+            _executor = threadCount == 1
+                ? null
+                : new WorkStealingExecutor<Updater<TLayout>, BucketJob>(threadCount, this, this, this);
         }
 
         /// <summary>One more thread's updater, folding the same batch with the same settings.</summary>
@@ -128,17 +130,20 @@ public static partial class TrieUpdater
         /// </remarks>
         public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
-            _executor!.Start();
+            WorkStealingExecutor<Updater<TLayout>, BucketJob>? executor = _executor;
+            if (executor is null) return Descend(currentRoot, changes, default, out delta);
+
+            executor.Start();
 
             try
             {
-                ValueHash256 root = Descend(currentRoot, changes, new Fanout(_executor.MainQueue), out delta);
-                _executor.Complete();
+                ValueHash256 root = Descend(currentRoot, changes, new Fanout(executor.MainQueue), out delta);
+                executor.Complete();
                 return root;
             }
             finally
             {
-                _executor.Dispose();
+                executor.Dispose();
             }
         }
 
@@ -294,16 +299,20 @@ public static partial class TrieUpdater
         /// Where a frame hands the buckets it is not folding itself: the queue of the thread running it,
         /// which arrives with the job rather than being anything the updater keeps.
         /// </summary>
-        private readonly struct Fanout(WorkStealingExecutor<Updater<TLayout>, BucketJob>.JobQueue queue)
+        private readonly struct Fanout(WorkStealingExecutor<Updater<TLayout>, BucketJob>.JobQueue? queue = null)
         {
             /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.JobQueue.CanQueue"/>
-            public bool CanQueue => queue.CanQueue;
+            public bool CanQueue => queue?.CanQueue ?? false;
 
             /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.JobQueue.TryQueue"/>
-            public bool TryQueue(in BucketJob job, ref QueuedBuckets queued) => queue.TryQueue(in job, ref queued.Jobs);
+            public bool TryQueue(in BucketJob job, ref QueuedBuckets queued) =>
+                queue is not null && queue.TryQueue(in job, ref queued.Jobs);
 
             /// <inheritdoc cref="WorkStealingExecutor{TWorkerState, TJob}.JobQueue.Wait"/>
-            public void Wait(in QueuedBuckets queued) => queue.Wait(in queued.Jobs);
+            public void Wait(in QueuedBuckets queued)
+            {
+                if (queue is not null) queue.Wait(in queued.Jobs);
+            }
         }
 
         /// <summary>The buckets one frame has handed out and not yet settled.</summary>
