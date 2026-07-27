@@ -76,7 +76,7 @@ public static partial class EvmInstructions
         TOpMath.Operation(in a, in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
 
-        if (TTracingInst.IsActive) stack.ReportPushUInt256(ref topRef);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:

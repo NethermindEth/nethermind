@@ -25,23 +25,22 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>Mask covering one weakness nibble.</summary>
         public const uint WeaknessNibbleMask = 0xFu;
 
-        /// <summary>
-        /// Tracked contexts indexed by their nibble position 0..<see cref="TrackedContextCount"/>-1.
-        /// First six entries match <see cref="AllocationAllowances.OrderedSingleContexts"/>;
-        /// <see cref="AllocationContexts.BlockAccessLists"/> and <see cref="AllocationContexts.Blocks"/>
-        /// have no allocation slot but participate in weakness.
-        /// </summary>
-        public static readonly AllocationContexts[] OrderedTrackedContexts =
-        [
-            AllocationContexts.Headers,
-            AllocationContexts.Bodies,
-            AllocationContexts.Receipts,
-            AllocationContexts.State,
-            AllocationContexts.Snap,
-            AllocationContexts.ForwardHeader,
-            AllocationContexts.BlockAccessLists,
-            AllocationContexts.Blocks,
-        ];
+        /// <summary>Nibble/slot index of a single tracked <paramref name="context"/> — the fixed inverse of <see cref="ContextAt"/>.</summary>
+        /// <remarks>
+        /// Each single-bit context sits at the nibble matching its bit index (<see cref="AllocationContexts.Headers"/>=0 …
+        /// <see cref="AllocationContexts.BlockAccessLists"/>=6); the composite <see cref="AllocationContexts.Blocks"/>
+        /// takes the last slot. No allocation slot exists for <see cref="AllocationContexts.BlockAccessLists"/>/<see cref="AllocationContexts.Blocks"/>, but both participate in weakness.
+        /// </remarks>
+        public static int IndexOf(AllocationContexts context) =>
+            context == AllocationContexts.Blocks
+                ? TrackedContextCount - 1
+                : BitOperations.TrailingZeroCount((uint)context);
+
+        /// <summary>Tracked context stored at nibble/slot <paramref name="index"/> — the fixed inverse of <see cref="IndexOf"/>.</summary>
+        public static AllocationContexts ContextAt(int index) =>
+            index == TrackedContextCount - 1
+                ? AllocationContexts.Blocks
+                : (AllocationContexts)(1u << index);
 
         /// <summary>Builds a 1-per-participating-nibble delta for the packed weakness word.</summary>
         public static uint BuildDelta(AllocationContexts contexts)
@@ -49,7 +48,7 @@ namespace Nethermind.Synchronization.Peers
             uint delta = 0;
             for (int i = 0; i < TrackedContextCount; i++)
             {
-                AllocationContexts ctx = OrderedTrackedContexts[i];
+                AllocationContexts ctx = ContextAt(i);
                 if ((contexts & ctx) == ctx) delta |= 1u << (i * WeaknessBits);
             }
             return delta;
@@ -78,7 +77,7 @@ namespace Nethermind.Synchronization.Peers
             AllocationContexts sleeps = AllocationContexts.None;
             for (int i = 0; i < TrackedContextCount; i++)
             {
-                AllocationContexts ctx = OrderedTrackedContexts[i];
+                AllocationContexts ctx = ContextAt(i);
                 if ((requested & ctx) != ctx) continue;
                 if (((weaknesses >> (i * WeaknessBits)) & WeaknessNibbleMask) >= threshold)
                     sleeps |= ctx;
@@ -92,7 +91,7 @@ namespace Nethermind.Synchronization.Peers
             uint clearMask = 0;
             for (int i = 0; i < TrackedContextCount; i++)
             {
-                AllocationContexts ctx = OrderedTrackedContexts[i];
+                AllocationContexts ctx = ContextAt(i);
                 if ((requested & ctx) == ctx)
                     clearMask |= WeaknessNibbleMask << (i * WeaknessBits);
             }

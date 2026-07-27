@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  CATALOG_ROOT: https://pub-5345007fbd06486bbb7cbbe9f3112c45.r2.dev/devnets/glamsterdam-devnet-5
+  CATALOG_ROOT: https://pub-df22334654034ebab51bc096137a59d8.r2.dev/devnets/glamsterdam-devnet-7
 
 jobs:
   build:
@@ -188,6 +188,7 @@ jobs:
             archive_name="$(basename "$archive_path")"
             archive="$SUMMARY_DIR/archives/$archive_name"
             batch_dir="$SUMMARY_DIR/extracted/${archive_name%.tar.zst}"
+            batch_manifest="$batch_dir/.meta/manifest.json"
 
             echo "Downloading $archive_path"
             if ! curl -fsSL "$CATALOG_ROOT/$archive_path" -o "$archive"; then
@@ -206,7 +207,7 @@ jobs:
               continue
             fi
 
-            if ! jq -e '.artifacts | type == "array" and length > 0' "$batch_dir/manifest.json" > /dev/null 2>&1; then
+            if ! jq -e '.artifacts | type == "array" and length > 0' "$batch_manifest" > /dev/null 2>&1; then
               record_batch_failure "$archive_name" "missing or empty block manifest"
               continue
             fi
@@ -214,21 +215,27 @@ jobs:
             while IFS= read -r artifact; do
               block_number="$(jq -r '.blockNumber' <<< "$artifact")"
               block_hash="$(jq -r '.blockHash' <<< "$artifact")"
-              input_sha="$(jq -r '.statelessInputSha256' <<< "$artifact" | sed 's/^0x//')"
+              fixture_sha="$(jq -r '.fixtureSha256 // empty' <<< "$artifact" | sed 's/^0x//')"
+              input_byte_length="$(jq -r '.statelessInputByteLength // empty' <<< "$artifact")"
               artifact_path="$(jq -r '.archivePath' <<< "$artifact")"
-              block_json="$SUMMARY_DIR/block-$block_number.json"
+              block_json="$batch_dir/$artifact_path"
               input_hex_file="$SUMMARY_DIR/block-$block_number.hex"
               raw_input_file="$SUMMARY_DIR/block-$block_number.raw.ssz"
               input_file="$guest_dir/bin/$block_number.ssz"
               log_file="$SUMMARY_DIR/logs/$block_number.log"
 
-              if ! zstd -dc "$batch_dir/$artifact_path" > "$block_json"; then
-                record_failure "$block_number" "$block_hash" "failed to decompress block artifact"
+              if [ ! -f "$block_json" ]; then
+                record_failure "$block_number" "$block_hash" "block fixture is missing"
                 continue
               fi
 
-              if ! jq -r '.statelessInputBytes // .stateless_input_bytes // empty' "$block_json" > "$input_hex_file"; then
-                record_failure "$block_number" "$block_hash" "failed to read statelessInputBytes"
+              if [ -n "$fixture_sha" ] && ! echo "$fixture_sha  $block_json" | sha256sum --check --status; then
+                record_failure "$block_number" "$block_hash" "fixture checksum mismatch"
+                continue
+              fi
+
+              if ! jq -er 'to_entries | if length != 1 then empty else .[0].value.blocks | if length != 1 then empty else .[0].statelessInputBytes // empty end end' "$block_json" > "$input_hex_file"; then
+                record_failure "$block_number" "$block_hash" "unsupported EEST fixture shape or missing statelessInputBytes"
                 continue
               fi
 
@@ -242,8 +249,9 @@ jobs:
                 continue
               fi
 
-              if ! echo "$input_sha  $raw_input_file" | sha256sum --check --status; then
-                record_failure "$block_number" "$block_hash" "statelessInputBytes checksum mismatch"
+              actual_input_byte_length="$(wc -c < "$raw_input_file" | tr -d ' ')"
+              if [ -n "$input_byte_length" ] && [ "$actual_input_byte_length" -ne "$input_byte_length" ]; then
+                record_failure "$block_number" "$block_hash" "statelessInputBytes length mismatch"
                 continue
               fi
 
@@ -271,8 +279,8 @@ jobs:
                 passed=$((passed + 1))
               fi
 
-              rm -f "$input_file" "$raw_input_file" "$block_json" "$input_hex_file"
-            done < <(jq -c '.artifacts[]' "$batch_dir/manifest.json")
+              rm -f "$input_file" "$raw_input_file" "$input_hex_file"
+            done < <(jq -c '.artifacts[]' "$batch_manifest")
 
             rm -rf "$archive" "$batch_dir"
           done < <(jq -c '.[]' <<< "$BATCHES_JSON")

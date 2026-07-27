@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
@@ -126,7 +127,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching,
+            static worldState => new EthereumCodeInfoRepository(worldState),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -197,7 +198,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching,
+            static worldState => new EthereumCodeInfoRepository(worldState),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -256,7 +257,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), CodeInfoRepositoryFactories.Caching);
+        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -278,7 +279,6 @@ public class BlockProcessorTests
             processor,
             HoodiSpecProvider.Instance,
             stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             preWarmer);
@@ -374,6 +374,44 @@ public class BlockProcessorTests
         Assert.That(eventFired, Is.True, "TransactionsExecuted should fire after ProcessTransactions completes");
     }
 
+    [Test]
+    public void ProcessOne_wraps_parallel_bal_failure_for_sequential_retry()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        IBlockAccessListManager balManager = new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>());
+        BlockProcessor processor = new(
+            HoodiSpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            transactionsExecutor,
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor),
+            balManager);
+
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
+        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(block.Header, "invalid BAL");
+        transactionsExecutor.ProcessTransactions(
+                Arg.Any<Block>(),
+                Arg.Any<ProcessingOptions>(),
+                Arg.Any<BlockReceiptsTracer>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => throw new BlockAccessListManager.ParallelExecutionException(failure));
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+
+        BlockProcessor.BlockAccessListSequentialRetryException? exception = Assert.Throws<BlockProcessor.BlockAccessListSequentialRetryException>(
+            () => processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
+
+        Assert.That(exception!.InnerException, Is.SameAs(failure));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event()
     {
@@ -436,6 +474,60 @@ public class BlockProcessorTests
         Assert.That(processedBlocks, Has.Length.EqualTo(1), "block should process successfully without a prewarmer");
     }
 
+    [TestCase(true, 2)]
+    [TestCase(false, 1)]
+    public async Task BranchProcessor_retries_only_parallel_bal_failures(bool retryable, int expectedAttempts)
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
+            builder.AddDecorator<IBlockProcessor>((context, inner) =>
+                new BalFailureBlockProcessor(inner, context.Resolve<IWorldState>(), retryable)));
+        BalFailureBlockProcessor processor = (BalFailureBlockProcessor)chain.BlockProcessor;
+        Block parent = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithParent(parent).WithAuthor(TestItem.AddressD).TestObject;
+
+        if (retryable)
+        {
+            Assert.DoesNotThrow(() => chain.BranchProcessor.Process(
+                parent.Header,
+                [block],
+                ProcessingOptions.NoValidation,
+                NullBlockTracer.Instance));
+        }
+        else
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() =>
+                chain.BranchProcessor.Process(
+                    parent.Header,
+                    [block],
+                    ProcessingOptions.NoValidation,
+                    NullBlockTracer.Instance));
+        }
+
+        Assert.That(processor.Attempts, Is.EqualTo(expectedAttempts));
+    }
+
+    [Test]
+    public async Task BranchProcessor_forces_sequential_bal_processing_for_external_tracer()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
+            builder.AddDecorator<IBlockProcessor>((_, inner) => new ProcessingOptionsRecordingBlockProcessor(inner)));
+        ProcessingOptionsRecordingBlockProcessor processor = (ProcessingOptionsRecordingBlockProcessor)chain.BlockProcessor;
+        Block parent = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithParent(parent).WithAuthor(TestItem.AddressD).TestObject;
+
+        chain.BranchProcessor.Process(
+            parent.Header,
+            [block],
+            ProcessingOptions.NoValidation,
+            new RecordingParallelSafeBlockTracer());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processor.Attempts, Is.EqualTo(1));
+            Assert.That(processor.ObservedOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.True);
+        }
+    }
+
     [Test]
     public void NullBlockProcessor_TransactionsExecuted_subscribe_unsubscribe_is_safe()
     {
@@ -480,7 +572,7 @@ public class BlockProcessorTests
         public CancellationToken CapturedToken { get; private set; }
 
         public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
-            CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+            CancellationToken cancellationToken = default)
         {
             CapturedToken = cancellationToken;
             return Task.CompletedTask;
@@ -513,7 +605,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            static worldState => new EthereumCodeInfoRepository(worldState));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
@@ -557,7 +649,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            static worldState => new EthereumCodeInfoRepository(worldState));
 
         Address lowAddress = TestItem.AddressA;
         Address highAddress = TestItem.AddressB;
@@ -1058,7 +1150,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching,
+            static worldState => new EthereumCodeInfoRepository(worldState),
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)
@@ -1349,6 +1441,88 @@ public class BlockProcessorTests
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
+        }
+    }
+
+    private sealed class BalFailureBlockProcessor(
+        IBlockProcessor inner,
+        IWorldState worldState,
+        bool retryable)
+        : IBlockProcessor
+    {
+        private static readonly Address TransientAddress = TestItem.AddressF;
+
+        public int Attempts { get; private set; }
+
+        public event Action? TransactionsExecuted
+        {
+            add => inner.TransactionsExecuted += value;
+            remove => inner.TransactionsExecuted -= value;
+        }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+            Block suggestedBlock,
+            ProcessingOptions options,
+            IBlockTracer blockTracer,
+            IReleaseSpec spec,
+            CancellationToken token = default)
+        {
+            if (suggestedBlock.IsGenesis)
+            {
+                return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+            }
+
+            Attempts++;
+            if (Attempts == 1)
+            {
+                Assert.That(worldState.AccountExists(TransientAddress), Is.False);
+                worldState.CreateAccount(TransientAddress, 1);
+                worldState.Commit(spec);
+
+                BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure =
+                    new(suggestedBlock.Header, "invalid BAL");
+                if (retryable)
+                {
+                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure);
+                }
+
+                throw failure;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.True);
+                Assert.That(worldState.AccountExists(TransientAddress), Is.False);
+            }
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        }
+    }
+
+    private sealed class ProcessingOptionsRecordingBlockProcessor(IBlockProcessor inner) : IBlockProcessor
+    {
+        public int Attempts { get; private set; }
+        public ProcessingOptions ObservedOptions { get; private set; }
+
+        public event Action? TransactionsExecuted
+        {
+            add => inner.TransactionsExecuted += value;
+            remove => inner.TransactionsExecuted -= value;
+        }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+            Block suggestedBlock,
+            ProcessingOptions options,
+            IBlockTracer blockTracer,
+            IReleaseSpec spec,
+            CancellationToken token = default)
+        {
+            if (!suggestedBlock.IsGenesis)
+            {
+                Attempts++;
+                ObservedOptions = options;
+            }
+
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
     }
 

@@ -1,0 +1,103 @@
+name: Build test artifacts
+
+# Reusable per-RID producer: builds the test binaries once and uploads them so
+# consumers can `dotnet test --no-build`. See PR #12371 for the design rationale.
+
+on:
+  workflow_call:
+    inputs:
+      matrix:
+        description: JSON strategy matrix; each include entry needs rid, os, variant, build_args.
+        required: true
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build ${{ matrix.variant }} (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Redirect build output to the large scratch disk (Linux)
+        # Build on the ~70 GB /mnt; the multi-RID output overflows the ~21 GB root disk.
+        if: runner.os == 'Linux'
+        run: |
+          sudo mkdir -p /mnt/nm-artifacts
+          sudo chown "$(id -u):$(id -g)" /mnt/nm-artifacts
+          ln -s /mnt/nm-artifacts src/Nethermind/artifacts
+
+      - name: Free up disk space (Linux)
+        # Checkout + submodules + SDK + NuGet cache still land on the root disk and can
+        # exhaust its remaining free space; the runner worker then dies on ENOSPC mid-build,
+        # leaving a red job with no logs. Drop the unused preinstalled toolchains for headroom.
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
+      - name: Free up disk space (macOS)
+        # No /mnt on macOS; reclaim disk for the build (a framework-dependent build needs no Xcode).
+        if: runner.os == 'macOS'
+        run: |
+          sudo rm -rf /Applications/Xcode_*.app || true
+          sudo rm -rf "$HOME/Library/Developer/CoreSimulator" /Library/Developer/CoreSimulator || true
+
+      - name: Restore
+        run: |
+          dotnet restore src/Nethermind/Nethermind.slnx
+          dotnet restore src/Nethermind/EthereumTests.slnx
+
+      - name: Build
+        # Skip analyzers (run in code-lint); source generators still run, so binaries are identical.
+        run: |
+          dotnet build src/Nethermind/Nethermind.slnx -c release --no-restore -p:RunAnalyzersDuringBuild=false ${{ matrix.build_args }}
+          dotnet build src/Nethermind/EthereumTests.slnx -c release --no-restore -p:RunAnalyzersDuringBuild=false ${{ matrix.build_args }}
+
+      - name: Prune foreign-RID native assets
+        run: bash scripts/ci/prune-runtimes.sh "${{ matrix.rid }}"
+
+      - name: Deduplicate build output
+        # Hardlink duplicate files so tar stores each once. Best-effort.
+        if: runner.os == 'Linux'
+        run: |
+          if sudo apt-get install -y --no-install-recommends rdfind >/dev/null 2>&1; then
+            rdfind -makehardlinks true -makeresultsfile false src/Nethermind/artifacts/bin || true
+          else
+            echo "::warning::rdfind unavailable; artifact will not be deduplicated"
+          fi
+
+      - name: Stamp artifact marker
+        run: printf '%s\n%s\n' "${{ matrix.rid }}" "${{ matrix.variant }}" > src/Nethermind/artifacts/bin/.artifact-marker
+
+      - name: Package
+        # tar (not a raw upload) to preserve the apphost +x bit that upload-artifact's zip drops.
+        run: tar -C src/Nethermind -cf test-bin.tar artifacts/bin
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-bin-${{ matrix.variant }}-${{ matrix.rid }}
+          path: test-bin.tar
+          compression-level: 1
+          retention-days: 1
+          if-no-files-found: error

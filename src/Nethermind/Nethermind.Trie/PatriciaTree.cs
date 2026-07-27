@@ -958,6 +958,11 @@ namespace Nethermind.Trie
                         return default;
                     }
 
+                    if (remainingKey.Length == 0)
+                    {
+                        return default;
+                    }
+
                     int nib = remainingKey[0];
                     path.AppendMut(nib);
                     TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);

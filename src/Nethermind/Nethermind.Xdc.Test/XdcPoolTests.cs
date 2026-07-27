@@ -94,4 +94,31 @@ public class XdcPoolTests
         Assert.That(pool.GetCount(voteRound1), Is.EqualTo(0));
         Assert.That(pool.GetCount(voteRound2), Is.EqualTo(1));
     }
+
+    [Test]
+    public void RemoveRoundsOutsideRetention_ExpiredRounds_RemovesOnlyExpiredRounds()
+    {
+        const ulong latestRound = 12;
+        const ulong retainedRoundCount = XdcConstants.PoolHygieneRound;
+        const ulong expiredRound = latestRound - retainedRoundCount;
+        const ulong oldestRetainedRound = expiredRound + 1;
+
+        XdcPool<Vote> pool = new();
+        Vote expiredVote = BuildVote(MakeBlockInfo(expiredRound), TestItem.PrivateKeyA);
+        Vote oldestRetainedVote = BuildVote(MakeBlockInfo(oldestRetainedRound), TestItem.PrivateKeyA);
+        Vote latestVote = BuildVote(MakeBlockInfo(latestRound), TestItem.PrivateKeyA);
+
+        pool.Add(expiredVote);
+        pool.Add(oldestRetainedVote);
+        pool.Add(latestVote);
+
+        pool.RemoveRoundsOutsideRetention(latestRound, retainedRoundCount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.GetCount(expiredVote), Is.Zero);
+            Assert.That(pool.GetCount(oldestRetainedVote), Is.EqualTo(1));
+            Assert.That(pool.GetCount(latestVote), Is.EqualTo(1));
+        }
+    }
 }

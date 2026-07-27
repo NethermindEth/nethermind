@@ -90,9 +90,13 @@ namespace Nethermind.State
             {
                 KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
 
-                Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : _decoder.Encode(account);
+                // EncodeAsBytes skips the throwaway Rlp wrapper that _decoder.Encode(account) would
+                // allocate for every changed account on each block commit.
+                byte[]? accountBytes = account is null ? null
+                    : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes
+                    : _decoder.EncodeAsBytes(account);
 
-                _bulkWrite.Add(new BulkSetEntry(keccak, accountRlp?.Bytes));
+                _bulkWrite.Add(new BulkSetEntry(keccak, accountBytes));
             }
 
             public void Dispose()

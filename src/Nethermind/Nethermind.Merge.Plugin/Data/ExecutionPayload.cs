@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -70,6 +71,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             ArgumentNullException.ThrowIfNull(value);
             _encodedTransactions = value;
             _transactions = null;
+            _txRootTask = null;
         }
     }
 
@@ -156,9 +158,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
+        Task<Hash256>? txRootTask = StartTxRootComputation();
+
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
         {
+            txRootTask?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return transactions.Error;
         }
 
@@ -183,7 +188,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
@@ -198,7 +203,28 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
+    private Task<Hash256>? _txRootTask;
+
     private const int MinTxsForParallelDecoding = 32;
+
+    /// <summary>
+    /// Starts computing the transactions-trie root in the background, letting callers overlap it
+    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
+    /// </summary>
+    /// <remarks>
+    /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
+    /// race the memoized task. Callers must invoke both sequentially per payload instance.
+    /// </remarks>
+    /// <returns>
+    /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
+    /// </returns>
+    internal Task<Hash256>? StartTxRootComputation()
+    {
+        byte[][] encodedTransactions = _encodedTransactions;
+        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && Environment.ProcessorCount > 1
+            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
+            : null;
+    }
 
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.

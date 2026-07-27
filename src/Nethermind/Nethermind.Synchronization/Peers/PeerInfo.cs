@@ -3,10 +3,9 @@
 
 using System;
 using System.ComponentModel;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using NonBlocking;
-using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -43,7 +42,18 @@ namespace Nethermind.Synchronization.Peers
 
         public AllocationContexts SleepingContexts => (AllocationContexts)Volatile.Read(ref _sleepingContexts);
 
-        private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new();
+        private SleepSlots _sleepingSince;
+
+        [InlineArray(WeaknessTracking.TrackedContextCount)]
+        private struct SleepSlots
+        {
+            private SleepSlot? _slot;
+        }
+
+        private sealed class SleepSlot(DateTime since)
+        {
+            public DateTime Since { get; } = since;
+        }
 
         public AllocationContexts AllocatedContexts =>
             AllocationAllowances.AllocatedFrom(ReadSlots(), _maxPacked);
@@ -92,28 +102,32 @@ namespace Nethermind.Synchronization.Peers
         public void PutToSleep(AllocationContexts contexts, DateTime dateTime)
         {
             Interlocked.Or(ref _sleepingContexts, (uint)contexts);
-            SleepingSince[contexts] = dateTime;
+            SleepSlot slot = new(dateTime);
+            for (uint bits = (uint)contexts; bits != 0; bits &= bits - 1)
+            {
+                AllocationContexts ctx = (AllocationContexts)(1u << BitOperations.TrailingZeroCount(bits));
+                Volatile.Write(ref _sleepingSince[WeaknessTracking.IndexOf(ctx)], slot);
+            }
+            if ((contexts & AllocationContexts.Blocks) == AllocationContexts.Blocks)
+            {
+                Volatile.Write(ref _sleepingSince[WeaknessTracking.IndexOf(AllocationContexts.Blocks)], slot);
+            }
         }
 
         public void TryToWakeUp(DateTime dateTime, TimeSpan wakeUpIfSleepsMoreThanThis)
         {
-            foreach (KeyValuePair<AllocationContexts, DateTime?> keyValuePair in SleepingSince)
+            for (int i = 0; i < WeaknessTracking.TrackedContextCount; i++)
             {
-                if (IsAsleep(keyValuePair.Key) && dateTime - keyValuePair.Value >= wakeUpIfSleepsMoreThanThis)
-                {
-                    WakeUp(keyValuePair.Key);
-                }
+                SleepSlot? slot = Volatile.Read(ref _sleepingSince[i]);
+                if (slot is null || dateTime - slot.Since < wakeUpIfSleepsMoreThanThis) continue;
+                if (!ReferenceEquals(Interlocked.CompareExchange(ref _sleepingSince[i], null, slot), slot)) continue;
+
+                AllocationContexts ctx = WeaknessTracking.ContextAt(i);
+                Interlocked.And(ref _sleepingContexts, ~(uint)ctx);
+
+                uint clearMask = WeaknessTracking.ClearMaskFor(ctx);
+                if (clearMask != 0) Interlocked.And(ref _weaknesses, ~clearMask);
             }
-        }
-
-        private void WakeUp(AllocationContexts requested)
-        {
-            Interlocked.And(ref _sleepingContexts, ~(uint)requested);
-
-            uint clearMask = WeaknessTracking.ClearMaskFor(requested);
-            if (clearMask != 0) Interlocked.And(ref _weaknesses, ~clearMask);
-
-            SleepingSince.TryRemove(requested, out _);
         }
 
         public AllocationContexts IncreaseWeakness(AllocationContexts requested)

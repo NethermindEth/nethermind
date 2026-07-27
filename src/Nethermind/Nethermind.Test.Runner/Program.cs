@@ -290,7 +290,7 @@ internal class Program
                 {
                     string name = Path.GetFileNameWithoutExtension(file);
                     WriteFileExceptionStatus(name, ex);
-                    allResults.Add(new EthereumTestResult(name, ex.Message));
+                    allResults.Add(new EthereumTestResult(name, ex.ToString()));
                 }
             }
             return allResults;
@@ -319,7 +319,7 @@ internal class Program
                 {
                     string name = Path.GetFileNameWithoutExtension(item.file);
                     WriteFileExceptionStatus(name, ex);
-                    resultsByFile[item.index] = [new EthereumTestResult(name, ex.Message)];
+                    resultsByFile[item.index] = [new EthereumTestResult(name, ex.ToString())];
                 }
             });
 
@@ -471,7 +471,51 @@ internal class Program
     {
         Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
 
-        int completedFiles = 0;
+        int CountFile(int index)
+        {
+            try
+            {
+                int count = 0;
+                TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), files[index]);
+                foreach (BlockchainTest test in source.LoadTests<BlockchainTest>())
+                {
+                    if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
+                        continue;
+
+                    count += ZkEvmTestsRunner.CountCases(test);
+                }
+
+                return count;
+            }
+            catch (Exception)
+            {
+                return 1;
+            }
+        }
+
+        int[] casesPerFile = new int[files.Count];
+        if (workers <= 1)
+        {
+            for (int i = 0; i < files.Count; i++)
+            {
+                casesPerFile[i] = CountFile(i);
+            }
+        }
+        else
+        {
+            Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = workers }, i =>
+            {
+                casesPerFile[i] = CountFile(i);
+            });
+        }
+
+        int totalCases = 0;
+        foreach (int cases in casesPerFile)
+        {
+            totalCases += cases;
+        }
+
+        int completedCases = 0;
         List<EthereumTestResult>[] resultsByFile = new List<EthereumTestResult>[files.Count];
 
         // Witness fixtures are large, so each file is parsed, executed, and released before
@@ -495,24 +539,28 @@ internal class Program
                 string name = Path.GetFileNameWithoutExtension(files[index]);
                 Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {name} - {ex.Message}");
                 Console.Error.Flush();
-                fileResults.Add(new EthereumTestResult(name, ex.Message));
+                fileResults.Add(new EthereumTestResult(name, ex.ToString()));
             }
 
             resultsByFile[index] = fileResults;
 
-            int done = Interlocked.Increment(ref completedFiles);
+            if (fileResults.Count == 0)
+                return;
+
+            int done = Interlocked.Add(ref completedCases, fileResults.Count);
             foreach (EthereumTestResult result in fileResults)
             {
                 if (!result.Pass)
                 {
-                    Console.Error.WriteLine($"\x1b[31mFAIL\x1b[0m [{done}/{files.Count}] {result.Name} - {result.Error}");
+                    Console.Error.WriteLine($"\x1b[31mFAIL\x1b[0m [{done}/{totalCases}] {result.Name} - {result.Error}");
                     Console.Error.Flush();
                 }
             }
 
-            if (done % 10 == 0 || done == files.Count)
+            int previousDone = done - fileResults.Count;
+            if (done == totalCases || done / ProgressReportTestInterval != previousDone / ProgressReportTestInterval)
             {
-                Console.Error.WriteLine($"PROGRESS [{done}/{files.Count}]");
+                Console.Error.WriteLine($"PROGRESS [{done}/{totalCases}]");
                 Console.Error.Flush();
             }
         }

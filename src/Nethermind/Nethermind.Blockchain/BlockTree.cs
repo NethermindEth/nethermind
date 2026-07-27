@@ -569,7 +569,7 @@ namespace Nethermind.Blockchain
                         if (Logger.IsInfo) Logger.Info($"Missing block info - creating level in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {header.ToString(BlockHeader.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                         SetTotalDifficulty(header);
                         blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
-                        level = UpdateOrCreateLevel(header.Number, blockInfo);
+                        level = UpdateOrCreateLevel(header.Number, blockInfo, keepExistingMetadata: true);
                     }
                 }
                 else
@@ -1458,7 +1458,7 @@ namespace Nethermind.Blockchain
             return new BlockEventArgs(block);
         }
 
-        private ChainLevelInfo UpdateOrCreateLevel(ulong number, BlockInfo blockInfo, bool setAsMain = false)
+        private ChainLevelInfo UpdateOrCreateLevel(ulong number, BlockInfo blockInfo, bool setAsMain = false, bool keepExistingMetadata = false)
         {
             using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 
@@ -1471,7 +1471,7 @@ namespace Nethermind.Blockchain
 
             if (level is not null)
             {
-                level.InsertBlockInfo(blockInfo.BlockHash, blockInfo, setAsMain);
+                level.InsertBlockInfo(blockInfo.BlockHash, blockInfo, setAsMain, keepExistingMetadata);
             }
             else
             {
@@ -1613,7 +1613,7 @@ namespace Nethermind.Blockchain
                         if (Logger.IsInfo) Logger.Info($"Missing block info - creating level in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {block.ToString(Block.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                         SetTotalDifficulty(block.Header);
                         blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty ?? UInt256.Zero);
-                        level = UpdateOrCreateLevel(block.Number, blockInfo);
+                        level = UpdateOrCreateLevel(block.Number, blockInfo, keepExistingMetadata: true);
                     }
                 }
                 else
@@ -1710,14 +1710,14 @@ namespace Nethermind.Blockchain
                     current.TotalDifficulty = current.Difficulty;
                     BlockInfo blockInfo = new(current.Hash, current.Difficulty);
                     blockInfo.WasProcessed = true;
-                    UpdateOrCreateLevel(current.Number, blockInfo);
+                    UpdateOrCreateLevel(current.Number, blockInfo, keepExistingMetadata: true);
                 }
 
                 while (stack.TryPop(out BlockHeader child))
                 {
                     child.TotalDifficulty = current.TotalDifficulty + child.Difficulty;
                     BlockInfo blockInfo = new(child.Hash, child.TotalDifficulty.Value);
-                    UpdateOrCreateLevel(child.Number, blockInfo);
+                    UpdateOrCreateLevel(child.Number, blockInfo, keepExistingMetadata: true);
                     if (Logger.IsTrace)
                         Logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
                     current = child;

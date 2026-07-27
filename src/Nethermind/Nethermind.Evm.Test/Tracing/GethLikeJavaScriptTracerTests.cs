@@ -4,6 +4,8 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
@@ -19,6 +21,43 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
+    {
+        const int concurrency = 16;
+        string marker = Guid.NewGuid().ToString("N");
+        string tracerCode = $$"""
+                              {
+                                  marker: "{{marker}}",
+                                  result: function() { return this.marker; }
+                              }
+                              """;
+        using CountdownEvent ready = new(concurrency);
+        using ManualResetEventSlim start = new();
+
+        Task[] tasks = Enumerable.Range(0, concurrency).Select(_ => Task.Factory.StartNew(
+            () =>
+            {
+                using Engine engine = new(Shanghai.Instance);
+                ready.Signal();
+                start.Wait();
+                dynamic tracer = engine.CreateTracer(tracerCode);
+                Assert.That((string)tracer.result(), Is.EqualTo(marker));
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default)).ToArray();
+
+        bool allReady = ready.Wait(TimeSpan.FromSeconds(30));
+        start.Set();
+        Assert.That(allReady, Is.True);
+        Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+        using Engine sequentialEngine = new(Shanghai.Instance);
+        dynamic cachedTracer = sequentialEngine.CreateTracer(tracerCode);
+        Assert.That((string)cachedTracer.result(), Is.EqualTo(marker));
+    }
+
     [TestCase("{ result: function(ctx, db) { return null } }", TestName = "fault")]
     [TestCase("{ fault: function(log, db) { } }", TestName = "result")]
     [TestCase("{ fault: function(log, db) { }, result: function(ctx, db) { return null }, enter: function(frame) { } }", TestName = "exit")]
@@ -126,6 +165,36 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo("942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:"));
+    }
+
+    [Test]
+    public void log_contract_is_restored_after_inner_call_returns()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        var entry = log.getDepth() + ':' + toHex(log.contract.getAddress());
+                        if (this.retVal.length == 0 || this.retVal[this.retVal.length - 1] != entry) {
+                            this.retVal.push(entry);
+                        }
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        string caller = "1:942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
+        string callee = "2:76e68a8696537e4141926f3e528733af9e237d69";
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(new[] { caller, callee, caller }));
     }
 
     [Test]

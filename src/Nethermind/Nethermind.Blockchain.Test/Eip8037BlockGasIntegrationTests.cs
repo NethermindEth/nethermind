@@ -46,7 +46,7 @@ public class Eip8037BlockGasIntegrationTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            static worldState => new EthereumCodeInfoRepository(worldState));
     }
 
     private static (BlockAccessListManager, Block) BuildAmsterdamBlock(ulong blockGasLimit, params Transaction[] txs)
@@ -212,7 +212,7 @@ public class Eip8037BlockGasIntegrationTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            static worldState => new EthereumCodeInfoRepository(worldState));
 
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)

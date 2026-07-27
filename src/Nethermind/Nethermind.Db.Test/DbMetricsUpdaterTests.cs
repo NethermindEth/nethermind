@@ -29,7 +29,7 @@ namespace Nethermind.Db.Test
                 InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
                 string testDump = File.ReadAllText("InputFiles/CompactionStatsExample_AllData.txt");
-                new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+                new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
                 // Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
                 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -65,7 +65,7 @@ namespace Nethermind.Db.Test
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText("InputFiles/CompactionStatsExample_AllData.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(5));
         }
@@ -76,7 +76,7 @@ namespace Nethermind.Db.Test
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/SampleStats.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessStatisticsString(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessStatisticsString(testDump);
 
             Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes")], Is.EqualTo(1));
             Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes.useful")], Is.EqualTo(2));
@@ -91,7 +91,7 @@ namespace Nethermind.Db.Test
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingLevels.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(5));
             Assert.That(Metrics.DbStats[("TestDb", "IntervalCompactionGBWrite")], Is.EqualTo(10));
@@ -108,7 +108,7 @@ namespace Nethermind.Db.Test
             logger.IsWarn.Returns(true);
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingIntervalCompaction.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             logger.Received().Warn(Arg.Is<string>(static s => s.StartsWith("Cannot find 'Interval compaction' stats for Test database")));
         }
@@ -120,7 +120,7 @@ namespace Nethermind.Db.Test
             logger.IsWarn.Returns(true);
 
             string testDump = string.Empty;
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(0));
 
@@ -134,7 +134,7 @@ namespace Nethermind.Db.Test
             logger.IsWarn.Returns(true);
 
             string testDump = null;
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(0));
 

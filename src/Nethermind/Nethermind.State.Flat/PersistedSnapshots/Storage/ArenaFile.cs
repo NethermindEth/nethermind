@@ -76,6 +76,14 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     internal long DeadBytes { get; set; }
 
     /// <summary>
+    /// True while an <see cref="ArenaWriter"/> holds this shared arena. Guarded by the manager's
+    /// lock. Keeps <see cref="ArenaManager.MarkDead"/> from treating the arena as fully dead (and
+    /// deleting the file) while a write with bytes not yet published to <see cref="Frontier"/> is
+    /// in flight.
+    /// </summary>
+    internal bool WriterActive { get; set; }
+
+    /// <summary>
     /// Last value of <see cref="Frontier"/> reported to <c>Metrics.ArenaAllocatedBytes</c>.
     /// Lets <see cref="ArenaManager"/> push frontier deltas on writer.Complete without
     /// keeping a parallel dict and without re-counting bytes it already reported.

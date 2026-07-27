@@ -96,6 +96,8 @@ public class VotesManagerTests
             await voteManager.HandleVote(v);
 
         quorumCertificateManager.Received(expectedCalls).CommitCertificate(Arg.Any<QuorumCertificate>());
+        if (expectedCalls > 0)
+            Assert.That(voteManager.GetReceivedVotes(), Is.Not.Empty);
     }
 
     [Test]

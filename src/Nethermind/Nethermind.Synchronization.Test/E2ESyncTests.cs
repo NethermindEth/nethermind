@@ -762,14 +762,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 (e) => e.Block.Number == serverHead?.Number);
         }
 
-        public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
-        {
-            if (modeCheck(syncModeSelector.Current)) return;
-            await Wait.ForEventCondition<SyncModeChangedEventArgs>(cancellationToken,
-                h => syncModeSelector.Changed += h,
-                h => syncModeSelector.Changed -= h,
-                (e) => modeCheck(e.Current));
-        }
+        public Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken) =>
+            syncModeSelector.WaitUntilMode(modeCheck, cancellationToken);
     }
 
     private class PostMergeTestEnv(

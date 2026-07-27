@@ -1,15 +1,20 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
@@ -177,6 +182,166 @@ internal class MineModuleTests
             Assert.Fail("Timed out waiting for first block proposal at genesis bootstrap");
 
         Assert.That(blocksProposed, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task TestSameRoundRestartDuringMineWaitStillProposes()
+    {
+        using XdcTestBlockchain blockchain = await CreateChainWithClockSignal();
+        (XdcBlockHeader head, ulong round, ProposalTracker tracker) = await StartLeaderRoundTaskInMineWait(blockchain);
+
+        // Simulates the new-head trigger racing with QC formation: a same-round restart while the
+        // proposer is parked in the mine-period wait must not permanently consume the round.
+        blockchain.ConsensusModule.StartRoundTask(head, round);
+
+        try
+        {
+            await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail("No block was proposed after a same-round restart during the mine-period wait");
+        }
+        Assert.That(tracker.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task TestStaleRoundTriggerDoesNotCancelCurrentRoundProposal()
+    {
+        using XdcTestBlockchain blockchain = await CreateChainWithClockSignal();
+        (XdcBlockHeader head, ulong round, ProposalTracker tracker) = await StartLeaderRoundTaskInMineWait(blockchain);
+
+        // Simulates a stale trigger (racy CurrentRound read or out-of-order round events): an older
+        // round must not cancel the in-flight proposal task for the current round.
+        blockchain.ConsensusModule.StartRoundTask(head, round - 1);
+
+        try
+        {
+            await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail("No block was proposed after a stale-round trigger during the mine-period wait");
+        }
+    }
+
+    [Test]
+    public async Task TestHigherRoundCancelsInFlightBuildButSameRoundDoesNot()
+    {
+        GatedBlockProducer gatedProducer = new();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton<IBlockProducer>(gatedProducer));
+
+        XdcBlockHeader head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        ulong round = blockchain.XdcContext.CurrentRound;
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, round);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, round, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address == leader));
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
+
+        // As round-1 leader at genesis bootstrap, Start() launches the round task which parks in the gated build.
+        blockchain.StartHotStuffModule();
+        await gatedProducer.BuildStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Cancellation happens synchronously inside StartRoundTask, so the assertions are race-free.
+        blockchain.ConsensusModule.StartRoundTask(head, round);
+        Assert.That(gatedProducer.ObservedToken.IsCancellationRequested, Is.False,
+            "A same-round restart must not cancel the in-flight proposal build");
+
+        blockchain.ConsensusModule.StartRoundTask(head, round + 1);
+        Assert.That(gatedProducer.ObservedToken.IsCancellationRequested, Is.True,
+            "An advance to a higher round must cancel the obsolete proposal build");
+    }
+
+    /// <summary>
+    /// Block producer stub whose build parks until its cancellation token fires, exposing the token
+    /// so tests can assert which triggers cancel an in-flight build.
+    /// </summary>
+    private sealed class GatedBlockProducer : IBlockProducer
+    {
+        public TaskCompletionSource BuildStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationToken ObservedToken { get; private set; }
+
+        public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes,
+            IBlockProducer.Flags flags, CancellationToken cancellationToken)
+        {
+            ObservedToken = cancellationToken;
+            BuildStarted.TrySetResult();
+            TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using CancellationTokenRegistration registration = cancellationToken.Register(() => cancelled.TrySetResult());
+            await cancelled.Task;
+            return null;
+        }
+    }
+
+    private static Task<XdcTestBlockchain> CreateChainWithClockSignal() =>
+        XdcTestBlockchain.Create(useHotStuffModule: true, configurer: builder =>
+            builder.AddSingleton<ITimestamper>(ctx => new ClockQueryingTimestamper(ctx.Resolve<ManualTimestamper>())));
+
+    /// <summary>
+    /// Makes this node the leader for the current round and starts a round task, returning once the
+    /// task has reached the mine-period wait (the clock is frozen at the head timestamp, so the wait
+    /// is a full <c>MinePeriod</c>), giving the test a window to fire a racing trigger.
+    /// </summary>
+    /// <remarks>
+    /// The wait is detected via <see cref="ClockQueryingTimestamper"/>: the proposer's only clock
+    /// read is the one computing the mine-period wait, so observing it means the round task is at
+    /// the wait — no sleep-based synchronization needed.
+    /// </remarks>
+    private static async Task<(XdcBlockHeader Head, ulong Round, ProposalTracker Tracker)> StartLeaderRoundTaskInMineWait(XdcTestBlockchain blockchain)
+    {
+        ClockQueryingTimestamper clock = (ClockQueryingTimestamper)blockchain.Container.Resolve<ITimestamper>();
+        XdcBlockHeader head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        ulong round = blockchain.XdcContext.CurrentRound;
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, round);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, round, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address == leader));
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)head.Timestamp).UtcDateTime);
+
+        ProposalTracker tracker = new();
+        blockchain.ConsensusModule.BlockProduced += tracker.OnBlockProduced;
+
+        Task mineWaitReached = clock.WaitForNextQuery();
+        blockchain.StartHotStuffModule();
+        blockchain.ConsensusModule.StartRoundTask(head, round);
+        await mineWaitReached.WaitAsync(TimeSpan.FromSeconds(10));
+        return (head, round, tracker);
+    }
+
+    private sealed class ProposalTracker
+    {
+        private int _count;
+        public TaskCompletionSource FirstProposal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Count => Volatile.Read(ref _count);
+        public void OnBlockProduced(object? sender, BlockEventArgs e)
+        {
+            Interlocked.Increment(ref _count);
+            FirstProposal.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Delegates to the wrapped <see cref="ManualTimestamper"/> while signalling every clock read,
+    /// letting tests await the moment a component observes the time instead of sleeping.
+    /// </summary>
+    private sealed class ClockQueryingTimestamper(ManualTimestamper inner) : ITimestamper
+    {
+        private volatile TaskCompletionSource _nextQuery = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public DateTime UtcNow
+        {
+            get
+            {
+                _nextQuery.TrySetResult();
+                return inner.UtcNow;
+            }
+        }
+
+        public Task WaitForNextQuery()
+        {
+            _nextQuery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            return _nextQuery.Task;
+        }
     }
 
     [Test]

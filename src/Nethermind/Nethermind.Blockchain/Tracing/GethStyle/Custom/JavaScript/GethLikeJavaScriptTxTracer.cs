@@ -98,19 +98,25 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             _ctx.Input = input;
             _ctx.Value = value;
         }
-        else if (_functions.HasFlag(TracerFunctions.enter))
+        else
         {
+            // Always track the parent frame contract so it can be restored on frame exit,
+            // even when the tracer defines no enter/exit callbacks.
             _contracts ??= new Stack<Log.Contract>();
             _contracts.Push(_log.contract);
-            _frame.From = from;
-            _frame.To = to;
-            _frame.Input = input;
-            _frame.Value = callType == ExecutionType.STATICCALL ? null : value;
-            _frame.Gas = gas;
-            _frame.Type = callType.FastToString();
-            _tracer.enter(_frame);
-            _frameGas ??= new Stack<ulong>();
-            _frameGas.Push(gas);
+
+            if (_functions.HasFlag(TracerFunctions.enter))
+            {
+                _frame.From = from;
+                _frame.To = to;
+                _frame.Input = input;
+                _frame.Value = callType == ExecutionType.STATICCALL ? null : value;
+                _frame.Gas = gas;
+                _frame.Type = callType.FastToString();
+                _tracer.enter(_frame);
+                _frameGas ??= new Stack<ulong>();
+                _frameGas.Push(gas);
+            }
         }
 
         _log.contract = callType == ExecutionType.DELEGATECALL

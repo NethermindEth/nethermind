@@ -16,4 +16,10 @@ public partial struct SszExecutionRequests
 
     [SszList(0x2)]
     public ConsolidationRequest[] Consolidations { get; set; }
+
+    [SszList(0x40)]
+    public BuilderDepositRequest[] BuilderDeposits { get; set; }
+
+    [SszList(0x10)]
+    public BuilderExitRequest[] BuilderExits { get; set; }
 }
