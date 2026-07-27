@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -17,6 +18,9 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class SnapshotBundleWarmerTests
 {
+    private const int ChurnMilliseconds = 2_000;
+    private static readonly TimeSpan BailOutTimeout = TimeSpan.FromSeconds(30);
+
     private ResourcePool _pool = null!;
 
     [SetUp]
@@ -37,18 +41,20 @@ public class SnapshotBundleWarmerTests
     private SnapshotBundle NewBundle(Action<SnapshotContent>? persisted = null) =>
         new(FlatTestHelpers.MakeBundle(_pool, persisted), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
 
-    // The trie warmer never reads the recyclable _snapshots / pending write buffer; it reads persistence
-    // plus the _transientResource node cache (which it also warms), pinned by a per-read lease. A node that
-    // only exists as a pending in-memory write is visible to a normal read but Unknown to the warmer; a
-    // node in persistence is returned by both.
+    private static TrieNode Leaf(byte value) => new(NodeType.Leaf, new byte[] { 0xC1, value });
+
+    // The trie warmer never reads the recyclable _snapshots; it reads persistence plus the _transientResource
+    // node cache (which it also warms), pinned by a per-read lease. A node that lives only in the bundle's own
+    // committed snapshot list is visible to a normal read but Unknown to the warmer; a node in persistence is
+    // returned by both.
     [Test]
-    public void Trie_warmer_reads_persistence_only_and_ignores_in_memory_writes()
+    public void Trie_warmer_reads_persistence_only_and_ignores_recyclable_snapshots()
     {
-        TreePath persistedPath = TreePath.FromHexString("ab");
-        TrieNode persistedNode = new(NodeType.Leaf, new byte[] { 0xC1, 0x80 });
         Hash256 storageAddress = TestItem.KeccakC;
+        TreePath persistedPath = TreePath.FromHexString("ab");
         TreePath persistedStoragePath = TreePath.FromHexString("cd");
-        TrieNode persistedStorageNode = new(NodeType.Leaf, new byte[] { 0xC1, 0x81 });
+        TrieNode persistedNode = Leaf(0x80);
+        TrieNode persistedStorageNode = Leaf(0x81);
 
         using SnapshotBundle bundle = NewBundle(content =>
         {
@@ -56,40 +62,102 @@ public class SnapshotBundleWarmerTests
             content.StorageNodes[(storageAddress, persistedStoragePath)] = persistedStorageNode;
         });
 
-        TreePath inMemoryPath = TreePath.FromHexString("12");
-        TrieNode inMemoryNode = new(NodeType.Unknown, TestItem.KeccakA);
-        bundle.SetStateNode(inMemoryPath, inMemoryNode);
+        TreePath committedPath = TreePath.FromHexString("12");
+        TreePath committedStoragePath = TreePath.FromHexString("34");
+        TrieNode committedNode = Leaf(0x82);
+        TrieNode committedStorageNode = Leaf(0x83);
+        bundle.SetStateNode(committedPath, committedNode);
+        bundle.SetStorageNode(storageAddress, committedStoragePath, committedStorageNode);
+
+        // Commit folds the written nodes into the bundle's recyclable _snapshots and swaps the transient away
+        // from them, so afterwards they are reachable only through the path the warmer must not take.
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+
+        // Read normally first: the warmer caches its own Unknown result into the transient, which a later
+        // normal read would then serve.
+        TrieNode normalStateRead = bundle.FindStateNodeOrUnknown(committedPath, TestItem.KeccakA);
+        TrieNode normalStorageRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, TestItem.KeccakA);
+        TrieNode warmedCommittedState = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, TestItem.KeccakA);
+        TrieNode warmedCommittedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, committedStoragePath, TestItem.KeccakA);
+        TrieNode warmedPersistedState = bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakB);
+        TrieNode warmedPersistedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, persistedStoragePath, TestItem.KeccakB);
 
         using (Assert.EnterMultipleScope())
         {
-            // Normal reads see the pending in-memory write; the warmer does not.
-            Assert.That(bundle.FindStateNodeOrUnknown(inMemoryPath, TestItem.KeccakA), Is.SameAs(inMemoryNode));
-            Assert.That(bundle.FindStateNodeOrUnknownForTrieWarmer(inMemoryPath, TestItem.KeccakA).NodeType, Is.EqualTo(NodeType.Unknown));
+            // The committed nodes really are reachable, so the warmer's Unknown below is a genuine miss.
+            Assert.That(normalStateRead, Is.SameAs(committedNode));
+            Assert.That(normalStorageRead, Is.SameAs(committedStorageNode));
+
+            Assert.That(warmedCommittedState.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(warmedCommittedStorage.NodeType, Is.EqualTo(NodeType.Unknown));
 
             // The warmer still returns nodes that are in persistence (state and storage).
-            Assert.That(bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakB), Is.SameAs(persistedNode));
-            Assert.That(bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, persistedStoragePath, TestItem.KeccakB), Is.SameAs(persistedStorageNode));
+            Assert.That(warmedPersistedState, Is.SameAs(persistedNode));
+            Assert.That(warmedPersistedStorage, Is.SameAs(persistedStorageNode));
         }
     }
 
-    // Regression for the warmer recycle-under-reader race: warmer-shaped readers hold only a
-    // ReadOnlySnapshotBundle lease (as the real warmer job does) while the owner churns and disposes bundles.
-    // The per-read transient lease plus the ABA re-checks must keep each read on the owning bundle's live
-    // resource or fall back to persistence-only; a version reading the transient without them could return
-    // a torn or foreign value under churn.
+    // Dispose releases the transient back to the pool while warmer jobs may still be in flight. A read that
+    // arrives after that must fall back to the leased persistence reader rather than touch the recycled
+    // resource - and must not spin waiting for a transient that will never be replaced, which is what the
+    // bounded wait here asserts.
+    [Test]
+    public void Trie_warmer_read_on_disposed_bundle_falls_back_to_persistence()
+    {
+        TreePath persistedPath = TreePath.FromHexString("ab");
+        TrieNode persistedNode = Leaf(0x80);
+
+        SnapshotBundle bundle = NewBundle(content => content.StateNodes[persistedPath] = persistedNode);
+
+        Assert.That(bundle.TryLeaseReadOnlyBundle(), Is.True);
+        try
+        {
+            bundle.Dispose();
+
+            Task<(TrieNode Node, bool ShouldPrewarm)> read = Task.Run(() =>
+                (bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA),
+                    bundle.ShouldQueuePrewarm(TestItem.AddressA)));
+
+            Assert.That(read.Wait(BailOutTimeout), Is.True, "the warmer read did not return on a disposed bundle");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(read.Result.Node, Is.SameAs(persistedNode));
+                Assert.That(read.Result.ShouldPrewarm, Is.False);
+            }
+        }
+        finally
+        {
+            bundle.ReleaseReadOnlyBundleLease();
+        }
+    }
+
+    private sealed record ChurnEpoch(SnapshotBundle Bundle, TrieNode Node);
+
+    // Regression for the warmer recycle-under-reader race. Warmer-shaped readers hold only a
+    // ReadOnlySnapshotBundle lease (as the real warmer job does) while the owner drives both recycle paths:
+    // CollectAndApplySnapshot, which swaps the transient in place and retires the old one to the pool while
+    // the bundle stays published, and Dispose, which releases the transient outright. Each epoch owns a
+    // distinct persisted node instance, so a read served from another epoch's recycled transient is caught by
+    // identity rather than by value. The prewarm dedupe bloom lives on the same resource, so it is exercised
+    // here too: unpinned, its BloomFilter can be freed by a pool overflow mid-read.
     [Test]
     public void Trie_warmer_reads_survive_owner_churn_without_foreign_values()
     {
         TreePath persistedPath = TreePath.FromHexString("ab");
-        TrieNode persistedNode = new(NodeType.Leaf, new byte[] { 0xC1, 0x80 });
 
-        SnapshotBundle NewChurnBundle() => NewBundle(content => content.StateNodes[persistedPath] = persistedNode);
+        ChurnEpoch NewEpoch()
+        {
+            TrieNode node = Leaf(0x80);
+            return new ChurnEpoch(NewBundle(content => content.StateNodes[persistedPath] = node), node);
+        }
 
         long leasedReads = 0;
-        long anomalies = 0;
+        long queuedPrewarms = 0;
+        long foreignReads = 0;
+        long slotCounter = 0;
         Exception? readerException = null;
         bool stop = false;
-        SnapshotBundle published = NewChurnBundle();
+        ChurnEpoch published = NewEpoch();
 
         Task[] readers = new Task[Math.Max(2, Environment.ProcessorCount - 2)];
         for (int t = 0; t < readers.Length; t++)
@@ -100,17 +168,20 @@ public class SnapshotBundleWarmerTests
                 {
                     while (!Volatile.Read(ref stop))
                     {
-                        SnapshotBundle bundle = Volatile.Read(ref published);
-                        if (!bundle.TryLeaseReadOnlyBundle()) continue;
+                        ChurnEpoch epoch = Volatile.Read(ref published);
+                        if (!epoch.Bundle.TryLeaseReadOnlyBundle()) continue;
                         try
                         {
-                            TrieNode node = bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA);
-                            if (!ReferenceEquals(node, persistedNode)) Interlocked.Increment(ref anomalies);
+                            TrieNode node = epoch.Bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakA);
+                            if (!ReferenceEquals(node, epoch.Node)) Interlocked.Increment(ref foreignReads);
                             Interlocked.Increment(ref leasedReads);
+
+                            UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
+                            if (epoch.Bundle.ShouldQueuePrewarm(TestItem.AddressA, slot)) Interlocked.Increment(ref queuedPrewarms);
                         }
                         finally
                         {
-                            bundle.ReleaseReadOnlyBundleLease();
+                            epoch.Bundle.ReleaseReadOnlyBundleLease();
                         }
                     }
                 }
@@ -123,29 +194,43 @@ public class SnapshotBundleWarmerTests
         }
 
         Stopwatch sw = Stopwatch.StartNew();
-        int epochs = 0;
-        SnapshotBundle previous = published;
-        while (sw.ElapsedMilliseconds < 2_000 && !Volatile.Read(ref stop))
+        int commits = 0;
+        int disposals = 0;
+        ulong blockNumber = 0;
+        ChurnEpoch current = published;
+        while (sw.ElapsedMilliseconds < ChurnMilliseconds && !Volatile.Read(ref stop))
         {
-            SnapshotBundle next = NewChurnBundle();
+            StateId from = new(blockNumber, TestItem.KeccakA);
+            StateId to = new(++blockNumber, TestItem.KeccakA);
+            current.Bundle.CollectAndApplySnapshot(from, to, returnSnapshot: false);
+            commits++;
+
+            ChurnEpoch next = NewEpoch();
             Volatile.Write(ref published, next);
-            previous.Dispose();
-            previous = next;
-            epochs++;
+            current.Bundle.Dispose();
+            current = next;
+            disposals++;
         }
 
         Volatile.Write(ref stop, true);
-        Task.WaitAll(readers);
-        previous.Dispose();
+        bool readersFinished = Task.WaitAll(readers, BailOutTimeout);
+        // Leave the last bundle alive if a reader is stuck; disposing under it would only mask the hang.
+        if (readersFinished) current.Bundle.Dispose();
 
-        TestContext.Out.WriteLine($"epochs={epochs} leasedReads={Volatile.Read(ref leasedReads)} anomalies={Volatile.Read(ref anomalies)}");
+        TestContext.Out.WriteLine(
+            $"commits={commits} disposals={disposals} leasedReads={Volatile.Read(ref leasedReads)} " +
+            $"queuedPrewarms={Volatile.Read(ref queuedPrewarms)} foreignReads={Volatile.Read(ref foreignReads)}");
+
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(readersFinished, Is.True, "reader tasks did not finish");
             Assert.That(readerException, Is.Null);
-            Assert.That(Volatile.Read(ref anomalies), Is.Zero);
-            // Prove the churn loop and the leased reads actually ran, so the assertions above are not vacuous.
-            Assert.That(epochs, Is.GreaterThan(0));
+            Assert.That(Volatile.Read(ref foreignReads), Is.Zero);
+            // Prove both churn paths and the leased reads actually ran, so the assertions above are not vacuous.
+            Assert.That(commits, Is.GreaterThan(0));
+            Assert.That(disposals, Is.GreaterThan(0));
             Assert.That(Volatile.Read(ref leasedReads), Is.GreaterThan(0));
+            Assert.That(Volatile.Read(ref queuedPrewarms), Is.GreaterThan(0));
         }
     }
 }

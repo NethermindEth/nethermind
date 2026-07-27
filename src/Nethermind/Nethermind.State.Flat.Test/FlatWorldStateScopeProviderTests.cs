@@ -42,7 +42,6 @@ public class FlatWorldStateScopeProviderTests
         public SnapshotPooledList ReadOnlySnapshots = new(0);
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
-        public TransientResource? LastCreatedCachedResource { get; set; }
 
         public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
@@ -51,9 +50,8 @@ public class FlatWorldStateScopeProviderTests
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
                     .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
-                    .AddSingleton<IFlatDbManager>((ctx) =>
+                    .AddSingleton<IFlatDbManager>(_ =>
                     {
-                        ResourcePool resourcePool = ctx.Resolve<ResourcePool>();
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
                         flatDiff.When(it => it.AddSnapshot(Arg.Any<Snapshot>(), Arg.Any<TransientResource>()))
                             .Do(c =>
@@ -67,11 +65,10 @@ public class FlatWorldStateScopeProviderTests
                                 }
                                 LastCommittedSnapshot = snapshot;
 
-                                if (LastCreatedCachedResource is not null)
-                                {
-                                    resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
-                                }
-                                LastCreatedCachedResource = transientResource;
+                                // Mirror FlatDbManager.AddSnapshot: returning to the pool directly would recycle
+                                // the resource while a warmer lease is still outstanding, and the resource would
+                                // then be returned a second time when that lease is released.
+                                transientResource.ReleaseLease();
                             });
 
                         return flatDiff;
@@ -118,7 +115,6 @@ public class FlatWorldStateScopeProviderTests
             _cancellationTokenSource.Cancel();
 
             LastCommittedSnapshot?.Dispose();
-            if (LastCreatedCachedResource is not null) ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, LastCreatedCachedResource);
 
             _container?.Dispose();
             _cancellationTokenSource.Dispose();

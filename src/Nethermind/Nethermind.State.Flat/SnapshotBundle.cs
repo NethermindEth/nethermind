@@ -180,7 +180,7 @@ public sealed class SnapshotBundle : IDisposable
         // The warmer never reads the recyclable _snapshots; it warms nodes from persistence into the
         // _transientResource. Pin the transient per read (lease + ABA re-check) while the bundle is live,
         // else fall back to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResourceForWarmer();
+        TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null)
         {
             return TryFindStateNodeInPersistence(path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
@@ -221,7 +221,7 @@ public sealed class SnapshotBundle : IDisposable
     // kept across SwapTransientResource) until Dispose, so the only way the acquire never succeeds is a
     // disposed bundle whose transient will not be replaced - the _isDisposed check bails there instead of
     // spinning forever (the target has no whole-bundle lease deferring that release).
-    private TransientResource? TryLeaseTransientResourceForWarmer()
+    private TransientResource? TryLeaseTransientResource()
     {
         SpinWait spinWait = default;
         while (true)
@@ -308,7 +308,7 @@ public sealed class SnapshotBundle : IDisposable
         // Persistence-only external find, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
         // Pin the transient per read (lease + ABA re-check) while the bundle is live, else fall back
         // to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResourceForWarmer();
+        TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null)
         {
             return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node) && node is not null
@@ -517,9 +517,40 @@ public sealed class SnapshotBundle : IDisposable
     // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.
     // It is a net improvement to check and modify the bloom filter before calling the trie warmer push
     // as most of the slot should already be queued by prewarmer.
-    public bool ShouldQueuePrewarm(Address address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
+    //
+    // The dedupe bloom lives on the recyclable _transientResource and these run on prewarmer/BAL threads
+    // while the owner may retire that resource, so the read must pin it exactly like the warmer node reads
+    // do - a bare field read would let the pool Reset/Dispose the BloomFilter (native memory) underneath.
+    // A torn-down bundle declines the prewarm rather than warming into a recycled resource.
+    public bool ShouldQueuePrewarm(Address address, UInt256? slot = null)
+    {
+        TransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return false;
 
-    public bool ShouldQueuePrewarm(in ValueAddress address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
+        try
+        {
+            return transientResource.ShouldPrewarm(address, slot);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
+    }
+
+    public bool ShouldQueuePrewarm(in ValueAddress address, UInt256? slot = null)
+    {
+        TransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return false;
+
+        try
+        {
+            return transientResource.ShouldPrewarm(address, slot);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
+    }
 
     /// <summary>
     /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
