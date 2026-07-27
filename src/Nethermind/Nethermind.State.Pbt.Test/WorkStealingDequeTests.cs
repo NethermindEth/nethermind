@@ -32,7 +32,7 @@ public class WorkStealingDequeTests
         Assert.That(queue.TryPushHead(new Item(2)), Is.False, "the queue holds two");
         Assert.That(queue.Head, Is.EqualTo(2), "a refused push leaves the queue where it was");
 
-        // the owner takes the newest, a thief the oldest
+        // Owners take the newest item; thieves take the oldest.
         Assert.That(queue.TryPopHead()!.Index, Is.EqualTo(1));
         Assert.That(queue.TrySteal()!.Index, Is.EqualTo(0));
         Assert.That(queue.TryPopHead(), Is.Null);
@@ -70,8 +70,7 @@ public class WorkStealingDequeTests
             });
         }
 
-        // the owner pushes as fast as the queue takes them and pops its own back whenever it is full,
-        // which is the shape a spawning frame leaves behind
+        // The owner fills the queue and pops its own work when it is full.
         List<Item> taken = [];
         for (int pushed = 0; pushed < count;)
         {
@@ -84,7 +83,7 @@ public class WorkStealingDequeTests
         cts.Cancel();
         Task.WaitAll(thieves);
 
-        // whatever a thief was mid-steal when it stopped is still in the queue
+        // Drain any item left after thieves stop.
         while (queue.TryPopHead() is { } item) taken.Add(item);
 
         bool[] seen = new bool[count];

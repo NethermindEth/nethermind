@@ -38,7 +38,7 @@ public class PbtModule(IPbtConfig config) : Module
             .AddDecorator<IRocksDbConfigFactory, PbtRocksDbConfigAdjuster>()
             .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
             .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
-            // singleton: a second pool would silently halve every hit rate
+            // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<PbtSnapshotRepository>()
             .AddSingleton<PbtSnapshotCompactor>()
@@ -57,13 +57,12 @@ public class PbtModule(IPbtConfig config) : Module
             .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
             .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>();
 
-        // the flat db is opened directly here because its own module is never loaded alongside PBT
+        // PBT does not load the flat database module.
         if (config.ImportFromPreimageFlat)
         {
             builder
                 .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-                // the import reads a PreimageFlat source and nothing else; a database recorded as any
-                // other layout is rejected when the persistence validates it
+                // Import requires a PreimageFlat source; persistence validates the recorded layout.
                 .AddSingleton<IPersistence, IColumnsDb<FlatDbColumns>, ILogManager>(
                     (flatDb, logManager) => new PreimageRocksdbPersistence(flatDb, logManager, FlatLayout.PreimageFlat))
                 .AddSingleton<PbtRebuilder>()

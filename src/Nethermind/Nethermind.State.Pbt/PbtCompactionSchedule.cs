@@ -28,8 +28,7 @@ public sealed class PbtCompactionSchedule
 
     public PbtCompactionSchedule([KeyFilter(DbNames.Metadata)] IDb metadataDb, IPbtConfig config, ILogManager logManager)
     {
-        // the whole schedule is the lowest-set-bit of the shifted block number, which only nests into
-        // levels when the cap is itself a power of two
+        // Lowest-set-bit scheduling nests only when the cap is a power of two.
         if (config.CompactSize > 1 && !BitOperations.IsPow2(config.CompactSize))
         {
             throw new ArgumentException($"{nameof(IPbtConfig.CompactSize)} must be a power of 2, was {config.CompactSize}", nameof(config));
@@ -46,8 +45,7 @@ public sealed class PbtCompactionSchedule
     {
         if (_compactSize <= 1 || blockNumber == 0) return 1;
 
-        // x & (~x + 1): the two's-complement lowest-set-bit trick, spelled without unary minus because
-        // that is not defined for ulong.
+        // Unary negation is not defined for ulong.
         ulong shifted = blockNumber + _offset;
         return Math.Min(shifted & (~shifted + 1UL), _compactSize);
     }
@@ -65,7 +63,7 @@ public sealed class PbtCompactionSchedule
         ulong mod = (blockNumber + _offset) % _compactSize;
         ulong distance = mod == 0 ? _compactSize : _compactSize - mod;
 
-        // a chain never reaches here, but wrapping would return a boundary below the block we started from
+        // Avoid returning a boundary below the starting block on overflow.
         return blockNumber > ulong.MaxValue - distance ? ulong.MaxValue : blockNumber + distance;
     }
 

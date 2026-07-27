@@ -11,13 +11,10 @@ using NUnit.Framework;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
-/// A batch folded across several threads must land the same tree, byte for byte, as the same batch
-/// folded on one. Nothing about the result is allowed to depend on which thread took which bucket, so
-/// every assertion here compares a parallel fold against a serial one over the same writes.
+/// Verifies that parallel and serial folds produce identical trees.
 /// </summary>
 /// <remarks>
-/// Run under every layout: a job settles its result into its parent's boundary by slot, so a tiling
-/// whose boundary is wider than a machine word is what a slot-indexed mask has to be right about.
+/// Covers layouts with boundary masks wider than a machine word.
 /// </remarks>
 /// <param name="layout"><inheritdoc cref="PbtTilingTests" path="/param[@name='layout']"/></param>
 [TestFixture(PbtTrieLayout.ClusteredFourLevelEveryLevel)]
@@ -30,7 +27,7 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
 {
     private const int Workers = 8;
 
-    /// <summary>Repeats of each scenario: the interleaving differs run to run, so one pass proves little.</summary>
+    /// <summary>Repeats each scenario to exercise different thread interleavings.</summary>
     private const int Repeats = 8;
 
     /// <param name="accountStems">Stems spread over the whole key space, which branch at the topmost levels — where the fold spawns first.</param>
@@ -55,11 +52,7 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
         }
     }
 
-    /// <summary>
-    /// The production drain hands the fold the bucket bounds for its first two levels, and the first is
-    /// exactly where it spawns: a job carries that level over as a range of the batch's bucket table
-    /// rather than as the span the frame held, so a wrong range would fold the wrong entries.
-    /// </summary>
+    /// <summary>Verifies that parallel jobs preserve the production drain's initial bucket bounds.</summary>
     [Test]
     public void ParallelFold_OfADrainedBatch_LandsTheSameTreeAsTheSerialOne()
     {
@@ -78,9 +71,7 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
     }
 
     /// <summary>
-    /// The same over a sequence of batches: updates in place, deletes that collapse groups and dissolve
-    /// runs, and re-inserts. A fold over a stored tree reads and rewrites where the first one only
-    /// wrote, so this is what pins that a worker's reads and its buffered writes stay in step.
+    /// Verifies parallel updates, deletes, and reinserts over an existing tree.
     /// </summary>
     [Test]
     public void ParallelFold_OverASequenceOfBatches_LandsTheSameTreeAsTheSerialOne()
@@ -116,14 +107,12 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
             mostReadThreads = Math.Max(mostReadThreads, parallel.ReadThreadCount);
         }
 
-        // the comparison above is only worth something if the fold really did leave the calling thread
+        // Confirm the fold used worker threads.
         Assert.That(mostReadThreads, Is.GreaterThan(1), "no batch was folded by more than one thread");
     }
 
     /// <summary>
-    /// Writes sharing the root slot reach the clustering frame at depth four before they branch. Its
-    /// children must still fold on workers, and their independently buffered encodings must be assembled
-    /// in slot order into exactly the serial cluster.
+    /// Verifies worker-folded children assemble in slot order within a clustering frame.
     /// </summary>
     [Test]
     public void ParallelFold_BranchesAndQueuesInsideACluster()
@@ -147,9 +136,7 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
     }
 
     /// <summary>
-    /// Upper buckets can run in parallel while every child inside their clustering frames is too small to
-    /// queue. Those frames must keep writing directly into their cluster rather than renting one temporary
-    /// buffer per child when none can run concurrently.
+    /// Verifies non-queued clustering children write directly without temporary buffers.
     /// </summary>
     [Test]
     public void ParallelFold_DoesNotBufferAClusterWhoseChildrenAreBelowTheQueueThreshold()
@@ -182,8 +169,7 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
     }
 
     /// <summary>
-    /// Every buffer a parallel fold rents is released, whichever worker rented it: a fold that leaked one
-    /// per bucket would starve the pool a thread at a time.
+    /// Verifies every buffer rented by a parallel fold is released.
     /// </summary>
     [Test]
     public void ParallelFold_BalancesTheLeasesOnEveryBufferItRents()
@@ -207,11 +193,7 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
     }
 
     /// <summary>
-    /// A fold that throws on a worker's bucket must surface that on the calling thread — and must give
-    /// back every lease the abandoned frames were holding, rather than leaving the buffers behind them
-    /// to the garbage collector. The frames unwound by the throw are the ones the descent never settles,
-    /// so nothing but the unwinding itself can release what their boundary slots and their outstanding
-    /// buckets hold.
+    /// Verifies worker exceptions propagate and release leases held by abandoned frames.
     /// </summary>
     [Test]
     public void ParallelFold_RethrowsWhatAWorkerThrewAndReleasesWhatTheAbandonedFramesHeld()
@@ -219,14 +201,12 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
         TrackingMemoryProvider provider = new();
         PbtTreeHarness harness = new(provider, layout) { RootFoldConcurrency = Workers };
 
-        // a first batch so that the throwing fold descends stored groups, whose blobs the frames it
-        // abandons are holding — a fold over an empty tree reads nothing and would prove less
+        // Seed stored groups so abandoned frames hold leases when the fold throws.
         Random rng = new(3);
         List<(byte[] Key, byte[]? Value)> existing = Writes(rng, accountStems: 2000, contracts: 4, slotsPerContract: 100);
         ValueHash256 root = harness.ApplyBatch(existing);
 
-        // one stem added twice, which the descent rejects once it has consumed the whole stem; the batch
-        // is big enough that the bucket holding it is likely to be one a worker took
+        // Duplicate stems fail after descent; the batch is large enough to involve a worker.
         using PbtWriteBatch batch = new(estimatedStems: 2048, buckets: null);
         for (int i = 0; i < 2048; i++)
         {
@@ -278,8 +258,7 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
             byte[] prefix = Stem(rng);
             for (int slot = 0; slot < slotsPerContract; slot++)
             {
-                // the last two bytes vary, so the group parts only at depth 240 and the whole contract
-                // descends one run to get there
+                // Vary only the last two bytes so the group branches at depth 240.
                 byte[] stem = (byte[])prefix.Clone();
                 stem[^2] = (byte)rng.Next(256);
                 stem[^1] = (byte)rng.Next(256);

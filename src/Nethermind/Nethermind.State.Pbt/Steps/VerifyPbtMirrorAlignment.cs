@@ -13,16 +13,10 @@ using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Steps;
 
-/// <summary>
-/// Fails startup unless the mirrored PBT database holds exactly the state the flat one does.
-/// </summary>
+/// <summary>Fails startup unless mirrored PBT and flat databases hold the same state.</summary>
 /// <remarks>
-/// Mirroring can only begin from a state both backends can serve, and neither can reach the other's:
-/// each prunes everything below its own persisted pointer. Rather than letting that surface as an
-/// unservable state mid-processing, it is checked once here. The two get out of step either by being
-/// enabled over a flat database PBT was never built from, or by a crash landing between the two
-/// persists — see <see cref="PbtFlatDrivenPersistence"/>. Both recover the same way, by rebuilding PBT
-/// from the flat database.
+/// Each backend prunes states below its persisted pointer, so misalignment would surface as an
+/// unservable state during processing. Rebuild PBT from flat state to recover.
 /// </remarks>
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],

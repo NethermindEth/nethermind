@@ -342,7 +342,6 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         WalkPosition(group, TLayout.RootPosition, TLayout.BoundarySlots, depth, stats);
     }
 
-    /// <summary>The partition of <paramref name="zone"/>, the leading nibble of a stem, as the leaf columns split them.</summary>
     /// <summary>
     /// The partition of the root group's boundary slot <paramref name="slot"/>: the zone its subtree
     /// falls in, which is the leading nibble of every stem below it.

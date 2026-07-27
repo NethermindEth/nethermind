@@ -11,13 +11,13 @@ namespace Nethermind.Pbt;
 /// </remarks>
 public enum PbtTiling : byte
 {
-    /// <summary>4-level tiles, every other depth holding its children's blobs (<see cref="PbtClusteredTileLayout"/>).</summary>
+    /// <summary>Four-level clustered tiles.</summary>
     ClusteredFourLevel = 0,
 
-    /// <summary>6-level tiles, each its own blob (<see cref="PbtSixLevelTileLayout"/>).</summary>
+    /// <summary>Six-level independent tiles.</summary>
     SixLevel = 1,
 
-    /// <summary>8-level tiles, each its own blob (<see cref="PbtEightLevelTileLayout"/>).</summary>
+    /// <summary>Eight-level independent tiles.</summary>
     EightLevel = 2,
 }
 
@@ -25,12 +25,7 @@ public enum PbtTiling : byte
 /// The shape of one tiling of the stem trie: how many levels a tile covers, how a stem picks the slot
 /// it descends into, and how wide the bitmaps pinning its entries are.
 /// </summary>
-/// <remarks>
-/// Implemented by empty structs and consumed as a type parameter, so every tiling folds to the
-/// constants it was written with rather than reading them back through a field. What does not depend
-/// on the tile's width — the post-order numbering, the levels a format skips — is shared in
-/// <see cref="PbtLayout"/>.
-/// </remarks>
+/// <remarks>Empty generic layout structs provide compile-time constants; width-independent logic is in <see cref="PbtLayout"/>.</remarks>
 public interface IPbtTileLayout
 {
     static abstract PbtTiling Tiling { get; }
@@ -68,10 +63,12 @@ public interface IPbtTileLayout
     /// <summary>Whether the boundary chain mask uses <see cref="CompactBitmap256"/> and therefore has a data-dependent length.</summary>
     static abstract bool HasCompactBoundaryMask { get; }
 
-    // Compatibility surface for legacy-width encoders. Production group encoding uses NodeGroupMaskEncoding.
+    /// <summary>The encoded mask-trailer length in bytes.</summary>
     static abstract int MaskTrailerLength { get; }
 
+    /// <summary>Encodes masks into <paramref name="trailer"/>.</summary>
     static abstract void WriteMasks(Span<byte> trailer, in NodeGroupBitmasks masks);
 
+    /// <summary>Decodes masks from <paramref name="trailer"/>.</summary>
     static abstract NodeGroupBitmasks ReadMasks(ReadOnlySpan<byte> trailer);
 }

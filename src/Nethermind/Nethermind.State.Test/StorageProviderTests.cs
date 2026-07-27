@@ -347,10 +347,7 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    /// <summary>
-    /// A backend that cannot prove an account holds no slot must still be read for every one of them: the
-    /// missing-slots-are-zero shortcut is gated on <c>IStorageTree.IsKnownEmpty</c>, not on the storage root.
-    /// </summary>
+    /// <summary>Only <c>IStorageTree.IsKnownEmpty</c> may suppress reads for missing slots.</summary>
     [Test]
     public void Storage_of_a_backend_that_cannot_prove_emptiness_is_still_read()
     {
@@ -1245,7 +1242,6 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    /// <summary>Stands in for a backend whose storage trees keep their root but never claim to be empty.</summary>
     private sealed class UnknownEmptinessScopeProvider(IWorldStateScopeProvider baseProvider) : IWorldStateScopeProvider
     {
         public bool HasRoot(BlockHeader baseBlock) => baseProvider.HasRoot(baseBlock);

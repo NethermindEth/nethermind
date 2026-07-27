@@ -157,7 +157,7 @@ public class PbtSnapshotBundle(
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            // a found null is a tombstone: the node was removed at this layer
+            // A found null is a tombstone.
             if (snapshots[i].Content.TryGetTrieNode(key, out node)) return node;
         }
 
@@ -166,7 +166,7 @@ public class PbtSnapshotBundle(
 
     public void SetAccount(Address address, Account? account) => PendingFlatWrites.Accounts[address] = account;
 
-    // present entry = written in this block; a zero value is a valid write (distinct from absent)
+    // A present zero is a write, not an absent entry.
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value) =>
         PendingFlatWrites.Slots[(address, slot)] = value;
 
@@ -235,7 +235,7 @@ public class PbtSnapshotBundle(
     {
         if (TryBeginOwnershipTransfer()) return;
 
-        // the write was rejected, so nothing will ever release the lease it carried but this
+        // A rejected write leaves this method responsible for the transferred lease.
         ((IDisposable?)transferred)?.Dispose();
         ObjectDisposedException.ThrowIf(true, this);
     }
@@ -285,17 +285,13 @@ public class PbtSnapshotBundle(
     /// </summary>
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
-        // ownership of the buffer passes to the snapshot, which returns it to the pool once its last
-        // lease drops; the bundle must never touch the old one again
+        // The snapshot owns the buffer after sealing and returns it when its last lease drops.
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
 
-        // the fold that preceded this seal turned every pending write into a blob on the layer just
-        // sealed, so the buffer has served its purpose and holding it on would only leak the block's
-        // accounts and slots into the next one's footprint. The cached blobs go with them: the layer
-        // shadows the ones the block dirtied, and the rest would be pinned for a reuse that may never come
+        // Sealing makes pending writes and cached blobs unnecessary for the next block.
         PendingFlatWrites.Reset();
         LeafBlobCache.Reset();
         return snapshot;

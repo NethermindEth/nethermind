@@ -73,7 +73,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             SingleWriter = true,
         });
 
-        ValueHash256 root = default; // empty tree is 32 zero bytes
+        ValueHash256 root = default;
         long stems = 0;
 
         // Progress is logged off the just-committed window so throughput tracks durable work rather
@@ -127,7 +127,6 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             catch { pipelineCts.Cancel(); throw; } // unblock a consumer parked on the full channel
         });
 
-        // never pooled, so a Dispose would be a no-op
         PbtWriteBatchBuilder builder = new();
         StemGroup group = new();
         IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL);
@@ -141,7 +140,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             {
                 using (chunk)
                 {
-                    // the indexer rather than a span: the window seal awaits mid-chunk
+                    // Sealing can await mid-chunk, so a span cannot stay live here.
                     for (int i = 0; i < chunk.Count; i++)
                     {
                         RebuildEntry entry = chunk[i];
@@ -265,7 +264,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             }
         }
 
-        writeBatch.Dispose(); // atomic commit of this window's leaves and nodes, when it had any
+        writeBatch.Dispose();
         return currentRoot;
     }
 }

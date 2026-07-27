@@ -7,9 +7,7 @@ using Nethermind.Pbt;
 
 namespace Nethermind.Benchmarks.Core
 {
-    /// <summary>
-    /// The EIP-8297 node hash: 64 bytes, frequently with one 32-byte half all zeroes (an empty subtree).
-    /// </summary>
+    /// <summary>EIP-8297 node-hash inputs, often with one empty 32-byte half.</summary>
     public class Blake3PairBenchmarks
     {
         private readonly byte[] _pair = new byte[64];

@@ -13,23 +13,11 @@ using Nethermind.State.Pbt.ScopeProvider;
 
 namespace Nethermind.State.Pbt.Mirror;
 
-/// <summary>
-/// Drives a PBT state alongside an authoritative backend over the very same block processing: every
-/// read is served by both and compared, and every write is applied to both.
-/// </summary>
+/// <summary>Mirrors world-state reads and writes to PBT while retaining an authoritative backend.</summary>
 /// <remarks>
-/// The authoritative backend owns everything caller-visible — the reported root hash, the storage
-/// roots, the values handed back to the EVM — so that a mirrored node processes blocks exactly as an
-/// unmirrored one does; PBT is a shadow whose only observable effect is a
-/// <see cref="PbtMirrorMismatchException"/> when it disagrees. Nothing here is specific to the flat
-/// backend: it wraps whichever provider it decorates.
-/// <para>
-/// PBT states are keyed by the authoritative root rather than by the root the tree folds to (see
-/// <see cref="PbtWorldStateScope.UseAuthoritativeRoot"/>), which is what lets the two backends persist
-/// the same block ranges. Their code databases are the same store, so the scope's single code db is
-/// PBT's — it writes through the authoritative one, and additionally captures the bytes PBT needs to
-/// chunk into the tree.
-/// </para>
+/// Caller-visible values come from the authoritative backend; PBT disagreements throw
+/// <see cref="PbtMirrorMismatchException"/>. PBT uses the authoritative root so both backends can
+/// persist the same block ranges (see <see cref="PbtWorldStateScope.UseAuthoritativeRoot"/>).
 /// </remarks>
 public class PbtMirrorScopeProvider(
     IWorldStateScopeProvider authoritative,
@@ -55,7 +43,7 @@ public class PbtMirrorScopeProvider(
                 manager.GatherBundle(stateId, PbtResourcePool.Usage.MainBlockProcessing),
                 authoritativeScope.CodeDb,
                 manager,
-                // the mirror supplies the root itself, so the block tree is never consulted for one
+                // The mirror supplies the root; do not consult the block tree.
                 NullPbtChildHeaderSource.Instance,
                 resourcePool,
                 PbtResourcePool.Usage.MainBlockProcessing,
@@ -95,11 +83,10 @@ public class PbtMirrorScopeProvider(
             return account;
         }
 
-        /// <summary>Compares the fields PBT stores, plus existence.</summary>
+        /// <summary>Compares account existence and fields stored by PBT.</summary>
         /// <remarks>
-        /// Not <see cref="Account.Equals(Account)"/>: it covers the storage root, which an EIP-8297
-        /// account does not have — slots live in the one tree, so a PBT account always reports the
-        /// empty-tree hash (see <see cref="ScopeProvider.PbtStorageTree"/>).
+        /// <see cref="Account.Equals(Account)"/> also compares the storage root, which EIP-8297
+        /// accounts do not store because slots share one tree.
         /// </remarks>
         private static bool Matches(Account? authoritative, Account? mirrored) =>
             authoritative is null || mirrored is null
@@ -156,7 +143,7 @@ public class PbtMirrorScopeProvider(
         IWorldStateScopeProvider.IStorageTree pbt,
         Address address) : IWorldStateScopeProvider.IStorageTree
     {
-        // PBT accounts have no per-account storage root, so only the authoritative one is meaningful
+        // PBT accounts have no per-account storage root.
         public Hash256 RootHash => authoritative.RootHash;
 
         public bool IsKnownEmpty => authoritative.IsKnownEmpty;
@@ -176,11 +163,8 @@ public class PbtMirrorScopeProvider(
     }
 
     /// <remarks>
-    /// The authoritative batch is the one that reports account updates, and it reports them from its
-    /// own <see cref="IDisposable.Dispose"/> — where it folds each dirty storage tree's new root into
-    /// the account. Those patched accounts are the ones that end up stored, so they are forwarded into
-    /// the PBT batch as they are raised; without that the two account tables would part ways on the
-    /// storage root and the very next <see cref="Scope.Get"/> would report a mismatch.
+    /// The authoritative batch emits accounts after folding dirty storage roots during
+    /// <see cref="IDisposable.Dispose"/>. Forward those updates to keep the mirrored account tables aligned.
     /// </remarks>
     private sealed class WriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
@@ -213,7 +197,7 @@ public class PbtMirrorScopeProvider(
         {
             try
             {
-                // first: its dispose is what raises the account updates the PBT batch still needs
+                // Dispose this first to forward its account updates to the PBT batch.
                 _authoritative.Dispose();
             }
             finally

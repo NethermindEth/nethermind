@@ -6,8 +6,7 @@ using System;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
-/// Direct port of the EIP-8297 reference python (<c>BinaryTree.insert</c> / <c>merkelize</c>),
-/// kept structurally independent of the production code to act as its oracle.
+/// Independent port of the EIP-8297 Python reference implementation used as a test oracle.
 /// </summary>
 public sealed class EipReferenceTree
 {
@@ -63,8 +62,7 @@ public sealed class EipReferenceTree
             return SplitLeaf(stemNode, stemBits, ToBits(stemNode.Stem), subIndex, value, depth);
         }
 
-        // Two stems parting only at the last bit split at depth 247, leaving their stem nodes at 248 —
-        // legal, and handled above. Only an internal node there would be, every bit being spent.
+        // Stem nodes may occur at depth 248; only internal nodes are invalid there.
         if (depth >= 248) throw new InvalidOperationException("depth must be less than 248");
 
         RefInternalNode internalNode = (RefInternalNode)node;

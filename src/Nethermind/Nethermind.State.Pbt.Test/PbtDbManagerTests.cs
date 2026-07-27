@@ -16,7 +16,7 @@ public class PbtDbManagerTests
 {
     private static readonly Address Address = TestItem.AddressA;
 
-    /// <summary>The slot each block writes alongside the account, on a stem of its own rather than the account header's.</summary>
+    /// <summary>The per-block storage slot, on a stem separate from the account header.</summary>
     private static readonly UInt256 Slot = 1000;
 
     private static Hash256 CommitBlock(IWorldStateScopeProvider.IScope scope, ulong blockNumber, in UInt256 balance)
@@ -51,7 +51,7 @@ public class PbtDbManagerTests
         PbtReadOnlySnapshotBundle second = manager.GatherReadOnlyBundle(state);
         Assert.That(second, Is.SameAs(first), "one state, one shared view");
 
-        // a gather still holding a lease keeps reading after the sweep drops the cached view
+        // The gather retains its leased view after the sweep drops the cached view.
         ctx.Manager.FlushCache(default);
         Assert.That(first.GetAccount(Address)!.Balance, Is.EqualTo((UInt256)100));
 
@@ -155,21 +155,15 @@ public class PbtDbManagerTests
         ctx.FinalizedStateProvider.FinalizedBlockNumber = 5;
         ctx.Coordinator.CheckPersistence();
 
-        // Segments persisted up to the last schedule boundary at or below the finalized block. With
-        // CompactSize 2 and no offset those are the even blocks, so block 5 is finalized but not yet
-        // on a boundary and its layer stays in memory.
+        // With CompactSize 2 and no offset, only even finalized blocks are persisted.
         Assert.That(ctx.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(4, roots[4])));
         Assert.That(ctx.Repository.Count, Is.EqualTo(1));
 
-        // the open scope keeps serving through its leased layers
+        // The open scope continues reading through its leased layers.
         Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)500));
     }
 
-    /// <summary>
-    /// The whole point of the header-keyed state: a node restarting on a persisted database looks its
-    /// state up by the root its header carries, and still folds the next block on the tree root it
-    /// actually left off at.
-    /// </summary>
+    /// <summary>Restores state by the header root while continuing from the persisted tree root.</summary>
     [Test]
     public async Task PersistedState_IsKeyedByTheHeaderRoot_WithTheTreeRootRecordedBesideIt()
     {
@@ -180,7 +174,7 @@ public class PbtDbManagerTests
 
         await using (PbtTestContext ctx = new(db, childHeaders: childHeaders))
         {
-            // block 0 has no header to echo, so its own tree root becomes the genesis header's claim
+            // Block 0 has no header root, so genesis claims its tree root.
             BlockHeader genesis;
             using (IWorldStateScopeProvider.IScope genesisScope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
             {

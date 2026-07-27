@@ -37,16 +37,13 @@ public class PbtPersistenceCoordinator(
     private readonly ulong _compactSize = (ulong)config.CompactSize;
     private readonly ulong _minReorgDepth = (ulong)config.MinReorgDepth;
 
-    // In mirror mode the flat backend is the only clock: it drives PersistUpTo over the very ranges it
-    // persists itself, so letting the triggers below fire too would move the two persisted pointers apart.
+    // Mirror mode follows the flat backend's ranges to keep persisted pointers aligned.
     private readonly bool _externallyDriven = config.MirrorFlat;
 
-    // Raised to at least one CompactSize above MinReorgDepth so the finalized trigger always has
-    // room to act before the backstop fires.
+    // Leave one compact window for finality-driven persistence before the backstop fires.
     private readonly ulong _backstopReorgDepth = Math.Max((ulong)config.MaxReorgDepth, (ulong)(config.MinReorgDepth + config.CompactSize));
 
-    // StateId is a 40-byte struct, so a direct field read/write could be observed torn by query
-    // threads. Publish it as an immutable boxed reference instead.
+    // Publish this 40-byte value as an immutable reference to prevent torn reads.
     private StrongBox<StateId>? _currentPersistedState;
 
     public StateId GetCurrentPersistedStateId()
@@ -120,8 +117,7 @@ public class PbtPersistenceCoordinator(
         ulong depth = persisted == StateId.PreGenesis
             ? head.BlockNumber + 1
             : head.BlockNumber.SaturatingSub(persisted.BlockNumber);
-        // the schedule's boundary, not a fixed stride from the persisted state: it is offset-shifted
-        // per node, and it is where a full-width compaction lands
+        // The per-node-offset boundary is where full-width compaction lands.
         ulong nextBoundary = schedule.NextFullCompactionAfter(persisted);
 
         if (finalizedStateProvider.FinalizedBlockNumber >= nextBoundary
@@ -144,9 +140,7 @@ public class PbtPersistenceCoordinator(
     private bool PersistSegment(in StateId seed)
     {
         StateId persisted = GetCurrentPersistedStateId();
-        // the using must cover the early return too: the chain rents its backing array before
-        // TryLeaseChain can discover the walk is broken, and CheckPersistence takes this no-op path
-        // on every signal that has nothing to persist
+        // TryLeaseChain may rent its backing array before discovering a broken walk.
         using PbtSnapshotPooledList chain = new(1);
         if (!repository.TryLeaseChain(seed, persisted, chain) || chain.Count == 0) return false;
 

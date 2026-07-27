@@ -28,10 +28,7 @@ public static class Blake3Hash
         return result;
     }
 
-    /// <summary>
-    /// <see cref="HashPairOrZero"/> for a node whose right child is empty, saving it the check for which
-    /// half is zero.
-    /// </summary>
+    /// <summary>Hashes a pair with an empty right child.</summary>
     public static ValueHash256 HashWithEmptyRight(in ValueHash256 left)
     {
         if (left == default) return default;
@@ -41,10 +38,7 @@ public static class Blake3Hash
         return result;
     }
 
-    /// <summary>
-    /// <see cref="HashPairOrZero"/> for a node whose left child is empty, saving it the check for which
-    /// half is zero.
-    /// </summary>
+    /// <summary>Hashes a pair with an empty left child.</summary>
     public static ValueHash256 HashWithEmptyLeft(in ValueHash256 right)
     {
         if (right == default) return default;

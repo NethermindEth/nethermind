@@ -15,7 +15,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeClusterTests
 {
-    /// <summary>The slots the clustered group points its children at — the first and the last, so the offsets are exercised at both ends.</summary>
+    /// <summary>First and last child slots, exercising offsets at both ends.</summary>
     private static readonly int[] ChildSlots = [0, 15];
 
     /// <summary>A slot between them holding a run, which the group keeps to itself.</summary>
@@ -26,7 +26,6 @@ public class PbtNodeClusterTests
     private static readonly ValueHash256 StemHash = new(Bytes.FromHexString("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
     private static readonly PbtSubtreeStats Stats = new(7);
 
-    /// <summary>The group length and the format byte closing an encoding.</summary>
     private const int TrailerLength = 3;
 
     /// <summary>Depth 0 never clusters, so the zone roots below it keep the keys their columns are routed by.</summary>
@@ -34,7 +33,7 @@ public class PbtNodeClusterTests
     [TestCase(4, true)]
     [TestCase(8, false)]
     [TestCase(12, true)]
-    [TestCase(244, true)]   // Layout.MaxGroupDepth
+    [TestCase(244, true)]
     public void IsClusteringDepth_AlternatesByGroup(int depth, bool clusters) =>
         Assert.That(Layout.IsClusteringDepth(depth), Is.EqualTo(clusters));
 
@@ -45,8 +44,7 @@ public class PbtNodeClusterTests
         byte[] secondChild = EncodeSmallerGroup();
         byte[] encoded = Encode(firstChild, secondChild);
 
-        // the cluster is told from a bare group by its trailing byte alone, so a store column holds
-        // both under the same kind of key
+        // The trailing byte distinguishes a cluster from a bare group under the same store key.
         Assert.That(PbtNodeCluster.HoldsChildren(encoded));
         Assert.That(PbtNodeCluster.HoldsChildren(firstChild), Is.False);
         Assert.That(PbtNodeCluster.HoldsChildren([]), Is.False, "an absent blob is neither");
@@ -58,21 +56,18 @@ public class PbtNodeClusterTests
         Assert.That(encoded[cluster.Child(ChildSlots[0], group)], Is.EqualTo(firstChild));
         Assert.That(encoded[cluster.Child(ChildSlots[1], group)], Is.EqualTo(secondChild));
 
-        // The group is found from the trailing length alone, and everything else from the group: its
-        // bitmaps say how many children there are, which puts the offsets right before it and the
-        // children right before those. Nothing inside the group had to be rewritten to hold it here.
+        // The group bitmap determines child count and offset placement; the embedded group is unchanged.
         byte[] bare = EncodeGroupOnly();
         Assert.That(encoded[cluster.Group], Is.EqualTo(bare));
         Assert.That(cluster.GroupOffset, Is.EqualTo(firstChild.Length + secondChild.Length + ChildSlots.Length * sizeof(ushort)));
         Assert.That(encoded, Has.Length.EqualTo(cluster.GroupOffset + bare.Length + TrailerLength));
 
-        // an unoccupied slot, a stem slot and a run slot root no blob of their own
+        // Unoccupied, stem, and chain slots have no separate child blob.
         Assert.That(encoded[cluster.Child(1, group)], Is.Empty);
         Assert.That(encoded[cluster.Child(2, group)], Is.Empty, "a boundary stem's subtree lives in its leaf blob, not a child group");
         Assert.That(encoded[cluster.Child(ChainSlot, group)], Is.Empty, "and a run's lives in the group's own encoding");
     }
 
-    /// <summary>A bare group blob clusters nothing: every child of it is stored under a key of its own.</summary>
     [Test]
     public void Decode_ReadsABareGroupAsClusteringNothing()
     {
@@ -105,14 +100,12 @@ public class PbtNodeClusterTests
     }
 
     /// <summary>
-    /// Nothing records how many children a cluster holds — the group it holds pins that, a blob per
-    /// boundary internal — so one built for any other number has its offsets in the wrong place and is
-    /// rejected however well-formed each child is.
+    /// The embedded group determines child count; a different count misplaces offsets and is rejected.
     /// </summary>
     [Test]
     public void Decode_RejectsAChildCountItsGroupDoesNotPinDown()
     {
-        // the group points at two children, and only the first of them is here
+        // The group requires two children, but only the first is encoded.
         byte[] child = EncodeGroup();
         byte[] group = EncodeGroupOnly();
         byte[] encoded = new byte[PbtNodeCluster.EncodedLength(child.Length, group.Length, 1)];
@@ -134,7 +127,6 @@ public class PbtNodeClusterTests
         return blob;
     };
 
-    /// <summary>Rewrites child <paramref name="index"/>'s end offset, which sits with its fellows just ahead of the group.</summary>
     private static Func<byte[], byte[]> Offset(int index, int end) => blob =>
     {
         int tableOffset = blob.Length - TrailerLength - EncodeGroupOnly().Length - ChildSlots.Length * sizeof(ushort);
@@ -160,8 +152,7 @@ public class PbtNodeClusterTests
     }
 
     /// <summary>
-    /// The clustering group: a boundary internal per <see cref="ChildSlots"/> entry, and a stem and a run
-    /// that root no blob.
+    /// Builds the clustering group with child-rooting internals plus a stem and chain.
     /// </summary>
     private static byte[] EncodeGroupOnly()
     {
@@ -183,7 +174,7 @@ public class PbtNodeClusterTests
         return encoded[..builder.Finish(Stats)];
     }
 
-    /// <summary>A second child, shorter than <see cref="EncodeGroup"/>'s, so that the offsets must be read rather than guessed.</summary>
+    /// <summary>A shorter child ensures offsets are decoded rather than inferred.</summary>
     private static byte[] EncodeSmallerGroup()
     {
         byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];

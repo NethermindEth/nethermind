@@ -167,15 +167,10 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        /// <summary>
-        /// Whether the backend knows the account has no stored slot, letting the world state answer
-        /// missing slots as zero without reading it.
-        /// </summary>
+        /// <summary>Whether the backend can prove that the account has no stored slots.</summary>
         /// <remarks>
-        /// Only a backend that can prove emptiness may return <c>true</c>; one that cannot tell — a backend
-        /// with no per-account storage root — must return <c>false</c> and pay for the reads. Decorating
-        /// implementations must forward this together with <see cref="RootHash"/>, as the default derives it
-        /// from a root the wrapped backend may not maintain.
+        /// Implementations that cannot prove emptiness must return <c>false</c>. Decorators must forward this
+        /// value with <see cref="RootHash"/> when the wrapped backend does not maintain its root.
         /// </remarks>
         bool IsKnownEmpty => RootHash == Keccak.EmptyTreeHash;
 

@@ -6,10 +6,7 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
-/// <summary>
-/// Decorates the scope's code db so freshly written code is also captured per block: the owning
-/// scope needs the bytes at commit time to chunkify them into the tree.
-/// </summary>
+/// <summary>Captures newly written code so the owning scope can chunk it into the tree at commit time.</summary>
 public sealed class PbtCodeDb(IWorldStateScopeProvider.ICodeDb inner, Dictionary<ValueHash256, byte[]> pendingCode) : IWorldStateScopeProvider.ICodeDb
 {
     public byte[]? GetCode(in ValueHash256 codeHash) =>

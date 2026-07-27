@@ -48,9 +48,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Config = config ?? new PbtConfig();
         ChildHeaders = childHeaders ?? NullPbtChildHeaderSource.Instance;
 
-        // A node rolls its compaction offset at random so the network does not all compact on the
-        // same blocks. A test that inherited that would have its boundaries — and so what persists,
-        // and what prunes — move from run to run, so pin it unless the test asked for one.
+        // Production randomizes this offset; tests must use stable compaction boundaries.
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(Db, new PbtConfig()), new TestProcessExitSource(_cts));
         Persistence = _cachedReaderPersistence;

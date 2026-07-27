@@ -11,7 +11,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class Blake3ManagedTests
 {
-    /// <summary>Sizes around every structural boundary: block, chunk, and the chaining-value stack merges.</summary>
+    /// <summary>Sizes around BLAKE3 block, chunk, and chaining-value stack boundaries.</summary>
     private static IEnumerable<int> Sizes()
     {
         foreach (int size in new[] { 0, 1, 31, 32, 33, 63, 64, 65, 127, 128, 1023, 1024, 1025, 2048, 2049, 3072, 4096, 5000, 8192, 100_000 })
@@ -53,7 +53,7 @@ public class Blake3ManagedTests
         Assert.That(actual.ToHexString(), Is.EqualTo(expected.ToHexString()));
     }
 
-    /// <summary>The BLAKE3 reference test vector for the empty input, as a check independent of the native binding.</summary>
+    /// <summary>Verifies the BLAKE3 empty-input reference vector independently of the native binding.</summary>
     [Test]
     public void Matches_reference_vector()
     {

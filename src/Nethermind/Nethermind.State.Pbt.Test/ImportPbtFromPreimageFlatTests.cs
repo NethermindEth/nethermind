@@ -25,12 +25,11 @@ public class ImportPbtFromPreimageFlatTests
 {
     private const ulong SourceBlock = 7;
 
-    /// <summary>The root the source's header claims, which the import must carry over as the key of the state it builds.</summary>
-    /// <remarks>Deliberately unrelated to any tree the fixtures fold to, so an assertion on it cannot pass by coincidence.</remarks>
+    /// <summary>Header root that import must use as the resulting state's key.</summary>
+    /// <remarks>It is unrelated to fixture tree roots to prevent accidental matches.</remarks>
     private static readonly Hash256 SourceStateRoot = TestItem.KeccakA;
 
-    // 0 leaves the built-in window size, so the whole import folds as one window; the small values
-    // force many windows, which the stem-ordered column scan must fold to the very same root
+    // Zero uses the built-in window; small values force multiple windows with the same root.
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(3)]
@@ -38,7 +37,7 @@ public class ImportPbtFromPreimageFlatTests
     {
         PbtConfig config = new() { ImportWindowSize = windowSize };
 
-        // > 128 chunks (3968 bytes) so the overflow-code zone is exercised end-to-end
+        // More than 128 chunks exercises the overflow-code zone end-to-end.
         byte[] bigCode = new byte[5000];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
         Hash256 bigCodeHash = Keccak.Compute(bigCode);
@@ -49,8 +48,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 5, 0xAB);      // header-region slot
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 70, 0x07);     // storage-zone slot
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
-        // a second contract with the same code exercises the overflow-chunk dedup: its content-addressed
-        // chunks are emitted once, and the root must still match the reference tree
+        // A second contract with the same code exercises content-addressed overflow-chunk deduplication.
         PbtReferenceModel.SetAccount(model, TestItem.AddressC, 9, 5, bigCode);
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
@@ -58,8 +56,7 @@ public class ImportPbtFromPreimageFlatTests
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
-            // a contract with storage carries a non-empty storage root in a real flat db, which is what
-            // the importer keys off to fan its storage out to the worker pool (the PBT tree omits it)
+            // A non-empty flat storage root triggers storage fan-out; PBT omits it.
             batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakA));
             batch.SetStorage(TestItem.AddressB, 5, SlotValue.FromSpanWithoutLeadingZero([0xAB]));
             batch.SetStorage(TestItem.AddressB, 70, SlotValue.FromSpanWithoutLeadingZero([0x07]));
@@ -73,8 +70,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
-        // the same columns db must back both the persistence and the step, or phase two scans an empty
-        // database and the test passes while proving nothing
+        // Both phases need the same column database; otherwise phase two scans nothing.
         ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
@@ -90,11 +86,7 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
     }
 
-    /// <summary>
-    /// An account whose storage is entirely header-region (every slot &lt; 64) contributes zone-0 rows
-    /// and no zone-8 rows at all, so the merge-join must consume its slots without a storage-zone pass
-    /// to fall back on. An account with neither storage nor code covers the opposite end.
-    /// </summary>
+    /// <summary>Verifies merge-joining header-only storage and accounts without storage or code.</summary>
     [Test]
     public async Task Imports_accounts_with_only_header_storage_and_with_none()
     {
@@ -130,17 +122,15 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     /// <summary>
-    /// A flat storage key splits the address around the slot, so accounts sharing its leading four
-    /// bytes sit interleaved under them in slot order rather than one after another. Mined vanity
-    /// addresses collide there in practice, so the copy has to return every slot to the account it came
-    /// from instead of to whichever account opened the group.
+    /// Flat storage keys interleave accounts sharing their leading four address bytes, so copied slots
+    /// must remain associated with their originating account.
     /// </summary>
     [Test]
     public async Task Imports_slots_of_accounts_sharing_a_storage_key_prefix()
     {
         PbtConfig config = new();
 
-        // equal in the four address bytes a storage key leads with, so their slots interleave
+        // Equal leading address bytes cause their flat-storage slots to interleave.
         Address first = new(Bytes.FromHexString("0x00000000000000000000000000000000000000aa"));
         Address second = new(Bytes.FromHexString("0x00000000000000000000000000000000000000bb"));
 
@@ -180,19 +170,9 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     /// <summary>
-    /// A crash after the data was written but before the persisted-state pointer advanced leaves the
-    /// target holding a full flat copy plus whatever leaf blobs and trie nodes the fold got through.
-    /// The next run must reproduce the same root over that debris rather than merging with it — the
-    /// fold starts from an empty root, so every stem is structurally new and its stale blob is
-    /// overwritten instead of read.
+    /// A retry after a pre-pointer crash must reproduce the root without reading stale folded blobs.
     /// </summary>
-    /// <param name="clearKeyChunk">
-    /// <see cref="ImportPbtFromPreimageFlat.ClearKeyChunk"/> 1 reopens the column view and its write
-    /// batch after every key the discarding sweep deletes, so each key past the first is read from a
-    /// freshly reopened view whose lower bound is the exclusive successor of the previous one — and is
-    /// read after the previous key's delete has been committed to the very column being scanned.
-    /// Reproducing the root proves the reopen skips exactly the key just deleted, no more and no less.
-    /// </param>
+    /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
     public async Task Rerunning_after_an_interrupted_import_reproduces_the_root(int clearKeyChunk)
@@ -236,7 +216,7 @@ public class ImportPbtFromPreimageFlatTests
         ValueHash256 first = await Import();
         Assert.That(first, Is.EqualTo(PbtReferenceModel.Root(model)));
 
-        // rewind only the pointer, leaving the copied rows, blobs and nodes in place
+        // Rewind only the pointer, retaining copied rows, blobs, and nodes.
         pbtDb.GetColumnDb(PbtColumns.Metadata).Remove("currentState"u8);
 
         Assert.That(await Import(), Is.EqualTo(first), "a restart over an interrupted import must reproduce the same root");
@@ -250,7 +230,7 @@ public class ImportPbtFromPreimageFlatTests
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
-            // two storage-zone slots in the same 256-block: 100>>8 == 101>>8 == 0, so they share a stem
+            // Slots 100 and 101 share a storage stem.
             batch.SetStorage(TestItem.AddressA, 100, SlotValue.FromSpanWithoutLeadingZero([0xAA]));
             batch.SetStorage(TestItem.AddressA, 101, SlotValue.FromSpanWithoutLeadingZero([0xBB]));
         }
@@ -258,7 +238,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
-        // FlushEntryInterval 1 forces the two slots into separate windows, so a same-stem cross-window merge is exercised too
+        // A flush interval of 1 exercises same-stem merging across windows.
         ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = 1 }, pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
@@ -270,16 +250,9 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     /// <summary>
-    /// A small <see cref="ImportPbtFromPreimageFlat.ViewLeafChunk"/> reopens the leaf-column view mid-zone,
-    /// so each stem past the first chunk is read from a freshly reopened view whose lower bound is the
-    /// exclusive successor of the last stem the previous one read. Folding to the reference root proves
-    /// the reopen skips exactly that stem (no duplicate, no gap) across all three zones — accounts,
-    /// overflow code and storage — and that reading live rather than off a snapshot still sees every
-    /// un-folded blob. A window size of 1 folds each stem before the scan reaches the next, so the
-    /// rewrite-under-cursor the removed snapshot used to guard against happens on every step.
+    /// Reopening leaf-column views mid-zone must resume without gaps or duplicates across all zones.
     /// </summary>
-    /// <param name="viewLeafChunk">1 reopens the view on every stem; 5 lets a view read several stems
-    /// before the bound trips, so the resume cursor is exercised at a stem other than the first.</param>
+    /// <param name="viewLeafChunk">Number of stems read before reopening the view.</param>
     [TestCase(1)]
     [TestCase(5)]
     public async Task Reopening_the_leaf_view_mid_zone_folds_to_the_same_root(int viewLeafChunk)
@@ -340,7 +313,7 @@ public class ImportPbtFromPreimageFlatTests
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
         }
 
-        // seed the target so its persisted state is no longer pre-genesis
+        // Ensure the persisted target state is not pre-genesis.
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         ValueHash256 existingRoot = new(Keccak.Compute("existing").Bytes);

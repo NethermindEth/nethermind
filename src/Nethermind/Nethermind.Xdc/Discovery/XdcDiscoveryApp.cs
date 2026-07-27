@@ -36,7 +36,6 @@ public class XdcDiscoveryApp(
                 .As<NettyDiscoveryHandler>()
                 .WithAttributeFiltering();
 
-            // XDC does not implement the ENR request/response messages, so remote ENR refresh is disabled.
             builder.AddSingleton<IKademliaAdapter, XdcKademliaAdapter>();
         })
 {

@@ -14,15 +14,10 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
-/// <summary>
-/// A world scope whose commits stack in local layers above the main state instead of the global
-/// repository, letting override environments (eth_call state overrides) process and reset freely.
-/// </summary>
+/// <summary>Provides local state layers for resettable override environments, such as <c>eth_call</c> state overrides.</summary>
 /// <remarks>
-/// Its scopes report their own EIP-8297 root rather than a header's: the blocks they process are
-/// synthetic and never reach the block tree, so resolving a child by height would answer with the
-/// canonical block's root. Nothing here validates a root, so the tree's own is both honest and
-/// self-consistent.
+/// Override scopes process synthetic blocks, so they report their folded EIP-8297 root rather than a
+/// canonical block header's root.
 /// </remarks>
 public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 {
@@ -84,7 +79,6 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         return _snapshots.ContainsKey(stateId) || _manager.HasStateForBlock(stateId);
     }
 
-    /// <summary>Stacks the local override layers reachable from <paramref name="stateId"/> above the main state's shared view.</summary>
     private PbtSnapshotBundle GatherBundle(in StateId stateId)
     {
         PbtSnapshotPooledList localChain = new(1);
@@ -96,21 +90,16 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             current = snapshot.From;
         }
 
-        // the walk runs head-down; the bundle expects its chain oldest first
         localChain.Reverse();
 
         PbtReadOnlySnapshotBundle? readOnlyBundle = null;
         try
         {
             readOnlyBundle = _manager.GatherReadOnlyBundle(current);
-            // an override scope never commits to the repository, so its layers come from the
-            // read-only pool
             return new PbtSnapshotBundle(localChain, readOnlyBundle, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, _recordDetailedMetrics);
         }
         catch
         {
-            // the gather throws when the walk truncated onto an override-local state; nothing else
-            // releases these
             readOnlyBundle?.Dispose();
             localChain.Dispose();
             throw;

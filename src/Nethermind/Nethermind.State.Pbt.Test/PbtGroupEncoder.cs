@@ -10,21 +10,8 @@ using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>
-/// Writes a <see cref="PbtTrieNodeGroup"/> encoding one node at a time, at whatever positions the
-/// caller names, for a test that needs a group of a given shape to hand <see cref="PbtTrieNodeGroup{TLayout}.Decode"/>.
-/// </summary>
-/// <remarks>
-/// The production writer lives inside the updater's fold, which only ever emits the shapes a fold
-/// produces — a stem at a boundary position, never an internal at the group root. The codec has to
-/// read more than that: a stem wherever it lands, a root position occupied, a bitmap that does not
-/// match the entries. This encoder exists to put those on the wire.
-/// <para>
-/// It takes the layout from <see cref="PbtTrieNodeGroup{TLayout}"/> itself — the entry lengths and the trailer
-/// offsets — so only the order of the writes is restated here, and an encoding it produces that the
-/// codec would not is caught by <see cref="PbtTrieNodeGroup{TLayout}.Decode"/> rather than passing quietly.
-/// </para>
-/// </remarks>
+/// <summary>Encodes test node groups with caller-specified entries for <see cref="PbtTrieNodeGroup{TLayout}.Decode"/>.</summary>
+/// <remarks>Supports malformed and otherwise unreachable group shapes needed to test decoder validation.</remarks>
 public ref struct PbtGroupEncoder<TLayout>(Span<byte> destination, PbtGroupFormat format) where TLayout : IPbtTileLayout
 {
     private readonly Span<byte> _destination = destination;
@@ -33,14 +20,14 @@ public ref struct PbtGroupEncoder<TLayout>(Span<byte> destination, PbtGroupForma
     private ulong _chains;
     private int _offset = PbtTrieNodeGroup.EntriesOffset;
 
-    /// <summary>Appends the internal node at <paramref name="position"/>, returning its entry offset.</summary>
+    /// <summary>Appends an internal node and returns its entry offset.</summary>
     public int AppendInternal(int position, in ValueHash256 hash)
     {
         MarkPresent(position);
         return Write(hash.Bytes);
     }
 
-    /// <summary>Appends the stem node at <paramref name="position"/>, returning its entry offset.</summary>
+    /// <summary>Appends a stem node and returns its entry offset.</summary>
     public int AppendStem(int position, in Stem stem, in ValueHash256 leafSubtreeRoot)
     {
         MarkPresent(position);
@@ -50,7 +37,7 @@ public ref struct PbtGroupEncoder<TLayout>(Span<byte> destination, PbtGroupForma
         return offset;
     }
 
-    /// <summary>Appends the run at <paramref name="position"/>, a boundary slot's, whose whole encoding <paramref name="chain"/> is.</summary>
+    /// <summary>Appends a boundary-slot run and returns its entry offset.</summary>
     public int AppendChain(int position, ReadOnlySpan<byte> chain)
     {
         MarkPresent(position);
@@ -58,7 +45,7 @@ public ref struct PbtGroupEncoder<TLayout>(Span<byte> destination, PbtGroupForma
         return Write(chain);
     }
 
-    /// <summary>Appends the trailer and returns the encoded length; 0 when nothing was appended.</summary>
+    /// <summary>Appends the trailer and returns the encoded length, or 0 for an empty group.</summary>
     public readonly int Finish(in PbtSubtreeStats stats)
     {
         if (_presence == 0) return 0;

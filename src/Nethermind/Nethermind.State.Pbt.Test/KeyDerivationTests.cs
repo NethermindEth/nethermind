@@ -31,11 +31,11 @@ public class KeyDerivationTests
     [Test]
     public void StorageKeysMatchEipTestVectors()
     {
-        // slot 5 lives in the account header at sub-index HEADER_STORAGE_OFFSET + 5 = 0x45
+        // Slot 5 is in the account header at sub-index HEADER_STORAGE_OFFSET + 5 = 0x45.
         Assert.That(PbtKeyDerivation.IsHeaderSlot(5), Is.True);
         Assert.That(PbtKeyDerivation.HeaderSlotSubIndex(5), Is.EqualTo(0x45));
 
-        // slot 1000: tree_index = 3, sub_index = 232, stem = 1 || H(A)[:60] || H(A || 3)[:187]
+        // Slot 1000 uses tree index 3, sub-index 232, and stem 1 || H(A)[:60] || H(A || 3)[:187].
         Assert.That(PbtKeyDerivation.IsHeaderSlot(1000), Is.False);
         Stem stem = PbtKeyDerivation.StorageStem(Address, 1000, out byte subIndex);
         Assert.That(subIndex, Is.EqualTo(0xE8));
@@ -50,10 +50,10 @@ public class KeyDerivationTests
     [Test]
     public void CodeChunkKeysMatchEipTestVectors()
     {
-        // chunk 5 lives in the account header at sub-index CODE_OFFSET + 5 = 0x85
+        // Chunk 5 is in the account header at sub-index CODE_OFFSET + 5 = 0x85.
         Assert.That(PbtKeyDerivation.HeaderCodeChunkSubIndex(5), Is.EqualTo(0x85));
 
-        // chunk 300: overflow = 172, tree_index = 0, sub_index = 0xAC, stem = 0x1 || H(C || 0)[:244]
+        // Chunk 300 uses overflow 172, tree index 0, sub-index 0xAC, and stem 0x1 || H(C || 0)[:244].
         ValueHash256 codeHash = new("0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
         Stem stem = PbtKeyDerivation.CodeOverflowStem(codeHash, 300, out byte subIndex);
         Assert.That(subIndex, Is.EqualTo(0xAC));
@@ -68,8 +68,7 @@ public class KeyDerivationTests
     {
         Assert.That(PbtKeyDerivation.ChunkifyCode([]), Is.Empty);
 
-        // the EIP example: ... PUSH4 99 98 | 97 96 PUSH1 128 MSTORE — the second chunk starts
-        // with 2 leading PUSHDATA bytes
+        // EIP-8297 example: the second chunk starts with two PUSHDATA bytes.
         byte[] code = [.. new byte[28], 0x63, 99, 98, 97, 96, 0x60, 128, 0x52];
         byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
         Assert.That(chunks, Has.Length.EqualTo(2 * PbtKeyDerivation.CodeChunkSize));
@@ -79,7 +78,7 @@ public class KeyDerivationTests
         Assert.That(Chunk(chunks, 1).Slice(1, 5).SequenceEqual((byte[])[97, 96, 0x60, 128, 0x52]));
         Assert.That(Chunk(chunks, 1)[6..].IsZero(), "padding must be zero");
 
-        // PUSH32 data spanning a whole chunk is capped at 31, with the tail counted in the next chunk
+        // PUSH32 data is capped at 31 bytes per chunk; the tail belongs to the next chunk.
         byte[] pushData = new byte[32];
         Array.Fill(pushData, (byte)0xAA);
         byte[] push32Code = [.. new byte[30], 0x7F, .. pushData];
@@ -111,7 +110,7 @@ public class KeyDerivationTests
         return output;
     }
 
-    /// <summary>Reference bit-splicing: concatenates bit segments MSB-first into a 31-byte stem, per the EIP's list-of-bits construction.</summary>
+    /// <summary>Concatenates bit segments MSB-first into a 31-byte stem, per EIP-8297.</summary>
     private static byte[] SpliceBits(int[] leadingBits, params (byte[] Bytes, int BitCount)[] segments)
     {
         List<int> bits = [.. leadingBits];

@@ -6,22 +6,8 @@ using Nethermind.Core.Buffers;
 
 namespace Nethermind.Pbt;
 
-/// <summary>
-/// A <c>PipeWriter</c>-shaped cursor over a byte buffer: <see cref="GetSpan"/> hands out room and
-/// <see cref="Advance"/> commits it, so a producer writes its encoding straight into its final
-/// position rather than into a buffer of its own to be copied over afterwards.
-/// </summary>
-/// <remarks>
-/// Backed either by a caller-supplied span, which cannot grow, or by an
-/// <see cref="IRefCountingMemoryProvider"/>, which rents on the first write and doubles from there.
-/// A growable writer hands its buffer to <see cref="Detach"/>, narrowed to what was written; one
-/// whose bytes are dropped instead releases it through <see cref="Dispose"/>.
-/// <para>
-/// The two backings are what let one encoder serve both a nested producer — a trie node group
-/// folding into the blob its parent is assembling — and a caller that has already sized and
-/// allocated the destination itself.
-/// </para>
-/// </remarks>
+/// <summary>Writes directly to a fixed or rented-growable buffer.</summary>
+/// <remarks><see cref="Detach"/> transfers a rented buffer; <see cref="Dispose"/> releases an undetached one.</remarks>
 public ref struct BufferWriter
 {
     private readonly IRefCountingMemoryProvider? _provider;
@@ -33,15 +19,8 @@ public ref struct BufferWriter
     /// <summary>Writes into <paramref name="destination"/> and no further; <see cref="Detach"/> is unavailable.</summary>
     public BufferWriter(Span<byte> destination) => _buffer = destination;
 
-    /// <summary>
-    /// Rents from <paramref name="provider"/> on the first write and grows as needed, starting at
-    /// <paramref name="capacityHint"/> bytes.
-    /// </summary>
-    /// <param name="capacityHint">
-    /// What the caller expects to write — the length of the blob being replaced makes a good one. Left
-    /// at zero the first write sizes the rent itself, which is exactly right for a producer that writes
-    /// once and knows its length, as a bare group's fold does.
-    /// </param>
+    /// <summary>Rents from <paramref name="provider"/> on the first write and grows as needed.</summary>
+    /// <param name="capacityHint">Expected output length; zero sizes the first rent from the write.</param>
     public BufferWriter(IRefCountingMemoryProvider provider, int capacityHint = 0)
     {
         _provider = provider;
@@ -54,10 +33,7 @@ public ref struct BufferWriter
     /// <summary>The bytes committed so far.</summary>
     public readonly ReadOnlySpan<byte> WrittenSpan => _buffer[.._written];
 
-    /// <summary>
-    /// Room for at least <paramref name="sizeHint"/> more bytes, which <see cref="Advance"/> commits.
-    /// The span is valid only until the next call, a growable writer moving its bytes as it rents.
-    /// </summary>
+    /// <summary>Gets room for at least <paramref name="sizeHint"/> bytes; the next call may invalidate the span.</summary>
     public Span<byte> GetSpan(int sizeHint)
     {
         Debug.Assert(sizeHint >= 0);
@@ -79,21 +55,14 @@ public ref struct BufferWriter
         _written += source.Length;
     }
 
-    /// <summary>
-    /// Rolls the cursor back to <paramref name="count"/>, discarding everything written past it. The
-    /// buffer is kept, so a writer that reconsiders what it is building reuses the room it already has.
-    /// </summary>
+    /// <summary>Rolls back to <paramref name="count"/> while retaining the buffer.</summary>
     public void Reset(int count)
     {
         Debug.Assert((uint)count <= (uint)_written, "a reset only ever rolls back");
         _written = count;
     }
 
-    /// <summary>
-    /// Hands the buffer over as the value it holds, narrowed to <see cref="WrittenCount"/>, and takes
-    /// this writer out of the picture: the caller owns the lease from here and must release it. Nothing
-    /// written means no value, so the buffer goes back instead and the result is <c>null</c>.
-    /// </summary>
+    /// <summary>Transfers the written rented buffer to the caller, or returns <c>null</c> when empty.</summary>
     /// <exception cref="InvalidOperationException">The writer wrote into a caller's buffer, which it cannot hand over.</exception>
     public RefCountingMemory? Detach()
     {
@@ -113,11 +82,7 @@ public ref struct BufferWriter
         return memory;
     }
 
-    /// <summary>
-    /// Releases the rented buffer of a writer whose bytes were dropped; a detached or span-backed one
-    /// holds none, so a frame may call this unconditionally on the way out — which is what lets it sit
-    /// in a <c>finally</c> and catch the way out of a throw, where nothing detaches at all.
-    /// </summary>
+    /// <summary>Releases an undetached rented buffer.</summary>
     public void Dispose()
     {
         ((IDisposable?)_memory)?.Dispose();

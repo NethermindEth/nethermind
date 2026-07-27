@@ -8,13 +8,10 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections;
 
-/// <summary>
-/// Like <see cref="RefList16{T}"/>, but with a capacity of 64.
-/// </summary>
+/// <summary>A 64-item inline list, like <see cref="RefList16{T}"/>.</summary>
 /// <remarks>
-/// The sized constructor clears the items it exposes rather than relying on the caller's locals being
-/// zero-initialized, so a caller may take the inline array off its prolog with
-/// <see cref="SkipLocalsInitAttribute"/> and pay only for the entries it asked for.
+/// The sized constructor clears only exposed entries, allowing callers to use <see cref="SkipLocalsInitAttribute"/>
+/// without exposing uninitialized storage.
 /// </remarks>
 public ref struct RefList64<T>
 {

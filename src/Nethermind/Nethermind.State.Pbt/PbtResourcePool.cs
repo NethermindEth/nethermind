@@ -27,7 +27,7 @@ public class PbtResourcePool : IPbtResourcePool
             // the finality-stall backstop overflow this by design and refill over the next segment.
             { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, config.CompactSize + 8, 2) },
 
-            // read-only here means never committed to the repository; the scope may still commit locally
+            // Read-only means never committed to the repository; the scope may still commit locally.
             { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
 
             // one compaction runs at a time per width, and its content is dropped as soon as it is written
@@ -102,7 +102,7 @@ public class PbtResourcePool : IPbtResourcePool
         Compact2048,
     }
 
-    // a stack rather than a queue: the most recently returned item is the likeliest to still be in cache
+    // A stack favors recently returned, cache-resident items.
     private class ConcurrentStackPool<T>(int maxCapacity) where T : notnull, IDisposable, IResettable
     {
         private readonly ConcurrentStack<T> _pool = new();
@@ -113,8 +113,7 @@ public class PbtResourcePool : IPbtResourcePool
 
         public bool Return(T item)
         {
-            // reset before the capacity check: an item dropped on overflow must still release
-            // whatever it holds
+            // Reset before the capacity check so an overflowed item releases its contents.
             item.Reset();
             if (_pool.Count >= maxCapacity)
             {
@@ -130,10 +129,9 @@ public class PbtResourcePool : IPbtResourcePool
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writeBatchBuilderPoolSize)
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
-        // one scope holds one builder at a time, and only main processing and the read-only envs
-        // ever open scopes, so the layer sizing does not apply here
+        // Only main and read-only scopes rent builders, so layer sizing does not apply.
         private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _builderPool = new(writeBatchBuilderPoolSize);
-        // a scope holds one bundle for as long as it holds one builder, so these are sized alike
+        // A scope holds one bundle for each builder, so these pools are equally sized.
         private readonly ConcurrentStackPool<PbtPendingFlatWrites> _pendingPool = new(writeBatchBuilderPoolSize);
         private readonly ConcurrentStackPool<PbtLeafBlobCache> _leafCachePool = new(writeBatchBuilderPoolSize);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
@@ -150,7 +148,7 @@ public class PbtResourcePool : IPbtResourcePool
                 return content;
             }
 
-            // the only signal of a pool sized too small for its category: it never stops climbing
+            // This grows indefinitely when the category's pool is too small.
             Metrics.PbtCreatedPooledResource.AddBy(_snapshotLabel, 1);
             return new PbtSnapshotContent();
         }

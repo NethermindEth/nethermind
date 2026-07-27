@@ -15,27 +15,20 @@ using Layout = Nethermind.Pbt.PbtClusteredTileLayout;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
-/// The group encodings all describe the same trie, so they interoperate: any of them reads any other,
-/// they fold to the same root, and a store written across a format switch stays correct — the
-/// guarantee that lets <c>Pbt.TrieNodeLayout</c> move between layouts of one tiling without a migration.
+/// Verifies that layouts of the same tiling interoperate without a migration.
 /// </summary>
 public class PbtFormatInteropTests
 {
     private static readonly byte[] Value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
     private static readonly byte[] Rewritten = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-    /// <remarks>
-    /// The formats are listed in the order they skip more, which is what the byte totals must come out
-    /// in: each stores a subset of the levels the one before it does.
-    /// </remarks>
+    /// <remarks>Formats are ordered by increasing level skipping, so stored byte totals must decrease.</remarks>
     [Test]
     public void EveryFormat_FoldsToTheSameRoot_AndSkippingMoreStoresFewerBytes()
     {
         List<(byte[], byte[]?)> writes = RandomWrites(seed: 7, count: 400);
 
-        // Every4Depth is left out: it stores the same tile as BoundaryOnly and differs only in the leaf
-        // column, which TotalNodeBytes does not weigh, so it cannot be ordered here. Its fold and node set
-        // are covered by MixedLayoutRewrite below and its leaf column by StemLeafBlobTests.
+        // Every4Depth shares BoundaryOnly's tile bytes; its interop is covered below.
         PbtTreeHarness[] harnesses =
         [
             new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelEveryLevel),
@@ -60,15 +53,8 @@ public class PbtFormatInteropTests
         }
     }
 
-    /// <summary>
-    /// A group first written in one layout and then rewritten in another of the same tiling must come
-    /// out byte-identical to one folded in that layout from scratch — the copy-verbatim path must refold
-    /// across the format change rather than splice old bytes into the new encoding.
-    /// </summary>
-    /// <remarks>
-    /// The eight-level pair is where <see cref="PbtGroupFormat.Every4Depth"/> is covered, no clustered
-    /// layout writing it.
-    /// </remarks>
+    /// <summary>Verifies that rewriting across layouts matches a fresh fold in the target layout.</summary>
+    /// <remarks>The eight-level pair covers <see cref="PbtGroupFormat.Every4Depth"/>.</remarks>
     [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel, PbtTrieLayout.ClusteredFourLevelInterleaved)]
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelEveryLevel)]
     [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel, PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
@@ -79,8 +65,7 @@ public class PbtFormatInteropTests
     [TestCase(PbtTrieLayout.EightLevelEvery4Depth, PbtTrieLayout.EightLevelInterleaved)]
     public void MixedLayoutRewrite_MatchesAFreshFoldInTheNewLayout(PbtTrieLayout initial, PbtTrieLayout then)
     {
-        // one tile filled at every boundary slot: it branches every way it can, so a single-slot rewrite
-        // leaves whole clean subtrees for the copy-verbatim path to take
+        // A full tile leaves unchanged subtrees for the copy-verbatim path after one-slot rewrites.
         int slots = initial.Tiling() == PbtTiling.EightLevel ? PbtEightLevelTileLayout.BoundarySlots : Layout.BoundarySlots;
         List<(byte[], byte[]?)> writes = [];
         for (int slot = 0; slot < slots; slot++) writes.Add((TileSlotKey((byte)slot), Value));
@@ -92,7 +77,7 @@ public class PbtFormatInteropTests
         writes[3] = (writes[3].Item1, Rewritten);
         ValueHash256 root = harness.ApplyBatch([writes[3]]);
 
-        // a fresh fold of the surviving state entirely in the new layout
+        // Fold the surviving state entirely in the target layout.
         PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, then);
         ValueHash256 freshRoot = fresh.ApplyBatch(writes);
 
@@ -108,7 +93,7 @@ public class PbtFormatInteropTests
     [Test]
     public void OldFormatStore_ReadsAndConvertsOnlyWhatIsRewritten()
     {
-        // two disjoint dense groups under the root, so a later write can touch one and leave the other
+        // Two disjoint dense root children allow rewriting one while preserving the other.
         List<(byte[], byte[]?)> groupA = [];
         List<(byte[], byte[]?)> groupB = [];
         for (byte slot = 0; slot < Layout.BoundarySlots; slot++)
@@ -135,12 +120,9 @@ public class PbtFormatInteropTests
     private static long TotalNodeBytes(PbtTreeHarness harness) => harness.Nodes.Values.Sum(blob => (long)blob.Length);
 
     private static byte[] BoundaryKey(byte rootNibble, byte slot) =>
-        TileSlotKey((byte)((rootNibble << 4) | slot)); // depth-0 nibble picks the child group, depth-4 nibble the slot
+        TileSlotKey((byte)((rootNibble << 4) | slot)); // Root and depth-4 nibbles select the group and slot.
 
-    /// <summary>
-    /// A key whose first byte is its whole path down to a boundary slot: of the depth-4 group under a
-    /// root nibble on the four-level tiling, of the root tile itself on the eight-level one.
-    /// </summary>
+    /// <summary>Creates a key whose first byte identifies a boundary slot.</summary>
     private static byte[] TileSlotKey(byte path)
     {
         byte[] key = new byte[Stem.Length + 1];

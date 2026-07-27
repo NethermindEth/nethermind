@@ -12,24 +12,17 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
 
-/// <summary>
-/// <see cref="IPbtPersistence"/> over the pbt columns database. Readers wrap a column-family
-/// snapshot; write batches are atomic across all columns and record the new
-/// <see cref="StateId"/> and its tree root in the metadata column of the same batch.
-/// </summary>
+/// <summary><see cref="IPbtPersistence"/> backed by the PBT columns database.</summary>
 public class PbtRocksDbPersistence : IPbtPersistence
 {
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> LayoutVersionKey => "layoutVersion"u8;
     private static ReadOnlySpan<byte> TrieTilingKey => "trieTiling"u8;
 
-    /// <summary>Block number, then the header root the state is keyed by, then the EIP-8297 root it actually has.</summary>
+    /// <summary>Block number, state root, and EIP-8297 tree root.</summary>
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
 
-    /// <summary>
-    /// On-disk layout of the columns this class writes. Bump it whenever a key or value encoding
-    /// changes, so a database written by an older build is refused rather than silently misread.
-    /// </summary>
+    /// <summary>On-disk column layout version; increment it when key or value encodings change.</summary>
     private const int LayoutVersion = 5;
 
     private readonly IColumnsDb<PbtColumns> _db;
@@ -41,7 +34,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
         EnsureTiling(db, config.TrieNodeLayout.Tiling());
     }
 
-    /// <summary>Stamps a fresh database with <see cref="LayoutVersion"/>, and rejects one written under any other layout.</summary>
+    /// <summary>Stamps a fresh database with <see cref="LayoutVersion"/> or rejects an incompatible layout.</summary>
     /// <exception cref="InvalidDataException">The database holds state under a layout this build cannot read.</exception>
     private static void EnsureLayoutVersion(IColumnsDb<PbtColumns> db)
     {
@@ -58,8 +51,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
             return;
         }
 
-        // No version key: either a fresh database, which we stamp, or one written before the key
-        // existed. Only the latter holds state, so the persisted-state pointer tells them apart.
+        // A missing stamp is valid only for an empty database.
         if (ReadCurrentState(metadata).State != StateId.PreGenesis)
         {
             throw new InvalidDataException($"The pbt database predates layout version {LayoutVersion} and cannot be read by this build. Delete the pbt database and re-import.");
@@ -70,15 +62,8 @@ public class PbtRocksDbPersistence : IPbtPersistence
         metadata.PutSpan(LayoutVersionKey, value, WriteFlags.None);
     }
 
-    /// <summary>
-    /// Stamps a fresh database with the tiling it is about to be written in, and rejects one written
-    /// in another.
-    /// </summary>
-    /// <remarks>
-    /// The tiling fixes the keys a tree is stored under, so a database holds one and never both. A
-    /// database with no stamp was written before the tilings parted, which is
-    /// <see cref="PbtTiling.ClusteredFourLevel"/>.
-    /// </remarks>
+    /// <summary>Stamps a fresh database with its trie tiling or rejects an incompatible tiling.</summary>
+    /// <remarks>A missing stamp denotes the original <see cref="PbtTiling.ClusteredFourLevel"/> layout.</remarks>
     /// <exception cref="InvalidDataException">The database holds state under another tiling.</exception>
     private static void EnsureTiling(IColumnsDb<PbtColumns> db, PbtTiling tiling)
     {
@@ -165,10 +150,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
             return ReadOwned(snapshot.GetColumn(TrieNodeColumn(key)), dbKey);
         }
 
-        /// <summary>
-        /// Copies the store's native slice into an <see cref="ArrayPool{T}.Shared"/> rental that the
-        /// caller returns to the pool on disposal.
-        /// </summary>
+        /// <summary>Copies the native slice into a pooled buffer owned by the caller.</summary>
         private static RefCountingMemory? ReadOwned(IReadOnlyKeyValueStore column, scoped ReadOnlySpan<byte> key)
         {
             Span<byte> value = column.GetSpan(key);
@@ -190,11 +172,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
         public void Dispose() => snapshot.Dispose();
     }
 
-    /// <remarks>
-    /// All columns share one underlying RocksDB batch whose write options are taken from its last
-    /// write, so every write here — deletes included, hence <c>Set(key, null, flags)</c> over
-    /// <c>Remove(key)</c> — must carry <paramref name="flags"/> for them to take effect.
-    /// </remarks>
+    /// <remarks>Every operation carries <paramref name="flags"/> because the shared RocksDB batch uses its last write options.</remarks>
     private sealed class WriteBatch(IColumnsDb<PbtColumns> db, StateId to, ValueHash256 toTreeRoot, WriteFlags flags) : IPbtPersistence.IWriteBatch
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
@@ -232,7 +210,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
             WriteCurrentState(_batch.GetColumnBatch(PbtColumns.Metadata), to, toTreeRoot, flags);
             _batch.Dispose();
 
-            // a WAL-disabled batch is deliberately non-durable; the caller flushes when it is done
+            // WAL-disabled batches become durable only when the caller flushes.
             if (!flags.HasFlag(WriteFlags.DisableWAL)) db.Flush(onlyWal: true);
         }
     }

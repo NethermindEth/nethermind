@@ -5,17 +5,8 @@ using System.Numerics;
 
 namespace Nethermind.Pbt;
 
-/// <summary>
-/// The shape every trie node group tile shares whatever its width: where a node sits inside one and
-/// which levels a format writes down, and the same for a <see cref="StemLeafBlob"/>. Everything here
-/// is a function of a position, a slot or a width — never of any bytes — so a producer and a reader
-/// can agree on the layout before either has an encoding to hand. What does depend on the tile's
-/// width lives in <see cref="IPbtTileLayout"/>.
-/// </summary>
-/// <remarks>
-/// The numbering counts up from slot 0, so a narrower tile's positions are a prefix of a wider one's
-/// and the masks below serve both truncated — which is what lets the two tilings share this much.
-/// </remarks>
+/// <summary>Shared width-independent post-order layouts for trie groups and stem leaf blobs.</summary>
+/// <remarks>Narrower tile positions are prefixes of wider ones; width-specific layout is in <see cref="IPbtTileLayout"/>.</remarks>
 public static class PbtLayout
 {
     /// <summary>The widest tile's boundary slots.</summary>
@@ -28,12 +19,7 @@ public static class PbtLayout
     private const int StemLeafAllWidthsBitmask = 0b1_1111_1111;
 
     /// <summary>The widths whose level <paramref name="format"/> stores an internal node at.</summary>
-    /// <remarks>
-    /// <see cref="PbtGroupFormat.Interleaved"/> keeps every other one and
-    /// <see cref="PbtGroupFormat.BoundaryOnly"/> the boundary alone — a boundary entry being the link
-    /// to what hangs below it, which nothing recomputes without a lookup of its own. Both masks are
-    /// anchored at width 1, so they say the same of a narrower tiling's widths as of a wider one's.
-    /// </remarks>
+    /// <remarks>Formats are anchored at boundary width 1, so the masks apply to every tile width.</remarks>
     private static int TrieNodeGroupKeptWidths(PbtGroupFormat format) => format switch
     {
         PbtGroupFormat.Interleaved => 0b1_0101_0101,

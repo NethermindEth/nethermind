@@ -8,17 +8,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
-/// <summary>
-/// Per-address storage view over the scope's bundle. EIP-8297 accounts have no per-account
-/// storage root — slots live directly in the unified tree — so <see cref="RootHash"/> is a constant.
-/// </summary>
+/// <summary>Provides a per-address storage view over the scope's unified EIP-8297 tree.</summary>
 /// <remarks>
-/// That constant is a placeholder, not evidence that the account holds no slot: an account's main storage
-/// lives under stems derived from its address and the slot index, which cannot be enumerated within a read,
-/// so <see cref="IsKnownEmpty"/> is always <c>false</c>. The world state consequently reads emptiness off
-/// <see cref="RootHash"/> alone where it asks a question this backend cannot answer — most notably the
-/// EIP-7610 creation-collision check behind <c>IWorldState.IsStorageEmpty</c>, which therefore lets creation
-/// proceed at a legacy account that holds storage but no code and a zero nonce.
+/// EIP-8297 has no per-account storage root. Because storage stems cannot be enumerated, this view cannot
+/// prove emptiness and <see cref="IsKnownEmpty"/> is always <c>false</c>. Consequently, the EIP-7610
+/// creation-collision check cannot detect a legacy account that contains only storage.
 /// </remarks>
 public sealed class PbtStorageTree(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageTree
 {
