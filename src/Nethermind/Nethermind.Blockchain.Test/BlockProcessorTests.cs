@@ -333,7 +333,7 @@ public class BlockProcessorTests
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(1ul));
         if (!spec.IsEip8250Enabled)
         {
-            // EIP-8250 is not enabled in this case, so the NONCE_MANAGER predeploy must not be installed.
+            // In the EIP-8141 case, the independent NONCE_MANAGER must stay absent, proving unrelated predeploys are not installed.
             Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress), Is.Empty);
         }
 
