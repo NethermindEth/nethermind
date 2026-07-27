@@ -84,11 +84,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
         bool isZeroBalanceChange = before == after;
-        if (address == Address.SystemUser && isZeroBalanceChange)
-        {
-            return;
-        }
-
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
         // Don't add zero balance transfers, but DO add empty account changes — EELS/pyspec

@@ -82,6 +82,25 @@ public class BlockAccessListSequentialValidationTests
         Assert.DoesNotThrow(() => RunSequentialValidation(tampered, processingOptions));
     }
 
+    [Test]
+    public void Generated_bal_includes_system_address_fee_recipient_credited_with_zero_fee()
+    {
+        (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        FundSender(stateProvider);
+
+        // Zero priority fee (gasPrice == baseFee == 0) with SYSTEM_ADDRESS as fee recipient.
+        // EELS credits the coinbase unconditionally per tx (amsterdam fork.py create_ether), and a
+        // zero-fee credit is still a state access, so per EIP-7928 SYSTEM_ADDRESS must appear in
+        // the BAL as a touched-but-unchanged account.
+        Block block = BuildBlock();
+        block.Header.Beneficiary = Address.SystemUser;
+        RunSequential(stateProvider, balManager, block, blockAccessList: null);
+
+        Assert.That(balManager.GeneratedBlockAccessList.HasAccount(Address.SystemUser), Is.True,
+            "SYSTEM_ADDRESS fee recipient must be recorded in the BAL even when the credited fee is zero");
+    }
+
     /// <summary>
     /// Runs the block once on the sequential path with no suggested BAL so the executor
     /// constructs the generated BAL, then re-encodes it as a wire <see cref="ReadOnlyBlockAccessList"/>.
