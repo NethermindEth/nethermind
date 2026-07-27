@@ -231,6 +231,18 @@ public class HeaderDecoderTests
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
 
+    [Test]
+    public void Can_encode_decode_with_null_mix_hash()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        header.MixHash = null;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        Assert.That(blockHeader.MixHash, Is.EqualTo(Keccak.Zero));
+    }
+
     [TestCaseSource(nameof(OptionalHashRoundtripSource))]
     public void Can_encode_decode_with_null_optional_hashes_when_later_fields_are_present(BlockHeader header)
     {

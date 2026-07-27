@@ -205,19 +205,28 @@ public ref struct RlpReader
         private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {_dataLength}.";
     }
 
-    public Hash256 DecodeKeccak() => DecodeKeccak(allowNull: false)!;
+    public Hash256 DecodeKeccak()
+    {
+        int prefix = ReadByte();
+        if (prefix != 128 + 32)
+        {
+            ThrowKeccakDecodeException(prefix);
+        }
+
+        return DecodeKeccakPayload();
+    }
 
     public Hash256? DecodeKeccak(bool allowNull)
     {
+        if (!allowNull)
+        {
+            return DecodeKeccak();
+        }
+
         int prefix = ReadByte();
         if (prefix == 128)
         {
-            if (allowNull)
-            {
-                return null;
-            }
-
-            ThrowKeccakDecodeException(prefix);
+            return null;
         }
 
         if (prefix != 128 + 32)
@@ -225,6 +234,11 @@ public ref struct RlpReader
             ThrowKeccakDecodeException(prefix);
         }
 
+        return DecodeKeccakPayload();
+    }
+
+    private Hash256 DecodeKeccakPayload()
+    {
         ReadOnlySpan<byte> keccakSpan = Read(32);
         if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
         {
@@ -374,24 +388,33 @@ public ref struct RlpReader
         }
     }
 
-    public Address DecodeAddress() => DecodeAddress(allowNull: false)!;
+    public Address DecodeAddress()
+    {
+        int prefix = ReadByte();
+        if (prefix != 128 + 20)
+        {
+            ThrowAddressDecodeException(prefix);
+        }
+
+        return new Address(Read(20));
+    }
 
     public Address? DecodeAddress(bool allowNull)
     {
+        if (!allowNull)
+        {
+            return DecodeAddress();
+        }
+
         int prefix = ReadByte();
         if (prefix == 128)
         {
-            if (allowNull)
-            {
-                return null;
-            }
-
-            RlpHelpers.ThrowUnexpectedPrefix(prefix);
+            return null;
         }
 
         if (prefix != 128 + 20)
         {
-            RlpHelpers.ThrowUnexpectedPrefix(prefix);
+            ThrowAddressDecodeException(prefix);
         }
 
         return new Address(Read(20));
@@ -407,7 +430,7 @@ public ref struct RlpReader
         }
         else if (prefix != 128 + 20)
         {
-            RlpHelpers.ThrowUnexpectedPrefix(prefix);
+            ThrowAddressDecodeException(prefix);
         }
 
         address = new AddressStructRef(Read(20));
@@ -1070,6 +1093,11 @@ public ref struct RlpReader
     [DoesNotReturn, StackTraceHidden]
     private readonly void ThrowKeccakDecodeException(int prefix)
         => throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+
+    [DoesNotReturn, StackTraceHidden]
+    private readonly void ThrowAddressDecodeException(int prefix)
+        => throw new RlpException(
+            $"Unexpected prefix of {prefix} when decoding {nameof(Address)} at position {Position} in the message of length {Data.Length}.");
 
     [StackTraceHidden]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

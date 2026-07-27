@@ -104,13 +104,13 @@ namespace Nethermind.Serialization.Rlp
         protected virtual void EncodeSeal<TWriter>(ref TWriter writer, BlockHeader header)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            writer.Encode(header.MixHash);
+            writer.Encode(header.MixHash ?? Keccak.Zero);
             writer.Encode(header.Nonce, NonceLength);
         }
 
         /// <summary>RLP length of the seal section written by <see cref="EncodeSeal"/>.</summary>
         protected virtual int GetSealLength(BlockHeader header) =>
-            Rlp.LengthOf(header.MixHash) + Rlp.LengthOfNonce(header.Nonce);
+            Rlp.LengthOf(header.MixHash ?? Keccak.Zero) + Rlp.LengthOfNonce(header.Nonce);
 
         public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
