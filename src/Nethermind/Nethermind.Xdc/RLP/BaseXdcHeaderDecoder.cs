@@ -59,13 +59,13 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         int headerCheck = decoderContext.Position + headerSequenceLength;
 
         // Common fields
-        Hash256 parentHash = decoderContext.DecodeKeccak()!;
-        Hash256 unclesHash = decoderContext.DecodeKeccak()!;
-        Address beneficiary = decoderContext.DecodeAddress()!;
-        Hash256 stateRoot = decoderContext.DecodeKeccak()!;
-        Hash256 transactionsRoot = decoderContext.DecodeKeccak()!;
-        Hash256 receiptsRoot = decoderContext.DecodeKeccak()!;
-        Bloom bloom = decoderContext.DecodeBloom()!;
+        Hash256 parentHash = decoderContext.DecodeKeccak();
+        Hash256 unclesHash = decoderContext.DecodeKeccak();
+        Address beneficiary = decoderContext.DecodeAddress();
+        Hash256 stateRoot = decoderContext.DecodeKeccak();
+        Hash256 transactionsRoot = decoderContext.DecodeKeccak();
+        Hash256 receiptsRoot = decoderContext.DecodeKeccak();
+        Bloom bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
         ulong number = decoderContext.DecodeULong();
         ulong gasLimit = decoderContext.DecodeULong();
@@ -84,7 +84,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         header.GasUsed = gasUsed;
         header.Hash = Keccak.Compute(headerRlp);
 
-        header.MixHash = decoderContext.DecodeKeccak()!;
+        header.MixHash = decoderContext.DecodeKeccak();
         header.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
 
         DecodeHeaderSpecificFields(ref decoderContext, header, rlpBehaviors, headerCheck);

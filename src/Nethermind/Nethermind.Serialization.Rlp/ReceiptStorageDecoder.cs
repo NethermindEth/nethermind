@@ -51,15 +51,15 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            if (isStorage) txReceipt.BlockHash = decoderContext.DecodeKeccak(allowNulls: true);
+            if (isStorage) txReceipt.BlockHash = decoderContext.DecodeKeccak(allowNull: true);
             if (isStorage) txReceipt.BlockNumber = decoderContext.DecodeULong();
             if (isStorage) txReceipt.Index = decoderContext.DecodePositiveInt();
-            if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress(allowNulls: true);
-            if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress(allowNulls: true);
-            if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress(allowNulls: true);
+            if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress(allowNull: true);
+            if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress(allowNull: true);
+            if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress(allowNull: true);
             if (isStorage) txReceipt.GasUsed = decoderContext.DecodeULong();
             txReceipt.GasUsedTotal = decoderContext.DecodeULong();
-            txReceipt.Bloom = decoderContext.DecodeBloom(allowNulls: true);
+            txReceipt.Bloom = decoderContext.DecodeBloom(allowNull: true);
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             List<LogEntry> logEntries = [];
@@ -83,7 +83,7 @@ namespace Nethermind.Serialization.Rlp
                     if (decoderContext.PeekByte() == MarkTxHashByte)
                     {
                         decoderContext.ReadByte();
-                        txReceipt.TxHash = decoderContext.DecodeKeccak(allowNulls: true);
+                        txReceipt.TxHash = decoderContext.DecodeKeccak(allowNull: true);
                     }
                 }
 

@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Rlp
             int logEntryLength = decoderContext.ReadSequenceLength();
             decoderContext.GuardLimit(logEntryLength, RlpLimit);
             int logEntryCheck = decoderContext.Position + logEntryLength;
-            Address? address = decoderContext.DecodeAddress(allowNulls: true);
+            Address? address = decoderContext.DecodeAddress(allowNull: true);
             int topicsLength = decoderContext.ReadSequenceLength();
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
             decoderContext.GuardLimit(topicCount, RlpLimit.L4);

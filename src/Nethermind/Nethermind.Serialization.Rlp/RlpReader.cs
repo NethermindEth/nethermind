@@ -205,12 +205,14 @@ public ref struct RlpReader
         private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {_dataLength}.";
     }
 
-    public Hash256? DecodeKeccak(bool allowNulls = false)
+    public Hash256 DecodeKeccak() => DecodeKeccak(allowNull: false)!;
+
+    public Hash256? DecodeKeccak(bool allowNull)
     {
         int prefix = ReadByte();
         if (prefix == 128)
         {
-            if (allowNulls)
+            if (allowNull)
             {
                 return null;
             }
@@ -372,12 +374,14 @@ public ref struct RlpReader
         }
     }
 
-    public Address? DecodeAddress(bool allowNulls = false)
+    public Address DecodeAddress() => DecodeAddress(allowNull: false)!;
+
+    public Address? DecodeAddress(bool allowNull)
     {
         int prefix = ReadByte();
         if (prefix == 128)
         {
-            if (allowNulls)
+            if (allowNull)
             {
                 return null;
             }
@@ -473,20 +477,22 @@ public ref struct RlpReader
         return bytes.ToUnsignedBigInteger();
     }
 
-    public Bloom? DecodeBloom(bool allowNulls = false)
+    public Bloom DecodeBloom() => DecodeBloom(allowNull: false)!;
+
+    public Bloom? DecodeBloom(bool allowNull)
     {
         ReadOnlySpan<byte> bloomBytes;
 
         // Legacy workaround for receipt blooms sent in sequence form:
         // https://github.com/NethermindEth/nethermind/issues/113
-        if (allowNulls && Data[Position] == 249)
+        if (allowNull && Data[Position] == 249)
         {
             Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
             bloomBytes = Read(Bloom.ByteLength);
         }
         else
         {
-            bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom, allowNulls ? -1 : Bloom.ByteLength);
+            bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom, allowNull ? -1 : Bloom.ByteLength);
             if (bloomBytes.Length == 0)
             {
                 return null;

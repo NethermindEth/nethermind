@@ -40,7 +40,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            txReceipt.Sender = decoderContext.DecodeAddress(allowNulls: true);
+            txReceipt.Sender = decoderContext.DecodeAddress(allowNull: true);
             txReceipt.GasUsedTotal = decoderContext.DecodeULong();
 
             int sequenceLength = decoderContext.ReadSequenceLength();

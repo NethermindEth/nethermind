@@ -62,7 +62,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
-            Hash256? blockHash = decoderContext.DecodeKeccak(allowNulls: true);
+            Hash256? blockHash = decoderContext.DecodeKeccak(allowNull: true);
             bool wasProcessed = decoderContext.DecodeBool();
             UInt256 totalDifficulty = decoderContext.DecodeUInt256();
 
