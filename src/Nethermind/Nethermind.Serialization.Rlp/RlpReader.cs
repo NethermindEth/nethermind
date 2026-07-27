@@ -205,12 +205,17 @@ public ref struct RlpReader
         private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {_dataLength}.";
     }
 
-    public Hash256? DecodeKeccak()
+    public Hash256? DecodeKeccak(bool allowNulls = false)
     {
         int prefix = ReadByte();
         if (prefix == 128)
         {
-            return null;
+            if (allowNulls)
+            {
+                return null;
+            }
+
+            ThrowKeccakDecodeException(prefix);
         }
 
         if (prefix != 128 + 32)
@@ -227,44 +232,6 @@ public ref struct RlpReader
         if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
         {
             return Keccak.EmptyTreeHash;
-        }
-
-        return new Hash256(keccakSpan);
-    }
-
-    public Hash256 DecodeRequiredKeccak()
-    {
-        ReadOnlySpan<byte> keccakSpan = DecodeByteArraySpan(RlpLimit.L32, Hash256.Size);
-        return CreateKeccak(keccakSpan);
-    }
-
-    public Hash256? DecodeOptionalKeccak()
-    {
-        ReadOnlySpan<byte> keccakSpan = DecodeByteArraySpan(RlpLimit.L32);
-        if (keccakSpan.Length == 0)
-        {
-            return null;
-        }
-
-        GuardSize(keccakSpan.Length, Hash256.Size);
-        return CreateKeccak(keccakSpan);
-    }
-
-    private static Hash256 CreateKeccak(ReadOnlySpan<byte> keccakSpan)
-    {
-        if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-        {
-            return Keccak.OfAnEmptyString;
-        }
-
-        if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-        {
-            return Keccak.EmptyTreeHash;
-        }
-
-        if (keccakSpan.SequenceEqual(Keccak.Zero.Bytes))
-        {
-            return Keccak.Zero;
         }
 
         return new Hash256(keccakSpan);
@@ -405,12 +372,17 @@ public ref struct RlpReader
         }
     }
 
-    public Address? DecodeAddress()
+    public Address? DecodeAddress(bool allowNulls = false)
     {
         int prefix = ReadByte();
         if (prefix == 128)
         {
-            return null;
+            if (allowNulls)
+            {
+                return null;
+            }
+
+            RlpHelpers.ThrowUnexpectedPrefix(prefix);
         }
 
         if (prefix != 128 + 20)
@@ -419,12 +391,6 @@ public ref struct RlpReader
         }
 
         return new Address(Read(20));
-    }
-
-    public Address DecodeRequiredAddress()
-    {
-        ReadOnlySpan<byte> addressSpan = DecodeByteArraySpan(size: Address.Size);
-        return addressSpan.SequenceEqual(Address.Zero.Bytes) ? Address.Zero : new Address(addressSpan);
     }
 
     public void DecodeAddressStructRef(out AddressStructRef address)
@@ -507,20 +473,20 @@ public ref struct RlpReader
         return bytes.ToUnsignedBigInteger();
     }
 
-    public Bloom? DecodeBloom()
+    public Bloom? DecodeBloom(bool allowNulls = false)
     {
         ReadOnlySpan<byte> bloomBytes;
 
         // Legacy workaround for receipt blooms sent in sequence form:
         // https://github.com/NethermindEth/nethermind/issues/113
-        if (Data[Position] == 249)
+        if (allowNulls && Data[Position] == 249)
         {
             Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
             bloomBytes = Read(Bloom.ByteLength);
         }
         else
         {
-            bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
+            bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom, allowNulls ? -1 : Bloom.ByteLength);
             if (bloomBytes.Length == 0)
             {
                 return null;
@@ -533,12 +499,6 @@ public ref struct RlpReader
         }
 
         return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
-    }
-
-    public Bloom DecodeRequiredBloom()
-    {
-        ReadOnlySpan<byte> bloomSpan = DecodeByteArraySpan(RlpLimit.Bloom, Bloom.ByteLength);
-        return bloomSpan.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomSpan);
     }
 
     public void DecodeBloomStructRef(out BloomStructRef bloom)

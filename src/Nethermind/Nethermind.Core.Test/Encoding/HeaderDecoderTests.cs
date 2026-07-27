@@ -286,7 +286,7 @@ public class HeaderDecoderTests
 
         byte[] crafted = ReplaceFieldEncoding(validRlp, canonicalBloom, listFormBloom);
 
-        Assert.Throws<RlpException>(() => Rlp.Decode<BlockHeader>(crafted));
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -306,7 +306,7 @@ public class HeaderDecoderTests
 
         byte[] crafted = ReplaceFieldEncoding(validRlp, canonicalMixHash, [0x80]);
 
-        Assert.Throws<RlpException>(() => Rlp.Decode<BlockHeader>(crafted));
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
 
     private static void AssertRoundtripHeader(BlockHeader header)
