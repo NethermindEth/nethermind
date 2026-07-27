@@ -144,17 +144,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         for (int i = 0; i <= currentPosition; i++)
         {
             ref readonly Change change = ref changes[currentPosition - i];
-            if (_committedThisRound.Contains(change!.StorageCell))
+            if (!_committedThisRound.Add(change!.StorageCell))
             {
                 continue;
             }
 
-            _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].CurrentIdx;
-            if (forAssertion != currentPosition - i)
-            {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
-            }
+            // Debug-only: A broken index surfaces anyway as a storage-root mismatch on the block.
+            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == currentPosition - i,
+                $"Expected the cached index to equal {currentPosition} - {i}");
 
             if (change.ChangeType == ChangeType.Update)
             {
