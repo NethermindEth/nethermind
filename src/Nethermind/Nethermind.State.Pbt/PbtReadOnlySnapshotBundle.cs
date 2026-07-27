@@ -172,6 +172,18 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         _ => isNull ? _readStorageLeafBlobPersistenceNullLabel : _readStorageLeafBlobPersistenceLabel,
     };
 
+    /// <summary>Reads a leaf and full-path trie key directly from persistence to warm their database blocks.</summary>
+    internal void PrefetchStem(in Stem stem, CancellationToken cancellationToken)
+    {
+        GuardDispose();
+        if (cancellationToken.IsCancellationRequested) return;
+
+        using RefCountingMemory? leaf = reader.GetLeafBlob(stem);
+        if (cancellationToken.IsCancellationRequested) return;
+
+        using RefCountingMemory? trie = reader.GetTrieNode(TrieNodeKey.For(Stem.LengthInBits, stem));
+    }
+
     /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
     {
