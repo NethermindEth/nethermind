@@ -23,7 +23,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
         transaction.SenderAddress = decoderContext.DecodeAddress();
-        transaction.To = decoderContext.DecodeAddress();
+        transaction.To = decoderContext.DecodeAddress(allowNull: true);
         transaction.Mint = decoderContext.DecodeUInt256();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.GasLimit = decoderContext.DecodeULong();

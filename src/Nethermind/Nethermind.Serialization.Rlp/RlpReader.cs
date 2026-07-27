@@ -477,31 +477,45 @@ public ref struct RlpReader
         return bytes.ToUnsignedBigInteger();
     }
 
-    public Bloom DecodeBloom() => DecodeBloom(allowNull: false)!;
+    public Bloom DecodeBloom()
+    {
+        ReadOnlySpan<byte> bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom, Bloom.ByteLength);
+        return CreateBloom(bloomBytes);
+    }
 
     public Bloom? DecodeBloom(bool allowNull)
     {
+        if (!allowNull)
+        {
+            return DecodeBloom();
+        }
+
         ReadOnlySpan<byte> bloomBytes;
 
         // Legacy workaround for receipt blooms sent in sequence form:
         // https://github.com/NethermindEth/nethermind/issues/113
-        if (allowNull && Data[Position] == 249)
+        if (Data[Position] == 249)
         {
             Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
             bloomBytes = Read(Bloom.ByteLength);
         }
         else
         {
-            bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom, allowNull ? -1 : Bloom.ByteLength);
+            bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
             if (bloomBytes.Length == 0)
             {
                 return null;
             }
         }
 
+        return CreateBloom(bloomBytes);
+    }
+
+    private static Bloom CreateBloom(ReadOnlySpan<byte> bloomBytes)
+    {
         if (bloomBytes.Length != Bloom.ByteLength)
         {
-            throw new InvalidOperationException("Incorrect bloom RLP");
+            throw new RlpException("Incorrect bloom RLP");
         }
 
         return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
@@ -511,7 +525,7 @@ public ref struct RlpReader
     {
         ReadOnlySpan<byte> bloomBytes;
 
-        // Legacy workaround for receipt blooms sent in sequence form:
+        // tks: not sure why but some nodes send us Blooms in a sequence form
         // https://github.com/NethermindEth/nethermind/issues/113
         if (Data[Position] == 249)
         {

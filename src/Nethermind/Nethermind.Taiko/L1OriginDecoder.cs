@@ -19,9 +19,9 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         int itemsCount = decoderContext.PeekNumberOfItemsRemaining(maxSearch: contentLength);
 
         UInt256 blockId = decoderContext.DecodeUInt256();
-        Hash256? l2BlockHash = decoderContext.DecodeKeccak();
+        Hash256? l2BlockHash = decoderContext.DecodeKeccak(allowNull: true);
         long? l1BlockHeight = decoderContext.DecodeLong();
-        Hash256 l1BlockHash = decoderContext.DecodeKeccak() ?? throw new RlpException("L1BlockHash is null");
+        Hash256 l1BlockHash = decoderContext.DecodeKeccak(allowNull: true) ?? throw new RlpException("L1BlockHash is null");
 
         int[]? buildPayloadArgsId = null;
 

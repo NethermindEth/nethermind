@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -24,7 +26,7 @@ public class RlpDecoderTests
     [Test]
     public void Can_decode_non_null_Transaction()
     {
-        Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
+        Transaction tx = BuildDepositTransaction(TestItem.AddressB);
 
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
         RlpWriter writer = new(rlp);
@@ -41,7 +43,7 @@ public class RlpDecoderTests
     {
         _decoder.RegisterDecoder(new OptimismTxDecoder<Transaction>());
 
-        Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
+        Transaction tx = BuildDepositTransaction(TestItem.AddressB);
 
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
         RlpWriter writer = new(rlp);
@@ -51,6 +53,28 @@ public class RlpDecoderTests
 
         Assert.That(decodedTx, Is.Not.Null);
     }
+
+    [Test]
+    public void Can_decode_contract_creating_deposit_transaction()
+    {
+        Transaction tx = BuildDepositTransaction(to: null);
+
+        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(rlp);
+        _decoder.Encode(ref writer, tx);
+
+        RlpReader ctx = new(rlp);
+        Transaction? decodedTx = _decoder.Decode(ref ctx);
+
+        Assert.That(decodedTx!.To, Is.Null);
+    }
+
+    private static Transaction BuildDepositTransaction(Address? to) => Build.A.Transaction
+        .WithType(TxType.DepositTx)
+        .WithSourceHash(TestItem.KeccakA)
+        .WithSenderAddress(TestItem.AddressA)
+        .WithTo(to)
+        .TestObject;
 
     [Test]
     public void Can_decode_Legacy_Empty_Signature()

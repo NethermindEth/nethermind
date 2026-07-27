@@ -19,7 +19,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
         UInt256 chainId = decoderContext.DecodeUInt256();
-        Address? codeAddress = decoderContext.DecodeAddress();
+        Address? codeAddress = decoderContext.DecodeAddress(allowNull: true);
         ulong nonce = decoderContext.DecodeULong();
         byte yParity = decoderContext.DecodeByte();
         UInt256 r = decoderContext.DecodeUInt256();

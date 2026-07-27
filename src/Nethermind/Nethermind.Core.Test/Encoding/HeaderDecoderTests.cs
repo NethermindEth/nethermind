@@ -15,6 +15,9 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class HeaderDecoderTests
 {
+    private const int BloomFieldIndex = 6;
+    private const int MixHashFieldIndex = 13;
+
     [TestCase(true)]
     [TestCase(false)]
     public void Can_decode(bool hasWithdrawalsRoot)
@@ -228,41 +231,13 @@ public class HeaderDecoderTests
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
 
-    [Test]
-    public void Can_encode_decode_with_null_optional_hashes_when_later_fields_are_present()
+    [TestCaseSource(nameof(OptionalHashRoundtripSource))]
+    public void Can_encode_decode_with_null_optional_hashes_when_later_fields_are_present(BlockHeader header)
     {
-        AssertRoundtripHeader(Build.A.BlockHeader
-            .WithTimestamp(ulong.MaxValue)
-            .WithBaseFee(1)
-            .WithWithdrawalsRoot(Keccak.Zero)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithParentBeaconBlockRoot(null)
-            .WithRequestsHash(TestItem.KeccakA)
-            .TestObject);
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        AssertRoundtripHeader(Build.A.BlockHeader
-            .WithTimestamp(ulong.MaxValue)
-            .WithBaseFee(1)
-            .WithWithdrawalsRoot(Keccak.Zero)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithParentBeaconBlockRoot(TestItem.KeccakA)
-            .WithRequestsHash(null)
-            .WithBlockAccessListHash(TestItem.KeccakB)
-            .TestObject);
-
-        AssertRoundtripHeader(Build.A.BlockHeader
-            .WithTimestamp(ulong.MaxValue)
-            .WithBaseFee(1)
-            .WithWithdrawalsRoot(Keccak.Zero)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithParentBeaconBlockRoot(TestItem.KeccakA)
-            .WithRequestsHash(TestItem.KeccakB)
-            .WithBlockAccessListHash(null)
-            .WithSlotNumber(1)
-            .TestObject);
+        Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
 
     [Test]
@@ -271,20 +246,15 @@ public class HeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
         byte[] validRlp = Rlp.Encode(header).Bytes;
 
-        byte[] canonicalBloom = new byte[3 + Bloom.ByteLength];
-        canonicalBloom[0] = 0xB9;
-        canonicalBloom[1] = 0x01;
-        header.Bloom!.Bytes.CopyTo(canonicalBloom.AsSpan(3));
-
         byte[] listFormBloom = new byte[5 + Bloom.ByteLength];
         listFormBloom[0] = 0xF9;
         listFormBloom[1] = 0x01;
         listFormBloom[2] = 0x02;
         listFormBloom[3] = 0x81;
         listFormBloom[4] = 0x7F;
-        header.Bloom.Bytes.CopyTo(listFormBloom.AsSpan(5));
+        header.Bloom!.Bytes.CopyTo(listFormBloom.AsSpan(5));
 
-        byte[] crafted = ReplaceFieldEncoding(validRlp, canonicalBloom, listFormBloom);
+        byte[] crafted = ReplaceFieldEncoding(validRlp, BloomFieldIndex, listFormBloom);
 
         Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
@@ -300,43 +270,74 @@ public class HeaderDecoderTests
             .TestObject;
         byte[] validRlp = Rlp.Encode(header).Bytes;
 
-        byte[] canonicalMixHash = new byte[33];
-        canonicalMixHash[0] = 0xA0;
-        mixHash.Bytes.CopyTo(canonicalMixHash.AsSpan(1));
-
-        byte[] crafted = ReplaceFieldEncoding(validRlp, canonicalMixHash, [0x80]);
+        byte[] crafted = ReplaceFieldEncoding(validRlp, MixHashFieldIndex, [0x80]);
 
         Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
 
-    private static void AssertRoundtripHeader(BlockHeader header)
+    private static byte[] ReplaceFieldEncoding(byte[] headerRlp, int fieldIndex, byte[] craftedField)
     {
-        Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        RlpReader reader = new(headerRlp);
+        (int prefixLength, int contentLength) = reader.ReadPrefixAndContentLength();
 
-        Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
-    }
-
-    private static byte[] ReplaceFieldEncoding(byte[] headerRlp, byte[] originalField, byte[] craftedField)
-    {
-        int fieldIndex = headerRlp.AsSpan().IndexOf(originalField);
-        int nextFieldIndex = fieldIndex < 0 ? -1 : headerRlp.AsSpan(fieldIndex + 1).IndexOf(originalField);
-        using (Assert.EnterMultipleScope())
+        int fieldStart = reader.Position;
+        int fieldLength = 0;
+        for (int i = 0; i <= fieldIndex; i++)
         {
-            Assert.That(fieldIndex, Is.GreaterThanOrEqualTo(3), "setup: field encoding not found");
-            Assert.That(nextFieldIndex, Is.EqualTo(-1), "setup: field encoding should be unique");
-            Assert.That(headerRlp[0], Is.EqualTo(0xF9), "setup: expected a two-byte sequence length prefix");
+            fieldStart = reader.Position;
+            fieldLength = reader.PeekNextRlpLength();
+            reader.SkipItem();
         }
 
-        byte[] result = new byte[headerRlp.Length + craftedField.Length - originalField.Length];
-        headerRlp.AsSpan(0, fieldIndex).CopyTo(result);
-        craftedField.CopyTo(result.AsSpan(fieldIndex));
-        headerRlp.AsSpan(fieldIndex + originalField.Length).CopyTo(result.AsSpan(fieldIndex + craftedField.Length));
+        int contentLengthDelta = craftedField.Length - fieldLength;
+        int craftedContentLength = contentLength + contentLengthDelta;
+        byte[] result = new byte[Rlp.LengthOfSequence(craftedContentLength)];
+        RlpWriter writer = new(result);
+        writer.StartSequence(craftedContentLength);
 
-        int contentLength = ((headerRlp[1] << 8) | headerRlp[2]) + craftedField.Length - originalField.Length;
-        result[1] = (byte)(contentLength >> 8);
-        result[2] = (byte)contentLength;
+        int craftedContentStart = writer.Position;
+        headerRlp.AsSpan(prefixLength, fieldStart - prefixLength).CopyTo(result.AsSpan(craftedContentStart));
+        craftedField.CopyTo(result.AsSpan(craftedContentStart + fieldStart - prefixLength));
+        headerRlp.AsSpan(fieldStart + fieldLength, prefixLength + contentLength - fieldStart - fieldLength)
+            .CopyTo(result.AsSpan(craftedContentStart + fieldStart - prefixLength + craftedField.Length));
+
         return result;
+    }
+
+    public static IEnumerable<TestCaseData> OptionalHashRoundtripSource()
+    {
+        yield return new TestCaseData(Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(null)
+            .WithRequestsHash(TestItem.KeccakA)
+            .TestObject).SetName("Null parent beacon block root with later field");
+
+        yield return new TestCaseData(Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakA)
+            .WithRequestsHash(null)
+            .WithBlockAccessListHash(TestItem.KeccakB)
+            .TestObject).SetName("Null requests hash with later field");
+
+        yield return new TestCaseData(Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakA)
+            .WithRequestsHash(TestItem.KeccakB)
+            .WithBlockAccessListHash(null)
+            .WithSlotNumber(1)
+            .TestObject).SetName("Null block access list hash with later field");
     }
 
     public static IEnumerable<object?[]> CancunFieldsSource()

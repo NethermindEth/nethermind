@@ -70,8 +70,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             statusMessage.ProtocolVersion = ctx.DecodeByte();
             statusMessage.NetworkId = ctx.DecodeULong();
             statusMessage.TotalDifficulty = ctx.DecodeUInt256();
-            statusMessage.BestHash = ctx.DecodeKeccak();
-            statusMessage.GenesisHash = ctx.DecodeKeccak();
+            statusMessage.BestHash = ctx.DecodeKeccak(allowNull: true);
+            statusMessage.GenesisHash = ctx.DecodeKeccak(allowNull: true);
             if (ctx.Position < ctx.Length)
             {
                 ctx.ReadSequenceLength();
