@@ -16,7 +16,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtWorldStateScopeTests
 {
-    // StaticPool<T>'s default cap; only a safety bound on the drain loop, not the drain itself
+    // StaticPool<T>'s default cap bounds the drain loop.
     private const int MaxPooledStemChanges = 4096;
 
     /// <summary>
@@ -39,14 +39,13 @@ public class PbtWorldStateScopeTests
         using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics()))
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
         {
-            // two distinct stems — a header-region slot and a storage-zone slot — with one sub-index
-            // each, so each rents exactly one map and neither promotes to a larger variant
+            // Distinct header and storage stems each rent one map.
             using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(TestItem.AddressC, 2);
             storageBatch.Set(3, [0x11]);
             storageBatch.Set(500, [0x11]);
         }
 
-        // no UpdateRootHash and no Commit: disposal is the only thing that can return these
+        // Disposal alone must return the maps.
         object[] rented = [StaticPool<SingleStemChanges>.Rent(), StaticPool<SingleStemChanges>.Rent()];
         Assert.That(rented, Is.EquivalentTo(new object[] { first, second }));
     }

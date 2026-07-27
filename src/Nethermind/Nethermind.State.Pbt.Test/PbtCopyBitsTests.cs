@@ -8,13 +8,11 @@ using NUnit.Framework;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
-/// Differential tests for <see cref="PbtKeyDerivation.CopyBits"/>, which the byte-at-a-time
-/// implementation must match bit for bit — it places the address prefix and suffix of every
-/// storage stem, so a single misplaced bit silently changes the state root.
+/// Differential tests for <see cref="PbtKeyDerivation.CopyBits"/>, which constructs storage stems.
 /// </summary>
 public class PbtCopyBitsTests
 {
-    /// <summary>The obvious bit-at-a-time implementation, kept here as the oracle.</summary>
+    /// <summary>Bit-at-a-time reference implementation used as the oracle.</summary>
     private static void CopyBitsReference(ReadOnlySpan<byte> src, int bitCount, Span<byte> dest, int destBitOffset)
     {
         for (int i = 0; i < bitCount; i++)
@@ -53,7 +51,7 @@ public class PbtCopyBitsTests
         }
     }
 
-    /// <summary>The exact shapes <see cref="PbtKeyDerivation.StorageStem"/> issues: the 60-bit address prefix at bit 1, then the 187-bit suffix at bit 61, filling the stem to its last bit.</summary>
+    /// <summary>Verifies the two copies used to construct a storage stem.</summary>
     [TestCase(60, 1)]
     [TestCase(187, 61)]
     public void MatchesReferenceForStorageStemShapes(int bitCount, int destBitOffset)
@@ -74,7 +72,7 @@ public class PbtCopyBitsTests
         }
     }
 
-    /// <summary>The two storage-stem copies share a byte, so CopyBits must OR into the destination, not overwrite it.</summary>
+    /// <summary>Verifies overlapping copies OR into the destination.</summary>
     [Test]
     public void PreservesBitsAlreadySet()
     {

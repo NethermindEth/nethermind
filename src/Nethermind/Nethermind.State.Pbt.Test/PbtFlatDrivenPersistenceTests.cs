@@ -21,23 +21,20 @@ public class PbtFlatDrivenPersistenceTests
 {
     public enum NoOpCase
     {
-        /// <summary>A state the mirrored pbt never committed - a sync or import write.</summary>
+        /// <summary>A sync or import write that the mirrored PBT did not commit.</summary>
         UnknownState,
         PreGenesis,
         Sync
     }
 
-    /// <summary>
-    /// The flat backend is the only clock in mirror mode: pbt's own triggers must stay idle even where
-    /// they would otherwise fire, and the flat write batch must move pbt to exactly the same state.
-    /// </summary>
+    /// <summary>In mirror mode, flat writes exclusively drive PBT persistence.</summary>
     [Test]
     public async Task FlatWriteBatch_DrivesPbtPersistence_WhileItsOwnTriggersStayIdle()
     {
         await using PbtTestContext ctx = NewContext();
         (Hash256 root1, Hash256 root2) = CommitTwoBlocks(ctx);
 
-        // everything the finalized trigger asks for, so an ungated coordinator would persist here
+        // This satisfies the finalized trigger, so an ungated coordinator would persist.
         ctx.FinalizedStateProvider.SetCanonicalRoot(1, root1);
         ctx.FinalizedStateProvider.SetCanonicalRoot(2, root2);
         ctx.FinalizedStateProvider.FinalizedBlockNumber = 2;
@@ -77,10 +74,7 @@ public class PbtFlatDrivenPersistenceTests
         Assert.That(ctx.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(StateId.PreGenesis));
     }
 
-    /// <remarks>
-    /// A compact size of one with no reorg floor puts a persistable boundary at every block, so the
-    /// finalized trigger is armed as soon as a canonical root is published for one.
-    /// </remarks>
+    /// <remarks>A compact size of one makes every canonical block persistable.</remarks>
     private static PbtTestContext NewContext() => new(config: new PbtConfig
     {
         MirrorFlat = true,

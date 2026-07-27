@@ -28,8 +28,7 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture(PbtGroupFormat.BoundaryOnly)]
 public class StemTrieTests(PbtGroupFormat format)
 {
-    // The store after the split is the root group, the group holding the divergence, and — once they are
-    // more than four levels apart — one chain spanning everything between, however deep that reaches.
+    // A split stores its root and divergent groups, with one run between non-adjacent groups.
     [TestCase(3, 1)] // divergence inside the root group: both stems at its boundary slots
     [TestCase(5, 2)] // stems at an inner position of the depth-4 group
     [TestCase(7, 2)] // stems exactly on a group boundary (depth 8)
@@ -40,7 +39,7 @@ public class StemTrieTests(PbtGroupFormat format)
     [TestCase(247, 3)] // deepest split: stems at the 248-bit level, spanned by one chain rather than 60 groups
     public void InsertSplitDeleteHoist_MaintainsCanonicalStructureAndRoots(int divergenceBit, int splitGroupCount)
     {
-        // stemA and stemB share their first divergenceBit bits and diverge there
+        // The stems share the prefix before divergenceBit.
         byte[] stemA = new byte[31];
         byte[] stemB = new byte[31];
         stemB[divergenceBit >> 3] = (byte)(1 << (7 - (divergenceBit & 7)));
@@ -55,14 +54,13 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA)])));
         Assert.That(NodeCount(harness), Is.EqualTo(1));
 
-        // split: a run of single-child levels down to the group where the stems part, each at its
-        // shortest unique prefix
+        // The split creates the shortest run to the divergent group.
         root = harness.ApplyBatch([(keyB, valueB)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyB, valueB)])));
         Assert.That(NodeCount(harness), Is.EqualTo(splitGroupCount));
         AssertStoreMatchesFreshRebuild(harness, [(keyA, valueA), (keyB, valueB)]);
 
-        // delete A: B hoists all the way back to the root group, tombstoning the whole run
+        // Deleting A hoists B to the root and removes the run.
         root = harness.ApplyBatch([(keyA, null)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyB, valueB)])));
         Assert.That(NodeCount(harness), Is.EqualTo(1));
@@ -139,7 +137,7 @@ public class StemTrieTests(PbtGroupFormat format)
         harness.ApplyBatch([(keyA5, valueA)]);
         Assert.That(harness.LeafReads - before, Is.Zero, "a brand-new stem folds without reading a prior blob");
 
-        // the existing stem is carried by cached hash rather than re-folded
+        // The existing stem is carried by its cached hash rather than re-folded.
         before = harness.LeafReads;
         harness.ApplyBatch([(keyB, valueB)]);
         Assert.That(harness.LeafReads - before, Is.Zero, "a stem splitting off an existing one reads no prior blob");
@@ -152,7 +150,7 @@ public class StemTrieTests(PbtGroupFormat format)
         ValueHash256 root = harness.ApplyBatch([(keyA5, null), (keyA6, null)]);
         Assert.That(harness.LeafReads - before, Is.EqualTo(1), "clearing an existing stem reads its prior blob once");
 
-        // the skipped reads left the tree correct: only B remains
+        // Only B remains after the skipped reads.
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyB, valueB)])));
     }
 

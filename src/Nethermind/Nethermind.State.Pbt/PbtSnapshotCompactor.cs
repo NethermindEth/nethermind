@@ -30,8 +30,7 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
         ulong width = schedule.GetCompactSize(stateId.BlockNumber);
         if (width <= 1) return false;
 
-        // the window starts a full width back, which may be below genesis for an early wide boundary —
-        // signed, so that fails to assemble rather than wrapping into an enormous window
+        // A signed start lets early boundaries below genesis fail instead of wrapping.
         long start = (long)stateId.BlockNumber - (long)width;
         using PbtSnapshotPooledList window = new((int)width);
         if (!repository.TryLeaseCompactionWindow(stateId, start, window) || window.Count <= 1) return false;
@@ -39,9 +38,7 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
         PbtSnapshot compacted = Compact(window);
         if (!repository.TryAddCompacted(compacted)) return false;
 
-        // Anything narrower than a full window is itself about to be spanned by a wider one, so the
-        // compacted layer a full width back is now subsumed and only costs memory. The full-width
-        // layers are the persistence boundaries and are left for the coordinator to consume.
+        // A wider compaction subsumes older narrow layers; full-width layers remain persistence boundaries.
         if (width < _fullCompactSize && stateId.BlockNumber >= _fullCompactSize)
         {
             repository.RemoveCompactedAt(stateId.BlockNumber - _fullCompactSize);
@@ -53,9 +50,7 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
     /// <param name="chainOldestFirst">Consecutive snapshots, oldest first, as produced by <see cref="PbtSnapshotRepository.TryLeaseChain"/>.</param>
     public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst)
     {
-        // sized by what is actually merged: a segment is also persisted one layer deep on a genesis
-        // flush and up to the reorg depth by the finality-stall backstop, so the configured compact
-        // size would mis-charge the pool on both
+        // Genesis flushes and backstop persistence may merge less than the configured compact size.
         PbtResourcePool.Usage usage = PbtResourcePool.CompactUsage(chainOldestFirst.Count);
         PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
 

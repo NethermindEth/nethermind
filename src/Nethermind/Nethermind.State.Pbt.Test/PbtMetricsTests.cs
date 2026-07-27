@@ -35,10 +35,7 @@ public class PbtMetricsTests
         Metrics.PbtRootHashTime = _originalRootHashTime;
     }
 
-    /// <summary>
-    /// Both timers are only useful if they fire on the ordinary commit path, and the root one only if
-    /// it skips the folds that had nothing to fold.
-    /// </summary>
+    /// <summary>Verifies commit timers, including skipping root timing when no fold occurs.</summary>
     [Test]
     public async Task CommittingABlock_TimesTheWriteBatchAndTheFoldsThatDidWork()
     {

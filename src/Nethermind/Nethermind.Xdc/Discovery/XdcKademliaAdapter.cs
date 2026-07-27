@@ -18,11 +18,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Xdc.Discovery;
 
-/// <summary>
-/// XDC's discv4 fork repurposed the standard ENR request/response type bytes for its own ping,
-/// so there is no wire-compatible way to fetch a remote node's ENR. Remote ENR refresh is
-/// disabled entirely instead of racing XDC nodes with requests they will never answer.
-/// </summary>
+/// <summary>Disables remote ENR refresh because XDC repurposes the discv4 ENR message types.</summary>
 public sealed class XdcKademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia,
     IRoutingTable<Node, ValueHash256> routingTable,

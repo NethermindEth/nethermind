@@ -10,11 +10,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtCompactionScheduleTests
 {
-    /// <summary>
-    /// The width at a block is the largest power of two dividing it, capped at CompactSize. That is
-    /// what makes the levels nest: block 8 is divisible by 4 and 2 as well, so the 8-wide merge there
-    /// finds the 4-wide and 2-wide merges already below it.
-    /// </summary>
+    /// <summary>Verifies that compaction widths are nested powers of two, capped at <c>CompactSize</c>.</summary>
     [TestCase(0u, ExpectedResult = 1ul, TestName = "GetCompactSize_Genesis_DoesNotCompact")]
     [TestCase(1u, ExpectedResult = 1ul, TestName = "GetCompactSize_OddBlock_DoesNotCompact")]
     [TestCase(2u, ExpectedResult = 2ul)]
@@ -27,7 +23,7 @@ public class PbtCompactionScheduleTests
     public ulong GetCompactSize_IsTheLargestPowerOfTwoDividingTheBlock(ulong blockNumber) =>
         Schedule(compactSize: 16, offset: 0).GetCompactSize(blockNumber);
 
-    /// <summary>Persistence aims at the next full-width merge, since that is where a whole segment exists to write.</summary>
+    /// <summary>Persistence targets the next full-width merge.</summary>
     [TestCase(0u, ExpectedResult = 16ul)]
     [TestCase(1u, ExpectedResult = 16ul)]
     [TestCase(16u, ExpectedResult = 32ul, TestName = "NextFullCompactionAfter_OnABoundary_IsTheNextOne")]
@@ -35,15 +31,12 @@ public class PbtCompactionScheduleTests
     public ulong NextFullCompactionAfter_IsTheNextFullWidthBoundary(ulong blockNumber) =>
         Schedule(compactSize: 16, offset: 0).NextFullCompactionAfter(new StateId(blockNumber, default));
 
-    /// <summary>An empty database aims at the first boundary after genesis, not at the no-further-boundary sentinel.</summary>
+    /// <summary>An empty database targets the first post-genesis boundary.</summary>
     [Test]
     public void NextFullCompactionAfter_PreGenesis_AnchorsAtGenesis() =>
         Assert.That(Schedule(compactSize: 16, offset: 0).NextFullCompactionAfter(StateId.PreGenesis), Is.EqualTo(16ul));
 
-    /// <summary>
-    /// The offset shifts the whole schedule, which is the point: two nodes with different offsets
-    /// compact and persist on different blocks rather than all at once.
-    /// </summary>
+    /// <summary>Offsets distribute compaction and persistence across blocks.</summary>
     [Test]
     public void Offset_ShiftsEveryBoundary()
     {
@@ -54,7 +47,7 @@ public class PbtCompactionScheduleTests
         Assert.That(shifted.NextFullCompactionAfter(new StateId(0, default)), Is.EqualTo(13ul));
     }
 
-    /// <summary>A generated offset is stored and reused: a node that re-rolled it on restart would compact against boundaries its own state was not built around.</summary>
+    /// <summary>A generated offset persists across restarts.</summary>
     [Test]
     public void GeneratedOffset_IsPersistedAndReloaded()
     {
@@ -67,13 +60,13 @@ public class PbtCompactionScheduleTests
         Assert.That(reopened.Offset, Is.EqualTo(first.Offset));
     }
 
-    /// <summary>The whole schedule is a lowest-set-bit trick, which only nests into levels when the cap is a power of two.</summary>
+    /// <summary>Compaction sizes must be powers of two for the lowest-set-bit schedule to nest.</summary>
     [TestCase(3)]
     [TestCase(24)]
     public void NonPowerOfTwoCompactSize_Throws(int compactSize) =>
         Assert.Throws<ArgumentException>(() => Schedule(compactSize, offset: 0));
 
-    /// <summary>CompactSize 1 disables compaction, and must not be rejected as a non-power-of-two.</summary>
+    /// <summary><c>CompactSize</c> 1 disables compaction without being rejected.</summary>
     [Test]
     public void CompactionDisabled_HasNoBoundaries()
     {

@@ -23,8 +23,6 @@ public class PbtConfig : IPbtConfig
 
     public string RocksDbOptions { get; set; } =
 
-        // Common across pbt columns. Every key is a hash or a tree path, so there is no locality to
-        // exploit and reads are point lookups.
         "min_write_buffer_number_to_merge=2;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
@@ -37,7 +35,7 @@ public class PbtConfig : IPbtConfig
         "block_based_table_factory.whole_key_filtering=true;" +
         "level_compaction_dynamic_level_bytes=false;" +
 
-        // We bsearch instead of partitioned tree. This take up memory for improved latency.
+        // Binary-search indexes trade memory for point-lookup latency.
         "block_based_table_factory.partition_filters=false;" +
         "block_based_table_factory.index_type=kBinarySearch;" +
 
@@ -45,16 +43,13 @@ public class PbtConfig : IPbtConfig
         "periodic_compaction_seconds=0;" +
         "compression=kLZ4Compression;" +
 
-        // Reduce num of files. Tend to be a good thing.
         "target_file_size_multiplier=2;" +
 
-        // Wal flushed manually in persistence.
+        // Persistence flushes the WAL explicitly.
         "manual_wal_flush=true;" +
 
-        // When an SST is removed, also remove the cached blocks instead of waiting for it to disappear
         "uncache_aggressiveness=1000;" +
 
-        // Small by default, column will override
         "write_buffer_size=1000000;" +
         "";
 
@@ -73,7 +68,7 @@ public class PbtConfig : IPbtConfig
         "max_write_buffer_number=4;" +
         "";
 
-    // Only written when code is deployed, so it is read far more than it is written.
+    // Code is written only on deployment, so this column is read-heavy.
     public string CodeLeavesRocksDbOptions { get; set; } =
         PbtCommonLeafOptions +
         "max_bytes_for_level_base=64000000;" +
@@ -81,7 +76,6 @@ public class PbtConfig : IPbtConfig
         "max_write_buffer_number=2;" +
         "";
 
-    // Most of the leaf writes.
     public string StorageLeavesRocksDbOptions { get; set; } =
         PbtCommonLeafOptions +
         "max_bytes_for_level_base=350000000;" +
@@ -94,7 +88,7 @@ public class PbtConfig : IPbtConfig
         "block_based_table_factory.block_size=16000;" +
         "";
 
-    // Rewritten from the root down on every block, so small but written the most per byte stored.
+    // Rewritten from the root on every block, so it is write-heavy despite its small size.
     public string AccountTrieNodesRocksDbOptions { get; set; } =
         PbtCommonTrieOptions +
         "write_buffer_size=64000000;" +
@@ -108,7 +102,6 @@ public class PbtConfig : IPbtConfig
         "max_write_buffer_number=2;" +
         "";
 
-    // Most writes
     public string StorageTrieNodesRocksDbOptions { get; set; } =
         PbtCommonTrieOptions +
         "max_bytes_for_level_base=350000000;" +

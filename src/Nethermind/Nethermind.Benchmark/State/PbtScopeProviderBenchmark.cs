@@ -44,9 +44,9 @@ public class PbtScopeProviderBenchmark
 
     public enum SlotLayout
     {
-        // Consecutive storage-zone slots (64 + s): all share one PBT storage stem (treeIndex slot>>8 == 0).
+        // Consecutive storage-zone slots share one PBT storage stem.
         Dense,
-        // Slots spaced by 256 (64 + s*256): each lands in a distinct storage stem — maximal stem fan-out.
+        // Slots spaced by 256 maximize PBT storage-stem fan-out.
         Spread
     }
 
@@ -65,15 +65,14 @@ public class PbtScopeProviderBenchmark
     [Params(100, 500)]
     public int AccountCount { get; set; }
 
-    // 0 isolates pure account merkelization; >0 also exercises the storage path.
+    // Zero measures account merkelization only; positive values also exercise storage.
     [Params(0, 20)]
     public int StorageSlotsPerAccount { get; set; }
 
-    // Only meaningful when StorageSlotsPerAccount > 0.
     [Params(SlotLayout.Dense, SlotLayout.Spread)]
     public SlotLayout StorageLayout { get; set; }
 
-    // Writes are flat in the layer count, so pinned to 1.
+    // State writes scale linearly with layer depth, so this benchmark fixes depth at one.
     /// <summary>Which layout the PBT backend stores its nodes in; ignored by the trie backend.</summary>
     [Params(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.SixLevelInterleaved, PbtTrieLayout.EightLevelInterleaved)]
     public PbtTrieLayout Layout { get; set; }
@@ -81,8 +80,7 @@ public class PbtScopeProviderBenchmark
     [Params(1)]
     public int ChainDepth { get; set; }
 
-    // Only meaningful for the Pbt backend: 1 folds the root on the calling thread, 0 takes the
-    // processor count. A batch below the 128-stem threshold folds serially either way.
+    // PBT only: 1 folds on the calling thread; 0 uses processor count. Batches under 128 stems fold serially.
     [Params(1, 0)]
     public int RootFoldConcurrency { get; set; }
 
@@ -102,9 +100,7 @@ public class PbtScopeProviderBenchmark
             _addresses[i] = DeriveAddress(i + 1);
         }
 
-        // Build the base state as ChainDepth committed blocks, so scopes have a non-trivial base, reads
-        // have data, and the layer chain under them is as deep as the parameter asks. Nothing is ever
-        // finalized here, so nothing persists and the layers all stay in memory.
+        // Commit layers without finalizing so the measured scope has an in-memory chain of the requested depth.
         Hash256 baseRoot;
         using (IWorldStateScopeProvider.IScope scope = _provider.BeginScope(null, new LocalMetrics()))
         {

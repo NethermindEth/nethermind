@@ -38,7 +38,6 @@ public class ScanPbtTree(
             return;
         }
 
-        // only what the coordinator has written is visible here; snapshots it still holds are not
         if (_logger.IsInfo) _logger.Info($"Scanning the PBT database at persisted state {state}");
 
         PbtScanReport report;

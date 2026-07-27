@@ -17,7 +17,7 @@ public class PbtNodeChainTests
     private const int StartDepth = 8;
     private const int TargetDepth = 20;
 
-    // zero past TargetDepth, as a group's path is; bits 8..20 are the chain's own single-child path
+    // Zero after TargetDepth; bits 8..20 form the chain's single-child path.
     private static readonly Stem TargetPath = new(Bytes.FromHexString("0x0dead000000000000000000000000000000000000000000000000000000000"));
     private static readonly ValueHash256 TargetHash = new(Bytes.FromHexString("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"));
 
@@ -44,13 +44,12 @@ public class PbtNodeChainTests
         Assert.That(chain.TargetKey, Is.EqualTo(new TrieNodeKey(TargetDepth, TargetPath)));
         Assert.That(chain.Stats, Is.EqualTo(Stats));
 
-        // the cached node hash is the fold, and PbtNodeChain.NodeHashOf reads it without validating
+        // NodeHashOf returns the cached folded hash without validating it.
         ValueHash256 folded = PbtNodeChain.Fold(TargetHash, TargetPath, TargetDepth, StartDepth);
         Assert.That(chain.NodeHash, Is.EqualTo(folded));
         Assert.That(PbtNodeChain.NodeHashOf(encoded), Is.EqualTo(folded));
 
-        // a run's encoding says what it is wherever it is read, which is what tells it from the group
-        // holding it — or from one it might be mistaken for
+        // The format discriminator distinguishes a chain from a group wherever it is read.
         Assert.That(PbtNodeChain.IsChain(encoded));
         Assert.That(() => PbtTrieNodeGroup<Layout>.Decode(encoded), Throws.TypeOf<InvalidDataException>());
         Assert.That(PbtNodeChain.IsChain(EncodeGroup()), Is.False);
@@ -77,11 +76,11 @@ public class PbtNodeChainTests
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-        // a lone stem merkelises to its stem node hash, with nothing folded above it
+        // A single stem's root is its stem-node hash.
         ValueHash256 hashA = ReferenceRoot([(keyA, valueA)]);
         ValueHash256 hashB = ReferenceRoot([(keyB, valueB)]);
 
-        // stemA is all zeros, so it takes the left of the branch and its path is the spine's
+        // stemA takes the branch's left side.
         Assert.That(new Stem(stemA).GetBit(divergenceBit), Is.Zero);
         ValueHash256 branch = Blake3Hash.HashPairOrZero(hashA, hashB);
 
@@ -100,7 +99,7 @@ public class PbtNodeChainTests
         new object[] { "a target past the deepest group", Corrupt(TargetDepthOffset, Stem.LengthInBits) },
         new object[] { "a target path with bits past the target", Corrupt(TargetPathOffset + 2, 0x01) },
         new object[] { "the empty subtree as a target hash", Zero(TargetHashOffset, 32) },
-        // a run reaching one stem would have dissolved: that stem hoists rather than sitting under a spine
+        // A one-stem run dissolves: the stem hoists instead of remaining below a spine.
         new object[] { "a subtree of no stems", Zero(StatsOffset, PbtSubtreeStats.EncodedLength) },
         new object[] { "a subtree of a lone stem", Corrupt(StatsOffset, 0x01) },
     ];
@@ -119,7 +118,7 @@ public class PbtNodeChainTests
         Assert.That(() => PbtNodeChain.Decode<Layout>(valid.AsSpan(..^1), StartDepth), Throws.TypeOf<InvalidDataException>());
         Assert.That(() => PbtNodeChain.Decode<Layout>([.. valid, 0], StartDepth), Throws.TypeOf<InvalidDataException>());
 
-        // the root group keeps its own spine, so nothing chains from depth 0 (invariant 4)
+        // Root groups keep their own spine; chains cannot start at depth 0 (invariant 4).
         Assert.That(() => PbtNodeChain.Decode<Layout>(valid, 0), Throws.TypeOf<InvalidDataException>());
     }
 
@@ -146,7 +145,7 @@ public class PbtNodeChainTests
     {
         byte[] encoded = new byte[PbtTrieNodeGroup<Layout>.MaxEncodedLength];
         PbtGroupEncoder<Layout> builder = new(encoded, PbtGroupFormat.EveryLevel);
-        // a lone boundary internal — the root's internal node is folded, never stored
+        // The root internal is folded, not stored.
         builder.AppendInternal(PbtLayout.TrieNodeGroupBoundarySlotPosition(0), TargetHash);
         return encoded[..builder.Finish(Stats)];
     }

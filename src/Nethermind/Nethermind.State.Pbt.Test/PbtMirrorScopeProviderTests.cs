@@ -42,8 +42,7 @@ public class PbtMirrorScopeProviderTests
 
         Assert.That(mirroredRoots, Is.EqualTo(plainRoots));
 
-        // the pbt states are keyed by the authoritative root, which is what lets both backends persist
-        // the same ranges
+        // States are keyed by the authoritative root, so both backends persist the same ranges.
         for (int block = 0; block < mirroredRoots.Length; block++)
         {
             Assert.That(ctx.Repository.HasState(new StateId((ulong)(block + 1), mirroredRoots[block])), Is.True,
@@ -88,9 +87,9 @@ public class PbtMirrorScopeProviderTests
     {
         WorldState worldState = new(provider, LimboLogs.Instance);
 
-        // long enough to spill past the account header stem into the content-addressed code zone
+        // Long enough to reach the content-addressed code zone after the account-header stem.
         byte[] code = new byte[15000];
-        for (int i = 0; i < code.Length; i += 10) code[i] = 0x63; // PUSH4, to exercise the chunk PUSHDATA offsets
+        for (int i = 0; i < code.Length; i += 10) code[i] = 0x63; // PUSH4 exercises chunk PUSHDATA offsets.
 
         Hash256 root1;
         using (worldState.BeginScope(IWorldState.PreGenesis))
@@ -109,8 +108,7 @@ public class PbtMirrorScopeProviderTests
         Hash256 root2;
         using (worldState.BeginScope(header1))
         {
-            // the contract is dirtied by storage alone, so its stored account is only rewritten by the
-            // storage-root patch the authoritative write batch applies on dispose
+            // Storage-only changes patch the account's storage root when the authoritative batch disposes.
             worldState.Set(new StorageCell(Contract, 5), [0]);
             worldState.Set(new StorageCell(Contract, 70), [0x07]);
             worldState.AddToBalance(Eoa, 5, Spec, out _);

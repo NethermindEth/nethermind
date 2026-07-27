@@ -3,13 +3,8 @@
 
 namespace Nethermind.Pbt;
 
-/// <summary>Which levels of a <see cref="PbtTrieNodeGroup"/> an encoding stores internal nodes for; the last byte of every non-empty encoding.</summary>
-/// <remarks>
-/// All of them describe the same trie and fold to the same root — they differ only in how much of
-/// the fold they write down — so a store may hold any of them at any key, and a group converts only
-/// when a change rewrites it. The values are disjoint from <see cref="PbtNodeChain"/>'s and from
-/// <see cref="PbtNodeCluster"/>'s, so an encoding of any of the three says which it is.
-/// </remarks>
+/// <summary>Internal trie-group levels stored by an encoding; the final byte of every non-empty group.</summary>
+/// <remarks>Formats represent the same trie and root while storing different levels; their values do not overlap chain or cluster encodings.</remarks>
 public enum PbtGroupFormat : byte
 {
     /// <summary>Every level of the tile, the original encoding.</summary>

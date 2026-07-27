@@ -5,21 +5,7 @@ using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
 
 namespace Nethermind.Pbt;
 
-/// <summary>
-/// What a trie node group holds by position, as the two bitmaps that say it: where a node sits, and
-/// which of those nodes are stems.
-/// </summary>
-/// <remarks>
-/// The encoding's own arithmetic — <c>EncodedLength</c>, <c>Decode</c>, <c>SubtreeBitmaps</c> —
-/// indexes the tile's post-order positions, which is what pins every entry's offset and the whole
-/// blob's length. The descent works at the coarser <see cref="BoundarySlotMasks"/> granularity, which
-/// is what it resolves and the fold is driven by. <see cref="Chains"/> is always the latter: a run
-/// hangs from a boundary slot and nowhere else.
-/// <para>
-/// The position masks stay scalar because only a tiling of at most 128 positions is read through
-/// them; the boundary ones are <see cref="SlotBitmask{TLayout}"/>, which every tiling fits.
-/// </para>
-/// </remarks>
+/// <summary>Position masks describe encoded nodes and stems; boundary masks drive descent, and chains exist only at boundaries.</summary>
 public readonly record struct NodeGroupBitmasks(UInt128 Presence, UInt128 Stems, ulong Chains);
 
 /// <summary>

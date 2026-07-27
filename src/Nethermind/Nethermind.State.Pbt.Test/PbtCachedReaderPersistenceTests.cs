@@ -21,10 +21,7 @@ public class PbtCachedReaderPersistenceTests
     private static readonly StateId _committedState = new(1, TestItem.KeccakA);
     private static readonly ValueHash256 _committedTreeRoot = TestItem.KeccakB;
 
-    /// <summary>
-    /// The point of the cache: everyone reading the same persisted state gets the same snapshot, and
-    /// the commit that makes it stale is what takes it away.
-    /// </summary>
+    /// <summary>Readers of the same persisted state share a snapshot until a commit invalidates it.</summary>
     [Test]
     public async Task Readers_ShareOneSnapshot_UntilAWriteBatchCommits()
     {
@@ -45,7 +42,7 @@ public class PbtCachedReaderPersistenceTests
         ctx.Inner.Received(2).CreateReader();
     }
 
-    /// <summary>The snapshot outlives the cache entry: whoever is still reading it keeps it open.</summary>
+    /// <summary>Readers retain a snapshot after its cache entry is invalidated.</summary>
     [Test]
     public async Task Snapshot_IsClosed_OnlyOnceTheCacheAndEveryReaderReleasedIt()
     {
@@ -66,10 +63,7 @@ public class PbtCachedReaderPersistenceTests
         ctx.Reader.Received(1).Dispose();
     }
 
-    /// <summary>
-    /// The columns are not written atomically on every backend, so the snapshot everyone reads has to
-    /// predate the batch and outlast it: a reader taken while it is open must never take one of its own.
-    /// </summary>
+    /// <summary>Readers use the pre-batch snapshot while a non-atomic column batch is open.</summary>
     [Test]
     public async Task Snapshot_IsTakenBeforeTheWriteBatch_AndSharedForItsLifetime()
     {
@@ -98,7 +92,7 @@ public class PbtCachedReaderPersistenceTests
         ctx.Inner.Received(2).CreateReader();
     }
 
-    /// <summary>The snapshot is only stale once every batch that could still be writing has closed.</summary>
+    /// <summary>A snapshot becomes stale only after all writing batches close.</summary>
     [Test]
     public async Task OverlappingWriteBatches_HoldTheSnapshot_UntilTheLastOneCloses()
     {
@@ -120,10 +114,7 @@ public class PbtCachedReaderPersistenceTests
         Assert.That(afterLastCommit, Is.Not.SameAs(pinned));
     }
 
-    /// <summary>
-    /// A batch that never gets handed out is never disposed, so the pin it took has to come back off
-    /// here - a leaked one would wedge the cache on a snapshot that never goes stale.
-    /// </summary>
+    /// <summary>Disposing an unclaimed batch releases its cache pin.</summary>
     [Test]
     public async Task WriteBatch_ThatFailedToOpen_LeavesTheSnapshotInvalidatable()
     {
@@ -170,8 +161,7 @@ public class PbtCachedReaderPersistenceTests
 
         public Context()
         {
-            // a fresh substitute per call after the first, so "is this the same snapshot?" stays a
-            // meaningful question however many times the cache is invalidated
+            // Return distinct snapshots so cache invalidation remains observable.
             Inner.CreateReader().Returns(_ => Reader, _ => Substitute.For<IPbtPersistence.IReader>());
             Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
                 .Returns(Substitute.For<IPbtPersistence.IWriteBatch>());

@@ -126,7 +126,7 @@ public class WorkStealingExecutorTests
             executor.Start();
             try
             {
-                // a single-lane executor has no queue to offer them to, so it folds every job itself
+                // A single-lane executor runs jobs locally.
                 if (!main.CanQueue)
                 {
                     Assert.That(executor.IsParallel, Is.False);
@@ -171,7 +171,7 @@ public class WorkStealingExecutorTests
         Executor executor = Create(runs, Threads);
         Executor.JobQueue main = executor.MainQueue;
 
-        // deliberately not started: with no thief draining it, the queue fills and stays full
+        // Without workers, the queue fills and remains full.
         int refused = 0;
         Executor.Handle queued = default;
         try
@@ -283,7 +283,7 @@ public class WorkStealingExecutorTests
             {
                 Assert.That(node.Error, Is.Null);
 
-                // every child folded input + child, doubled
+                // Each child doubles its input.
                 long expected = 0;
                 for (int child = 1; child <= children; child++) expected += (node.Job.Input + child) * 2L;
                 Assert.That(node.Job.Output, Is.EqualTo(expected));

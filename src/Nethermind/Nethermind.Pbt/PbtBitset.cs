@@ -75,15 +75,6 @@ internal static class PbtBitset
         return -1;
     }
 
-    /// <summary>
-    /// The one word holding <c>[firstBit, firstBit + width)</c>, masked to that range; <c>false</c>
-    /// where the range spans more than one.
-    /// </summary>
-    /// <remarks>
-    /// The fold asks about power-of-two ranges aligned to their own width, so every range up to a word
-    /// wide takes this path and the loops below run only for a tiling wider than one — where that same
-    /// alignment leaves them whole words to walk, which is what they assume.
-    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryRangeWord(ReadOnlySpan<ulong> words, int firstBit, int width, out ulong masked)
     {
@@ -95,7 +86,7 @@ internal static class PbtBitset
             return false;
         }
 
-        // a range as wide as the word shifts its one bit clean out, which C# wraps back to bit zero
+        // C# masks a 64-bit shift count, so a word-wide range needs an explicit mask.
         ulong mask = width == BitsPerWord ? ulong.MaxValue : ((1UL << width) - 1) << offset;
         masked = words[firstBit / BitsPerWord] & mask;
         return true;

@@ -8,34 +8,26 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
 
-/// <summary>
-/// Durable storage of one world state: zone-partitioned stem leaf blobs, stem trie nodes, and the
-/// <see cref="StateId"/> they collectively represent.
-/// </summary>
+/// <summary>Durable storage for a world state's leaf blobs, trie nodes, and <see cref="StateId"/>.</summary>
 public interface IPbtPersistence
 {
     IReader CreateReader();
 
-    /// <summary>
-    /// Starts an atomic batch advancing the persisted state <paramref name="from"/> →
-    /// <paramref name="to"/>; throws when the currently persisted state is not <paramref name="from"/>.
-    /// </summary>
-    /// <param name="toTreeRoot">The EIP-8297 root of <paramref name="to"/>, which its header-derived <see cref="StateId.StateRoot"/> does not carry.</param>
+    /// <summary>Starts an atomic batch advancing the persisted state from <paramref name="from"/> to <paramref name="to"/>.</summary>
+    /// <param name="toTreeRoot">The EIP-8297 root of <paramref name="to"/>, which <see cref="StateId.StateRoot"/> does not carry.</param>
     /// <param name="flags">
-    /// Applied to every write of the batch. <see cref="WriteFlags.DisableWAL"/> makes the batch
-    /// non-durable until <see cref="Flush"/> is called, so it is only safe for bulk writes that are
-    /// restarted from scratch on a crash.
+    /// Applied to every write. <see cref="WriteFlags.DisableWAL"/> requires <see cref="Flush"/> for crash durability.
     /// </param>
     IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 toTreeRoot, WriteFlags flags);
 
-    /// <summary>Materializes every column's memtable, making prior <see cref="WriteFlags.DisableWAL"/> writes crash-durable.</summary>
+    /// <summary>Makes preceding <see cref="WriteFlags.DisableWAL"/> writes crash-durable.</summary>
     void Flush();
 
     public interface IReader : IDisposable
     {
         StateId CurrentState { get; }
 
-        /// <inheritdoc cref="CreateWriteBatch" path="/param[@name='toTreeRoot']"/>
+        /// <summary>Gets the EIP-8297 root of <see cref="CurrentState"/>.</summary>
         ValueHash256 CurrentTreeRoot { get; }
 
         RefCountingMemory? GetLeafBlob(in Stem stem);

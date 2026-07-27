@@ -14,24 +14,13 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
-/// <summary>
-/// The read/write surface of one processing branch: flat reads/writes go through the bundle,
-/// while <see cref="UpdateRootHash"/> folds the block's cumulative dirty state into an EIP-8297
-/// tree-key write batch and hands it to <see cref="TrieUpdater"/> for the root. The scope is the
-/// <see cref="IPbtStore"/> the updater reads/writes: both go through the bundle's write buffer, which
-/// shadows the layer chain, so a fold composes on top of any earlier fold this block and
-/// <see cref="Commit"/> seals the accumulated buffer into the snapshot.
-/// </summary>
+/// <summary>Provides the read/write surface for a processing branch backed by an EIP-8297 tree.</summary>
 /// <remarks>
-/// The fold's own root is not what <see cref="RootHash"/> reports: on a Patricia-rooted chain the
-/// block being processed already claims a root, and reporting anything else fails validation. The
-/// scope therefore tracks both — the EIP-8297 root the tree folds to, which the next fold and the
-/// sealed snapshot need, and the header's root, which is what it reports and keys its states by. See
-/// <see cref="IPbtChildHeaderSource"/>.
+/// The scope retains the folded tree root and the header root separately. The latter is reported and
+/// used to key states so Patricia-rooted blocks validate against the root their header claims.
 /// </remarks>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore
 {
-    /// <summary>Zero <c>BASIC_DATA</c> and <c>CODE_HASH</c> as one run, the same two adjacent leaves <see cref="ApplyAccountHeader"/> writes.</summary>
     private static readonly byte[] _clearedAccountHeader = new byte[2 * ValueHash256.MemorySize];
 
     private readonly IPbtCommitTarget _commitTarget;
@@ -40,14 +29,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly PbtTrieLayout _writeLayout;
     private readonly int _rootFoldConcurrency;
 
-    // stem leaves dirtied since the last root update: storage slots from the parallel storage batches
-    // and account/code header leaves from the single-threaded account flush both land here (their
-    // sub-index bands never overlap). UpdateRootHash drains it into the write batch.
+    // Storage and account writes use disjoint sub-index bands, allowing their batches to share this builder.
     private readonly PbtWriteBatchBuilder _writeBatchBuilder;
 
-    // deliberately not pooled: PbtCodeDb captures this by reference and StateProvider.CommitCodeAsync
-    // ends in a Task.Run joined only on the success paths, so a writer orphaned by a failed block
-    // would bleed code into whichever block rented the map next
+    // Not pooled: an unjoined code writer after a failed block could otherwise write into a later scope.
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
 
@@ -56,9 +41,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private Hash256 _rootHash;
     private Hash256? _authoritativeRoot;
 
-    // the header of the state the scope currently sits on, and the header of the block it is folding;
-    // the latter is resolved once per block and carried into Commit so a branch's next block starts
-    // from the header it just committed
     private BlockHeader? _currentHeader;
     private BlockHeader? _childHeader;
 
@@ -96,16 +78,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     public Hash256 RootHash => _rootHash;
 
-    /// <summary>
-    /// Makes the scope report and key its states by <paramref name="root"/> rather than by the root
-    /// resolved through <see cref="IPbtChildHeaderSource"/> or folded by the tree.
-    /// </summary>
+    /// <summary>Uses <paramref name="root"/> to report and key the current state.</summary>
     /// <remarks>
-    /// Set by the mirror scope from the authoritative backend's root after each of that backend's root
-    /// updates. Genesis and self-built blocks have no child header to resolve, so without this the two
-    /// backends would key the same state differently and their persisted ranges could not be aligned.
-    /// The root is applied here as well as in <see cref="UpdateRootHash"/> because a block that dirties
-    /// nothing takes that method's early return.
+    /// The mirror scope supplies the authoritative backend's root for genesis and self-built blocks,
+    /// which lack a child header. Applying it here also covers blocks with no dirty state.
     /// </remarks>
     internal void UseAuthoritativeRoot(Hash256 root)
     {
@@ -132,15 +108,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch(this);
 
-    /// <summary>
-    /// Folds the stems dirtied since the last update into the tree on top of the pre-block state,
-    /// recording the new blobs and nodes in the bundle's write buffer and flushing the dirty set.
-    /// </summary>
+    /// <summary>Folds dirty stems into the tree and records the resulting nodes and blobs in the write buffer.</summary>
     /// <remarks>
-    /// The reported root is the one the block's own header claims. Falling back to the tree's root
-    /// when no such header exists keeps the blocks this node builds itself — and every scope over a
-    /// synthetic block — self-consistent: such a block carries the tree root, and echoes it back when
-    /// it is later processed.
+    /// A block header root takes precedence over the folded root. Synthetic and self-built blocks have
+    /// no child header, so they use the folded root they carry when later processed.
     /// </remarks>
     public void UpdateRootHash()
     {
@@ -177,8 +148,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot);
             if (_isReadOnly)
             {
-                // read-only scopes keep the layer only in their own bundle; drop the lease that
-                // would have gone to the repository
                 snapshot.Dispose();
             }
             else
@@ -189,23 +158,16 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             _currentStateId = newStateId;
         }
 
-        // unconditionally, null included: keeping the old header would have the next block in the
-        // branch resolve the child of the block this one just committed — the block itself
+        // Clear the header when no child was found so the next block does not resolve itself as its child.
         _currentHeader = _childHeader;
         _childHeader = null;
 
-        // the dirty stems were already drained (and their maps returned) by UpdateRootHash, and the
-        // blob and node results left with the buffer CollectSnapshot sealed
         _pendingCode.Clear();
         _storages.Clear();
         _rootDirty = false;
     }
 
-    /// <remarks>
-    /// Returning the builder hands back the stem-change maps no fold claimed: a scope abandoned with
-    /// pending writes — an exception mid-block, or a branch dropped before its final
-    /// <see cref="UpdateRootHash"/> — would otherwise lose them to the GC rather than the pool.
-    /// </remarks>
+    /// <remarks>Disposing returns pending stem-change maps to the pool when a scope is abandoned before its final fold.</remarks>
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
@@ -220,26 +182,17 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
     }
 
-    /// <summary>
-    /// Folds an account's EIP-8297 header leaves straight into the dirty stems: BASIC_DATA,
-    /// CODE_HASH and the header code chunks on its header stem, plus any overflow chunks on their
-    /// own stems.
-    /// </summary>
     private void ApplyAccountHeader(Address address, Account account)
     {
         Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
 
-        // Code (immutable after creation) is only chunked when it was written this block; its hash
-        // then identifies the pending bytes. For an unchanged-code account whose balance or nonce
-        // changed we still rewrite BASIC_DATA, so its code size is read back from the prior BASIC_DATA
-        // leaf rather than fetching the whole code.
+        // Unchanged code is not in the pending map, so recover its size without fetching its bytes.
         byte[]? updatedCode = account.HasCode && _pendingCode.TryGetValue(account.CodeHash, out byte[]? c) ? c : null;
         uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
             : !account.HasCode ? 0
             : PriorCodeSize(headerStem);
         byte[]? chunks = updatedCode is null ? null : PbtKeyDerivation.ChunkifyCode(updatedCode);
 
-        // BASIC_DATA and CODE_HASH sit on adjacent sub-indices, so they go in as one run
         Span<byte> basicDataAndCodeHash = stackalloc byte[2 * ValueHash256.MemorySize];
         PbtKeyDerivation.PackBasicData(basicDataAndCodeHash[..ValueHash256.MemorySize], codeSize, account.Nonce, account.Balance);
         account.CodeHash.Bytes.CopyTo(basicDataAndCodeHash[ValueHash256.MemorySize..]);
@@ -251,8 +204,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         int headerChunks = Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks);
         _writeBatchBuilder.SetLeafRange(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(0), ChunkRun(chunks, 0, headerChunks));
 
-        // overflow chunks (index 128+) live on their own content-addressed code-zone stems, each
-        // holding a run of up to a full stem's worth before the next stem takes over
         for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount;)
         {
             Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
@@ -262,13 +213,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
     }
 
-    /// <summary>Clears the <c>BASIC_DATA</c> and <c>CODE_HASH</c> leaves of a deleted account, which is what makes it read back as absent.</summary>
-    /// <remarks>
-    /// The account's other header leaves — its first 64 storage slots and its header code chunks — are
-    /// deliberately left: nothing reads them once the account is gone, and clearing them would rewrite a
-    /// stem's worth of leaves per deletion. A stem left with none of them at all is emptied and
-    /// tombstoned by the fold.
-    /// </remarks>
+    // Clearing BASIC_DATA and CODE_HASH makes the account absent; clearing unused header leaves is unnecessary.
     private void ClearAccountHeader(Address address) =>
         _writeBatchBuilder.SetLeafRange(PbtKeyDerivation.AccountHeaderStem(address), PbtKeyDerivation.BasicDataLeafKey, _clearedAccountHeader);
 
@@ -278,7 +223,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private static ValueHash256 SlotLeaf(in EvmWord value) =>
         EvmWordSlot.IsZero(value) ? default : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
 
-    /// <summary>Reads the code size from the account's prior <c>BASIC_DATA</c> leaf; 0 if the account is new.</summary>
     private uint PriorCodeSize(in Stem headerStem)
     {
         using RefCountingMemory? prior = Bundle.GetLeafBlob(headerStem);
@@ -287,8 +231,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             : 0;
     }
 
-    // PBT does not support self-destruct; this keeps only the read-side new-account optimization,
-    // where the bundle marker makes storage reads for a new or cleared account return a clean zero.
+    // The marker lets cleared-account storage reads return zero without rewriting all storage stems.
     private void SelfDestructStorage(Address address)
     {
         Bundle.SelfDestruct(address);
@@ -299,7 +242,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     {
         private readonly long _start = Stopwatch.GetTimestamp();
 
-        // PBT accounts have no storage root to fold back into the state provider, so the event is never raised
+        // PBT accounts have no storage root to propagate.
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
         {
             add
@@ -317,9 +260,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
             if (account is null)
             {
-                // the tree is the only record of the account, so the delete has to reach it; and the
-                // world state skips the storage write batch entirely for removed accounts, so the
-                // storage clear must happen here too
+                // Removed accounts bypass the storage batch, so clear their storage here.
                 scope.ClearAccountHeader(key);
                 scope.SelfDestructStorage(key);
             }
@@ -345,7 +286,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
             Stem stem = _deriver.Derive(index, out byte subIndex);
 
-            // single-writer per stem: this address's storage is flushed by one worker
             scope._writeBatchBuilder.SetLeaf(stem, subIndex, SlotLeaf(word));
             scope.Bundle.SetSlot(address, index, word);
             scope._rootDirty = true;

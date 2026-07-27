@@ -10,14 +10,8 @@ using System.Runtime.InteropServices;
 namespace Nethermind.Pbt;
 
 /// <summary>Managed, unkeyed BLAKE3 producing a 32-byte digest.</summary>
-/// <remarks>
-/// Replaces the native <c>Blake3</c> binding, whose per-call P/Invoke overhead dominates at the input sizes
-/// EIP-8297 hashes (all 64 bytes or less). Such an input is a single block of a single chunk that is also the
-/// root, so <see cref="Hash"/> reduces to one compression with no chunk state and no allocation. Longer inputs
-/// take the general path: 1 KiB chunks combined through a chaining-value stack, per the BLAKE3 spec. That path
-/// is single-threaded and compresses one block at a time, so it stays well behind the native library's
-/// multi-way SIMD for large inputs; it exists for correctness, not for speed.
-/// </remarks>
+/// <remarks>Avoids P/Invoke overhead for EIP-8297's inputs of 64 bytes or less. Longer inputs use a
+/// correctness-oriented general path.</remarks>
 public static class Blake3Managed
 {
     private const int BlockLength = 64;
@@ -59,7 +53,6 @@ public static class Blake3Managed
         int stackLength = 0;
         ulong chunkCounter = 0;
 
-        // every chunk but the last is complete, so the last is left over for the root handling below
         while (input.Length > ChunkLength)
         {
             ChunkChainingValue(input[..ChunkLength], chunkCounter, 0, cv);
@@ -252,7 +245,6 @@ public static class Blake3Managed
         uint v8 = Iv0, v9 = Iv1, v10 = Iv2, v11 = Iv3;
         uint v12 = (uint)counter, v13 = (uint)(counter >> 32), v14 = blockLength, v15 = flags;
 
-        // round 1
         v0 += v4 + m0; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
         v0 += v4 + m1; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
         v1 += v5 + m2; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
@@ -270,7 +262,6 @@ public static class Blake3Managed
         v3 += v4 + m14; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
         v3 += v4 + m15; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        // round 2
         v0 += v4 + m2; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
         v0 += v4 + m6; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
         v1 += v5 + m3; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
@@ -288,7 +279,6 @@ public static class Blake3Managed
         v3 += v4 + m15; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
         v3 += v4 + m8; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        // round 3
         v0 += v4 + m3; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
         v0 += v4 + m4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
         v1 += v5 + m10; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
@@ -306,7 +296,6 @@ public static class Blake3Managed
         v3 += v4 + m8; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
         v3 += v4 + m1; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        // round 4
         v0 += v4 + m10; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
         v0 += v4 + m7; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
         v1 += v5 + m12; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
@@ -324,7 +313,6 @@ public static class Blake3Managed
         v3 += v4 + m1; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
         v3 += v4 + m6; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        // round 5
         v0 += v4 + m12; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
         v0 += v4 + m13; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
         v1 += v5 + m9; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
@@ -342,7 +330,6 @@ public static class Blake3Managed
         v3 += v4 + m6; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
         v3 += v4 + m4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        // round 6
         v0 += v4 + m9; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
         v0 += v4 + m14; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
         v1 += v5 + m11; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
@@ -360,7 +347,6 @@ public static class Blake3Managed
         v3 += v4 + m4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
         v3 += v4 + m7; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        // round 7
         v0 += v4 + m11; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
         v0 += v4 + m15; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
         v1 += v5 + m5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);

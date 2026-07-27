@@ -83,7 +83,7 @@ public class PbtWriteBatchBuilderTests
             for (int i = 0; i < subIndices; i++) work.Add((s, i));
         }
 
-        // interleave the stems so a stem is in flight on several threads at once
+        // Interleave stems so individual stems are updated concurrently.
         Random rng = new(42);
         for (int i = work.Count - 1; i > 0; i--)
         {
@@ -128,7 +128,7 @@ public class PbtWriteBatchBuilderTests
         ReadOnlySpan<int> table = batch.Buckets;
         Assert.That(table.Length, Is.EqualTo(Layout.BoundarySlots * PbtWriteBatch.LevelStride<Layout>() + PbtWriteBatch.LevelStride<Layout>()));
 
-        // the whole scheme rests on this: the drain emits its entries grouped by first byte, ascending
+        // The drain emits entries ordered by first byte.
         for (int i = 1; i < batch.Count; i++)
         {
             Assert.That(batch.Entries[i].Stem.Bytes[0], Is.GreaterThanOrEqualTo(batch.Entries[i - 1].Stem.Bytes[0]));
@@ -147,7 +147,7 @@ public class PbtWriteBatchBuilderTests
             Assert.That(nibbles[nibble + 1], Is.EqualTo(expected), $"nibble level bound {nibble}");
         }
 
-        // each level caches which of its buckets are non-empty, so the descent never re-derives it
+        // Each level caches its non-empty buckets.
         Assert.That(
             PbtWriteBatch.ReadTouchedMask<Layout>(nibbles), Is.EqualTo(TouchedMaskOf(nibbles)), "nibble level touched mask");
 
@@ -257,7 +257,7 @@ public class PbtWriteBatchBuilderTests
         byte[] values = new byte[count * ValueHash256.MemorySize];
         for (int i = 0; i < count; i++)
         {
-            // local, not inline: a span over a returned-by-value hash dangles once its temp is reused
+            // Keep the value alive while copying its span.
             ValueHash256 value = Value(startSubIndex + i);
             value.Bytes.CopyTo(values.AsSpan(i * ValueHash256.MemorySize));
         }

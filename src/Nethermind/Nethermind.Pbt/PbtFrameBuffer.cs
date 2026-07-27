@@ -32,8 +32,7 @@ internal ref struct PbtFrameBuffer<T>
         }
     }
 
-    // Not readonly: the inline RefList64 is a mutable value whose AsSpan must reach the real field.
-    // A readonly getter would defensively copy it and hand back a span over the throwaway copy.
+    // Not readonly: a readonly getter would return a span over a defensive copy of the mutable inline list.
     public Span<T> Span => _rented is null ? _inline.AsSpan() : _rented.AsSpan(0, _length);
 
     public void Dispose()
@@ -46,16 +45,7 @@ internal ref struct PbtFrameBuffer<T>
     }
 }
 
-/// <summary>
-/// <inheritdoc cref="PbtFrameBuffer{T}" path="/summary"/> For elements that hold a lease, which
-/// disposal releases.
-/// </summary>
-/// <remarks>
-/// The frame settles each slot it fills, taking the leases back as it goes and leaving the slot
-/// <c>default</c>, so on the way out there is normally nothing here to release. What this covers is the
-/// frame that never gets there: a descent unwound by a throwing sibling would otherwise abandon every
-/// lease its slots hold, since nothing below the throw runs again.
-/// </remarks>
+/// <summary><inheritdoc cref="PbtFrameBuffer{T}" path="/summary"/> Disposes leased elements left when descent unwinds.</summary>
 internal ref struct PbtLeasedFrameBuffer<T>(int length) where T : struct, IDisposable
 {
     private PbtFrameBuffer<T> _buffer = new(length);

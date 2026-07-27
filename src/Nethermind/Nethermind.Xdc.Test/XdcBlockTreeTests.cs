@@ -90,7 +90,6 @@ internal class XdcBlockTreeTests
         Block block2 = XdcBlock(2UL, block1.Hash!);
         Block block3 = XdcBlock(3UL, block2.Hash!);
 
-        // block2Fork forks at height 2 — same height as the finalized block
         Block block2Fork = XdcBlock(2UL, block1.Hash!, nonce: 1UL);
         Block block3Fork = XdcBlock(3UL, block2Fork.Hash!);
 
@@ -123,10 +122,10 @@ internal class XdcBlockTreeTests
         Assert.That(blockTree.SuggestBlock(disconnected), Is.EqualTo(AddBlockResult.UnknownParent));
     }
 
-    [TestCase(5UL, false, true)] // higher round from a remote (non-self-mined) block overrides an equal-TD self-mined head
-    [TestCase(1UL, false, false)] // same round from a remote block does not override - self-mined tie-break still applies
-    [TestCase(1UL, true, true)] // same round, also self-mined, overrides (unchanged proposal-race behavior)
-    [TestCase(0UL, true, false)] // lower round does not override, even if self-mined
+    [TestCase(5UL, false, true)]
+    [TestCase(1UL, false, false)]
+    [TestCase(1UL, true, true)]
+    [TestCase(0UL, true, false)]
     public void IsSameTdButPreferred_BreaksEqualTdTieByRoundThenSelfMined(ulong candidateRound, bool candidateSelfMined, bool expectedOverride)
     {
         XdcBlockHeader head = XdcHeaderWithRound(1UL, Keccak.Zero, round: 1, selfMined: true);

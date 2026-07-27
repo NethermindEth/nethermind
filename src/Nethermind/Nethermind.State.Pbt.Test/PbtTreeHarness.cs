@@ -27,9 +27,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     private readonly List<RefCountingMemory> _handedOut = [];
     private readonly HashSet<int> _readThreads = [];
 
-    // a parallel fold reads and writes from several threads at once, so everything the store keeps —
-    // the two maps, the handed-out values, the counters — is behind one lock; a real store would do
-    // better than that, but a test one only has to be correct
+    // Parallel folds access all test-store state concurrently.
     private readonly Lock _lock = new();
     private ValueHash256 _root;
 
@@ -116,7 +114,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
                 continue;
             }
 
-            // a clustered child is a bare group, which may hold runs of its own
+            // A clustered child may hold runs of its own.
             byte[] child = blob[cluster.Child(slot, group)];
             if (child.Length != 0) Flatten<TLayout>(flattened, key.ChildGroup(slot, TLayout.LevelsPerGroup), child);
         }
@@ -168,7 +166,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// <summary>Applies key/value writes (empty/zero value = clear) and returns the new root.</summary>
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes)
     {
-        // group by stem first — the write batch requires each stem exactly once
+        // A write batch requires each stem exactly once.
         Dictionary<Stem, IPbtStemChanges> grouped = [];
         foreach ((byte[] key, byte[]? value) in writes)
         {

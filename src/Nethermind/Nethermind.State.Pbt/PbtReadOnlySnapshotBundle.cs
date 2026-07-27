@@ -223,8 +223,7 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         }
         finally
         {
-            // the reader pins a native RocksDB snapshot, which pins SST files: it must be released
-            // even if a layer release throws
+            // Release the native RocksDB snapshot even if a layer release throws.
             reader.Dispose();
         }
     }

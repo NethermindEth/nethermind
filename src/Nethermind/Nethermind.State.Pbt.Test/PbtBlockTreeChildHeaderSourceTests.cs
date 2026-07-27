@@ -10,11 +10,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtBlockTreeChildHeaderSourceTests
 {
-    /// <summary>
-    /// The block a scope is folding is suggested but not yet canonical — and post-merge, a level with
-    /// no canonical block resolves to nothing by height — so the source has to match on the parent
-    /// hash. On a fork that is also the only thing telling the two branches' blocks apart.
-    /// </summary>
+    /// <summary>Resolves a pending block by parent hash when no canonical block exists at its height.</summary>
     [Test]
     public void TryFindChild_MatchesOnTheParent_AcrossForkSiblingsAndBeforeCanonicalisation()
     {
@@ -25,7 +21,7 @@ public class PbtBlockTreeChildHeaderSourceTests
         blockTree.SuggestBlock(genesis);
         blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, preloadedBlocks: [genesis]);
 
-        // two branches out of genesis, neither made canonical, so nothing here is found by height alone
+        // Neither fork branch is canonical, so lookup by height cannot resolve either block.
         Block branchA = Suggest(blockTree, genesis, 1);
         Block branchB = Suggest(blockTree, genesis, 2);
         Block onA = Suggest(blockTree, branchA, 3);
@@ -38,7 +34,7 @@ public class PbtBlockTreeChildHeaderSourceTests
         Assert.That(source.TryFindChild(onA.Header), Is.Null, "and a block nothing was suggested onto resolves to nothing");
     }
 
-    /// <remarks>The difficulty only keeps the fork siblings from hashing alike.</remarks>
+    /// <remarks>Distinct difficulties ensure the fork siblings have distinct hashes.</remarks>
     private static Block Suggest(BlockTree blockTree, Block parent, long difficulty)
     {
         Block block = Build.A.Block.WithParent(parent).WithDifficulty((ulong)difficulty).TestObject;

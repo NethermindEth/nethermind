@@ -26,11 +26,7 @@ public class StemLeafBlobTests
         Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333"),
     ];
 
-    // Blobs written by the legacy layout, which cached every single-child internal. They are checked in
-    // rather than generated because nothing writes that format any more: reproducing one means reverting
-    // the layout change. Sub-index sets chosen for their internal shape — a lone leaf whose every ancestor
-    // is single-child, a pair split across the root so that the root alone branches, and a mixed set whose
-    // branching internals sit at two different depths.
+    // Checked-in legacy blobs cover single-child and branching internal shapes; no writer produces this format.
     private const string LegacySingleLeaf =
         "0x111111111111111111111111111111111111111111111111111111111111111100cb4bb82263b23f0e7ccf04a6168c1877536fb1e676850759517c266daa00219731c12972bf86bf19768d53dc26304cb17f07bc4fade2c3cbd561402d054f29c2e5351ea461ba80e56262935c9f7d8a284ea0e1e044cf431d4d177bfce548561295b0702c1599d75bfeae048ec41a75d5112c5e0d0692db6294457960a77d0d36051a7d4b0374f95b5d70fdf6d1d19ddf70a7f9d939500b58f9fede17223ed285ac2f41f14f3db0c960693bc36add419afab32ae70173d09353f0553788f6e2f5e2ceb766cfcebb302d6cfae06bce8a7f8188d5303e079ed69f4b025fa76d0a35b1b3266b3d1170fdcdc5f089fc1c1ccd09401ee206b6628d2ac5828f8d598f8000010001";
 
@@ -99,12 +95,7 @@ public class StemLeafBlobTests
         byte[] dense = new byte[256];
         for (int i = 0; i < dense.Length; i++) dense[i] = (byte)i;
 
-        // n leaves cost 2n-1 entries at every level. Interleaving keeps only the branching nodes of the
-        // 4-, 16- and 64-wide levels and no root at all, so a pair of leaves — branching one level above
-        // themselves, and single-child all the way up from there — costs nothing but the leaves, and a
-        // full stem costs 64 + 16 + 4. The leaves-only layout costs the leaves and nothing else, whatever
-        // their shape. Every-4-depth keeps only the 16-wide level, so a pair costs nothing above the
-        // leaves and a full stem costs 16.
+        // Sparse pairs need no stored internals in the sparse formats; dense stems exercise every kept level.
         yield return new TestCaseData(adjacent, PbtLeafFormat.EveryLevel, 3).SetName("AdjacentPairEveryLevel");
         yield return new TestCaseData(adjacent, PbtLeafFormat.Interleaved, 2).SetName("AdjacentPairInterleaved");
         yield return new TestCaseData(scattered, PbtLeafFormat.EveryLevel, 3).SetName("ScatteredPairEveryLevel");
@@ -444,7 +435,7 @@ public class StemLeafBlobTests
                 $"legacy read of sub-index {subIndex}");
         }
 
-        // an unchanged rebuild is a pure conversion; a changed one rebuilds the legacy prior as it converts
+        // An unchanged rebuild converts the legacy blob; a changed one also rebuilds it.
         byte[] upgraded = Apply(legacyBlob, [], format, out ValueHash256 upgradedRoot);
         byte[] fromScratch = Apply([], values, format, out ValueHash256 fromScratchRoot);
 

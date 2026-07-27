@@ -23,13 +23,7 @@ using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
 
-/// <summary>
-/// Create a reasonably complete nethermind configuration.
-/// It should not really have any test specific configuration which is set by `TestEnvironmentModule`.
-/// May not work without `TestEnvironmentModule`.
-/// </summary>
-/// <param name="configProvider"></param>
-/// <param name="spec"></param>
+/// <summary>Creates a test Nethermind configuration; requires <see cref="TestEnvironmentModule"/>.</summary>
 public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvider, ILogManager logManager) : Module
 {
     protected override void Load(ContainerBuilder builder)
@@ -45,32 +39,27 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddModule(new PseudoNetworkModule())
             .AddModule(new TestBlockProcessingModule())
 
-            // Environments
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
-            // Crypto
             .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
             .AddSingleton<ITxSender>(NullTxSender.Instance)
 
-            // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
             .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
             .AddDecorator<IFlatDbManager, FlatDbManagerTestCompat>()
             .Intercept<IFlatDbConfig>((flatDbConfig) =>
             {
-                // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
                 flatDbConfig.WarmReadConcurrency = 2;
             })
 
-            // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()
             ;
 
 
-        // Yep... this global thing need to work.
+        // Network message decoding relies on globally registered RLP decoders.
         builder.RegisterBuildCallback((_) =>
         {
             Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));

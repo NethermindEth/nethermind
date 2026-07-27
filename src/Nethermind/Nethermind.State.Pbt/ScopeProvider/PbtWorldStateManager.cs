@@ -33,8 +33,6 @@ public class PbtWorldStateManager(
 
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    // the child header source is kept here too: this env re-executes real, already-suggested blocks
-    // (tracing, re-processing), which still have to validate against the root their header claims
     public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _writeLayout, _rootFoldConcurrency);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();

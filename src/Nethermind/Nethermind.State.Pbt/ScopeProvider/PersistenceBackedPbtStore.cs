@@ -7,20 +7,11 @@ using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
-/// <summary>
-/// An <see cref="IPbtStore"/> that lets <see cref="TrieUpdater.UpdateRoot"/> run directly against
-/// durable storage — for a bulk rebuild — rather than the in-memory overlays of a processing scope.
-/// </summary>
+/// <summary>Provides <see cref="TrieUpdater.UpdateRoot"/> direct access to durable storage during bulk rebuilds.</summary>
 /// <remarks>
-/// The reader is a point-in-time snapshot that does not observe writes buffered in the batch. This is
-/// safe within a single <see cref="TrieUpdater.UpdateRoot"/> call, which reads each node/blob at most
-/// once and before writing it — including the two reads the descent makes off its own recursion: a
-/// chain's target lies below the frame reading it, and a group collapsing onto an untouched child reads
-/// one nothing descended into.
-/// <para>
-/// Reads are a snapshot's and need nothing of this; the writes take a lock, the batch underneath being
-/// one RocksDB structure that several threads of a fold would otherwise write at once.
-/// </para>
+/// The reader is a point-in-time snapshot and does not observe buffered writes. This is safe because an
+/// update reads each node and blob before writing it. Writes are synchronized because the RocksDB batch
+/// is shared by fold workers.
 /// </remarks>
 internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, IPbtPersistence.IWriteBatch batch) : IPbtStore
 {
