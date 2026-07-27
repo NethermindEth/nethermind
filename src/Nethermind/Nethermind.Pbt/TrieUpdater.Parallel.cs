@@ -100,7 +100,8 @@ public static partial class TrieUpdater
             using RefCountingMemory? childMemory = job.ExistingData.Memory;
             BucketPlan plan = new(
                 job.BucketLength == 0 ? default : state._buckets!.AsSpan(job.BucketStart, job.BucketLength),
-                job.BranchDepth);
+                job.BranchDepth,
+                job.IsSorted);
             if (job.IsClusteredChild)
             {
                 state.ApplyClusteredChild(
@@ -208,6 +209,7 @@ public static partial class TrieUpdater
                     BucketStart = precalculated.IsEmpty ? 0 : IndexOf(_buckets!, precalculated),
                     BucketLength = precalculated.Length,
                     BranchDepth = childPlan.BranchDepth,
+                    IsSorted = childPlan.IsSorted,
                     Reader = leasedReader,
                     ExistingData = leasedExistingData,
                     IsClusteredChild = isClusteredChild,
@@ -351,6 +353,8 @@ public static partial class TrieUpdater
             public int BucketLength { get; init; }
 
             public int BranchDepth { get; init; }
+
+            public bool IsSorted { get; init; }
 
             /// <summary>The boundary reader whose explicitly acquired lease this job owns.</summary>
             public TreeReader Reader { get; init; }

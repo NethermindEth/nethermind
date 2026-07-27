@@ -23,7 +23,8 @@ namespace Nethermind.Pbt;
 /// <param name="buckets">
 /// The precalculated bucket table for entries added in ascending stem-first-byte order, whose lease
 /// passes to this batch; <c>null</c> when the producer adds its entries in no particular order, which
-/// leaves <see cref="TrieUpdater"/> to partition them itself.
+/// leaves <see cref="TrieUpdater"/> to partition them itself. Each level stores compact bucket counts
+/// in ascending touched-slot order followed by the touched-slot mask.
 /// </param>
 public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? buckets) : IDisposable
 {
@@ -36,17 +37,19 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
     /// </remarks>
     public const int MaxPooledStems = 1 << 20;
 
-    /// <summary>The bounds array of one level, so bucket <c>i</c> is <c>entries[level[i]..level[i + 1]]</c>.</summary>
-    public static int BoundsLength<TLayout>() where TLayout : IPbtTileLayout => TLayout.BoundarySlots + 1;
+    /// <summary>
+    /// The fixed-capacity count area of one level. Its first <c>popcount(touched)</c> cells contain
+    /// positive bucket sizes in ascending touched-slot order; the remaining cells are zero.
+    /// </summary>
+    public static int BoundsLength<TLayout>() where TLayout : IPbtTileLayout => TLayout.BoundarySlots;
 
     /// <summary>
     /// Where a level caches its touched mask: bit <c>i</c> set where bucket <c>i</c> is non-empty, which is
     /// what the descent partitions on. Derived from the counts the bucketing already walks, so that a
-    /// consumer never re-derives it by scanning the bounds.
+    /// consumer never re-derives it by scanning the count area.
     /// </summary>
     /// <remarks>
-    /// <see cref="TouchedWordCount"/> entries, least significant first: a tiling's mask does not fit the
-    /// <c>int</c> the bounds — which are entry indices — make the level out of.
+    /// <see cref="TouchedWordCount"/> entries, least significant first.
     /// </remarks>
     public static int TouchedMaskIndex<TLayout>() where TLayout : IPbtTileLayout => BoundsLength<TLayout>();
 
@@ -55,7 +58,7 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
     public static int TouchedWordCount<TLayout>() where TLayout : IPbtTileLayout =>
         Math.Max(2, (TLayout.BoundarySlots + 31) / 32);
 
-    /// <summary>One level of the bucket table: its bounds followed by its touched-mask words.</summary>
+    /// <summary>One level of the bucket table: its compact counts followed by its touched-mask words.</summary>
     public static int LevelStride<TLayout>() where TLayout : IPbtTileLayout => BoundsLength<TLayout>() + TouchedWordCount<TLayout>();
 
     /// <summary>The little-endian 32-bit words caching which buckets in <paramref name="level"/> are non-empty.</summary>
@@ -90,8 +93,8 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
 
     /// <summary>Reads the touched slots back as the set the descent walks.</summary>
     /// <remarks>
-    /// The mask is cached in 32-bit words because a level is an <c>int</c> array — the bounds being
-    /// entry indices — so this is where the two halves of each 64-bit word are put back together.
+    /// The mask is cached in 32-bit words because a level is an <c>int</c> array, so this is where the
+    /// two halves of each 64-bit word are put back together.
     /// </remarks>
     internal static SlotBitmask<TLayout> ReadTouchedMask<TLayout>(scoped ReadOnlySpan<int> level) where TLayout : IPbtTileLayout
     {

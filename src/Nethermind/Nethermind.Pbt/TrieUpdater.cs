@@ -151,8 +151,11 @@ public static partial class TrieUpdater
     /// </remarks>
     private sealed partial class Updater<TLayout> where TLayout : IPbtTileLayout
     {
-        /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
+        /// <summary>The largest range handled by the specialized complete-stem sorting network.</summary>
         private const int TinyRange = 3;
+
+        /// <summary>The inclusive range size at which complete-stem sorting replaces radix partitioning.</summary>
+        private static int FullSortThreshold => TLayout.BoundarySlots;
 
         private readonly IPbtStore _store;
         private readonly IRefCountingMemoryProvider _memoryProvider;
@@ -317,7 +320,7 @@ public static partial class TrieUpdater
             {
                 ApplyGroup(
                     _rootKey, changes.Entries, TreeReader.Of(rootData), currentRoot.Hash,
-                    new BucketPlan(changes.Buckets, TLayout.RootDepth), fanout, ref writer, out root, out changed, out delta);
+                    new BucketPlan(changes.Buckets, TLayout.RootDepth, isSorted: false), fanout, ref writer, out root, out changed, out delta);
                 if (writer.Detach() is { } folded) root = root.WithBlob(folded);
             }
             finally
@@ -515,12 +518,15 @@ public static partial class TrieUpdater
             scoped ReadOnlySpan<int> buckets = plan.Precalculated;
             Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
             int entriesBranch = plan.BranchDepth;
+            bool isSorted = plan.IsSorted;
             int branchDepth = depth;
             if (buckets.IsEmpty)
             {
                 if (entriesBranch <= depth)
                 {
-                    entriesBranch = Partition(entries, depth, computed);
+                    PartitionOutcome outcome = Partition(entries, depth, computed);
+                    entriesBranch = outcome.BranchDepth;
+                    isSorted = outcome.IsSorted;
                     buckets = computed;
                 }
 
@@ -557,7 +563,7 @@ public static partial class TrieUpdater
                 try
                 {
                     ApplyPushedStem(
-                        branchKey, entries, pushedReader, new BucketPlan(default, entriesBranch), fanout, ref branchWriter,
+                        branchKey, entries, pushedReader, new BucketPlan(default, entriesBranch, isSorted), fanout, ref branchWriter,
                         out inner, out _, out delta);
                     if (branchWriter.Detach() is { } innerBlob) inner = inner.WithBlob(innerBlob);
                 }
@@ -587,7 +593,7 @@ public static partial class TrieUpdater
             // `buckets` carries the level partitioned above where there was none to start with, and
             // `entriesBranch` lets the resolve fill one itself where nothing was partitioned at all, so the
             // range is bucketed once however this frame reached here.
-            BucketPlan resolvePlan = new(buckets, entriesBranch);
+            BucketPlan resolvePlan = new(buckets, entriesBranch, isSorted);
             GroupShape shape = TLayout.IsClusteringDepth(depth)
                 ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results, ref writer, ref builder)
                 : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results);
@@ -648,11 +654,9 @@ public static partial class TrieUpdater
             int depth = key.Depth;
             AssertBranchDepthSound(entries, depth, plan.BranchDepth);
 
-            // A precalculated level is already a bounds array over this very range, so it is read where it
-            // lies; a range known not to part until deeper than this group falls in one bucket, so its
-            // level follows from the count alone; only what neither covers is partitioned here.
             Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
             scoped ReadOnlySpan<int> level;
+            bool isSorted = plan.IsSorted;
             int branchDepth = plan.BranchDepth;
             if (!plan.Precalculated.IsEmpty)
             {
@@ -663,16 +667,24 @@ public static partial class TrieUpdater
                 FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
                 level = computed;
             }
+            else if (isSorted)
+            {
+                branchDepth = PopulateSortedLevel(entries, depth, computed);
+                level = computed;
+            }
             else
             {
-                branchDepth = Partition(entries, depth, computed);
+                PartitionOutcome outcome = Partition(entries, depth, computed);
+                branchDepth = outcome.BranchDepth;
+                isSorted = outcome.IsSorted;
                 level = computed;
             }
 
-            AssertTouchedMaskMatchesBounds(level);
+            AssertCompactLevel(level, entries.Length);
 
-            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            ReadOnlySpan<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            PartitionResult partition = new(plan, branchDepth, isSorted);
             SlotBitmask<TLayout> storedChildren = default;
             BoundaryScan scan = default;
 
@@ -682,12 +694,16 @@ public static partial class TrieUpdater
 
             try
             {
+                int countIndex = 0;
+                int entryOffset = 0;
                 foreach (int slot in touched)
                 {
                     TreeReader reader = occupants.Reader(slot, existing);
-                    Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
+                    int count = counts[countIndex++];
+                    Span<PbtWriteBatch.StemEntry> bucket = entries.Slice(entryOffset, count);
+                    entryOffset += count;
                     TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
-                    BucketPlan childPlan = plan.ForChild(slot, branchDepth);
+                    BucketPlan childPlan = partition.GetChildPlan(slot);
 
                     if (MayQueue(touched, in fanout) && bucket.Length >= _minQueueEntries &&
                         TryQueue(slot, childKey, bucket, reader, childPlan, in fanout, ref queued))
@@ -737,6 +753,7 @@ public static partial class TrieUpdater
 
             Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride<TLayout>()];
             scoped ReadOnlySpan<int> level;
+            bool isSorted = plan.IsSorted;
             int branchDepth = plan.BranchDepth;
             if (!plan.Precalculated.IsEmpty)
             {
@@ -747,24 +764,34 @@ public static partial class TrieUpdater
                 FillSingleBucket(TLayout.SlotOf(entries[0].Stem, depth), entries.Length, computed);
                 level = computed;
             }
+            else if (isSorted)
+            {
+                branchDepth = PopulateSortedLevel(entries, depth, computed);
+                level = computed;
+            }
             else
             {
-                branchDepth = Partition(entries, depth, computed);
+                PartitionOutcome outcome = Partition(entries, depth, computed);
+                branchDepth = outcome.BranchDepth;
+                isSorted = outcome.IsSorted;
                 level = computed;
             }
 
-            AssertTouchedMaskMatchesBounds(level);
+            AssertCompactLevel(level, entries.Length);
 
-            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            ReadOnlySpan<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            PartitionResult partition = new(plan, branchDepth, isSorted);
             if (MayQueue(touched, in fanout))
             {
+                int countIndex = 0;
                 foreach (int slot in touched)
                 {
-                    if (bounds[slot + 1] - bounds[slot] < _minQueueEntries) continue;
+                    if (counts[countIndex++] < _minQueueEntries) continue;
 
                     return ResolveClusteredBoundariesParallel(
-                        key, entries, occupants, existing, untouched, plan, fanout, results, level, branchDepth, ref writer, ref cluster);
+                        key, entries, occupants, existing, untouched,
+                        plan, fanout, results, level, branchDepth, isSorted, ref writer, ref cluster);
                 }
             }
 
@@ -778,6 +805,8 @@ public static partial class TrieUpdater
                 if (occupants.HasChild(slot, existing)) childSlots.Set(slot);
             }
 
+            int serialCountIndex = 0;
+            int entryOffset = 0;
             foreach (int slot in touched | childSlots)
             {
                 if (!touched[slot])
@@ -789,9 +818,11 @@ public static partial class TrieUpdater
                 TreeReader reader = occupants.Reader(slot, existing);
                 Occupant occupant = reader.Occupant;
                 ref NodeResult result = ref results[slot];
-                Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
+                int count = counts[serialCountIndex++];
+                Span<PbtWriteBatch.StemEntry> bucket = entries.Slice(entryOffset, count);
+                entryOffset += count;
                 TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
-                BucketPlan childPlan = plan.ForChild(slot, branchDepth);
+                BucketPlan childPlan = partition.GetChildPlan(slot);
                 bool childChanged;
                 PbtSubtreeStats childDelta;
                 if (occupant.Kind == NodeKind.Internal)
@@ -824,11 +855,12 @@ public static partial class TrieUpdater
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader occupants,
             in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
             scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results,
-            scoped ReadOnlySpan<int> level, int branchDepth, ref BufferWriter writer,
+            scoped ReadOnlySpan<int> level, int branchDepth, bool isSorted, ref BufferWriter writer,
             ref PbtNodeCluster.Builder cluster)
         {
-            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            ReadOnlySpan<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
             SlotBitmask<TLayout> touched = PbtWriteBatch.ReadTouchedMask<TLayout>(level);
+            PartitionResult partition = new(plan, branchDepth, isSorted);
             SlotBitmask<TLayout> childSlots = default;
             for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
             {
@@ -840,13 +872,17 @@ public static partial class TrieUpdater
             QueuedBuckets queued = default;
             try
             {
+                int countIndex = 0;
+                int entryOffset = 0;
                 foreach (int slot in touched)
                 {
                     TreeReader reader = occupants.Reader(slot, existing);
                     TreeReader child = occupants.Child(slot, existing);
-                    Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
+                    int count = counts[countIndex++];
+                    Span<PbtWriteBatch.StemEntry> bucket = entries.Slice(entryOffset, count);
+                    entryOffset += count;
                     TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
-                    BucketPlan childPlan = plan.ForChild(slot, branchDepth);
+                    BucketPlan childPlan = partition.GetChildPlan(slot);
 
                     if (bucket.Length >= _minQueueEntries &&
                         TryQueue(slot, childKey, bucket, reader, child, childPlan, in fanout, ref queued))
@@ -1435,22 +1471,28 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// Checks that whoever bucketed the range cached the same touched mask its bounds imply.
+        /// Checks that compact counts and their touched mask describe the whole frame exactly once.
         /// </summary>
         /// <remarks>
-        /// The mask crosses a format boundary — <c>PbtWriteBatchBuilder</c> fills it for a precalculated
-        /// level, <see cref="Partition"/> for one bucketed here — so nothing but this re-derivation would
-        /// catch the two drifting apart.
+        /// The mask crosses a format boundary between optional precalculated levels and runtime partitioning,
+        /// so the count order, positivity, total and zero tail are all validated together.
         /// </remarks>
         [Conditional("DEBUG")]
-        private static void AssertTouchedMaskMatchesBounds(ReadOnlySpan<int> level)
+        private static void AssertCompactLevel(ReadOnlySpan<int> level, int entryCount)
         {
-            ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
+            ReadOnlySpan<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            int countIndex = 0;
+            int total = 0;
+            foreach (int _ in PbtWriteBatch.ReadTouchedMask<TLayout>(level))
             {
-                Debug.Assert(
-                    PbtWriteBatch.ContainsTouched<TLayout>(level, slot) == (bounds[slot] != bounds[slot + 1]),
-                    "the cached touched mask disagrees with its level's bounds");
+                Debug.Assert(counts[countIndex] > 0, "a touched slot must have a positive compact count");
+                total += counts[countIndex++];
+            }
+
+            Debug.Assert(total == entryCount, "compact counts must cover the frame's entries");
+            for (; countIndex < counts.Length; countIndex++)
+            {
+                Debug.Assert(counts[countIndex] == 0, "the unused compact-count tail must be zero");
             }
         }
 
@@ -1463,7 +1505,7 @@ public static partial class TrieUpdater
         /// storage stem of one contract shares 61 bits, so a batch of one contract's slots falls in a single
         /// bucket at each of the fifteen groups above the depth-60 one. Found once by
         /// <see cref="Partition"/>, it rides down the descent so those frames fill their level from the
-        /// entry count alone rather than walking the range again per level. Unlike the bounds it survives a
+        /// entry count alone rather than walking the range again per level. Unlike a level it survives a
         /// depth jump: it is a property of the stem set, not of one range at one depth.
         /// </remarks>
         /// <param name="precalculated">
@@ -1475,13 +1517,34 @@ public static partial class TrieUpdater
         /// The depth of the group where the range's stems first part, or <c>0</c> when nothing is known —
         /// which every <c>default</c> plan reports, no frame sitting above depth 0.
         /// </param>
-        private readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int branchDepth)
+        private readonly ref struct PartitionResult
+        {
+            private readonly BucketPlan _plan;
+
+            public PartitionResult(BucketPlan plan, int branchDepth, bool isSorted)
+            {
+                _plan = plan;
+                BranchDepth = branchDepth;
+                IsSorted = isSorted;
+            }
+
+            public int BranchDepth { get; }
+
+            public bool IsSorted { get; }
+
+            public BucketPlan GetChildPlan(int bucketIdx) => _plan.ForChild(bucketIdx, BranchDepth, IsSorted);
+        }
+
+        private readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int branchDepth, bool isSorted)
         {
             /// <inheritdoc cref="BucketPlan" path="/param[@name='precalculated']"/>
             public ReadOnlySpan<int> Precalculated { get; } = precalculated;
 
             /// <inheritdoc cref="BucketPlan" path="/param[@name='branchDepth']"/>
             public int BranchDepth { get; } = branchDepth;
+
+            /// <summary>Whether the complete stems are in ascending lexicographic order.</summary>
+            public bool IsSorted { get; } = isSorted;
 
             /// <summary>
             /// The plan for the child group under boundary slot <paramref name="slot"/>, whose range this
@@ -1493,17 +1556,17 @@ public static partial class TrieUpdater
             /// slot's subtree are the slice at its own index — and what remains after this group's own level
             /// divides evenly among the sixteen slots.
             /// </remarks>
-            public BucketPlan ForChild(int slot, int branchDepth)
+            public BucketPlan ForChild(int slot, int branchDepth, bool isSorted)
             {
                 ReadOnlySpan<int> buckets = Precalculated;
                 int childLength = buckets.Length <= PbtWriteBatch.LevelStride<TLayout>()
                     ? 0
                     : (buckets.Length - PbtWriteBatch.LevelStride<TLayout>()) / TLayout.BoundarySlots;
-                return new BucketPlan(childLength == 0 ? default : buckets.Slice(slot * childLength, childLength), branchDepth);
+                return new BucketPlan(childLength == 0 ? default : buckets.Slice(slot * childLength, childLength), branchDepth, isSorted);
             }
 
             /// <summary>The plan a frame deeper down the same range inherits, the levels skipped over describing neither depth.</summary>
-            public BucketPlan AfterJump() => new(default, BranchDepth);
+            public BucketPlan AfterJump() => new(default, BranchDepth, IsSorted);
         }
 
         /// <summary>
@@ -1512,9 +1575,9 @@ public static partial class TrieUpdater
         /// </summary>
         private static void FillSingleBucket(int slot, int count, Span<int> level)
         {
-            Span<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            bounds[..(slot + 1)].Clear();
-            bounds[(slot + 1)..].Fill(count);
+            Span<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            counts.Clear();
+            counts[0] = count;
             PbtWriteBatch.ClearTouched<TLayout>(level);
             PbtWriteBatch.SetTouched<TLayout>(level, slot);
         }
@@ -1550,13 +1613,12 @@ public static partial class TrieUpdater
 
         /// <summary>
         /// Radix-partitions <paramref name="entries"/> (sharing bits <c>[0, depth)</c>, any order) in place
-        /// into the sixteen boundary buckets of the group at <paramref name="depth"/>, keyed by the four
-        /// stem bits at that depth: bucket i is <paramref name="level"/>[i]..[i+1]. Mirrors
-        /// <c>PatriciaTree.BulkSet</c>'s per-level bucket sort — no global sort is needed, and within-bucket
-        /// order is arbitrary since each bucket is re-partitioned by its child group.
+        /// into the boundary buckets of the group at <paramref name="depth"/>. Small ranges are sorted by
+        /// their complete stems; larger ones use an in-place American-flag partition whose within-bucket
+        /// order is arbitrary.
         /// </summary>
         /// <param name="level">
-        /// One <see cref="PbtWriteBatch.LevelStride<TLayout>()"/>-wide level, filled with the bounds and the
+        /// One <see cref="PbtWriteBatch.LevelStride<TLayout>()"/>-wide level, filled with compact counts and the
         /// <see cref="PbtWriteBatch.TouchedMaskIndex"/> mask, in the same shape a precalculated level
         /// arrives in.
         /// </param>
@@ -1566,149 +1628,143 @@ public static partial class TrieUpdater
         /// share its slot — the levels between hold a single child apiece, so a caller free to skip
         /// them can jump straight to the group that branches.
         /// </returns>
-        private int Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
+        private readonly record struct PartitionOutcome(int BranchDepth, bool IsSorted);
+
+        private PartitionOutcome Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
-            Span<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-            // Only the levels the producer left unbucketed reach here, which for a batch drained from
-            // PbtWriteBatchBuilder — its shard key handing over the depth-0 and depth-4 bounds — is
-            // everything below depth 8, by which point the batch has fragmented sixteen ways twice and a
-            // range is almost always one or a few entries. The count-and-permute below costs its
-            // sixteen-wide passes whether it buckets one entry or a hundred, so the tiny ranges that
-            // dominate take a sort network instead.
             if (entries.Length <= TinyRange) return SortTiny(entries, depth, level);
+            if (entries.Length <= FullSortThreshold)
+            {
+                SortByStem(entries);
+                return new PartitionOutcome(PopulateSortedLevel(entries, depth, level), true);
+            }
 
-            Span<int> counts = stackalloc int[TLayout.BoundarySlots];
-            counts.Clear();
-
-            // The pass that buckets the range doubles as the search for where it parts, both wanting the
-            // same walk over the same stems: a stem's bucket is its slot here, and the range's shared
-            // prefix is the shortest any of them shares with a fixed member of it. Once one entry parts
-            // inside this group's own four levels there is no deeper jump left to find, so the search
-            // falls away and leaves the count to run on alone.
+            Span<int> slotCounts = stackalloc int[TLayout.BoundarySlots];
+            slotCounts.Clear();
             Stem reference = entries[0].Stem;
             int floor = depth + TLayout.LevelsPerGroup;
             int splitDepth = Stem.LengthInBits;
             for (int i = 0; i < entries.Length; i++)
             {
                 Stem stem = entries[i].Stem;
-                counts[TLayout.SlotOf(stem, depth)]++;
+                slotCounts[TLayout.SlotOf(stem, depth)]++;
                 if (splitDepth > floor)
                 {
-                    // FirstDifferingBit reports -1 for a stem that never parts — the reference against
-                    // itself, or a duplicate — which as an unsigned compare reads as past everything, which
-                    // is what never parting means, as it does in ApplyChain.
                     int diff = stem.FirstDifferingBit(reference, depth);
                     if ((uint)diff < (uint)splitDepth) splitDepth = diff;
                 }
             }
 
-            int total = 0;
-            int populatedBuckets = 0;
+            Span<int> starts = stackalloc int[TLayout.BoundarySlots + 1];
+            Span<int> compactCounts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            compactCounts.Clear();
             PbtWriteBatch.ClearTouched<TLayout>(level);
-            for (int bucket = 0; bucket < TLayout.BoundarySlots; bucket++)
+            int total = 0;
+            int countIndex = 0;
+            for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
             {
-                bounds[bucket] = total;
-                if (counts[bucket] != 0)
+                starts[slot] = total;
+                int count = slotCounts[slot];
+                if (count != 0)
                 {
-                    PbtWriteBatch.SetTouched<TLayout>(level, bucket);
-                    populatedBuckets++;
+                    compactCounts[countIndex++] = count;
+                    PbtWriteBatch.SetTouched<TLayout>(level, slot);
                 }
-                total += counts[bucket];
+                total += count;
             }
-            bounds[TLayout.BoundarySlots] = total;
+            starts[TLayout.BoundarySlots] = total;
             Debug.Assert(total == entries.Length);
 
-            // One populated bucket holds every entry already, whatever their order, so the permutation
-            // below is a no-op that still costs its head array and its sixteen-wide walk.
-            if (populatedBuckets == 1)
+            if (countIndex == 1)
             {
                 Debug.Assert(splitDepth >= floor, "one populated bucket means nothing parts within this group");
-                return TLayout.GroupDepthOf(splitDepth);
+                return new PartitionOutcome(TLayout.GroupDepthOf(splitDepth), false);
             }
 
-            // In-place American-flag permutation: each swap places one entry into its final bucket.
             Span<int> heads = stackalloc int[TLayout.BoundarySlots];
-            bounds[..TLayout.BoundarySlots].CopyTo(heads);
-            for (int bucket = 0; bucket < TLayout.BoundarySlots; bucket++)
+            starts[..TLayout.BoundarySlots].CopyTo(heads);
+            for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
             {
-                while (heads[bucket] < bounds[bucket + 1])
+                while (heads[slot] < starts[slot + 1])
                 {
-                    int target = TLayout.SlotOf(entries[heads[bucket]].Stem, depth);
-                    if (target == bucket)
+                    int target = TLayout.SlotOf(entries[heads[slot]].Stem, depth);
+                    if (target == slot)
                     {
-                        heads[bucket]++;
+                        heads[slot]++;
                     }
                     else
                     {
-                        (entries[heads[bucket]], entries[heads[target]]) = (entries[heads[target]], entries[heads[bucket]]);
+                        (entries[heads[slot]], entries[heads[target]]) = (entries[heads[target]], entries[heads[slot]]);
                         heads[target]++;
                     }
                 }
             }
 
-            return depth;
+            return new PartitionOutcome(depth, false);
         }
 
-        /// <summary>
-        /// <inheritdoc cref="Partition" path="/summary"/> For a range of at most <see cref="TinyRange"/>
-        /// entries, which a sorting network on the slot orders in as many compare-and-swaps.
-        /// </summary>
-        /// <remarks>
-        /// Mirrors <c>PatriciaTree.BulkSet</c>'s <c>SortTiny</c>. Ordering the slots makes every bucket
-        /// a contiguous run, so the bounds fill as a handful of vectorized spans rather than a per-slot
-        /// loop over a counts array.
-        /// </remarks>
-        private int SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
+        private int PopulateSortedLevel(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
-            Debug.Assert(!entries.IsEmpty && entries.Length <= TinyRange);
-
-            Span<int> bounds = level[..PbtWriteBatch.BoundsLength<TLayout>()];
-
-            Span<int> slotBuffer = stackalloc int[TinyRange];
-            Span<int> slots = slotBuffer[..entries.Length];
-
-            // Read before the network below reorders them, which the search is indifferent to: the range
-            // shares whatever the shortest prefix any of them shares with a fixed member is, whichever
-            // member that is.
-            Stem reference = entries[0].Stem;
-            int splitDepth = Stem.LengthInBits;
+            Span<int> counts = level[..PbtWriteBatch.BoundsLength<TLayout>()];
+            counts.Clear();
             PbtWriteBatch.ClearTouched<TLayout>(level);
-            for (int i = 0; i < slots.Length; i++)
+            Stem first = entries[0].Stem;
+            int diff = first.FirstDifferingBit(entries[^1].Stem, depth);
+            int splitDepth = (uint)diff < Stem.LengthInBits ? diff : Stem.LengthInBits;
+            int countIndex = 0;
+            int runSlot = TLayout.SlotOf(first, depth);
+            PbtWriteBatch.SetTouched<TLayout>(level, runSlot);
+            for (int i = 0; i < entries.Length; i++)
             {
                 Stem stem = entries[i].Stem;
-                slots[i] = TLayout.SlotOf(stem, depth);
-                PbtWriteBatch.SetTouched<TLayout>(level, slots[i]);
-                int diff = stem.FirstDifferingBit(reference, depth);
-                if ((uint)diff < (uint)splitDepth) splitDepth = diff;
-            }
-
-            if (slots.Length > 1)
-            {
-                CompareAndSwap(entries, slots, 0, 1);
-                if (slots.Length > 2)
+                int slot = TLayout.SlotOf(stem, depth);
+                Debug.Assert(slot >= runSlot, "complete stem order must yield ascending slots at every depth");
+                if (slot != runSlot)
                 {
-                    CompareAndSwap(entries, slots, 1, 2);
-                    CompareAndSwap(entries, slots, 0, 1);
+                    countIndex++;
+                    runSlot = slot;
+                    PbtWriteBatch.SetTouched<TLayout>(level, slot);
                 }
+                counts[countIndex]++;
             }
 
-            // Ascending slots leave bounds[i] — the number of entries whose slot is below i — stepping
-            // up only where one sits, so each run holds the count so far. Entries sharing a slot make the
-            // run between them empty, which Fill ignores.
-            bounds[..(slots[0] + 1)].Clear();
-            for (int i = 1; i < slots.Length; i++) bounds[(slots[i - 1] + 1)..(slots[i] + 1)].Fill(i);
-            bounds[(slots[^1] + 1)..].Fill(slots.Length);
-
-            // Parting inside this group's own four levels rounds back down to it, which is what says the
-            // range branches here and there is nothing to jump over.
             return TLayout.GroupDepthOf(splitDepth);
         }
 
-        private static void CompareAndSwap(Span<PbtWriteBatch.StemEntry> entries, Span<int> slots, int i, int j)
+        private PartitionOutcome SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
-            if (slots[i] <= slots[j]) return;
+            Debug.Assert(!entries.IsEmpty && entries.Length <= TinyRange);
+            if (entries.Length > 1)
+            {
+                CompareAndSwap(entries, 0, 1);
+                if (entries.Length > 2)
+                {
+                    CompareAndSwap(entries, 1, 2);
+                    CompareAndSwap(entries, 0, 1);
+                }
+            }
+
+            return new PartitionOutcome(PopulateSortedLevel(entries, depth, level), true);
+        }
+
+        private static void SortByStem(Span<PbtWriteBatch.StemEntry> entries) => entries.Sort(StemEntryComparer.Instance);
+
+        private static void CompareAndSwap(Span<PbtWriteBatch.StemEntry> entries, int i, int j)
+        {
+            if (StemEntryComparer.Instance.Compare(entries[i], entries[j]) <= 0) return;
             (entries[i], entries[j]) = (entries[j], entries[i]);
-            (slots[i], slots[j]) = (slots[j], slots[i]);
+        }
+
+        private sealed class StemEntryComparer : IComparer<PbtWriteBatch.StemEntry>
+        {
+            public static readonly StemEntryComparer Instance = new();
+
+            public int Compare(PbtWriteBatch.StemEntry x, PbtWriteBatch.StemEntry y)
+            {
+                Stem xStem = x.Stem;
+                Stem yStem = y.Stem;
+                return xStem.Bytes.SequenceCompareTo(yStem.Bytes);
+            }
         }
     }
 }
