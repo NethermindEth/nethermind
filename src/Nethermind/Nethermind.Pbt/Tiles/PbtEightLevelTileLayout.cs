@@ -32,6 +32,8 @@ public readonly struct PbtEightLevelTileLayout : IPbtTileLayout
 
     public static int MaskTrailerLength => MaxMaskTrailerLength;
 
+    public static bool IsGroupDepth(int depth) => depth >= RootDepth && depth % LevelsPerGroup == 0;
+
     public static bool IsClusteringDepth(int depth) => false;
 
     public static int GroupDepthOf(int bit) => bit & ~(LevelsPerGroup - 1);
