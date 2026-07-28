@@ -225,7 +225,7 @@ public partial class BlockAccessListManager(
     public void SpendGas(ulong gas)
     {
         CheckInitialized();
-        _gasRemaining -= gas;
+        _gasRemaining = _gasRemaining.Value.SaturatingSub(gas);
     }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)

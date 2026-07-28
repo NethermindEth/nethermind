@@ -81,4 +81,25 @@ public class EthereumGasPolicyTests
         Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(30_000UL));
         Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas)));
     }
+
+    [TestCase(100UL, 40UL, 10L, 50UL)]
+    [TestCase(100UL, 40UL, -10L, 70UL)]
+    [TestCase(100UL, 101UL, 0L, 100UL)]
+    [TestCase(ulong.MaxValue, 0UL, -1L, ulong.MaxValue)]
+    public void GetPreRefundGas_handles_signed_reservoir_without_wrapping(
+        ulong gasLimit,
+        ulong remainingGas,
+        long stateReservoir,
+        ulong expected)
+    {
+        EthereumGasPolicy gas = new() { Value = remainingGas, StateReservoir = stateReservoir };
+
+        ulong preRefundGas = GetPreRefundGas(in gas, gasLimit);
+
+        Assert.That(preRefundGas, Is.EqualTo(expected));
+    }
+
+    private static ulong GetPreRefundGas<TGasPolicy>(in TGasPolicy gas, ulong gasLimit)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => TGasPolicy.GetPreRefundGas(in gas, gasLimit);
 }
