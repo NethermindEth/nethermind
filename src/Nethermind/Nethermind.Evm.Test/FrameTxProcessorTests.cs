@@ -112,6 +112,24 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_GasLimitBelowEip7623Floor_ReturnsGasLimitBelowFloorGas()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Enough zero-byte tokens that the floor rate (tokens * 10) outpaces the standard rate
+        // plus the declared frame gas (tokens * 4 + sum(frame.gas_limit)), even with the second
+        // frame's own limit at zero.
+        byte[] frameData = new byte[40_000];
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 0, UInt256.Zero, frameData));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitBelowFloorGas));
+    }
+
+    [Test]
     public void Execute_SelfVerifyApprovesExecutionAndPayment_ChargesPayerAndIncrementsNonce()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));

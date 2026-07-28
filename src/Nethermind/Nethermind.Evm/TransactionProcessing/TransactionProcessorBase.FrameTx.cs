@@ -60,7 +60,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // Spec gas: tx_gas_limit = intrinsic + per-frame + calldata + signature verification
         // + sum(frame.gas_limit); the sum is overflow-checked so the processor does not depend
         // on static validation having run.
-        ulong intrinsicGas = CalculateFrameTxIntrinsicGas(tx, frames, spec);
+        ulong intrinsicGas = CalculateFrameTxIntrinsicGas(tx, frames, spec, out ulong floorGas);
         ulong totalFrameGas = 0;
         foreach (TxFrame frame in frames)
         {
@@ -77,6 +77,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (txGasLimit < intrinsicGas)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
+        }
+
+        // EIP-7623: the payer's max-cost reservation below is derived from the gas limit, so a
+        // limit that cannot cover the floor-priced charge is rejected rather than under-reserved.
+        if (txGasLimit < floorGas)
+        {
+            return TransactionResult.ErrorType.GasLimitBelowFloorGas.WithDetail(
+                $"frame transaction gas limit {txGasLimit} below EIP-7623 floor gas {floorGas}");
         }
 
         // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
@@ -294,9 +302,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-3529 storage refunds are netted once at the transaction level (ethereum/EIPs#11940):
         // the accumulated counter is capped at a fifth of the gross gas and subtracted here. Per-frame
-        // receipts stay gross; only this transaction total is netted.
+        // receipts stay gross; only this transaction total is netted. The EIP-7623 floor then bounds
+        // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
-        ulong spentGas = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec);
+        ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
         // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
         // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
         // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
@@ -382,10 +391,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>
     /// FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST + calldata cost of frame data
     /// and signature fields (EIP-7623 token pricing) + per-scheme signature verification cost.
-    /// EIP8141: whether the EIP-7623 floor applies to frame transactions is unspecified; the
-    /// standard token cost is used here.
+    /// EIP-8141 inherits the floor from EIP-7623 specifically: the floor prices tokens at
+    /// <see cref="GasCostOf.TotalCostFloorPerTokenEip7623"/> on top of the mandatory (non-data)
+    /// costs, so <paramref name="floorGas"/> is the minimum chargeable gas (0 when floor pricing is
+    /// not active). The frame-tx floor stays pinned to the EIP-7623 constant even when EIP-7976 is
+    /// also scheduled, because EIP-8141 defines the floor per EIP-7623, not EIP-7976.
     /// </summary>
-    private static ulong CalculateFrameTxIntrinsicGas(Transaction tx, TxFrame[] frames, IReleaseSpec spec)
+    private static ulong CalculateFrameTxIntrinsicGas(Transaction tx, TxFrame[] frames, IReleaseSpec spec, out ulong floorGas)
     {
         ulong tokens = 0;
         foreach (TxFrame frame in frames)
@@ -412,10 +424,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
-        return (ulong)Eip8141Constants.IntrinsicGasCost
-               + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
-               + tokens * GasCostOf.TxDataZero
-               + signatureVerificationCost;
+        ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
+                             + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
+                             + signatureVerificationCost;
+        floorGas = spec.IsEip7623Enabled ? mandatoryGas + tokens * GasCostOf.TotalCostFloorPerTokenEip7623 : 0;
+        return mandatoryGas + tokens * GasCostOf.TxDataZero;
     }
 
     private static ulong CountCalldataTokens(ReadOnlySpan<byte> data, IReleaseSpec spec)
