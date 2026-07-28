@@ -98,6 +98,19 @@ public class KeyDerivationTests
         Assert.That(packed.ToHexString(), Is.EqualTo("00000000aabbccdd010203040506070899887766554433221100ffeeddccbbaa"));
     }
 
+    [TestCase(0, 0x12)]
+    [TestCase(1, 0x25)]
+    [TestCase(4, 0x2A)]
+    [TestCase(8, 0xAB)]
+    [TestCase(Stem.LengthInBits - 8, 0xCD)]
+    public void StemReadsAnyEightBitWindow(int fromBit, int expected)
+    {
+        byte[] bytes = Bytes.FromHexString("0x12AB000000000000000000000000000000000000000000000000000000000000");
+        bytes[Stem.Length - 1] = 0xCD;
+
+        Assert.That(new Stem(bytes.AsSpan(0, Stem.Length)).GetByteAt(fromBit), Is.EqualTo(expected));
+    }
+
     private static ReadOnlySpan<byte> Chunk(byte[] chunks, int chunkId) =>
         chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
 

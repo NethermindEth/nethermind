@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -45,6 +46,19 @@ public readonly record struct Stem
 
     /// <summary>Gets stem bit <paramref name="index"/> in MSB-first order.</summary>
     public int GetBit(int index) => (Bytes[index >> 3] >> (7 - (index & 7))) & 1;
+
+    /// <summary>Gets the eight stem bits starting at <paramref name="fromBit"/> in MSB-first order.</summary>
+    /// <remarks>
+    /// Reads through <see cref="PaddedBytes"/> so that a window ending on the last stem byte still has
+    /// a second byte to draw from. A window starting on a byte boundary shifts the second byte out.
+    /// </remarks>
+    internal int GetByteAt(int fromBit)
+    {
+        Debug.Assert((uint)fromBit <= LengthInBits - 8, "the window must stay within the stem");
+        int index = fromBit >> 3;
+        int shift = fromBit & 7;
+        return (byte)((PaddedBytes[index] << shift) | (PaddedBytes[index + 1] >> (8 - shift)));
+    }
 
     /// <summary>
     /// Returns the first bit index at or after <paramref name="fromBit"/> where this stem differs

@@ -31,20 +31,43 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
     ];
 
     /// <summary>Returns a caller-owned lease when <paramref name="stem"/> is cached for <paramref name="hash"/>.</summary>
-    public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash) =>
-        _leafBlobs[(int)PbtPartitions.Of(stem)].Get(stem, stem.Bytes[0], hash);
+    public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash)
+    {
+        PbtPartition partition = PbtPartitions.Of(stem);
+        return _leafBlobs[(int)partition].Get(stem, ShardOf(partition, stem), hash);
+    }
 
     /// <summary>Retains a cache-owned lease on <paramref name="blob"/> for <paramref name="stem"/> and <paramref name="hash"/>.</summary>
-    public void SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory blob) =>
-        _leafBlobs[(int)PbtPartitions.Of(stem)].Set(stem, stem.Bytes[0], hash, blob);
+    public void SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory blob)
+    {
+        PbtPartition partition = PbtPartitions.Of(stem);
+        _leafBlobs[(int)partition].Set(stem, ShardOf(partition, stem), hash, blob);
+    }
 
     /// <summary>Returns a caller-owned lease when <paramref name="key"/> is cached for <paramref name="hash"/>.</summary>
-    public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash) =>
-        _trieNodes[(int)PbtPartitions.Of(key)].Get(key, key.Path.Bytes[0], hash);
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash)
+    {
+        PbtPartition partition = PbtPartitions.Of(key);
+        return _trieNodes[(int)partition].Get(key, ShardOf(partition, key.Path), hash);
+    }
 
     /// <summary>Retains a cache-owned lease on <paramref name="node"/> for <paramref name="key"/> and <paramref name="hash"/>.</summary>
-    public void SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory node) =>
-        _trieNodes[(int)PbtPartitions.Of(key)].Set(key, key.Path.Bytes[0], hash, node);
+    public void SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory node)
+    {
+        PbtPartition partition = PbtPartitions.Of(key);
+        _trieNodes[(int)partition].Set(key, ShardOf(partition, key.Path), hash, node);
+    }
+
+    /// <summary>The eight path bits below <paramref name="partition"/>'s fixed prefix.</summary>
+    /// <remarks>
+    /// A bucket holds one partition, whose prefix is therefore the same in every key it sees: sharding
+    /// on the first path byte would spend the prefix bits on no distinction at all, leaving 15 of every
+    /// 16 shards of an account or code bucket unreachable. The bits below it are the first that vary,
+    /// and for a storage stem they are the head of the address prefix, so one contract's slots still
+    /// land together.
+    /// </remarks>
+    private static int ShardOf(PbtPartition partition, in Stem path) =>
+        path.GetByteAt(PbtPartitions.RootDepth(partition));
 
     /// <summary>Releases every cache-owned lease.</summary>
     public void Dispose()
@@ -57,9 +80,10 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
     }
 
     /// <remarks>
-    /// Matches the flat-state trie cache: the key's first path byte selects one of 256 shards, its
-    /// hash code maps directly to an array bucket, collisions replace, and over-budget eviction clears
-    /// whole shards in round-robin order. Shard locks additionally protect ref-counted lease transfer.
+    /// Matches the flat-state trie cache: a byte of the key's path selects one of 256 shards (see
+    /// <see cref="ShardOf"/>), its hash code maps directly to an array bucket, collisions replace, and
+    /// over-budget eviction clears whole shards in round-robin order. Shard locks additionally protect
+    /// ref-counted lease transfer.
     /// </remarks>
     private sealed class Bucket<TKey> : IDisposable where TKey : notnull
     {
