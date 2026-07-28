@@ -39,6 +39,45 @@ internal static class OpcodeHistogram
 
         if (entry.Kind is StreamOpKind.FusedBlockFirst or StreamOpKind.FusedInBlock)
         {
+            switch (entry.Opcode)
+            {
+                case FusedOpcode.IsZeroStaticJumpI:
+                    Record(Instruction.ISZERO);
+                    Record(Instruction.PUSH2);
+                    Record(Instruction.JUMPI);
+                    return;
+                case FusedOpcode.DupIsZeroStaticJumpI:
+                    Record(Instruction.DUP1);
+                    Record(Instruction.ISZERO);
+                    Record(Instruction.PUSH2);
+                    Record(Instruction.JUMPI);
+                    return;
+                case FusedOpcode.Pop2:
+                    Record(Instruction.POP);
+                    Record(Instruction.POP);
+                    return;
+                case FusedOpcode.SwapPop:
+                    Record((Instruction)((int)Instruction.SWAP1 + (int)entry.Operand - 2));
+                    Record(Instruction.POP);
+                    return;
+                case FusedOpcode.PushDup:
+                    Record((Instruction)((int)Instruction.PUSH1 + entry.Advance - 3));
+                    Record((Instruction)((int)Instruction.DUP1 + (int)(entry.Operand >> 60)));
+                    return;
+                case FusedOpcode.Push1Pair:
+                    Record(Instruction.PUSH1);
+                    Record(Instruction.PUSH1);
+                    return;
+                case FusedOpcode.DupBinary:
+                    Record((Instruction)((int)Instruction.DUP1 + (byte)entry.Operand - 1));
+                    Record((Instruction)(byte)(entry.Operand >> 8));
+                    return;
+                case FusedOpcode.Swap1Binary:
+                    Record(Instruction.SWAP1);
+                    Record((Instruction)entry.Operand);
+                    return;
+            }
+
             int pushWidth = entry.Advance - 2;
             Record((Instruction)((int)Instruction.PUSH1 + pushWidth - 1));
             Record(MapFused(entry.Opcode));
@@ -67,6 +106,7 @@ internal static class OpcodeHistogram
         FusedOpcode.Xor => Instruction.XOR,
         FusedOpcode.Shl => Instruction.SHL,
         FusedOpcode.Shr => Instruction.SHR,
+        FusedOpcode.SignExtend => Instruction.SIGNEXTEND,
         _ => throw new ArgumentOutOfRangeException(nameof(opcode), opcode, null),
     };
 
