@@ -55,8 +55,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         ArgumentNullException.ThrowIfNull(block);
         if (block.Header is not XdcBlockHeader xdcHeader)
             throw new InvalidOperationException("Only supports XDC headers");
-        if (xdcHeader.ProcessedRewards is not null)
-            return xdcHeader.ProcessedRewards.BlockRewards;
 
         if (xdcHeader.Number == 0)
             return (xdcHeader.ProcessedRewards = XdcProcessedRewards.Empty).BlockRewards;

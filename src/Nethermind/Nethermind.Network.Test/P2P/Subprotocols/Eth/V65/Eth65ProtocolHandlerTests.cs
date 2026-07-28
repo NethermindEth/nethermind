@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,6 +14,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -189,6 +190,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
             _session.Received(canGossipTransactions ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+            Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(canGossipTransactions ? 2 : 0));
+        }
+
+        [Test]
+        public void should_page_batched_retry_request_hashes_inside_handler()
+        {
+            const int txCount = 300;
+            ValueHash256[] txHashes = GenerateValueHashes(txCount);
+            _transactionPool.ClearReceivedCalls();
+
+            _handler.HandleMessages(txHashes);
+
+            _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.Hashes.Count == 256));
+            _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.Hashes.Count == txCount - 256));
+            _transactionPool.DidNotReceive().NotifyAboutTx(
+                Arg.Any<Hash256>(),
+                Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
@@ -196,6 +214,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+        }
+
+        private static ValueHash256[] GenerateValueHashes(int count)
+        {
+            ValueHash256[] txHashes = new ValueHash256[count];
+            for (int i = 0; i < txHashes.Length; i++)
+            {
+                txHashes[i] = new Hash256(i.ToString("X64"));
+            }
+
+            return txHashes;
         }
 
         private void HandleIncomingStatusMessage()

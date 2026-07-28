@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -124,17 +125,29 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                if (preWarmTask is null)
+                ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
+                    ? options
+                    : options | ProcessingOptions.ForceSequentialBlockAccessList;
+                Block processedBlock;
+                TxReceipt[] receipts;
+                try
                 {
-                    // Even though we skip prewarming we still need to ensure the caches are cleared
-                    CacheType result = preWarmer?.ClearCaches() ?? default;
-                    if (result != default)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
-                    }
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
                 }
+                catch (BlockProcessor.BlockAccessListSequentialRetryException) when (
+                    worldStateCloser is not null &&
+                    !blockOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList))
+                {
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+                    QueueClearCaches(preWarmTask);
+                    WaitAndClear(ref preWarmTask);
+                    WaitForCacheClear();
 
-                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    worldStateCloser.Dispose();
+                    worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock);
+                    ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
+                }
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
@@ -217,23 +230,14 @@ public class BranchProcessor(
             task?.GetAwaiter().GetResult();
             task = null;
         }
+
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        ShouldSkipPreWarming(suggestedBlock, spec)
-            ? null
-            : preWarmer?.PreWarmCaches(suggestedBlock,
-                preBlockBaseBlock,
-                spec,
-                token);
-
-    // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
-    // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
-    private bool ShouldSkipPreWarming(Block suggestedBlock, IReleaseSpec spec)
-        => suggestedBlock.Transactions.Length < 3 && !ShouldBalReadWarm(suggestedBlock, spec);
-
-    private bool ShouldBalReadWarm(Block suggestedBlock, IReleaseSpec spec)
-        => preWarmer is not null && preWarmer.IsBalReadWarmingEnabled(spec) && suggestedBlock.BlockAccessList is not null;
+        preWarmer?.PreWarmCaches(suggestedBlock,
+            preBlockBaseBlock,
+            spec,
+            token);
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 

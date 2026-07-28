@@ -213,10 +213,7 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    private void GuardDispose()
-    {
-        if (_isDisposed) throw new ObjectDisposedException($"{nameof(ReadOnlySnapshotBundle)} is disposed");
-    }
+    private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
 
     public bool TryLease() => TryAcquireLease();
 

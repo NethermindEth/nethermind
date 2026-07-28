@@ -141,7 +141,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public ChainLevelInfo? FindLevel(ulong number)
         => throw new NotSupportedException();
 
-    public BlockInfo FindCanonicalBlockInfo(ulong blockNumber)
+    public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber)
         => throw new NotSupportedException();
 
     public Hash256? FindHash(ulong blockNumber)

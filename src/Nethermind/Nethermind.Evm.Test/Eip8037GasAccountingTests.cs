@@ -318,8 +318,8 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 ExpectedSuccess: true, ExpectedSpentGas: 248_141, ExpectedBlockRegularGas: 52_301, ExpectedBlockStateGas: 195_840);
         }
 
-        // Inner CREATE spill then top-level OOG in a create tx: the tx-level create-state
-        // refund nets block state gas to zero.
+        // Top-level and inner CREATE state charges spill from gas_left. On the top-level OOG,
+        // the rollback refills and then burns that gas as regular while block state stays zero.
         {
             byte[] childInitCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
             byte[] initCode = Prepare.EvmCode
@@ -333,7 +333,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 300_000,
                 [],
                 [],
-                ExpectedSuccess: false, ExpectedSpentGas: 116_400, ExpectedBlockRegularGas: 116_400, ExpectedBlockStateGas: 0,
+                ExpectedSuccess: false, ExpectedSpentGas: 300_000, ExpectedBlockRegularGas: 300_000, ExpectedBlockStateGas: 0,
                 IsCreate: true,
                 TxData: initCode);
         }
