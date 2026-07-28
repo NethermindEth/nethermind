@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -38,6 +39,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         ulong remainingGas = TSelf.GetRemainingGas(in gas);
         long stateReservoir = TSelf.GetStateReservoir(in gas);
         Int128 preRefundGas = (Int128)txGasLimit - remainingGas - stateReservoir;
+        Debug.Assert(preRefundGas >= 0 && preRefundGas <= ulong.MaxValue,
+            $"Gas invariant violated: pre-refund gas ({preRefundGas}) must fit in ulong for gas limit ({txGasLimit}), remaining gas ({remainingGas}), and state reservoir ({stateReservoir}).");
+        // Charging the full limit avoids undercharging and makes validation reject divergent gas accounting.
         return preRefundGas >= 0 && preRefundGas <= ulong.MaxValue ? (ulong)preRefundGas : txGasLimit;
     }
 

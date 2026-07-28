@@ -82,10 +82,13 @@ public class EthereumGasPolicyTests
         Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas)));
     }
 
-    [TestCase(100UL, 40UL, 10L, 50UL)]
-    [TestCase(100UL, 40UL, -10L, 70UL)]
-    [TestCase(100UL, 101UL, 0L, 100UL)]
-    [TestCase(ulong.MaxValue, 0UL, -1L, ulong.MaxValue)]
+    [TestCase(100UL, 40UL, 10L, 50UL, TestName = "positive_reservoir_is_subtracted")]
+    [TestCase(100UL, 40UL, -10L, 70UL, TestName = "negative_reservoir_spill_is_added_back")]
+#if !DEBUG
+    // In Debug, the invariant guard terminates the test process before the Release fallback can run.
+    [TestCase(100UL, 101UL, 0L, 100UL, TestName = "gas_left_above_limit_falls_back_to_gas_limit")]
+    [TestCase(ulong.MaxValue, 0UL, -1L, ulong.MaxValue, TestName = "spill_overflowing_ulong_falls_back_to_gas_limit")]
+#endif
     public void GetPreRefundGas_handles_signed_reservoir_without_wrapping(
         ulong gasLimit,
         ulong remainingGas,
