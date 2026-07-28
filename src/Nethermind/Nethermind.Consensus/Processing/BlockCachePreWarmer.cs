@@ -50,7 +50,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private Task _speculativeTask = Task.CompletedTask;
     private long _speculativeGeneration = long.MinValue;
 
-    // Only the speculative loop publishes non-null markers; processing paths clear them.
+    // Non-null writes come only from the speculative loop; every other writer nulls it after joining that loop,
+    // which is what makes the marker and its shared tx-hash set safe to read without further sync.
+    private WarmMarker? _warmMarker;
     private WarmMarker? _warmMarker;
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
