@@ -176,6 +176,41 @@ public class PbtStoreCacheTests
     [TestCase(true, PbtPartition.Account)]
     [TestCase(true, PbtPartition.Code)]
     [TestCase(true, PbtPartition.Storage)]
+    public void KeysDifferingBelowThePartitionPrefixShardApart(bool trieNode, PbtPartition partition)
+    {
+        PbtStoreCache cache = new(ConfigWithBudget(trieNode, partition, 1));
+        Stem firstShard = StemBelowRoot(partition, 0);
+        Stem secondShard = StemBelowRoot(partition, 1);
+        ValueHash256 hash = Hash(1);
+        RefCountingMemory evicted = Memory(1);
+        RefCountingMemory retained = Memory(2);
+
+        Set(cache, trieNode, firstShard, hash, evicted);
+        ((IDisposable)evicted).Dispose();
+        Set(cache, trieNode, secondShard, hash, retained);
+        ((IDisposable)retained).Dispose();
+
+        // The budget fits one entry, so the round-robin clear frees the shard it reaches first and stops
+        // there — which it can only do if the two stems did not land in one shard to begin with.
+        using RefCountingMemory? evictedMiss = Get(cache, trieNode, firstShard, hash);
+        RefCountingMemory? survivor = Get(cache, trieNode, secondShard, hash);
+        Assert.That(survivor?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 2 }), "one clear evicted both stems");
+        ((IDisposable?)survivor)?.Dispose();
+        cache.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(evictedMiss, Is.Null);
+            Assert.That(TrackingMemoryProvider.CountUnreleased([evicted, retained]), Is.Zero);
+        }
+    }
+
+    [TestCase(false, PbtPartition.Account)]
+    [TestCase(false, PbtPartition.Code)]
+    [TestCase(false, PbtPartition.Storage)]
+    [TestCase(true, PbtPartition.Account)]
+    [TestCase(true, PbtPartition.Code)]
+    [TestCase(true, PbtPartition.Storage)]
     public void ConcurrentAccessBalancesEveryLease(bool trieNode, PbtPartition partition)
     {
         const int operationCount = 128;
@@ -282,6 +317,27 @@ public class PbtStoreCacheTests
             _ => 0x80,
         };
         bytes[1] = marker;
+        return new Stem(bytes);
+    }
+
+    /// <summary>A stem whose eight bits below its partition's fixed prefix are <paramref name="shardBits"/>.</summary>
+    /// <remarks>
+    /// 0 and 1 are the values that fit under every partition's prefix, so stems built from them differ
+    /// nowhere else — including in the first byte, which the cache used to shard on.
+    /// </remarks>
+    private static Stem StemBelowRoot(PbtPartition partition, byte shardBits)
+    {
+        int rootDepth = PbtPartitions.RootDepth(partition);
+        byte prefix = partition switch
+        {
+            PbtPartition.Account => 0x00,
+            PbtPartition.Code => 0x10,
+            _ => 0x80,
+        };
+
+        byte[] bytes = new byte[Stem.Length];
+        bytes[0] = (byte)(prefix | (shardBits >> rootDepth));
+        bytes[1] = (byte)(shardBits << (8 - rootDepth));
         return new Stem(bytes);
     }
 
