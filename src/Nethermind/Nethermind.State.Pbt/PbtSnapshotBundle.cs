@@ -216,14 +216,6 @@ public class PbtSnapshotBundle(
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value) =>
         PendingFlatWrites.Slots[(address, slot)] = value;
 
-    /// <summary>Records a leaf blob produced by the root computation; an empty blob marks the stem deleted.</summary>
-    public void SetLeafBlob(in Stem stem, byte[] blob) =>
-        SetOwnedLeafBlob(stem, blob.Length == 0 ? null : RefCountingMemory.Wrapping(blob));
-
-    /// <summary>Records a trie node produced by the root computation; a null node marks it removed.</summary>
-    public void SetTrieNode(in TrieNodeKey key, byte[]? node) =>
-        SetOwnedTrieNode(key, RefCountingMemory.WrappingOrNull(node));
-
     /// <summary>Records a transferred leaf-blob lease produced by the root computation; null marks the stem deleted.</summary>
     /// <remarks>The write buffer now shadows the stem, so whatever the cache holds for it is dead weight.</remarks>
     internal void SetOwnedLeafBlob(in Stem stem, RefCountingMemory? blob) => SetOwnedLeafBlob(stem, default, blob, cache: false);
