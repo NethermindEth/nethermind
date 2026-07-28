@@ -81,31 +81,16 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         async Task FlushLoop()
         {
             long entries = 0;
-            Stem lastStem = default;
             double entriesPerSec = 0, stemsPerSec = 0;
             long loggedEntries = 0, loggedStems = 0;
             Stopwatch sinceLog = Stopwatch.StartNew();
-
-            // Entries stream in ascending stem order, so the current stem's position in the key space is
-            // the completion fraction (stems are BLAKE3 digests, so the top 64 bits estimate it well).
-            // CurrentValue is driven by the entry count instead, only so it moves every window: a stem
-            // holding many leaves keeps the percentage fixed, and the logger drops a repeated line
-            // unless CurrentValue changes — which would stall the log through the slowest part.
-            ProgressLogger progress = new("PBT rebuild", logManager);
-            progress.SetFormat(_ =>
-            {
-                float percentage = Math.Clamp(BinaryPrimitives.ReadUInt64BigEndian(lastStem.Bytes) / (float)ulong.MaxValue, 0, 1);
-                return $"PBT rebuild {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
-                    $"{entries,15:N0} leaf ({entriesPerSec,8:N0}/s) | " +
-                    $"{stems,13:N0} stem ({stemsPerSec,8:N0}/s) | at {lastStem}";
-            });
-            progress.Reset(0, 0);
+            PartitionProgress[] progress = CreatePartitionProgressLoggers();
 
             await foreach (FlushBatch batch in flushChannel.Reader.ReadAllAsync(pipelineCts.Token))
             {
                 roots = FlushAndCommit(batch.WriteBatch, roots, batch.Changes, out PbtSubtreeStats stemDelta);
                 stems += stemDelta.StemCount;
-                (entries, lastStem) = (batch.Entries, batch.LastStem);
+                entries = batch.Entries;
 
                 double secs = sinceLog.Elapsed.TotalSeconds;
                 if (secs > 0)
@@ -116,8 +101,19 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
                 (loggedEntries, loggedStems) = (entries, stems);
                 sinceLog.Restart();
 
-                progress.Update((ulong)entries);
-                progress.LogProgress();
+                foreach (PbtPartition partition in PbtPartitions.All)
+                {
+                    if (!batch.HasEntries[(int)partition]) continue;
+
+                    PartitionProgress partitionProgress = progress[(int)partition];
+                    partitionProgress.LastStem = batch.LastStems[(int)partition];
+                    partitionProgress.Entries = entries;
+                    partitionProgress.EntriesPerSec = entriesPerSec;
+                    partitionProgress.Stems = stems;
+                    partitionProgress.StemsPerSec = stemsPerSec;
+                    partitionProgress.Logger.Update((ulong)entries);
+                    partitionProgress.Logger.LogProgress();
+                }
             }
         }
 
@@ -132,7 +128,8 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, PbtPartitionRoots.Empty, WriteFlags.DisableWAL);
         int pending = 0, pendingStems = 0;
         long entries = 0;
-        Stem lastStem = default;
+        Stem[] lastStems = new Stem[PbtPartitions.Count];
+        bool[] hasEntries = new bool[PbtPartitions.Count];
 
         try
         {
@@ -154,9 +151,11 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
                             if (pending >= FlushEntryInterval || pendingStems >= MaxWindowStems)
                             {
                                 // A drained batch lost to a faulting flusher only drops its pooled maps to the GC.
-                                await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
+                                await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStems, hasEntries), pipelineCts.Token);
                                 writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, PbtPartitionRoots.Empty, WriteFlags.DisableWAL);
                                 (pending, pendingStems) = (0, 0);
+                                lastStems = new Stem[PbtPartitions.Count];
+                                hasEntries = new bool[PbtPartitions.Count];
                             }
 
                             // groups, not distinct stems: an unordered source repeating a stem overshoots
@@ -165,7 +164,9 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
                         }
 
                         group.Add(entry);
-                        lastStem = entry.Stem;
+                        PbtPartition partition = PbtPartitions.Of(entry.Stem);
+                        lastStems[(int)partition] = entry.Stem;
+                        hasEntries[(int)partition] = true;
                         entries++;
                         pending++;
                     }
@@ -175,7 +176,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
             group.Flush(builder);
 
             // seal the final (possibly empty) window; the flusher owns its write batch from here
-            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStem), pipelineCts.Token);
+            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStems, hasEntries), pipelineCts.Token);
             writeBatch = null;
             flushChannel.Writer.Complete();
             await flusher;
@@ -236,12 +237,48 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         }
     }
 
+    private PartitionProgress[] CreatePartitionProgressLoggers()
+    {
+        PartitionProgress[] progress = new PartitionProgress[PbtPartitions.Count];
+        foreach (PbtPartition partition in PbtPartitions.All)
+        {
+            PartitionProgress partitionProgress = new(partition, new ProgressLogger("PBT rebuild", logManager));
+            partitionProgress.Logger.SetFormat(_ => FormatProgress(partitionProgress));
+            partitionProgress.Logger.Reset(0, 0);
+            progress[(int)partition] = partitionProgress;
+        }
+
+        return progress;
+    }
+
+    private static string FormatProgress(PartitionProgress progress)
+    {
+        int rootDepth = PbtPartitions.RootDepth(progress.Partition);
+        ulong localRange = 1UL << (64 - rootDepth);
+        float percentage = (BinaryPrimitives.ReadUInt64BigEndian(progress.LastStem.Bytes) & (localRange - 1)) / (float)localRange;
+        return $"PBT rebuild {progress.Partition,-7} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
+            $"{progress.Entries,15:N0} leaf ({progress.EntriesPerSec,8:N0}/s) | " +
+            $"{progress.Stems,13:N0} stem ({progress.StemsPerSec,8:N0}/s) | at {progress.LastStem}";
+    }
+
+    private sealed class PartitionProgress(PbtPartition partition, ProgressLogger logger)
+    {
+        public PbtPartition Partition { get; } = partition;
+        public ProgressLogger Logger { get; } = logger;
+        public Stem LastStem { get; set; }
+        public long Entries { get; set; }
+        public double EntriesPerSec { get; set; }
+        public long Stems { get; set; }
+        public double StemsPerSec { get; set; }
+    }
+
     /// <summary>A full window handed from the consumer to the flush worker, with the progress counters as of when it was sealed.</summary>
     private readonly record struct FlushBatch(
         PbtWriteBatchSet Changes,
         IPbtPersistence.IWriteBatch WriteBatch,
         long Entries,
-        Stem LastStem);
+        Stem[] LastStems,
+        bool[] HasEntries);
 
     /// <summary>
     /// Folds the drained window into the tree on top of <paramref name="currentRoot"/> and commits it.
