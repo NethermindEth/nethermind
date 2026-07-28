@@ -285,6 +285,11 @@ fi
 if [[ "$JB_DEEP_CHECK" == "true" && "$JB_MODE" == "benchmark" ]]; then
   dc_out="$OUT_DIR/deep-check-$LABEL.jsonl"
   log "Deep-check: capturing responses for every workload request (client=$LABEL) -> $(basename "$dc_out")..."
+  # The capture imports PyYAML; the curated-config branch installs it, but the generated-default
+  # branch never reaches that bootstrap — ensure it here (no-op if present, non-fatal if install fails).
+  python3 -c 'import yaml' 2>/dev/null \
+    || python3 -m pip install --user pyyaml 2>/dev/null \
+    || python3 -m pip install --user --break-system-packages pyyaml 2>/dev/null || true
   JB_RPC_URL="$RPC_URL" JB_SRC="$work/src" \
   python3 - "$work/io/benchmark.yaml" "$dc_out" <<'PY' || log "::warning::deep-check capture failed (continuing)"
 import os, sys, json, hashlib, urllib.request, yaml

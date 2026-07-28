@@ -58,6 +58,8 @@ mkdir -p "$OUT_DIR" "$STATE_ROOT"
 declare -a SUMMARIES=()
 declare -a LABELS=()
 node_issue=0
+cell_fail=0   # load-test cells that ran but failed (distinct from a client skipped for never starting)
+stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 
 # Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
 # same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
@@ -89,25 +91,46 @@ for entry in $CLIENTS; do
       scen="$(basename "$icfg" .yaml)"
       cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
       echo "-- ISO ${label} ${scen} @ rps=${rps} --"
-      run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || echo "::warning::iso ${label}/${scen}/${rps} failed"
+      run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
       [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${label}|${rps}=$cell/jsonbench-summary.md")
     done
     # MIXED: all scenarios together
     mcell="$OUT_DIR/mix/${label}/${rps}"
     echo "-- MIX ${label} @ rps=${rps} --"
-    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || echo "::warning::mix ${label}/${rps} failed"
+    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
     [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
   done
 
-  STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
-    "$here/stop-node.sh" || echo "::warning::stop-node failed for ${label}"
-  # Sweep mode isn't covered by the workflow's log-scan step, so scan each node log here (same patterns).
+  # stop-node.sh verifies the snapshot is pristine and exits non-zero on a DB-integrity/teardown failure. That must fail
+  # the sweep — not degrade to a warning. reth 'direct' legitimately mutates and stop-node warns-not-fails, so this only
+  # trips overlay clients.
+  if ! STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
+       "$here/stop-node.sh"; then
+    echo "::error::${label}: stop-node failed (DB integrity check or teardown) — failing the sweep"; stop_fail=1
+  fi
+  # Sweep mode isn't covered by the workflow's log-scan step, so scan each node log here with the same four checks.
   if [[ -f "$cst/node.log" ]]; then
     clean="$cst/node.clean.log"
     sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$cst/node.log" > "$clean"
     grep -in "Exception" "$clean" | grep -vF 'Incorrect JSON RPC parameters' > "$cst/node.exc" || true
-    if [[ -s "$cst/node.exc" ]]; then echo "::warning::${label}: Exception(s) in node log:"; head -20 "$cst/node.exc"; node_issue=1; fi
-    if grep -qEi 'invalid[[:space:]_-]*block' "$clean"; then echo "::warning::${label}: invalid block in node log"; node_issue=1; fi
+    if [[ "$ctype" == "nethermind" ]]; then
+      # Exception / invalid-block / shutdown-marker wording is Nethermind-specific — gate only on NM cells.
+      if [[ -s "$cst/node.exc" ]]; then echo "::warning::${label}: Exception(s) in node log:"; head -20 "$cst/node.exc"; node_issue=1; fi
+      if grep -qEi 'invalid[[:space:]_-]*block' "$clean"; then echo "::warning::${label}: invalid block in node log"; node_issue=1; fi
+      # A missing marker means docker SIGKILLed a hung node or shutdown crashed — run untrustworthy.
+      if ! grep -q "Nethermind is shut down" "$clean"; then
+        echo "::warning::${label}: 'Nethermind is shut down' marker not found — node did not shut down cleanly"; node_issue=1
+      fi
+    elif [[ -s "$cst/node.exc" ]]; then
+      # geth/reth: NM wording false-positives, so warn only — don't gate on the reference clients.
+      echo "::warning::${label}: Exception-like lines in node log (warn only, non-Nethermind):"; head -20 "$cst/node.exc"
+    fi
+    # Severe patterns: warn-only for every client (mirrors the workflow's non-gating scan).
+    for pattern in "Unhandled" "Fatal" "ERROR"; do
+      if grep -qi "$pattern" "$clean"; then
+        echo "::warning::${label}: severe log pattern '$pattern' (first 10):"; grep -in "$pattern" "$clean" | head -10 || true
+      fi
+    done
   fi
   echo "::endgroup::"
 done
@@ -116,6 +139,7 @@ sink="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 {
   echo "# Cross-client sweep — same head ${SNAPSHOT_BLOCK}"
   echo "_${#SUMMARIES[@]} cells · isolated dur ${ISO_DURATION}, mixed dur ${JB_DURATION} · json-bench ${JB_REF}_"
+  [[ "$cell_fail" -gt 0 ]] && { echo; echo "> **⚠️ ${cell_fail} load-test cell(s) failed** — the matrix below is incomplete; the job will fail."; }
   echo
 } >> "$sink"
 if [[ "${#SUMMARIES[@]}" -gt 0 ]]; then
@@ -141,8 +165,14 @@ if [[ "${#LABELS[@]}" -ge 2 ]]; then
     fi
   done
 fi
+fail=0
 if [[ "$node_issue" -eq 1 ]]; then
-  echo "::error::node health issue (Exception / invalid block) in a sweep node log — failing"
-  exit 1
+  echo "::error::node health issue (Exception / invalid block / missing shutdown marker) in a sweep node log — failing"; fail=1
 fi
-exit 0
+if [[ "$cell_fail" -gt 0 ]]; then
+  echo "::error::${cell_fail} load-test cell(s) failed — the matrix is incomplete, failing"; fail=1
+fi
+if [[ "$stop_fail" -eq 1 ]]; then
+  echo "::error::stop-node reported a DB-integrity/teardown failure — failing"; fail=1
+fi
+exit "$fail"

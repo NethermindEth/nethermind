@@ -1,7 +1,8 @@
 name: Run RPC Benchmarks
 
 # Benchmark a client's JSON-RPC on the self-hosted `reproducible-benchmarks` runner, reusing its DB snapshots.
-# Only read-only RPCs are benchmarked (eth_call/getBalance/trace/debug — none change state), so snapshots aren't mutated even under a direct RW mount; each is fingerprinted before/after and the job FAILS if one changed. See scripts/rpc-bench/README.md.
+# Only read-only RPCs are benchmarked (eth_call/getBalance/trace/debug — none change state); each snapshot is fingerprinted before/after. Under overlay/copy the snapshot is never mounted writable, so any change FAILS the job.
+# reth's 'direct' mode mounts the snapshot read-write, where the node's DB-engine startup writes are expected — there the tripwire warns instead of failing. See scripts/rpc-bench/README.md.
 
 on:
   workflow_dispatch:
@@ -74,6 +75,7 @@ on:
           ethcallchaos: {"ref":"","corpus_db":"","rate":50,"parallel":8,"duration":300,"leaderboard_top":50,"api_port":5000} (empty ref = pinned commit default).
           jsonbench: {"ref":"","mode":"","benchmark_config":"","compare_config":"config/compare/defaults.yaml","rps":"","duration":"","vus":"","concurrency":5,"timeout":30,"validate_schema":false,"html_report":true,"fail_on_diff":false,"max_fail_rate_pct":1,"deep_check":false,"extra_args":""}. deep_check (benchmark mode): after the timed load, replay every workload request once and store raw responses as deep-check-<client>.jsonl in the artifact; diff them across single-client runs offline with scripts/rpc-bench/deep-check-compare.py to catch wrong/partial/malformed results that k6 checks (has-a-response only) miss.
           jsonbench benchmark_config: a curated workload — realistic-mix-head | ethcall-contracts-head | new-state-methods-head (bare name or repo-relative path); empty = a generated read mix. Its client list is rewritten to the node(s) here; rps/vus/duration override the workload when set (else the config's own values apply). Benchmarks report from k6's summary.json (no Prometheus).
+          jsonbench-sweep: {"clients":"nethermind geth reth","rps_list":"100 250 500","snapshot_block":"25490000","state_layout":"flat","benchmark_config":"config/benchmark/ethcallchaos-percategory-validated.yaml","ref":"","duration":"60s","iso_configs":"","iso_duration":"20s"}. Cross-client sweep run SEQUENTIALLY (one node up at a time). clients accepts ctype@image variants (e.g. nethermind@nethermindeth/nethermind:master) for same-client version A/B; iso_configs (space-separated single-scenario configs) runs each scenario isolated, empty = mixed only; benchmark_config is the mixed workload; ref/duration = json-bench commit + mixed load duration (empty ref = pinned default). In sweep mode the top-level single-client inputs (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by these tool_config keys.
           Leave empty for defaults.
         required: false
         default: ""
@@ -301,6 +303,15 @@ jobs:
               *) echo "db_isolation must be overlay | copy | readonly-bind | direct, got '${iso}'."; exit 1;;
             esac
           done
+
+          # Same client on both sides sharing one snapshot under 'direct' = two concurrent read-write binds on one DB = corruption.
+          # Same-client A/B must go through jsonbench-sweep, which brings up one node at a time. See scripts/rpc-bench/README.md "direct" caveats.
+          if [[ "${comparison}" == "true" && "${client}" == "${reference_client}" && "${db_source}" == "${ref_db_source}" ]] \
+             && { [[ "${db_isolation}" == "direct" ]] || [[ "${ref_db_isolation}" == "direct" ]]; }; then
+            echo "Refusing to run ${client} vs ${reference_client} side by side on the same 'direct' snapshot (${db_source}): two concurrent read-write mounts corrupt the DB."
+            echo "Use benchmark_tool=jsonbench-sweep for same-client comparison (it runs each node sequentially), or set a distinct node_config.reference_db_source / non-'direct' isolation."
+            exit 1
+          fi
 
           # These paths reach root-privileged mount/rm on the runner — enforce a
           # strict shape here (the scripts canonicalize and guard again).
@@ -778,6 +789,7 @@ jobs:
             ${{ runner.temp }}/rpcbench-state/db-final.txt
             ${{ runner.temp }}/rpcbench-state/db-baseline-reference.txt
             ${{ runner.temp }}/rpcbench-state/db-final-reference.txt
+            ${{ runner.temp }}/rpcbench-state/sweep/
           retention-days: 30
           if-no-files-found: warn
 

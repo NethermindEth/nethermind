@@ -19,6 +19,9 @@ ECC_REF="${ECC_REF:-v1.0.0}"
 ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"          # optional path on the runner to a pristine corpus DB
 # corpus-v2: per-category evolved corpus (seeded from v1, diverse worst-per-shape coverage).
 ECC_CORPUS_URL="${ECC_CORPUS_URL:-https://github.com/kamilchodola/EthCallChaos/releases/download/corpus-v2/ethcallchaos.db}"
+# Optional sha256 of the downloaded corpus DB (the release URL is mutable). Empty =
+# skip (opt-in), like VEGETA_SHA256 in run-flood.sh; set it to reject a tampered corpus.
+ECC_CORPUS_SHA256="${ECC_CORPUS_SHA256:-}"
 ECC_RATE="${ECC_RATE:-50}"                  # -> Rpc__MaxCallsPerSecond
 ECC_PARALLEL="${ECC_PARALLEL:-8}"           # -> Rpc__MaxParallelCalls
 ECC_DURATION="${ECC_DURATION:-300}"         # seconds of load
@@ -58,6 +61,10 @@ if [[ -n "$ECC_CORPUS_DB" && -f "$ECC_CORPUS_DB" ]]; then
   cp "$ECC_CORPUS_DB" "$work/bench.db"
   log "Using provided corpus DB (copied): $ECC_CORPUS_DB"
 elif [[ -n "$ECC_CORPUS_URL" ]] && curl -sfL --retry 3 -o "$work/bench.db" "$ECC_CORPUS_URL"; then
+  if [[ -n "$ECC_CORPUS_SHA256" ]]; then
+    echo "${ECC_CORPUS_SHA256}  $work/bench.db" | sha256sum -c - \
+      || die "corpus DB sha256 mismatch (expected ${ECC_CORPUS_SHA256}) — refusing to use an unverified corpus"
+  fi
   log "Using corpus DB downloaded from $ECC_CORPUS_URL ($(du -h "$work/bench.db" | cut -f1))."
 elif [[ -f "$proj_dir/ethcallchaos.db" ]]; then
   cp "$proj_dir/ethcallchaos.db" "$work/bench.db"
@@ -67,8 +74,9 @@ else
   log "::warning::No corpus DB found — EthCallChaos will start from a fresh corpus (slower warmup, less representative)."
 fi
 
-# Launch in a .NET SDK container (host network to reach the node on localhost
-# and expose its API on the host).
+# Launch in a .NET SDK container (host network to reach the node on localhost).
+# Bind the control API to 127.0.0.1 only: under --network host that shares the host
+# loopback, so the scrape below still works but /api/* is not on other interfaces.
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Launching EthCallChaos via $SDK_IMAGE (rate=$ECC_RATE/s, parallel=$ECC_PARALLEL, duration=${ECC_DURATION}s)..."
 docker run -d --name "$CONTAINER_NAME" \
@@ -76,8 +84,8 @@ docker run -d --name "$CONTAINER_NAME" \
   -v "$work:/work" \
   -w /work/src/src/EthCallChaos \
   -e "ASPNETCORE_ENVIRONMENT=Production" \
-  -e "ASPNETCORE_URLS=http://0.0.0.0:${ECC_API_PORT}" \
-  -e "Kestrel__Endpoints__Http__Url=http://0.0.0.0:${ECC_API_PORT}" \
+  -e "ASPNETCORE_URLS=http://127.0.0.1:${ECC_API_PORT}" \
+  -e "Kestrel__Endpoints__Http__Url=http://127.0.0.1:${ECC_API_PORT}" \
   -e "DOTNET_CLI_HOME=/work" \
   -e "NUGET_PACKAGES=/work/.nuget" \
   -e "Rpc__NodeUrl=${RPC_URL}" \
