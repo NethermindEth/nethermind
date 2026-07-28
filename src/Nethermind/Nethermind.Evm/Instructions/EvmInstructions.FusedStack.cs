@@ -110,4 +110,40 @@ public static partial class EvmInstructions
         WriteUnaligned(ref secondRef, TOpBitwise.Operation(in second, in top));
         return EvmExceptionType.None;
     }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static bool TestDupAndIsZero(ref EvmStack stack, int depth, out EvmExceptionType exceptionType)
+    {
+        ref byte topRef = ref stack.PeekTopForDupBinary(depth, out EvmWord duplicate, out exceptionType);
+        if (exceptionType != EvmExceptionType.None)
+            return false;
+
+        EvmWord top = ReadUnaligned<EvmWord>(ref topRef);
+        stack.Head--;
+        return (top & duplicate) == default;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static bool TestMaskIsZero(ref EvmStack stack, byte shift, out EvmExceptionType exceptionType)
+    {
+        if (stack.Head >= EvmStack.MaxStackSize - 1)
+        {
+            exceptionType = EvmExceptionType.StackOverflow;
+            return false;
+        }
+
+        if (!stack.PopUInt256(out Int256.UInt256 a, out Int256.UInt256 b, out Int256.UInt256 c))
+        {
+            exceptionType = EvmExceptionType.StackUnderflow;
+            return false;
+        }
+
+        Int256.UInt256 shiftAmount = shift;
+        OpShl.Operation(in shiftAmount, in a, out Int256.UInt256 shifted);
+        OpSub.Operation(in shifted, in b, out Int256.UInt256 subtracted);
+        exceptionType = EvmExceptionType.None;
+        return (subtracted & c).IsZero;
+    }
 }
