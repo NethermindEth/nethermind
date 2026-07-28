@@ -374,7 +374,7 @@ public static partial class TrieUpdater
             // too; the level then stays unbucketed for the resolve below to fill from that same depth,
             // should the jump not fire.
             scoped ReadOnlySpan<int> buckets = plan.Precalculated;
-            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(entries.Length)];
+            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(entries.Length, depth)];
             int entriesBranch = plan.BranchDepth;
             bool isSorted = plan.IsSorted;
             int branchDepth = depth;
@@ -512,7 +512,7 @@ public static partial class TrieUpdater
             int depth = key.Depth;
             AssertBranchDepthSound(entries, depth, plan.BranchDepth);
 
-            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(entries.Length)];
+            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(entries.Length, depth)];
             scoped PartitionOutcome outcome = plan.BucketSort(entries, depth, buffer);
 
             AssertCompactLevel(outcome, entries.Length);
@@ -582,7 +582,7 @@ public static partial class TrieUpdater
             int depth = key.Depth;
             AssertBranchDepthSound(entries, depth, plan.BranchDepth);
 
-            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(entries.Length)];
+            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(entries.Length, depth)];
             scoped PartitionOutcome outcome = plan.BucketSort(entries, depth, buffer);
 
             AssertCompactLevel(outcome, entries.Length);
@@ -1322,9 +1322,9 @@ public static partial class TrieUpdater
             /// <summary>Whether the complete stems are in ascending lexicographic order.</summary>
             public bool IsSorted { get; } = isSorted;
 
-            public int GetBufferSize(int entryCount) => HasPrecalculatedLevel
+            public int GetBufferSize(int entryCount, int depth) => HasPrecalculatedLevel
                 ? 0
-                : sizeof(int) * (Math.Min(entryCount, TLayout.BoundarySlots) + PbtWriteBatch.TouchedWordCount<TLayout>());
+                : sizeof(int) * ((BranchDepth > depth ? 1 : Math.Min(entryCount, TLayout.BoundarySlots)) + PbtWriteBatch.TouchedWordCount<TLayout>());
 
             public PartitionOutcome BucketSort(
                 Span<PbtWriteBatch.StemEntry> entries, int depth, Span<byte> buffer)
@@ -1421,7 +1421,7 @@ public static partial class TrieUpdater
         /// order is arbitrary.
         /// </summary>
         /// <param name="buffer">
-        /// Scratch storage sized by <see cref="BucketPlan.GetBufferSize"/> for compact counts and the
+        /// Scratch storage sized by <see cref="BucketPlan.GetBufferSize(int, int)"/> for compact counts and the
         /// touched-slot mask.
         /// </param>
         /// <returns>
