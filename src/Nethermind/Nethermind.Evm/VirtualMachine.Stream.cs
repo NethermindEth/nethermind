@@ -56,7 +56,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         int programCounter = VmState.ProgramCounter;
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         StreamOp[] ops = stream.Ops;
-        ulong[] blockGas = stream.BlockGas;
         Int256.UInt256[] constants = stream.Constants;
         byte[] constantBytes = stream.ConstantBytes;
         ushort[] pcToEntry = stream.PcToEntry;
@@ -83,13 +82,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                             CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
 
-                        metered = !TGasPolicy.TryConsume(ref gas, blockGas[entry.BlockIndex]);
+                        metered = !TGasPolicy.TryConsume(ref gas, entry.BlockGas);
                     }
 
                     if (metered)
                     {
                         // By-value in, struct out: ref params would evict the loop's hot locals from registers.
-                        MeteredResult result = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, entry.Pc, opCodeCount, callDepth);
+                        MeteredResult result = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, programCounter, opCodeCount, callDepth);
                         programCounter = result.ProgramCounter;
                         opCodeCount = result.OpCodeCount;
                         entryIndex = result.EntryIndex;
@@ -106,7 +105,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         break;
                     }
 
-                    TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
+                    TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
                     opCodeCount += 1 + ((byte)entry.Kind & 1);
 
                     // Gas already charged at the block entry, so the cores are gas-free. Must stay inline (JIT).
@@ -250,11 +249,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.PUSH0:
                             exceptionType = stack.PushZero<OffFlag>();
                             break;
-                        case >= Instruction.PUSH1 and <= Instruction.PUSH8:
+                        case >= Instruction.PUSH1 and <= Instruction.PUSH4:
                             // Analyzer pre-decoded full-width immediates; a truncated trailing PUSH stays a boundary op.
                             exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
                             break;
-                        case >= Instruction.PUSH9 and <= Instruction.PUSH32:
+                        case >= Instruction.PUSH5 and <= Instruction.PUSH32:
                             exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
                             break;
                         case >= Instruction.DUP1 and <= Instruction.DUP16:
@@ -285,10 +284,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             }
 
                             opCodeCount++;
-                            // Set entryIndex to dest-1; the shared loop-tail entryIndex++ lands it on dest.
-                            // programCounter is transiently stale until the next entry sets it — fine, nothing reads it here.
-                            entryIndex = (int)entry.Operand - 1;
-                            break;
+                            entryIndex = (ushort)entry.Operand;
+                            programCounter = (int)(entry.Operand >> 16);
+                            continue;
                         case (Instruction)FusedOpcode.StaticJumpI:
                             // Same full-stack overflow as the unfused PUSH2, which pushes the destination before
                             // JUMPI pops it; fail with StackOverflow instead of testing the condition and jumping.
@@ -308,7 +306,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
                             {
-                                entryIndex = (int)entry.Operand - 1;
+                                entryIndex = (ushort)entry.Operand;
+                                programCounter = (int)(entry.Operand >> 16);
+                                continue;
                             }
                             else if (conditionUnderflow)
                             {
@@ -331,7 +331,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             if (!EvmInstructions.TestJumpCondition(ref stack, out _))
                             {
-                                entryIndex = (int)entry.Operand - 1;
+                                entryIndex = (ushort)entry.Operand;
+                                programCounter = (int)(entry.Operand >> 16);
+                                continue;
                             }
 
                             break;
@@ -350,7 +352,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             if (stack.PeekUInt256IsZero())
                             {
-                                entryIndex = (int)entry.Operand - 1;
+                                entryIndex = (ushort)entry.Operand;
+                                programCounter = (int)(entry.Operand >> 16);
+                                continue;
                             }
 
                             break;
@@ -364,7 +368,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (exceptionType != EvmExceptionType.None)
                         break;
 
-                    programCounter = entry.Pc + entry.Advance;
+                    programCounter += entry.Advance;
                     entryIndex++;
                     continue;
                 }
@@ -378,10 +382,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                         CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
 
-                    TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
+                    TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
                     opCodeCount++;
 
-                    int mpc = entry.Pc + 1;
+                    int mpc = programCounter + 1;
                     exceptionType = instruction switch
                     {
                         Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
@@ -399,14 +403,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (exceptionType != EvmExceptionType.None) break;
 
                     metered = false;
-                    programCounter = entry.Pc + entry.Advance;
+                    programCounter += entry.Advance;
                     entryIndex++;
                     continue;
                 }
 
                 // Boundary op: standard handler + epilogue. Structured control flow only —
                 // backward gotos make the loop irreducible and the JIT stops optimizing it.
-                programCounter = entry.Pc;
                 if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                     CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
 

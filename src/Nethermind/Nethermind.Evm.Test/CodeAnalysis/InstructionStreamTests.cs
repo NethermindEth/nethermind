@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -34,8 +35,7 @@ public class InstructionStreamTests
         Assert.That(stream, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
-            Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.VeryLow),
+            Assert.That(stream.Ops[0].BlockGas, Is.EqualTo(3 * GasCostOf.VeryLow),
                 "two pushes and an add are one block charged as a single sum");
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst), "the first op of a block carries its charge");
             Assert.That(stream.Ops[0].Operand, Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
@@ -46,6 +46,36 @@ public class InstructionStreamTests
                 "the pushed constant survives in the pool as the pair's operand");
             Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
                 "STOP is not a static-cost op and must run the standard handler");
+        }
+    }
+
+    [Test]
+    public void StreamOp_HotEntryFitsEightBytes()
+        => Assert.That(Unsafe.SizeOf<StreamOp>(), Is.EqualTo(8));
+
+    [TestCase(Instruction.PUSH4, 4, 0x01020304U, false)]
+    [TestCase(Instruction.PUSH5, 5, 0U, true)]
+    [TestCase(Instruction.PUSH31, 31, 0U, true)]
+    [TestCase(Instruction.PUSH32, 32, 0U, true)]
+    public void TryBuild_PushEntry_PreservesWidthAndOperandStorage(
+        Instruction instruction,
+        int immediateBytes,
+        uint expectedOperand,
+        bool usesConstantPool)
+    {
+        byte[] code = new byte[immediateBytes + 2];
+        code[0] = (byte)instruction;
+        for (int i = 0; i < immediateBytes; i++)
+            code[i + 1] = (byte)(i + 1);
+        code[^1] = (byte)Instruction.STOP;
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(immediateBytes + 1));
+            Assert.That(stream.Constants, Has.Length.EqualTo(usesConstantPool ? 1 : 0));
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo(expectedOperand));
         }
     }
 
@@ -90,16 +120,12 @@ public class InstructionStreamTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.BlockGas, Has.Length.EqualTo(3));
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst));
             Assert.That(stream.Ops[1024].Kind, Is.EqualTo(StreamOpKind.BlockFirst));
             Assert.That(stream.Ops[2048].Kind, Is.EqualTo(StreamOpKind.BlockFirst));
-            Assert.That(stream.BlockGas, Is.EqualTo(new ulong[]
-            {
-                1024 * GasCostOf.Base,
-                1024 * GasCostOf.Base,
-                2 * GasCostOf.Base,
-            }));
+            Assert.That(stream.Ops[0].BlockGas, Is.EqualTo(1024 * GasCostOf.Base));
+            Assert.That(stream.Ops[1024].BlockGas, Is.EqualTo(1024 * GasCostOf.Base));
+            Assert.That(stream.Ops[2048].BlockGas, Is.EqualTo(2 * GasCostOf.Base));
         }
     }
 
@@ -117,10 +143,9 @@ public class InstructionStreamTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.BlockGas, Has.Length.EqualTo(2),
+            Assert.That(stream.Ops[0].BlockGas, Is.EqualTo(GasCostOf.JumpDest));
+            Assert.That(stream.Ops[1].BlockGas, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Base),
                 "a fused PUSH2+JUMP lands one past the JUMPDEST, so the ops after it need a separately charged block");
-            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.JumpDest));
-            Assert.That(stream.BlockGas[1], Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Base));
         }
     }
 
@@ -141,13 +166,14 @@ public class InstructionStreamTests
         {
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.StaticJump),
                 "an analysis-validated PUSH2+JUMP pair jumps straight to its target entry");
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5]),
+            Assert.That((ushort)stream.Ops[0].Operand, Is.EqualTo(stream.PcToEntry[5]),
                 "the operand is the pre-resolved target entry index");
+            Assert.That(stream.Ops[0].Operand >> 16, Is.EqualTo(5));
             Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
         }
     }
 
-    [TestCase(false, (int)StreamOpKind.BlockFirst, FusedOpcode.IsZeroStaticJumpI, 2 * GasCostOf.VeryLow + GasCostOf.JumpI)]
+    [TestCase(false, (int)StreamOpKind.FusedBlockFirst, FusedOpcode.IsZeroStaticJumpI, 2 * GasCostOf.VeryLow + GasCostOf.JumpI)]
     [TestCase(true, (int)StreamOpKind.FusedBlockFirst, FusedOpcode.DupIsZeroStaticJumpI, 3 * GasCostOf.VeryLow + GasCostOf.JumpI)]
     public void TryBuild_IsZeroStaticJumpPattern_BecomesSingleEntry(
         bool duplicateCondition,
@@ -173,8 +199,9 @@ public class InstructionStreamTests
             Assert.That(stream.Ops[0].Kind, Is.EqualTo((StreamOpKind)expectedKind));
             Assert.That(stream.Ops[0].Opcode, Is.EqualTo(expectedOpcode));
             Assert.That(stream.Ops[0].Advance, Is.EqualTo(duplicateCondition ? 6 : 5));
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[duplicateCondition ? 7 : 6]));
-            Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(expectedGas));
+            Assert.That((ushort)stream.Ops[0].Operand, Is.EqualTo(stream.PcToEntry[duplicateCondition ? 7 : 6]));
+            Assert.That(stream.Ops[0].Operand >> 16, Is.EqualTo(duplicateCondition ? 7 : 6));
+            Assert.That(stream.Ops[0].BlockGas, Is.EqualTo(expectedGas));
             Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry),
                 "nothing can land inside the fused branch pattern");
         }
@@ -183,7 +210,7 @@ public class InstructionStreamTests
     [TestCase(Instruction.POP, Instruction.POP, FusedOpcode.Pop2, 0UL)]
     [TestCase(Instruction.SWAP2, Instruction.POP, FusedOpcode.SwapPop, 3UL)]
     [TestCase(Instruction.PUSH1, Instruction.DUP1, FusedOpcode.PushDup, 42UL)]
-    [TestCase(Instruction.PUSH1, Instruction.DUP3, FusedOpcode.PushDup, (2UL << 60) | 42UL)]
+    [TestCase(Instruction.PUSH1, Instruction.DUP3, FusedOpcode.PushDup, (2UL << 28) | 42UL)]
     [TestCase(Instruction.DUP3, Instruction.AND, FusedOpcode.DupBinary, ((ulong)(byte)Instruction.AND << 8) | 3UL)]
     [TestCase(Instruction.SWAP1, Instruction.SUB, FusedOpcode.Swap1Binary, (ulong)(byte)Instruction.SUB)]
     public void TryBuild_CommonStackPair_BecomesSingleEntry(
@@ -208,8 +235,7 @@ public class InstructionStreamTests
             Assert.That(stream.Ops[0].Advance, Is.EqualTo(secondPc + 1));
             Assert.That(stream.Ops[0].Operand, Is.EqualTo(expectedOperand));
             Assert.That(stream.PcToEntry[secondPc], Is.EqualTo(InstructionStream.InvalidEntry));
-            Assert.That(
-                stream.BlockGas[stream.Ops[0].BlockIndex],
+            Assert.That(stream.Ops[0].BlockGas,
                 Is.EqualTo(InstructionStream.GetInBlockCost(first) + InstructionStream.GetInBlockCost(second)));
         }
     }
@@ -255,7 +281,7 @@ public class InstructionStreamTests
             Assert.That(stream.Ops[0].Advance, Is.EqualTo(4));
             Assert.That(stream.Ops[0].Operand, Is.EqualTo((42UL << 8) | 43UL));
             Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
-            Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(2 * GasCostOf.VeryLow));
+            Assert.That(stream.Ops[0].BlockGas, Is.EqualTo(2 * GasCostOf.VeryLow));
         }
     }
 
@@ -277,7 +303,7 @@ public class InstructionStreamTests
             Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.SignExtend));
             Assert.That(stream.Ops[0].Advance, Is.EqualTo(3));
             Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
-            Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Low));
+            Assert.That(stream.Ops[0].BlockGas, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Low));
         }
     }
 
@@ -295,8 +321,7 @@ public class InstructionStreamTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
-            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.VeryLow * 2));
+            Assert.That(stream.Ops[0].BlockGas, Is.EqualTo(GasCostOf.VeryLow * 2));
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst));
             Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.Add));
             Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)0x0102));

@@ -1485,10 +1485,10 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal EvmExceptionType PushUInt64ThenDup(ulong operand)
+    internal EvmExceptionType PushUInt64ThenDup(uint operand)
     {
-        int depth = (int)(operand >> 60) + 1;
-        ulong value = operand & 0x0FFF_FFFF_FFFF_FFFF;
+        int depth = (int)(operand >> 28) + 1;
+        ulong value = operand & 0x0FFF_FFFF;
         int head = Head;
         uint headOffset = (uint)head;
         uint newOffset = headOffset + 2;
