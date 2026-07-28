@@ -262,7 +262,7 @@ public class InstructionStreamTests
     }
 
     [Test]
-    public void TryBuild_PushDupBinary_BecomesSingleEntry()
+    public void TryBuild_PushDupBinary_PrefersDupBinaryPair()
     {
         byte[] code =
         [
@@ -276,16 +276,10 @@ public class InstructionStreamTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.Ops, Has.Length.EqualTo(2));
-            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.PushDupBinary));
-            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst));
-            Assert.That(stream.Ops[0].Advance, Is.EqualTo(4));
-            Assert.That(stream.Constants[(int)(uint)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)42));
-            Assert.That((byte)(stream.Ops[0].Operand >> 32), Is.EqualTo(3));
-            Assert.That((Instruction)(byte)(stream.Ops[0].Operand >> 40), Is.EqualTo(Instruction.AND));
-            Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo((byte)Instruction.PUSH1));
+            Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.DupBinary));
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock));
             Assert.That(stream.PcToEntry[3], Is.EqualTo(InstructionStream.InvalidEntry));
-            Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(3 * GasCostOf.VeryLow));
         }
     }
 
@@ -583,7 +577,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static readonly byte[] FullStackDupIsZeroStaticJumpI = BuildFullStackIsZeroJump(duplicateCondition: true);
     private static readonly byte[] NearlyFullStackDupIsZeroStaticJumpI = BuildFullStackIsZeroJump(duplicateCondition: true, fill: 1023);
     private static readonly byte[] FullStackPushDup = BuildFullStackPushDup();
-    private static readonly byte[] FullStackPushDupBinary = BuildFullStackPushDupBinary();
     private static readonly byte[] FullStackSignExtend = BuildFullStackSignExtend();
     private static readonly byte[] FullStackDupBinary = BuildFullStackDupBinary();
     private static readonly byte[] FullStackMaskBranch = BuildFullStackMaskBranch();
@@ -633,18 +626,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         code[1024] = 1;
         code[1025] = (byte)Instruction.DUP1;
         code[1026] = (byte)Instruction.STOP;
-        return code;
-    }
-
-    private static byte[] BuildFullStackPushDupBinary()
-    {
-        byte[] code = new byte[1028];
-        code.AsSpan(0, 1023).Fill((byte)Instruction.PUSH0);
-        code[1023] = (byte)Instruction.JUMPDEST;
-        code[1024] = (byte)Instruction.PUSH1;
-        code[1025] = 1;
-        code[1026] = (byte)Instruction.DUP1;
-        code[1027] = (byte)Instruction.ADD;
         return code;
     }
 
@@ -925,13 +906,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         })
         { TestName = "SwapPopPairUnderflows" };
         yield return new TestCaseData(FullStackPushDup) { TestName = "FullStackPushDupOverflowsOnDup" };
-        yield return new TestCaseData(FullStackPushDupBinary) { TestName = "FullStackPushDupBinaryOverflowsOnPush" };
-        yield return new TestCaseData(new byte[]
-        {
-            (byte)Instruction.PUSH1, 42,
-            (byte)Instruction.DUP3,
-            (byte)Instruction.AND,
-        }) { TestName = "PushDupBinaryUnderflowsOnDup" };
         yield return new TestCaseData(new byte[]
         {
             (byte)Instruction.PUSH1, 10,

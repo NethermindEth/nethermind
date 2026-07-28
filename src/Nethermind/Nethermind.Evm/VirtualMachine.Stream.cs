@@ -184,12 +184,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.Push1Pair:
                             exceptionType = stack.PushUInt8Pair(entry.Operand);
                             break;
-                        case (Instruction)FusedOpcode.PushDupBinary:
-                            opCodeCount++;
-                            exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)(uint)entry.Operand]);
-                            if (exceptionType == EvmExceptionType.None)
-                                exceptionType = EvmInstructions.FusedDupBinaryCore(ref stack, entry.Operand >> 32);
-                            break;
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
                             break;
