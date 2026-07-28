@@ -26,7 +26,7 @@ internal enum StreamOpKind : byte
 
 /// <summary>
 /// Virtual opcodes for stream superinstructions, placed in byte values the EVM does not define
-/// (0x0C..0x0F, 0x21..0x2F, and 0xA5..0xAD gaps). The fingerprint gate keeps new forks (which might define
+/// (0x0C..0x0F, 0x21..0x2F, and 0xA5..0xAF gaps). The fingerprint gate keeps new forks (which might define
 /// one of these) off the stream until reviewed.
 /// </summary>
 internal static class FusedOpcode
@@ -59,6 +59,8 @@ internal static class FusedOpcode
     public const byte SignExtend = 0xAB;
     public const byte DupBinary = 0xAC;
     public const byte Swap1Binary = 0xAD;
+    public const byte DupAndIsZeroStaticJumpI = 0xAE;
+    public const byte MaskIsZeroStaticJumpI = 0xAF;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
@@ -198,6 +200,50 @@ internal sealed class InstructionStream
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
                 openBlockOpcodeCount = 0;
+            }
+            else if (instruction is >= Instruction.DUP1 and <= Instruction.DUP16
+                && pc + 6 < code.Length
+                && (Instruction)code[pc + 1] == Instruction.AND
+                && (Instruction)code[pc + 2] == Instruction.ISZERO
+                && (Instruction)code[pc + 3] == Instruction.PUSH2
+                && (Instruction)code[pc + 6] == Instruction.JUMPI
+                && TryReadStaticJumpTarget(code, pc + 3) is int dupAndDest and >= 0)
+            {
+                blockGas.Add(4 * GasCostOf.VeryLow + GasCostOf.JumpI);
+                ops.Add(new StreamOp(
+                    FusedOpcode.DupAndIsZeroStaticJumpI,
+                    StreamOpKind.FusedBlockFirst,
+                    (ushort)pc,
+                    (ushort)(blockGas.Count - 1),
+                    7,
+                    PackBranchOperand((byte)(instruction - Instruction.DUP1 + 1), dupAndDest)));
+                openBlock = -1;
+                openBlockOpcodeCount = 0;
+                pc += 7;
+                continue;
+            }
+            else if (instruction == Instruction.PUSH1
+                && pc + 9 < code.Length
+                && (Instruction)code[pc + 2] == Instruction.SHL
+                && (Instruction)code[pc + 3] == Instruction.SUB
+                && (Instruction)code[pc + 4] == Instruction.AND
+                && (Instruction)code[pc + 5] == Instruction.ISZERO
+                && (Instruction)code[pc + 6] == Instruction.PUSH2
+                && (Instruction)code[pc + 9] == Instruction.JUMPI
+                && TryReadStaticJumpTarget(code, pc + 6) is int maskDest and >= 0)
+            {
+                blockGas.Add(6 * GasCostOf.VeryLow + GasCostOf.JumpI);
+                ops.Add(new StreamOp(
+                    FusedOpcode.MaskIsZeroStaticJumpI,
+                    StreamOpKind.FusedBlockFirst,
+                    (ushort)pc,
+                    (ushort)(blockGas.Count - 1),
+                    10,
+                    PackBranchOperand(code[pc + 1], maskDest)));
+                openBlock = -1;
+                openBlockOpcodeCount = 0;
+                pc += 10;
+                continue;
             }
             else if (instruction == Instruction.DUP1
                 && pc + 5 < code.Length
@@ -376,6 +422,20 @@ internal sealed class InstructionStream
                     return null;
                 ops[i] = new StreamOp(op.Opcode, op.Kind, op.Pc, op.BlockIndex, op.Advance, targetEntry);
             }
+            else if (op.Opcode is FusedOpcode.DupAndIsZeroStaticJumpI or FusedOpcode.MaskIsZeroStaticJumpI)
+            {
+                int targetPc = (int)(uint)op.Operand;
+                ushort targetEntry = pcToEntry[targetPc];
+                if (targetEntry == InvalidEntry)
+                    return null;
+                ops[i] = new StreamOp(
+                    op.Opcode,
+                    op.Kind,
+                    op.Pc,
+                    op.BlockIndex,
+                    op.Advance,
+                    PackBranchOperand((byte)(op.Operand >> 32), targetEntry));
+            }
         }
 
         return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry, anyBitwiseFusion);
@@ -496,6 +556,9 @@ internal sealed class InstructionStream
             or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD
             or Instruction.LT or Instruction.GT or Instruction.SLT or Instruction.SGT
             or Instruction.EQ or Instruction.AND or Instruction.OR or Instruction.XOR;
+
+    private static ulong PackBranchOperand(byte value, int target) =>
+        ((ulong)value << 32) | (uint)target;
 
     private static ulong ReadImmediate(ReadOnlySpan<byte> immediates)
     {

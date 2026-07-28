@@ -180,6 +180,53 @@ public class InstructionStreamTests
         }
     }
 
+    [TestCase(false, FusedOpcode.DupAndIsZeroStaticJumpI, 7, 4 * GasCostOf.VeryLow + GasCostOf.JumpI)]
+    [TestCase(true, FusedOpcode.MaskIsZeroStaticJumpI, 10, 6 * GasCostOf.VeryLow + GasCostOf.JumpI)]
+    public void TryBuild_AbiCheckStaticJumpPattern_BecomesSingleEntry(
+        bool maskPattern,
+        byte expectedOpcode,
+        int expectedAdvance,
+        ulong expectedGas)
+    {
+        byte[] code = maskPattern
+            ?
+            [
+                (byte)Instruction.PUSH1, 8,
+                (byte)Instruction.SHL,
+                (byte)Instruction.SUB,
+                (byte)Instruction.AND,
+                (byte)Instruction.ISZERO,
+                (byte)Instruction.PUSH2, 0, 11,
+                (byte)Instruction.JUMPI,
+                (byte)Instruction.STOP,
+                (byte)Instruction.JUMPDEST,
+            ]
+            :
+            [
+                (byte)Instruction.DUP3,
+                (byte)Instruction.AND,
+                (byte)Instruction.ISZERO,
+                (byte)Instruction.PUSH2, 0, 8,
+                (byte)Instruction.JUMPI,
+                (byte)Instruction.STOP,
+                (byte)Instruction.JUMPDEST,
+            ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+        int targetPc = maskPattern ? 11 : 8;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst));
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(expectedOpcode));
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(expectedAdvance));
+            Assert.That((byte)(stream.Ops[0].Operand >> 32), Is.EqualTo(maskPattern ? 8 : 3));
+            Assert.That((uint)stream.Ops[0].Operand, Is.EqualTo(stream.PcToEntry[targetPc]));
+            Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(expectedGas));
+            Assert.That(stream.PcToEntry[maskPattern ? 2 : 1], Is.EqualTo(InstructionStream.InvalidEntry));
+        }
+    }
+
     [TestCase(Instruction.POP, Instruction.POP, FusedOpcode.Pop2, 0UL)]
     [TestCase(Instruction.SWAP2, Instruction.POP, FusedOpcode.SwapPop, 3UL)]
     [TestCase(Instruction.PUSH1, Instruction.DUP1, FusedOpcode.PushDup, 42UL)]
@@ -532,6 +579,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static readonly byte[] FullStackPushDup = BuildFullStackPushDup();
     private static readonly byte[] FullStackSignExtend = BuildFullStackSignExtend();
     private static readonly byte[] FullStackDupBinary = BuildFullStackDupBinary();
+    private static readonly byte[] FullStackMaskBranch = BuildFullStackMaskBranch();
 
     private static byte[] BuildFullStackJump(Instruction jump)
     {
@@ -599,6 +647,28 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         code.AsSpan(513, 511).Fill((byte)Instruction.PUSH0);
         code[1024] = (byte)Instruction.DUP1;
         code[1025] = (byte)Instruction.ADD;
+        return code;
+    }
+
+    private static byte[] BuildFullStackMaskBranch()
+    {
+        const int fill = 1024;
+        byte[] code = new byte[fill + 12];
+        code.AsSpan(0, fill).Fill((byte)Instruction.PUSH0);
+        int pc = fill;
+        code[pc++] = (byte)Instruction.PUSH1;
+        code[pc++] = 8;
+        code[pc++] = (byte)Instruction.SHL;
+        code[pc++] = (byte)Instruction.SUB;
+        code[pc++] = (byte)Instruction.AND;
+        code[pc++] = (byte)Instruction.ISZERO;
+        code[pc++] = (byte)Instruction.PUSH2;
+        int dest = fill + 11;
+        code[pc++] = (byte)(dest >> 8);
+        code[pc++] = (byte)dest;
+        code[pc++] = (byte)Instruction.JUMPI;
+        code[pc] = (byte)Instruction.STOP;
+        code[dest] = (byte)Instruction.JUMPDEST;
         return code;
     }
 
@@ -693,6 +763,66 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(FullStackIsZeroStaticJumpI) { TestName = "FullStackIsZeroStaticJumpIOverflowsOnPush" };
         yield return new TestCaseData(FullStackDupIsZeroStaticJumpI) { TestName = "FullStackDupIsZeroStaticJumpIOverflowsOnDup" };
         yield return new TestCaseData(NearlyFullStackDupIsZeroStaticJumpI) { TestName = "NearlyFullStackDupIsZeroStaticJumpIOverflowsOnPush" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0xF0,
+            (byte)Instruction.PUSH1, 0x0F,
+            (byte)Instruction.DUP2,
+            (byte)Instruction.AND,
+            (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH2, 0x00, 0x0C,
+            (byte)Instruction.JUMPI,
+            (byte)Instruction.STOP,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "DupAndIsZeroStaticJumpITaken" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0xF0,
+            (byte)Instruction.PUSH1, 0xF0,
+            (byte)Instruction.DUP2,
+            (byte)Instruction.AND,
+            (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH2, 0x00, 0x0C,
+            (byte)Instruction.JUMPI,
+            (byte)Instruction.STOP,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "DupAndIsZeroStaticJumpINotTaken" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.PUSH1, 0x01,
+            (byte)Instruction.PUSH1, 0x08,
+            (byte)Instruction.SHL,
+            (byte)Instruction.SUB,
+            (byte)Instruction.AND,
+            (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH2, 0x00, 0x0F,
+            (byte)Instruction.JUMPI,
+            (byte)Instruction.STOP,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "MaskIsZeroStaticJumpITaken" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x08,
+            (byte)Instruction.SHL,
+            (byte)Instruction.SUB,
+            (byte)Instruction.AND,
+            (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH2, 0x00, 0x0B,
+            (byte)Instruction.JUMPI,
+            (byte)Instruction.STOP,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "MaskIsZeroStaticJumpIUnderflows" };
+        yield return new TestCaseData(FullStackMaskBranch) { TestName = "FullStackMaskIsZeroStaticJumpIOverflowsOnPush" };
         yield return new TestCaseData(new byte[]
         {
             (byte)Instruction.PUSH1, 0x07,

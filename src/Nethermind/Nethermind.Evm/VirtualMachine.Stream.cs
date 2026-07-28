@@ -354,6 +354,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             }
 
                             break;
+                        case (Instruction)FusedOpcode.DupAndIsZeroStaticJumpI:
+                            opCodeCount += 3;
+                            if (EvmInstructions.TestDupAndIsZero(
+                                ref stack,
+                                (byte)(entry.Operand >> 32),
+                                out exceptionType))
+                            {
+                                entryIndex = (int)(uint)entry.Operand - 1;
+                            }
+
+                            break;
+                        case (Instruction)FusedOpcode.MaskIsZeroStaticJumpI:
+                            opCodeCount += 5;
+                            if (EvmInstructions.TestMaskIsZero(
+                                ref stack,
+                                (byte)(entry.Operand >> 32),
+                                out exceptionType))
+                            {
+                                entryIndex = (int)(uint)entry.Operand - 1;
+                            }
+
+                            break;
                         default:
                             // Unreachable: every in-block opcode has a case above. Fail closed rather than
                             // mis-dispatch a precharged op and corrupt gas.
