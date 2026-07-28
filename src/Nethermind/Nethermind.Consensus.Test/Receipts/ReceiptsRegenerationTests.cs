@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
@@ -17,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -143,6 +146,42 @@ public class ReceiptsRegenerationTests
         Assert.That(chain.Container.Resolve<IReceiptFinder>(), Is.InstanceOf<RegeneratingReceiptFinder>());
     }
 
+    // End to end through the production graph: the body is never persisted, yet a query still answers with the real
+    // receipts, and the transaction index - which is what finds the block to regenerate from - survives.
+    [Test]
+    public async Task Deriving_from_state_serves_receipts_that_were_never_persisted()
+    {
+        using RecoverReceiptsBlockchain chain = await RecoverReceiptsBlockchain.Create();
+
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
+        Transaction transfer = Build.A.Transaction
+            .WithChainId(chain.SpecProvider.ChainId)
+            .WithNonce(nonce)
+            .WithTo(TestItem.AddressD)
+            .WithValue(1)
+            .WithGasPrice(1)
+            .WithGasLimit(GasCostOf.Transaction)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        Block block = await chain.AddBlock(transfer);
+
+        IDb bodies = chain.Container.Resolve<IColumnsDb<ReceiptsColumns>>().GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] bodyKey = new byte[40];
+        BinaryPrimitives.WriteUInt64BigEndian(bodyKey, block.Number);
+        block.Hash!.Bytes.CopyTo(bodyKey.AsSpan(8));
+
+        TxReceipt[] served = chain.Container.Resolve<IReceiptFinder>().Get(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bodies.KeyExists(bodyKey), Is.False, "the body must never be persisted");
+            Assert.That(served, Has.Length.EqualTo(1));
+            Assert.That(ReceiptsRootCalculator.Instance.GetReceiptsRoot(served, chain.SpecProvider.GetSpec(block.Header), block.Header.ReceiptsRoot),
+                Is.EqualTo(block.Header.ReceiptsRoot));
+            Assert.That(chain.ReceiptStorage.FindBlockHash(transfer.Hash!), Is.EqualTo(block.Hash));
+        }
+    }
+
     private Task<Block> AddBlock(Transaction[] transactions) => _chain.AddBlock(transactions);
 
     private Transaction[] BuildTransactions(Scenario scenario)
@@ -217,6 +256,6 @@ public class ReceiptsRegenerationTests
         }
 
         protected override IEnumerable<IConfig> CreateConfigs() =>
-            [.. base.CreateConfigs(), new ReceiptConfig { RecoverReceiptsFromState = true }];
+            [.. base.CreateConfigs(), new ReceiptConfig { DeriveFromState = true }];
     }
 }

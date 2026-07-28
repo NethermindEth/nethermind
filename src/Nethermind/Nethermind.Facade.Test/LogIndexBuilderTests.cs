@@ -157,7 +157,7 @@ public class LogIndexBuilderTests
     }
 
     private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null) => new LogIndexBuilder(
-            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _receiptStorage, _logManager
         ).AddTo(_testDisposables);
 
     [Test]

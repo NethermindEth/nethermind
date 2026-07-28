@@ -71,7 +71,7 @@ namespace Nethermind.Synchronization
             IWorldStateManager worldStateManager,
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
-            IReceiptFinder receiptFinder,
+            [KeyFilter(FullInfoReceiptFinder.StoredOnlyKey)] IReceiptFinder receiptFinder,
             IBlockAccessListStore blockAccessListStore,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,

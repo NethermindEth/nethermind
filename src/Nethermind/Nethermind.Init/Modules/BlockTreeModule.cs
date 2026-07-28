@@ -42,7 +42,9 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
                 new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore)
             )
-            .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
+            .AddSingleton<FullInfoReceiptFinder>()
+            .Bind<IReceiptFinder, FullInfoReceiptFinder>()
+            .AddKeyedSingleton<IReceiptFinder>(FullInfoReceiptFinder.StoredOnlyKey, ctx => ctx.Resolve<FullInfoReceiptFinder>())
             .AddSingleton<IHistoryPruner, HistoryPruner>()
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()

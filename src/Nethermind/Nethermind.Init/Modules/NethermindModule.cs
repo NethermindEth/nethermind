@@ -102,7 +102,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
 
-        if (configProvider.GetConfig<IReceiptConfig>().RecoverReceiptsFromState)
+        if (configProvider.GetConfig<IReceiptConfig>().DeriveFromState)
         {
             builder.AddModule(new ReceiptRegenerationModule());
         }

@@ -475,6 +475,53 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             "the migration owns the pointer under parallel out-of-order inserts, so only the normal Insert path may advance it");
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_skips_bodies_but_keeps_the_transaction_index()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        (Block block, TxReceipt[] receipts) = InsertBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BodyIsPersisted(block), Is.False);
+            Assert.That(_storage.FindBlockHash(receipts[0].TxHash!), Is.EqualTo(block.Hash),
+                "without the transaction index nothing could find the block to regenerate from");
+        }
+    }
+
+    // Pre-EIP-658 receipts carry a post-transaction state root that re-execution cannot reproduce, so they stay
+    // stored even when deriving - otherwise that range would be permanently unservable.
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    public void Deriving_from_state_still_stores_pre_eip658_bodies(bool eip658Enabled, bool expectPersisted)
+    {
+        _specProvider.GenesisSpec = eip658Enabled ? Byzantium.Instance : SpuriousDragon.Instance;
+        _specProvider.NextForkSpec = _specProvider.GenesisSpec;
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        (Block block, _) = InsertBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.EqualTo(expectPersisted));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Storing_bodies_is_the_default()
+    {
+        (Block block, _) = InsertBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    // A fresh instance over the same database has an empty receipts cache, so this reads through to the column.
+    private bool BodyIsPersisted(Block block)
+    {
+        CreateStorage();
+        return _storage.HasBlock(block.Number, block.Hash!);
+    }
+
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null)
     {
         block ??= Build.A.Block

@@ -546,7 +546,7 @@ namespace Nethermind.Blockchain.Receipts
 
             Hash256 blockHash = block.Hash!;
             _receiptsCache.Set(blockHash, txReceipts);
-            _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
+            if (StoresBodies(spec)) _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
 
             if (block.Number < MigratedBlockNumber)
             {
@@ -568,6 +568,12 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         [SkipLocalsInit]
+        /// <summary>
+        /// Whether this block's receipt bodies are written to disk. Pre-EIP-658 receipts carry a post-transaction
+        /// state root that re-execution cannot reproduce, so they are stored even when deriving from state.
+        /// </summary>
+        private bool StoresBodies(IReleaseSpec spec) => !_receiptConfig.DeriveFromState || !spec.IsEip658Enabled;
+
         private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber)
         {
             txReceipts ??= [];
@@ -585,11 +591,14 @@ namespace Nethermind.Blockchain.Receipts
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(txReceipts, behaviors);
-            Span<byte> blockNumPrefixed = stackalloc byte[40];
-            GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
+            if (StoresBodies(spec))
+            {
+                using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(txReceipts, behaviors);
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-            _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+                _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+            }
 
             _receiptsCache.Set(block.Hash, txReceipts);
 
