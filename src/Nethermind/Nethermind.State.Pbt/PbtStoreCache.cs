@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
@@ -31,19 +32,19 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
 
     /// <summary>Returns a caller-owned lease when <paramref name="stem"/> is cached for <paramref name="hash"/>.</summary>
     public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash) =>
-        _leafBlobs[(int)PbtPartitions.Of(stem)].Get(stem, hash);
+        _leafBlobs[(int)PbtPartitions.Of(stem)].Get(stem, stem.Bytes[0], hash);
 
     /// <summary>Retains a cache-owned lease on <paramref name="blob"/> for <paramref name="stem"/> and <paramref name="hash"/>.</summary>
     public void SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory blob) =>
-        _leafBlobs[(int)PbtPartitions.Of(stem)].Set(stem, hash, blob);
+        _leafBlobs[(int)PbtPartitions.Of(stem)].Set(stem, stem.Bytes[0], hash, blob);
 
     /// <summary>Returns a caller-owned lease when <paramref name="key"/> is cached for <paramref name="hash"/>.</summary>
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash) =>
-        _trieNodes[(int)PbtPartitions.Of(key)].Get(key, hash);
+        _trieNodes[(int)PbtPartitions.Of(key)].Get(key, key.Path.Bytes[0], hash);
 
     /// <summary>Retains a cache-owned lease on <paramref name="node"/> for <paramref name="key"/> and <paramref name="hash"/>.</summary>
     public void SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory node) =>
-        _trieNodes[(int)PbtPartitions.Of(key)].Set(key, hash, node);
+        _trieNodes[(int)PbtPartitions.Of(key)].Set(key, key.Path.Bytes[0], hash, node);
 
     /// <summary>Releases every cache-owned lease.</summary>
     public void Dispose()
@@ -55,81 +56,123 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
         }
     }
 
-    private sealed class Bucket<TKey>(ulong budget) : IDisposable where TKey : notnull
+    /// <remarks>
+    /// Matches the flat-state trie cache: the key's first path byte selects one of 256 shards, its
+    /// hash code maps directly to an array bucket, collisions replace, and over-budget eviction clears
+    /// whole shards in round-robin order. Shard locks additionally protect ref-counted lease transfer.
+    /// </remarks>
+    private sealed class Bucket<TKey> : IDisposable where TKey : notnull
     {
-        private readonly object _lock = new();
-        private readonly Dictionary<TKey, LinkedListNode<Entry>> _entries = [];
-        private readonly LinkedList<Entry> _recency = [];
-        private ulong _retainedBytes;
-        private bool _isDisposed;
+        private const int EstimatedSizePerEntry = 700;
+        private const double UtilRatio = 0.25;
+        private const int ShardCount = 256;
 
-        public RefCountingMemory? Get(TKey key, in ValueHash256 hash)
+        private readonly Entry?[][] _cacheShards;
+        private readonly Lock[] _shardLocks = new Lock[ShardCount];
+        private readonly long[] _shardMemoryUsages = new long[ShardCount];
+        private readonly Lock _pruneLock = new();
+        private readonly long _maxCacheMemoryThreshold;
+        private readonly int _bucketMask;
+
+        private long _currentMemoryUsage;
+        private int _nextShardToClear;
+        private int _isDisposed;
+
+        public Bucket(ulong budget)
         {
-            lock (_lock)
-            {
-                if (_isDisposed || !_entries.TryGetValue(key, out LinkedListNode<Entry>? node) || node.Value.Hash != hash)
-                    return null;
+            _maxCacheMemoryThreshold = budget > long.MaxValue ? long.MaxValue : (long)budget;
+            long totalEntryCount = _maxCacheMemoryThreshold / EstimatedSizePerEntry;
+            long targetBucketSize = (long)((totalEntryCount / UtilRatio) / ShardCount);
+            _bucketMask = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(16, targetBucketSize)) - 1;
 
-                node.Value.Memory.AcquireLease();
-                _recency.Remove(node);
-                _recency.AddFirst(node);
-                return node.Value.Memory;
+            _cacheShards = new Entry[ShardCount][];
+            for (int i = 0; i < ShardCount; i++)
+            {
+                _cacheShards[i] = new Entry[_bucketMask + 1];
+                _shardLocks[i] = new Lock();
             }
         }
 
-        public void Set(TKey key, in ValueHash256 hash, RefCountingMemory memory)
+        public RefCountingMemory? Get(TKey key, int shardIdx, in ValueHash256 hash)
         {
-            ulong size = (ulong)memory.GetSpan().Length;
-            if (budget == 0 || size > budget) return;
+            int bucketIdx = (key.GetHashCode() & int.MaxValue) & _bucketMask;
+            lock (_shardLocks[shardIdx])
+            {
+                Entry? entry = _cacheShards[shardIdx][bucketIdx];
+                if (Volatile.Read(ref _isDisposed) != 0 || entry is null || !entry.Key.Equals(key) || entry.Hash != hash)
+                    return null;
+
+                entry.Memory.AcquireLease();
+                return entry.Memory;
+            }
+        }
+
+        public void Set(TKey key, int shardIdx, in ValueHash256 hash, RefCountingMemory memory)
+        {
+            int size = memory.GetSpan().Length;
+            if (_maxCacheMemoryThreshold == 0 || size > _maxCacheMemoryThreshold || Volatile.Read(ref _isDisposed) != 0) return;
 
             memory.AcquireLease();
-            lock (_lock)
+            int bucketIdx = (key.GetHashCode() & int.MaxValue) & _bucketMask;
+            lock (_shardLocks[shardIdx])
             {
-                if (_isDisposed)
+                if (Volatile.Read(ref _isDisposed) != 0)
                 {
                     ((IDisposable)memory).Dispose();
                     return;
                 }
 
-                if (_entries.TryGetValue(key, out LinkedListNode<Entry>? old)) Remove(old);
+                Entry? old = _cacheShards[shardIdx][bucketIdx];
+                _cacheShards[shardIdx][bucketIdx] = new Entry(key, hash, memory, size);
 
-                LinkedListNode<Entry> node = new(new Entry(key, hash, memory, size));
-                _recency.AddFirst(node);
-                _entries.Add(key, node);
-                _retainedBytes += size;
+                int previousSize = old?.Size ?? 0;
+                int delta = size - previousSize;
+                _shardMemoryUsages[shardIdx] += delta;
+                Interlocked.Add(ref _currentMemoryUsage, delta);
+                ((IDisposable?)old?.Memory)?.Dispose();
+            }
 
-                while (_retainedBytes > budget) Remove(_recency.Last!);
+            Prune();
+        }
+
+        private void Prune()
+        {
+            if (Volatile.Read(ref _currentMemoryUsage) <= _maxCacheMemoryThreshold) return;
+
+            lock (_pruneLock)
+            {
+                while (Volatile.Read(ref _currentMemoryUsage) > _maxCacheMemoryThreshold)
+                {
+                    ClearShard(_nextShardToClear);
+                    _nextShardToClear = (_nextShardToClear + 1) & 255;
+                }
             }
         }
 
         public void Dispose()
         {
-            lock (_lock)
+            lock (_pruneLock)
             {
-                if (_isDisposed) return;
-                _isDisposed = true;
-
-                LinkedListNode<Entry>? node = _recency.First;
-                while (node is not null)
-                {
-                    ((IDisposable)node.Value.Memory).Dispose();
-                    node = node.Next;
-                }
-
-                _entries.Clear();
-                _recency.Clear();
-                _retainedBytes = 0;
+                if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
+                for (int i = 0; i < ShardCount; i++) ClearShard(i);
+                _nextShardToClear = 0;
             }
         }
 
-        private void Remove(LinkedListNode<Entry> node)
+        private void ClearShard(int shardIdx)
         {
-            _entries.Remove(node.Value.Key);
-            _recency.Remove(node);
-            _retainedBytes -= node.Value.Size;
-            ((IDisposable)node.Value.Memory).Dispose();
+            lock (_shardLocks[shardIdx])
+            {
+                Entry?[] shard = _cacheShards[shardIdx];
+                for (int i = 0; i < shard.Length; i++) ((IDisposable?)shard[i]?.Memory)?.Dispose();
+                Array.Clear(shard);
+
+                long freedMemory = _shardMemoryUsages[shardIdx];
+                _shardMemoryUsages[shardIdx] = 0;
+                Interlocked.Add(ref _currentMemoryUsage, -freedMemory);
+            }
         }
 
-        private sealed record Entry(TKey Key, ValueHash256 Hash, RefCountingMemory Memory, ulong Size);
+        private sealed record Entry(TKey Key, ValueHash256 Hash, RefCountingMemory Memory, int Size);
     }
 }
