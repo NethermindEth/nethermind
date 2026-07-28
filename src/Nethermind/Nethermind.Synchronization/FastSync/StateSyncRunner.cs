@@ -20,6 +20,7 @@ namespace Nethermind.Synchronization.FastSync;
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
     IBalHealing balHealing,
+    BalFetcher balFetcher,
     IStateSyncPivot stateSyncPivot,
     TreeSync treeSync,
     SimpleDispatcher<StateSyncBatch> stateSyncDispatcher,
@@ -119,6 +120,12 @@ public class StateSyncRunner(
                     }
                     await Task.Delay(1000, token);
                     continue;
+                }
+
+                if (!await balFetcher.EnsureRange(currentPivot, nextPivot, token))
+                {
+                    if (_logger.IsInfo) _logger.Info($"BAL healing failed - could not fetch BALs for blocks {currentPivot.Number + 1}..{nextPivot.Number}.");
+                    return false;
                 }
 
                 root = balHealing.ApplyRange(root, currentPivot, nextPivot, token);
