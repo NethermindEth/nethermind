@@ -46,3 +46,10 @@ jobs:
       - name: Build ${{ matrix.project }}
         working-directory: tools
         run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}
+
+      # Evm is the only tool solution with a test project; nethermind-tests.yml cannot host it
+      # because its matrix is hardcoded to src/Nethermind.
+      - name: Test ${{ matrix.project }}
+        if: matrix.project == 'Evm/Evm.slnx'
+        working-directory: tools
+        run: dotnet test --project Evm.Test/Evm.Test.csproj -c ${{ matrix.config }}
