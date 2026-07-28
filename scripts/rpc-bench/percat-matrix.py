@@ -90,13 +90,17 @@ def main():
             row.append(f"{o['tput']:.0f} / {o['checks']:.0f}% / {o['p90']:.0f} / {o['p99']:.0f}" if o else "-")
         print("| " + " | ".join(row) + " |")
 
-    # 2) ISOLATED per-scenario p99 (per-call truth)
+    # 2) ISOLATED per-scenario, each run ALONE at the full sweep rps.
+    # achieved r/s << target rps => that scenario's own throughput ceiling.
     if scen_iso:
-        print("\n## ISOLATED - per-scenario p99 ms (each scenario run ALONE)\n")
+        print("\n## ISOLATED - each scenario ALONE at the sweep rps: achieved r/s / p99 ms (achieved << target = that scenario's ceiling)\n")
         print("| scenario | " + " | ".join(f"{c[:4]}@{r}" for c, r in cols) + " |")
         print("|" + "---|" * (len(cols) + 1))
         for s in scen_iso:
-            row = [s] + [f"{iso[(s,c,r)]['p99']:.0f}" if (s, c, r) in iso and 'p99' in iso[(s, c, r)] else "-" for c, r in cols]
+            row = [s]
+            for c, r in cols:
+                o = iso.get((s, c, r))
+                row.append(f"{o['tput']:.0f}/{o['p99']:.0f}" if o and 'p99' in o and 'tput' in o else "-")
             print("| " + " | ".join(row) + " |")
 
     # 3) MIXED per-scenario p99 (contended)
@@ -107,20 +111,6 @@ def main():
         for s in scen_mix:
             row = [s] + [f"{mix[(c,r)][1][s]['p99']:.0f}" if (c, r) in mix and s in mix[(c, r)][1] else "-" for c, r in cols]
             print("| " + " | ".join(row) + " |")
-
-    # 4) DELTA mixed/isolated (contention amplification)
-    if scen_iso and scen_mix:
-        print("\n## DELTA - mixed p99 / isolated p99 (contention amplification; >1x = queued under load)\n")
-        print("| scenario | " + " | ".join(f"{c[:4]}@{r}" for c, r in cols) + " |")
-        print("|" + "---|" * (len(cols) + 1))
-        for s in scen_iso:
-            row = [s]
-            for c, r in cols:
-                i = iso.get((s, c, r), {}).get("p99")
-                m = mix.get((c, r), (None, {}))[1].get(s, {}).get("p99")
-                row.append(f"{m/i:.1f}x" if i and m and i > 0 else "-")
-            print("| " + " | ".join(row) + " |")
-
 
 if __name__ == "__main__":
     main()
