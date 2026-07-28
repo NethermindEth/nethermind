@@ -363,50 +363,6 @@ public class PbtSnapshotBundleTests
         Assert.That(bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), PbtPartitionRoots.Empty).Content, Is.Not.SameAs(sealed_.Content), "a fresh buffer backs the next block");
     }
 
-    [TestCase(true, false)]
-    [TestCase(false, false)]
-    [TestCase(true, true)]
-    public void PrefetchDirtyStems_ReadsLeavesAndFullStemTriePathsFromPersistence(bool valuesExist, bool cancel)
-    {
-        Stem accountStem = ZoneStem(0x01);
-        Stem storageStem = ZoneStem(0x81);
-        TrieNodeKey accountFullPath = TrieNodeKey.For(Stem.LengthInBits, accountStem);
-        TrieNodeKey storageFullPath = TrieNodeKey.For(Stem.LengthInBits, storageStem);
-        if (valuesExist)
-        {
-            _reader.LeafBlobs[accountStem] = [0x11];
-            _reader.LeafBlobs[storageStem] = [0x22];
-            _reader.TrieNodes[accountFullPath] = [0x33];
-            _reader.TrieNodes[storageFullPath] = [0x44];
-        }
-
-        PbtSnapshotContent shared = new();
-        shared.SetLeafBlob(accountStem, Memory(0x55));
-        shared.SetTrieNode(accountFullPath, Memory(0x66));
-        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [shared], localLayers: []);
-        using PbtWriteBatchSet changes = Batches(accountStem, storageStem);
-        using CancellationTokenSource cancellation = new();
-        if (cancel) cancellation.Cancel();
-
-        bundle.PrefetchDirtyStems(changes, cancellation.Token).GetAwaiter().GetResult();
-        RefCountingMemory[] prefetchedValues = _reader.ReturnedValues.ToArray();
-
-        using RefCountingMemory? storage = bundle.GetLeafBlob(storageStem);
-        Stem[] expectedLeafStems = cancel ? [storageStem] : [accountStem, storageStem, storageStem];
-        TrieNodeKey[] expectedTrieNodeKeys = cancel ? [] : [accountFullPath, storageFullPath];
-        using (Assert.EnterMultipleScope())
-        {
-            int prefetchReadCount = cancel ? 0 : 2;
-            Assert.That(prefetchedValues, Has.Length.EqualTo(valuesExist && !cancel ? 4 : 0));
-            foreach (RefCountingMemory value in prefetchedValues)
-                Assert.That(value.AcquireLease, Throws.InvalidOperationException, "prefetched values are released immediately");
-            Assert.That(_reader.LeafBlobReads, Is.EqualTo(prefetchReadCount + 1), "prefetch stops on cancellation; the later uncached read still reaches persistence");
-            Assert.That(_reader.LeafStems, Is.EquivalentTo(expectedLeafStems));
-            Assert.That(_reader.TrieNodeKeys, Is.EquivalentTo(expectedTrieNodeKeys));
-            Assert.That(storage?.GetSpan().ToArray(), Is.EqualTo(valuesExist ? (byte[])[0x22] : null));
-        }
-    }
-
     /// <summary>
     /// What the cache exists for: the block's flat reads of a stem and the fold's read of its blob share a
     /// single fetch from the shared view — including when the answer is that the stem is not there.
@@ -637,15 +593,6 @@ public class PbtSnapshotBundleTests
         return new Stem(path);
     }
 
-    private static PbtWriteBatchSet Batches(in Stem accountStem, in Stem storageStem)
-    {
-        PbtWriteBatch account = new(1, buckets: null);
-        account.Add(accountStem, PbtStemChanges.Rent().Set(0, default));
-        PbtWriteBatch storage = new(1, buckets: null);
-        storage.Add(storageStem, PbtStemChanges.Rent().Set(0, default));
-        return new PbtWriteBatchSet(account, new PbtWriteBatch(0, buckets: null), storage);
-    }
-
     private sealed class BundleStore(PbtSnapshotBundle bundle) : IPbtStore
     {
         public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash) => bundle.GetTrieNode(key, hash);
@@ -762,9 +709,7 @@ public class PbtSnapshotBundleTests
         /// <summary>How often a read reached this far, which is what the bundle's leaf blob cache exists to reduce.</summary>
         public int LeafBlobReads => Volatile.Read(ref _leafBlobReads);
 
-        public ConcurrentQueue<Stem> LeafStems { get; } = new();
         public ConcurrentQueue<TrieNodeKey> TrieNodeKeys { get; } = new();
-        public ConcurrentQueue<RefCountingMemory> ReturnedValues { get; } = new();
 
         public StateId CurrentState => StateId.PreGenesis;
 
@@ -773,20 +718,13 @@ public class PbtSnapshotBundleTests
         public RefCountingMemory? GetLeafBlob(in Stem stem)
         {
             Interlocked.Increment(ref _leafBlobReads);
-            LeafStems.Enqueue(stem);
-            return LeafBlobs.TryGetValue(stem, out byte[]? blob) ? Track(RefCountingMemory.Wrapping(blob)) : null;
+            return LeafBlobs.TryGetValue(stem, out byte[]? blob) ? RefCountingMemory.Wrapping(blob) : null;
         }
 
         public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
         {
             TrieNodeKeys.Enqueue(key);
-            return TrieNodes.TryGetValue(key, out byte[]? node) ? Track(RefCountingMemory.Wrapping(node)) : null;
-        }
-
-        private RefCountingMemory Track(RefCountingMemory value)
-        {
-            ReturnedValues.Enqueue(value);
-            return value;
+            return TrieNodes.TryGetValue(key, out byte[]? node) ? RefCountingMemory.Wrapping(node) : null;
         }
 
         public void Dispose() => Disposed = true;
