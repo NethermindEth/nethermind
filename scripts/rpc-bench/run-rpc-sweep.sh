@@ -56,6 +56,7 @@ run_cell() {
 
 mkdir -p "$OUT_DIR" "$STATE_ROOT"
 declare -a SUMMARIES=()
+declare -a LABELS=()
 node_issue=0
 
 # Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
@@ -80,6 +81,7 @@ for entry in $CLIENTS; do
        "$here/start-node.sh"; then
     echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
   fi
+  LABELS+=("$label")
 
   for rps in $RPS_LIST; do
     # ISOLATED: each scenario alone
@@ -120,5 +122,22 @@ if [[ "${#SUMMARIES[@]}" -gt 0 ]]; then
   python3 "$here/percat-matrix.py" "${SUMMARIES[@]}" >> "$sink" || echo "aggregation failed" >> "$sink"
 else
   echo "No cell summaries produced — every client failed to start." >> "$sink"; exit 1
+fi
+
+# Cross-client response parity per rps (deep_check diff over the mixed workload — the "compare" half of a
+# json-bench comparison, so the sweep gives latency AND correctness in one job).
+if [[ "${#LABELS[@]}" -ge 2 ]]; then
+  { echo; echo "## Cross-client parity (mixed workload responses)"; } >> "$sink"
+  for rps in $RPS_LIST; do
+    dc=()
+    for lbl in "${LABELS[@]}"; do
+      f="$OUT_DIR/mix/${lbl}/${rps}/deep-check-${lbl}.jsonl"
+      [[ -f "$f" ]] && dc+=("${lbl}=$f")
+    done
+    if [[ "${#dc[@]}" -ge 2 ]]; then
+      v="$(python3 "$here/deep-check-compare.py" "${dc[@]}" 2>&1 | grep -iE "requests compared|DIVERGENT|MALFORMED" | tr '\n' ' ' | tr -s ' ')"
+      echo "- rps ${rps}: ${v:-<no parity output>}" >> "$sink"
+    fi
+  done
 fi
 [[ "$node_issue" -eq 1 ]] && { echo "::error::node health issue (Exception / invalid block) in a sweep node log — failing"; exit 1; }
