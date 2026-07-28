@@ -488,7 +488,7 @@ namespace Nethermind.Xdc
         private bool IsSynced() => !_blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing && _blockTree.Head is not null;
 
         /// <summary>
-        /// True when this node on a freshly bootstrapped chain where
+        /// True when this node is on a freshly bootstrapped chain where
         /// <see cref="IsSynced"/> is false only because genesis counts as syncing.
         /// </summary>
         private bool IsBootstrap()
