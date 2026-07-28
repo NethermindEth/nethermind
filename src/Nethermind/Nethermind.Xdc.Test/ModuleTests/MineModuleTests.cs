@@ -6,6 +6,8 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Xdc.Spec;
@@ -235,6 +237,34 @@ internal class MineModuleTests
         blockchain.XdcContext.SetNewRound(2);
 
         timeoutTimer.Received(1).Reset(Arg.Any<TimeSpan>());
+    }
+
+    [Test]
+    public async Task TestNewRoundDoesNotArmTimeoutTimerWhileSyncingAnExistingChainFromGenesis()
+    {
+        // Regression for the too-broad exemption: a node still at head 0 that has learned about a real
+        // chain via SyncInfo (HighestQC no longer matches genesis) must not be mistaken for a bootstrap
+        // node - it hasn't validated the rounds it would be timing out for.
+        ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton(timeoutTimer));
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address != leader));
+
+        blockchain.StartHotStuffModule();
+        timeoutTimer.ClearReceivedCalls();
+
+        // Simulates a peer's SyncInfo revealing the real chain's highest QC, far beyond genesis.
+        blockchain.XdcContext.HighestQC = new QuorumCertificate(new BlockRoundInfo(TestItem.KeccakA, 500, 500), Array.Empty<Signature>(), 0);
+        blockchain.XdcContext.SetNewRound(2);
+
+        timeoutTimer.DidNotReceive().Reset(Arg.Any<TimeSpan>());
     }
 
     [Test]

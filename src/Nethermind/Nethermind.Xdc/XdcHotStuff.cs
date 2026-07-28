@@ -150,7 +150,7 @@ namespace Nethermind.Xdc
 
         private void OnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            if (!IsSynced()) return;
+            if (!IsSynced() && !IsBootstrap()) return;
 
             _lastActivityTime = DateTime.UtcNow;
 
@@ -160,7 +160,7 @@ namespace Nethermind.Xdc
 
         private void OnNewRound(object? sender, NewRoundEventArgs args)
         {
-            if (!IsSynced()) return;
+            if (!IsSynced() && !IsBootstrap()) return;
 
             _lastActivityTime = DateTime.UtcNow;
 
@@ -486,17 +486,23 @@ namespace Nethermind.Xdc
         private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
             epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
 
-        private bool IsSynced() =>
-            (!_blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing && _blockTree.Head is not null)
-            || (_blockTree.Head?.Number == 0 && _xdcContext.CurrentRound != 1);
+        private bool IsSynced() => !_blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing && _blockTree.Head is not null;
 
         /// <summary>
         /// True when this node is on a freshly bootstrapped chain where
         /// <see cref="IsSynced"/> is false only because genesis counts as syncing.
         /// </summary>
+        /// <remarks>
+        /// Deliberately independent of <see cref="IXdcConsensusContext.CurrentRound"/>: a round-1
+        /// timeout certificate can advance the round without any block ever being produced, and this
+        /// must keep returning true across those rounds for the timer/round task to keep running. The
+        /// genesis-QC match below is what excludes a node syncing an existing chain - its
+        /// <see cref="IXdcConsensusContext.HighestQC"/> comes from a peer's <c>SyncInfo</c> and will not
+        /// match genesis, regardless of round.
+        /// </remarks>
         private bool IsBootstrap()
         {
-            if (_blockTree.Head?.Header is not XdcBlockHeader head || _xdcContext.CurrentRound != 1)
+            if (_blockTree.Head?.Header is not XdcBlockHeader head)
                 return false;
 
             BlockRoundInfo qc = _xdcContext.HighestQC.ProposedBlockInfo;
