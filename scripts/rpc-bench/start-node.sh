@@ -259,7 +259,8 @@ docker_args=(
 )
 if [[ "$CLIENT" == "nethermind" ]]; then
   docker_args+=(
-    -e "DOTNET_TieredCompilation=0"
+    -e "DOTNET_TieredCompilation=1"
+    -e "DOTNET_TieredPGO=1"
     -e "DOTNET_GCLatencyLevel=0"
   )
 fi
