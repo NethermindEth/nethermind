@@ -75,6 +75,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool? SnapServingEnabled { get; set; } = null;
         public ulong SnapServingMaxDepth { get; set; } = 128;
         public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
+        public bool Snap2Enabled { get; set; } = false;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public int AllocationSlots { get; set; } = 2;
         public int SyncDispatcherEmptyRequestDelayMs { get; set; } = 10;

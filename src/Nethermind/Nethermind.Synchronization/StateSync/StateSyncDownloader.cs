@@ -46,11 +46,12 @@ namespace Nethermind.Synchronization.StateSync
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
+                    // ByteCodes (0x04/0x05) is unchanged in snap/2, so it is served by any snap version.
                     if (Logger.IsTrace) Logger.Trace($"Requested ByteCodes via SnapProtocol from peer {peer}");
                     hashList = HashList.Rent(batch.RequestedNodes);
                     task = snapHandler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
                 }
-                else
+                else if (ProtocolSupportsTrieNodes(snapHandler))
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
                     getTrieNodesRequest = GetGroupedRequest(batch);
@@ -79,6 +80,8 @@ namespace Nethermind.Synchronization.StateSync
         }
 
         protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
+
+        protected virtual bool ProtocolSupportsTrieNodes(ISnapSyncPeer peer) => peer.SnapProtocolVersion < SnapVersions.Snap2;
 
         /// <summary>
         /// SNAP protocol allows grouping of storage requests by account path.
