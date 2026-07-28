@@ -186,6 +186,23 @@ internal sealed class InstructionStream
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
             }
+            else if (instruction == Instruction.PUSH2
+                && pc + 3 < code.Length
+                && (Instruction)code[pc + 3] is Instruction.JUMP or Instruction.JUMPI
+                && TryReadStaticJumpTarget(code, pc) is int dest and >= 0)
+            {
+                // PUSH2 const + JUMP/JUMPI to a validated JUMPDEST: one entry, target resolved to an
+                // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
+                // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
+                bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
+                openBlock = -1;
+                ops.Add(new StreamOp(
+                    conditional ? FusedOpcode.StaticJumpI : FusedOpcode.StaticJump,
+                    conditional ? StreamOpKind.StaticJumpI : StreamOpKind.StaticJump,
+                    (ushort)pc, 0, 4, (ulong)dest));
+                pc += 4;
+                continue;
+            }
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
@@ -238,26 +255,9 @@ internal sealed class InstructionStream
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
                 }
             }
-            else if (instruction == Instruction.PUSH2
-                && pc + 3 < code.Length
-                && (Instruction)code[pc + 3] is Instruction.JUMP or Instruction.JUMPI
-                && TryReadStaticJumpTarget(code, pc) is int dest and >= 0)
-            {
-                // PUSH2 const + JUMP/JUMPI to a validated JUMPDEST: one entry, target resolved to an
-                // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
-                // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
-                bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
-                openBlock = -1;
-                ops.Add(new StreamOp(
-                    conditional ? FusedOpcode.StaticJumpI : FusedOpcode.StaticJump,
-                    conditional ? StreamOpKind.StaticJumpI : StreamOpKind.StaticJump,
-                    (ushort)pc, 0, 4, (ulong)dest));
-                pc += 4;
-                continue;
-            }
             else
             {
-                // Dynamic JUMP/JUMPI/PUSH2 and trailing truncated PUSHes.
+                // Dynamic JUMP/JUMPI and trailing truncated PUSHes.
                 openBlock = -1;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, 0));
             }
@@ -291,8 +291,8 @@ internal sealed class InstructionStream
 
     /// <summary>
     /// The static-cost op set run unmetered; must match the executor's in-block switch exactly.
-    /// PUSH2 excluded (keeps fused PUSH2+JUMP); PUSH1 and PUSH3..PUSH32 are included. DUP9+/SWAP9+
-    /// excluded to keep the switch within the size the JIT inlines.
+    /// Static PUSH2+JUMP pairs are recognized before this set. DUP9+/SWAP9+ are excluded to keep the
+    /// switch within the size the JIT inlines.
     /// </summary>
     public const ulong NotInBlock = ulong.MaxValue;
 
@@ -301,8 +301,7 @@ internal sealed class InstructionStream
         Instruction.ADD or Instruction.SUB or Instruction.LT or Instruction.GT or Instruction.SLT
             or Instruction.SGT or Instruction.EQ or Instruction.AND or Instruction.OR or Instruction.XOR
             or Instruction.ISZERO or Instruction.NOT or Instruction.SHL or Instruction.SHR
-            or Instruction.PUSH1
-            or (>= Instruction.PUSH3 and <= Instruction.PUSH32)
+            or (>= Instruction.PUSH1 and <= Instruction.PUSH32)
             or (>= Instruction.DUP1 and <= Instruction.DUP8)
             or (>= Instruction.SWAP1 and <= Instruction.SWAP8) => GasCostOf.VeryLow,
         Instruction.MUL or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD => GasCostOf.Low,
@@ -326,7 +325,7 @@ internal sealed class InstructionStream
         StreamOp last = ops[^1];
         if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
             return false;
-        if ((Instruction)last.Opcode is not (Instruction.PUSH1 or >= Instruction.PUSH3 and <= Instruction.PUSH32))
+        if ((Instruction)last.Opcode is not (>= Instruction.PUSH1 and <= Instruction.PUSH32))
             return false;
 
         push = last;

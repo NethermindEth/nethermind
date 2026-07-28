@@ -121,6 +121,28 @@ public class InstructionStreamTests
     }
 
     [Test]
+    public void TryBuild_Push2WithoutJump_StaysInPrechargedBlock()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH2, 0x01, 0x02,
+            (byte)Instruction.ADD,
+            (byte)Instruction.STOP,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.VeryLow * 2));
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst));
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.Add));
+            Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)0x0102));
+        }
+    }
+
+    [Test]
     public void TryBuild_Push2JumpToPushImmediate_RefusesToStream()
     {
         byte[] code =
@@ -141,10 +163,29 @@ public class InstructionStreamTests
 
     private static IEnumerable<TestCaseData> BoundaryFallbackCases()
     {
-        yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH2, 0x00, 0x04, (byte)Instruction.JUMP, (byte)Instruction.STOP })
-        { TestName = "Push2JumpToNonJumpdest" };
         yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH4, 0x01, 0x02 })
         { TestName = "TruncatedTrailingPush" };
+    }
+
+    [Test]
+    public void TryBuild_Push2JumpToNonJumpdest_PrechargesPushButKeepsDynamicJump()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH2, 0x00, 0x04,
+            (byte)Instruction.JUMP,
+            (byte)Instruction.STOP,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst));
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo(4));
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary));
+            Assert.That(stream.Ops[1].Opcode, Is.EqualTo((byte)Instruction.JUMP));
+        }
     }
 
     [Test]
@@ -184,6 +225,7 @@ public class InstructionStreamTests
     [TestCase(Instruction.SDIV, GasCostOf.Low, TestName = "SDiv")]
     [TestCase(Instruction.POP, GasCostOf.Base, TestName = "Pop")]
     [TestCase(Instruction.PUSH0, GasCostOf.Base, TestName = "Push0")]
+    [TestCase(Instruction.PUSH2, GasCostOf.VeryLow, TestName = "Push2")]
     [TestCase(Instruction.SHL, GasCostOf.VeryLow, TestName = "Shl")]
     [TestCase(Instruction.DUP8, GasCostOf.VeryLow, TestName = "Dup8")]
     [TestCase(Instruction.SWAP8, GasCostOf.VeryLow, TestName = "Swap8")]
@@ -192,7 +234,6 @@ public class InstructionStreamTests
         => Assert.That(InstructionStream.GetInBlockCost(instruction), Is.EqualTo(expectedCost),
             "block sums diverging from GasCostOf is a consensus bug");
 
-    [TestCase(Instruction.PUSH2, TestName = "Push2_KeepsFusedTableHandler")]
     [TestCase(Instruction.DUP9, TestName = "Dup9_OutsideExecutorSwitch")]
     [TestCase(Instruction.SWAP9, TestName = "Swap9_OutsideExecutorSwitch")]
     [TestCase(Instruction.MLOAD, TestName = "MLoad_DynamicMemoryGas")]
