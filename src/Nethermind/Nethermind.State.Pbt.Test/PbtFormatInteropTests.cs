@@ -62,6 +62,8 @@ public class PbtFormatInteropTests
     [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, PbtTrieLayout.ClusteredFourLevelEveryLevel)]
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
     [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, PbtTrieLayout.ClusteredFourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelBoundaryOnly)]
+    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelInterleaved)]
     [TestCase(PbtTrieLayout.EightLevelInterleaved, PbtTrieLayout.EightLevelEvery4Depth)]
     [TestCase(PbtTrieLayout.EightLevelEvery4Depth, PbtTrieLayout.EightLevelInterleaved)]
     public void MixedLayoutRewrite_MatchesAFreshFoldInTheNewLayout(PbtTrieLayout initial, PbtTrieLayout then)

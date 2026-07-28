@@ -24,6 +24,7 @@ namespace Nethermind.State.Pbt.Test;
 /// trie underneath it, all folding to the same reference roots.
 /// </param>
 [TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+[TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]
 [TestFixture(PbtTrieLayout.EightLevelInterleaved)]
 public class PbtScopeProviderTests(PbtTrieLayout layout)

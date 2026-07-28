@@ -29,12 +29,14 @@ public class PbtNodeClusteringTests
     private static readonly byte[] Other = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
     /// <summary>
-    /// Every other group level is reached without a lookup of its own. A spine of stems parting one
-    /// nibble deeper each time puts a branching group at every group depth, and half of them — the
-    /// odd ones, depth 0 not clustering — have no key at all.
+    /// A spine of stems parting one nibble deeper each time puts a branching group at every group
+    /// depth. The clustered tiling folds every other one into its parent, while an independent tiling
+    /// gives every group a key of its own.
     /// </summary>
-    [Test]
-    public void EveryOtherGroupLevelIsHeldByTheOneAboveIt()
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, true)]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, false)]
+    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, false)]
+    public void GroupLevels_AreStoredAccordingToTheTiling(PbtTrieLayout layout, bool clustered)
     {
         // stem i is zero but for nibble i, so it parts from every deeper one inside the group at 4i
         const int Levels = 8;
@@ -50,15 +52,20 @@ public class PbtNodeClusteringTests
         // the all-zero stem, which stays on the spine past every one of them
         writes.Add(([.. new byte[Stem.Length], 5], Value));
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTestFormats.Clustered(PbtGroupFormat.Interleaved));
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, layout);
         harness.ApplyBatch(writes);
 
         int[] nodeDepths = [.. harness.FlattenedNodes().Keys.Select(key => (int)key.Depth).Order()];
         Assert.That(nodeDepths, Is.EqualTo(Enumerable.Range(0, Levels).Select(level => PbtKeyDerivation.ZoneBits + level * Layout.LevelsPerGroup)));
+        IEnumerable<int> storedDepths = clustered
+            ? nodeDepths.Where(depth => depth == PbtKeyDerivation.ZoneBits || !Layout.IsClusteringDepth(depth - Layout.LevelsPerGroup - PbtKeyDerivation.ZoneBits))
+            : nodeDepths;
         Assert.That(
             harness.Nodes.Keys.Select(key => (int)key.Depth).Order(),
-            Is.EqualTo(nodeDepths.Where(depth => depth == PbtKeyDerivation.ZoneBits || !Layout.IsClusteringDepth(depth - Layout.LevelsPerGroup - PbtKeyDerivation.ZoneBits))),
-            "a group whose parent clusters has no key of its own; the root has no parent");
+            Is.EqualTo(storedDepths),
+            clustered ? "a group whose parent clusters has no key of its own; the root has no parent" : "every independent group has its own key");
+
+        if (!clustered) return;
 
         // and the bytes at the key that does hold it are the child's own encoding, verbatim
         TrieNodeKey clusteredChildKey = PbtPartitions.RootKey(PbtPartition.Account).ChildGroup(0, Layout.LevelsPerGroup).ChildGroup(0, Layout.LevelsPerGroup);
