@@ -1285,7 +1285,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Engage the stream only in cancelable call contexts (eth_call/estimateGas/simulate). Block
         // processing runs a non-cancelable tracer, where the stream is pure overhead with no compute
         // payoff; gating it out there removes both the throughput regression and the retained StreamOp[].
-        if (!IlEvm.Enabled && spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
+        if (spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
             && (TCancelable.IsActive || StreamInterpreter.ForceAllContexts)
             && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
         {

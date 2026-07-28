@@ -58,7 +58,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (!TTracingInst.IsActive && typeof(TGasPolicy) == typeof(EthereumGasPolicy) && IlEvm.Enabled
                 && VmState.Env.CodeInfo is CodeInfo ilCodeInfo && !ilCodeInfo.IsEmpty)
             {
-                if (programCounter == 0)
+                if (programCounter == 0 && (TCancelable.IsActive || IlEvm.SynchronousCompilation))
                     IlEvm.NoticeExecution(ilCodeInfo, Spec);
                 ilCompiled = IlEvm.GetForExecution(ilCodeInfo, Spec);
             }

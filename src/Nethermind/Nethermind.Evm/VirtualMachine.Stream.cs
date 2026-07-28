@@ -6,6 +6,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.CodeAnalysis.IlEvm;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
 
@@ -65,6 +67,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         int opCodeCount = 0;
         bool metered = false;
 
+        IlCompiledCode? ilCompiled = null;
+        if (typeof(TGasPolicy) == typeof(EthereumGasPolicy) && IlEvm.Enabled
+            && VmState.Env.CodeInfo is CodeInfo ilCodeInfo && !ilCodeInfo.IsEmpty)
+        {
+            if (programCounter == 0)
+                IlEvm.NoticeExecution(ilCodeInfo, Spec);
+            ilCompiled = IlEvm.GetForExecution(ilCodeInfo, Spec);
+        }
+
         // Resume pcs land one past code end at most; the bound guards a truncated trailing PUSH.
         int entryIndex = programCounter == 0
             ? 0
@@ -75,6 +86,59 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 ref readonly StreamOp entry = ref ops[entryIndex];
                 Instruction instruction = (Instruction)entry.Opcode;
+
+                if (typeof(TGasPolicy) == typeof(EthereumGasPolicy) && ilCompiled is not null
+                    && ilCompiled.TryGetSegmentStartingAt(entry.Pc, out IlCompiledSegment ilSegment))
+                {
+                    if (stack.Head >= ilSegment.StackRequired
+                        && stack.Head <= EvmStack.MaxStackSize - EvmStack.RegisterLength - ilSegment.StackMaxGrowth
+                        && TGasPolicy.GetRemainingGas(in gas) >= ilSegment.StaticGas)
+                    {
+                        if (TCancelable.IsActive && _txTracer.IsCancelled)
+                            ThrowStreamOperationCanceledException();
+
+                        programCounter = entry.Pc;
+                        exceptionType = ilSegment.Invoke(
+                            Unsafe.As<VirtualMachine<EthereumGasPolicy>>(this),
+                            ref stack,
+                            ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas),
+                            ref programCounter,
+                            ilSegment.EntryIndex);
+                        IlEvm.SegmentInvocations++;
+                        IlEvm.StreamSegmentInvocations++;
+                        IlEvm.SegmentOps += ilSegment.OpCount;
+                        opCodeCount += ilSegment.OpCount;
+
+                        if (TGasPolicy.IsOutOfGas(in gas))
+                        {
+                            OpCodeCount += opCodeCount;
+                            goto OutOfGas;
+                        }
+                        if (exceptionType != EvmExceptionType.None)
+                            break;
+                        if (ReturnData is not null)
+                            break;
+                        if ((uint)programCounter >= (uint)pcToEntry.Length)
+                        {
+                            entryIndex = ops.Length;
+                            continue;
+                        }
+
+                        int compiledLanding = pcToEntry[programCounter];
+                        if (compiledLanding == InstructionStream.InvalidEntry)
+                        {
+                            exceptionType = EvmExceptionType.InvalidJumpDestination;
+                            break;
+                        }
+
+                        entryIndex = compiledLanding;
+                        StreamOpKind landingKind = ops[entryIndex].Kind;
+                        metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock;
+                        continue;
+                    }
+
+                    IlEvm.DispatchRejections++;
+                }
 
                 if (entry.Kind < StreamOpKind.Boundary)
                 {

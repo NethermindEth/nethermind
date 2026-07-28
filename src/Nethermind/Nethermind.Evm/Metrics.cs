@@ -76,6 +76,10 @@ public class Metrics
     public static long IlEvmSegmentInvocations => CodeAnalysis.IlEvm.IlEvm.SegmentInvocations;
 
     [CounterMetric]
+    [Description("Number of IL-EVM compiled segment invocations from the stream interpreter.")]
+    public static long IlEvmStreamSegmentInvocations => CodeAnalysis.IlEvm.IlEvm.StreamSegmentInvocations;
+
+    [CounterMetric]
     [Description("Number of opcodes executed inside IL-EVM compiled segments.")]
     public static long IlEvmSegmentOps => CodeAnalysis.IlEvm.IlEvm.SegmentOps;
 

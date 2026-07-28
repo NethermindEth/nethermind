@@ -119,6 +119,12 @@ public static class IlEvm
     public static long SegmentInvocations;
 
     /// <summary>
+    /// Compiled-segment invocations made from the preprocessed stream interpreter.
+    /// This distinguishes successful stream composition from legacy-dispatch fallback.
+    /// </summary>
+    public static long StreamSegmentInvocations;
+
+    /// <summary>
     /// Opcodes executed INSIDE compiled segments (lossy, like <see cref="SegmentInvocations"/>).
     /// The coverage ratio — this against the workload's total executed opcodes — is the number
     /// that says whether IL-EVM is doing 5% or 60% of the work, which "is it engaged?" cannot.

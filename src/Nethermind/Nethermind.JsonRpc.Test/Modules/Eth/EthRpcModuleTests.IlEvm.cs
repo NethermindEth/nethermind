@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using IlEvmRuntime = Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm;
@@ -62,7 +63,7 @@ public partial class EthRpcModuleTests
                 (byte)Instruction.RETURN,
             ];
 
-            using Context ctx = await Context.Create(configurer: builder => builder
+            using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance), configurer: builder => builder
                 .WithGenesisPostProcessor((block, state) =>
                 {
                     state.InsertCode(TestItem.AddressC, loopCode, London.Instance);
@@ -72,18 +73,23 @@ public partial class EthRpcModuleTests
                 $"{{\"to\": \"{TestItem.AddressC}\"}}");
 
             long invocationsBefore = IlEvmRuntime.SegmentInvocations;
+            long streamInvocationsBefore = IlEvmRuntime.StreamSegmentInvocations;
             long compiledBefore = IlEvmRuntime.ContractsCompiled;
 
             // Sum 50..1 = 1275 = 0x4FB.
             const string expected = "{\"jsonrpc\":\"2.0\",\"result\":\"0x00000000000000000000000000000000000000000000000000000000000004fb\",\"id\":67}";
             string first = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-            string second = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+            string subsequent = first;
+            for (int i = 0; i < 4; i++)
+                subsequent = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
 
             Assert.That(first, Is.EqualTo(expected), "the compiled loop must produce the interpreter's exact result");
-            Assert.That(second, Is.EqualTo(expected), "repeat calls must agree");
+            Assert.That(subsequent, Is.EqualTo(expected), "repeat calls must agree");
             Assert.That(IlEvmRuntime.SegmentInvocations - invocationsBefore, Is.GreaterThan(0),
                 "ENGAGEMENT FAILURE: eth_call through the real RPC stack executed zero compiled segments — " +
                 "check spec identity (IlEvmSpecMismatches), CodeInfo identity (ContractsCompiled per call), and dispatch preconditions");
+            Assert.That(IlEvmRuntime.StreamSegmentInvocations - streamInvocationsBefore, Is.GreaterThan(0),
+                "ENGAGEMENT FAILURE: compiled segments did not compose with the stream interpreter");
             Assert.That(IlEvmRuntime.ContractsCompiled - compiledBefore, Is.EqualTo(1),
                 "the artifact must be compiled once and REUSED across calls — more than one compile means the " +
                 "RPC path sees a different CodeInfo instance per call and tiering can never engage on a real node");
