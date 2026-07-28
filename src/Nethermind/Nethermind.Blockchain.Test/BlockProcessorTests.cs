@@ -43,6 +43,8 @@ using Nethermind.Evm;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Init.Modules;
+using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -465,14 +467,16 @@ public class BlockProcessorTests
         Assert.That(exception!.InnerException, Is.SameAs(failure));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event()
+    [TestCase(2)]
+    [TestCase(3)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event(int transactionCount)
     {
         TokenCapturingPreWarmer preWarmer = new();
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
-        Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(transactionCount, MuirGlacier.Instance).TestObject;
 
         branchProcessor.Process(
             null,
@@ -482,6 +486,26 @@ public class BlockProcessorTests
 
         Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True,
             "prewarmer CancellationToken should be cancelled via TransactionsExecuted event after tx processing");
+    }
+
+    [Test]
+    public async Task BranchProcessor_tiny_block_handoff_matches_cold_state_root()
+    {
+        (Hash256? coldStateRoot, bool coldHandoff, ulong coldGasUsed) = await ProcessTinyBlock(useHandoff: false);
+        (Hash256? hotStateRoot, bool hotHandoff, ulong hotGasUsed) = await ProcessTinyBlock(useHandoff: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coldHandoff, Is.False, "precondition: cold execution must clear the caches");
+            Assert.That(hotHandoff, Is.True,
+                "precondition: the tiny block must execute with the matching-parent handoff");
+            // Without this the roots could match on a rejected transaction, comparing two no-op executions.
+            Assert.That(coldGasUsed, Is.EqualTo(GasCostOf.Transaction), "precondition: the transaction must execute");
+            Assert.That(hotGasUsed, Is.EqualTo(coldGasUsed), "the handoff must not change what executed");
+            Assert.That(coldStateRoot, Is.Not.Null, "cold execution must produce a state root");
+            Assert.That(hotStateRoot, Is.EqualTo(coldStateRoot),
+                "a matching-parent txpool-cache handoff must not change block execution");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -635,6 +659,67 @@ public class BlockProcessorTests
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Dispose() { }
+    }
+
+    private static async Task<(Hash256? StateRoot, bool HandoffObserved, ulong GasUsed)> ProcessTinyBlock(bool useHandoff)
+    {
+        TestSpecProvider specProvider = new(MuirGlacier.Instance) { AllowTestChainOverride = false };
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider)
+            .Intercept<IBlocksConfig>(blocksConfig =>
+            {
+                blocksConfig.PreWarmStateConcurrency = 2;
+                // The test drives speculative warming itself; leave the mempool prewarmer out of the generation race.
+                blocksConfig.PreWarming = PreWarmMode.Block;
+            }));
+
+        Block parent = chain.BlockTree.Head!;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithAuthor(TestItem.AddressD)
+            .WithTransactions(Build.A.Transaction
+                .WithTo(TestItem.AddressC)
+                .WithNonce(0)
+                .WithValue(1.Wei)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyB, MuirGlacier.Instance.IsEip155Enabled)
+                .TestObject)
+            .TestObject;
+
+        MainProcessingContext processingContext = (MainProcessingContext)chain.MainProcessingContext;
+        BlockCachePreWarmer preWarmer =
+            (BlockCachePreWarmer)processingContext.LifetimeScope.Resolve<IBlockCachePreWarmer>();
+        if (useHandoff)
+        {
+            preWarmer.RunSpeculativePreWarm(
+                parent.Header,
+                MuirGlacier.Instance,
+                block,
+                () => preWarmer.SpeculativeMarkerPublished);
+        }
+        else
+        {
+            preWarmer.ClearCaches();
+        }
+
+        NodeStorageCache nodeStorageCache = processingContext.LifetimeScope.Resolve<NodeStorageCache>();
+        bool handoffObserved = false;
+        ulong gasUsed = 0;
+        chain.BranchProcessor.BlockProcessing += (_, _) => handoffObserved = nodeStorageCache.Enabled;
+        chain.BranchProcessor.BlockProcessed += (_, e) =>
+        {
+            foreach (TxReceipt receipt in e.TxReceipts)
+            {
+                gasUsed += receipt.GasUsed;
+            }
+        };
+        Block processed = chain.BranchProcessor.Process(
+            parent.Header,
+            [block],
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance)[0];
+
+        return (processed.StateRoot, handoffObserved, gasUsed);
     }
 
     public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()
