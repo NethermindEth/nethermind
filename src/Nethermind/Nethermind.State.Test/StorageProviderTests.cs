@@ -941,6 +941,48 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(secondRoundTracer.Reads, Is.Empty);
     }
 
+    [TestCase(RoundBoundary.None)]
+    [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
+    [TestCase(RoundBoundary.Commit)]
+    public void Original_available_after_repeat_read(RoundBoundary boundary)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Get(cell);
+
+        if (boundary == RoundBoundary.ResetKeepingBlockChanges)
+        {
+            provider.Reset(resetBlockChanges: false);
+        }
+        else if (boundary == RoundBoundary.Commit)
+        {
+            provider.Commit(Frontier.Instance);
+        }
+
+        provider.Get(cell);
+
+        Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+    }
+
+    [Test]
+    public void Repeat_read_reports_one_storage_read_to_tracer()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Get(cell);
+        provider.Get(cell);
+        provider.Get(cell);
+
+        ReadCollectingStorageTracer tracer = new();
+        provider.Commit(Frontier.Instance, tracer);
+
+        Assert.That(tracer.Reads, Is.EqualTo(new[] { cell }));
+    }
+
     [Test]
     public void Eip161_empty_account_with_storage_does_not_throw_on_commit()
     {
@@ -1215,6 +1257,13 @@ public class StorageProviderTests(bool useFlat)
                 writtenData.SelfDestructed[address] = true;
             }
         }
+    }
+
+    public enum RoundBoundary
+    {
+        None,
+        ResetKeepingBlockChanges,
+        Commit,
     }
 
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer
