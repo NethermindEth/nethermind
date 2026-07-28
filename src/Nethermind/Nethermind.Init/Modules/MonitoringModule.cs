@@ -16,6 +16,7 @@ using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -37,8 +38,14 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
                 {
                     ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(() =>
                     {
-                        Synchronization.Metrics.SyncTime = (long?)syncInfo.UpdateAndGetSyncTime().TotalSeconds ?? 0;
+                        Synchronization.Metrics.SyncTimeSeconds = (long)syncInfo.UpdateAndGetSyncTime().TotalSeconds;
                     });
+                })
+
+                .Intercept<ISyncModeSelector>((syncModeSelector, ctx) =>
+                {
+                    Synchronization.SyncTimeInModeTracker tracker = new(syncModeSelector);
+                    ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(tracker.UpdateMetrics);
                 })
 
                 ;

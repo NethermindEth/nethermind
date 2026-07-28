@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -144,15 +145,16 @@ namespace Nethermind.Facade.Test.Eth
 
             // Second call timer should count some time
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.Not.EqualTo(0));
+            TimeSpan whileSyncing = ethSyncingInfo.UpdateAndGetSyncTime();
+            Assert.That(whileSyncing.TotalMicroseconds, Is.Not.EqualTo(0));
 
-            // Sync ended time should be zero
+            // Sync ended: the total is retained (not reset to zero) so the final duration stays observable
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(100UL).TestObject)
                 .TestObject);
 
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
+            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime(), Is.GreaterThanOrEqualTo(whileSyncing));
         }
 
         [TestCase(6178001UL, 6178000UL)]

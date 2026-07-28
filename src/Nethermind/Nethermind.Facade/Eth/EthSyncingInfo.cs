@@ -81,14 +81,15 @@ namespace Nethermind.Facade.Eth
                 if (IsSyncing())
                 {
                     _syncStopwatch.Start();
+                    return TimeSpan.Zero;
                 }
-                return TimeSpan.Zero;
+
+                return _syncStopwatch.Elapsed;
             }
 
             if (!IsSyncing())
             {
                 _syncStopwatch.Stop();
-                return TimeSpan.Zero;
             }
 
             return _syncStopwatch.Elapsed;

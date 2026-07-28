@@ -667,7 +667,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             TimeSpan sw = Stopwatch.GetElapsedTime(start);
             long ms = (long)sw.TotalMilliseconds;
-            Metrics.PruningTime = ms;
+            Metrics.PruningTimeMs = ms;
             if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {ms:0.##} ms. Dirty memory from {memoryUsedByDirtyCache / 1.MiB}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB}MB");
 
             // Warn if pruning did not reduce the dirty cache significantly
@@ -980,7 +980,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             RecalculateTotalMemoryUsage();
 
             if (_logger.IsDebug) _logger.Debug($"Finished pruning persisted nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {PersistedMemoryUsedByDirtyCache / 1.MB} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
-            Metrics.PersistedNodePruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            Metrics.PersistedNodePruningTimeMs = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         }
         catch (Exception e)
         {
@@ -1161,7 +1161,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _nodeStorage.Flush(onlyWal: true);
 
         long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
+        Metrics.SnapshotPersistenceTimeMs = elapsedMilliseconds;
 
         if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {elapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
