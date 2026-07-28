@@ -77,6 +77,33 @@ public class InstructionStreamTests
     }
 
     [Test]
+    public void TryBuild_LongStaticBlock_SplitsCancellationPollingWindows()
+    {
+        byte[] code = new byte[2050];
+        for (int i = 0; i < code.Length; i += 2)
+        {
+            code[i] = (byte)Instruction.PUSH0;
+            code[i + 1] = (byte)Instruction.POP;
+        }
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(3));
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst));
+            Assert.That(stream.Ops[1024].Kind, Is.EqualTo(StreamOpKind.BlockFirst));
+            Assert.That(stream.Ops[2048].Kind, Is.EqualTo(StreamOpKind.BlockFirst));
+            Assert.That(stream.BlockGas, Is.EqualTo(new ulong[]
+            {
+                1024 * GasCostOf.Base,
+                1024 * GasCostOf.Base,
+                2 * GasCostOf.Base,
+            }));
+        }
+    }
+
+    [Test]
     public void TryBuild_Jumpdest_GetsItsOwnSoloBlock()
     {
         byte[] code =
@@ -157,6 +184,8 @@ public class InstructionStreamTests
     [TestCase(Instruction.SWAP2, Instruction.POP, FusedOpcode.SwapPop, 3UL)]
     [TestCase(Instruction.PUSH1, Instruction.DUP1, FusedOpcode.PushDup, 42UL)]
     [TestCase(Instruction.PUSH1, Instruction.DUP3, FusedOpcode.PushDup, (2UL << 60) | 42UL)]
+    [TestCase(Instruction.DUP3, Instruction.AND, FusedOpcode.DupBinary, ((ulong)(byte)Instruction.AND << 8) | 3UL)]
+    [TestCase(Instruction.SWAP1, Instruction.SUB, FusedOpcode.Swap1Binary, (ulong)(byte)Instruction.SUB)]
     public void TryBuild_CommonStackPair_BecomesSingleEntry(
         Instruction first,
         Instruction second,
@@ -186,6 +215,28 @@ public class InstructionStreamTests
     }
 
     [Test]
+    public void TryBuild_PushDupBinary_PrefersDupBinaryPair()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1, 42,
+            (byte)Instruction.DUP3,
+            (byte)Instruction.AND,
+            (byte)Instruction.STOP,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo((byte)Instruction.PUSH1));
+            Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.DupBinary));
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock));
+            Assert.That(stream.PcToEntry[3], Is.EqualTo(InstructionStream.InvalidEntry));
+        }
+    }
+
+    [Test]
     public void TryBuild_Push1Pair_BecomesSingleEntry()
     {
         byte[] code =
@@ -205,6 +256,28 @@ public class InstructionStreamTests
             Assert.That(stream.Ops[0].Operand, Is.EqualTo((42UL << 8) | 43UL));
             Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
             Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(2 * GasCostOf.VeryLow));
+        }
+    }
+
+    [Test]
+    public void TryBuild_PushSignExtend_BecomesSingleEntry()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.SIGNEXTEND,
+            (byte)Instruction.STOP,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst));
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.SignExtend));
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(3));
+            Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Low));
         }
     }
 
@@ -311,6 +384,7 @@ public class InstructionStreamTests
     [TestCase(Instruction.ADD, GasCostOf.VeryLow, TestName = "Add")]
     [TestCase(Instruction.MUL, GasCostOf.Low, TestName = "Mul")]
     [TestCase(Instruction.SDIV, GasCostOf.Low, TestName = "SDiv")]
+    [TestCase(Instruction.SIGNEXTEND, GasCostOf.Low, TestName = "SignExtend")]
     [TestCase(Instruction.POP, GasCostOf.Base, TestName = "Pop")]
     [TestCase(Instruction.PUSH0, GasCostOf.Base, TestName = "Push0")]
     [TestCase(Instruction.PUSH2, GasCostOf.VeryLow, TestName = "Push2")]
@@ -456,6 +530,8 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static readonly byte[] FullStackDupIsZeroStaticJumpI = BuildFullStackIsZeroJump(duplicateCondition: true);
     private static readonly byte[] NearlyFullStackDupIsZeroStaticJumpI = BuildFullStackIsZeroJump(duplicateCondition: true, fill: 1023);
     private static readonly byte[] FullStackPushDup = BuildFullStackPushDup();
+    private static readonly byte[] FullStackSignExtend = BuildFullStackSignExtend();
+    private static readonly byte[] FullStackDupBinary = BuildFullStackDupBinary();
 
     private static byte[] BuildFullStackJump(Instruction jump)
     {
@@ -502,6 +578,27 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         code[1024] = 1;
         code[1025] = (byte)Instruction.DUP1;
         code[1026] = (byte)Instruction.STOP;
+        return code;
+    }
+
+    private static byte[] BuildFullStackSignExtend()
+    {
+        byte[] code = new byte[1027];
+        code.AsSpan(0, 1024).Fill((byte)Instruction.PUSH0);
+        code[1024] = (byte)Instruction.PUSH1;
+        code[1025] = 0;
+        code[1026] = (byte)Instruction.SIGNEXTEND;
+        return code;
+    }
+
+    private static byte[] BuildFullStackDupBinary()
+    {
+        byte[] code = new byte[1026];
+        code.AsSpan(0, 512).Fill((byte)Instruction.PUSH0);
+        code[512] = (byte)Instruction.JUMPDEST;
+        code.AsSpan(513, 511).Fill((byte)Instruction.PUSH0);
+        code[1024] = (byte)Instruction.DUP1;
+        code[1025] = (byte)Instruction.ADD;
         return code;
     }
 
@@ -679,6 +776,58 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         })
         { TestName = "SwapPopPairUnderflows" };
         yield return new TestCaseData(FullStackPushDup) { TestName = "FullStackPushDupOverflowsOnDup" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 10,
+            (byte)Instruction.PUSH1, 3,
+            (byte)Instruction.DUP2,
+            (byte)Instruction.SUB,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.RETURN,
+        }) { TestName = "FusedDupBinaryPreservesOperandOrder" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.DUP3,
+            (byte)Instruction.AND,
+        }) { TestName = "FusedDupBinaryUnderflowsOnDup" };
+        yield return new TestCaseData(FullStackDupBinary) { TestName = "FullStackFusedDupBinaryOverflowsOnDup" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 10,
+            (byte)Instruction.PUSH1, 3,
+            (byte)Instruction.SWAP1,
+            (byte)Instruction.SUB,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.RETURN,
+        }) { TestName = "FusedSwapBinaryPreservesOperandOrder" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.SWAP1,
+            (byte)Instruction.SUB,
+        }) { TestName = "FusedSwapBinaryUnderflowsOnSwap" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x80,
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.SIGNEXTEND,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.RETURN,
+        }) { TestName = "FusedSignExtend" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.SIGNEXTEND,
+        }) { TestName = "FusedSignExtendUnderflows" };
+        yield return new TestCaseData(FullStackSignExtend) { TestName = "FullStackFusedSignExtendOverflowsOnPush" };
         yield return new TestCaseData(BitwiseFusionWithConstant) { TestName = "BitwiseFusionWithConstant" };
         yield return new TestCaseData(SolidityExampleCall) { TestName = "SolidityExampleCreateAndCall" };
         yield return new TestCaseData(BuildOutOfGasMidBlock()) { TestName = "OutOfGasInsideMeteredBlock" };

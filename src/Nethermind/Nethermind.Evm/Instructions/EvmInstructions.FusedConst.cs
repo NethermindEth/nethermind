@@ -76,4 +76,19 @@ public static partial class EvmInstructions
         WriteUnaligned(ref topRef, TOpBitwise.Operation(in a, in b));
         return EvmExceptionType.None;
     }
+
+    /// <summary>Fused <c>PUSH byte-index; SIGNEXTEND</c>, modifying the existing top word in place.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static EvmExceptionType FusedConstSignExtendCore(ref EvmStack stack, UInt256 byteIndex)
+    {
+        if (stack.Head == EvmStack.MaxStackSize - 1)
+            return EvmExceptionType.StackOverflow;
+
+        ref byte topRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
+
+        ApplySignExtend(ref topRef, in byteIndex);
+        return EvmExceptionType.None;
+    }
 }

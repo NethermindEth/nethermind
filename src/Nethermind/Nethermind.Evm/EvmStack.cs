@@ -2093,6 +2093,30 @@ public ref struct EvmStack
     }
 
     /// <summary>
+    /// Atomic pop-1 + peek-top for binary operations over the stack's native big-endian word representation.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte Pop1PeekWord(out EvmWord a, out bool isValid)
+    {
+        Unsafe.SkipInit(out a);
+        ref byte baseRef = ref _stack;
+        uint head = (uint)Head;
+        if (head < 2)
+        {
+            isValid = false;
+            return ref baseRef;
+        }
+
+        Head = (int)(head - 1);
+        ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
+        a = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref topRef, WordSize));
+        isValid = true;
+        return ref topRef;
+    }
+
+    /// <summary>
     /// Atomic pop-2 + peek-top for ternary ops that push exactly one result.
     /// Single bounds check (needs <c>Head &gt;= 3</c>). On success <c>Head</c> decrements by 2
     /// and the returned ref addresses the new top slot for in-place write.
@@ -2321,6 +2345,32 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
         Head = head - 1;
         return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte PeekTopForDupBinary(int depth, out EvmWord duplicate, out EvmExceptionType exceptionType)
+    {
+        Unsafe.SkipInit(out duplicate);
+        int head = Head;
+        if (head < depth)
+        {
+            exceptionType = EvmExceptionType.StackUnderflow;
+            return ref Unsafe.NullRef<byte>();
+        }
+        if (head >= MaxStackSize - 1)
+        {
+            exceptionType = EvmExceptionType.StackOverflow;
+            return ref Unsafe.NullRef<byte>();
+        }
+
+        ref byte bytes = ref _stack;
+        nuint headOffset = (nuint)(uint)head << 5;
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
+        duplicate = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, headOffset - ((nuint)(uint)depth << 5)));
+        exceptionType = EvmExceptionType.None;
+        return ref top;
     }
 
     [SkipLocalsInit]

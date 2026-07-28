@@ -133,7 +133,7 @@ namespace Nethermind.Evm.Benchmark
         private ExecutionEnvironment _solidityBranchEnvironment;
 
         private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.OsakaActivation);
-        private readonly ITxTracer _txTracer = NullTxTracer.Instance;
+        private readonly ITxTracer _txTracer = new CancellationTxTracer(NullTxTracer.Instance);
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
         private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
@@ -147,8 +147,7 @@ namespace Nethermind.Evm.Benchmark
         public void GlobalSetup()
         {
             StreamInterpreter.Enabled = Mode != InterpreterMode.ByteCodeLoop;
-            // These frames run non-cancelable, so force the stream past the call-context gate to measure it.
-            StreamInterpreter.ForceAllContexts = Mode != InterpreterMode.ByteCodeLoop;
+            StreamInterpreter.ForceAllContexts = false;
 
             BlockHeader header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One,
                 MainnetSpecProvider.ParisBlockNumber + 4, Int64.MaxValue,
