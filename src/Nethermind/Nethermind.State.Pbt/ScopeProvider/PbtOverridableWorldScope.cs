@@ -10,6 +10,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
@@ -21,6 +22,8 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// </remarks>
 public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 {
+    private static readonly ITrieWarmer _noopTrieWarmer = new NoopTrieWarmer();
+
     private readonly ConcurrentDictionary<StateId, PbtSnapshot> _snapshots = new();
     private readonly IReadOnlyDb _codeDbOverlay;
     private readonly IPbtDbManager _manager;
@@ -125,7 +128,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             return new PbtWorldStateScope(
                 stateId, baseBlock, outer.GatherBundle(stateId), _codeDb, outer, NullPbtChildHeaderSource.Instance,
                 outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, outer._writeLayout,
-                outer._rootFoldConcurrency);
+                outer._rootFoldConcurrency, _noopTrieWarmer);
         }
     }
 

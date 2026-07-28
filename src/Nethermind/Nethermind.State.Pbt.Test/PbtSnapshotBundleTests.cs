@@ -166,6 +166,52 @@ public class PbtSnapshotBundleTests
         Assert.That(blob.GetSpan().ToArray(), Is.EqualTo((byte[])[0x33]));
     }
 
+    [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
+    [TestCase(PbtTrieLayout.SixLevelInterleaved)]
+    [TestCase(PbtTrieLayout.EightLevelInterleaved)]
+    [TestCase(PbtTrieLayout.EightLevelEvery4Depth)]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly)]
+    public void WarmStemPath_ReadsHashQualifiedTrieGroupsAndThePriorLeaf(PbtTrieLayout layout)
+    {
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+        byte[] basicData = new byte[ValueHash256.MemorySize];
+        PbtKeyDerivation.PackBasicData(basicData, codeSize: 0, nonce: 0x44, balance: UInt256.Zero);
+        PbtWriteBatch account = new(2, buckets: null);
+        account.Add(HeaderStem, PbtStemChanges.Rent().Set(PbtKeyDerivation.BasicDataLeafKey, new ValueHash256(basicData)));
+        account.Add(
+            PbtKeyDerivation.AccountHeaderStem(TestItem.AddressB),
+            PbtStemChanges.Rent().Set(PbtKeyDerivation.BasicDataLeafKey, new ValueHash256(basicData)));
+        using PbtWriteBatchSet changes = new(account, new PbtWriteBatch(0, buckets: null), new PbtWriteBatch(0, buckets: null));
+        PbtPartitionRoots roots = TrieUpdater.UpdateRoot(
+            new BundleStore(bundle), PbtPartitionRoots.Empty, changes, PooledRefCountingMemoryProvider.Instance,
+            layout, concurrency: 1, out _);
+        bundle.CollectSnapshot(StateId.PreGenesis, new StateId(0, roots.Root.ToHash256()), roots).Dispose();
+
+        Assert.That(bundle.WarmStemPath(layout, roots, HeaderStem), Is.True);
+        using RefCountingMemory? leaf = bundle.GetLeafBlob(HeaderStem);
+        Assert.That(PbtLeafDecoder.DecodeAccount(leaf!.GetSpan())!.Nonce, Is.EqualTo(0x44UL));
+    }
+
+    [Test]
+    public void PromotedAccount_ShadowsLowerState_WithoutOverwritingAnAuthoritativeWrite()
+    {
+        Seed(_reader, 0x44);
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+
+        bundle.PromoteAccount(Address, null);
+        Assert.That(bundle.GetAccount(Address), Is.Null, "a promoted absence shadows persistence");
+
+        Account actual = Build.An.Account.WithBalance(2).TestObject;
+        Account stale = Build.An.Account.WithBalance(1).TestObject;
+        bundle.SetAccount(Address, actual);
+        bundle.PromoteAccount(Address, stale);
+
+        Assert.That(bundle.GetAccount(Address), Is.SameAs(actual), "a stale promotion cannot overwrite a real write");
+    }
+
     [Test]
     public void SelfDestruct_InThisBranch_ShadowsASharedBundleSlot()
     {
@@ -598,6 +644,19 @@ public class PbtSnapshotBundleTests
         PbtWriteBatch storage = new(1, buckets: null);
         storage.Add(storageStem, PbtStemChanges.Rent().Set(0, default));
         return new PbtWriteBatchSet(account, new PbtWriteBatch(0, buckets: null), storage);
+    }
+
+    private sealed class BundleStore(PbtSnapshotBundle bundle) : IPbtStore
+    {
+        public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash) => bundle.GetTrieNode(key, hash);
+
+        public void SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory? node) =>
+            bundle.SetOwnedTrieNode(key, hash, node);
+
+        public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash) => bundle.GetLeafBlob(stem, hash);
+
+        public void SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory? blob) =>
+            bundle.SetOwnedLeafBlob(stem, hash, blob);
     }
 
     private sealed class LabelRecordingObserver : IMetricObserver

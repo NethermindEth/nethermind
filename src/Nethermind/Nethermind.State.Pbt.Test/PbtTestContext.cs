@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.Trie.Pruning;
@@ -39,15 +40,17 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtDbManager Manager { get; }
     public PbtStateReader StateReader { get; }
     public PbtWorldStateManager WorldStateManager { get; }
+    public ITrieWarmer TrieWarmer { get; }
 
     /// <summary>Resolves nothing unless a test supplies one, so scopes report their own EIP-8297 root.</summary>
     public IPbtChildHeaderSource ChildHeaders { get; }
 
-    public PbtTestContext(SnapshotableMemColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null)
+    public PbtTestContext(SnapshotableMemColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, ITrieWarmer? trieWarmer = null)
     {
         Db = db ?? new SnapshotableMemColumnsDb<PbtColumns>("pbt");
         Config = config ?? new PbtConfig();
         ChildHeaders = childHeaders ?? NullPbtChildHeaderSource.Instance;
+        TrieWarmer = trieWarmer ?? new NoopTrieWarmer();
 
         // Production randomizes this offset; tests must use stable compaction boundaries.
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
@@ -60,12 +63,12 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, Compactor, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, StoreCache, Compactor, new TestProcessExitSource(_cts), new MetricsConfig(), LimboLogs.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, StoreCache, Config, new MetricsConfig()), Config, CodeDb);
+        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, StoreCache, Config, new MetricsConfig()), Config, TrieWarmer, CodeDb);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
         new(CodeDb, Manager, ChildHeaders, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
-            Config.TrieNodeLayout, Config.RootFoldConcurrency);
+            Config.TrieNodeLayout, Config.RootFoldConcurrency, TrieWarmer);
 
     public async ValueTask DisposeAsync()
     {

@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.ScopeProvider;
 
 namespace Nethermind.State.Pbt.Mirror;
@@ -25,6 +26,8 @@ public class PbtMirrorScopeProvider(
     IPbtResourcePool resourcePool,
     IPbtConfig config) : IWorldStateScopeProvider
 {
+    private static readonly ITrieWarmer _noopTrieWarmer = new NoopTrieWarmer();
+
     private readonly PbtTrieLayout _writeLayout = config.TrieNodeLayout;
     private readonly int _rootFoldConcurrency = config.RootFoldConcurrency;
 
@@ -49,7 +52,8 @@ public class PbtMirrorScopeProvider(
                 PbtResourcePool.Usage.MainBlockProcessing,
                 isReadOnly: false,
                 _writeLayout,
-                _rootFoldConcurrency);
+                _rootFoldConcurrency,
+                _noopTrieWarmer);
 
             return new Scope(authoritativeScope, pbtScope);
         }
