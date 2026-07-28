@@ -1484,6 +1484,53 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType PushUInt64ThenDup(ulong operand)
+    {
+        int depth = (int)(operand >> 60) + 1;
+        ulong value = operand & 0x0FFF_FFFF_FFFF_FFFF;
+        int head = Head;
+        uint headOffset = (uint)head;
+        uint newOffset = headOffset + 2;
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+        if (head + 1 < depth)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        Head = (int)newOffset;
+        EvmWord word = CreateWordFromUInt64(BinaryPrimitives.ReverseEndianness(value));
+        ref byte first = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
+        Unsafe.WriteUnaligned(ref first, word);
+        ref byte source = ref (depth == 1
+            ? ref first
+            : ref Unsafe.Add(ref _stack, (nint)((uint)(head + 1 - depth) * WordSize)));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref first, WordSize), Unsafe.ReadUnaligned<EvmWord>(ref source));
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType PushUInt8Pair(ulong operand)
+    {
+        uint headOffset = (uint)Head;
+        uint newOffset = headOffset + 2;
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        Head = (int)newOffset;
+        ref byte first = ref Unsafe.Add(ref _stack, (nint)(headOffset * WordSize));
+        EvmWord firstWord = CreateWordFromUInt64(BinaryPrimitives.ReverseEndianness(operand >> 8));
+        EvmWord secondWord = CreateWordFromUInt64(BinaryPrimitives.ReverseEndianness((ulong)(byte)operand));
+        Unsafe.WriteUnaligned(ref first, firstWord);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref first, WordSize), secondWord);
+        return EvmExceptionType.None;
+    }
+
     /// <summary>
     /// Pushes an Uint256 written in big endian.
     /// </summary>
@@ -1542,6 +1589,18 @@ public ref struct EvmStack
     public bool PopLimbo()
     {
         int head = Head - 1;
+        if (head < 0)
+        {
+            return false;
+        }
+        Head = head;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool Pop2Limbo()
+    {
+        int head = Head - 2;
         if (head < 0)
         {
             return false;
@@ -1922,6 +1981,7 @@ public ref struct EvmStack
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly bool PeekUInt256IsZero()
     {
         ref byte baseRef = ref _stack;
@@ -2240,6 +2300,26 @@ public ref struct EvmStack
 
         if (TTracingInst.IsActive) Trace(depth);
 
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType SwapPop(int depth)
+    {
+        int head = Head;
+        if (head < depth)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        ref byte bytes = ref _stack;
+        nuint headOffset = (nuint)(uint)head << 5;
+        nuint depthBytes = (nuint)(uint)depth << 5;
+        ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
+        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
+        Head = head - 1;
         return EvmExceptionType.None;
     }
 

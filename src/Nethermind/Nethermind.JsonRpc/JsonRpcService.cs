@@ -77,6 +77,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ex = inner;
         }
 
+        bool suppressWarning = ex is LimitExceededException or ConcurrencyLimitReachedException;
         (int errorCode, string errorText) = ex switch
         {
             LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests"),
@@ -84,8 +85,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => (ErrorCodes.InternalError, "Internal error"),
         };
 
-        if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), in rpcRequest.IdRef);
+        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
@@ -524,7 +525,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>
-                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction, suppressWarning: true),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), ex.ToString(), in request.IdRef, returnAction),
