@@ -43,12 +43,28 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly HashSet<StorageCell> _committedThisRound = [];
 
     /// <summary>
+    /// Identifies the current caching round so a <see cref="PerContractState.BlockChange"/> entry can
+    /// record that its original value has already been captured for this round. Reads are not
+    /// journaled, so every repeat read of an unwritten cell reaches
+    /// <see cref="PerContractState.LoadFromTree"/>; without the stamp each one re-probes
+    /// <see cref="_originalValues"/> on a 52-byte key to re-record what is already there.
+    /// Zero is reserved for "never captured", which is what a default entry carries.
+    /// </summary>
+    private uint _originalsRound = 1;
+
+    private void AdvanceOriginalsRound()
+    {
+        if (++_originalsRound == 0) _originalsRound = 1;
+    }
+
+    /// <summary>
     /// Reset the storage state
     /// </summary>
     public override void Reset(bool resetBlockChanges = true)
     {
         base.Reset();
         _originalValues.ClearAndTrim();
+        AdvanceOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
@@ -231,6 +247,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         base.CommitCore(tracer);
         _originalValues.ClearAndTrim();
+        AdvanceOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
 
@@ -372,6 +389,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 }
 
                 _originalValues.ClearAndTrim();
+                AdvanceOriginalsRound();
             }
 
             _destroyedThisRound.ClearAndTrim();
@@ -573,7 +591,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _provider._metrics.IncrementStorageTreeCache();
             }
 
-            _provider.CaptureOriginalValue(storageCell, valueChange.After);
+            // First read of this cell in this round captures the original; later reads of the same
+            // cell would only re-record the same value, so they skip the 52-byte-keyed probe.
+            uint round = _provider._originalsRound;
+            if (valueChange.CapturedRound != round)
+            {
+                _provider.CaptureOriginalValue(storageCell, valueChange.After);
+                valueChange = valueChange.WithCapturedRound(round);
+            }
+
             return valueChange.After;
         }
 
@@ -702,8 +728,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             IsInitialValue = true;
         }
 
+        private StorageChangeTrace(byte[] before, byte[] after, bool isInitialValue, uint capturedRound)
+        {
+            Before = before;
+            After = after;
+            IsInitialValue = isInitialValue;
+            CapturedRound = capturedRound;
+        }
+
+        public StorageChangeTrace WithCapturedRound(uint round) => new(Before, After, IsInitialValue, round);
+
         public readonly byte[] Before;
         public readonly byte[] After;
         public readonly bool IsInitialValue;
+
+        /// <summary>
+        /// Caching round in which this cell's original value was last recorded, or zero if never.
+        /// </summary>
+        public readonly uint CapturedRound;
     }
 }
