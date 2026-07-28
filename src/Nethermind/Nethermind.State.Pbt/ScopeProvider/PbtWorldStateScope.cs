@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -214,31 +213,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
         long start = Stopwatch.GetTimestamp();
         using (PbtWriteBatchSet changes = _writeBatchBuilder.DrainToWriteBatches(_writeLayout.Tiling()))
-        using (CancellationTokenSource prefetchCancellation = new())
         {
-            Task prefetch = Bundle.PrefetchDirtyStems(changes, prefetchCancellation.Token);
-            Exception? updateError = null;
-            try
-            {
-                _partitionRoots = TrieUpdater.UpdateRoot(
-                    this, _partitionRoots, changes, PooledRefCountingMemoryProvider.Instance, _writeLayout, _rootFoldConcurrency, out _);
-            }
-            catch (Exception exception)
-            {
-                updateError = exception;
-            }
-
-            prefetchCancellation.Cancel();
-            try
-            {
-                prefetch.GetAwaiter().GetResult();
-            }
-            catch (Exception prefetchError) when (updateError is not null)
-            {
-                throw new AggregateException(updateError, prefetchError);
-            }
-
-            if (updateError is not null) ExceptionDispatchInfo.Throw(updateError);
+            _partitionRoots = TrieUpdater.UpdateRoot(
+                this, _partitionRoots, changes, PooledRefCountingMemoryProvider.Instance, _writeLayout, _rootFoldConcurrency, out _);
         }
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
 
