@@ -403,7 +403,7 @@ public partial class BlockTree
 
         RlpReader pivotReader = new(pivotFromDb!);
         ulong updatedPivotBlockNumber = pivotReader.DecodeULong();
-        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak()!;
+        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak();
 
         if (updatedPivotBlockHash.IsZero)
         {

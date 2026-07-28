@@ -232,15 +232,32 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Can_encode_decode_with_null_mix_hash()
+    public void Can_encode_decode_with_null_mandatory_fields()
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
+        header.ParentHash = null;
+        header.UnclesHash = null;
+        header.Beneficiary = null;
+        header.StateRoot = null;
+        header.TxRoot = null;
+        header.ReceiptsRoot = null;
+        header.Bloom = null;
         header.MixHash = null;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        Assert.That(blockHeader.MixHash, Is.EqualTo(Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.ParentHash, Is.EqualTo(Keccak.Zero));
+            Assert.That(blockHeader.UnclesHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+            Assert.That(blockHeader.Beneficiary, Is.EqualTo(Address.Zero));
+            Assert.That(blockHeader.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(blockHeader.TxRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(blockHeader.ReceiptsRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(blockHeader.Bloom, Is.EqualTo(Bloom.Empty));
+            Assert.That(blockHeader.MixHash, Is.EqualTo(Keccak.Zero));
+        }
     }
 
     [TestCaseSource(nameof(OptionalHashRoundtripSource))]

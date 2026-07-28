@@ -1082,7 +1082,7 @@ public ref struct RlpReader
     [DoesNotReturn, StackTraceHidden]
     private readonly void ThrowAddressDecodeException(int prefix)
         => throw new RlpException(
-            $"Unexpected prefix of {prefix} when decoding {nameof(Address)} at position {Position} in the message of length {Data.Length}.");
+            $"Unexpected RLP prefix of {prefix} when decoding {nameof(Address)} at position {Position} in the message of length {Data.Length}.");
 
     [StackTraceHidden]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

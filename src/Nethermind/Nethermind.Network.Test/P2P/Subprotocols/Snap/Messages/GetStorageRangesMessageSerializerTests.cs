@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         }
 
         [Test]
-        public void Roundtrip_Empty()
+        public void Roundtrip_Empty_With_Null_LimitHash()
         {
             GetStorageRangeMessage msg = new()
             {
@@ -50,7 +50,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                     RootHash = Keccak.OfAnEmptyString,
                     Accounts = ArrayPoolList<PathWithAccount>.Empty(),
                     StartingHash = new Hash256("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-                    LimitHash = new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
+                    LimitHash = null
                 },
                 ResponseBytes = 1000
             };

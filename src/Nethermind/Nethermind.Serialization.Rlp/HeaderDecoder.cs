@@ -122,13 +122,13 @@ namespace Nethermind.Serialization.Rlp
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             writer.StartSequence(GetContentLength(header, rlpBehaviors));
-            writer.Encode(header.ParentHash);
-            writer.Encode(header.UnclesHash);
-            writer.Encode(header.Beneficiary);
-            writer.Encode(header.StateRoot);
-            writer.Encode(header.TxRoot);
-            writer.Encode(header.ReceiptsRoot);
-            writer.Encode(header.Bloom);
+            writer.Encode(header.ParentHash ?? Keccak.Zero);
+            writer.Encode(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp);
+            writer.Encode(header.Beneficiary ?? Address.Zero);
+            writer.Encode(header.StateRoot ?? Keccak.EmptyTreeHash);
+            writer.Encode(header.TxRoot ?? Keccak.EmptyTreeHash);
+            writer.Encode(header.ReceiptsRoot ?? Keccak.EmptyTreeHash);
+            writer.Encode(header.Bloom ?? Bloom.Empty);
             writer.Encode(header.Difficulty);
             writer.Encode(header.Number);
             writer.Encode(header.GasLimit);
@@ -189,13 +189,13 @@ namespace Nethermind.Serialization.Rlp
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             int contentLength = 0
-                                + Rlp.LengthOf(item.ParentHash)
-                                + Rlp.LengthOf(item.UnclesHash)
-                                + Rlp.LengthOf(item.Beneficiary)
-                                + Rlp.LengthOf(item.StateRoot)
-                                + Rlp.LengthOf(item.TxRoot)
-                                + Rlp.LengthOf(item.ReceiptsRoot)
-                                + Rlp.LengthOf(item.Bloom)
+                                + Rlp.LengthOf(item.ParentHash ?? Keccak.Zero)
+                                + Rlp.LengthOf(item.UnclesHash ?? Keccak.OfAnEmptySequenceRlp)
+                                + Rlp.LengthOf(item.Beneficiary ?? Address.Zero)
+                                + Rlp.LengthOf(item.StateRoot ?? Keccak.EmptyTreeHash)
+                                + Rlp.LengthOf(item.TxRoot ?? Keccak.EmptyTreeHash)
+                                + Rlp.LengthOf(item.ReceiptsRoot ?? Keccak.EmptyTreeHash)
+                                + Rlp.LengthOf(item.Bloom ?? Bloom.Empty)
                                 + Rlp.LengthOf(item.Difficulty)
                                 + Rlp.LengthOf(item.Number)
                                 + Rlp.LengthOf(item.GasLimit)

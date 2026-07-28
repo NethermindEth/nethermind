@@ -71,6 +71,36 @@ namespace Nethermind.Xdc.Test
         }
 
         [Test]
+        public void Null_Mandatory_Fields_Encode_As_Defaults()
+        {
+            XdcHeaderDecoder codec = new();
+            XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+            header.ParentHash = null;
+            header.UnclesHash = null;
+            header.Beneficiary = null;
+            header.StateRoot = null;
+            header.TxRoot = null;
+            header.ReceiptsRoot = null;
+            header.Bloom = null;
+            header.MixHash = null;
+
+            RlpReader context = new(codec.Encode(header).Bytes);
+            XdcBlockHeader decoded = (XdcBlockHeader)codec.Decode(ref context)!;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.ParentHash, Is.EqualTo(Hash256.Zero));
+                Assert.That(decoded.UnclesHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+                Assert.That(decoded.Beneficiary, Is.EqualTo(Address.Zero));
+                Assert.That(decoded.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+                Assert.That(decoded.TxRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+                Assert.That(decoded.ReceiptsRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+                Assert.That(decoded.Bloom, Is.EqualTo(Bloom.Empty));
+                Assert.That(decoded.MixHash, Is.EqualTo(Hash256.Zero));
+            }
+        }
+
+        [Test]
         public void TotalLength_Equals_GetLength()
         {
             XdcHeaderDecoder codec = new();
