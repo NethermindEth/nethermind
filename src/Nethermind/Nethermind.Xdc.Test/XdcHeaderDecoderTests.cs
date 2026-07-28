@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -98,6 +99,29 @@ namespace Nethermind.Xdc.Test
                 Assert.That(decoded.Bloom, Is.EqualTo(Bloom.Empty));
                 Assert.That(decoded.MixHash, Is.EqualTo(Hash256.Zero));
             }
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        [TestCase(5)]
+        [TestCase(6)]
+        [TestCase(13)]
+        public void Rejects_Empty_Mandatory_Fixed_Size_Field(int fieldIndex)
+        {
+            XdcHeaderDecoder codec = new();
+            byte[] validRlp = codec.Encode(Build.A.XdcBlockHeader().TestObject).Bytes;
+            byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
+
+            Assert.That(() => Decode(codec, crafted), Throws.InstanceOf<RlpException>());
+        }
+
+        private static void Decode(XdcHeaderDecoder codec, byte[] rlp)
+        {
+            RlpReader context = new(rlp);
+            codec.Decode(ref context);
         }
 
         [Test]

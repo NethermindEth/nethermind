@@ -17,6 +17,7 @@ public class HeaderDecoderTests
 {
     private const int BloomFieldIndex = 6;
     private const int MixHashFieldIndex = 13;
+    private const int WithdrawalsRootFieldIndex = 16;
 
     [TestCase(true)]
     [TestCase(false)]
@@ -260,6 +261,21 @@ public class HeaderDecoderTests
         }
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    [TestCase(5)]
+    [TestCase(6)]
+    public void Should_reject_empty_rlp_string_for_mandatory_fixed_size_field(int fieldIndex)
+    {
+        byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes;
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
+
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+    }
+
     [TestCaseSource(nameof(OptionalHashRoundtripSource))]
     public void Can_encode_decode_with_null_optional_hashes_when_later_fields_are_present(BlockHeader header)
     {
@@ -283,7 +299,7 @@ public class HeaderDecoderTests
         listFormBloom[4] = 0x7F;
         header.Bloom!.Bytes.CopyTo(listFormBloom.AsSpan(5));
 
-        byte[] crafted = ReplaceFieldEncoding(validRlp, BloomFieldIndex, listFormBloom);
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, BloomFieldIndex, listFormBloom);
 
         Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
@@ -299,38 +315,22 @@ public class HeaderDecoderTests
             .TestObject;
         byte[] validRlp = Rlp.Encode(header).Bytes;
 
-        byte[] crafted = ReplaceFieldEncoding(validRlp, MixHashFieldIndex, [0x80]);
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, MixHashFieldIndex, [0x80]);
 
         Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
 
-    private static byte[] ReplaceFieldEncoding(byte[] headerRlp, int fieldIndex, byte[] craftedField)
+    [Test]
+    public void Should_reject_empty_rlp_string_for_withdrawals_root()
     {
-        RlpReader reader = new(headerRlp);
-        (int prefixLength, int contentLength) = reader.ReadPrefixAndContentLength();
+        BlockHeader header = Build.A.BlockHeader
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .TestObject;
+        byte[] validRlp = Rlp.Encode(header).Bytes;
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, WithdrawalsRootFieldIndex, [0x80]);
 
-        int fieldStart = reader.Position;
-        int fieldLength = 0;
-        for (int i = 0; i <= fieldIndex; i++)
-        {
-            fieldStart = reader.Position;
-            fieldLength = reader.PeekNextRlpLength();
-            reader.SkipItem();
-        }
-
-        int contentLengthDelta = craftedField.Length - fieldLength;
-        int craftedContentLength = contentLength + contentLengthDelta;
-        byte[] result = new byte[Rlp.LengthOfSequence(craftedContentLength)];
-        RlpWriter writer = new(result);
-        writer.StartSequence(craftedContentLength);
-
-        int craftedContentStart = writer.Position;
-        headerRlp.AsSpan(prefixLength, fieldStart - prefixLength).CopyTo(result.AsSpan(craftedContentStart));
-        craftedField.CopyTo(result.AsSpan(craftedContentStart + fieldStart - prefixLength));
-        headerRlp.AsSpan(fieldStart + fieldLength, prefixLength + contentLength - fieldStart - fieldLength)
-            .CopyTo(result.AsSpan(craftedContentStart + fieldStart - prefixLength + craftedField.Length));
-
-        return result;
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
 
     public static IEnumerable<TestCaseData> OptionalHashRoundtripSource()
@@ -376,5 +376,37 @@ public class HeaderDecoderTests
         yield return new object?[] { 1ul, 2ul, TestItem.KeccakB };
         yield return new object?[] { ulong.MaxValue / 2, ulong.MaxValue, null };
         yield return new object?[] { ulong.MaxValue, ulong.MaxValue / 2, null };
+    }
+}
+
+public static class HeaderRlpTestHelper
+{
+    public static byte[] ReplaceFieldEncoding(byte[] headerRlp, int fieldIndex, byte[] craftedField)
+    {
+        RlpReader reader = new(headerRlp);
+        (int prefixLength, int contentLength) = reader.ReadPrefixAndContentLength();
+
+        int fieldStart = reader.Position;
+        int fieldLength = 0;
+        for (int i = 0; i <= fieldIndex; i++)
+        {
+            fieldStart = reader.Position;
+            fieldLength = reader.PeekNextRlpLength();
+            reader.SkipItem();
+        }
+
+        int contentLengthDelta = craftedField.Length - fieldLength;
+        int craftedContentLength = contentLength + contentLengthDelta;
+        byte[] result = new byte[Rlp.LengthOfSequence(craftedContentLength)];
+        RlpWriter writer = new(result);
+        writer.StartSequence(craftedContentLength);
+
+        int craftedContentStart = writer.Position;
+        headerRlp.AsSpan(prefixLength, fieldStart - prefixLength).CopyTo(result.AsSpan(craftedContentStart));
+        craftedField.CopyTo(result.AsSpan(craftedContentStart + fieldStart - prefixLength));
+        headerRlp.AsSpan(fieldStart + fieldLength, prefixLength + contentLength - fieldStart - fieldLength)
+            .CopyTo(result.AsSpan(craftedContentStart + fieldStart - prefixLength + craftedField.Length));
+
+        return result;
     }
 }
