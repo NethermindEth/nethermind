@@ -109,7 +109,7 @@ namespace Nethermind.Abi
 
                     sequence.SetValue(item, i);
                 }
-                catch (Exception e) when (e is OverflowException or ArgumentException)
+                catch (Exception e) when (e is OverflowException or ArgumentException or IndexOutOfRangeException)
                 {
                     throw new AbiException($"Failed to decode ABI sequence at element {i} for type {type}", e);
                 }

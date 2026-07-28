@@ -30,17 +30,8 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
-        public static byte[] Slice(this byte[] bytes, int startIndex, int length)
-        {
-            if (length == 1)
-            {
-                return [bytes[startIndex]];
-            }
-
-            byte[] slice = new byte[length];
-            Buffer.BlockCopy(bytes, startIndex, slice, 0, length);
-            return slice;
-        }
+        public static byte[] Slice(this byte[] bytes, int startIndex, int length) =>
+            bytes.AsSpan(startIndex, length).ToArray();
 
         public static byte[] SliceWithZeroPaddingEmptyOnError(this byte[] bytes, int startIndex, int length)
         {

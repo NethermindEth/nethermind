@@ -39,6 +39,8 @@ namespace Nethermind.Abi
 
         public override bool IsDynamic { get; }
 
+        internal override IReadOnlyList<AbiType> ComponentTypes => _elements;
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);
@@ -92,6 +94,8 @@ namespace Nethermind.Abi
         private readonly AbiType[] _elements;
         public override string Name { get; }
         public override bool IsDynamic { get; }
+
+        internal override IReadOnlyList<AbiType> ComponentTypes => _elements;
 
         public AbiTuple()
         {

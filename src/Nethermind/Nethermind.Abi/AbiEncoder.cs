@@ -46,6 +46,11 @@ namespace Nethermind.Abi
             int sigOffset = includeSig ? 4 : 0;
             if (includeSig)
             {
+                if (data.Length < sigOffset)
+                {
+                    throw new AbiException($"Insufficient data to decode ABI signature for {signature}");
+                }
+
                 if (!Bytes.AreEqual(AbiSignature.GetAddress(data), signature.Address))
                 {
                     throw new AbiException($"Signature in encoded ABI data is not consistent with {signature}");

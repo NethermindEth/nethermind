@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using Nethermind.Blockchain.Contracts.Json;
@@ -35,6 +36,8 @@ namespace Nethermind.Abi
         public static AbiUFixed UFixed { get; } = new(128, 18);
 
         public virtual bool IsDynamic => false;
+
+        internal virtual IReadOnlyList<AbiType>? ComponentTypes => null;
 
         public abstract string Name { get; }
 
