@@ -53,11 +53,11 @@ public class StatusMessageSerializer69 :
         {
             ProtocolVersion = ctx.DecodeByte(),
             NetworkId = ctx.DecodeULong(),
-            GenesisHash = ctx.DecodeKeccakOrNull() ?? Hash256.Zero,
+            GenesisHash = ctx.DecodeKeccak(),
             ForkId = DecodeForkId(ref ctx),
             EarliestBlock = ctx.DecodeULong(),
             LatestBlock = ctx.DecodeULong(),
-            LatestBlockHash = ctx.DecodeKeccakOrNull() ?? Hash256.Zero
+            LatestBlockHash = ctx.DecodeKeccak()
         };
     }
 
