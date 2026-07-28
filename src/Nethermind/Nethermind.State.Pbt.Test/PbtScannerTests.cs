@@ -130,6 +130,7 @@ public class PbtScannerTests
     /// width, so only what every tiling shares is asserted here.
     /// </remarks>
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved)]
     [TestCase(PbtTrieLayout.SixLevelInterleaved)]
     [TestCase(PbtTrieLayout.EightLevelInterleaved)]
     public async Task Scan_ReadsTheSameTreeUnderEveryTiling(PbtTrieLayout layout)

@@ -28,6 +28,8 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture(PbtTrieLayout.ClusteredFourLevelEveryLevel)]
 [TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
+[TestFixture(PbtTrieLayout.FourLevelInterleaved)]
+[TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]
 [TestFixture(PbtTrieLayout.EightLevelInterleaved)]
 [TestFixture(PbtTrieLayout.EightLevelEvery4Depth)]
@@ -38,6 +40,7 @@ public class PbtTilingTests(PbtTrieLayout layout)
 
     private int LevelsPerGroup => layout.Tiling() switch
     {
+        PbtTiling.FourLevel => PbtFourLevelTileLayout.LevelsPerGroup,
         PbtTiling.SixLevel => PbtSixLevelTileLayout.LevelsPerGroup,
         PbtTiling.EightLevel => PbtEightLevelTileLayout.LevelsPerGroup,
         _ => PbtClusteredTileLayout.LevelsPerGroup,

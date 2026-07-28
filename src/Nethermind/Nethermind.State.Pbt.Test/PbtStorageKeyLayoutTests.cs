@@ -138,13 +138,17 @@ public class PbtStorageKeyLayoutTests
     /// under a layout of the tiling that wrote it — the levels half of the layout being free to change,
     /// as the encodings all read whichever wrote them.
     /// </summary>
-    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, false, TestName = "the same tiling, other levels")]
-    [TestCase(PbtTrieLayout.SixLevelInterleaved, true, TestName = "another tiling")]
-    [TestCase(PbtTrieLayout.EightLevelInterleaved, true, TestName = "another tiling, wider")]
-    public void ReopeningAPopulatedDatabase_IsRefusedOnlyUnderAnotherTiling(PbtTrieLayout reopenAs, bool refused)
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelBoundaryOnly, false, TestName = "clustered, other levels")]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelBoundaryOnly, false, TestName = "four-level, other levels")]
+    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelInterleaved, false, TestName = "four-level, reverse levels")]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.FourLevelInterleaved, true, TestName = "clustered to independent")]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelInterleaved, true, TestName = "independent to clustered")]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.SixLevelInterleaved, true, TestName = "another tiling")]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.EightLevelInterleaved, true, TestName = "another tiling, wider")]
+    public void ReopeningAPopulatedDatabase_IsRefusedOnlyUnderAnotherTiling(PbtTrieLayout writtenAs, PbtTrieLayout reopenAs, bool refused)
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtConfig written = new() { TrieNodeLayout = PbtTrieLayout.ClusteredFourLevelInterleaved };
+        PbtConfig written = new() { TrieNodeLayout = writtenAs };
         PbtRocksDbPersistence persistence = new(db, written);
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))

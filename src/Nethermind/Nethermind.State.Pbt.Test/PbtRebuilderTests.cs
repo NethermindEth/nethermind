@@ -26,6 +26,7 @@ namespace Nethermind.State.Pbt.Test;
 /// writes — so it is run under every tiling, against the same reference root.
 /// </param>
 [TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+[TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]
 [TestFixture(PbtTrieLayout.EightLevelInterleaved)]
 public class PbtRebuilderTests(PbtTrieLayout layout)

@@ -92,6 +92,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         {
             switch (WriteLayout.Tiling())
             {
+                case PbtTiling.FourLevel: Flatten<PbtFourLevelTileLayout>(flattened, key, blob); break;
                 case PbtTiling.SixLevel: Flatten<PbtSixLevelTileLayout>(flattened, key, blob); break;
                 case PbtTiling.EightLevel: Flatten<PbtEightLevelTileLayout>(flattened, key, blob); break;
                 default: Flatten<PbtClusteredTileLayout>(flattened, key, blob); break;

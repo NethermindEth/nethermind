@@ -111,6 +111,7 @@ public static partial class TrieUpdater
             PbtTiling.ClusteredFourLevel => UpdatePartition<PbtClusteredTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
             PbtTiling.SixLevel => UpdatePartition<PbtSixLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
             PbtTiling.EightLevel => UpdatePartition<PbtEightLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
+            PbtTiling.FourLevel => UpdatePartition<PbtFourLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
             _ => throw new ArgumentOutOfRangeException(nameof(layout)),
         };
         return currentRoots.With(partition, root);

@@ -19,5 +19,8 @@ public enum PbtTiling : byte
 
     /// <summary>Eight-level independent tiles.</summary>
     EightLevel = 2,
+
+    /// <summary>Four-level independent tiles.</summary>
+    FourLevel = 3,
 }
 

@@ -156,7 +156,7 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     {
         _ = tiling switch
         {
-            PbtTiling.ClusteredFourLevel or PbtTiling.SixLevel or PbtTiling.EightLevel => tiling,
+            PbtTiling.ClusteredFourLevel or PbtTiling.SixLevel or PbtTiling.EightLevel or PbtTiling.FourLevel => tiling,
             _ => throw new ArgumentOutOfRangeException(nameof(tiling), tiling, null),
         };
 
