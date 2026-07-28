@@ -45,7 +45,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Zero means never captured, which is what a default BlockChange entry carries.
     private uint _originalsRound = 1;
 
-    private void ClearOriginalValues()
+    private void EndOriginalsRound()
     {
         _originalValues.ClearAndTrim();
         if (++_originalsRound == 0) _originalsRound = 1;
@@ -57,7 +57,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void Reset(bool resetBlockChanges = true)
     {
         base.Reset();
-        ClearOriginalValues();
+        EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
@@ -239,7 +239,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         base.CommitCore(tracer);
-        ClearOriginalValues();
+        EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
 
@@ -380,7 +380,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                 }
 
-                ClearOriginalValues();
+                EndOriginalsRound();
             }
 
             _destroyedThisRound.ClearAndTrim();
