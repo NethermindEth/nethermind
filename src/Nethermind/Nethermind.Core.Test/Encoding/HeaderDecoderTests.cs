@@ -18,6 +18,9 @@ public class HeaderDecoderTests
     private const int BloomFieldIndex = 6;
     private const int MixHashFieldIndex = 13;
     private const int WithdrawalsRootFieldIndex = 16;
+    private const int ParentBeaconBlockRootFieldIndex = 19;
+    private const int RequestsHashFieldIndex = 20;
+    private const int BlockAccessListHashFieldIndex = 21;
 
     [TestCase(true)]
     [TestCase(false)]
@@ -276,13 +279,26 @@ public class HeaderDecoderTests
         Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
 
-    [TestCaseSource(nameof(OptionalHashRoundtripSource))]
-    public void Can_encode_decode_with_null_optional_hashes_when_later_fields_are_present(BlockHeader header)
+    [TestCase(ParentBeaconBlockRootFieldIndex)]
+    [TestCase(RequestsHashFieldIndex)]
+    [TestCase(BlockAccessListHashFieldIndex)]
+    public void Should_reject_empty_rlp_string_for_present_optional_hash(int fieldIndex)
     {
-        Rlp rlp = Rlp.Encode(header);
-        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakA)
+            .WithRequestsHash(TestItem.KeccakB)
+            .WithBlockAccessListHash(TestItem.KeccakC)
+            .WithSlotNumber(1)
+            .TestObject;
+        byte[] validRlp = Rlp.Encode(header).Bytes;
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
 
-        Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -331,42 +347,6 @@ public class HeaderDecoderTests
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, WithdrawalsRootFieldIndex, [0x80]);
 
         Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
-    }
-
-    public static IEnumerable<TestCaseData> OptionalHashRoundtripSource()
-    {
-        yield return new TestCaseData(Build.A.BlockHeader
-            .WithTimestamp(ulong.MaxValue)
-            .WithBaseFee(1)
-            .WithWithdrawalsRoot(Keccak.Zero)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithParentBeaconBlockRoot(null)
-            .WithRequestsHash(TestItem.KeccakA)
-            .TestObject).SetName("Null parent beacon block root with later field");
-
-        yield return new TestCaseData(Build.A.BlockHeader
-            .WithTimestamp(ulong.MaxValue)
-            .WithBaseFee(1)
-            .WithWithdrawalsRoot(Keccak.Zero)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithParentBeaconBlockRoot(TestItem.KeccakA)
-            .WithRequestsHash(null)
-            .WithBlockAccessListHash(TestItem.KeccakB)
-            .TestObject).SetName("Null requests hash with later field");
-
-        yield return new TestCaseData(Build.A.BlockHeader
-            .WithTimestamp(ulong.MaxValue)
-            .WithBaseFee(1)
-            .WithWithdrawalsRoot(Keccak.Zero)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithParentBeaconBlockRoot(TestItem.KeccakA)
-            .WithRequestsHash(TestItem.KeccakB)
-            .WithBlockAccessListHash(null)
-            .WithSlotNumber(1)
-            .TestObject).SetName("Null block access list hash with later field");
     }
 
     public static IEnumerable<object?[]> CancunFieldsSource()
