@@ -53,7 +53,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // Non-null writes come only from the speculative loop; every other writer nulls it after joining that loop,
     // which is what makes the marker and its shared tx-hash set safe to read without further sync.
     private WarmMarker? _warmMarker;
-    private WarmMarker? _warmMarker;
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
     private readonly IHasAccessList[] _systemAccessLists;
