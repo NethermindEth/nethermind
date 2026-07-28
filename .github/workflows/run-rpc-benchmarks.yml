@@ -1,7 +1,7 @@
 name: Run RPC Benchmarks
 
 # Benchmark a client's JSON-RPC on the self-hosted `reproducible-benchmarks` runner, reusing its DB snapshots.
-# Snapshots are never mounted writable (isolated overlay/copy, fingerprinted before/after — job FAILS if changed). See scripts/rpc-bench/README.md.
+# Only read-only RPCs are benchmarked (eth_call/getBalance/trace/debug — none change state), so snapshots aren't mutated even under a direct RW mount; each is fingerprinted before/after and the job FAILS if one changed. See scripts/rpc-bench/README.md.
 
 on:
   workflow_dispatch:

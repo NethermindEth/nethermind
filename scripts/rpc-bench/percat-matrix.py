@@ -89,7 +89,7 @@ def main():
     # achieved r/s << target rps => that scenario's own throughput ceiling.
     if scen_iso:
         print("\n## ISOLATED - each scenario ALONE at the sweep rps: achieved r/s / p99 ms (achieved << target = that scenario's ceiling)\n")
-        print("| scenario | " + " | ".join(f"{c[:4]}@{r}" for c, r in cols) + " |")
+        print("| scenario | " + " | ".join(f"{c}@{r}" for c, r in cols) + " |")
         print("|" + "---|" * (len(cols) + 1))
         for s in scen_iso:
             row = [s]
@@ -101,7 +101,7 @@ def main():
     # 3) MIXED per-scenario p99 (contended)
     if scen_mix:
         print("\n## MIXED - per-scenario p99 ms (all scenarios at once)\n")
-        print("| scenario | " + " | ".join(f"{c[:4]}@{r}" for c, r in cols) + " |")
+        print("| scenario | " + " | ".join(f"{c}@{r}" for c, r in cols) + " |")
         print("|" + "---|" * (len(cols) + 1))
         for s in scen_mix:
             row = [s] + [f"{mix[(c,r)][1][s]['p99']:.0f}" if (c, r) in mix and s in mix[(c, r)][1] else "-" for c, r in cols]

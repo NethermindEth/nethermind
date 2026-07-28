@@ -45,9 +45,9 @@ isolation()    { [[ "$1" == "reth" ]] && echo "direct" || echo "overlay"; }
 
 # One json-bench cell: $1=config (repo-relative) $2=rps $3=duration $4=out dir $5=client
 run_cell() {
-  local cfg="$1" rps="$2" dur="$3" cell="$4" client="$5"
+  local cfg="$1" rps="$2" dur="$3" cell="$4" ctype="$5" label="$6"
   mkdir -p "$cell"
-  OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$client" LABEL="$client" \
+  OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$ctype" LABEL="$label" \
     SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
     JB_BENCHMARK_CONFIG="$cfg" JB_RPS="$rps" JB_DURATION="$dur" \
     JB_DEEP_CHECK="true" JB_HTML_REPORT="false" \
@@ -58,47 +58,54 @@ mkdir -p "$OUT_DIR" "$STATE_ROOT"
 declare -a SUMMARIES=()
 node_issue=0
 
-for client in $CLIENTS; do
-  img="$(default_image "$client")" || { echo "skip $client: no image"; continue; }
-  [[ "$client" != "nethermind" ]] && { docker pull "$img" || echo "pull failed — assuming $img is local"; }
-  cst="$STATE_ROOT/$client"; mkdir -p "$cst"
-  cname="rpcbench-sweep-${client}-${GITHUB_RUN_ID:-local}"
-  echo "::group::sweep ${client} (image=${img}, db=$(snap_path "$client"), head=${SNAPSHOT_BLOCK})"
-  if ! CLIENT="$client" INSTANCE="primary" NODE_IMAGE="$img" \
-       DB_SOURCE="$(snap_path "$client")" DB_ISOLATION="$(isolation "$client")" \
+# Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
+# same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
+for entry in $CLIENTS; do
+  ctype="${entry%%@*}"
+  if [[ "$entry" == *@* ]]; then
+    img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
+  else
+    img="$(default_image "$ctype")" || { echo "skip $entry: no image"; continue; }; label="$ctype"
+  fi
+  docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
+  cst="$STATE_ROOT/$label"; mkdir -p "$cst"
+  cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
+  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=$(snap_path "$ctype"), head=${SNAPSHOT_BLOCK})"
+  if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" \
+       DB_SOURCE="$(snap_path "$ctype")" DB_ISOLATION="$(isolation "$ctype")" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
-       JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$(layout_flags "$client")" \
+       JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$(layout_flags "$ctype")" \
        ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
        "$here/start-node.sh"; then
-    echo "::warning::${client} failed to start — skipping its cells"; echo "::endgroup::"; continue
+    echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
   fi
 
   for rps in $RPS_LIST; do
     # ISOLATED: each scenario alone
     for icfg in $ISO_CONFIGS; do
       scen="$(basename "$icfg" .yaml)"
-      cell="$OUT_DIR/iso/${client}/${rps}/${scen}"
-      echo "-- ISO ${client} ${scen} @ rps=${rps} --"
-      run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$client" || echo "::warning::iso ${client}/${scen}/${rps} failed"
-      [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${client}|${rps}=$cell/jsonbench-summary.md")
+      cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
+      echo "-- ISO ${label} ${scen} @ rps=${rps} --"
+      run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || echo "::warning::iso ${label}/${scen}/${rps} failed"
+      [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${label}|${rps}=$cell/jsonbench-summary.md")
     done
     # MIXED: all scenarios together
-    mcell="$OUT_DIR/mix/${client}/${rps}"
-    echo "-- MIX ${client} @ rps=${rps} --"
-    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$client" || echo "::warning::mix ${client}/${rps} failed"
-    [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${client}|${rps}=$mcell/jsonbench-summary.md")
+    mcell="$OUT_DIR/mix/${label}/${rps}"
+    echo "-- MIX ${label} @ rps=${rps} --"
+    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || echo "::warning::mix ${label}/${rps} failed"
+    [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
   done
 
   STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
-    "$here/stop-node.sh" || echo "::warning::stop-node failed for ${client}"
+    "$here/stop-node.sh" || echo "::warning::stop-node failed for ${label}"
   # Sweep mode isn't covered by the workflow's log-scan step, so scan each node log here (same patterns).
   if [[ -f "$cst/node.log" ]]; then
     clean="$cst/node.clean.log"
     sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$cst/node.log" > "$clean"
     grep -in "Exception" "$clean" | grep -vF 'Incorrect JSON RPC parameters' > "$cst/node.exc" || true
-    if [[ -s "$cst/node.exc" ]]; then echo "::warning::${client}: Exception(s) in node log:"; head -20 "$cst/node.exc"; node_issue=1; fi
-    if grep -qEi 'invalid[[:space:]_-]*block' "$clean"; then echo "::warning::${client}: invalid block in node log"; node_issue=1; fi
+    if [[ -s "$cst/node.exc" ]]; then echo "::warning::${label}: Exception(s) in node log:"; head -20 "$cst/node.exc"; node_issue=1; fi
+    if grep -qEi 'invalid[[:space:]_-]*block' "$clean"; then echo "::warning::${label}: invalid block in node log"; node_issue=1; fi
   fi
   echo "::endgroup::"
 done
