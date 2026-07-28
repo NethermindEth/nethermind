@@ -277,6 +277,7 @@ namespace Nethermind.Consensus.Producers
             for (int groupIndex = 0; groupIndex < senders.Count; groupIndex++)
             {
                 ulong prefixBlobCount = 0;
+                ulong? previousNonce = null;
                 UInt256 prefixFee = UInt256.Zero;
                 for (int candidateIndex = 0; candidateIndex < candidateTxs.Count; candidateIndex++)
                 {
@@ -284,6 +285,8 @@ namespace Nethermind.Consensus.Producers
 
                     (Transaction tx, ulong blobChain) = candidateTxs[candidateIndex];
                     if (blobChain != prefixBlobCount ||
+                        previousNonce is not null &&
+                        (previousNonce == ulong.MaxValue || tx.Nonce != previousNonce + 1) ||
                         !tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
                     {
                         break;
@@ -291,6 +294,7 @@ namespace Nethermind.Consensus.Producers
 
                     prefixBlobCount += (ulong)tx.GetBlobCount();
                     if (prefixBlobCount > (ulong)leftoverCapacity) break;
+                    previousNonce = tx.Nonce;
 
                     UInt256 executionFee = premiumPerGas * tx.SpentGas;
                     prefixFee += executionFee;

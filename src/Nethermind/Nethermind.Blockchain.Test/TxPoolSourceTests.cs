@@ -340,6 +340,22 @@ public class TxPoolSourceTests
     }
 
     [Test]
+    public void GetTransactions_should_not_treat_blob_chain_as_nonce_continuity()
+    {
+        Transaction nonceZero = BlobTransaction(TestItem.PrivateKeyA, nonce: 0, blobCount: 1, priorityFeeGwei: 10);
+        Transaction nonceTwo = BlobTransaction(TestItem.PrivateKeyA, nonce: 2, blobCount: 5, priorityFeeGwei: 9);
+        Transaction competitor = BlobTransaction(TestItem.PrivateKeyB, nonce: 0, blobCount: 5, priorityFeeGwei: 8);
+
+        Transaction[] result = GetBlobTransactions(new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { TestItem.AddressA, [nonceZero, nonceTwo] },
+            { TestItem.AddressB, [competitor] },
+        });
+
+        Assert.That(result, Is.EqualTo(new[] { nonceZero, competitor }).UsingTransactionComparer());
+    }
+
+    [Test]
     public void GetTransactions_should_not_select_dependent_when_predecessor_fails_blob_fee_filter()
     {
         Transaction predecessor = BlobTransaction(TestItem.PrivateKeyA, nonce: 0, blobCount: 1, priorityFeeGwei: 10);
