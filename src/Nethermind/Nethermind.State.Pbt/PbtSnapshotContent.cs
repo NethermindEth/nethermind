@@ -144,6 +144,59 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     private static void Release(RefCountingMemory? memory) => ((IDisposable?)memory)?.Dispose();
 
+    internal PbtSnapshotPayloadSize GetPayloadSize()
+    {
+        long accountLeaf = 0;
+        long accountTrie = 0;
+        long codeLeaf = 0;
+        long codeTrie = 0;
+        long storageLeaf = 0;
+        long storageTrie = 0;
+
+        for (int i = 0; i < _partitions.Length; i++)
+        {
+            Partition partition = _partitions[i];
+            long leaf = 0;
+            long trie = 0;
+
+            foreach ((_, RefCountingMemory? blob) in partition.LeafBlobs)
+            {
+                if (blob is not null) leaf += blob.GetSpan().Length;
+            }
+
+            foreach ((_, RefCountingMemory? node) in partition.TrieNodes)
+            {
+                if (node is not null) trie += node.GetSpan().Length;
+            }
+
+            switch ((PbtPartition)i)
+            {
+                case PbtPartition.Account:
+                    accountLeaf = leaf;
+                    accountTrie = trie;
+                    break;
+                case PbtPartition.Code:
+                    codeLeaf = leaf;
+                    codeTrie = trie;
+                    break;
+                case PbtPartition.Storage:
+                    storageLeaf = leaf;
+                    storageTrie = trie;
+                    break;
+            }
+        }
+
+        return new PbtSnapshotPayloadSize(accountLeaf, accountTrie, codeLeaf, codeTrie, storageLeaf, storageTrie);
+    }
+
     /// <remarks>Releases all retained leases when the pool has no room to retain this content.</remarks>
     public void Dispose() => Reset();
 }
+
+internal readonly record struct PbtSnapshotPayloadSize(
+    long AccountLeaf,
+    long AccountTrie,
+    long CodeLeaf,
+    long CodeTrie,
+    long StorageLeaf,
+    long StorageTrie);

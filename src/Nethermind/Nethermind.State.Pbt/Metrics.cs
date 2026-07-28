@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using NonBlocking;
 
@@ -10,6 +11,13 @@ namespace Nethermind.State.Pbt;
 
 public static class Metrics
 {
+    internal static readonly PbtSnapshotMemoryLabel AccountLeafSnapshotMemory = new("account", "leaf");
+    internal static readonly PbtSnapshotMemoryLabel AccountTrieSnapshotMemory = new("account", "trie");
+    internal static readonly PbtSnapshotMemoryLabel CodeLeafSnapshotMemory = new("code", "leaf");
+    internal static readonly PbtSnapshotMemoryLabel CodeTrieSnapshotMemory = new("code", "trie");
+    internal static readonly PbtSnapshotMemoryLabel StorageLeafSnapshotMemory = new("storage", "leaf");
+    internal static readonly PbtSnapshotMemoryLabel StorageTrieSnapshotMemory = new("storage", "trie");
+
     [DetailedMetric]
     [Description("Time a pbt write batch was open, covering the block's storage and account flush (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
@@ -52,6 +60,36 @@ public static class Metrics
     [Description("Time of a read through the pbt read-only snapshot bundle, by tier and result, and by zone partition for a leaf blob or a persisted trie node (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver PbtReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
+
+    [GaugeMetric]
+    [Description("Retained payload bytes in pbt base snapshots, by partition and value type, excluding tombstones and data-structure overhead")]
+    [KeyIsLabel("partition", "type")]
+    public static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> PbtBaseSnapshotMemory { get; } = new()
+    {
+        [AccountLeafSnapshotMemory] = 0,
+        [AccountTrieSnapshotMemory] = 0,
+        [CodeLeafSnapshotMemory] = 0,
+        [CodeTrieSnapshotMemory] = 0,
+        [StorageLeafSnapshotMemory] = 0,
+        [StorageTrieSnapshotMemory] = 0,
+    };
+
+    private static long _pbtBaseSnapshotCount;
+
+    [GaugeMetric]
+    [Description("Number of pbt base snapshots currently retained in snapshot repositories")]
+    public static long PbtBaseSnapshotCount => Volatile.Read(ref _pbtBaseSnapshotCount);
+
+    internal static void AddPbtBaseSnapshot(in PbtSnapshotPayloadSize size, long direction)
+    {
+        PbtBaseSnapshotMemory.AddBy(AccountLeafSnapshotMemory, direction * size.AccountLeaf);
+        PbtBaseSnapshotMemory.AddBy(AccountTrieSnapshotMemory, direction * size.AccountTrie);
+        PbtBaseSnapshotMemory.AddBy(CodeLeafSnapshotMemory, direction * size.CodeLeaf);
+        PbtBaseSnapshotMemory.AddBy(CodeTrieSnapshotMemory, direction * size.CodeTrie);
+        PbtBaseSnapshotMemory.AddBy(StorageLeafSnapshotMemory, direction * size.StorageLeaf);
+        PbtBaseSnapshotMemory.AddBy(StorageTrieSnapshotMemory, direction * size.StorageTrie);
+        Interlocked.Add(ref _pbtBaseSnapshotCount, direction);
+    }
 
     private static long _pbtTrieNodeCacheMemory;
 
@@ -97,4 +135,11 @@ public static class Metrics
     [Description("Block-number span covered by the layers of a newly assembled pbt read-only snapshot bundle")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
     public static IMetricObserver PbtSnapshotBundleBlockNumberDepth { get; set; } = new NoopMetricObserver();
+}
+
+/// <summary>Metric labels identifying a PBT snapshot partition and its retained value type.</summary>
+public readonly record struct PbtSnapshotMemoryLabel(string Partition, string Type) : IMetricLabels
+{
+    /// <inheritdoc/>
+    public string[] Labels => [Partition, Type];
 }
