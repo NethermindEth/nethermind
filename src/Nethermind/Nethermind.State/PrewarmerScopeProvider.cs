@@ -58,7 +58,9 @@ public class PrewarmerScopeProvider(
         return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, metrics);
     }
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) :
+        IWorldStateScopeProvider.IScope,
+        IWorldStateScopeProvider.ICommittedStateRootSink
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
@@ -66,6 +68,10 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly IWorldStateScopeProvider.IScope? mainScope = isPrewarmer ? preBlockCaches.MainScope : null;
+        // Speculative prewarmer execution can be rolled back independently of the real block;
+        // only the consumer's committed deltas are safe inputs to concurrent root calculation.
+        private readonly IWorldStateScopeProvider.ICommittedStateRootSink? committedStateRootSink =
+            isPrewarmer ? null : baseScope as IWorldStateScopeProvider.ICommittedStateRootSink;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
@@ -176,6 +182,9 @@ public class PrewarmerScopeProvider(
 
         public void HintWarmSlot(in ValueAddress address, in UInt256 index) =>
             (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(in address, in index);
+
+        public void HintCommittedAccount(Address address, Account? account) =>
+            committedStateRootSink?.HintCommittedAccount(address, account);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {

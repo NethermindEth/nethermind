@@ -317,7 +317,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             if (_wasSetCalled || _hasClear)
             {
-                storageTree._scope.SparseSession.EnqueueStorageJob(
+                storageTree._scope.SparseSession.PrepareStorageJob(
                     new FlatSparseTrieSession.StorageJob(storageTree, _updates, _hasClear, onRootUpdated));
             }
             else

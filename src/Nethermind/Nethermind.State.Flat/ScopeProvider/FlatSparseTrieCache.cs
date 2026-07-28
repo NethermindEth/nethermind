@@ -1,12 +1,98 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Sparse;
 
 namespace Nethermind.State.Flat.ScopeProvider;
+
+/// <summary>
+/// One persistent CPU worker for incremental state-root work. It stays independent of the shared
+/// thread pool, which can be saturated by block execution and prewarming.
+/// </summary>
+internal sealed class SparseTrieRootWorker : IDisposable
+{
+    private readonly ConcurrentQueue<FlatSparseTrieSession> _jobs = [];
+    private readonly SemaphoreSlim _workAvailable = new(0);
+    private readonly Thread _thread;
+    private int _activeSchedulers;
+    private int _disposed;
+
+    public SparseTrieRootWorker()
+    {
+        _thread = new Thread(WorkerLoop)
+        {
+            IsBackground = true,
+            Name = "SparseTrieRoot"
+        };
+        _thread.Start();
+    }
+
+    public bool TrySchedule(FlatSparseTrieSession session)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return false;
+
+        Interlocked.Increment(ref _activeSchedulers);
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return false;
+
+            _jobs.Enqueue(session);
+            _workAvailable.Release();
+            return true;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeSchedulers);
+        }
+    }
+
+    private void WorkerLoop()
+    {
+        while (true)
+        {
+            _workAvailable.Wait();
+            while (_jobs.TryDequeue(out FlatSparseTrieSession? session))
+            {
+                session.RunStateWorker();
+            }
+
+            if (Volatile.Read(ref _disposed) != 0) return;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0) return;
+
+        SpinWait spinWait = new();
+        while (Volatile.Read(ref _activeSchedulers) != 0) spinWait.SpinOnce();
+        _workAvailable.Release();
+        _thread.Join();
+        while (_jobs.TryDequeue(out _)) { }
+        _workAvailable.Dispose();
+    }
+}
+
+internal static class SparseTrieRetention
+{
+    private const int SparseBudgetDivisor = 4;
+
+    public static bool Enabled { get; } =
+        Environment.GetEnvironmentVariable("NETHERMIND_SPARSE_TRIE_RETENTION") != "0";
+
+    public static bool ConcurrentRootEnabled { get; } =
+        Environment.GetEnvironmentVariable("NETHERMIND_SPARSE_TRIE_CONCURRENT_ROOT") != "0";
+
+    public static ulong GetSparseBudget(ulong totalBudget) => totalBudget / SparseBudgetDivisor;
+
+    public static long GetNodeCacheBudget(ulong totalBudget) =>
+        (long)(totalBudget - GetSparseBudget(totalBudget));
+}
 
 /// <summary>
 /// One warm sparse-trie generation retained between blocks: the state trie plus a warm storage
@@ -16,40 +102,30 @@ namespace Nethermind.State.Flat.ScopeProvider;
 internal sealed class RetainedGeneration(
     ValueHash256 stateRoot,
     SparseTrie stateTrie,
-    Dictionary<ValueHash256, SparseTrie> storageTries) : IDisposable
+    ConcurrentDictionary<ValueHash256, SparseTrie> storageTries) : IDisposable
 {
     public ValueHash256 StateRoot { get; } = stateRoot;
     public SparseTrie StateTrie { get; } = stateTrie;
-    public Dictionary<ValueHash256, SparseTrie> StorageTries { get; } = storageTries;
+    public ConcurrentDictionary<ValueHash256, SparseTrie> StorageTries { get; } = storageTries;
 
     /// <summary>Total pool-rented arena bytes across the state trie and every storage trie.</summary>
-    public long RentedBytes
-    {
-        get
-        {
-            long total = StateTrie.RentedBytes;
-            foreach (KeyValuePair<ValueHash256, SparseTrie> kv in StorageTries)
-            {
-                total += kv.Value.RentedBytes;
-            }
-
-            return total;
-        }
-    }
+    public long RentedBytes { get; } = SumBytes(stateTrie, storageTries, static trie => trie.RentedBytes);
 
     /// <summary>Arena bytes made unreachable by mutation across the whole generation.</summary>
-    public long DeadBytes
-    {
-        get
-        {
-            long total = StateTrie.DeadBytes;
-            foreach (KeyValuePair<ValueHash256, SparseTrie> kv in StorageTries)
-            {
-                total += kv.Value.DeadBytes;
-            }
+    public long DeadBytes { get; } = SumBytes(stateTrie, storageTries, static trie => trie.DeadBytes);
 
-            return total;
+    private static long SumBytes(
+        SparseTrie stateTrie,
+        ConcurrentDictionary<ValueHash256, SparseTrie> storageTries,
+        Func<SparseTrie, long> selector)
+    {
+        long total = selector(stateTrie);
+        foreach (KeyValuePair<ValueHash256, SparseTrie> kv in storageTries)
+        {
+            total += selector(kv.Value);
         }
+
+        return total;
     }
 
     public void Dispose()
@@ -65,17 +141,17 @@ internal sealed class RetainedGeneration(
 }
 
 /// <summary>
-/// Holds at most one accepted main-processing sparse-trie generation, checked out destructively on
-/// an exact parent-state-root match so a scope exclusively mutates its candidate and an aborted
-/// block leaves the cache cold. Parent mismatch is a miss; the scope then rebuilds from a blinded
-/// committed root.
+/// Holds accepted main-processing sparse-trie generations within a shared memory budget. Exact
+/// parent-state-root checkout is destructive so a scope exclusively mutates its candidate;
+/// alternate parent generations remain available for competing candidates and shallow reorgs.
 /// </summary>
 /// <remarks>
 /// Admission is all-or-nothing within the existing trie-cache envelope: a generation whose rented
 /// arena bytes exceed <see cref="_budgetBytes"/>, or whose dead bytes exceed a quarter of its
 /// rented bytes, is dropped whole rather than compacted, and the next scope rebuilds cold. The
-/// budget is currently a standalone cap reusing <c>TrieCacheMemoryBudget</c>; folding it into one
-/// shared counter with <see cref="TrieNodeCache"/> is a follow-up once retention proves out.
+/// sparse arena receives one quarter of <c>TrieCacheMemoryBudget</c>; <see cref="TrieNodeCache"/>
+/// uses the remaining three quarters, so retained generations do not double-count the configured
+/// cache envelope.
 /// Only the main-processing provider owns a cache; read-only, historical, resettable, and tracing
 /// providers never feed it.
 /// </remarks>
@@ -83,27 +159,35 @@ internal sealed class FlatSparseTrieCache(ulong budgetBytes) : IDisposable
 {
     private readonly long _budgetBytes = (long)budgetBytes;
     private readonly Lock _lock = new();
-    private RetainedGeneration? _held;
+    private readonly List<RetainedGeneration> _held = [];
+    private readonly Lazy<SparseTrieRootWorker> _rootWorker = new();
+    private long _heldBytes;
+
+    public SparseTrieRootWorker RootWorker => _rootWorker.Value;
 
     public long Hits { get; private set; }
     public long Misses { get; private set; }
     public long Rejections { get; private set; }
 
     /// <summary>
-    /// Hands out the held generation when it is anchored at <paramref name="parentStateRoot"/>,
-    /// removing it from the cache; the caller then owns and mutates it. A mismatch or empty cache
-    /// returns <c>null</c> (rebuild cold) and leaves any held generation in place.
+    /// Hands out the newest generation anchored at <paramref name="parentStateRoot"/>, removing it
+    /// from the cache; the caller then owns and mutates it. A mismatch or empty cache returns
+    /// <c>null</c> (rebuild cold) and leaves every held generation in place.
     /// </summary>
     public RetainedGeneration? TryCheckout(in ValueHash256 parentStateRoot)
     {
         lock (_lock)
         {
-            if (_held is not null && _held.StateRoot == parentStateRoot)
+            for (int i = _held.Count - 1; i >= 0; i--)
             {
-                RetainedGeneration generation = _held;
-                _held = null;
-                Hits++;
-                return generation;
+                RetainedGeneration generation = _held[i];
+                if (generation.StateRoot == parentStateRoot)
+                {
+                    _held.RemoveAt(i);
+                    _heldBytes -= generation.RentedBytes;
+                    Hits++;
+                    return generation;
+                }
             }
 
             Misses++;
@@ -113,38 +197,84 @@ internal sealed class FlatSparseTrieCache(ulong budgetBytes) : IDisposable
 
     /// <summary>
     /// Offers a committed generation for retention. Accepted only within the envelope and under the
-    /// dead-byte fragmentation limit; otherwise it is disposed. Replaces (and disposes) any
-    /// generation held from a scope that never checked it back out.
+    /// dead-byte fragmentation limit; otherwise it is disposed. A newer generation for the same
+    /// root replaces the older one; oldest alternate roots are evicted until the total fits.
     /// </summary>
     public void Admit(RetainedGeneration generation)
     {
         long rented = generation.RentedBytes;
-        if (rented > _budgetBytes || generation.DeadBytes > rented / 4)
+        List<RetainedGeneration>? evicted = null;
+        bool rejected = rented > _budgetBytes || generation.DeadBytes > rented / 4;
+        lock (_lock)
+        {
+            int existingIndex = _held.IndexOf(generation);
+            if (existingIndex >= 0)
+            {
+                _held.RemoveAt(existingIndex);
+                _held.Add(generation);
+                return;
+            }
+
+            if (rejected)
+            {
+                Rejections++;
+            }
+            else
+            {
+                for (int i = _held.Count - 1; i >= 0; i--)
+                {
+                    RetainedGeneration held = _held[i];
+                    if (held.StateRoot == generation.StateRoot)
+                    {
+                        _held.RemoveAt(i);
+                        _heldBytes -= held.RentedBytes;
+                        (evicted ??= []).Add(held);
+                    }
+                }
+
+                _held.Add(generation);
+                _heldBytes += rented;
+
+                while (_heldBytes > _budgetBytes)
+                {
+                    RetainedGeneration oldest = _held[0];
+                    _held.RemoveAt(0);
+                    _heldBytes -= oldest.RentedBytes;
+                    (evicted ??= []).Add(oldest);
+                }
+            }
+        }
+
+        if (rejected)
         {
             generation.Dispose();
-            lock (_lock) { Rejections++; }
             return;
         }
 
-        RetainedGeneration? previous;
-        lock (_lock)
+        if (evicted is not null)
         {
-            previous = _held;
-            _held = generation;
+            foreach (RetainedGeneration held in evicted)
+            {
+                held.Dispose();
+            }
         }
-
-        previous?.Dispose();
     }
 
     public void Dispose()
     {
-        RetainedGeneration? held;
+        if (_rootWorker.IsValueCreated) _rootWorker.Value.Dispose();
+
+        RetainedGeneration[] held;
         lock (_lock)
         {
-            held = _held;
-            _held = null;
+            held = [.. _held];
+            _held.Clear();
+            _heldBytes = 0;
         }
 
-        held?.Dispose();
+        foreach (RetainedGeneration generation in held)
+        {
+            generation.Dispose();
+        }
     }
 }

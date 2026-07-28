@@ -19,7 +19,10 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
+public sealed class FlatWorldStateScope :
+    IWorldStateScopeProvider.IScope,
+    IWorldStateScopeProvider.ICommittedStateRootSink,
+    ITrieWarmer.IAddressWarmer
 {
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
@@ -79,7 +82,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool,
         bool isReadOnly,
-        FlatSparseTrieCache? sparseCache)
+        FlatSparseTrieCache? sparseCache,
+        SparseTrieRootWorker? rootWorker = null)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
@@ -96,7 +100,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             : null;
 
         RetainedGeneration? checkedOut = sparseCache?.TryCheckout(currentStateId.StateRoot);
-        SparseSession = new FlatSparseTrieSession(snapshotBundle, currentStateId.StateRoot.ToCommitment(), checkedOut, retentionEnabled: sparseCache is not null);
+        SparseSession = new FlatSparseTrieSession(
+            snapshotBundle,
+            currentStateId.StateRoot.ToCommitment(),
+            logManager.GetClassLogger<FlatSparseTrieSession>(),
+            checkedOut,
+            retentionEnabled: sparseCache is not null,
+            rootWorker);
         _configuration = configuration;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
@@ -487,6 +497,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Interlocked.Decrement(ref _outstandingWarmups);
         }
     }
+
+    public void HintCommittedAccount(Address address, Account? account) =>
+        SparseSession.EnqueueCommittedAccount(address, account);
 
     private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
         GetHintWarmStorages().GetOrAdd(address, static (key, scope) =>

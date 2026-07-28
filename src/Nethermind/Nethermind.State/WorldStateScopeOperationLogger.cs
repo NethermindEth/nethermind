@@ -28,11 +28,19 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
     }
 
-    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
+    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) :
+        IWorldStateScopeProvider.IScope,
+        IWorldStateScopeProvider.ICommittedStateRootSink
     {
+        private readonly IWorldStateScopeProvider.ICommittedStateRootSink? _committedStateRootSink =
+            innerScope as IWorldStateScopeProvider.ICommittedStateRootSink;
+
         public void HintWarmAccount(in ValueAddress address) => innerScope.HintWarmAccount(in address);
 
         public void HintWarmSlot(in ValueAddress address, in UInt256 index) => innerScope.HintWarmSlot(in address, in index);
+
+        public void HintCommittedAccount(Address address, Account? account) =>
+            _committedStateRootSink?.HintCommittedAccount(address, account);
 
         public void Dispose()
         {

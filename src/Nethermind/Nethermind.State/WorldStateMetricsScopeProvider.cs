@@ -21,11 +21,19 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, metrics), this);
 
-    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
+    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) :
+        IWorldStateScopeProvider.IScope,
+        IWorldStateScopeProvider.ICommittedStateRootSink
     {
+        private readonly IWorldStateScopeProvider.ICommittedStateRootSink? _committedStateRootSink =
+            baseScope as IWorldStateScopeProvider.ICommittedStateRootSink;
+
         public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
 
         public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
+
+        public void HintCommittedAccount(Address address, Account? account) =>
+            _committedStateRootSink?.HintCommittedAccount(address, account);
 
         public void Dispose()
         {

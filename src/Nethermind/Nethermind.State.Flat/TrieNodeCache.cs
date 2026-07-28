@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -37,7 +38,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
     {
         _logger = logManager.GetClassLogger<TrieNodeCache>();
 
-        long maxCacheMemoryThreshold = (long)flatDbConfig.TrieCacheMemoryBudget;
+        long maxCacheMemoryThreshold = SparseTrieRetention.Enabled
+            ? SparseTrieRetention.GetNodeCacheBudget(flatDbConfig.TrieCacheMemoryBudget)
+            : (long)flatDbConfig.TrieCacheMemoryBudget;
         long totalNodeCount = (maxCacheMemoryThreshold / EstimatedSizePerNode);
 
         int targetBucketSize = (int)((totalNodeCount / UtilRatio) / ShardCount);

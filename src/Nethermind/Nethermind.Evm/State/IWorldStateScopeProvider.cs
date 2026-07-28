@@ -141,6 +141,16 @@ public interface IWorldStateScopeProvider
         bool StillNeeded(in StorageCell storageCell) => true;
     }
 
+    /// <summary>
+    /// Optional sink for account values that survived transaction rollback and were committed to
+    /// the block-level state. Implementations may consume them asynchronously to move state-root
+    /// work into the execution window; the final write batch remains authoritative.
+    /// </summary>
+    public interface ICommittedStateRootSink
+    {
+        void HintCommittedAccount(Address address, Account? account);
+    }
+
     public interface ICodeDb
     {
         byte[]? GetCode(in ValueHash256 codeHash);

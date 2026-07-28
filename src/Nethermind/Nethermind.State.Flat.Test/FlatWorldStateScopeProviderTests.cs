@@ -143,7 +143,8 @@ public class FlatWorldStateScopeProviderTests
                 LimboLogs.Instance,
                 warmReadPool: null,
                 isReadOnly: false,
-                sparseCache: SparseCache);
+                sparseCache: SparseCache,
+                rootWorker: SparseCache.RootWorker);
 
         public void Dispose()
         {
@@ -689,16 +690,16 @@ public class FlatWorldStateScopeProviderTests
         ctx.PersistenceReader.GetAccount(address).Returns(account);
         ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
 
-        Assert.Throws<MissingTrieNodeException>(() =>
-        {
-            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
-            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1))
-            {
-                storageBatch.Set(1, [0x01]);
-            }
+        IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+        IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+        storageBatch.Set(1, [0x01]);
 
-            writeBatch.Set(address, account);
-        });
+        Assert.Throws<MissingTrieNodeException>(
+            () => storageBatch.Dispose(),
+            "the producing storage worker applies the sealed delta");
+        Assert.Throws<InvalidOperationException>(
+            () => writeBatch.Dispose(),
+            "the outer batch observes the poisoned session");
 
         using (Assert.EnterMultipleScope())
         {
@@ -817,7 +818,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void FiveStorageTries_RunTheParallelJobPhase_AndPropagateEveryRoot()
     {
-        // Five jobs exercise parallel apply followed by the shared fixed-budget root scheduler.
+        // Five jobs apply on their existing flush workers, then share one fixed-budget root scheduler.
         using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
 
@@ -1503,6 +1504,209 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void ConcurrentStatePrefetch_SerializesArenaOwnershipWithoutDirtyingRoot()
+    {
+        const int accountCount = 64;
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address[] addresses = new Address[accountCount];
+        Account[] accounts = new Account[accountCount];
+        StateTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accountCount))
+        {
+            for (int i = 0; i < accountCount; i++)
+            {
+                addresses[i] = Address.FromNumber((UInt256)(ulong)(i + 1));
+                accounts[i] = new Account(balance: (UInt256)(ulong)(i + 1));
+                writeBatch.Set(addresses[i], accounts[i]);
+                expected.Set(addresses[i], accounts[i]);
+            }
+        }
+
+        scope.Commit(1);
+        Hash256 committedRoot = scope.RootHash;
+
+        Parallel.For(0, accountCount, i =>
+        {
+            ValueHash256 key = addresses[i].ToAccountPath;
+            scope.SparseSession.PrefetchState(in key);
+        });
+
+        scope.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(committedRoot), "prefetch must not dirty the root");
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accountCount))
+        {
+            for (int i = 0; i < accountCount; i += 2)
+            {
+                accounts[i] = new Account(balance: (UInt256)(ulong)(accountCount + i + 1));
+                writeBatch.Set(addresses[i], accounts[i]);
+                expected.Set(addresses[i], accounts[i]);
+            }
+        }
+
+        scope.UpdateRootHash();
+        expected.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void ConcurrentCommittedAccounts_ArePrehashedAndSettledAgainstTheFinalBatch()
+    {
+        const int accountCount = FlatSparseTrieSession.ConcurrentRootBatchSize;
+        using TestContext ctx = new();
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        StateTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        Address[] addresses = new Address[accountCount];
+        Account[] finalAccounts = new Account[accountCount];
+
+        for (int i = 0; i < accountCount; i++)
+        {
+            addresses[i] = Address.FromNumber((UInt256)(ulong)(i + 1));
+            Account streamed = new(balance: (UInt256)(ulong)(i + 1));
+            finalAccounts[i] = i % 2 == 0
+                ? streamed
+                : new Account(balance: (UInt256)(ulong)(accountCount + i + 1));
+            scope.HintCommittedAccount(addresses[i], streamed);
+        }
+
+        Address netZeroAddress = Address.FromNumber((UInt256)(accountCount + 1UL));
+        scope.HintCommittedAccount(netZeroAddress, new Account(balance: 1));
+
+        Assert.That(
+            SpinWait.SpinUntil(
+                () => scope.SparseSession.ConcurrentRootCalculationCount > 0,
+                TimeSpan.FromSeconds(5)),
+            Is.True,
+            "the background owner should calculate an intermediate root during execution");
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accountCount))
+        {
+            for (int i = 0; i < accountCount; i++)
+            {
+                writeBatch.Set(addresses[i], finalAccounts[i]);
+                expected.Set(addresses[i], finalAccounts[i]);
+            }
+        }
+
+        scope.UpdateRootHash();
+        expected.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash),
+            "changed streamed values and the net-zero account must be settled before final hashing");
+    }
+
+    [Test]
+    public void Dispose_WaitsForConcurrentStateWorkerBeforeReleasingTheArena()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        using ManualResetEventSlim workerEntered = new();
+        using ManualResetEventSlim releaseWorker = new();
+        scope.SparseSession.OnConcurrentStateWorkerAcquired = () =>
+        {
+            workerEntered.Set();
+            releaseWorker.Wait();
+        };
+
+        try
+        {
+            for (int i = 0; i < FlatSparseTrieSession.ConcurrentRootBatchSize; i++)
+            {
+                scope.HintCommittedAccount(
+                    Address.FromNumber((UInt256)(ulong)(i + 1)),
+                    new Account(balance: (UInt256)(ulong)(i + 1)));
+            }
+
+            Assert.That(workerEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+            Task disposeTask = Task.Run(scope.Dispose);
+            Assert.That(disposeTask.Wait(TimeSpan.FromMilliseconds(100)), Is.False,
+                "dispose must wait while the background owner can still access the arena");
+
+            releaseWorker.Set();
+            Assert.That(disposeTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        }
+        finally
+        {
+            releaseWorker.Set();
+            scope.Dispose();
+        }
+    }
+
+    [Test]
+    public void Publish_WaitsForConcurrentStateOwner()
+    {
+        using TestContext ctx = new();
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        using ManualResetEventSlim workerEntered = new();
+        using ManualResetEventSlim releaseWorker = new();
+        scope.SparseSession.OnConcurrentStateWorkerAcquired = () =>
+        {
+            workerEntered.Set();
+            releaseWorker.Wait();
+        };
+
+        try
+        {
+            for (int i = 0; i < FlatSparseTrieSession.ConcurrentRootBatchSize; i++)
+            {
+                scope.HintCommittedAccount(
+                    Address.FromNumber((UInt256)(ulong)(i + 1)),
+                    new Account(balance: (UInt256)(ulong)(i + 1)));
+            }
+
+            Assert.That(workerEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+            Task publishTask = Task.Run(scope.SparseSession.Publish);
+            Assert.That(publishTask.Wait(TimeSpan.FromMilliseconds(100)), Is.False,
+                "publication must not access the arena while the background owner holds it");
+
+            releaseWorker.Set();
+            Assert.That(publishTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        }
+        finally
+        {
+            releaseWorker.Set();
+        }
+    }
+
+    [Test]
+    public void ConcurrentStateWorkerFailure_FallsBackToTheFinalBatch()
+    {
+        using TestContext ctx = new();
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        using ManualResetEventSlim workerAttempted = new();
+        scope.SparseSession.OnConcurrentStateWorkerAcquired = () =>
+        {
+            workerAttempted.Set();
+            throw new TrieException("injected concurrent-root failure");
+        };
+
+        for (int i = 0; i < FlatSparseTrieSession.ConcurrentRootBatchSize; i++)
+        {
+            scope.HintCommittedAccount(
+                Address.FromNumber((UInt256)(ulong)(i + 1)),
+                new Account(balance: (UInt256)(ulong)(i + 1)));
+        }
+
+        Assert.That(workerAttempted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        Account finalAccount = new(balance: 2);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressA, finalAccount);
+        }
+
+        scope.UpdateRootHash();
+
+        StateTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expected.Set(TestItem.AddressA, finalAccount);
+        expected.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
     public void BalWarmupBatchesDirectlyIntoSparseArenas()
     {
         RecordingTrieWarmer warmer = new(acceptSlotJob: false, acceptMpmcSlotJob: false);
@@ -2025,6 +2229,21 @@ public class FlatTrieNodeReaderTests
         return new RetainedGeneration(state.RootHash, state, []);
     }
 
+    [TestCase(0UL, 0UL, 0L)]
+    [TestCase(4UL, 1UL, 3L)]
+    [TestCase(512UL, 128UL, 384L)]
+    public void SparseRetention_partitions_the_configured_cache_envelope(
+        ulong totalBudget,
+        ulong expectedSparseBudget,
+        long expectedNodeBudget)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SparseTrieRetention.GetSparseBudget(totalBudget), Is.EqualTo(expectedSparseBudget));
+            Assert.That(SparseTrieRetention.GetNodeCacheBudget(totalBudget), Is.EqualTo(expectedNodeBudget));
+        }
+    }
+
     [Test]
     public void SparseCache_checkout_is_exact_root_matched_and_destructive()
     {
@@ -2049,21 +2268,64 @@ public class FlatTrieNodeReaderTests
     }
 
     [Test]
-    public void SparseCache_admit_replaces_and_disposes_the_previous_generation()
+    public void SparseCache_admit_retains_alternate_roots_within_budget()
+    {
+        using FlatSparseTrieCache cache = new(512UL.MiB);
+        RetainedGeneration first = MakeGeneration(1);
+        ValueHash256 firstRoot = first.StateRoot;
+        cache.Admit(first);
+        RetainedGeneration second = MakeGeneration(2);
+        ValueHash256 secondRoot = second.StateRoot;
+        cache.Admit(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryCheckout(in firstRoot), Is.SameAs(first), "alternate root remains available");
+            Assert.That(cache.TryCheckout(in secondRoot), Is.SameAs(second), "newest root remains available");
+        }
+
+        first.Dispose();
+        second.Dispose();
+    }
+
+    [Test]
+    public void SparseCache_admit_replaces_the_same_root_generation()
     {
         using FlatSparseTrieCache cache = new(512UL.MiB);
         RetainedGeneration first = MakeGeneration(1);
         cache.Admit(first);
+        RetainedGeneration replacement = MakeGeneration(1);
+        Assert.That(replacement.StateRoot, Is.EqualTo(first.StateRoot));
+
+        cache.Admit(replacement);
+
+        Assert.That(first.RentedBytes, Is.EqualTo(0), "previous generation disposed on replacement");
+        ValueHash256 root = replacement.StateRoot;
+        Assert.That(cache.TryCheckout(in root), Is.SameAs(replacement));
+        replacement.Dispose();
+    }
+
+    [Test]
+    public void SparseCache_admit_evicts_the_oldest_generation_over_budget()
+    {
+        RetainedGeneration first = MakeGeneration(1);
         RetainedGeneration second = MakeGeneration(2);
+        ulong budget = (ulong)(first.RentedBytes + second.RentedBytes - 1);
+        using FlatSparseTrieCache cache = new(budget);
+
+        ValueHash256 firstRoot = first.StateRoot;
+        ValueHash256 secondRoot = second.StateRoot;
+        cache.Admit(first);
         cache.Admit(second);
 
-        // The replaced generation's arena was disposed, so its rented bytes are released.
-        Assert.That(first.RentedBytes, Is.EqualTo(0), "previous generation disposed on replacement");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.RentedBytes, Is.EqualTo(0), "oldest generation disposed on eviction");
+            Assert.That(cache.TryCheckout(in firstRoot), Is.Null);
+            Assert.That(cache.TryCheckout(in secondRoot), Is.SameAs(second));
+        }
 
-        ValueHash256 secondRoot = second.StateRoot;
-        RetainedGeneration? held = cache.TryCheckout(in secondRoot);
-        Assert.That(held, Is.SameAs(second), "the newer generation is held");
-        held!.Dispose();
+        second.Dispose();
     }
 
     [Test]

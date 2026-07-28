@@ -361,9 +361,13 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_ScopeDecorators_ForwardWarmHints()
+    public void Test_ScopeDecorators_ForwardWarmHintsAndRealCommittedAccounts()
     {
-        IWorldStateScopeProvider.IScope inner = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IScope inner = Substitute.For<
+            IWorldStateScopeProvider.IScope,
+            IWorldStateScopeProvider.ICommittedStateRootSink>();
+        IWorldStateScopeProvider.ICommittedStateRootSink innerRootSink =
+            (IWorldStateScopeProvider.ICommittedStateRootSink)inner;
         IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
         innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(inner);
 
@@ -378,10 +382,25 @@ public class ScopeProviderTests(bool useFlat)
         {
             caches.MainScope.HintWarmAccount(in addressA);
             caches.MainScope.HintWarmSlot(in addressA, (UInt256)1);
+            ((IWorldStateScopeProvider.ICommittedStateRootSink)caches.MainScope)
+                .HintCommittedAccount(TestItem.AddressA, Account.TotallyEmpty);
         }
 
         inner.Received(1).HintWarmAccount(addressA);
         inner.Received(1).HintWarmSlot(addressA, (UInt256)1);
+        innerRootSink.Received(1).HintCommittedAccount(TestItem.AddressA, Account.TotallyEmpty);
+
+        PrewarmerScopeProvider populator = new(
+            decorated,
+            new PrewarmerState(caches, isPrewarmer: true),
+            LimboLogs.Instance);
+        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(null))
+        {
+            ((IWorldStateScopeProvider.ICommittedStateRootSink)scope)
+                .HintCommittedAccount(TestItem.AddressB, Account.TotallyEmpty);
+        }
+
+        innerRootSink.DidNotReceive().HintCommittedAccount(TestItem.AddressB, Arg.Any<Account>());
     }
 
     [Test]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.State.Flat;
@@ -17,6 +18,8 @@ public sealed class MpmcRingBuffer<T>
     private readonly long[] _sequences;
     private readonly int _mask;
     private readonly int _capacity;
+    private readonly bool _usesArrayPool;
+    private int _arraysReturned;
 
     public long EstimatedJobCount
     {
@@ -46,15 +49,24 @@ public sealed class MpmcRingBuffer<T>
     private CacheLinePaddedLong _head;
     private CacheLinePaddedLong _tail;
 
-    public MpmcRingBuffer(int capacityPowerOfTwo)
+    public MpmcRingBuffer(int capacityPowerOfTwo) : this(capacityPowerOfTwo, usesArrayPool: false)
+    {
+    }
+
+    internal MpmcRingBuffer(int capacityPowerOfTwo, bool usesArrayPool)
     {
         if (capacityPowerOfTwo <= 0 || (capacityPowerOfTwo & (capacityPowerOfTwo - 1)) != 0)
             throw new ArgumentException("Capacity must be power of two.");
 
         _capacity = capacityPowerOfTwo;
         _mask = capacityPowerOfTwo - 1;
-        _entries = new T[capacityPowerOfTwo];
-        _sequences = new long[capacityPowerOfTwo];
+        _usesArrayPool = usesArrayPool;
+        _entries = usesArrayPool
+            ? SafeArrayPool<T>.Shared.Rent(capacityPowerOfTwo)
+            : new T[capacityPowerOfTwo];
+        _sequences = usesArrayPool
+            ? SafeArrayPool<long>.Shared.Rent(capacityPowerOfTwo)
+            : new long[capacityPowerOfTwo];
 
         for (int i = 0; i < capacityPowerOfTwo; i++)
             _sequences[i] = i;
@@ -134,5 +146,15 @@ public sealed class MpmcRingBuffer<T>
             // If seq > expectedSeq, another consumer won the race; loop and retry
             Thread.SpinWait(1);
         }
+    }
+
+    internal void ReturnPooledArrays()
+    {
+        if (!_usesArrayPool || Interlocked.CompareExchange(ref _arraysReturned, 1, 0) != 0) return;
+
+        SafeArrayPool<T>.Shared.Return(
+            _entries,
+            clearArray: RuntimeHelpers.IsReferenceOrContainsReferences<T>());
+        SafeArrayPool<long>.Shared.Return(_sequences);
     }
 }

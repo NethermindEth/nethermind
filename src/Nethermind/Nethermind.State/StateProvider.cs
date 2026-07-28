@@ -53,6 +53,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
+    private IWorldStateScopeProvider.ICommittedStateRootSink? _committedStateRootSink;
 
     // Invalidates the guest front cache when a restore/commit/reset recycles the change stacks; elided on
     // mainline, which has no front cache (no implementing declaration).
@@ -98,6 +99,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     {
         _tree = scope;
         _codeDb = scope?.CodeDb;
+        _committedStateRootSink = scope as IWorldStateScopeProvider.ICommittedStateRootSink;
     }
 
     public bool IsContract(Address address)
@@ -774,6 +776,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
+
+        _committedStateRootSink?.HintCommittedAccount(address, account);
     }
 
     private Account? GetAndAddToCache(Address address)
