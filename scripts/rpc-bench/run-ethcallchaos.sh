@@ -33,7 +33,8 @@ ECC_REPO="${ECC_REPO:-https://github.com/kamilchodola/EthCallChaos.git}"
 # commit used by the validated 2026-06-10 run).
 ECC_REF="${ECC_REF:-a431c1758ad9763e9aa4eae4dd6de0d8bba60298}"
 ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"          # optional path on the runner to a pristine corpus DB
-ECC_CORPUS_URL="${ECC_CORPUS_URL:-https://github.com/kamilchodola/EthCallChaos/releases/download/corpus-v1/ethcallchaos.db}"
+# corpus-v2: per-category evolved corpus (seeded from v1, diverse worst-per-shape coverage).
+ECC_CORPUS_URL="${ECC_CORPUS_URL:-https://github.com/kamilchodola/EthCallChaos/releases/download/corpus-v2/ethcallchaos.db}"
 ECC_RATE="${ECC_RATE:-50}"                  # -> Rpc__MaxCallsPerSecond
 ECC_PARALLEL="${ECC_PARALLEL:-8}"           # -> Rpc__MaxParallelCalls
 ECC_DURATION="${ECC_DURATION:-300}"         # seconds of load
