@@ -39,7 +39,7 @@ public class InputData
 
                 if (transaction.Type.SupportsFrames())
                 {
-                    LegacyTransactionForRpc frameTransactionForRpc = (LegacyTransactionForRpc)Txs[i];
+                    FrameTransactionForRpc frameTransactionForRpc = (FrameTransactionForRpc)Txs[i];
                     transaction.SenderAddress = frameTransactionForRpc.From;
                     transaction.ChainId ??= chainId;
                     SignFrameTransaction(transaction, TransactionMetaDataList[i]);
@@ -83,19 +83,28 @@ public class InputData
 
     private static void SignFrameTransaction(Transaction transaction, TransactionMetaData transactionMetaData)
     {
-        if (transactionMetaData.SecretKey is null || transaction.FrameSignatures is null)
+        PrivateKey? privateKey = transactionMetaData.SecretKey is null ? null : new PrivateKey(transactionMetaData.SecretKey);
+
+        if (privateKey is not null)
         {
-            return;
+            if (transaction.SenderAddress is null)
+            {
+                transaction.SenderAddress = privateKey.Address;
+            }
+            else if (transaction.SenderAddress != privateKey.Address)
+            {
+                throw new T8nException("frame transaction sender does not match secretKey", T8nErrorCodes.ErrorJson);
+            }
         }
 
-        PrivateKey privateKey = new(transactionMetaData.SecretKey);
         if (transaction.SenderAddress is null)
         {
-            transaction.SenderAddress = privateKey.Address;
+            throw new T8nException("frame transaction requires a sender or a secretKey", T8nErrorCodes.ErrorJson);
         }
-        else if (transaction.SenderAddress != privateKey.Address)
+
+        if (privateKey is null || transaction.FrameSignatures is null)
         {
-            throw new T8nException("frame transaction sender does not match secretKey", T8nErrorCodes.ErrorJson);
+            return;
         }
 
         Ecdsa ecdsa = new();
@@ -104,11 +113,18 @@ public class InputData
         for (int i = 0; i < transaction.FrameSignatures.Length; i++)
         {
             TxFrameSignature signature = transaction.FrameSignatures[i];
-            if (signature.Scheme != TxFrameSignature.SchemeSecp256k1 ||
-                !signature.SignsCanonicalHash ||
-                !signature.Signature.IsEmpty)
+            if (!signature.Signature.IsEmpty || signature.Scheme == TxFrameSignature.SchemeArbitrary)
             {
                 continue;
+            }
+
+            // TxFrameSignatureDecoder elides the signature bytes of canonical-hash entries only, so an
+            // explicit-digest entry's bytes are part of the sigHash preimage: filling one here would
+            // invalidate every canonical signature already produced in this loop.
+            if (signature.Scheme != TxFrameSignature.SchemeSecp256k1 || !signature.SignsCanonicalHash)
+            {
+                throw new T8nException($"cannot fill frame signature {i}: only canonical-hash secp256k1 entries are fillable",
+                    T8nErrorCodes.ErrorJson);
             }
 
             if (signature.Signer is not null && signature.Signer != privateKey.Address)
