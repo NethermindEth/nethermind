@@ -216,13 +216,8 @@ public ref struct RlpReader
         return DecodeKeccakPayload();
     }
 
-    public Hash256? DecodeKeccak(bool allowNull)
+    public Hash256? DecodeKeccakOrNull()
     {
-        if (!allowNull)
-        {
-            return DecodeKeccak();
-        }
-
         int prefix = ReadByte();
         if (prefix == 128)
         {
@@ -399,13 +394,8 @@ public ref struct RlpReader
         return new Address(Read(20));
     }
 
-    public Address? DecodeAddress(bool allowNull)
+    public Address? DecodeAddressOrNull()
     {
-        if (!allowNull)
-        {
-            return DecodeAddress();
-        }
-
         int prefix = ReadByte();
         if (prefix == 128)
         {
@@ -506,13 +496,8 @@ public ref struct RlpReader
         return CreateBloom(bloomBytes);
     }
 
-    public Bloom? DecodeBloom(bool allowNull)
+    public Bloom? DecodeBloomOrNull()
     {
-        if (!allowNull)
-        {
-            return DecodeBloom();
-        }
-
         ReadOnlySpan<byte> bloomBytes;
 
         // Legacy workaround for receipt blooms sent in sequence form:

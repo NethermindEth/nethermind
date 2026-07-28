@@ -313,7 +313,7 @@ public partial class BlockTree
     private Hash256? DecodeMetadataKeccak(int key)
     {
         byte[]? rlp = _metadataDb.Get(key);
-        return rlp is null ? null : new RlpReader(rlp).DecodeKeccak(allowNull: true);
+        return rlp is null ? null : new RlpReader(rlp).DecodeKeccakOrNull();
     }
 
     private ulong? DecodeMetadataULong(int key)
