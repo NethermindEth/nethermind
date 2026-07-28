@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core.Utils;
+using RefCountingMemoryMetrics = Nethermind.Core.Buffers.Metrics.Metrics;
 
 namespace Nethermind.Core.Buffers;
 
@@ -34,6 +35,7 @@ public sealed class RefCountingMemory : MemoryManager<byte>
         _buffer = buffer;
         _length = length;
         _pooled = pooled;
+        RefCountingMemoryMetrics.ReportRefCountingMemoryAllocation(pooled, buffer.Length);
     }
 
     /// <summary>
@@ -86,6 +88,9 @@ public sealed class RefCountingMemory : MemoryManager<byte>
 
     protected override void Dispose(bool disposing)
     {
-        if (RefCountingLease.ReleaseOnce(ref _leases) && _pooled) ArrayPool<byte>.Shared.Return(_buffer);
+        if (!RefCountingLease.ReleaseOnce(ref _leases)) return;
+
+        if (_pooled) ArrayPool<byte>.Shared.Return(_buffer);
+        RefCountingMemoryMetrics.ReportRefCountingMemoryRelease(_pooled, _buffer.Length);
     }
 }

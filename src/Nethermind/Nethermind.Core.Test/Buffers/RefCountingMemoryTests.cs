@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using Nethermind.Core.Buffers;
 using NUnit.Framework;
+using RefCountingMemoryMetrics = Nethermind.Core.Buffers.Metrics.Metrics;
 
 namespace Nethermind.Core.Test.Buffers;
 
@@ -31,7 +32,8 @@ public class RefCountingMemoryTests
     public void WrappingOrNull_maps_a_null_array_to_null()
     {
         Assert.That(RefCountingMemory.WrappingOrNull(null), Is.Null);
-        Assert.That(RefCountingMemory.WrappingOrNull([1]), Is.Not.Null);
+        using RefCountingMemory? memory = RefCountingMemory.WrappingOrNull([1]);
+        Assert.That(memory, Is.Not.Null);
     }
 
     [Test]
@@ -63,6 +65,39 @@ public class RefCountingMemoryTests
     }
 
     [Test]
+    public void Metrics_track_active_pooled_capacity_and_non_pooled_count_until_final_release()
+    {
+        long initialPooledCount = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCount;
+        long initialPooledCapacity = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCapacity;
+        long initialNonPooledCount = RefCountingMemoryMetrics.ActiveNonPooledRefCountingMemoryCount;
+        byte[] rented = ArrayPool<byte>.Shared.Rent(65);
+        RefCountingMemory? owning = null;
+        RefCountingMemory? wrapping = null;
+
+        try
+        {
+            owning = RefCountingMemory.Owning(rented, 65);
+            wrapping = RefCountingMemory.Wrapping([1, 2, 3]);
+            AssertMetrics(initialPooledCount + 1, initialPooledCapacity + rented.Length, initialNonPooledCount + 1);
+
+            owning.AcquireLease();
+            ((IDisposable)owning).Dispose();
+            AssertMetrics(initialPooledCount + 1, initialPooledCapacity + rented.Length, initialNonPooledCount + 1);
+
+            ((IDisposable)wrapping).Dispose();
+            wrapping = null;
+            ((IDisposable)owning).Dispose();
+            owning = null;
+            AssertMetrics(initialPooledCount, initialPooledCapacity, initialNonPooledCount);
+        }
+        finally
+        {
+            ((IDisposable?)wrapping)?.Dispose();
+            ((IDisposable?)owning)?.Dispose();
+        }
+    }
+
+    [Test]
     public void Shrink_narrows_the_value_to_what_a_producer_wrote()
     {
         byte[] rented = ArrayPool<byte>.Shared.Rent(64);
@@ -74,5 +109,15 @@ public class RefCountingMemoryTests
 
         mem.Shrink(0);
         Assert.That(mem.GetSpan().IsEmpty);
+    }
+
+    private static void AssertMetrics(long pooledCount, long pooledCapacity, long nonPooledCount)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCount, Is.EqualTo(pooledCount), "pooled count");
+            Assert.That(RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCapacity, Is.EqualTo(pooledCapacity), "pooled capacity");
+            Assert.That(RefCountingMemoryMetrics.ActiveNonPooledRefCountingMemoryCount, Is.EqualTo(nonPooledCount), "non-pooled count");
+        }
     }
 }
