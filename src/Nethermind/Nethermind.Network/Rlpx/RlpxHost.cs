@@ -110,9 +110,10 @@ namespace Nethermind.Network.Rlpx
             _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
         }
 
-        // Privileged addresses (static and trusted nodes) bypass the recent-IP filter so they can always connect.
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false)
-            => _privilegedIpProvider.IsPrivileged(ip) || _nodeFilter.TryAccept(ip, exactOnly);
+        // The recent-IP filter only gates inbound connections (see ShouldRejectInbound): consulting it here too
+        // would let our own outbound dial to a peer mark that peer's IP as "recently seen", which could then
+        // cause us to reject that same peer's genuine inbound connection shortly after.
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => true;
 
         public async Task Init()
         {
@@ -262,7 +263,7 @@ namespace Nethermind.Network.Rlpx
 
         /// <summary>
         /// Rejects inbound connections from IPs already seen within the filter window.
-        /// Outgoing connections are filtered earlier by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>.
+        /// Outgoing connections initiated by <see cref="ConnectAsync"/> are never filtered this way; see <see cref="ShouldContact"/>.
         /// </summary>
         private bool ShouldRejectInbound(ISession session, IChannel channel)
         {

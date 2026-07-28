@@ -21,20 +21,18 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class RlpxHostIntegrationTests
 {
-    [TestCase(true, false, null, "203.0.113.1", "203.0.113.1", false, Description = "Exact match: blocks same IP")]
-    [TestCase(true, false, null, "203.0.113.1", "198.51.100.1", true, Description = "Exact match: allows different IP")]
-    [TestCase(true, true, null, "203.0.113.1", "203.0.113.50", false, Description = "Subnet bucketing: blocks same subnet")]
-    [TestCase(false, false, null, "203.0.113.1", "203.0.113.1", true, Description = "Filtering disabled: always accepts")]
-    [TestCase(true, true, "192.168.1.100", "192.168.1.10", "192.168.1.20", true, Description = "Same local subnet uses exact matching")]
-    [TestCase(true, true, "203.0.113.100", "192.168.1.1", "192.168.1.2", true, Description = "Private remote IP uses exact matching")]
-    public async Task ShouldContact_FiltersCorrectly(bool filterEnabled, bool subnetBucketing, string? externalIp,
-        string addr1, string addr2, bool secondExpected)
+    [TestCase(true, false, null, "203.0.113.1", "203.0.113.1", Description = "Exact match config: repeat IP still accepted")]
+    [TestCase(true, true, null, "203.0.113.1", "203.0.113.50", Description = "Subnet bucketing config: repeat subnet still accepted")]
+    [TestCase(false, false, null, "203.0.113.1", "203.0.113.1", Description = "Filtering disabled: still accepted")]
+    public async Task ShouldContact_IsNeverRateLimitedByTheRecentIpFilter(bool filterEnabled, bool subnetBucketing, string? externalIp,
+        string addr1, string addr2)
     {
         RlpxHost host = CreateHost(filterEnabled, subnetBucketing, externalIp);
         try
         {
-            Assert.That(host.ShouldContact(IPAddress.Parse(addr1)), Is.True, "first IP should be accepted");
-            Assert.That(host.ShouldContact(IPAddress.Parse(addr2)), Is.EqualTo(secondExpected));
+            Assert.That(host.ShouldContact(IPAddress.Parse(addr1)), Is.True, "first attempt accepted");
+            Assert.That(host.ShouldContact(IPAddress.Parse(addr2)), Is.True,
+                "a repeat contact attempt must not be rejected: the recent-IP filter only gates inbound connections");
         }
         finally
         {
@@ -43,8 +41,11 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
-    public async Task TrackSessionActivity_RefreshesFilterOnReceivedAndDeliveredMessages()
+    public async Task TrackSessionActivity_DoesNotAffectShouldContact()
     {
+        // Regression guard: TrackSessionActivity feeds the same NodeFilter that ShouldRejectInbound consults for
+        // inbound connections. ShouldContact must stay independent of it, otherwise contacting (or receiving
+        // traffic from) a peer ourselves could make us reject that peer's own genuine inbound connection shortly after.
         RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: true);
         try
         {
@@ -55,7 +56,7 @@ public class RlpxHostIntegrationTests
             host.TrackSessionActivity(receivedSession);
             receivedSession.MsgReceived += Raise.EventWith(receivedSession, new PeerEventArgs(receivedSession.Node, "eth", 1, 32));
 
-            Assert.That(host.ShouldContact(receivedIp), Is.False, "received traffic should keep the active session filtered");
+            Assert.That(host.ShouldContact(receivedIp), Is.True, "received traffic must not block our own future outbound attempts");
 
             IPAddress deliveredIp = IPAddress.Parse("198.51.100.1");
             ISession deliveredSession = Substitute.For<ISession>();
@@ -64,7 +65,7 @@ public class RlpxHostIntegrationTests
             host.TrackSessionActivity(deliveredSession);
             deliveredSession.MsgDelivered += Raise.EventWith(deliveredSession, new PeerEventArgs(deliveredSession.Node, "eth", 2, 64));
 
-            Assert.That(host.ShouldContact(deliveredIp), Is.False, "sent traffic should keep the active session filtered");
+            Assert.That(host.ShouldContact(deliveredIp), Is.True, "sent traffic must not block our own future outbound attempts");
         }
         finally
         {
@@ -72,28 +73,7 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    [Test]
-    public async Task ShouldContact_AlwaysAcceptsPrivilegedIp()
-    {
-        IPAddress privilegedIp = IPAddress.Parse("203.0.113.1");
-        IPrivilegedIpProvider privilegedIpProvider = Substitute.For<IPrivilegedIpProvider>();
-        privilegedIpProvider.IsPrivileged(privilegedIp).Returns(true);
-
-        // Exact-match filtering would otherwise block the second attempt from the same IP.
-        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: false, privilegedIpProvider: privilegedIpProvider);
-        try
-        {
-            Assert.That(host.ShouldContact(privilegedIp), Is.True, "first attempt accepted");
-            Assert.That(host.ShouldContact(privilegedIp), Is.True, "privileged IP is never rate-limited");
-        }
-        finally
-        {
-            await host.Shutdown();
-        }
-    }
-
-    private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
-        IPrivilegedIpProvider? privilegedIpProvider = null)
+    private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null)
     {
         NetworkConfig networkConfig = new()
         {
@@ -116,7 +96,7 @@ public class RlpxHostIntegrationTests
             NullDisconnectsAnalyzer.Instance,
             networkConfig,
             ipResolver,
-            privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>(),
+            Substitute.For<IPrivilegedIpProvider>(),
             LimboLogs.Instance);
     }
 
