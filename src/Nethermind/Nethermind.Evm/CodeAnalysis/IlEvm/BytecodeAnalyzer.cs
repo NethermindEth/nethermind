@@ -64,7 +64,7 @@ public static class BytecodeAnalyzer
         int blockStart = 0;
         bool blockOpen = false;
         bool blockCompilable = false;
-        long staticGas = 0;
+        ulong staticGas = 0;
         int stackRequired = 0;
         int stackMaxGrowth = 0;
         int stackDelta = 0;

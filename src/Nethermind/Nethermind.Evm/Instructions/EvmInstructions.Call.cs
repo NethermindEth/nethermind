@@ -426,7 +426,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vm.SetReturnDataFromMemory(returnData.Span);
+        vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.

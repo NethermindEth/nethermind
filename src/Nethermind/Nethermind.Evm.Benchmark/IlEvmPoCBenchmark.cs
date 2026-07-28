@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Benchmark
             // A fresh frame per invocation: VmState keeps its program counter, so reusing one
             // across invocations would re-enter with pc at code end and execute nothing.
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+                EthereumGasPolicy.FromULong(long.MaxValue), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }

@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Benchmark
                 value: 0,
                 inputData: default);
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromLong(30_000_000), ExecutionType.TRANSACTION, environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+                EthereumGasPolicy.FromULong(30_000_000), ExecutionType.TRANSACTION, environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, NullTxTracer.Instance);
             _stateProvider.Reset();
         }

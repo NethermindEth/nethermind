@@ -348,7 +348,7 @@ public static partial class IlSegmentCompiler
         {
             il.Emit(OpCodes.Ldarg_3);
             il.Emit(OpCodes.Call, s_gasRemaining!);
-            il.Emit(OpCodes.Ldc_I8, regionBlock.Metrics.StaticGas);
+            il.Emit(OpCodes.Ldc_I8, (long)regionBlock.Metrics.StaticGas);
             il.Emit(OpCodes.Blt, bail);
         }
 
@@ -357,7 +357,7 @@ public static partial class IlSegmentCompiler
         for (int k = 0; k < entryLength; k++)
             symbolicStack.Add(new Operand(OperandKind.Local, frame[k], ConstantIndex: -1));
 
-        long pendingChunkGas = 0;
+        ulong pendingChunkGas = 0;
         foreach (DecodedOp op in regionBlock.Ops)
         {
             if (op.IsHandlerCall)
@@ -651,7 +651,7 @@ public static partial class IlSegmentCompiler
         {
             il.Emit(OpCodes.Ldarg_3);
             il.Emit(OpCodes.Call, s_gasRemaining!);
-            il.Emit(OpCodes.Ldc_I8, regionBlock.Metrics.StaticGas);
+            il.Emit(OpCodes.Ldc_I8, (long)regionBlock.Metrics.StaticGas);
             il.Emit(OpCodes.Blt, bail);
         }
         if (regionBlock.Metrics.StackRequired > 0)
@@ -684,7 +684,7 @@ public static partial class IlSegmentCompiler
         for (int i = entries.Length - 1; i >= 0; i--)
             symbolicStack.Add(entries[i]);
 
-        long pendingChunkGas = 0;
+        ulong pendingChunkGas = 0;
         foreach (DecodedOp op in regionBlock.Ops)
         {
             if (op.IsHandlerCall)

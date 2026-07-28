@@ -64,7 +64,7 @@ public static class EthCallResultCache
         tx.To.Bytes.CopyTo(buffer[offset..]);
         offset += 20;
         WriteUInt256(buffer, ref offset, tx.Value);
-        System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(buffer[offset..], tx.GasLimit);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(buffer[offset..], tx.GasLimit);
         offset += 8;
         WriteUInt256(buffer, ref offset, tx.GasPrice);
         WriteUInt256(buffer, ref offset, tx.DecodedMaxFeePerGas);

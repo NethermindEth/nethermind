@@ -15,7 +15,7 @@ public enum OpKind
     JumpDest,
 }
 
-public readonly record struct OpInfo(long StaticGas, int Pops, int Pushes, int ImmediateBytes, OpKind Kind, bool HasDynamicGas = false);
+public readonly record struct OpInfo(ulong StaticGas, int Pops, int Pushes, int ImmediateBytes, OpKind Kind, bool HasDynamicGas = false);
 
 /// <summary>
 /// Metadata for the IL-EVM v1 opcode subset: fork-invariant compute, stack and memory opcodes

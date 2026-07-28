@@ -15,6 +15,14 @@ public static class Metrics
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
 
+    [CounterMetric]
+    [Description("Flat persisted-storage read cache hits")]
+    public static long FlatStorageReadCacheHits { get; set; }
+
+    [CounterMetric]
+    [Description("Flat persisted-storage read cache misses")]
+    public static long FlatStorageReadCacheMisses { get; set; }
+
     [GaugeMetric]
     [Description("Number of persisted snapshots in the most recently assembled snapshot bundle")]
     public static long SnapshotBundlePersistedSnapshotSize { get; set; }

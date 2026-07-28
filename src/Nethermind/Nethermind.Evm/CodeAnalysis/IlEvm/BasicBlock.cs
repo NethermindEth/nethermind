@@ -34,7 +34,7 @@ public enum BasicBlockFlags
 /// compilable/non-compilable classification changes so that compilable blocks are homogeneous
 /// segment-compiler input.
 /// </summary>
-public readonly struct BasicBlock(int start, int end, long staticGas, int stackRequired, int stackMaxGrowth, int stackDelta, BasicBlockFlags flags)
+public readonly struct BasicBlock(int start, int end, ulong staticGas, int stackRequired, int stackMaxGrowth, int stackDelta, BasicBlockFlags flags)
 {
     /// <summary>Program counter of the first opcode in the block.</summary>
     public int Start { get; } = start;
@@ -43,7 +43,7 @@ public readonly struct BasicBlock(int start, int end, long staticGas, int stackR
     public int End { get; } = end;
 
     /// <summary>Sum of the static gas of all opcodes in the block. Valid only for compilable blocks.</summary>
-    public long StaticGas { get; } = staticGas;
+    public ulong StaticGas { get; } = staticGas;
 
     /// <summary>Minimum stack depth required on entry. Valid only for compilable blocks.</summary>
     public int StackRequired { get; } = stackRequired;

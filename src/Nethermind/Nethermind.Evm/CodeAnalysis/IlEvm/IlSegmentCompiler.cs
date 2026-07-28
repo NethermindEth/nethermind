@@ -44,7 +44,7 @@ public sealed class IlCompiledSegment
     /// falls through to the interpreter, which produces the exact per-opcode halt state —
     /// segments therefore only ever execute to completion.
     /// </summary>
-    public required long StaticGas { get; init; }
+    public required ulong StaticGas { get; init; }
 
     public required int StackRequired { get; init; }
 
@@ -96,7 +96,7 @@ public static partial class IlSegmentCompiler
     // RequireVoid is load-bearing: the emitted IL performs no Pop after this call, so a non-void
     // return would silently unbalance the evaluation stack (DynamicMethods skip verification).
     // If the signature ever changes, the field becomes null and TryCompile turns itself off.
-    private static readonly MethodInfo? s_gasConsume = RequireVoid(typeof(EthereumGasPolicy).GetMethod(nameof(EthereumGasPolicy.Consume), [typeof(EthereumGasPolicy).MakeByRefType(), typeof(long)]));
+    private static readonly MethodInfo? s_gasConsume = RequireVoid(typeof(EthereumGasPolicy).GetMethod(nameof(EthereumGasPolicy.Consume), [typeof(EthereumGasPolicy).MakeByRefType(), typeof(ulong)]));
     private static readonly MethodInfo? s_gasRemaining = typeof(EthereumGasPolicy).GetMethod(nameof(EthereumGasPolicy.GetRemainingGas), [typeof(EthereumGasPolicy).MakeByRefType()]);
     private static readonly FieldInfo? s_stackHead = typeof(EvmStack).GetField(nameof(EvmStack.Head));
     private static readonly MethodInfo? s_popUInt256 = typeof(EvmStack).GetMethod(nameof(EvmStack.PopUInt256), [typeof(UInt256).MakeByRefType()]);
@@ -316,7 +316,7 @@ public static partial class IlSegmentCompiler
 
     private struct PrefixMetrics
     {
-        public long StaticGas;
+        public ulong StaticGas;
         public int StackRequired;
         public int StackMaxDelta;
         public int StackFinalDelta;
@@ -550,7 +550,7 @@ public static partial class IlSegmentCompiler
         for (int i = metrics.StackRequired - 1; i >= 0; i--)
             symbolicStack.Add(entries[i]); // bottom .. top
 
-        long pendingChunkGas = 0;
+        ulong pendingChunkGas = 0;
         foreach (DecodedOp op in ops)
         {
             if (op.IsHandlerCall)
@@ -586,12 +586,12 @@ public static partial class IlSegmentCompiler
         return (CompiledSegmentInvoke)method.CreateDelegate(typeof(CompiledSegmentInvoke), segmentConstants);
     }
 
-    private static void EmitChargePendingGas(ILGenerator il, ref long pendingChunkGas)
+    private static void EmitChargePendingGas(ILGenerator il, ref ulong pendingChunkGas)
     {
         if (pendingChunkGas == 0)
             return;
         il.Emit(OpCodes.Ldarg_3);
-        il.Emit(OpCodes.Ldc_I8, pendingChunkGas);
+        il.Emit(OpCodes.Ldc_I8, (long)pendingChunkGas);
         il.Emit(OpCodes.Call, s_gasConsume!);
         pendingChunkGas = 0;
     }

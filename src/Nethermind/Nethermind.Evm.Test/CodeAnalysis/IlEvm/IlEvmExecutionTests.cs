@@ -254,12 +254,12 @@ public class IlEvmExecutionTests
             inputData: default);
 
         using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromLong(gasLimit), ExecutionType.TRANSACTION, environment, new StackAccessTracker(), stateProvider.TakeSnapshot());
+            EthereumGasPolicy.FromULong((ulong)gasLimit), ExecutionType.TRANSACTION, environment, new StackAccessTracker(), stateProvider.TakeSnapshot());
 
         TransactionSubstate substate = virtualMachine.ExecuteTransaction<OffFlag>(evmState, stateProvider, NullTxTracer.Instance);
         EthereumGasPolicy gasState = evmState.Gas;
         return new ExecutionResult(substate.Output.ToArray(), EthereumGasPolicy.GetRemainingGas(in gasState), substate.IsError);
     }
 
-    private sealed record ExecutionResult(byte[] Output, long GasLeft, bool IsError);
+    private sealed record ExecutionResult(byte[] Output, ulong GasLeft, bool IsError);
 }

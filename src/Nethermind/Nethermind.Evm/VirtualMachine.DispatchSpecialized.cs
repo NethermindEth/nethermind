@@ -5,6 +5,9 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.CodeAnalysis.IlEvm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -50,8 +53,53 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             uint codeLength = (uint)stack.CodeLength;
             // Hoisted: a no-op OnBeforeInstructionTrace would otherwise chase VmState.Env per instruction.
             int callDepth = VmState.Env.CallDepth;
+
+            IlCompiledCode? ilCompiled = null;
+            if (!TTracingInst.IsActive && typeof(TGasPolicy) == typeof(EthereumGasPolicy) && IlEvm.Enabled
+                && VmState.Env.CodeInfo is CodeInfo ilCodeInfo && !ilCodeInfo.IsEmpty)
+            {
+                if (programCounter == 0)
+                    IlEvm.NoticeExecution(ilCodeInfo, Spec);
+                ilCompiled = IlEvm.GetForExecution(ilCodeInfo, Spec);
+            }
+
             while ((uint)programCounter < codeLength)
             {
+                if (typeof(TGasPolicy) == typeof(EthereumGasPolicy) && ilCompiled is not null
+                    && ilCompiled.TryGetSegmentStartingAt(programCounter, out IlCompiledSegment ilSegment))
+                {
+                    if (stack.Head < ilSegment.StackRequired
+                        || stack.Head > EvmStack.MaxStackSize - EvmStack.RegisterLength - ilSegment.StackMaxGrowth
+                        || TGasPolicy.GetRemainingGas(in gas) < ilSegment.StaticGas)
+                    {
+                        IlEvm.DispatchRejections++;
+                        goto Interpret;
+                    }
+
+                    if (TCancelable.IsActive && _txTracer.IsCancelled)
+                        ThrowOperationCanceledException();
+
+                    exceptionType = ilSegment.Invoke(
+                        Unsafe.As<VirtualMachine<EthereumGasPolicy>>(this),
+                        ref stack,
+                        ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas),
+                        ref programCounter,
+                        ilSegment.EntryIndex);
+                    IlEvm.SegmentInvocations++;
+                    IlEvm.SegmentOps += ilSegment.OpCount;
+                    opCodeCount += ilSegment.OpCount;
+
+                    if (TGasPolicy.IsOutOfGas(in gas))
+                    {
+                        OpCodeCount += opCodeCount;
+                        goto OutOfGas;
+                    }
+                    if (exceptionType != EvmExceptionType.None)
+                        break;
+                    continue;
+                }
+
+            Interpret:
 #if DEBUG
                 debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif

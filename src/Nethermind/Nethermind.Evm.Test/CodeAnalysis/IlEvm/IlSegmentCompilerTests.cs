@@ -353,7 +353,7 @@ public class IlSegmentCompilerTests
             Assert.That(pushed, Is.EqualTo(EvmExceptionType.None), "precondition: seeding the stack must succeed");
         }
 
-        EthereumGasPolicy gas = EthereumGasPolicy.FromLong(gasLimit);
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong((ulong)gasLimit);
         int programCounter = segment!.EntryPc;
         // These tests exercise pure-compute segments only; the VM argument is consumed solely
         // by embedded handler calls (memory/keccak), which the VM-level tests cover.
@@ -371,7 +371,7 @@ public class IlSegmentCompilerTests
     private sealed record SegmentRun(
         EvmExceptionType Result,
         UInt256[] StackBottomFirst,
-        long GasLeft,
+        ulong GasLeft,
         int ProgramCounter,
         IlCompiledSegment Segment);
 }

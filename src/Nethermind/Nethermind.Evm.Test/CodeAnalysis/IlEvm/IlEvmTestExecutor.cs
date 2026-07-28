@@ -24,7 +24,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis.IlEvm;
 /// </summary>
 internal static class IlEvmTestExecutor
 {
-    internal sealed record ExecutionResult(byte[] Output, long GasLeft, bool IsError);
+    internal sealed record ExecutionResult(byte[] Output, ulong GasLeft, bool IsError);
 
     internal static IReleaseSpec Spec => MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
 
@@ -52,7 +52,7 @@ internal static class IlEvmTestExecutor
             inputData: default);
 
         using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromLong(gasLimit), ExecutionType.TRANSACTION, environment, new StackAccessTracker(), stateProvider.TakeSnapshot());
+            EthereumGasPolicy.FromULong((ulong)gasLimit), ExecutionType.TRANSACTION, environment, new StackAccessTracker(), stateProvider.TakeSnapshot());
 
         TransactionSubstate substate = virtualMachine.ExecuteTransaction<OffFlag>(evmState, stateProvider, NullTxTracer.Instance);
         EthereumGasPolicy gasState = evmState.Gas;

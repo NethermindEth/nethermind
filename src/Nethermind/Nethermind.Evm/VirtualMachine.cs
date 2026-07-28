@@ -14,7 +14,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IlEvm;
 
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -422,9 +421,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         return new TransactionSubstate(
-            // The top-level output escapes the VM (becomes the tx/eth_call result), so it must be a
-            // stable copy independent of the reusable return buffer. Once per transaction.
-            callResult.Output.ToArray(),
+            callResult.Output,
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
             _currentState.AccessTracker.Logs,
@@ -443,11 +440,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         bool invalidCode,
         ReadOnlyMemory<byte> code)
     {
-        // The init-code's return data is deployed as the contract's code and cached long-term, so it
-        // must be a stable copy — the return payload now lives in a reusable buffer that the next
-        // RETURN/REVERT overwrites. CREATE is rare, so this copy is not on a hot path.
-        code = code.ToArray();
-
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
@@ -1293,7 +1285,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Engage the stream only in cancelable call contexts (eth_call/estimateGas/simulate). Block
         // processing runs a non-cancelable tracer, where the stream is pure overhead with no compute
         // payoff; gating it out there removes both the throughput regression and the retained StreamOp[].
-        if (spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
+        if (!IlEvm.Enabled && spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
             && (TCancelable.IsActive || StreamInterpreter.ForceAllContexts)
             && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
         {
