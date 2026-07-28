@@ -170,6 +170,7 @@ public class PbtSnapshotBundleTests
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
     [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
     [TestCase(PbtTrieLayout.SixLevelInterleaved)]
+    [TestCase(PbtTrieLayout.SixLevelEvery3Depth)]
     [TestCase(PbtTrieLayout.EightLevelInterleaved)]
     [TestCase(PbtTrieLayout.EightLevelEvery4Depth)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved)]

@@ -33,4 +33,13 @@ public enum PbtGroupFormat : byte
     /// <see cref="BoundaryOnly"/> one bar its format byte; only the leaf column differs.
     /// </summary>
     Every4Depth = 0x07,
+
+    /// <summary>
+    /// Widths 64, 8 and 1, anchored at the boundary: every third depth and the mandatory boundary.
+    /// </summary>
+    /// <remarks>
+    /// In its intended six-level tile, only width-8 intermediate hashes are stored because the parent
+    /// caches the width-64 group root. 0x09 is distinct from the group, chain and cluster sentinels.
+    /// </remarks>
+    Every3Depth = 0x09,
 }

@@ -428,7 +428,7 @@ public readonly ref struct PbtTrieNodeGroup<TLayout> where TLayout : IPbtTileLay
             throw new InvalidDataException($"Trie node group too short: {data.Length} bytes");
 
         PbtGroupFormat format = (PbtGroupFormat)data[^1];
-        if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved or PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth))
+        if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved or PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth or PbtGroupFormat.Every3Depth))
             throw new InvalidDataException($"Trie node group: unexpected format byte 0x{(byte)format:x2}");
 
         NodeGroupMaskEncoding.Read<TLayout>(data, out ReadOnlySpan<byte> entries, out ReadOnlySpan<byte> presence,

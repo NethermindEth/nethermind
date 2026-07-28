@@ -132,6 +132,7 @@ public class PbtScannerTests
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved)]
     [TestCase(PbtTrieLayout.SixLevelInterleaved)]
+    [TestCase(PbtTrieLayout.SixLevelEvery3Depth)]
     [TestCase(PbtTrieLayout.EightLevelInterleaved)]
     public async Task Scan_ReadsTheSameTreeUnderEveryTiling(PbtTrieLayout layout)
     {
@@ -146,6 +147,34 @@ public class PbtScannerTests
             Assert.That(report.StorageLeaves.LeafCount, Is.EqualTo(StorageLeafCounts.Sum()));
             Assert.That(report.CodeNodes.IsEmpty, Is.True, "nothing was written to the code zone");
         });
+    }
+
+    [Test]
+    public async Task Scan_CountsDenseSixLevelEvery3GroupsAndInterleavedLeaves()
+    {
+        List<(byte[], byte[]?)> writes = [];
+        for (int slot = 0; slot < PbtSixLevelTileLayout.BoundarySlots; slot++)
+        {
+            byte[] stem = new byte[Stem.Length];
+            stem[0] = (byte)(slot >> 2);
+            stem[1] = (byte)(slot << 6);
+            AddLeaf(writes, stem, 0);
+        }
+
+        PbtScanReport report = await ScanTree(PbtTrieLayout.SixLevelEvery3Depth, writes, concurrency: 8);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.AccountNodes.GroupCount, Is.EqualTo(1));
+            Assert.That(report.AccountNodes.Every3DepthGroupCount, Is.EqualTo(1));
+            Assert.That(report.AccountNodes.InterleavedGroupCount, Is.EqualTo(0));
+            Assert.That(report.AccountNodes.SkippedLevelNodes, Is.EqualTo(54));
+            Assert.That(report.AccountLeaves.BlobCount, Is.EqualTo(PbtSixLevelTileLayout.BoundarySlots));
+            Assert.That(report.AccountLeaves.InterleavedBlobCount, Is.EqualTo(PbtSixLevelTileLayout.BoundarySlots));
+            Assert.That(report.AccountLeaves.LeavesOnlyBlobCount, Is.EqualTo(0));
+            Assert.That(report.AccountLeaves.Every4DepthBlobCount, Is.EqualTo(0));
+            Assert.That(report.Format(), Does.Contain("1 every-3-depth"));
+        }
     }
 
     /// <summary>

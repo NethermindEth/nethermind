@@ -22,10 +22,11 @@ public class PbtTrieNodeGroupTests
 
     /// <summary>Every encoding a group may be in; the root and stem rules hold across all of them.</summary>
     private static readonly PbtGroupFormat[] Formats =
-        [PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved, PbtGroupFormat.BoundaryOnly];
+        [PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved, PbtGroupFormat.BoundaryOnly, PbtGroupFormat.Every3Depth];
 
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
+    [TestCase(PbtGroupFormat.Every3Depth)]
     public void PositionMath_EncodeDecodeRoundTrip_AndValidation(PbtGroupFormat format)
     {
         int boundaryCount = 0;
@@ -54,7 +55,8 @@ public class PbtTrieNodeGroupTests
         ValueHash256 rootB = new(Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
 
         PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[Layout.PositionCount];
-        slots[13] = PbtTrieNodeGroup.InternalSlot(hashB);
+        int retainedInternalPosition = format == PbtGroupFormat.Every3Depth ? 14 : 13;
+        slots[retainedInternalPosition] = PbtTrieNodeGroup.InternalSlot(hashB);
         slots[29] = PbtTrieNodeGroup.StemSlot(stemA, rootA);
         slots[PbtLayout.TrieNodeGroupBoundarySlotPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
         slots[PbtLayout.TrieNodeGroupBoundarySlotPosition(1)] = PbtTrieNodeGroup.StemSlot(stemB, rootB);
@@ -123,6 +125,7 @@ public class PbtTrieNodeGroupTests
     [TestCase(PbtGroupFormat.EveryLevel, 0)]
     [TestCase(PbtGroupFormat.Interleaved, 10)]
     [TestCase(PbtGroupFormat.BoundaryOnly, 15)]
+    [TestCase(PbtGroupFormat.Every3Depth, 13)]
     public void SkippedPositions_AreExactlyTheLevelsTheFormatFolds(PbtGroupFormat format, int skippedCount)
     {
         uint skipped = 0;
@@ -154,6 +157,7 @@ public class PbtTrieNodeGroupTests
                 {
                     PbtGroupFormat.Interleaved => level % 2 == 0,
                     PbtGroupFormat.BoundaryOnly => width == 1,
+                    PbtGroupFormat.Every3Depth => width is 64 or 8 or 1,
                     _ => true,
                 }),
                 $"level {level} is {(storesInternal ? "kept" : "skipped")}");
@@ -174,6 +178,7 @@ public class PbtTrieNodeGroupTests
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
     [TestCase(PbtGroupFormat.BoundaryOnly)]
+    [TestCase(PbtGroupFormat.Every3Depth)]
     public void FormatByte_IsNeitherARunsNorAClusters(PbtGroupFormat format)
     {
         byte[] encoding = [(byte)format];
@@ -181,6 +186,7 @@ public class PbtTrieNodeGroupTests
         {
             Assert.That(PbtNodeChain.IsChain(encoding), Is.False);
             Assert.That(PbtNodeCluster.HoldsChildren(encoding), Is.False);
+            if (format == PbtGroupFormat.Every3Depth) Assert.That(encoding[0], Is.EqualTo(0x09));
         }
     }
 
@@ -195,6 +201,7 @@ public class PbtTrieNodeGroupTests
     /// </param>
     [TestCase(PbtGroupFormat.Interleaved, 14)]
     [TestCase(PbtGroupFormat.BoundaryOnly, 13)]
+    [TestCase(PbtGroupFormat.Every3Depth, 13)]
     public void RejectsAnInternalNodeAtASkippedLevel(PbtGroupFormat format, int position)
     {
         ValueHash256 hash = new(Bytes.FromHexString("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
@@ -289,6 +296,20 @@ public class PbtTrieNodeGroupTests
     }
 
     [Test]
+    public void Every3Depth_SelectsTheSixLevelWidths64_8_And1()
+    {
+        int width = PbtSixLevelTileLayout.BoundarySlots;
+        while (width != 0)
+        {
+            Assert.That(
+                PbtLayout.TrieNodeGroupStoresInternalAtWidth(PbtGroupFormat.Every3Depth, width),
+                Is.EqualTo(width is 64 or 8 or 1),
+                $"width {width}");
+            width /= 2;
+        }
+    }
+
+    [Test]
     public void BoundaryShape_EmptyGroup_IsUnoccupied() =>
         Assert.That(default(PbtTrieNodeGroup<Layout>).BoundaryShape(), Is.EqualTo(default(BoundarySlotMasks<Layout>)));
 
@@ -301,6 +322,7 @@ public class PbtTrieNodeGroupTests
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
     [TestCase(PbtGroupFormat.BoundaryOnly)]
+    [TestCase(PbtGroupFormat.Every3Depth)]
     public void ABoundaryRun_IsHeldWholeAndShiftsWhatFollowsIt(PbtGroupFormat format)
     {
         const int chainSlot = 1;
