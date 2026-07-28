@@ -20,17 +20,18 @@ using Nethermind.Trie.Sparse;
 namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
-/// Scope-owned sparse root calculation: applies sealed per-account storage jobs on their existing
-/// flush workers, joins their root plans under one shared hash frontier, applies final account
-/// updates to the state trie, and publishes every staged node into the bundle at commit.
+/// Scope-owned sparse root calculation: consumes transaction-committed account and storage
+/// updates on a background owner, joins storage root plans under one shared hash frontier,
+/// reconciles the final write batch, and publishes every staged node into the bundle at commit.
 /// </summary>
 /// <remarks>
-/// Single mutable owner per trie: each storage flush worker exclusively applies and prepares its
-/// account's trie before root encoding shares only disjoint subtrees. The state trie is only
-/// touched by one CAS-elected owner: sparse-native prefetch, committed-account streaming, and the
-/// final write batch hand ownership through the same gate. Any final calculation or publication
-/// exception poisons the session; every later mutation, calculation, and publication entry point
-/// throws, so a poisoned scope can never commit a root that may not match the applied writes.
+/// Single mutable owner per trie: storage prefetch and committed settlement serialize on the
+/// account's trie, then the final barrier drains them before a flush worker borrows that trie.
+/// The state trie is only touched by one CAS-elected owner: sparse-native prefetch, committed
+/// account/storage streaming, and the final write batch hand ownership through the same gate. Any
+/// final calculation or publication exception poisons the session; every later mutation,
+/// calculation, and publication entry point throws, so a poisoned scope can never commit a root
+/// that may not match the applied writes.
 /// <see cref="RootHash"/> stays readable and always holds the last successfully calculated root
 /// (or the anchor).
 /// </remarks>
@@ -39,8 +40,11 @@ internal sealed class FlatSparseTrieSession : IDisposable
     private static readonly AccountDecoder _accountDecoder = new();
     internal const int ConcurrentRootBatchSize = 256;
     private const int ConcurrentAccountQueueCapacity = 2048;
+    internal const int ConcurrentStorageBatchSize = 64;
+    private const int ConcurrentStorageQueueCapacity = 4096;
 
     private readonly SnapshotBundle _bundle;
+    private readonly FlatTrieNodeReaderContext _readerContext;
     private readonly ILogger _logger;
     private readonly SparseTrieRootWorker? _rootWorker;
     private readonly ConcurrentQueue<PreparedStorageJob> _pendingStorageJobs = new();
@@ -61,10 +65,20 @@ internal sealed class FlatSparseTrieSession : IDisposable
     private readonly ConcurrentQueue<ValueHash256> _pendingStatePrefetch = new();
     private readonly MpmcRingBuffer<CommittedAccountUpdate>? _pendingCommittedAccounts;
     private readonly ConcurrentQueue<CommittedAccountUpdate> _overflowCommittedAccounts = [];
+    private readonly MpmcRingBuffer<CommittedStorageUpdate>? _pendingCommittedStorage;
+    private readonly ConcurrentQueue<CommittedStorageUpdate> _overflowCommittedStorage = [];
+    private readonly ConcurrentDictionary<ValueHash256, CommittedStorageState> _committedStorageStates = [];
     private readonly PooledDictionary<ValueHash256, CommittedAccountUpdate> _speculativeAccounts = [];
     private int _pendingCommittedAccountCount;
     private int _committedAccountProducers;
+    private int _pendingCommittedStorageCount;
+    private int _committedStorageProducers;
     private long _nextCommittedAccountSequence;
+    private long _nextCommittedStorageSequence;
+    private long _completedCommittedAccountSequence;
+    private long _completedCommittedStorageSequence;
+    private long _drainedCommittedAccountSequence;
+    private long _drainedCommittedStorageSequence;
     private int _stateWorkOwner;
     private int _stateWorkerScheduled;
     private SparseTrie? _stateTrie;
@@ -75,6 +89,8 @@ internal sealed class FlatSparseTrieSession : IDisposable
     private volatile bool _disposed;
     private bool _generationExtracted;
     private int _concurrentRootCalculationCount;
+    private int _concurrentStorageRootCalculationCount;
+    private int _concurrentStorageTrieReuseCount;
     private int _updatesSinceConcurrentRootCalculation;
 
     internal Action? OnConcurrentStateWorkerAcquired;
@@ -100,11 +116,17 @@ internal sealed class FlatSparseTrieSession : IDisposable
         _rootHash = anchorStateRoot;
         _retentionEnabled = retentionEnabled;
         _concurrentRootEnabled = retentionEnabled && SparseTrieRetention.ConcurrentRootEnabled;
+        _readerContext = checkedOut?.ReaderContext ?? new FlatTrieNodeReaderContext(bundle);
+        _readerContext.Rebind(bundle);
         if (_concurrentRootEnabled)
         {
             _pendingCommittedAccounts =
                 new MpmcRingBuffer<CommittedAccountUpdate>(
                     ConcurrentAccountQueueCapacity,
+                    usesArrayPool: true);
+            _pendingCommittedStorage =
+                new MpmcRingBuffer<CommittedStorageUpdate>(
+                    ConcurrentStorageQueueCapacity,
                     usesArrayPool: true);
         }
 
@@ -112,7 +134,14 @@ internal sealed class FlatSparseTrieSession : IDisposable
         if (checkedOut is not null)
         {
             _stateTrie = checkedOut.StateTrie;
-            _stateTrie.RebindSource(new FlatTrieNodeReader(bundle, address: null));
+            if (checkedOut.ReaderContext is null)
+            {
+                _stateTrie.RebindSource(new FlatTrieNodeReader(_readerContext, address: null));
+                foreach (KeyValuePair<ValueHash256, SparseTrie> kv in _storageTries)
+                {
+                    kv.Value.RebindSource(new FlatTrieNodeReader(_readerContext, kv.Key.ToCommitment()));
+                }
+            }
         }
     }
 
@@ -131,7 +160,54 @@ internal sealed class FlatSparseTrieSession : IDisposable
         Address Address,
         ValueHash256 Key,
         Account? Account,
-        long Sequence);
+        long Sequence,
+        long StorageVersion);
+
+    private sealed class CommittedStorageState(
+        Address address,
+        in ValueHash256 addressHash,
+        in ValueHash256 anchorRoot)
+    {
+        public readonly Address Address = address;
+        public readonly ValueHash256 AddressHash = addressHash;
+        public Hash256 Root = anchorRoot.ToCommitment();
+        public long CurrentVersion;
+        public long SettledVersion;
+        public bool HasClear;
+    }
+
+    private readonly record struct CommittedStorageUpdate(
+        CommittedStorageState State,
+        ValueHash256 Key,
+        byte[]? Value,
+        long Version,
+        long Sequence,
+        bool IsClear);
+
+    private readonly record struct PreparedCommittedStorage(
+        CommittedStorageState State,
+        SparseTrie Trie,
+        long Version,
+        SparseTrie.RootCalculation Calculation,
+        bool NeedsCalculation);
+
+    private readonly struct CommittedStorageUpdateComparer : IComparer<CommittedStorageUpdate>
+    {
+        public int Compare(CommittedStorageUpdate x, CommittedStorageUpdate y)
+        {
+            int addressComparison = x.State.AddressHash.CompareTo(y.State.AddressHash);
+            return addressComparison != 0 ? addressComparison : x.Version.CompareTo(y.Version);
+        }
+    }
+
+    private readonly struct CommittedStorageUpdateKeyComparer : IComparer<CommittedStorageUpdate>
+    {
+        public int Compare(CommittedStorageUpdate x, CommittedStorageUpdate y)
+        {
+            int keyComparison = x.Key.CompareTo(y.Key);
+            return keyComparison != 0 ? keyComparison : x.Version.CompareTo(y.Version);
+        }
+    }
 
     /// <summary>The parent state root before calculation, the calculated root afterward.</summary>
     public Hash256 RootHash => _rootHash;
@@ -142,6 +218,12 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
     internal int ConcurrentRootCalculationCount => Volatile.Read(ref _concurrentRootCalculationCount);
 
+    internal int ConcurrentStorageRootCalculationCount =>
+        Volatile.Read(ref _concurrentStorageRootCalculationCount);
+
+    internal int ConcurrentStorageTrieReuseCount =>
+        Volatile.Read(ref _concurrentStorageTrieReuseCount);
+
     /// <summary>
     /// Applies a sealed storage delta on the parallel flush worker that produced it and queues its
     /// root plan for the shared hash frontier.
@@ -151,7 +233,8 @@ internal sealed class FlatSparseTrieSession : IDisposable
         try
         {
             GuardPoisoned();
-            SparseTrie trie = job.Tree.ApplySparseJob(job);
+            bool clearAlreadyApplied = TryAdoptSettledStorageTrie(job);
+            SparseTrie trie = job.Tree.ApplySparseJob(job, clearAlreadyApplied);
             _pendingStorageJobs.Enqueue(new PreparedStorageJob(job, trie.PrepareRootCalculation()));
         }
         catch
@@ -160,6 +243,33 @@ internal sealed class FlatSparseTrieSession : IDisposable
             job.Updates.Dispose();
             _poisoned = true;
             throw;
+        }
+    }
+
+    private bool TryAdoptSettledStorageTrie(in StorageJob job)
+    {
+        ValueHash256 addressHash = job.Tree.AddressHash.ValueHash256;
+        if (!_committedStorageStates.TryRemove(addressHash, out CommittedStorageState? state))
+        {
+            return false;
+        }
+
+        lock (state)
+        {
+            long currentVersion = Volatile.Read(ref state.CurrentVersion);
+            long settledVersion = Volatile.Read(ref state.SettledVersion);
+            if (settledVersion == currentVersion
+                && state.HasClear == job.HasClear
+                && _storageTries.TryRemove(addressHash, out SparseTrie? trie))
+            {
+                job.Tree.AdoptSparseTrie(trie);
+                Interlocked.Increment(ref _concurrentStorageTrieReuseCount);
+                return state.HasClear;
+            }
+
+            _storageTries.TryRemove(addressHash, out SparseTrie? stale);
+            DisposeStorageTrie(stale);
+            return false;
         }
     }
 
@@ -177,14 +287,13 @@ internal sealed class FlatSparseTrieSession : IDisposable
         {
             if (retained.RootHash == anchorRoot)
             {
-                retained.RebindSource(new FlatTrieNodeReader(_bundle, addressHash));
                 return retained;
             }
 
             retained.Dispose();
         }
 
-        return new SparseTrie(new FlatTrieNodeReader(_bundle, addressHash), anchorRoot, hint);
+        return new SparseTrie(new FlatTrieNodeReader(_readerContext, addressHash), anchorRoot, hint);
     }
 
     /// <summary>Reveals one account path directly into the retained state-trie arena.</summary>
@@ -240,7 +349,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
     }
 
     private SparseTrie GetOrCreateStateTrie() =>
-        _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, address: null), _rootHash.ValueHash256);
+        _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_readerContext, address: null), _rootHash.ValueHash256);
 
     /// <summary>
     /// Queues a transaction-committed account value for the single background state owner. The
@@ -257,10 +366,13 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
             ValueHash256 key = address.ToAccountPath;
             long sequence = Interlocked.Increment(ref _nextCommittedAccountSequence);
+            long storageVersion = _committedStorageStates.TryGetValue(key, out CommittedStorageState? storageState)
+                ? Volatile.Read(ref storageState.CurrentVersion)
+                : 0;
             Interlocked.Increment(ref _pendingCommittedAccountCount);
             try
             {
-                CommittedAccountUpdate update = new(address, key, account, sequence);
+                CommittedAccountUpdate update = new(address, key, account, sequence, storageVersion);
                 if (!_pendingCommittedAccounts!.TryEnqueue(in update))
                 {
                     _overflowCommittedAccounts.Enqueue(update);
@@ -277,13 +389,108 @@ internal sealed class FlatSparseTrieSession : IDisposable
                 DiscardPendingCommittedAccounts();
                 return;
             }
-
-            EnsureStateWorkerScheduled();
         }
         finally
         {
             Interlocked.Decrement(ref _committedAccountProducers);
         }
+    }
+
+    public void EnqueueCommittedStorage(
+        Address address,
+        in ValueHash256 key,
+        byte[] value) =>
+        EnqueueCommittedStorage(address, in key, value, isClear: false);
+
+    public void EnqueueCommittedStorageClear(Address address)
+    {
+        ValueHash256 key = default;
+        EnqueueCommittedStorage(address, in key, value: null, isClear: true);
+    }
+
+    private void EnqueueCommittedStorage(
+        Address address,
+        in ValueHash256 key,
+        byte[]? value,
+        bool isClear)
+    {
+        if (!_concurrentRootEnabled || _concurrentRootDisabled || _disposed || _poisoned) return;
+
+        Interlocked.Increment(ref _committedStorageProducers);
+        try
+        {
+            if (_concurrentRootDisabled || _disposed || _poisoned) return;
+
+            ValueHash256 addressHash = address.ToAccountPath;
+            CommittedStorageState state = _committedStorageStates.GetOrAdd(
+                addressHash,
+                static (_, args) =>
+                {
+                    Hash256 anchorRoot =
+                        args.Session._bundle.GetAccount(args.Address)?.StorageRoot
+                        ?? Keccak.EmptyTreeHash;
+                    return new CommittedStorageState(
+                        args.Address,
+                        args.AddressHash,
+                        anchorRoot.ValueHash256);
+                },
+                (Session: this, Address: address, AddressHash: addressHash));
+            long version = Interlocked.Increment(ref state.CurrentVersion);
+            long sequence = Interlocked.Increment(ref _nextCommittedStorageSequence);
+            Interlocked.Increment(ref _pendingCommittedStorageCount);
+            try
+            {
+                CommittedStorageUpdate update = new(state, key, value, version, sequence, isClear);
+                if (!_pendingCommittedStorage!.TryEnqueue(in update))
+                {
+                    _overflowCommittedStorage.Enqueue(update);
+                }
+            }
+            catch
+            {
+                Interlocked.Decrement(ref _pendingCommittedStorageCount);
+                throw;
+            }
+
+            if (_concurrentRootDisabled || _disposed)
+            {
+                DiscardPendingCommittedStorage();
+                return;
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _committedStorageProducers);
+        }
+    }
+
+    public void CompleteCommittedStateRound()
+    {
+        if (!_concurrentRootEnabled || _concurrentRootDisabled || _disposed || _poisoned) return;
+
+        WaitForCommittedProducers();
+        CaptureCompletedSequences();
+        EnsureStateWorkerScheduled();
+    }
+
+    private void WaitForCommittedProducers()
+    {
+        SpinWait spinWait = new();
+        while (Volatile.Read(ref _committedAccountProducers) != 0
+            || Volatile.Read(ref _committedStorageProducers) != 0)
+        {
+            spinWait.SpinOnce();
+        }
+    }
+
+    private void CaptureCompletedSequences()
+    {
+        Volatile.Write(
+            ref _completedCommittedStorageSequence,
+            Volatile.Read(ref _nextCommittedStorageSequence));
+        Volatile.Write(
+            ref _completedCommittedAccountSequence,
+            Volatile.Read(ref _nextCommittedAccountSequence));
     }
 
     private void EnsureStateWorkerScheduled()
@@ -308,7 +515,12 @@ internal sealed class FlatSparseTrieSession : IDisposable
     private bool HasSchedulableStateWork() =>
         !_pendingStatePrefetch.IsEmpty
         || (!_concurrentRootDisabled
-            && Volatile.Read(ref _pendingCommittedAccountCount) >= ConcurrentRootBatchSize);
+            && (Volatile.Read(ref _completedCommittedAccountSequence)
+                    - Volatile.Read(ref _drainedCommittedAccountSequence)
+                    >= ConcurrentRootBatchSize
+                || Volatile.Read(ref _completedCommittedStorageSequence)
+                    - Volatile.Read(ref _drainedCommittedStorageSequence)
+                    >= ConcurrentStorageBatchSize));
 
     internal void RunStateWorker()
     {
@@ -329,7 +541,12 @@ internal sealed class FlatSparseTrieSession : IDisposable
             }
 
             DrainStatePrefetchQueueOwned();
-            int applied = DrainCommittedAccountsOwned();
+            long completedAccountSequence =
+                Volatile.Read(ref _completedCommittedAccountSequence);
+            long completedStorageSequence =
+                Volatile.Read(ref _completedCommittedStorageSequence);
+            int applied = DrainCommittedStorageOwned(completedStorageSequence);
+            applied += DrainCommittedAccountsOwned(completedAccountSequence);
             DrainStatePrefetchQueueOwned();
 
             _updatesSinceConcurrentRootCalculation += applied;
@@ -356,6 +573,224 @@ internal sealed class FlatSparseTrieSession : IDisposable
         }
     }
 
+    private int DrainCommittedStorageOwned(long completedSequence)
+    {
+        long drainedSequence = Volatile.Read(ref _drainedCommittedStorageSequence);
+        if (_concurrentRootDisabled || completedSequence <= drainedSequence)
+        {
+            return 0;
+        }
+
+        int count = (int)Math.Min(
+            Volatile.Read(ref _pendingCommittedStorageCount),
+            completedSequence - drainedSequence);
+        using ArrayPoolList<CommittedStorageUpdate> pending = new(count);
+        while (TryDequeueCommittedStorage(completedSequence, out CommittedStorageUpdate update))
+        {
+            pending.Add(update);
+            Interlocked.Decrement(ref _pendingCommittedStorageCount);
+        }
+
+        Volatile.Write(ref _drainedCommittedStorageSequence, completedSequence);
+        if (pending.Count == 0) return 0;
+
+        pending.AsSpan().Sort(default(CommittedStorageUpdateComparer));
+        using ArrayPoolList<PreparedCommittedStorage> prepared =
+            new(Math.Min(pending.Count, ConcurrentStorageBatchSize));
+        try
+        {
+            int start = 0;
+            while (start < pending.Count)
+            {
+                CommittedStorageState state = pending[start].State;
+                int end = start + 1;
+                while (end < pending.Count && pending[end].State.AddressHash == state.AddressHash)
+                {
+                    end++;
+                }
+
+                PreparedCommittedStorage item = PrepareCommittedStorage(
+                    state,
+                    pending.AsSpan().Slice(start, end - start));
+                try
+                {
+                    prepared.Add(item);
+                }
+                catch
+                {
+                    ReleasePreparedStorage(item);
+                    throw;
+                }
+
+                start = end;
+            }
+
+            CalculateCommittedStorageRoots(prepared.AsSpan());
+
+            int appliedAccounts = 0;
+            for (int i = 0; i < prepared.Count; i++)
+            {
+                PreparedCommittedStorage item = prepared[i];
+                item.State.Root = item.Trie.RootHash.ToCommitment();
+                Volatile.Write(ref item.State.SettledVersion, item.Version);
+                appliedAccounts += ApplySettledStorageRootOwned(item.State);
+            }
+
+            return appliedAccounts;
+        }
+        finally
+        {
+            for (int i = prepared.Count - 1; i >= 0; i--)
+            {
+                ReleasePreparedStorage(prepared[i]);
+            }
+        }
+    }
+
+    private int DrainCommittedStorageOwned() =>
+        DrainCommittedStorageOwned(Volatile.Read(ref _completedCommittedStorageSequence));
+
+    private static void ReleasePreparedStorage(in PreparedCommittedStorage prepared)
+    {
+        Monitor.Exit(prepared.Trie);
+        Monitor.Exit(prepared.State);
+    }
+
+    private PreparedCommittedStorage PrepareCommittedStorage(
+        CommittedStorageState state,
+        Span<CommittedStorageUpdate> pending)
+    {
+        Monitor.Enter(state);
+        SparseTrie? trie = null;
+        try
+        {
+            long settledVersion = pending[^1].Version;
+            int firstUpdate = 0;
+            for (int i = pending.Length - 1; i >= 0; i--)
+            {
+                if (pending[i].IsClear)
+                {
+                    firstUpdate = i + 1;
+                    state.HasClear = true;
+                    _storageTries.TryRemove(state.AddressHash, out SparseTrie? oldTrie);
+                    DisposeStorageTrie(oldTrie);
+                    state.Root = Keccak.EmptyTreeHash;
+                    break;
+                }
+            }
+
+            trie = GetOrCreatePrefetchStorageTrie(
+                state.AddressHash,
+                state.Root.ValueHash256);
+            Monitor.Enter(trie);
+            Span<CommittedStorageUpdate> writes = pending[firstUpdate..];
+            writes.Sort(default(CommittedStorageUpdateKeyComparer));
+            using ArrayPoolListRef<SparseTrieUpdate> updates = new(writes.Length);
+            int writeIndex = 0;
+            while (writeIndex < writes.Length)
+            {
+                int nextKey = writeIndex + 1;
+                while (nextKey < writes.Length && writes[nextKey].Key == writes[writeIndex].Key)
+                {
+                    nextKey++;
+                }
+
+                ref readonly CommittedStorageUpdate update = ref writes[nextKey - 1];
+                ValueHash256 key = update.Key;
+                PatriciaTree.BulkSetEntry entry =
+                    StorageTree.CreateBulkSetEntry(in key, update.Value);
+                updates.Add(new SparseTrieUpdate(entry.Path, entry.Value));
+                writeIndex = nextKey;
+            }
+
+            if (updates.Count > 0) trie.Apply(updates.AsSpan());
+            return new PreparedCommittedStorage(
+                state,
+                trie,
+                settledVersion,
+                updates.Count > 0 ? trie.PrepareRootCalculation() : default,
+                NeedsCalculation: updates.Count > 0);
+        }
+        catch
+        {
+            if (trie is not null && Monitor.IsEntered(trie)) Monitor.Exit(trie);
+            Monitor.Exit(state);
+            throw;
+        }
+    }
+
+    private void CalculateCommittedStorageRoots(ReadOnlySpan<PreparedCommittedStorage> prepared)
+    {
+        int calculationCount = 0;
+        for (int i = 0; i < prepared.Length; i++)
+        {
+            if (prepared[i].NeedsCalculation) calculationCount++;
+        }
+
+        if (calculationCount == 0) return;
+
+        SparseTrie.RootCalculation[] calculations =
+            SafeArrayPool<SparseTrie.RootCalculation>.Shared.Rent(calculationCount);
+        try
+        {
+            int calculationIndex = 0;
+            for (int i = 0; i < prepared.Length; i++)
+            {
+                if (prepared[i].NeedsCalculation)
+                {
+                    calculations[calculationIndex++] = prepared[i].Calculation;
+                }
+            }
+
+            SparseTrie.CalculateRoots(calculations, calculationCount);
+            Interlocked.Add(ref _concurrentStorageRootCalculationCount, calculationCount);
+        }
+        finally
+        {
+            calculations.AsSpan(0, calculationCount).Clear();
+            SafeArrayPool<SparseTrie.RootCalculation>.Shared.Return(calculations);
+        }
+    }
+
+    private int ApplySettledStorageRootOwned(CommittedStorageState state)
+    {
+        long settledVersion = Volatile.Read(ref state.SettledVersion);
+        if (_speculativeAccounts.TryGetValue(
+                state.AddressHash,
+                out CommittedAccountUpdate existing))
+        {
+            if (existing.Account is null || existing.StorageVersion > settledVersion) return 0;
+
+            Account settledAccount = existing.Account.WithChangedStorageRoot(state.Root);
+            if (settledAccount == existing.Account && existing.StorageVersion == settledVersion)
+            {
+                return 0;
+            }
+
+            CommittedAccountUpdate settled = existing with
+            {
+                Account = settledAccount,
+                StorageVersion = settledVersion
+            };
+            ApplyAccountUpdate(settled);
+            _speculativeAccounts[state.AddressHash] = settled;
+            return 1;
+        }
+
+        Account? parentAccount = _bundle.GetAccount(state.Address);
+        if (parentAccount is null) return 0;
+
+        CommittedAccountUpdate synthetic = new(
+            state.Address,
+            state.AddressHash,
+            parentAccount.WithChangedStorageRoot(state.Root),
+            Volatile.Read(ref _nextCommittedAccountSequence),
+            settledVersion);
+        ApplyAccountUpdate(synthetic);
+        _speculativeAccounts[state.AddressHash] = synthetic;
+        return 1;
+    }
+
     private void DrainStatePrefetchQueueOwned()
     {
         int count = _pendingStatePrefetch.Count;
@@ -373,37 +808,41 @@ internal sealed class FlatSparseTrieSession : IDisposable
         }
     }
 
-    private int DrainCommittedAccountsOwned()
+    private int DrainCommittedAccountsOwned(long completedSequence)
     {
-        if (_concurrentRootDisabled || Volatile.Read(ref _pendingCommittedAccountCount) == 0)
+        long drainedSequence = Volatile.Read(ref _drainedCommittedAccountSequence);
+        if (_concurrentRootDisabled || completedSequence <= drainedSequence)
         {
             return 0;
         }
 
-        int count = Volatile.Read(ref _pendingCommittedAccountCount);
+        int count = (int)Math.Min(
+            Volatile.Read(ref _pendingCommittedAccountCount),
+            completedSequence - drainedSequence);
         using PooledDictionary<ValueHash256, CommittedAccountUpdate> latest = new(count);
-        SpinWait spinWait = new();
-        while (Volatile.Read(ref _pendingCommittedAccountCount) != 0)
+        while (TryDequeueCommittedAccount(completedSequence, out CommittedAccountUpdate update))
         {
-            if (TryDequeueCommittedAccount(out CommittedAccountUpdate update))
+            if (update.Account is not null
+                && update.StorageVersion != 0
+                && _committedStorageStates.TryGetValue(update.Key, out CommittedStorageState? storageState)
+                && Volatile.Read(ref storageState.SettledVersion) >= update.StorageVersion)
             {
-                if (!latest.TryGetValue(update.Key, out CommittedAccountUpdate existing)
-                    || update.Sequence > existing.Sequence)
+                update = update with
                 {
-                    latest[update.Key] = update;
-                }
+                    Account = update.Account.WithChangedStorageRoot(storageState.Root)
+                };
+            }
 
-                Interlocked.Decrement(ref _pendingCommittedAccountCount);
-                spinWait.Reset();
-            }
-            else
+            if (!latest.TryGetValue(update.Key, out CommittedAccountUpdate existing)
+                || update.Sequence > existing.Sequence)
             {
-                // Producers increment before publishing so finalization can never observe zero
-                // while an account update is in flight.
-                spinWait.SpinOnce();
+                latest[update.Key] = update;
             }
+
+            Interlocked.Decrement(ref _pendingCommittedAccountCount);
         }
 
+        Volatile.Write(ref _drainedCommittedAccountSequence, completedSequence);
         if (latest.Count == 0) return 0;
 
         ApplyAccountUpdates(latest);
@@ -420,6 +859,9 @@ internal sealed class FlatSparseTrieSession : IDisposable
         return applied;
     }
 
+    private int DrainCommittedAccountsOwned() =>
+        DrainCommittedAccountsOwned(Volatile.Read(ref _completedCommittedAccountSequence));
+
     private void ApplyAccountUpdates(PooledDictionary<ValueHash256, CommittedAccountUpdate> accounts)
     {
         using ArrayPoolList<SparseTrieUpdate> updates = new(accounts.Count);
@@ -435,6 +877,13 @@ internal sealed class FlatSparseTrieSession : IDisposable
     {
         GetOrCreateStateTrie().Apply(updates.AsSpan());
         _stateDirty = true;
+    }
+
+    private void ApplyAccountUpdate(in CommittedAccountUpdate account)
+    {
+        using ArrayPoolList<SparseTrieUpdate> updates = new(1);
+        AddAccountUpdate(updates, account.Key, account.Account);
+        ApplyAccountUpdates(updates);
     }
 
     private static void AddAccountUpdate(
@@ -458,6 +907,16 @@ internal sealed class FlatSparseTrieSession : IDisposable
         _concurrentRootDisabled = true;
         DiscardPendingStateWorkOwned();
         _speculativeAccounts.Clear();
+        foreach (KeyValuePair<ValueHash256, CommittedStorageState> kv in _committedStorageStates)
+        {
+            lock (kv.Value)
+            {
+                _storageTries.TryRemove(kv.Key, out SparseTrie? speculativeTrie);
+                DisposeStorageTrie(speculativeTrie);
+            }
+        }
+
+        _committedStorageStates.Clear();
         _stateTrie?.Dispose();
         _stateTrie = null;
         _stateDirty = false;
@@ -468,6 +927,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
     {
         while (_pendingStatePrefetch.TryDequeue(out _)) { }
         DiscardPendingCommittedAccounts();
+        DiscardPendingCommittedStorage();
     }
 
     private void DiscardPendingCommittedAccounts()
@@ -481,6 +941,90 @@ internal sealed class FlatSparseTrieSession : IDisposable
     private bool TryDequeueCommittedAccount(out CommittedAccountUpdate update) =>
         (_pendingCommittedAccounts?.TryDequeue(out update) ?? false)
         || _overflowCommittedAccounts.TryDequeue(out update);
+
+    private bool TryDequeueCommittedAccount(
+        long completedSequence,
+        out CommittedAccountUpdate update)
+    {
+        while (TryPeekCommittedAccount(out CommittedAccountUpdate next, out bool fromRing))
+        {
+            if (next.Sequence > completedSequence)
+            {
+                update = default;
+                return false;
+            }
+
+            bool dequeued = fromRing
+                ? _pendingCommittedAccounts!.TryDequeue(out update)
+                : _overflowCommittedAccounts.TryDequeue(out update);
+            if (dequeued) return true;
+        }
+
+        update = default;
+        return false;
+    }
+
+    private bool TryPeekCommittedAccount(
+        out CommittedAccountUpdate update,
+        out bool fromRing)
+    {
+        CommittedAccountUpdate ring = default;
+        bool hasRing =
+            _pendingCommittedAccounts?.TryPeekSingleConsumer(out ring) ?? false;
+        bool hasOverflow =
+            _overflowCommittedAccounts.TryPeek(out CommittedAccountUpdate overflow);
+        fromRing = hasRing && (!hasOverflow || ring.Sequence <= overflow.Sequence);
+        update = fromRing ? ring : overflow;
+        return hasRing || hasOverflow;
+    }
+
+    private void DiscardPendingCommittedStorage()
+    {
+        while (TryDequeueCommittedStorage(out _))
+        {
+            Interlocked.Decrement(ref _pendingCommittedStorageCount);
+        }
+    }
+
+    private bool TryDequeueCommittedStorage(out CommittedStorageUpdate update) =>
+        (_pendingCommittedStorage?.TryDequeue(out update) ?? false)
+        || _overflowCommittedStorage.TryDequeue(out update);
+
+    private bool TryDequeueCommittedStorage(
+        long completedSequence,
+        out CommittedStorageUpdate update)
+    {
+        while (TryPeekCommittedStorage(out CommittedStorageUpdate next, out bool fromRing))
+        {
+            if (next.Sequence > completedSequence)
+            {
+                update = default;
+                return false;
+            }
+
+            bool dequeued = fromRing
+                ? _pendingCommittedStorage!.TryDequeue(out update)
+                : _overflowCommittedStorage.TryDequeue(out update);
+            if (dequeued) return true;
+        }
+
+        update = default;
+        return false;
+    }
+
+    private bool TryPeekCommittedStorage(
+        out CommittedStorageUpdate update,
+        out bool fromRing)
+    {
+        CommittedStorageUpdate ring = default;
+        bool hasRing =
+            _pendingCommittedStorage?.TryPeekSingleConsumer(out ring) ?? false;
+        bool hasOverflow =
+            _overflowCommittedStorage.TryPeek(out CommittedStorageUpdate overflow);
+        fromRing = hasRing && (!hasOverflow || ring.Sequence <= overflow.Sequence);
+        update = fromRing ? ring : overflow;
+        return hasRing || hasOverflow;
+    }
 
     private void AcquireStateOwner()
     {
@@ -497,12 +1041,53 @@ internal sealed class FlatSparseTrieSession : IDisposable
         EnsureStateWorkerScheduled();
     }
 
+    public void DrainConcurrentUpdates()
+    {
+        if (!_concurrentRootEnabled || _concurrentRootDisabled) return;
+
+        AcquireStateOwner();
+        try
+        {
+            WaitForCommittedProducers();
+            CaptureCompletedSequences();
+
+            try
+            {
+                DrainStatePrefetchQueueOwned();
+                DrainCommittedStorageOwned();
+                DrainCommittedAccountsOwned();
+            }
+            catch (Exception ex)
+            {
+                DisableConcurrentRootOwned(ex);
+            }
+        }
+        finally
+        {
+            ReleaseStateOwner();
+        }
+    }
+
     /// <summary>Reveals one slot path directly into the retained arena for its storage trie.</summary>
     public void PrefetchStorage(in ValueHash256 addressHash, in ValueHash256 anchorRoot, in ValueHash256 key)
     {
         GuardPoisoned();
-        SparseTrie trie = GetOrCreatePrefetchStorageTrie(addressHash, in anchorRoot);
+        if (_committedStorageStates.TryGetValue(addressHash, out CommittedStorageState? state))
+        {
+            lock (state)
+            {
+                SparseTrie settlingTrie =
+                    GetOrCreatePrefetchStorageTrie(addressHash, state.Root.ValueHash256);
+                lock (settlingTrie)
+                {
+                    settlingTrie.Prefetch(in key);
+                }
+            }
 
+            return;
+        }
+
+        SparseTrie trie = GetOrCreatePrefetchStorageTrie(addressHash, in anchorRoot);
         lock (trie)
         {
             trie.Prefetch(in key);
@@ -513,8 +1098,22 @@ internal sealed class FlatSparseTrieSession : IDisposable
     public void PrefetchStorage(in ValueHash256 addressHash, in ValueHash256 anchorRoot, ReadOnlySpan<ValueHash256> keys)
     {
         GuardPoisoned();
-        SparseTrie trie = GetOrCreatePrefetchStorageTrie(addressHash, in anchorRoot);
+        if (_committedStorageStates.TryGetValue(addressHash, out CommittedStorageState? state))
+        {
+            lock (state)
+            {
+                SparseTrie settlingTrie =
+                    GetOrCreatePrefetchStorageTrie(addressHash, state.Root.ValueHash256);
+                lock (settlingTrie)
+                {
+                    settlingTrie.Prefetch(keys);
+                }
+            }
 
+            return;
+        }
+
+        SparseTrie trie = GetOrCreatePrefetchStorageTrie(addressHash, in anchorRoot);
         lock (trie)
         {
             trie.Prefetch(keys);
@@ -532,17 +1131,26 @@ internal sealed class FlatSparseTrieSession : IDisposable
             }
 
             SparseTrie replacement =
-                new(new FlatTrieNodeReader(_bundle, addressHash.ToCommitment()), anchorRoot);
+                new(new FlatTrieNodeReader(_readerContext, addressHash.ToCommitment()), anchorRoot);
             bool stored = retained is null
                 ? _storageTries.TryAdd(addressHash, replacement)
                 : _storageTries.TryUpdate(addressHash, replacement, retained);
             if (stored)
             {
-                retained?.Dispose();
+                DisposeStorageTrie(retained);
                 return replacement;
             }
 
             replacement.Dispose();
+        }
+    }
+
+    private static void DisposeStorageTrie(SparseTrie? trie)
+    {
+        if (trie is null) return;
+        lock (trie)
+        {
+            trie.Dispose();
         }
     }
 
@@ -559,8 +1167,20 @@ internal sealed class FlatSparseTrieSession : IDisposable
     /// <summary>Drops any warm storage trie held for a now-deleted or cleared account.</summary>
     public void DiscardRetainedStorage(Hash256 addressHash)
     {
-        _storageTries.TryRemove(addressHash.ValueHash256, out SparseTrie? retained);
-        retained?.Dispose();
+        ValueHash256 key = addressHash.ValueHash256;
+        if (_committedStorageStates.TryRemove(key, out CommittedStorageState? state))
+        {
+            lock (state)
+            {
+                _storageTries.TryRemove(key, out SparseTrie? settlingTrie);
+                DisposeStorageTrie(settlingTrie);
+            }
+
+            return;
+        }
+
+        _storageTries.TryRemove(key, out SparseTrie? retained);
+        DisposeStorageTrie(retained);
     }
 
     /// <summary>Marks the session unusable after a failure outside its own guarded paths.</summary>
@@ -656,7 +1276,10 @@ internal sealed class FlatSparseTrieSession : IDisposable
         {
             try
             {
+                WaitForCommittedProducers();
+                CaptureCompletedSequences();
                 DrainStatePrefetchQueueOwned();
+                DrainCommittedStorageOwned();
                 DrainCommittedAccountsOwned();
             }
             catch (Exception ex)
@@ -721,10 +1344,15 @@ internal sealed class FlatSparseTrieSession : IDisposable
         try
         {
             DrainStatePrefetchQueueOwned();
-            if (Volatile.Read(ref _pendingCommittedAccountCount) != 0 || _speculativeAccounts.Count != 0)
+            if (Volatile.Read(ref _pendingCommittedAccountCount) != 0
+                || Volatile.Read(ref _pendingCommittedStorageCount) != 0
+                || _speculativeAccounts.Count != 0)
             {
                 _poisoned = true;
-                ThrowUnsettledAccounts();
+                ThrowUnsettledUpdates(
+                    Volatile.Read(ref _pendingCommittedAccountCount),
+                    Volatile.Read(ref _pendingCommittedStorageCount),
+                    _speculativeAccounts.Count);
             }
 
             if (!_stateDirty) return;
@@ -773,6 +1401,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
             }
 
             _changedStorageTrees.Clear();
+            _committedStorageStates.Clear();
 
             if (!_retentionEnabled)
             {
@@ -826,17 +1455,22 @@ internal sealed class FlatSparseTrieSession : IDisposable
         AcquireStateOwner();
         try
         {
-            if (Volatile.Read(ref _pendingCommittedAccountCount) != 0 || _speculativeAccounts.Count != 0)
+            if (Volatile.Read(ref _pendingCommittedAccountCount) != 0
+                || Volatile.Read(ref _pendingCommittedStorageCount) != 0
+                || _speculativeAccounts.Count != 0)
             {
                 _poisoned = true;
-                ThrowUnsettledAccounts();
+                ThrowUnsettledUpdates(
+                    Volatile.Read(ref _pendingCommittedAccountCount),
+                    Volatile.Read(ref _pendingCommittedStorageCount),
+                    _speculativeAccounts.Count);
             }
 
             // No state change ever materialized a trie; anchor an empty one so the generation is
             // still valid for the next block (which will reveal from the committed reader).
-            _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, address: null), newStateRoot);
+            _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_readerContext, address: null), newStateRoot);
 
-            RetainedGeneration generation = new(newStateRoot, _stateTrie, _storageTries);
+            RetainedGeneration generation = new(newStateRoot, _stateTrie, _storageTries, _readerContext);
             _stateTrie = null;
             _storageTries = [];
             _generationExtracted = true;
@@ -887,8 +1521,9 @@ internal sealed class FlatSparseTrieSession : IDisposable
         throw new InvalidOperationException("Storage jobs sealed after the storage phase would never be calculated");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowUnsettledAccounts() =>
-        throw new InvalidOperationException("Concurrent sparse account updates were not settled by the final write batch");
+    private static void ThrowUnsettledUpdates(int accountCount, int storageCount, int speculativeCount) =>
+        throw new InvalidOperationException(
+            $"Concurrent sparse updates were not settled by the final write batch: {accountCount} accounts, {storageCount} storage updates, {speculativeCount} speculative accounts");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowStorageTrieAlreadyReturned() =>
@@ -904,6 +1539,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
             {
                 SpinWait spinWait = new();
                 while (Volatile.Read(ref _committedAccountProducers) != 0
+                    || Volatile.Read(ref _committedStorageProducers) != 0
                     || Volatile.Read(ref _stateWorkerScheduled) != 0)
                 {
                     spinWait.SpinOnce();
@@ -914,6 +1550,8 @@ internal sealed class FlatSparseTrieSession : IDisposable
             _speculativeAccounts.Clear();
             _speculativeAccounts.Dispose();
             _pendingCommittedAccounts?.ReturnPooledArrays();
+            _pendingCommittedStorage?.ReturnPooledArrays();
+            _committedStorageStates.Clear();
 
             while (_pendingStorageJobs.TryDequeue(out PreparedStorageJob job)) job.Job.Updates.Dispose();
 

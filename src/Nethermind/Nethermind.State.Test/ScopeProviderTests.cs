@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -384,11 +385,22 @@ public class ScopeProviderTests(bool useFlat)
             caches.MainScope.HintWarmSlot(in addressA, (UInt256)1);
             ((IWorldStateScopeProvider.ICommittedStateRootSink)caches.MainScope)
                 .HintCommittedAccount(TestItem.AddressA, Account.TotallyEmpty);
+            UInt256 slot = 1;
+            ((IWorldStateScopeProvider.ICommittedStateRootSink)caches.MainScope)
+                .HintCommittedStorage(TestItem.AddressA, in slot, [0x01]);
+            ((IWorldStateScopeProvider.ICommittedStateRootSink)caches.MainScope)
+                .HintCommittedStorageClear(TestItem.AddressA);
+            ((IWorldStateScopeProvider.ICommittedStateRootSink)caches.MainScope)
+                .CompleteCommittedStateRound();
         }
 
         inner.Received(1).HintWarmAccount(addressA);
         inner.Received(1).HintWarmSlot(addressA, (UInt256)1);
         innerRootSink.Received(1).HintCommittedAccount(TestItem.AddressA, Account.TotallyEmpty);
+        innerRootSink.Received(1).HintCommittedStorage(TestItem.AddressA, Arg.Any<UInt256>(), Arg.Any<byte[]>());
+        innerRootSink.Received(1).HintCommittedStorageClear(TestItem.AddressA);
+        innerRootSink.Received(1).CompleteCommittedStateRound();
+        innerRootSink.ClearReceivedCalls();
 
         PrewarmerScopeProvider populator = new(
             decorated,
@@ -398,9 +410,43 @@ public class ScopeProviderTests(bool useFlat)
         {
             ((IWorldStateScopeProvider.ICommittedStateRootSink)scope)
                 .HintCommittedAccount(TestItem.AddressB, Account.TotallyEmpty);
+            UInt256 slot = 2;
+            ((IWorldStateScopeProvider.ICommittedStateRootSink)scope)
+                .HintCommittedStorage(TestItem.AddressB, in slot, [0x02]);
+            ((IWorldStateScopeProvider.ICommittedStateRootSink)scope)
+                .HintCommittedStorageClear(TestItem.AddressB);
+            ((IWorldStateScopeProvider.ICommittedStateRootSink)scope)
+                .CompleteCommittedStateRound();
         }
 
         innerRootSink.DidNotReceive().HintCommittedAccount(TestItem.AddressB, Arg.Any<Account>());
+        innerRootSink.DidNotReceive().HintCommittedStorage(
+            TestItem.AddressB,
+            Arg.Any<UInt256>(),
+            Arg.Any<byte[]>());
+        innerRootSink.DidNotReceive().HintCommittedStorageClear(TestItem.AddressB);
+        innerRootSink.DidNotReceive().CompleteCommittedStateRound();
+    }
+
+    [Test]
+    public void WorldState_commit_completes_the_committed_round()
+    {
+        IWorldStateScopeProvider.IScope scope = Substitute.For<
+            IWorldStateScopeProvider.IScope,
+            IWorldStateScopeProvider.ICommittedStateRootSink>();
+        scope.CodeDb.Returns(Substitute.For<IWorldStateScopeProvider.ICodeDb>());
+        IWorldStateScopeProvider provider = Substitute.For<IWorldStateScopeProvider>();
+        provider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(scope);
+        WorldState worldState = new(provider, LimboLogs.Instance);
+
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.Commit(Frontier.Instance);
+        }
+
+        ((IWorldStateScopeProvider.ICommittedStateRootSink)scope)
+            .Received(1)
+            .CompleteCommittedStateRound();
     }
 
     [Test]

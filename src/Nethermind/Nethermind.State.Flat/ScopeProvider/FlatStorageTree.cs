@@ -191,9 +191,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     /// <summary>Applies one sealed job and returns its sparse trie for root calculation.</summary>
-    internal SparseTrie ApplySparseJob(in FlatSparseTrieSession.StorageJob job)
+    internal SparseTrie ApplySparseJob(in FlatSparseTrieSession.StorageJob job, bool clearAlreadyApplied = false)
     {
-        if (job.HasClear) ResetSparseTrie();
+        if (job.HasClear && !clearAlreadyApplied) ResetSparseTrie();
 
         // Reuse a warm trie retained for this account (rebound to this scope's reader) when the
         // retention cache holds one; otherwise build cold. A cleared account's anchor is empty,
@@ -201,6 +201,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _sparseTrie ??= _scope.SparseSession.AdoptOrCreateStorageTrie(_addressHash, _sparseRoot.ValueHash256, job.Updates.Count);
         _sparseTrie.Apply(job.Updates.AsSpan());
         return _sparseTrie;
+    }
+
+    internal void AdoptSparseTrie(SparseTrie trie)
+    {
+        Debug.Assert(_sparseTrie is null);
+        _sparseTrie = trie;
     }
 
     /// <summary>Validates and reports this account's calculated sparse root.</summary>

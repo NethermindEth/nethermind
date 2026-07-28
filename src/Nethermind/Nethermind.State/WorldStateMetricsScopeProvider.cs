@@ -35,6 +35,15 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         public void HintCommittedAccount(Address address, Account? account) =>
             _committedStateRootSink?.HintCommittedAccount(address, account);
 
+        public void HintCommittedStorage(Address address, in UInt256 index, byte[] value) =>
+            _committedStateRootSink?.HintCommittedStorage(address, in index, value);
+
+        public void HintCommittedStorageClear(Address address) =>
+            _committedStateRootSink?.HintCommittedStorageClear(address);
+
+        public void CompleteCommittedStateRound() =>
+            _committedStateRootSink?.CompleteCommittedStateRound();
+
         public void Dispose()
         {
             baseScope.Dispose();

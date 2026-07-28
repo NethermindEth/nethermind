@@ -63,6 +63,40 @@ public class StorageProviderTests(bool useFlat)
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
     [Test]
+    public void Committed_storage_hints_exclude_reverted_writes_and_include_clears()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        IWorldStateScopeProvider.ICommittedStateRootSink sink =
+            Substitute.For<IWorldStateScopeProvider.ICommittedStateRootSink>();
+        typeof(PersistentStorageProvider)
+            .GetField("_committedStateRootSink", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(provider._persistentStorageProvider, sink);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.Set(in cell, _values[1]);
+        provider.Restore(snapshot);
+        provider.Commit(Frontier.Instance, NullStateTracer.Instance, commitRoots: false);
+
+        sink.DidNotReceive().HintCommittedStorage(
+            ctx.Address1,
+            Arg.Any<UInt256>(),
+            Arg.Any<byte[]>());
+
+        provider.Set(in cell, _values[2]);
+        provider.Commit(Frontier.Instance, NullStateTracer.Instance, commitRoots: false);
+        sink.Received(1).HintCommittedStorage(
+            ctx.Address1,
+            Arg.Any<UInt256>(),
+            _values[2]);
+
+        provider.MarkStorageDestroyed(ctx.Address1);
+        provider.Commit(Frontier.Instance, NullStateTracer.Instance, commitRoots: false);
+        sink.Received(1).HintCommittedStorageClear(ctx.Address1);
+    }
+
+    [Test]
     [NonParallelizable]
     public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned()
     {
@@ -104,6 +138,7 @@ public class StorageProviderTests(bool useFlat)
             GetPrivateField(provider._persistentStorageProvider, "_originalValues"),
             GetPrivateField(provider._persistentStorageProvider, "_committedThisRound"),
             GetPrivateField(provider._persistentStorageProvider, "_destroyedThisRound"),
+            GetPrivateField(provider._persistentStorageProvider, "_clearedThisRound"),
         ];
         int[] capacitiesBeforeReset = new int[collections.Length];
         for (int i = 0; i < collections.Length; i++)

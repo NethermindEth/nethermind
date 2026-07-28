@@ -11,8 +11,8 @@ using Nethermind.Trie.Sparse;
 namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
-/// One persistent CPU worker for incremental state-root work. It stays independent of the shared
-/// thread pool, which can be saturated by block execution and prewarming.
+/// One persistent CPU worker for incremental state and storage-root work. Scheduling progress stays
+/// independent of the shared thread pool; parallel storage-root frontiers may still enlist it.
 /// </summary>
 internal sealed class SparseTrieRootWorker : IDisposable
 {
@@ -102,17 +102,19 @@ internal static class SparseTrieRetention
 internal sealed class RetainedGeneration(
     ValueHash256 stateRoot,
     SparseTrie stateTrie,
-    ConcurrentDictionary<ValueHash256, SparseTrie> storageTries) : IDisposable
+    ConcurrentDictionary<ValueHash256, SparseTrie> storageTries,
+    FlatTrieNodeReaderContext? readerContext) : IDisposable
 {
     public ValueHash256 StateRoot { get; } = stateRoot;
     public SparseTrie StateTrie { get; } = stateTrie;
     public ConcurrentDictionary<ValueHash256, SparseTrie> StorageTries { get; } = storageTries;
+    public FlatTrieNodeReaderContext? ReaderContext { get; } = readerContext;
 
     /// <summary>Total pool-rented arena bytes across the state trie and every storage trie.</summary>
-    public long RentedBytes { get; } = SumBytes(stateTrie, storageTries, static trie => trie.RentedBytes);
+    public long RentedBytes { get; private set; } = SumBytes(stateTrie, storageTries, static trie => trie.RentedBytes);
 
     /// <summary>Arena bytes made unreachable by mutation across the whole generation.</summary>
-    public long DeadBytes { get; } = SumBytes(stateTrie, storageTries, static trie => trie.DeadBytes);
+    public long DeadBytes { get; private set; } = SumBytes(stateTrie, storageTries, static trie => trie.DeadBytes);
 
     private static long SumBytes(
         SparseTrie stateTrie,
@@ -137,6 +139,8 @@ internal sealed class RetainedGeneration(
         }
 
         StorageTries.Clear();
+        RentedBytes = 0;
+        DeadBytes = 0;
     }
 }
 

@@ -186,6 +186,15 @@ public class PrewarmerScopeProvider(
         public void HintCommittedAccount(Address address, Account? account) =>
             committedStateRootSink?.HintCommittedAccount(address, account);
 
+        public void HintCommittedStorage(Address address, in UInt256 index, byte[] value) =>
+            committedStateRootSink?.HintCommittedStorage(address, in index, value);
+
+        public void HintCommittedStorageClear(Address address) =>
+            committedStateRootSink?.HintCommittedStorageClear(address);
+
+        public void CompleteCommittedStateRound() =>
+            committedStateRootSink?.CompleteCommittedStateRound();
+
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             sink ??= new CacheSink(preBlockCache, storageCache);

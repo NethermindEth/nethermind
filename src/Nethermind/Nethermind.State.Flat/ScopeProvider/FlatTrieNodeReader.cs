@@ -2,12 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Threading;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Sparse;
 
 namespace Nethermind.State.Flat.ScopeProvider;
+
+/// <summary>
+/// Shared bundle binding for every sparse-trie reader in one retained generation.
+/// </summary>
+internal sealed class FlatTrieNodeReaderContext(SnapshotBundle bundle)
+{
+    private SnapshotBundle _bundle = bundle;
+
+    public SnapshotBundle Bundle => Volatile.Read(ref _bundle);
+
+    public void Rebind(SnapshotBundle bundle) => Volatile.Write(ref _bundle, bundle);
+}
 
 /// <summary>
 /// Committed-only parent-node source for one sparse trie: the state trie when
@@ -29,10 +42,13 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// the reader must be driven synchronously within the owning scope's lifetime; driving it from
 /// a thread that can race scope disposal would need the trie warmer's lease treatment.
 /// </remarks>
-internal sealed class FlatTrieNodeReader(SnapshotBundle bundle, Hash256? address) : ISparseTrieNodeSource
+internal sealed class FlatTrieNodeReader(
+    FlatTrieNodeReaderContext context,
+    Hash256? address) : ISparseTrieNodeSource
 {
     public void Resolve(ReadOnlySpan<SparseNodeRequest> requests, Span<CappedArray<byte>> results)
     {
+        SnapshotBundle bundle = context.Bundle;
         for (int i = 0; i < requests.Length; i++)
         {
             results[i] = address is null

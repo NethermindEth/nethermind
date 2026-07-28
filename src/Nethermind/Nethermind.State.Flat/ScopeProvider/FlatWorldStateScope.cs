@@ -501,6 +501,19 @@ public sealed class FlatWorldStateScope :
     public void HintCommittedAccount(Address address, Account? account) =>
         SparseSession.EnqueueCommittedAccount(address, account);
 
+    public void HintCommittedStorage(Address address, in UInt256 index, byte[] value)
+    {
+        ValueHash256 key = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(index, ref key);
+        SparseSession.EnqueueCommittedStorage(address, in key, value);
+    }
+
+    public void HintCommittedStorageClear(Address address) =>
+        SparseSession.EnqueueCommittedStorageClear(address);
+
+    public void CompleteCommittedStateRound() =>
+        SparseSession.CompleteCommittedStateRound();
+
     private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
         GetHintWarmStorages().GetOrAdd(address, static (key, scope) =>
         {
@@ -556,6 +569,7 @@ public sealed class FlatWorldStateScope :
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         PauseAndDrainPrewarmer();
+        SparseSession.DrainConcurrentUpdates();
         // Mutation in progress: the warm generation no longer matches a committed root until the
         // next Commit completes.
         _lastCommitClean = false;

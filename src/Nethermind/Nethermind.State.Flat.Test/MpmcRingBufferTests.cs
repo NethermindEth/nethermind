@@ -61,6 +61,24 @@ public class MpmcRingBufferTests
     }
 
     [Test]
+    public void TryPeek_DoesNotConsumeTheHead()
+    {
+        MpmcRingBuffer<int> jobQueue = new(4);
+
+        Assert.That(jobQueue.TryPeekSingleConsumer(out _), Is.False);
+        Assert.That(jobQueue.TryEnqueue(1), Is.True);
+        Assert.That(jobQueue.TryEnqueue(2), Is.True);
+        Assert.That(jobQueue.TryPeekSingleConsumer(out int first), Is.True);
+        Assert.That(first, Is.EqualTo(1));
+        Assert.That(jobQueue.TryPeekSingleConsumer(out first), Is.True);
+        Assert.That(first, Is.EqualTo(1));
+        Assert.That(jobQueue.TryDequeue(out first), Is.True);
+        Assert.That(first, Is.EqualTo(1));
+        Assert.That(jobQueue.TryPeekSingleConsumer(out int second), Is.True);
+        Assert.That(second, Is.EqualTo(2));
+    }
+
+    [Test]
     public void RollingSmokeTest()
     {
         MpmcRingBuffer<int> jobQueue = new(16);

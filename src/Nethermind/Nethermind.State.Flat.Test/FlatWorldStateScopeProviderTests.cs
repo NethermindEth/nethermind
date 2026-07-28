@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -775,6 +776,22 @@ public class FlatWorldStateScopeProviderTests
 
         scope.UpdateRootHash();
         scope.Commit(1);
+    }
+
+    private static void AssertStorageAndStateRoots(
+        FlatWorldStateScope scope,
+        Address address,
+        StorageTree expectedStorage)
+    {
+        expectedStorage.UpdateRootHash();
+        Account account = scope.Get(address)!;
+        Assert.That(account.StorageRoot, Is.EqualTo(expectedStorage.RootHash));
+
+        scope.UpdateRootHash();
+        StateTree expectedState = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expectedState.Set(address, account);
+        expectedState.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
     }
 
     [Test]
@@ -1573,6 +1590,7 @@ public class FlatWorldStateScopeProviderTests
 
         Address netZeroAddress = Address.FromNumber((UInt256)(accountCount + 1UL));
         scope.HintCommittedAccount(netZeroAddress, new Account(balance: 1));
+        scope.CompleteCommittedStateRound();
 
         Assert.That(
             SpinWait.SpinUntil(
@@ -1597,6 +1615,389 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void ConcurrentCommittedStorage_IsHashedBeforeTheFinalBatch()
+    {
+        const int slotCount = FlatSparseTrieSession.ConcurrentStorageBatchSize;
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account account = new(balance: 1);
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+
+        for (int i = 0; i < slotCount; i++)
+        {
+            UInt256 slot = (UInt256)(ulong)(i + 1);
+            scope.HintCommittedStorage(address, in slot, [(byte)(i + 1)]);
+        }
+
+        scope.SparseSession.RunStateWorker();
+        Assert.That(scope.SparseSession.ConcurrentStorageRootCalculationCount, Is.Zero,
+            "storage updates from an incomplete committed round must not be hashed");
+        scope.CompleteCommittedStateRound();
+
+        Assert.That(
+            SpinWait.SpinUntil(
+                () => scope.SparseSession.ConcurrentStorageRootCalculationCount > 0,
+                TimeSpan.FromSeconds(5)),
+            Is.True,
+            "the storage root should be calculated while execution is still producing updates");
+
+        UInt256 lateWarmSlot = 10_000;
+        ValueHash256 lateWarmKey = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(lateWarmSlot, ref lateWarmKey);
+        ValueHash256 addressHash = address.ToAccountPath;
+        ValueHash256 anchorRoot = ValueKeccak.EmptyTreeHash;
+        scope.SparseSession.PrefetchStorage(
+            in addressHash,
+            in anchorRoot,
+            in lateWarmKey);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                writeBatch.CreateStorageWriteBatch(address, slotCount);
+            for (int i = 0; i < slotCount; i++)
+            {
+                storageBatch.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+            }
+        }
+
+        Assert.That(scope.SparseSession.ConcurrentStorageTrieReuseCount, Is.EqualTo(1),
+            "a late parent-root warm hint must not replace the settled trie");
+
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int i = 0; i < slotCount; i++)
+        {
+            expected.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+        }
+
+        AssertStorageAndStateRoots(scope, address, expected);
+    }
+
+    [Test]
+    public void ConcurrentCommittedStorage_CoalescesCompletedRoundsBeforeHashing()
+    {
+        const int slotsPerRound = FlatSparseTrieSession.ConcurrentStorageBatchSize / 2;
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(new Account(balance: 1));
+        using FlatWorldStateScope scope =
+            ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+
+        for (int i = 0; i < slotsPerRound; i++)
+        {
+            UInt256 slot = (UInt256)(ulong)(i + 1);
+            scope.HintCommittedStorage(address, in slot, [(byte)(i + 1)]);
+        }
+
+        scope.CompleteCommittedStateRound();
+        Assert.That(scope.SparseSession.ConcurrentStorageRootCalculationCount, Is.Zero);
+
+        for (int i = slotsPerRound; i < slotsPerRound * 2; i++)
+        {
+            UInt256 slot = (UInt256)(ulong)(i + 1);
+            scope.HintCommittedStorage(address, in slot, [(byte)(i + 1)]);
+        }
+
+        scope.CompleteCommittedStateRound();
+        Assert.That(
+            SpinWait.SpinUntil(
+                () => scope.SparseSession.ConcurrentStorageRootCalculationCount > 0,
+                TimeSpan.FromSeconds(5)),
+            Is.True);
+        Assert.That(scope.SparseSession.ConcurrentStorageRootCalculationCount, Is.EqualTo(1));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                writeBatch.CreateStorageWriteBatch(address, slotsPerRound * 2);
+            for (int i = 0; i < slotsPerRound * 2; i++)
+            {
+                storageBatch.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+            }
+        }
+
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int i = 0; i < slotsPerRound * 2; i++)
+        {
+            expected.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+        }
+
+        AssertStorageAndStateRoots(scope, address, expected);
+    }
+
+    [Test]
+    public void ConcurrentCommittedStorage_SharesTheParallelFrontierAcrossAccounts()
+    {
+        const int accountCount = 4;
+        const int slotsPerAccount = FlatSparseTrieSession.ConcurrentStorageBatchSize / accountCount;
+        using TestContext ctx = new();
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        Address[] addresses = new Address[accountCount];
+
+        for (int accountIndex = 0; accountIndex < accountCount; accountIndex++)
+        {
+            Address address = Address.FromNumber((UInt256)(ulong)(accountIndex + 1));
+            addresses[accountIndex] = address;
+            ctx.PersistenceReader.GetAccount(address).Returns(new Account(balance: 1));
+            for (int slotIndex = 0; slotIndex < slotsPerAccount; slotIndex++)
+            {
+                UInt256 slot = (UInt256)(ulong)(slotIndex + 1);
+                scope.HintCommittedStorage(address, in slot, [(byte)(accountIndex + 1), (byte)slotIndex]);
+            }
+        }
+
+        scope.CompleteCommittedStateRound();
+
+        Assert.That(
+            SpinWait.SpinUntil(
+                () => scope.SparseSession.ConcurrentStorageRootCalculationCount >= accountCount,
+                TimeSpan.FromSeconds(5)),
+            Is.True);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accountCount))
+        {
+            for (int accountIndex = 0; accountIndex < accountCount; accountIndex++)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                    writeBatch.CreateStorageWriteBatch(addresses[accountIndex], slotsPerAccount);
+                for (int slotIndex = 0; slotIndex < slotsPerAccount; slotIndex++)
+                {
+                    storageBatch.Set(
+                        (UInt256)(ulong)(slotIndex + 1),
+                        [(byte)(accountIndex + 1), (byte)slotIndex]);
+                }
+            }
+        }
+
+        Assert.That(scope.SparseSession.ConcurrentStorageTrieReuseCount, Is.EqualTo(accountCount));
+
+        StateTree expectedState = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int accountIndex = 0; accountIndex < accountCount; accountIndex++)
+        {
+            StorageTree expectedStorage = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+            for (int slotIndex = 0; slotIndex < slotsPerAccount; slotIndex++)
+            {
+                expectedStorage.Set(
+                    (UInt256)(ulong)(slotIndex + 1),
+                    [(byte)(accountIndex + 1), (byte)slotIndex]);
+            }
+
+            expectedStorage.UpdateRootHash();
+            Account finalAccount = scope.Get(addresses[accountIndex])!;
+            Assert.That(finalAccount.StorageRoot, Is.EqualTo(expectedStorage.RootHash));
+            expectedState.Set(addresses[accountIndex], finalAccount);
+        }
+
+        scope.UpdateRootHash();
+        expectedState.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
+    }
+
+    [Test]
+    public void ConcurrentCommittedStorage_DrainsSmallTailBeforeTheFinalBatch()
+    {
+        const int slotCount = FlatSparseTrieSession.ConcurrentStorageBatchSize - 1;
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(new Account(balance: 1));
+        using FlatWorldStateScope scope =
+            ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+
+        for (int i = 0; i < slotCount; i++)
+        {
+            UInt256 slot = (UInt256)(ulong)(i + 1);
+            scope.HintCommittedStorage(address, in slot, [(byte)(i + 1)]);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                writeBatch.CreateStorageWriteBatch(address, slotCount);
+            for (int i = 0; i < slotCount; i++)
+            {
+                storageBatch.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+            }
+        }
+
+        Assert.That(scope.SparseSession.ConcurrentStorageRootCalculationCount, Is.EqualTo(1));
+        Assert.That(scope.SparseSession.ConcurrentStorageTrieReuseCount, Is.EqualTo(1));
+
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int i = 0; i < slotCount; i++)
+        {
+            expected.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+        }
+
+        AssertStorageAndStateRoots(scope, address, expected);
+    }
+
+    [Test]
+    public void ConcurrentCommittedAccounts_DrainsHintsProducedInsideTheFinalBatch()
+    {
+        using TestContext ctx = new();
+        using FlatWorldStateScope scope =
+            ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        Address address = TestItem.AddressA;
+        Account account = new(balance: 1);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            scope.HintCommittedAccount(address, account);
+            writeBatch.Set(address, account);
+        }
+
+        StateTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expected.Set(address, account);
+        expected.UpdateRootHash();
+        scope.UpdateRootHash();
+
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void ConcurrentCommittedStorage_LateWriteInvalidatesTheSettledRoot()
+    {
+        const int slotCount = FlatSparseTrieSession.ConcurrentStorageBatchSize;
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account account = new(balance: 1);
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+
+        for (int i = 0; i < slotCount; i++)
+        {
+            UInt256 slot = (UInt256)(ulong)(i + 1);
+            scope.HintCommittedStorage(address, in slot, [(byte)(i + 1)]);
+        }
+
+        scope.CompleteCommittedStateRound();
+
+        Assert.That(
+            SpinWait.SpinUntil(
+                () => scope.SparseSession.ConcurrentStorageRootCalculationCount > 0,
+                TimeSpan.FromSeconds(5)),
+            Is.True);
+
+        UInt256 changedSlot = 1;
+        scope.HintCommittedStorage(address, in changedSlot, [0xff]);
+        Account finalAccount = new(balance: 2);
+        scope.HintCommittedAccount(address, finalAccount);
+        scope.CompleteCommittedStateRound();
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                writeBatch.CreateStorageWriteBatch(address, slotCount);
+            storageBatch.Set(changedSlot, [0xff]);
+            for (int i = 1; i < slotCount; i++)
+            {
+                storageBatch.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+            }
+
+            writeBatch.Set(address, finalAccount);
+        }
+
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expected.Set(changedSlot, [0xff]);
+        for (int i = 1; i < slotCount; i++)
+        {
+            expected.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+        }
+
+        AssertStorageAndStateRoots(scope, address, expected);
+    }
+
+    [Test]
+    public void ConcurrentCommittedStorage_ClearStartsANewSettlementEpoch()
+    {
+        const int slotCount = FlatSparseTrieSession.ConcurrentStorageBatchSize;
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        CommitOneAccountWithStorage(scope, address);
+
+        scope.HintCommittedStorageClear(address);
+        for (int i = 0; i < slotCount; i++)
+        {
+            UInt256 slot = (UInt256)(ulong)(i + 100);
+            scope.HintCommittedStorage(address, in slot, [(byte)(i + 1)]);
+        }
+
+        scope.CompleteCommittedStateRound();
+
+        Assert.That(
+            SpinWait.SpinUntil(
+                () => scope.SparseSession.ConcurrentStorageRootCalculationCount > 0,
+                TimeSpan.FromSeconds(5)),
+            Is.True);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                writeBatch.CreateStorageWriteBatch(address, slotCount);
+            storageBatch.Clear();
+            for (int i = 0; i < slotCount; i++)
+            {
+                storageBatch.Set((UInt256)(ulong)(i + 100), [(byte)(i + 1)]);
+            }
+        }
+
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int i = 0; i < slotCount; i++)
+        {
+            expected.Set((UInt256)(ulong)(i + 100), [(byte)(i + 1)]);
+        }
+
+        AssertStorageAndStateRoots(scope, address, expected);
+    }
+
+    [Test]
+    public void ConcurrentStorageWorkerFailure_FallsBackToTheFinalBatch()
+    {
+        const int slotCount = FlatSparseTrieSession.ConcurrentStorageBatchSize;
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account account = new(balance: 1);
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+        using FlatWorldStateScope scope = ctx.CreateRetentionScope(new StateId(0, Keccak.EmptyTreeHash));
+        using ManualResetEventSlim workerAttempted = new();
+        scope.SparseSession.OnConcurrentStateWorkerAcquired = () =>
+        {
+            workerAttempted.Set();
+            throw new TrieException("injected concurrent-storage-root failure");
+        };
+
+        for (int i = 0; i < slotCount; i++)
+        {
+            UInt256 slot = (UInt256)(ulong)(i + 1);
+            scope.HintCommittedStorage(address, in slot, [(byte)(i + 1)]);
+        }
+
+        scope.CompleteCommittedStateRound();
+
+        Assert.That(workerAttempted.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                writeBatch.CreateStorageWriteBatch(address, slotCount);
+            for (int i = 0; i < slotCount; i++)
+            {
+                storageBatch.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+            }
+        }
+
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int i = 0; i < slotCount; i++)
+        {
+            expected.Set((UInt256)(ulong)(i + 1), [(byte)(i + 1)]);
+        }
+
+        AssertStorageAndStateRoots(scope, address, expected);
+    }
+
+    [Test]
     public void Dispose_WaitsForConcurrentStateWorkerBeforeReleasingTheArena()
     {
         using TestContext ctx = new();
@@ -1617,6 +2018,8 @@ public class FlatWorldStateScopeProviderTests
                     Address.FromNumber((UInt256)(ulong)(i + 1)),
                     new Account(balance: (UInt256)(ulong)(i + 1)));
             }
+
+            scope.CompleteCommittedStateRound();
 
             Assert.That(workerEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
@@ -1656,6 +2059,8 @@ public class FlatWorldStateScopeProviderTests
                     new Account(balance: (UInt256)(ulong)(i + 1)));
             }
 
+            scope.CompleteCommittedStateRound();
+
             Assert.That(workerEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
             Task publishTask = Task.Run(scope.SparseSession.Publish);
@@ -1689,6 +2094,8 @@ public class FlatWorldStateScopeProviderTests
                 Address.FromNumber((UInt256)(ulong)(i + 1)),
                 new Account(balance: (UInt256)(ulong)(i + 1)));
         }
+
+        scope.CompleteCommittedStateRound();
 
         Assert.That(workerAttempted.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
@@ -2007,7 +2414,54 @@ public class FlatTrieNodeReaderTests
         return results[0];
     }
 
+    private static FlatTrieNodeReader CreateReader(TestContext context, Hash256? address) =>
+        new(new FlatTrieNodeReaderContext(context.SnapshotBundle), address);
+
     private static TreePath Path(string nibbles) => TreePath.FromHexString(nibbles);
+
+    private static ValueHash256 Key(string firstNibble) => new(firstNibble.PadRight(64, '0'));
+
+    private static byte[] StorageLeafRlp(byte[] value)
+    {
+        const int compactPathLength = 32;
+        int contentLength = 1 + compactPathLength + 1 + value.Length;
+        byte[] rlp = new byte[1 + contentLength];
+        rlp[0] = (byte)(0xc0 + contentLength);
+        rlp[1] = 0xa0;
+        rlp[2] = 0x30;
+        rlp[2 + compactPathLength] = (byte)(0x80 + value.Length);
+        value.CopyTo(rlp, 3 + compactPathLength);
+        return rlp;
+    }
+
+    private static byte[] StorageBranchRlp(
+        int firstNibble,
+        in ValueHash256 firstHash,
+        int secondNibble,
+        in ValueHash256 secondHash)
+    {
+        const int contentLength = 14 + 33 + 33 + 1;
+        byte[] rlp = new byte[2 + contentLength];
+        rlp[0] = 0xf8;
+        rlp[1] = contentLength;
+        int position = 2;
+        for (int nibble = 0; nibble < 16; nibble++)
+        {
+            if (nibble == firstNibble || nibble == secondNibble)
+            {
+                rlp[position++] = 0xa0;
+                (nibble == firstNibble ? firstHash : secondHash).Bytes.CopyTo(rlp.AsSpan(position));
+                position += 32;
+            }
+            else
+            {
+                rlp[position++] = 0x80;
+            }
+        }
+
+        rlp[position] = 0x80;
+        return rlp;
+    }
 
     [Test]
     public void Reads_committed_node_from_current_bundle_snapshot()
@@ -2020,7 +2474,7 @@ public class FlatTrieNodeReaderTests
         ctx.SnapshotBundle.SetStateNode(in path, node);
         ctx.CollectCurrentIntoSnapshot();
 
-        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        FlatTrieNodeReader reader = CreateReader(ctx, address: null);
         Assert.That(ResolveOne(reader, in path, node.Keccak!.ValueHash256).AsSpan().SequenceEqual(rlp));
     }
 
@@ -2041,7 +2495,7 @@ public class FlatTrieNodeReaderTests
         // is excluded; the committed node behind it stays reachable. Every tier the committed
         // reader does consult is (path, hash)-keyed, so a dirty entry can only ever satisfy a
         // request for its own exact bytes, which is harmless by construction.
-        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        FlatTrieNodeReader reader = CreateReader(ctx, address: null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ResolveOne(reader, in path, committed.Keccak!.ValueHash256).AsSpan().SequenceEqual(committedRlp), "committed node reachable behind the dirty entry");
@@ -2063,7 +2517,7 @@ public class FlatTrieNodeReaderTests
         ctx.SnapshotBundle.SetStateNode(in path, newer);
         ctx.CollectCurrentIntoSnapshot();
 
-        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        FlatTrieNodeReader reader = CreateReader(ctx, address: null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ResolveOne(reader, in path, newer.Keccak!.ValueHash256).AsSpan().SequenceEqual(newerRlp), "newer version");
@@ -2084,7 +2538,7 @@ public class FlatTrieNodeReaderTests
         ctx.TrieNodeCache.Add(transient);
         ctx.ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transient);
 
-        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        FlatTrieNodeReader reader = CreateReader(ctx, address: null);
         Assert.That(ResolveOne(reader, in path, node.Keccak!.ValueHash256).AsSpan().SequenceEqual(rlp));
     }
 
@@ -2096,7 +2550,7 @@ public class FlatTrieNodeReaderTests
         TreePath path = Path("77");
         ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
 
-        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        FlatTrieNodeReader reader = CreateReader(ctx, address: null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ResolveOne(reader, in path, ValueKeccak.Compute(rlp)).AsSpan().SequenceEqual(rlp), "matching hash");
@@ -2112,7 +2566,7 @@ public class FlatTrieNodeReaderTests
         using TestContext ctx = new();
         ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
 
-        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        FlatTrieNodeReader reader = CreateReader(ctx, address: null);
         TreePath path = Path("9");
         ValueHash256 hash = ValueKeccak.Compute([9]);
         Assert.That(ResolveOne(reader, in path, in hash).IsNull);
@@ -2136,8 +2590,8 @@ public class FlatTrieNodeReaderTests
             content.StorageNodes.GetOrAddAddress(addressB).Set(in path, nodeB);
         });
 
-        FlatTrieNodeReader readerA = new(ctx.SnapshotBundle, addressA);
-        FlatTrieNodeReader readerB = new(ctx.SnapshotBundle, addressB);
+        FlatTrieNodeReader readerA = CreateReader(ctx, addressA);
+        FlatTrieNodeReader readerB = CreateReader(ctx, addressB);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ResolveOne(readerA, in path, nodeA.Keccak!.ValueHash256).AsSpan().SequenceEqual(rlpA), "address A");
@@ -2155,11 +2609,66 @@ public class FlatTrieNodeReaderTests
         TreePath path = Path("d");
         ctx.PersistenceReader.TryLoadStorageRlp(address, Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
 
-        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address);
+        FlatTrieNodeReader reader = CreateReader(ctx, address);
         Assert.That(ResolveOne(reader, in path, ValueKeccak.Compute(rlp)).AsSpan().SequenceEqual(rlp));
 
         ValueHash256 wrongHash = ValueKeccak.Compute([4, 5, 6]);
         Assert.Throws<NodeHashMismatchException>(() => ResolveOne(reader, in path, in wrongHash));
+    }
+
+    [Test]
+    public void Retained_storage_reader_uses_the_checkout_scope_bundle()
+    {
+        using TestContext original = new();
+        using TestContext replacement = new();
+        Hash256 address = ValueKeccak.Compute([0xc]).ToCommitment();
+        ValueHash256 addressHash = address.ValueHash256;
+        ValueHash256 firstKey = Key("1");
+        ValueHash256 secondKey = Key("2");
+        byte[] firstLeafRlp = StorageLeafRlp([1, 2, 3, 4]);
+        byte[] secondLeafRlp = StorageLeafRlp([5, 6, 7, 8]);
+        ValueHash256 firstLeafHash = ValueKeccak.Compute(firstLeafRlp);
+        ValueHash256 secondLeafHash = ValueKeccak.Compute(secondLeafRlp);
+        byte[] rootRlp = StorageBranchRlp(1, in firstLeafHash, 2, in secondLeafHash);
+        ValueHash256 storageRoot = ValueKeccak.Compute(rootRlp);
+        TreePath firstPath = Path("1");
+        TreePath secondPath = Path("2");
+
+        void AddStorageNodes(TestContext context) =>
+            context.AddReadOnlySnapshot(content =>
+            {
+                AddressStorageNodeDictionary.AddressNodes nodes =
+                    content.StorageNodes.GetOrAddAddress(address);
+                nodes.Set(TreePath.Empty, SealedNode(rootRlp));
+                nodes.Set(in firstPath, SealedNode(firstLeafRlp));
+                nodes.Set(in secondPath, SealedNode(secondLeafRlp));
+            });
+
+        AddStorageNodes(original);
+        AddStorageNodes(replacement);
+
+        FlatTrieNodeReaderContext readerContext = new(original.SnapshotBundle);
+        SparseTrie stateTrie =
+            new(new FlatTrieNodeReader(readerContext, address: null), ValueKeccak.EmptyTreeHash);
+        SparseTrie storageTrie =
+            new(new FlatTrieNodeReader(readerContext, address), storageRoot);
+        storageTrie.Prefetch(in firstKey);
+        ConcurrentDictionary<ValueHash256, SparseTrie> storageTries =
+            new() { [addressHash] = storageTrie };
+        RetainedGeneration generation =
+            new(ValueKeccak.EmptyTreeHash, stateTrie, storageTries, readerContext);
+
+        original.SnapshotBundle.Dispose();
+
+        using FlatSparseTrieSession session = new(
+            replacement.SnapshotBundle,
+            Keccak.EmptyTreeHash,
+            LimboLogs.Instance.GetClassLogger<FlatSparseTrieSession>(),
+            generation,
+            retentionEnabled: true);
+
+        Assert.DoesNotThrow(() =>
+            session.PrefetchStorage(in addressHash, in storageRoot, in secondKey));
     }
 
     [Test]
@@ -2179,7 +2688,7 @@ public class FlatTrieNodeReaderTests
             content.StateNodes[pathY] = nodeY;
         });
 
-        FlatTrieNodeReader reader = new(ctx.SnapshotBundle, address: null);
+        FlatTrieNodeReader reader = CreateReader(ctx, address: null);
         SparseNodeRequest[] requests =
         [
             new(in pathX, nodeX.Keccak!.ValueHash256),
@@ -2226,7 +2735,7 @@ public class FlatTrieNodeReaderTests
     private static RetainedGeneration MakeGeneration(int seed)
     {
         SparseTrie state = MakeWarmTrie(seed);
-        return new RetainedGeneration(state.RootHash, state, []);
+        return new RetainedGeneration(state.RootHash, state, [], readerContext: null);
     }
 
     [TestCase(0UL, 0UL, 0L)]
@@ -2371,7 +2880,11 @@ public class FlatTrieNodeReaderTests
         Assert.That(checkedOut, Is.SameAs(gen1), "first scope checks out at root1");
 
         // Simulate the scope committing to a new root and re-admitting the same (mutated) tries.
-        RetainedGeneration gen2 = new(ValueKeccak.Compute([2, 2]), checkedOut!.StateTrie, checkedOut.StorageTries);
+        RetainedGeneration gen2 = new(
+            ValueKeccak.Compute([2, 2]),
+            checkedOut!.StateTrie,
+            checkedOut.StorageTries,
+            checkedOut.ReaderContext);
         cache.Admit(gen2);
 
         ValueHash256 root2 = gen2.StateRoot;

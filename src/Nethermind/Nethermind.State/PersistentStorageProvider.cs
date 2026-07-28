@@ -40,7 +40,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
+    private readonly HashSet<AddressAsKey> _clearedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
+    private IWorldStateScopeProvider.ICommittedStateRootSink? _committedStateRootSink;
 
     /// <summary>
     /// Reset the storage state
@@ -51,6 +53,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _originalValues.ClearAndTrim();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
+        _clearedThisRound.ClearAndTrim();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -59,7 +62,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope)
+    {
+        _currentScope = scope;
+        _committedStateRootSink = scope as IWorldStateScopeProvider.ICommittedStateRootSink;
+    }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
@@ -120,6 +127,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
+        PublishCommittedStorageClears();
         int currentPosition = _changes.Count - 1;
         if (currentPosition < 0)
         {
@@ -183,6 +191,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                     GetOrCreateStorage(change.StorageCell.Address)
                         .SaveChange(change.StorageCell, change.Value);
+                    UInt256 index = change.StorageCell.Index;
+                    _committedStateRootSink?.HintCommittedStorage(
+                        change.StorageCell.Address,
+                        in index,
+                        change.Value);
                 }
 
                 if (isTracing)
@@ -361,6 +374,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         if (_changes.Count == 0)
         {
+            PublishCommittedStorageClears();
             if (_originalValues.Count != 0)
             {
                 if (tracer.IsTracingStorage)
@@ -389,8 +403,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void ResetContractState(Address address)
     {
+        _clearedThisRound.Add(address);
         _toUpdateRoots.TryAdd(address, true);
         GetOrCreateStorage(address).Clear();
+    }
+
+    private void PublishCommittedStorageClears()
+    {
+        foreach (AddressAsKey address in _clearedThisRound)
+        {
+            _committedStateRootSink?.HintCommittedStorageClear(address);
+        }
+
+        _clearedThisRound.ClearAndTrim();
     }
 
     public override void ClearStorage(Address address)

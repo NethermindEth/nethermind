@@ -37,6 +37,7 @@ namespace Nethermind.State
         // Metrics in Commit/EndScope to avoid per-increment cross-thread contention.
         private readonly LocalMetrics _localMetrics = new();
         private IWorldStateScopeProvider.IScope? _currentScope;
+        private IWorldStateScopeProvider.ICommittedStateRootSink? _committedStateRootSink;
         private bool _isInScope;
         private readonly ILogger _logger;
         private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
@@ -249,6 +250,8 @@ namespace Nethermind.State
             try
             {
                 _currentScope = ScopeProvider.BeginScope(baseBlock, _localMetrics);
+                _committedStateRootSink =
+                    _currentScope as IWorldStateScopeProvider.ICommittedStateRootSink;
                 _stateProvider.SetScope(_currentScope);
                 _persistentStorageProvider.SetBackendScope(_currentScope);
             }
@@ -281,6 +284,7 @@ namespace Nethermind.State
             finally
             {
                 _currentScope = null;
+                _committedStateRootSink = null;
                 _isInScope = false;
             }
         }
@@ -353,6 +357,7 @@ namespace Nethermind.State
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+            _committedStateRootSink?.CompleteCommittedStateRound();
 
             if (commitRoots)
             {

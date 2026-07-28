@@ -142,13 +142,23 @@ public interface IWorldStateScopeProvider
     }
 
     /// <summary>
-    /// Optional sink for account values that survived transaction rollback and were committed to
-    /// the block-level state. Implementations may consume them asynchronously to move state-root
-    /// work into the execution window; the final write batch remains authoritative.
+    /// Optional sink for account and storage values that survived transaction rollback and were
+    /// committed to the block-level state. Implementations may consume them asynchronously to move
+    /// state-root work into the execution window; the final write batch remains authoritative.
     /// </summary>
     public interface ICommittedStateRootSink
     {
         void HintCommittedAccount(Address address, Account? account);
+
+        void HintCommittedStorage(Address address, in UInt256 index, byte[] value) { }
+
+        void HintCommittedStorageClear(Address address) { }
+
+        /// <summary>
+        /// Marks all preceding account and storage hints as one rollback-safe committed round.
+        /// Implementations may process several completed rounds together.
+        /// </summary>
+        void CompleteCommittedStateRound() { }
     }
 
     public interface ICodeDb

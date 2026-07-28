@@ -111,6 +111,22 @@ public sealed class MpmcRingBuffer<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryPeekSingleConsumer(out T item)
+    {
+        long head = Volatile.Read(ref _head.Value);
+        int index = (int)(head & _mask);
+        long seq = Volatile.Read(ref _sequences[index]);
+        if (seq == head + 1)
+        {
+            item = _entries[index];
+            return true;
+        }
+
+        item = default!;
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryDequeue(out T item)
     {
         while (true)
