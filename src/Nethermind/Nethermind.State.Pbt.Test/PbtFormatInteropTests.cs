@@ -66,12 +66,20 @@ public class PbtFormatInteropTests
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelInterleaved)]
     [TestCase(PbtTrieLayout.EightLevelInterleaved, PbtTrieLayout.EightLevelEvery4Depth)]
     [TestCase(PbtTrieLayout.EightLevelEvery4Depth, PbtTrieLayout.EightLevelInterleaved)]
+    [TestCase(PbtTrieLayout.SixLevelInterleaved, PbtTrieLayout.SixLevelEvery3Depth)]
+    [TestCase(PbtTrieLayout.SixLevelEvery3Depth, PbtTrieLayout.SixLevelInterleaved)]
     public void MixedLayoutRewrite_MatchesAFreshFoldInTheNewLayout(PbtTrieLayout initial, PbtTrieLayout then)
     {
         // A full tile leaves unchanged subtrees for the copy-verbatim path after one-slot rewrites.
-        int slots = initial.Tiling() == PbtTiling.EightLevel ? PbtEightLevelTileLayout.BoundarySlots : Layout.BoundarySlots;
+        int levelsPerGroup = initial.Tiling() switch
+        {
+            PbtTiling.SixLevel => PbtSixLevelTileLayout.LevelsPerGroup,
+            PbtTiling.EightLevel => PbtEightLevelTileLayout.LevelsPerGroup,
+            _ => Layout.LevelsPerGroup,
+        };
+        int slots = 1 << levelsPerGroup;
         List<(byte[], byte[]?)> writes = [];
-        for (int slot = 0; slot < slots; slot++) writes.Add((TileSlotKey((byte)slot), Value));
+        for (int slot = 0; slot < slots; slot++) writes.Add((RootTileSlotKey(slot, levelsPerGroup), Value));
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, initial);
         harness.ApplyBatch(writes);
@@ -90,6 +98,31 @@ public class PbtFormatInteropTests
         foreach ((TrieNodeKey key, byte[] blob) in fresh.Nodes)
         {
             Assert.That(harness.Nodes[key], Is.EqualTo(blob), $"node {key} must match a fresh {then} fold, not splice {initial} bytes");
+        }
+    }
+
+    [Test]
+    public void SixLevelEvery3Depth_WritesEvery3GroupsAndInterleavedLeaves()
+    {
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.SixLevelEvery3Depth);
+        harness.ApplyBatch(RandomWrites(seed: 19, count: 80));
+
+        Assert.That(harness.Nodes, Is.Not.Empty);
+        foreach (byte[] group in harness.Nodes.Values)
+        {
+            Assert.That(group[^1], Is.EqualTo((byte)PbtGroupFormat.Every3Depth), "trie group format");
+        }
+
+        Assert.That(harness.Blobs, Is.Not.Empty);
+        foreach (byte[] leaf in harness.Blobs.Values)
+        {
+            Assert.That(leaf[^1], Is.EqualTo((byte)PbtLeafFormat.Interleaved), "leaf blob format");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((byte)PbtGroupFormat.Every3Depth, Is.EqualTo(0x09));
+            Assert.That((byte)PbtLeafFormat.Interleaved, Is.EqualTo(0x03));
         }
     }
 
@@ -124,6 +157,16 @@ public class PbtFormatInteropTests
 
     private static byte[] BoundaryKey(byte rootNibble, byte slot) =>
         TileSlotKey((byte)((rootNibble << 4) | slot)); // Root and depth-4 nibbles select the group and slot.
+
+    /// <summary>Creates a key for one account partition-root tile boundary slot.</summary>
+    private static byte[] RootTileSlotKey(int slot, int levelsPerGroup)
+    {
+        int prefix = slot << (12 - levelsPerGroup);
+        byte[] key = new byte[Stem.Length + 1];
+        key[0] = (byte)(prefix >> 8);
+        key[1] = (byte)prefix;
+        return key;
+    }
 
     /// <summary>Creates a key whose first byte identifies a boundary slot.</summary>
     private static byte[] TileSlotKey(byte path)

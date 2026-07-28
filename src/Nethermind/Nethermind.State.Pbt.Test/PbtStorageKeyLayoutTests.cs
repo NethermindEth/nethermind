@@ -141,6 +141,8 @@ public class PbtStorageKeyLayoutTests
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelBoundaryOnly, false, TestName = "clustered, other levels")]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelBoundaryOnly, false, TestName = "four-level, other levels")]
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelInterleaved, false, TestName = "four-level, reverse levels")]
+    [TestCase(PbtTrieLayout.SixLevelInterleaved, PbtTrieLayout.SixLevelEvery3Depth, false, TestName = "six-level, every-three groups")]
+    [TestCase(PbtTrieLayout.SixLevelEvery3Depth, PbtTrieLayout.SixLevelInterleaved, false, TestName = "six-level, reverse levels")]
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.FourLevelInterleaved, true, TestName = "clustered to independent")]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelInterleaved, true, TestName = "independent to clustered")]
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.SixLevelInterleaved, true, TestName = "another tiling")]

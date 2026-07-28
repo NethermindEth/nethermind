@@ -80,6 +80,7 @@ public class PbtScopeProviderBenchmark
         PbtTrieLayout.ClusteredFourLevelInterleaved,
         PbtTrieLayout.FourLevelInterleaved,
         PbtTrieLayout.SixLevelInterleaved,
+        PbtTrieLayout.SixLevelEvery3Depth,
         PbtTrieLayout.EightLevelInterleaved)]
     public PbtTrieLayout Layout { get; set; }
 

@@ -20,11 +20,15 @@ public static class PbtLayout
     private const int StemLeafAllWidthsBitmask = 0b1_1111_1111;
 
     /// <summary>The widths whose level <paramref name="format"/> stores an internal node at.</summary>
-    /// <remarks>Formats are anchored at boundary width 1, so the masks apply to every tile width.</remarks>
+    /// <remarks>
+    /// Formats are anchored at boundary width 1, so the masks apply to every tile width.
+    /// <see cref="PbtGroupFormat.Every3Depth"/> keeps widths 64, 8 and 1.
+    /// </remarks>
     private static int TrieNodeGroupKeptWidths(PbtGroupFormat format) => format switch
     {
         PbtGroupFormat.Interleaved => 0b1_0101_0101,
         PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth => 0b0000001,
+        PbtGroupFormat.Every3Depth => 0b0_0100_1001,
         _ => AllWidthsBitmask,
     };
 

@@ -1190,10 +1190,10 @@ public static partial class TrieUpdater
             public void Dispose() => ((IDisposable?)_blob)?.Dispose();
         }
 
-        /// <summary>The leaf blob layout that goes with the group format; one setting picks how far both skip.</summary>
+        /// <summary>The leaf blob layout paired with the group format; every-three groups deliberately keep interleaved leaves.</summary>
         private PbtLeafFormat LeafFormat => _writeFormat switch
         {
-            PbtGroupFormat.Interleaved => PbtLeafFormat.Interleaved,
+            PbtGroupFormat.Interleaved or PbtGroupFormat.Every3Depth => PbtLeafFormat.Interleaved,
             PbtGroupFormat.BoundaryOnly => PbtLeafFormat.LeavesOnly,
             PbtGroupFormat.Every4Depth => PbtLeafFormat.Every4Depth,
             _ => PbtLeafFormat.EveryLevel,

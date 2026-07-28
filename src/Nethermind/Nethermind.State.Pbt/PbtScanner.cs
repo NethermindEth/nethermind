@@ -338,6 +338,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         if (group.Format == PbtGroupFormat.Interleaved) stats.InterleavedGroupCount++;
         if (group.Format == PbtGroupFormat.BoundaryOnly) stats.BoundaryOnlyGroupCount++;
         if (group.Format == PbtGroupFormat.Every4Depth) stats.Every4DepthGroupCount++;
+        if (group.Format == PbtGroupFormat.Every3Depth) stats.Every3DepthGroupCount++;
         if (depth == TLayout.RootDepth) report.RootSubtreeStemCount += group.Stats.StemCount;
 
         WalkPosition(group, TLayout.RootPosition, TLayout.BoundarySlots, depth, stats);
@@ -566,6 +567,7 @@ public sealed class PbtScanReport
         public long InterleavedGroupCount { get; internal set; }
         public long BoundaryOnlyGroupCount { get; internal set; }
         public long Every4DepthGroupCount { get; internal set; }
+        public long Every3DepthGroupCount { get; internal set; }
         public long ChainCount { get; internal set; }
         public long StemCount { get; internal set; }
 
@@ -639,6 +641,7 @@ public sealed class PbtScanReport
             InterleavedGroupCount += other.InterleavedGroupCount;
             BoundaryOnlyGroupCount += other.BoundaryOnlyGroupCount;
             Every4DepthGroupCount += other.Every4DepthGroupCount;
+            Every3DepthGroupCount += other.Every3DepthGroupCount;
             ChainCount += other.ChainCount;
             StemCount += other.StemCount;
             IntermediateNodeCount += other.IntermediateNodeCount;
@@ -792,7 +795,7 @@ public sealed class PbtScanReport
         if (stats.IsEmpty) return;
 
         report.AppendLine($"--- {partition} ---");
-        report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.BoundaryOnlyGroupCount:N0} boundary-only, {stats.Every4DepthGroupCount:N0} every-4-depth, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems over {stats.IntermediateNodeCount:N0} intermediate nodes");
+        report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.BoundaryOnlyGroupCount:N0} boundary-only, {stats.Every4DepthGroupCount:N0} every-4-depth, {stats.Every3DepthGroupCount:N0} every-3-depth, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems over {stats.IntermediateNodeCount:N0} intermediate nodes");
         report.AppendLine($"  in {stats.BlobCount:N0} blobs, whose keys take a further {stats.KeyBytes:N0} bytes");
         if (stats.ClusterCount != 0)
         {

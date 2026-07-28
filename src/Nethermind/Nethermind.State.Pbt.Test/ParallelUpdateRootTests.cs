@@ -23,6 +23,7 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]
+[TestFixture(PbtTrieLayout.SixLevelEvery3Depth)]
 [TestFixture(PbtTrieLayout.EightLevelInterleaved)]
 [TestFixture(PbtTrieLayout.EightLevelEvery4Depth)]
 public class ParallelUpdateRootTests(PbtTrieLayout layout)
