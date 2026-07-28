@@ -164,6 +164,12 @@ namespace Nethermind.Consensus.Producers
             using ArrayPoolList<(Transaction tx, ulong blobChain)> candidates = new(16);
             foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
             {
+                if (blobTx.SenderAddress is null)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, sender is not resolved.");
+                    continue;
+                }
+
                 ulong txBlobCount = (ulong)blobTx.GetBlobCount();
                 if (txBlobCount > maxBlobs)
                 {
@@ -193,9 +199,12 @@ namespace Nethermind.Consensus.Producers
         }
 
         /// <summary>
-        /// Selects a subset of candidate transactions
-        /// that maximizes the total fee without exceeding the available blob capacity.
-        /// Uses a 1D knapsack dynamic programming approach to find the optimal selection.
+        /// Selects nonce-contiguous sender prefixes without exceeding the available blob capacity.
+        /// When selectable transactions have different execution fees, the selection maximizes total
+        /// execution fees and uses producer priority as a tie-break. When all selectable transaction
+        /// execution fees are equal, producer priority is the primary objective. This intentionally
+        /// preserves transaction ordering even when a bundle of lower-priority transactions would have
+        /// higher aggregate execution fees.
         /// The chosen transactions are appended to <paramref name="selectedBlobTxs"/>.
         /// </summary>
         /// <param name="candidateTxs">A list of candidate blob transactions.</param>
@@ -230,28 +239,49 @@ namespace Nethermind.Consensus.Producers
             // A sender contributes either no transactions or one contiguous nonce prefix.
             // Treating each transaction as an independent knapsack item can discard a lower-value
             // predecessor that is required by a later, more valuable transaction.
-            List<List<int>> senderGroups = [];
-            Dictionary<AddressAsKey, int> senderGroupIndexes = [];
+            using ArrayPoolList<AddressAsKey> senders = new(candidateTxs.Count);
+            using ArrayPoolListRef<int> candidateGroupIndexesPooled = new(candidateTxs.Count, candidateTxs.Count);
+            Span<int> candidateGroupIndexes = candidateGroupIndexesPooled.AsSpan();
+            candidateGroupIndexes.Fill(-1);
             for (int candidateIndex = 0; candidateIndex < candidateTxs.Count; candidateIndex++)
             {
                 AddressAsKey sender = candidateTxs[candidateIndex].tx.SenderAddress!;
-                if (!senderGroupIndexes.TryGetValue(sender, out int groupIndex))
+                int groupIndex = -1;
+                for (int index = 0; index < senders.Count; index++)
                 {
-                    groupIndex = senderGroups.Count;
-                    senderGroupIndexes.Add(sender, groupIndex);
-                    senderGroups.Add([]);
+                    if (senders[index].Equals(sender))
+                    {
+                        groupIndex = index;
+                        break;
+                    }
                 }
 
-                senderGroups[groupIndex].Add(candidateIndex);
+                if (groupIndex < 0)
+                {
+                    groupIndex = senders.Count;
+                    senders.Add(sender);
+                }
+
+                candidateGroupIndexes[candidateIndex] = groupIndex;
             }
 
+            // Precompute every eligible prefix once. Prefixes that contain a gap, have an invalid
+            // premium, or already exceed capacity cannot participate in the DP or switch its objective.
+            using ArrayPoolListRef<int> prefixBlobCountsPooled = new(candidateTxs.Count, candidateTxs.Count);
+            using ArrayPoolListRef<UInt256> prefixFeesPooled = new(candidateTxs.Count, candidateTxs.Count);
+            Span<int> prefixBlobCounts = prefixBlobCountsPooled.AsSpan();
+            Span<UInt256> prefixFees = prefixFeesPooled.AsSpan();
+            prefixBlobCounts.Fill(-1);
             UInt256? commonExecutionFee = null;
             bool allExecutionFeesEqual = true;
-            foreach (List<int> senderGroup in senderGroups)
+            for (int groupIndex = 0; groupIndex < senders.Count; groupIndex++)
             {
                 ulong prefixBlobCount = 0;
-                foreach (int candidateIndex in senderGroup)
+                UInt256 prefixFee = UInt256.Zero;
+                for (int candidateIndex = 0; candidateIndex < candidateTxs.Count; candidateIndex++)
                 {
+                    if (candidateGroupIndexes[candidateIndex] != groupIndex) continue;
+
                     (Transaction tx, ulong blobChain) = candidateTxs[candidateIndex];
                     if (blobChain != prefixBlobCount ||
                         !tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
@@ -260,7 +290,12 @@ namespace Nethermind.Consensus.Producers
                     }
 
                     prefixBlobCount += (ulong)tx.GetBlobCount();
+                    if (prefixBlobCount > (ulong)leftoverCapacity) break;
+
                     UInt256 executionFee = premiumPerGas * tx.SpentGas;
+                    prefixFee += executionFee;
+                    prefixBlobCounts[candidateIndex] = (int)prefixBlobCount;
+                    prefixFees[candidateIndex] = prefixFee;
                     if (commonExecutionFee is null)
                     {
                         commonExecutionFee = executionFee;
@@ -268,17 +303,18 @@ namespace Nethermind.Consensus.Producers
                     else if (commonExecutionFee != executionFee)
                     {
                         allExecutionFeesEqual = false;
-                        break;
                     }
                 }
-
-                if (!allExecutionFeesEqual) break;
             }
 
             using ArrayPoolListRef<(int CandidateIndex, int PreviousState)> selectionStates =
                 new(candidateTxs.Count * capacityCount);
+            using ArrayPoolListRef<bool> candidateMembershipPooled = new(candidateTxs.Count, candidateTxs.Count);
+            using ArrayPoolListRef<bool> currentMembershipPooled = new(candidateTxs.Count, candidateTxs.Count);
+            Span<bool> candidateMembership = candidateMembershipPooled.AsSpan();
+            Span<bool> currentMembership = currentMembershipPooled.AsSpan();
 
-            foreach (List<int> senderGroup in senderGroups)
+            for (int groupIndex = 0; groupIndex < senders.Count; groupIndex++)
             {
                 dpFees.CopyTo(nextFees);
                 dpSelectionStates.CopyTo(nextSelectionStates);
@@ -288,31 +324,23 @@ namespace Nethermind.Consensus.Producers
                 {
                     if (!dpReachable[previousCapacity]) continue;
 
-                    int prefixBlobCount = 0;
-                    UInt256 prefixFee = UInt256.Zero;
                     int prefixState = dpSelectionStates[previousCapacity];
-                    foreach (int candidateIndex in senderGroup)
+                    for (int candidateIndex = 0; candidateIndex < candidateTxs.Count; candidateIndex++)
                     {
-                        (Transaction tx, ulong blobChain) = candidateTxs[candidateIndex];
-                        // A missing or filtered predecessor invalidates this transaction and every
-                        // later transaction from the sender.
-                        if (blobChain != (ulong)prefixBlobCount ||
-                            !tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
-                        {
-                            break;
-                        }
+                        if (candidateGroupIndexes[candidateIndex] != groupIndex) continue;
 
-                        prefixBlobCount += tx.GetBlobCount();
+                        int prefixBlobCount = prefixBlobCounts[candidateIndex];
+                        if (prefixBlobCount < 0) break;
                         int capacity = previousCapacity + prefixBlobCount;
                         if (capacity > leftoverCapacity) break;
 
-                        prefixFee += premiumPerGas * tx.SpentGas;
                         selectionStates.Add((candidateIndex, prefixState));
                         prefixState = selectionStates.Count - 1;
 
-                        UInt256 candidateFee = dpFees[previousCapacity] + prefixFee;
+                        UInt256 candidateFee = dpFees[previousCapacity] + prefixFees[candidateIndex];
                         bool hasHigherPriority = !nextReachable[capacity] || IsHigherPrioritySelection(
-                            selectionStates.AsSpan(), prefixState, nextSelectionStates[capacity], candidateTxs.Count);
+                            selectionStates.AsSpan(), prefixState, nextSelectionStates[capacity],
+                            candidateMembership, currentMembership);
                         bool improvesSelection = !nextReachable[capacity] || (allExecutionFeesEqual
                             ? hasHigherPriority
                             : candidateFee > nextFees[capacity] ||
@@ -338,7 +366,8 @@ namespace Nethermind.Consensus.Producers
                 if (!dpReachable[capacity]) continue;
 
                 bool hasHigherPriority = IsHigherPrioritySelection(
-                    selectionStates.AsSpan(), dpSelectionStates[capacity], bestState, candidateTxs.Count);
+                    selectionStates.AsSpan(), dpSelectionStates[capacity], bestState,
+                    candidateMembership, currentMembership);
                 if (allExecutionFeesEqual
                     ? hasHigherPriority
                     : dpFees[capacity] > bestFee || dpFees[capacity] == bestFee && hasHigherPriority)
@@ -361,33 +390,30 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private static bool SelectionContains(
-            ReadOnlySpan<(int CandidateIndex, int PreviousState)> states,
-            int state,
-            int candidateIndex)
-        {
-            while (state >= 0)
-            {
-                if (states[state].CandidateIndex == candidateIndex) return true;
-                state = states[state].PreviousState;
-            }
-
-            return false;
-        }
-
         private static bool IsHigherPrioritySelection(
             ReadOnlySpan<(int CandidateIndex, int PreviousState)> states,
             int candidateState,
             int currentState,
-            int candidateCount)
+            Span<bool> candidateMembership,
+            Span<bool> currentMembership)
         {
+            candidateMembership.Clear();
+            currentMembership.Clear();
+            for (int state = candidateState; state >= 0; state = states[state].PreviousState)
+            {
+                candidateMembership[states[state].CandidateIndex] = true;
+            }
+
+            for (int state = currentState; state >= 0; state = states[state].PreviousState)
+            {
+                currentMembership[states[state].CandidateIndex] = true;
+            }
+
             // Candidate indices follow producer-priority order. At the first index where
             // selections differ, the selection containing that earlier candidate wins.
-            for (int index = 0; index < candidateCount; index++)
+            for (int index = 0; index < candidateMembership.Length; index++)
             {
-                bool candidateContains = SelectionContains(states, candidateState, index);
-                bool currentContains = SelectionContains(states, currentState, index);
-                if (candidateContains != currentContains) return candidateContains;
+                if (candidateMembership[index] != currentMembership[index]) return candidateMembership[index];
             }
 
             return false;

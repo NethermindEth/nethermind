@@ -154,7 +154,7 @@ public class TxPoolSourceTests
     [TestCase(1, 1, 21_000UL, 21_000UL, 6)]
     [TestCase(1, 2, 21_000UL, 21_000UL, 5)]
     [TestCase(1, 1, 21_000UL, 42_000UL, 5)]
-    public void GetTransactions_should_prioritize_blob_fee_cap_only_when_execution_premiums_are_equal(
+    public void GetTransactions_should_prioritize_blob_fee_cap_only_when_selectable_execution_fees_are_equal(
         int fiveBlobPriorityFeeGwei,
         int oneBlobPriorityFeeGwei,
         ulong fiveBlobSpentGas,
@@ -209,6 +209,9 @@ public class TxPoolSourceTests
         {
             Assert.That(result.Sum(static tx => tx.GetBlobCount()), Is.EqualTo(expectedBlobCount));
             Assert.That(result, Is.EqualTo(expected).UsingTransactionComparer());
+            // The first case is the intentional economic-policy counterexample: preserving producer
+            // priority selects two equal-fee transactions instead of five lower-priority transactions.
+            if (expectedBlobCount == 6) Assert.That(result, Has.Length.EqualTo(2));
         }
     }
 
@@ -240,6 +243,49 @@ public class TxPoolSourceTests
             blockProductionBlobLimit: 5);
 
         Assert.That(result, Is.EqualTo([higherPriority]).UsingTransactionComparer());
+    }
+
+    [Test]
+    public void GetTransactions_should_ignore_over_capacity_prefix_when_selecting_objective()
+    {
+        Transaction higherPriority = BlobTransaction(TestItem.PrivateKeyA, nonce: 0, blobCount: 5, priorityFeeGwei: 1);
+        higherPriority.MaxFeePerBlobGas = 120.Wei;
+        Transaction unreachableDependent = BlobTransaction(TestItem.PrivateKeyA, nonce: 1, blobCount: 2, priorityFeeGwei: 2);
+        unreachableDependent.MaxFeePerBlobGas = 120.Wei;
+        Transaction[] lowerPriority = Enumerable.Range(0, 5)
+            .Select(i => BlobTransaction(TestItem.PrivateKeyB, (ulong)i, blobCount: 1, priorityFeeGwei: 1))
+            .ToArray();
+
+        Transaction[] result = GetBlobTransactions(new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { TestItem.AddressA, [higherPriority, unreachableDependent] },
+            { TestItem.AddressB, lowerPriority },
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new[] { higherPriority, lowerPriority[0] }).UsingTransactionComparer());
+            Assert.That(result.Sum(static tx => tx.GetBlobCount()), Is.EqualTo(6));
+        }
+    }
+
+    [Test]
+    public void GetTransactions_should_ignore_blob_transaction_with_unresolved_sender()
+    {
+        Transaction unresolved = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1)
+            .WithMaxFeePerGas(30.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(100.Wei)
+            .TestObject;
+        unresolved.SpentGas = 21_000;
+
+        Transaction[] result = GetBlobTransactions(new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { TestItem.AddressA, [unresolved] },
+        });
+
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
