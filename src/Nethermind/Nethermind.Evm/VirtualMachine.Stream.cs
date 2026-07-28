@@ -106,301 +106,288 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         break;
                     }
 
-                    do
+                    TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
+                    opCodeCount += 1 + ((byte)entry.Kind & 1);
+
+                    // Gas already charged at the block entry, so the cores are gas-free. Must stay inline (JIT).
+                    switch (instruction)
                     {
-                        instruction = (Instruction)entry.Opcode;
-                        TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
-                        opCodeCount += 1 + ((byte)entry.Kind & 1);
+                        case (Instruction)FusedOpcode.Add:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAdd>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Sub:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Mul:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Div:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.SDiv:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Mod:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.SMod:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Lt:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Gt:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.SLt:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.SGt:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Eq:
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            break;
+                        case (Instruction)FusedOpcode.And:
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            break;
+                        case (Instruction)FusedOpcode.Or:
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            break;
+                        case (Instruction)FusedOpcode.Xor:
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            break;
+                        case (Instruction)FusedOpcode.Shl:
+                            exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Shr:
+                            exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.SignExtend:
+                            exceptionType = EvmInstructions.FusedConstSignExtendCore(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.DupBinary:
+                            exceptionType = EvmInstructions.FusedDupBinaryCore(ref stack, entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.Swap1Binary:
+                            exceptionType = EvmInstructions.FusedSwap1BinaryCore(ref stack, (Instruction)entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.Pop2:
+                            exceptionType = stack.Pop2Limbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
+                            break;
+                        case (Instruction)FusedOpcode.SwapPop:
+                            exceptionType = stack.SwapPop((int)entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.PushDup:
+                            exceptionType = stack.PushUInt64ThenDup(entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.Push1Pair:
+                            exceptionType = stack.PushUInt8Pair(entry.Operand);
+                            break;
+                        case Instruction.ADD:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SUB:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSub, OffFlag>(ref stack);
+                            break;
+                        case Instruction.MUL:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMul, OffFlag>(ref stack);
+                            break;
+                        case Instruction.DIV:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpDiv, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SDIV:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSDiv, OffFlag>(ref stack);
+                            break;
+                        case Instruction.MOD:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMod, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SMOD:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SIGNEXTEND:
+                            exceptionType = EvmInstructions.SignExtendCore(ref stack);
+                            break;
+                        case Instruction.LT:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpLt, OffFlag>(ref stack);
+                            break;
+                        case Instruction.GT:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpGt, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SLT:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSLt, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SGT:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSGt, OffFlag>(ref stack);
+                            break;
+                        case Instruction.EQ:
+                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack);
+                            break;
+                        case Instruction.AND:
+                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack);
+                            break;
+                        case Instruction.OR:
+                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack);
+                            break;
+                        case Instruction.XOR:
+                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack);
+                            break;
+                        case Instruction.ISZERO:
+                            exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpIsZero>(ref stack);
+                            break;
+                        case Instruction.NOT:
+                            exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpNot>(ref stack);
+                            break;
+                        case Instruction.SHL:
+                            exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShl, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SHR:
+                            exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShr, OffFlag>(ref stack);
+                            break;
+                        case Instruction.POP:
+                            exceptionType = stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
+                            break;
+                        case Instruction.PUSH0:
+                            exceptionType = stack.PushZero<OffFlag>();
+                            break;
+                        case >= Instruction.PUSH1 and <= Instruction.PUSH8:
+                            // Analyzer pre-decoded full-width immediates; a truncated trailing PUSH stays a boundary op.
+                            exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
+                            break;
+                        case >= Instruction.PUSH9 and <= Instruction.PUSH32:
+                            exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
+                            break;
+                        case >= Instruction.DUP1 and <= Instruction.DUP16:
+                            exceptionType = stack.Dup<OffFlag>(instruction - Instruction.DUP1 + 1);
+                            break;
+                        case >= Instruction.SWAP1 and <= Instruction.SWAP16:
+                            exceptionType = stack.Swap<OffFlag>(instruction - Instruction.SWAP1 + 2);
+                            break;
+                        case Instruction.JUMPDEST:
+                            exceptionType = EvmExceptionType.None;
+                            break;
+                        case (Instruction)FusedOpcode.StaticJump:
+                            // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
+                            // Mirror the unfused PUSH2: at a full stack the PUSH2 overflows before the JUMP would
+                            // pop it, so the fast path must fail with StackOverflow rather than execute the jump.
+                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                                CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+                            if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump))
+                            {
+                                TGasPolicy.SetOutOfGas(ref gas);
+                                OpCodeCount += opCodeCount;
+                                goto OutOfGas;
+                            }
 
-                        // Gas already charged at the block entry, so the cores are gas-free. Must stay inline (JIT).
-                        switch (instruction)
-                        {
-                            case (Instruction)FusedOpcode.Add:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAdd>(ref stack, constants[(int)entry.Operand]);
+                            opCodeCount++;
+                            // Set entryIndex to dest-1; the shared loop-tail entryIndex++ lands it on dest.
+                            // programCounter is transiently stale until the next entry sets it — fine, nothing reads it here.
+                            entryIndex = (int)entry.Operand - 1;
+                            break;
+                        case (Instruction)FusedOpcode.StaticJumpI:
+                            // Same full-stack overflow as the unfused PUSH2, which pushes the destination before
+                            // JUMPI pops it; fail with StackOverflow instead of testing the condition and jumping.
+                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                                CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
                                 break;
-                            case (Instruction)FusedOpcode.Sub:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.Mul:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.Div:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.SDiv:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.Mod:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.SMod:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.Lt:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.Gt:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.SLt:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.SGt:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.Eq:
-                                exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
-                                break;
-                            case (Instruction)FusedOpcode.And:
-                                exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
-                                break;
-                            case (Instruction)FusedOpcode.Or:
-                                exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
-                                break;
-                            case (Instruction)FusedOpcode.Xor:
-                                exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
-                                break;
-                            case (Instruction)FusedOpcode.Shl:
-                                exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.Shr:
-                                exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.SignExtend:
-                                exceptionType = EvmInstructions.FusedConstSignExtendCore(ref stack, constants[(int)entry.Operand]);
-                                break;
-                            case (Instruction)FusedOpcode.DupBinary:
-                                exceptionType = EvmInstructions.FusedDupBinaryCore(ref stack, entry.Operand);
-                                break;
-                            case (Instruction)FusedOpcode.Swap1Binary:
-                                exceptionType = EvmInstructions.FusedSwap1BinaryCore(ref stack, (Instruction)entry.Operand);
-                                break;
-                            case (Instruction)FusedOpcode.Pop2:
-                                exceptionType = stack.Pop2Limbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
-                                break;
-                            case (Instruction)FusedOpcode.SwapPop:
-                                exceptionType = stack.SwapPop((int)entry.Operand);
-                                break;
-                            case (Instruction)FusedOpcode.PushDup:
-                                exceptionType = stack.PushUInt64ThenDup(entry.Operand);
-                                break;
-                            case (Instruction)FusedOpcode.Push1Pair:
-                                exceptionType = stack.PushUInt8Pair(entry.Operand);
-                                break;
-                            case Instruction.ADD:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
-                                break;
-                            case Instruction.SUB:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSub, OffFlag>(ref stack);
-                                break;
-                            case Instruction.MUL:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMul, OffFlag>(ref stack);
-                                break;
-                            case Instruction.DIV:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpDiv, OffFlag>(ref stack);
-                                break;
-                            case Instruction.SDIV:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSDiv, OffFlag>(ref stack);
-                                break;
-                            case Instruction.MOD:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMod, OffFlag>(ref stack);
-                                break;
-                            case Instruction.SMOD:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
-                                break;
-                            case Instruction.SIGNEXTEND:
-                                exceptionType = EvmInstructions.SignExtendCore(ref stack);
-                                break;
-                            case Instruction.LT:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpLt, OffFlag>(ref stack);
-                                break;
-                            case Instruction.GT:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpGt, OffFlag>(ref stack);
-                                break;
-                            case Instruction.SLT:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSLt, OffFlag>(ref stack);
-                                break;
-                            case Instruction.SGT:
-                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSGt, OffFlag>(ref stack);
-                                break;
-                            case Instruction.EQ:
-                                exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack);
-                                break;
-                            case Instruction.AND:
-                                exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack);
-                                break;
-                            case Instruction.OR:
-                                exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack);
-                                break;
-                            case Instruction.XOR:
-                                exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack);
-                                break;
-                            case Instruction.ISZERO:
-                                exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpIsZero>(ref stack);
-                                break;
-                            case Instruction.NOT:
-                                exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpNot>(ref stack);
-                                break;
-                            case Instruction.SHL:
-                                exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShl, OffFlag>(ref stack);
-                                break;
-                            case Instruction.SHR:
-                                exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShr, OffFlag>(ref stack);
-                                break;
-                            case Instruction.POP:
-                                exceptionType = stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
-                                break;
-                            case Instruction.PUSH0:
-                                exceptionType = stack.PushZero<OffFlag>();
-                                break;
-                            case >= Instruction.PUSH1 and <= Instruction.PUSH8:
-                                // Analyzer pre-decoded full-width immediates; a truncated trailing PUSH stays a boundary op.
-                                exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
-                                break;
-                            case >= Instruction.PUSH9 and <= Instruction.PUSH32:
-                                exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
-                                break;
-                            case >= Instruction.DUP1 and <= Instruction.DUP16:
-                                exceptionType = stack.Dup<OffFlag>(instruction - Instruction.DUP1 + 1);
-                                break;
-                            case >= Instruction.SWAP1 and <= Instruction.SWAP16:
-                                exceptionType = stack.Swap<OffFlag>(instruction - Instruction.SWAP1 + 2);
-                                break;
-                            case Instruction.JUMPDEST:
-                                exceptionType = EvmExceptionType.None;
-                                break;
-                            case (Instruction)FusedOpcode.StaticJump:
-                                // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
-                                // Mirror the unfused PUSH2: at a full stack the PUSH2 overflows before the JUMP would
-                                // pop it, so the fast path must fail with StackOverflow rather than execute the jump.
-                                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
-                                    CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
-                                if (stack.Head >= EvmStack.MaxStackSize - 1)
-                                {
-                                    exceptionType = EvmExceptionType.StackOverflow;
-                                    break;
-                                }
-                                if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump))
-                                {
-                                    TGasPolicy.SetOutOfGas(ref gas);
-                                    OpCodeCount += opCodeCount;
-                                    goto OutOfGas;
-                                }
+                            }
+                            if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.JumpI))
+                            {
+                                TGasPolicy.SetOutOfGas(ref gas);
+                                OpCodeCount += opCodeCount;
+                                goto OutOfGas;
+                            }
 
-                                opCodeCount++;
-                                // Set entryIndex to dest-1; the shared loop-tail entryIndex++ lands it on dest.
-                                // programCounter is transiently stale until the next entry sets it — fine, nothing reads it here.
+                            if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
+                            {
                                 entryIndex = (int)entry.Operand - 1;
-                                break;
-                            case (Instruction)FusedOpcode.StaticJumpI:
-                                // Same full-stack overflow as the unfused PUSH2, which pushes the destination before
-                                // JUMPI pops it; fail with StackOverflow instead of testing the condition and jumping.
-                                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
-                                    CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
-                                if (stack.Head >= EvmStack.MaxStackSize - 1)
-                                {
-                                    exceptionType = EvmExceptionType.StackOverflow;
-                                    break;
-                                }
-                                if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.JumpI))
-                                {
-                                    TGasPolicy.SetOutOfGas(ref gas);
-                                    OpCodeCount += opCodeCount;
-                                    goto OutOfGas;
-                                }
+                            }
+                            else if (conditionUnderflow)
+                            {
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                            }
 
-                                if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
-                                {
-                                    entryIndex = (int)entry.Operand - 1;
-                                }
-                                else if (conditionUnderflow)
-                                {
-                                    exceptionType = EvmExceptionType.StackUnderflow;
-                                }
-
-                                break;
-                            case (Instruction)FusedOpcode.IsZeroStaticJumpI:
-                                opCodeCount++;
-                                if (stack.Head == 0)
-                                {
-                                    exceptionType = EvmExceptionType.StackUnderflow;
-                                    break;
-                                }
-                                if (stack.Head >= EvmStack.MaxStackSize - 1)
-                                {
-                                    exceptionType = EvmExceptionType.StackOverflow;
-                                    break;
-                                }
-
-                                if (!EvmInstructions.TestJumpCondition(ref stack, out _))
-                                {
-                                    entryIndex = (int)entry.Operand - 1;
-                                }
-
-                                break;
-                            case (Instruction)FusedOpcode.DupIsZeroStaticJumpI:
-                                opCodeCount += 2;
-                                if (stack.Head == 0)
-                                {
-                                    exceptionType = EvmExceptionType.StackUnderflow;
-                                    break;
-                                }
-                                if (stack.Head >= EvmStack.MaxStackSize - 2)
-                                {
-                                    exceptionType = EvmExceptionType.StackOverflow;
-                                    break;
-                                }
-
-                                if (stack.PeekUInt256IsZero())
-                                {
-                                    entryIndex = (int)entry.Operand - 1;
-                                }
-
-                                break;
-                            case (Instruction)FusedOpcode.DupAndIsZeroStaticJumpI:
-                                opCodeCount += 3;
-                                if (EvmInstructions.TestDupAndIsZero(
-                                    ref stack,
-                                    (byte)(entry.Operand >> 32),
-                                    out exceptionType))
-                                {
-                                    entryIndex = (int)(uint)entry.Operand - 1;
-                                }
-
-                                break;
-                            case (Instruction)FusedOpcode.MaskIsZeroStaticJumpI:
-                                opCodeCount += 5;
-                                if (EvmInstructions.TestMaskIsZero(
-                                    ref stack,
-                                    (byte)(entry.Operand >> 32),
-                                    out exceptionType))
-                                {
-                                    entryIndex = (int)(uint)entry.Operand - 1;
-                                }
-
-                                break;
-                            default:
-                                // Unreachable: every in-block opcode has a case above. Fail closed rather than
-                                // mis-dispatch a precharged op and corrupt gas.
-                                exceptionType = EvmExceptionType.BadInstruction;
-                                break;
-                        }
-
-                        if (exceptionType != EvmExceptionType.None)
                             break;
+                        case (Instruction)FusedOpcode.IsZeroStaticJumpI:
+                            opCodeCount++;
+                            if (stack.Head == 0)
+                            {
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                                break;
+                            }
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
 
-                        programCounter = entry.Pc + entry.Advance;
-                        entryIndex++;
-                        if ((uint)entryIndex >= (uint)ops.Length)
+                            if (!EvmInstructions.TestJumpCondition(ref stack, out _))
+                            {
+                                entryIndex = (int)entry.Operand - 1;
+                            }
+
                             break;
+                        case (Instruction)FusedOpcode.DupIsZeroStaticJumpI:
+                            opCodeCount += 2;
+                            if (stack.Head == 0)
+                            {
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                                break;
+                            }
+                            if (stack.Head >= EvmStack.MaxStackSize - 2)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
 
-                        entry = ref ops[entryIndex];
+                            if (stack.PeekUInt256IsZero())
+                            {
+                                entryIndex = (int)entry.Operand - 1;
+                            }
+
+                            break;
+                        case (Instruction)FusedOpcode.DupAndIsZeroStaticJumpI:
+                            opCodeCount += 3;
+                            if (EvmInstructions.TestDupAndIsZero(
+                                ref stack,
+                                (byte)(entry.Operand >> 32),
+                                out exceptionType))
+                            {
+                                entryIndex = (int)(uint)entry.Operand - 1;
+                            }
+
+                            break;
+                        case (Instruction)FusedOpcode.MaskIsZeroStaticJumpI:
+                            opCodeCount += 5;
+                            if (EvmInstructions.TestMaskIsZero(
+                                ref stack,
+                                (byte)(entry.Operand >> 32),
+                                out exceptionType))
+                            {
+                                entryIndex = (int)(uint)entry.Operand - 1;
+                            }
+
+                            break;
+                        default:
+                            // Unreachable: every in-block opcode has a case above. Fail closed rather than
+                            // mis-dispatch a precharged op and corrupt gas.
+                            exceptionType = EvmExceptionType.BadInstruction;
+                            break;
                     }
-                    while (entry.Kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock);
 
                     if (exceptionType != EvmExceptionType.None)
                         break;
 
+                    programCounter = entry.Pc + entry.Advance;
+                    entryIndex++;
                     continue;
                 }
 
