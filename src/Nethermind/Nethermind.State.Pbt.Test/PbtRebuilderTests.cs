@@ -28,6 +28,7 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]
+[TestFixture(PbtTrieLayout.SixLevelEvery3Depth)]
 [TestFixture(PbtTrieLayout.EightLevelInterleaved)]
 public class PbtRebuilderTests(PbtTrieLayout layout)
 {
