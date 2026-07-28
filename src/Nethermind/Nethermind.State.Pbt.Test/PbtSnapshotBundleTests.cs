@@ -28,17 +28,24 @@ public class PbtSnapshotBundleTests
     private static readonly Stem HeaderStem = PbtKeyDerivation.AccountHeaderStem(Address);
 
     private PbtResourcePool _pool = null!;
+    private PbtStoreCache _storeCache = null!;
     private FakeReader _reader = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _pool = new PbtResourcePool(new PbtConfig());
+        PbtConfig config = new();
+        _pool = new PbtResourcePool(config);
+        _storeCache = new PbtStoreCache(config);
         _reader = new FakeReader();
     }
 
     [TearDown]
-    public void TearDown() => _reader.Dispose();
+    public void TearDown()
+    {
+        _reader.Dispose();
+        _storeCache.Dispose();
+    }
 
     /// <summary>
     /// Each tier shadows the ones below it: the write buffer over this branch's own sealed layers,
@@ -189,10 +196,10 @@ public class PbtSnapshotBundleTests
     [Test]
     public void SharedBundle_IsReleased_OnlyByTheLastBundleHoldingIt()
     {
-        PbtReadOnlySnapshotBundle shared = new(new PbtSnapshotPooledList(0), _reader, recordDetailedMetrics: false);
+        PbtReadOnlySnapshotBundle shared = new(new PbtSnapshotPooledList(0), _reader, _storeCache, recordDetailedMetrics: false);
         shared.TryLease();
-        PbtSnapshotBundle first = new(new PbtSnapshotPooledList(0), shared, _pool, PbtResourcePool.Usage.MainBlockProcessing, recordDetailedMetrics: false);
-        PbtSnapshotBundle second = new(new PbtSnapshotPooledList(0), shared, _pool, PbtResourcePool.Usage.MainBlockProcessing, recordDetailedMetrics: false);
+        PbtSnapshotBundle first = new(new PbtSnapshotPooledList(0), shared, _storeCache, _pool, PbtResourcePool.Usage.MainBlockProcessing, recordDetailedMetrics: false);
+        PbtSnapshotBundle second = new(new PbtSnapshotPooledList(0), shared, _storeCache, _pool, PbtResourcePool.Usage.MainBlockProcessing, recordDetailedMetrics: false);
 
         first.Dispose();
         first.Dispose();
@@ -201,6 +208,95 @@ public class PbtSnapshotBundleTests
 
         second.Dispose();
         Assert.That(_reader.Disposed, "the last release frees the reader");
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CacheRejectsAnotherBranchValueAndRepopulatesFromPersistence(bool trieNode)
+    {
+        ValueHash256 hashA = Hash(0x0a);
+        ValueHash256 hashB = Hash(0x0b);
+        if (trieNode) _reader.TrieNodes[NodeA] = [0x0a];
+        else _reader.LeafBlobs[StemA] = [0x0a];
+
+        using PbtSnapshotBundle branchA = Bundle(sharedLayers: [], localLayers: []);
+        using RefCountingMemory? firstA = trieNode ? branchA.GetTrieNode(NodeA, hashA) : branchA.GetLeafBlob(StemA, hashA);
+
+        if (trieNode) _reader.TrieNodes[NodeA] = [0x0b];
+        else _reader.LeafBlobs[StemA] = [0x0b];
+        using PbtSnapshotBundle branchB = Bundle(sharedLayers: [], localLayers: []);
+        using RefCountingMemory? readB = trieNode ? branchB.GetTrieNode(NodeA, hashB) : branchB.GetLeafBlob(StemA, hashB);
+
+        if (trieNode) _reader.TrieNodes[NodeA] = [0x0a];
+        else _reader.LeafBlobs[StemA] = [0x0a];
+        using RefCountingMemory? secondA = trieNode ? branchA.GetTrieNode(NodeA, hashA) : branchA.GetLeafBlob(StemA, hashA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstA?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(readB?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 0x0b }));
+            Assert.That(secondA?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(trieNode ? _reader.TrieNodeKeys.Count : _reader.LeafBlobReads, Is.EqualTo(3));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CacheHitBypassesPersistenceAndOutlivesBundle(bool trieNode)
+    {
+        ValueHash256 hash = Hash(0x0a);
+        using RefCountingMemory value = Memory(0x0a);
+        if (trieNode) _storeCache.SetTrieNode(NodeA, hash, value);
+        else _storeCache.SetLeafBlob(StemA, hash, value);
+
+        PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
+        using RefCountingMemory? read = trieNode ? bundle.GetTrieNode(NodeA, hash) : bundle.GetLeafBlob(StemA, hash);
+        bundle.Dispose();
+        using RefCountingMemory? afterDispose = trieNode ? _storeCache.GetTrieNode(NodeA, hash) : _storeCache.GetLeafBlob(StemA, hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(afterDispose?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(trieNode ? _reader.TrieNodeKeys.Count : _reader.LeafBlobReads, Is.Zero);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void LocalSnapshotReadPopulatesSharedCache(bool trieNode)
+    {
+        ValueHash256 hash = Hash(0x0a);
+        PbtSnapshotContent local = new();
+        if (trieNode) local.SetTrieNode(NodeA, Memory(0x0a));
+        else local.SetLeafBlob(StemA, Memory(0x0a));
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: [local]);
+
+        using RefCountingMemory? read = trieNode ? bundle.GetTrieNode(NodeA, hash) : bundle.GetLeafBlob(StemA, hash);
+        using RefCountingMemory? cached = trieNode ? _storeCache.GetTrieNode(NodeA, hash) : _storeCache.GetLeafBlob(StemA, hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(cached?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TombstoneShadowsCachedValue(bool trieNode)
+    {
+        ValueHash256 hash = Hash(0x0a);
+        using RefCountingMemory cached = Memory(0x0a);
+        if (trieNode) _storeCache.SetTrieNode(NodeA, hash, cached);
+        else _storeCache.SetLeafBlob(StemA, hash, cached);
+
+        PbtSnapshotContent tombstone = new();
+        if (trieNode) tombstone.SetTrieNode(NodeA, null);
+        else tombstone.SetLeafBlob(StemA, null);
+        using PbtSnapshotBundle bundle = Bundle(sharedLayers: [tombstone], localLayers: []);
+
+        using RefCountingMemory? result = trieNode ? bundle.GetTrieNode(NodeA, hash) : bundle.GetLeafBlob(StemA, hash);
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -432,7 +528,7 @@ public class PbtSnapshotBundleTests
         Metrics.PbtReadOnlySnapshotBundleTimes = recorder;
         try
         {
-            using PbtReadOnlySnapshotBundle shared = new(new PbtSnapshotPooledList(0), _reader, recordDetailedMetrics: true);
+            using PbtReadOnlySnapshotBundle shared = new(new PbtSnapshotPooledList(0), _reader, _storeCache, recordDetailedMetrics: true);
             Assert.That((byte)shared.GetAccount(Address)!.Nonce, Is.EqualTo(0x44));
             Assert.That(shared.GetSlot(Address, Slot), Is.EqualTo(Word(0x44)));
 
@@ -523,7 +619,12 @@ public class PbtSnapshotBundleTests
         foreach (PbtSnapshotContent content in localLayers) localChain.Add(Layer(content));
 
         return new PbtSnapshotBundle(
-            localChain, new PbtReadOnlySnapshotBundle(sharedChain, _reader, recordDetailedMetrics), _pool, PbtResourcePool.Usage.MainBlockProcessing, recordDetailedMetrics);
+            localChain,
+            new PbtReadOnlySnapshotBundle(sharedChain, _reader, _storeCache, recordDetailedMetrics),
+            _storeCache,
+            _pool,
+            PbtResourcePool.Usage.MainBlockProcessing,
+            recordDetailedMetrics);
     }
 
     private PbtSnapshot Layer(PbtSnapshotContent content) =>
@@ -581,6 +682,13 @@ public class PbtSnapshotBundleTests
     }
 
     private static RefCountingMemory Memory(params byte[] value) => RefCountingMemory.Wrapping(value);
+
+    private static ValueHash256 Hash(byte marker)
+    {
+        byte[] bytes = new byte[32];
+        bytes[0] = marker;
+        return new ValueHash256(bytes);
+    }
 
     private static EvmWord Word(byte marker) => EvmWordSlot.FromStripped([marker]);
 

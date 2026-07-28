@@ -47,6 +47,24 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Number of parallel workers folding a block's writes into the tree. 0 uses the processor count, 1 folds on the calling thread only. A batch too small to be worth splitting folds on the calling thread whatever this says.", DefaultValue = "0")]
     int RootFoldConcurrency { get; set; }
 
+    [ConfigItem(Description = "Memory budget for cached account leaf blobs, in bytes. 0 disables this cache bucket.", DefaultValue = "67108864")]
+    ulong AccountLeafBlobCacheSizeBudget { get; set; }
+
+    [ConfigItem(Description = "Memory budget for cached code leaf blobs, in bytes. 0 disables this cache bucket.", DefaultValue = "33554432")]
+    ulong CodeLeafBlobCacheSizeBudget { get; set; }
+
+    [ConfigItem(Description = "Memory budget for cached storage leaf blobs, in bytes. 0 disables this cache bucket.", DefaultValue = "268435456")]
+    ulong StorageLeafBlobCacheSizeBudget { get; set; }
+
+    [ConfigItem(Description = "Memory budget for cached account trie-node groups, in bytes. 0 disables this cache bucket.", DefaultValue = "134217728")]
+    ulong AccountTrieNodeCacheSizeBudget { get; set; }
+
+    [ConfigItem(Description = "Memory budget for cached code trie-node groups, in bytes. 0 disables this cache bucket.", DefaultValue = "33554432")]
+    ulong CodeTrieNodeCacheSizeBudget { get; set; }
+
+    [ConfigItem(Description = "Memory budget for cached storage trie-node groups, in bytes. 0 disables this cache bucket.", DefaultValue = "234881024")]
+    ulong StorageTrieNodeCacheSizeBudget { get; set; }
+
     [ConfigItem(Description = "RocksDB options shared by every column of the pbt database. Applied on top of the global database options, and overridden in turn by the per-column options below.", HiddenFromDocs = true)]
     string RocksDbOptions { get; set; }
 

@@ -110,7 +110,7 @@ public static partial class TrieUpdater
             // starting here.
             if (splitDepth == targetDepth)
             {
-                using RefCountingMemory? targetData = _store.GetTrieNode(chain.TargetKey);
+                using RefCountingMemory? targetData = _store.GetTrieNode(chain.TargetKey, chain.TargetHash);
                 BufferWriter targetWriter = new(_memoryProvider, targetData?.GetSpan().Length ?? 0);
                 NodeResult inner;
                 bool targetChanged;
@@ -218,9 +218,9 @@ public static partial class TrieUpdater
             // this frame is about to write. A run below the child depth is not stored anywhere to begin
             // with, and rides in the seed as it always has.
             using RefCountingMemory? adopted = directChild && TLayout.IsClusteringDepth(depth)
-                ? _store.GetTrieNode(chain.TargetKey)
+                ? _store.GetTrieNode(chain.TargetKey, targetHash)
                 : null;
-            if (adopted is not null) _store.SetTrieNode(chain.TargetKey, null);
+            if (adopted is not null) _store.SetTrieNode(chain.TargetKey, targetHash, null);
 
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
@@ -264,7 +264,7 @@ public static partial class TrieUpdater
             {
                 case NodeKind.Absent:
                 case NodeKind.Stem:
-                    if (innerBlobStored) _store.SetTrieNode(innerKey, null);
+                    if (innerBlobStored) _store.SetTrieNode(innerKey, inner.NodeHash(), null);
                     return inner;
                 case NodeKind.Internal:
                     // plant the rebuilt encoding when the descent produced one, else the stored blob stands
@@ -273,7 +273,7 @@ public static partial class TrieUpdater
                         if (inner.Blob is { } innerBlob)
                         {
                             innerBlob.AcquireLease();
-                            _store.SetTrieNode(innerKey, innerBlob);
+                            _store.SetTrieNode(innerKey, inner.NodeHash(), innerBlob);
                         }
                         return NodeResult.Chain(NewChainNode(startDepth, innerKey.Depth, innerKey.Path, inner.Hash, stats));
                     }
@@ -283,7 +283,7 @@ public static partial class TrieUpdater
                     Stem targetPath = absorbed.TargetPath;
                     ValueHash256 targetHash = absorbed.TargetHash;
                     Debug.Assert(absorbed.Stats == stats, "an absorbed run reaches the same subtree the run absorbing it does");
-                    if (innerBlobStored) _store.SetTrieNode(innerKey, null);
+                    if (innerBlobStored) _store.SetTrieNode(innerKey, inner.NodeHash(), null);
                     using (inner) return NodeResult.Chain(NewChainNode(startDepth, targetDepth, targetPath, targetHash, stats));
             }
         }
