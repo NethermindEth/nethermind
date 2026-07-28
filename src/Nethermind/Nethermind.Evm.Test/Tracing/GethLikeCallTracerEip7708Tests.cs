@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -64,6 +65,33 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
             NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
             NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 0UL);
             Assert.That(childFrame.Logs, Is.EqualTo([expectedInner]).UsingPropertiesComparer());
+        }
+    }
+
+    [Test]
+    public void RevertInnerValueTransfer_WithLog_DoesNotLeavePhantomLog()
+    {
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Revert(0, 0).Done, Spec);
+
+        byte[] recipientCode = ForwardValueCode(TestItem.AddressC);
+        (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, recipientCode, value: TopValue);
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
+
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        Assert.That(topFrame.Calls, Has.Count.EqualTo(1));
+        NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
+
+        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer());
+            Assert.That(childFrame.Error, Is.Not.Null, "inner call must have reverted");
+            Assert.That(childFrame.Logs, Is.Null, "phantom transfer log on a reverted frame must be cleared (geth parity)");
         }
     }
 
