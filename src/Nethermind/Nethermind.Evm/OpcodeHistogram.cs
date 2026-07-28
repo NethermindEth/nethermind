@@ -13,10 +13,14 @@ internal static class OpcodeHistogram
     private static readonly long[] s_counts = new long[byte.MaxValue + 1];
     private static readonly long[] s_pairCounts = new long[(byte.MaxValue + 1) * (byte.MaxValue + 1)];
     private static readonly long[] s_streamCounts = new long[byte.MaxValue + 1];
+    private static readonly long[] s_streamPairCounts = new long[(byte.MaxValue + 1) * (byte.MaxValue + 1)];
     private static readonly Timer s_flushTimer = new(static _ => Flush(), null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
 
     [ThreadStatic]
     private static int t_previousOpcodePlusOne;
+
+    [ThreadStatic]
+    private static int t_previousStreamOpcodePlusOne;
 
     static OpcodeHistogram() => AppDomain.CurrentDomain.ProcessExit += static (_, _) => Flush();
 
@@ -32,6 +36,10 @@ internal static class OpcodeHistogram
     public static void Record(in StreamOp entry)
     {
         s_streamCounts[entry.Opcode]++;
+        int previousPlusOne = t_previousStreamOpcodePlusOne;
+        if (previousPlusOne != 0)
+            s_streamPairCounts[((previousPlusOne - 1) << 8) | entry.Opcode]++;
+        t_previousStreamOpcodePlusOne = entry.Opcode + 1;
 
         if (entry.Kind is StreamOpKind.StaticJump or StreamOpKind.StaticJumpI)
         {
@@ -154,6 +162,22 @@ internal static class OpcodeHistogram
             report.AppendLine($"[STREAMDIAG] {GetStreamName((byte)opcode),-24} {count,16:N0} {(double)count / streamTotal,8:P2}");
         }
 
+        int[] streamPairOrder = new int[s_streamPairCounts.Length];
+        for (int i = 0; i < streamPairOrder.Length; i++)
+            streamPairOrder[i] = i;
+        Array.Sort(streamPairOrder, static (a, b) => s_streamPairCounts[b].CompareTo(s_streamPairCounts[a]));
+
+        report.AppendLine("[STREAMDIAG] top-pairs");
+        for (int rank = 0; rank < 100; rank++)
+        {
+            int pair = streamPairOrder[rank];
+            long count = s_streamPairCounts[pair];
+            if (count == 0)
+                break;
+            report.AppendLine(
+                $"[STREAMDIAG] {GetStreamName((byte)(pair >> 8))} -> {GetStreamName((byte)pair),-24} {count,16:N0} {(double)count / streamTotal,8:P2}");
+        }
+
         report.AppendLine($"[OPDIAG] total={total:N0}");
         foreach (int opcode in order)
         {
@@ -212,6 +236,8 @@ internal static class OpcodeHistogram
         FusedOpcode.SignExtend => "FusedConstSignExtend",
         FusedOpcode.DupBinary => "DupBinary",
         FusedOpcode.Swap1Binary => "Swap1Binary",
+        FusedOpcode.DupAndIsZeroStaticJumpI => "DupAndIsZeroStaticJumpI",
+        FusedOpcode.MaskIsZeroStaticJumpI => "MaskIsZeroStaticJumpI",
         _ => ((Instruction)opcode).ToString(),
     };
 }
