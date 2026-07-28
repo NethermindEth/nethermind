@@ -253,8 +253,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             // Analyzer pre-decoded full-width immediates; a truncated trailing PUSH stays a boundary op.
                             exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
                             break;
-                        case >= Instruction.PUSH5 and <= Instruction.PUSH32:
+                        case >= Instruction.PUSH5 and <= Instruction.PUSH31:
                             exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
+                            break;
+                        case Instruction.PUSH32:
+                            exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
+                            programCounter += 32;
                             break;
                         case >= Instruction.DUP1 and <= Instruction.DUP16:
                             exceptionType = stack.Dup<OffFlag>(instruction - Instruction.DUP1 + 1);
@@ -368,7 +372,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (exceptionType != EvmExceptionType.None)
                         break;
 
-                    programCounter += entry.Advance;
+                    programCounter += entry.EncodedAdvance;
                     entryIndex++;
                     continue;
                 }
@@ -403,7 +407,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (exceptionType != EvmExceptionType.None) break;
 
                     metered = false;
-                    programCounter += entry.Advance;
+                    programCounter += entry.EncodedAdvance;
                     entryIndex++;
                     continue;
                 }

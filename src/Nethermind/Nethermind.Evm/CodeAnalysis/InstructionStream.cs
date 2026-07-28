@@ -107,10 +107,11 @@ internal readonly struct StreamOp(
     public readonly uint Operand = operand;
 
     public StreamOpKind Kind => (StreamOpKind)(_metadata >> KindShift);
+    internal byte EncodedAdvance => (byte)((_metadata & 0x1F) + 1);
     /// <summary>Code bytes this entry covers (opcode + immediates; both for a fused pair).</summary>
     public byte Advance => Opcode == (byte)Instruction.PUSH32
         ? (byte)33
-        : (byte)((_metadata & 0x1F) + 1);
+        : EncodedAdvance;
     public ulong BlockGas => _blockGas;
     /// <summary>In-block PUSH immediate (value for widths ≤4 bytes, else index into
     /// <see cref="InstructionStream.Constants"/>); for a fused pair, the constant the op consumes.</summary>
