@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -17,11 +18,11 @@ internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, 
 {
     private readonly Lock _writeLock = new();
 
-    public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => reader.GetTrieNode(key);
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash) => reader.GetTrieNode(key);
 
-    public RefCountingMemory? GetLeafBlob(in Stem stem) => reader.GetLeafBlob(stem);
+    public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash) => reader.GetLeafBlob(stem);
 
-    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
+    public void SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory? node)
     {
         using (node)
         {
@@ -29,7 +30,7 @@ internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, 
         }
     }
 
-    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
+    public void SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory? blob)
     {
         using (blob)
         {

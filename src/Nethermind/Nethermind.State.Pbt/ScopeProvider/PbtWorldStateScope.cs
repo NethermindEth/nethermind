@@ -153,13 +153,13 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _rootDirty = false;
     }
 
-    RefCountingMemory? IPbtStore.GetTrieNode(in TrieNodeKey key) => Bundle.GetTrieNode(key);
+    RefCountingMemory? IPbtStore.GetTrieNode(in TrieNodeKey key, in ValueHash256 hash) => Bundle.GetTrieNode(key, hash);
 
-    RefCountingMemory? IPbtStore.GetLeafBlob(in Stem stem) => Bundle.GetLeafBlob(stem);
+    RefCountingMemory? IPbtStore.GetLeafBlob(in Stem stem, in ValueHash256 hash) => Bundle.GetLeafBlob(stem, hash);
 
-    void IPbtStore.SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) => Bundle.SetOwnedTrieNode(key, node);
+    void IPbtStore.SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory? node) => Bundle.SetOwnedTrieNode(key, hash, node);
 
-    void IPbtStore.SetLeafBlob(in Stem stem, RefCountingMemory? blob) => Bundle.SetOwnedLeafBlob(stem, blob);
+    void IPbtStore.SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory? blob) => Bundle.SetOwnedLeafBlob(stem, hash, blob);
 
     public void Commit(ulong blockNumber)
     {

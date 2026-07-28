@@ -40,6 +40,7 @@ public class PbtModule(IPbtConfig config) : Module
             .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
             // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
+            .AddSingleton<PbtStoreCache>()
             .AddSingleton<PbtSnapshotRepository>()
             .AddSingleton<PbtSnapshotCompactor>()
             .AddSingleton<PbtCompactionSchedule>()

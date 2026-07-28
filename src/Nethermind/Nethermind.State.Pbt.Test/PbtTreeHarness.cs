@@ -124,12 +124,12 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
     }
 
-    public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash)
     {
         lock (_lock) return Track(RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key)));
     }
 
-    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
+    public void SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory? node)
     {
         byte[]? value = node?.ToArrayAndRelease();
         lock (_lock)
@@ -140,7 +140,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
     }
 
-    public RefCountingMemory? GetLeafBlob(in Stem stem)
+    public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash)
     {
         lock (_lock)
         {
@@ -149,7 +149,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
     }
 
-    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
+    public void SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory? blob)
     {
         byte[]? value = blob?.ToArrayAndRelease();
         lock (_lock)

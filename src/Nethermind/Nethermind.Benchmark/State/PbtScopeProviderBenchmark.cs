@@ -54,6 +54,7 @@ public class PbtScopeProviderBenchmark
 
     private SnapshotableMemColumnsDb<PbtColumns>? _pbtDb;
     private PbtDbManager? _pbtManager;
+    private PbtStoreCache? _pbtStoreCache;
     private IWorldStateScopeProvider _provider = null!;
 
     private BlockHeader _baseHeader = null!;
@@ -128,13 +129,14 @@ public class PbtScopeProviderBenchmark
         PbtSnapshotRepository repository = new();
         PbtRocksDbPersistence persistence = new(_pbtDb, config);
         PbtResourcePool resourcePool = new(config);
+        _pbtStoreCache = new PbtStoreCache(config);
         PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
         PbtPersistenceCoordinator coordinator = new(
             config, new BenchFinalizedStateProvider(), persistence, repository, compactor, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
-            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), new MetricsConfig(), LimboLogs.Instance);
+            repository, coordinator, persistence, resourcePool, _pbtStoreCache, compactor, new BenchProcessExitSource(_cts), new MetricsConfig(), LimboLogs.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
             config.TrieNodeLayout, RootFoldConcurrency);
@@ -188,6 +190,7 @@ public class PbtScopeProviderBenchmark
         {
             _cts.Cancel();
             _pbtManager.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _pbtStoreCache!.Dispose();
             _pbtDb!.Dispose();
         }
 

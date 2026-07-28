@@ -53,9 +53,25 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public bool TryGetLeafBlob(in Stem stem, out RefCountingMemory? blob) =>
         TryGetLeased(this[PbtPartitions.Of(stem)].LeafBlobs, stem, out blob);
 
+    /// <summary>Reports whether this layer has the stem, and whether its value is a tombstone, without acquiring a lease.</summary>
+    internal bool TryIsLeafBlobTombstone(in Stem stem, out bool tombstone) =>
+        TryIsTombstone(this[PbtPartitions.Of(stem)].LeafBlobs, stem, out tombstone);
+
     /// <summary>Returns whether this layer contains the key and acquires a lease on a non-null node.</summary>
     public bool TryGetTrieNode(in TrieNodeKey key, out RefCountingMemory? node) =>
         TryGetLeased(this[PbtPartitions.Of(key)].TrieNodes, key, out node);
+
+    /// <summary>Reports whether this layer has the key, and whether its value is a tombstone, without acquiring a lease.</summary>
+    internal bool TryIsTrieNodeTombstone(in TrieNodeKey key, out bool tombstone) =>
+        TryIsTombstone(this[PbtPartitions.Of(key)].TrieNodes, key, out tombstone);
+
+    private static bool TryIsTombstone<TKey>(ConcurrentDictionary<TKey, RefCountingMemory?> values, TKey key, out bool tombstone)
+        where TKey : notnull
+    {
+        bool found = values.TryGetValue(key, out RefCountingMemory? value);
+        tombstone = found && value is null;
+        return found;
+    }
 
     private static void SetOwned<TKey>(ConcurrentDictionary<TKey, RefCountingMemory?> values, TKey key, RefCountingMemory? value)
         where TKey : notnull

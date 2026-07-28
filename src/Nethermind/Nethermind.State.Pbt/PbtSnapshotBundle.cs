@@ -39,6 +39,7 @@ namespace Nethermind.State.Pbt;
 public class PbtSnapshotBundle(
     PbtSnapshotPooledList snapshots,
     PbtReadOnlySnapshotBundle readOnlyBundle,
+    PbtStoreCache storeCache,
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage,
     bool recordDetailedMetrics) : IDisposable
@@ -119,6 +120,23 @@ public class PbtSnapshotBundle(
     public RefCountingMemory? GetLeafBlob(in Stem stem) =>
         TryGetLocalLeafBlob(stem, out RefCountingMemory? blob) ? blob : readOnlyBundle.GetLeafBlob(stem);
 
+    /// <summary>Returns the leaf blob whose leaf-subtree root is <paramref name="hash"/>.</summary>
+    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
+    public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash)
+    {
+        if (WriteBuffer.TryGetLeafBlob(stem, out RefCountingMemory? blob)) return blob;
+
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (!snapshots[i].Content.TryGetLeafBlob(stem, out blob)) continue;
+            if (blob is not null) storeCache.SetLeafBlob(stem, hash, blob);
+            return blob;
+        }
+
+        if (LeafBlobCache.TryGet(stem, out blob)) return blob;
+        return readOnlyBundle.GetLeafBlob(stem, hash);
+    }
+
     /// <summary>
     /// As <see cref="GetLeafBlob"/>, but a blob that had to be read from the shared view is kept for the
     /// rest of the block, so that every further read of the stem — and the fold that closes the block —
@@ -154,17 +172,25 @@ public class PbtSnapshotBundle(
     }
 
     /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
-    public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => GetLocalOrSharedTrieNode(key, default, useCache: false);
+
+    /// <summary>Returns the trie-node group that represents <paramref name="hash"/>.</summary>
+    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash) => GetLocalOrSharedTrieNode(key, hash, useCache: true);
+
+    private RefCountingMemory? GetLocalOrSharedTrieNode(in TrieNodeKey key, in ValueHash256 hash, bool useCache)
     {
         if (WriteBuffer.TryGetTrieNode(key, out RefCountingMemory? node)) return node;
 
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             // A found null is a tombstone.
-            if (snapshots[i].Content.TryGetTrieNode(key, out node)) return node;
+            if (!snapshots[i].Content.TryGetTrieNode(key, out node)) continue;
+            if (useCache && node is not null) storeCache.SetTrieNode(key, hash, node);
+            return node;
         }
 
-        return readOnlyBundle.GetTrieNode(key);
+        return useCache ? readOnlyBundle.GetTrieNode(key, hash) : readOnlyBundle.GetTrieNode(key);
     }
 
     /// <summary>Starts physical read-ahead of every dirty stem for the root fold.</summary>
@@ -213,13 +239,20 @@ public class PbtSnapshotBundle(
 
     /// <summary>Records a transferred leaf-blob lease produced by the root computation; null marks the stem deleted.</summary>
     /// <remarks>The write buffer now shadows the stem, so whatever the cache holds for it is dead weight.</remarks>
-    internal void SetOwnedLeafBlob(in Stem stem, RefCountingMemory? blob)
+    internal void SetOwnedLeafBlob(in Stem stem, RefCountingMemory? blob) => SetOwnedLeafBlob(stem, default, blob, cache: false);
+
+    /// <summary>Records and caches a transferred leaf-blob lease produced by the root computation.</summary>
+    internal void SetOwnedLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory? blob) =>
+        SetOwnedLeafBlob(stem, hash, blob, cache: true);
+
+    private void SetOwnedLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory? blob, bool cache)
     {
         BeginOwnershipTransfer(blob);
         try
         {
             _writeBuffer!.SetLeafBlob(stem, blob);
             _leafBlobCache!.Remove(stem);
+            if (cache && blob is not null) storeCache.SetLeafBlob(stem, hash, blob);
         }
         finally
         {
@@ -228,12 +261,19 @@ public class PbtSnapshotBundle(
     }
 
     /// <summary>Records a transferred trie-node lease produced by the root computation; null marks it removed.</summary>
-    internal void SetOwnedTrieNode(in TrieNodeKey key, RefCountingMemory? node)
+    internal void SetOwnedTrieNode(in TrieNodeKey key, RefCountingMemory? node) => SetOwnedTrieNode(key, default, node, cache: false);
+
+    /// <summary>Records and caches a transferred trie-node lease produced by the root computation.</summary>
+    internal void SetOwnedTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory? node) =>
+        SetOwnedTrieNode(key, hash, node, cache: true);
+
+    private void SetOwnedTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory? node, bool cache)
     {
         BeginOwnershipTransfer(node);
         try
         {
             _writeBuffer!.SetTrieNode(key, node);
+            if (cache && node is not null) storeCache.SetTrieNode(key, hash, node);
         }
         finally
         {

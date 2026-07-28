@@ -27,8 +27,13 @@ namespace Nethermind.State.Pbt;
 /// </remarks>
 /// <param name="snapshots">Leased layer chain, oldest first; the bundle takes ownership of the leases.</param>
 /// <param name="reader">Leased persistence reader; the bundle takes ownership.</param>
+/// <param name="storeCache">The process-wide hash-aware blob and trie-node cache.</param>
 /// <param name="recordDetailedMetrics">Whether every read is timed into <see cref="Metrics.PbtReadOnlySnapshotBundleTimes"/>.</param>
-public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, IPbtPersistence.IReader reader, bool recordDetailedMetrics) : RefCountingDisposable
+public sealed class PbtReadOnlySnapshotBundle(
+    PbtSnapshotPooledList snapshots,
+    IPbtPersistence.IReader reader,
+    PbtStoreCache storeCache,
+    bool recordDetailedMetrics) : RefCountingDisposable
 {
     private bool _isDisposed;
 
@@ -131,7 +136,46 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
     }
 
     /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
-    public RefCountingMemory? GetLeafBlob(in Stem stem)
+    public RefCountingMemory? GetLeafBlob(in Stem stem) => GetLeafBlobFromSnapshotsOrPersistence(stem);
+
+    /// <summary>Returns the leaf blob whose leaf-subtree root is <paramref name="hash"/>.</summary>
+    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
+    public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash)
+    {
+        GuardDispose();
+        long startTimestamp = StartTiming();
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (!snapshots[i].Content.TryIsLeafBlobTombstone(stem, out bool tombstone)) continue;
+            if (tombstone)
+            {
+                Observe(startTimestamp, LeafBlobSnapshotLabel(in stem));
+                return null;
+            }
+            break;
+        }
+
+        if (storeCache.GetLeafBlob(stem, hash) is { } cached) return cached;
+
+        startTimestamp = StartTiming();
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].Content.TryGetLeafBlob(stem, out RefCountingMemory? blob))
+            {
+                Observe(startTimestamp, LeafBlobSnapshotLabel(in stem));
+                if (blob is not null) storeCache.SetLeafBlob(stem, hash, blob);
+                return blob;
+            }
+        }
+
+        startTimestamp = StartTiming();
+        RefCountingMemory? persisted = reader.GetLeafBlob(stem);
+        Observe(startTimestamp, LeafBlobPersistenceLabel(in stem, persisted is null));
+        if (persisted is not null) storeCache.SetLeafBlob(stem, hash, persisted);
+        return persisted;
+    }
+
+    private RefCountingMemory? GetLeafBlobFromSnapshotsOrPersistence(in Stem stem)
     {
         GuardDispose();
         long startTimestamp = StartTiming();
@@ -201,6 +245,43 @@ public sealed class PbtReadOnlySnapshotBundle(PbtSnapshotPooledList snapshots, I
         startTimestamp = StartTiming();
         RefCountingMemory? persisted = reader.GetTrieNode(key);
         Observe(startTimestamp, TrieNodePersistenceLabel(in key, persisted is null));
+        return persisted;
+    }
+
+    /// <summary>Returns the trie-node group that represents <paramref name="hash"/>.</summary>
+    /// <remarks>Every non-null result is a lease the caller must dispose.</remarks>
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash)
+    {
+        GuardDispose();
+        long startTimestamp = StartTiming();
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (!snapshots[i].Content.TryIsTrieNodeTombstone(key, out bool tombstone)) continue;
+            if (tombstone)
+            {
+                Observe(startTimestamp, _readTrieNodeSnapshotLabel);
+                return null;
+            }
+            break;
+        }
+
+        if (storeCache.GetTrieNode(key, hash) is { } cached) return cached;
+
+        startTimestamp = StartTiming();
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].Content.TryGetTrieNode(key, out RefCountingMemory? node))
+            {
+                Observe(startTimestamp, _readTrieNodeSnapshotLabel);
+                if (node is not null) storeCache.SetTrieNode(key, hash, node);
+                return node;
+            }
+        }
+
+        startTimestamp = StartTiming();
+        RefCountingMemory? persisted = reader.GetTrieNode(key);
+        Observe(startTimestamp, TrieNodePersistenceLabel(in key, persisted is null));
+        if (persisted is not null) storeCache.SetTrieNode(key, hash, persisted);
         return persisted;
     }
 

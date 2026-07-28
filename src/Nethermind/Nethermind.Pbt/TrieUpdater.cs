@@ -170,7 +170,7 @@ public static partial class TrieUpdater
         private PbtPartitionRoot Descend(
             in PbtPartitionRoot currentRoot, PbtWriteBatch changes, in Fanout fanout, out PbtSubtreeStats delta)
         {
-            using RefCountingMemory? rootData = _store.GetTrieNode(_rootKey);
+            using RefCountingMemory? rootData = _store.GetTrieNode(_rootKey, currentRoot.Hash);
             BufferWriter writer = new(_memoryProvider);
             NodeResult root;
             bool changed;
@@ -191,11 +191,11 @@ public static partial class TrieUpdater
                 if (changed && root.Blob is { } rootBlob)
                 {
                     rootBlob.AcquireLease();
-                    _store.SetTrieNode(_rootKey, rootBlob);
+                    _store.SetTrieNode(_rootKey, root.NodeHash(), rootBlob);
                 }
                 else if (changed && root.Kind == NodeKind.Absent && rootData is not null)
                 {
-                    _store.SetTrieNode(_rootKey, null);
+                    _store.SetTrieNode(_rootKey, currentRoot.Hash, null);
                 }
 
                 return new PbtPartitionRoot(root.Kind, root.NodeHash());
@@ -343,7 +343,8 @@ public static partial class TrieUpdater
             if (entries.Length == 1 && (pushed.Kind == NodeKind.Absent || pushed.Stem == stem))
             {
                 // a blob left with no leaves deletes its stem, so the node goes absent rather than up
-                bool isEmpty = ComputeBlob(stem, entries[0].Changes, pushed.Kind == NodeKind.Absent, out ValueHash256 subtreeRoot);
+                ValueHash256 priorSubtreeRoot = pushed.Kind == NodeKind.Stem ? pushed.Hash : default;
+                bool isEmpty = ComputeBlob(stem, entries[0].Changes, pushed.Kind == NodeKind.Absent, priorSubtreeRoot, out ValueHash256 subtreeRoot);
                 result = isEmpty ? default : NodeResult.StemNode(stem, subtreeRoot);
                 changed = result.NodeHash() != pushed.NodeHash();
 
@@ -783,7 +784,7 @@ public static partial class TrieUpdater
                 {
                     // a stored child group descends with its own content; the boundary internal caches its
                     // old root hash, which the child no longer stores itself
-                    using RefCountingMemory? childData = _store.GetTrieNode(childKey);
+                    using RefCountingMemory? childData = _store.GetTrieNode(childKey, occupant.NodeHash());
                     storedChild = childData is not null;
                     ApplyStoredGroup(childKey, bucket, TreeReader<TLayout>.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
                     if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
@@ -791,7 +792,7 @@ public static partial class TrieUpdater
                     // No frame writes its own key; the parent settles each child's: a stored one the writes
                     // emptied to nothing, or collapsed into a run the parent now holds, is removed here (a
                     // child that produced a blob of its own is planted by the parent's rebuild).
-                    if (storedChild && changed && result.KeyedBlob is null) _store.SetTrieNode(childKey, null);
+                    if (storedChild && changed && result.KeyedBlob is null) _store.SetTrieNode(childKey, occupant.NodeHash(), null);
                     return;
                 }
 
@@ -1024,7 +1025,7 @@ public static partial class TrieUpdater
                     if (results[slot].KeyedBlob is { } childBlob)
                     {
                         childBlob.AcquireLease();
-                        _store.SetTrieNode(key.ChildGroup(slot, TLayout.LevelsPerGroup), childBlob);
+                        _store.SetTrieNode(key.ChildGroup(slot, TLayout.LevelsPerGroup), results[slot].NodeHash(), childBlob);
                     }
                 }
             }
@@ -1203,13 +1204,15 @@ public static partial class TrieUpdater
         /// The stem had no node in the trie, so — a stem node and its leaf blob being born and dying
         /// together, keyed by the stem — there is no stored blob to merge and the read is skipped.
         /// </param>
-        private bool ComputeBlob(in Stem stem, IPbtStemChanges changes, bool knownAbsent, out ValueHash256 subtreeRoot)
+        private bool ComputeBlob(
+            in Stem stem, IPbtStemChanges changes, bool knownAbsent, in ValueHash256 priorSubtreeRoot,
+            out ValueHash256 subtreeRoot)
         {
-            using RefCountingMemory? prior = knownAbsent ? null : _store.GetLeafBlob(stem);
+            using RefCountingMemory? prior = knownAbsent ? null : _store.GetLeafBlob(stem, priorSubtreeRoot);
             using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, _memoryProvider, LeafFormat);
             subtreeRoot = newBlob.SubtreeRoot;
             bool isEmpty = newBlob.IsEmpty;
-            _store.SetLeafBlob(stem, newBlob.Take());
+            _store.SetLeafBlob(stem, subtreeRoot, newBlob.Take());
             return isEmpty;
         }
 

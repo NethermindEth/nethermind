@@ -24,6 +24,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly PbtPersistenceCoordinator _coordinator;
     private readonly IPbtPersistence _persistence;
     private readonly IPbtResourcePool _resourcePool;
+    private readonly PbtStoreCache _storeCache;
     private readonly PbtSnapshotCompactor _compactor;
     private readonly ILogger _logger;
     private readonly bool _recordDetailedMetrics;
@@ -52,6 +53,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         PbtPersistenceCoordinator coordinator,
         IPbtPersistence persistence,
         IPbtResourcePool resourcePool,
+        PbtStoreCache storeCache,
         PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
         IMetricsConfig metricsConfig,
@@ -61,6 +63,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _coordinator = coordinator;
         _persistence = persistence;
         _resourcePool = resourcePool;
+        _storeCache = storeCache;
         _compactor = compactor;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _logger = logManager.GetClassLogger<PbtDbManager>();
@@ -74,7 +77,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     {
         // the pre-genesis state is empty by definition, whatever is on disk, and is never cached:
         // there is nothing to amortise and nothing to sweep
-        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics);
+        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _storeCache, _recordDetailedMetrics);
 
         // a sweep may have released the entry between the lookup and the lease, in which case fall
         // through and assemble; a failure here must not consume an assembly attempt, or a state that
@@ -93,7 +96,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 ReportBundleMetrics(chain);
 
                 // ownership of the chain and the reader passes to the bundle
-                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _recordDetailedMetrics);
+                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _storeCache, _recordDetailedMetrics);
 
                 // lease before publishing, never after: a sweep landing between the publish and the
                 // lease would release the only lease and hand back a dead bundle
@@ -147,7 +150,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         try
         {
             // ownership of the shared bundle's lease passes to the writable one
-            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _resourcePool, usage, _recordDetailedMetrics);
+            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _storeCache, _resourcePool, usage, _recordDetailedMetrics);
         }
         catch
         {

@@ -25,16 +25,23 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly IReadOnlyDb _codeDbOverlay;
     private readonly IPbtDbManager _manager;
     private readonly IPbtResourcePool _resourcePool;
+    private readonly PbtStoreCache _storeCache;
     private readonly PbtTrieLayout _writeLayout;
     private readonly int _rootFoldConcurrency;
     private readonly bool _recordDetailedMetrics;
     private bool _isDisposed;
 
     public PbtOverridableWorldScope(
-        [KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager manager, IPbtResourcePool resourcePool, IPbtConfig config, IMetricsConfig metricsConfig)
+        [KeyFilter(DbNames.Code)] IDb codeDb,
+        IPbtDbManager manager,
+        IPbtResourcePool resourcePool,
+        PbtStoreCache storeCache,
+        IPbtConfig config,
+        IMetricsConfig metricsConfig)
     {
         _manager = manager;
         _resourcePool = resourcePool;
+        _storeCache = storeCache;
         _writeLayout = config.TrieNodeLayout;
         _rootFoldConcurrency = config.RootFoldConcurrency;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
@@ -96,7 +103,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         try
         {
             readOnlyBundle = _manager.GatherReadOnlyBundle(current);
-            return new PbtSnapshotBundle(localChain, readOnlyBundle, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, _recordDetailedMetrics);
+            return new PbtSnapshotBundle(localChain, readOnlyBundle, _storeCache, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, _recordDetailedMetrics);
         }
         catch
         {

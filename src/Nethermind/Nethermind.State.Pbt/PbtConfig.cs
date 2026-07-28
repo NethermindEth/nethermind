@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
@@ -20,6 +21,12 @@ public class PbtConfig : IPbtConfig
     public int ScanTreeConcurrency { get; set; }
     public PbtTrieLayout TrieNodeLayout { get; set; } = PbtTrieLayout.ClusteredFourLevelInterleaved;
     public int RootFoldConcurrency { get; set; }
+    public ulong AccountLeafBlobCacheSizeBudget { get; set; } = 64UL.MiB;
+    public ulong CodeLeafBlobCacheSizeBudget { get; set; } = 32UL.MiB;
+    public ulong StorageLeafBlobCacheSizeBudget { get; set; } = 256UL.MiB;
+    public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
+    public ulong CodeTrieNodeCacheSizeBudget { get; set; } = 32UL.MiB;
+    public ulong StorageTrieNodeCacheSizeBudget { get; set; } = 224UL.MiB;
 
     public string RocksDbOptions { get; set; } =
 
