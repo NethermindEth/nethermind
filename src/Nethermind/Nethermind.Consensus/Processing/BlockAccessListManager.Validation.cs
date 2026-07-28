@@ -100,11 +100,18 @@ public partial class BlockAccessListManager
     {
         if (!spec.IsEip8037Enabled) return;
 
+        // Memoized on the tx keyed by spec + EIP-2780 self-transfer classification; the sender is
+        // already recovered on block validation paths, so this matches the value execution charges.
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
+        EthereumGasPolicy intrinsicStandard = intrinsicGas.Standard;
+
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
             block.Header.GasLimit,
             cumulativeRegular,
             cumulativeState,
-            tx.GasLimit);
+            tx.GasLimit,
+            intrinsicStandard.Value,
+            (ulong)Math.Max(0, intrinsicStandard.StateReservoir));
 
         if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
         {

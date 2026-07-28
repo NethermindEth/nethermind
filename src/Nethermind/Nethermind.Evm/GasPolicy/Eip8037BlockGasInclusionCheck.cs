@@ -8,8 +8,9 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Evm.GasPolicy;
 
 // EIP-8037 per-tx 2D block-gas inclusion check.
-// Both regular and state dimensions must independently fit in the remaining per-dim block
-// budget at inclusion time. Block-end validation still enforces max(R, S) <= gas_limit.
+// Each dimension's worst-case contribution must fit in the remaining per-dim block budget at
+// inclusion time, subtracting the counterpart dimension's intrinsic gas. Block-end validation
+// still enforces max(R, S) <= gas_limit.
 public static class Eip8037BlockGasInclusionCheck
 {
     public enum Outcome { Ok, RegularDimensionExceeded, StateDimensionExceeded }
@@ -18,7 +19,9 @@ public static class Eip8037BlockGasInclusionCheck
         ulong blockGasLimit,
         ulong cumulativeBlockRegular,
         ulong cumulativeBlockState,
-        ulong txGas)
+        ulong txGas,
+        ulong intrinsicRegular,
+        ulong intrinsicState)
     {
         // A cumulative dimension that already exceeded the block limit must reject — silent saturation
         // would otherwise let the worst-case check pass and admit a tx that block-end validation rejects.
@@ -28,13 +31,17 @@ public static class Eip8037BlockGasInclusionCheck
         ulong regularAvailable = blockGasLimit - cumulativeBlockRegular;
         ulong stateAvailable = blockGasLimit - cumulativeBlockState;
 
-        // EIP-8037: reserve the full gas limit in each dimension (no intrinsic subtraction). Only the
-        // regular dimension is bounded by the EIP-7825 per-tx cap; state work can exceed it via the reservoir.
-        ulong worstCaseRegular = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
+        // EIP-8037: reserve tx.gas minus the counterpart dimension's intrinsic gas. The min() clamps
+        // floor the subtraction at zero when intrinsic exceeds tx.gas — such a tx is underfunded and
+        // rejected on intrinsic grounds, so the 2D check must not spuriously reject on saturation.
+        // Only the regular dimension is bounded by the EIP-7825 per-tx cap; state work can exceed it
+        // via the reservoir.
+        ulong worstCaseRegular = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas - Math.Min(txGas, intrinsicState));
         if (worstCaseRegular > regularAvailable)
             return Outcome.RegularDimensionExceeded;
 
-        if (txGas > stateAvailable)
+        ulong worstCaseState = txGas - Math.Min(txGas, intrinsicRegular);
+        if (worstCaseState > stateAvailable)
             return Outcome.StateDimensionExceeded;
 
         return Outcome.Ok;

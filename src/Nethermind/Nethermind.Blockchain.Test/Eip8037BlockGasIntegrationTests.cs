@@ -104,8 +104,8 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// The inclusion check reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas)</c> in the regular dimension
-    /// with no <c>intrinsic.state</c> subtraction, so a creation tx whose full gas fits is accepted.
+    /// The inclusion check reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas - intrinsic.state)</c> in the
+    /// regular dimension, so a creation tx whose worst-case contribution fits is accepted.
     /// </summary>
     [Test]
     public void Eip8037_creation_tx_regular_check_actual_usage_modest_accepts()
@@ -151,7 +151,7 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
-            "EIP-8037 requires rejection at inclusion when tx.gas > state_gas_available (full reservation, no intrinsic subtraction)");
+            "EIP-8037 requires rejection at inclusion when tx.gas - intrinsic.regular > state_gas_available");
     }
 
     /// <summary>
