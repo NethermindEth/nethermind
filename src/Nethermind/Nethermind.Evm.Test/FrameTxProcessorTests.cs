@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -19,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -645,6 +647,48 @@ public class FrameTxProcessorTests
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetBalance(sponsor), Is.LessThan(1.Ether), "the sponsor pays the gas");
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+    }
+
+    [Test]
+    public void Execute_Secp256k1SignatureOnly_DoesNotRecordP256PrecompileInBal()
+    {
+        // EIP-7928: precompiles are BAL-included only when accessed. A frame tx whose signatures
+        // never take the EIP-8141 P256 branch never accesses P256VERIFY, so resolving the handle
+        // for potential validation must not create a BAL entry for its address.
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
+        Ecdsa ecdsa = new();
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = ecdsa.Sign(TestItem.PrivateKeyA, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bal.GetAccountChanges(Sender), Is.Not.Null, "the sender is accessed and recorded in the BAL");
+            Assert.That(bal.GetAccountChanges(FrameTxSignatureValidator.P256VerifyPrecompileAddress), Is.Null,
+                "no P256-scheme signature, so the P256VERIFY precompile is never accessed");
+        }
     }
 
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)

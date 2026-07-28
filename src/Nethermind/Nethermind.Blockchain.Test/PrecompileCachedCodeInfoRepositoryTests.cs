@@ -33,14 +33,17 @@ public class PrecompileCachedCodeInfoRepositoryTests
         return spec;
     }
 
-    private static PrecompileCachedCodeInfoRepository BuildRepository(PreBlockCaches? caches, params (Address Address, IPrecompile Precompile)[] precompiles)
+    private static PrecompileCachedCodeInfoRepository BuildRepository(PreBlockCaches? caches, params (Address Address, IPrecompile Precompile)[] precompiles) =>
+        BuildRepository(caches, Substitute.For<IWorldState>(), precompiles);
+
+    private static PrecompileCachedCodeInfoRepository BuildRepository(PreBlockCaches? caches, IWorldState worldState, params (Address Address, IPrecompile Precompile)[] precompiles)
     {
         FrozenDictionary<AddressAsKey, CodeInfo> map = precompiles
             .ToDictionary(p => (AddressAsKey)p.Address, p => new CodeInfo(p.Precompile))
             .ToFrozenDictionary();
         IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
         provider.GetPrecompiles().Returns(map);
-        return new PrecompileCachedCodeInfoRepository(Substitute.For<IWorldState>(), provider, Substitute.For<ICodeInfoRepository>(), caches);
+        return new PrecompileCachedCodeInfoRepository(worldState, provider, Substitute.For<ICodeInfoRepository>(), caches);
     }
 
     private static IPrecompile ResolvePrecompile(PreBlockCaches? caches, IPrecompile precompile, Address? address = null)
@@ -99,6 +102,20 @@ public class PrecompileCachedCodeInfoRepositoryTests
             Assert.That(sha256, Is.Not.SameAs(Sha256Precompile.Instance), "sha256 supports caching and must be wrapped");
             Assert.That(identity, Is.SameAs(IdentityPrecompile.Instance), "identity does not support caching and must stay unwrapped");
         }
+    }
+
+    [Test]
+    public void GetPrecompile_ForPrecompileAddress_SharesCachedInstanceWithoutRecordingAccountRead()
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        PrecompileCachedCodeInfoRepository repository = BuildRepository(CreateCaches(), worldState, (PrecompileAddress, new TestPrecompile(supportsCaching: true)));
+        IReleaseSpec spec = CreateSpecWithPrecompiles(PrecompileAddress);
+
+        IPrecompile? resolved = repository.GetPrecompile(PrecompileAddress, spec);
+
+        worldState.DidNotReceive().AddAccountRead(Arg.Any<Address>());
+        Assert.That(resolved, Is.SameAs(repository.GetCachedCodeInfo(PrecompileAddress, false, spec, out _).Precompile),
+            "frame-tx signature validation must share the block-cache-decorated instance with EVM calls");
     }
 
     [TestCase(true, 1, 1, TestName = "Run_ForRepeatedInputWhenCaching_ComputesOnce")]
