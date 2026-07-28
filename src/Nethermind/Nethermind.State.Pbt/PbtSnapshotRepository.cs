@@ -46,10 +46,15 @@ public class PbtSnapshotRepository
     /// <summary>Adds a sealed base layer, taking ownership of one lease. Returns false (and releases) on duplicate.</summary>
     public bool TryAdd(PbtSnapshot snapshot)
     {
+        PbtSnapshotPayloadSize payloadSize = snapshot.PayloadSize;
         lock (_lock)
         {
             _lastCommittedStateId = snapshot.To;
-            if (_snapshots.TryAdd(snapshot.To, snapshot)) return true;
+            if (_snapshots.TryAdd(snapshot.To, snapshot))
+            {
+                Metrics.AddPbtBaseSnapshot(payloadSize, 1);
+                return true;
+            }
         }
 
         snapshot.Dispose();
@@ -132,7 +137,9 @@ public class PbtSnapshotRepository
         List<PbtSnapshot> removed = [];
         lock (_lock)
         {
-            Collect(_snapshots, removed, static (id, floor) => id.BlockNumber <= floor, blockNumber);
+            int firstCompacted = Collect(_snapshots, removed, static (id, floor) => id.BlockNumber <= floor, blockNumber);
+            for (int i = 0; i < firstCompacted; i++) Metrics.AddPbtBaseSnapshot(removed[i].PayloadSize, -1);
+
             Collect(_compactedSnapshots, removed, static (id, floor) => id.BlockNumber <= floor, blockNumber);
         }
 
@@ -161,7 +168,7 @@ public class PbtSnapshotRepository
         }
     }
 
-    private static void Collect(Dictionary<StateId, PbtSnapshot> tier, List<PbtSnapshot> removed, Func<StateId, ulong, bool> matches, ulong blockNumber)
+    private static int Collect(Dictionary<StateId, PbtSnapshot> tier, List<PbtSnapshot> removed, Func<StateId, ulong, bool> matches, ulong blockNumber)
     {
         int first = removed.Count;
         foreach ((StateId stateId, PbtSnapshot snapshot) in tier)
@@ -173,6 +180,8 @@ public class PbtSnapshotRepository
         {
             tier.Remove(removed[i].To);
         }
+
+        return removed.Count;
     }
 
     /// <summary>Takes the widest edge out of <paramref name="current"/> that does not overshoot the floor.</summary>

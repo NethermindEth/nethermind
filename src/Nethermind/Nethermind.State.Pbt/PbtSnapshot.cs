@@ -22,6 +22,8 @@ namespace Nethermind.State.Pbt;
 public class PbtSnapshot(in StateId from, in StateId to, in PbtPartitionRoots partitionRoots, PbtSnapshotContent content, IPbtResourcePool resourcePool, PbtResourcePool.Usage usage)
     : RefCountingDisposable
 {
+    private PbtSnapshotPayloadSize? _payloadSize;
+
     public StateId From { get; } = from;
     public StateId To { get; } = to;
 
@@ -32,6 +34,8 @@ public class PbtSnapshot(in StateId from, in StateId to, in PbtPartitionRoots pa
     public ValueHash256 TreeRoot => PartitionRoots.Root;
 
     public PbtSnapshotContent Content { get; } = content;
+
+    internal PbtSnapshotPayloadSize PayloadSize => _payloadSize ??= Content.GetPayloadSize();
 
     public bool TryLease() => TryAcquireLease();
 
