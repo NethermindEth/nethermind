@@ -194,8 +194,8 @@ internal sealed class InstructionStream
 
             if (instruction == Instruction.JUMPDEST)
             {
-                // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
-                // so the following ops must sit in their own separately charged block.
+                // Solo block: static jumps charge it while entering, so the following ops must sit
+                // in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
@@ -290,8 +290,8 @@ internal sealed class InstructionStream
                 && TryReadStaticJumpTarget(code, pc) is int dest and >= 0)
             {
                 // PUSH2 const + JUMP/JUMPI to a validated JUMPDEST: one entry, target resolved to an
-                // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
-                // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
+                // entry index by the fixup pass below. Push+jump gas and the taken target's JUMPDEST
+                // gas are charged directly by the entry.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
                 openBlock = -1;
                 openBlockOpcodeCount = 0;
