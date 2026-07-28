@@ -53,6 +53,30 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver PbtReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
+    private static long _pbtTrieNodeCacheMemory;
+
+    [GaugeMetric]
+    [Description("Retained payload bytes in the shared pbt trie-node cache, excluding cache entry and data-structure overhead")]
+    public static long PbtTrieNodeCacheMemory => Volatile.Read(ref _pbtTrieNodeCacheMemory);
+
+    internal static void AddPbtTrieNodeCacheMemory(long delta) => Interlocked.Add(ref _pbtTrieNodeCacheMemory, delta);
+
+    private static long _pbtTrieNodeCacheHits;
+
+    [CounterMetric]
+    [Description("Reads served by the shared pbt trie-node cache")]
+    public static long PbtTrieNodeCacheHits => Volatile.Read(ref _pbtTrieNodeCacheHits);
+
+    internal static void IncrementPbtTrieNodeCacheHits() => Interlocked.Increment(ref _pbtTrieNodeCacheHits);
+
+    private static long _pbtTrieNodeCacheMisses;
+
+    [CounterMetric]
+    [Description("Reads that missed the shared pbt trie-node cache")]
+    public static long PbtTrieNodeCacheMisses => Volatile.Read(ref _pbtTrieNodeCacheMisses);
+
+    internal static void IncrementPbtTrieNodeCacheMisses() => Interlocked.Increment(ref _pbtTrieNodeCacheMisses);
+
     [DetailedMetric]
     [CounterMetric]
     [Description("Reads served by a pbt bundle's leaf blob cache")]
