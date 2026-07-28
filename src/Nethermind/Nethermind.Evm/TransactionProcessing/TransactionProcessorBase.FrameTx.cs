@@ -380,7 +380,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the protocol-defined behavior instead of the EVM.
         if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            return ExecuteDefaultCode(frame, resolvedTarget, caller, isStatic, frameContext, spec, tracer, out gasUsed);
+            return ExecuteDefaultCode(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out gasUsed);
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
@@ -436,16 +436,22 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>
     /// EIP-8141 default code for a codeless target. VERIFY: require a canonical-hash SECP256K1
     /// signature at index 0 whose resolved signer is the target, then signal APPROVE with the
-    /// frame's allowed scope. SENDER/DEFAULT: succeed as empty code (value transfer only).
+    /// frame's allowed scope. SENDER/DEFAULT: succeed as empty code, performing the value transfer
+    /// and emitting its EIP-7708 transfer log into the frame receipt.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
     /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
     /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
     /// EIP8141: default-code gas metering is pending; the sig verification cost is already charged
-    /// in the intrinsic, so no gas is charged here yet.
+    /// in the intrinsic, so no gas is charged here yet. Two consequences for the transfer log: the
+    /// EIP-8037 NEW_ACCOUNT charge that suppresses it on the VM path never applies, so a transfer
+    /// to a dead recipient always logs; and nothing can fail after the transfer, so the log needs
+    /// no frame-journal snapshot. Adding a gas charge here requires revisiting both.
     /// </summary>
-    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    /// <param name="accessTracker">Cross-frame log/warm journal; the transfer log is appended to
+    /// its log list so it reaches the frame receipt and the transaction log union.</param>
+    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
     {
         gasUsed = 0;
 
@@ -480,6 +486,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             WorldState.SubtractFromBalance(caller, in value, spec);
             WorldState.AddToBalanceAndCreateIfNotExists(resolvedTarget, in value, spec);
+            // EIP-7708: self-transfers emit no log; zero value is excluded by the outer guard.
+            if (spec.IsEip7708Enabled && caller != resolvedTarget)
+            {
+                LogEntry transferLog = TransferLog.CreateTransfer(caller, resolvedTarget, in value);
+                accessTracker.Logs.Add(transferLog);
+                if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
+            }
         }
 
         return DefaultCodeSuccess();
