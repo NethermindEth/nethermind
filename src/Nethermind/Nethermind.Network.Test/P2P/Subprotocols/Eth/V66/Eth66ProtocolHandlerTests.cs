@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
@@ -391,6 +392,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                     m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg ||
                     m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg
                 ));
+        }
+
+        [Test]
+        public void Should_send_single_retry_without_registering_another_retry()
+        {
+            _transactionPool.ClearReceivedCalls();
+
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+
+            _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage66>(m =>
+                m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakA));
+            _transactionPool.DidNotReceive().NotifyAboutTx(
+                Arg.Any<Hash256>(),
+                Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

@@ -89,6 +89,7 @@ public class NodeStatsTests
     }
 
     [TestCase(DisconnectType.Local, DisconnectReason.UselessPeer, true)]
+    [TestCase(DisconnectType.Local, DisconnectReason.TxFlooding, true)]
     [TestCase(DisconnectType.Remote, DisconnectReason.ClientQuitting, true)]
     public async Task DisconnectDelayDueToDisconnect(DisconnectType disconnectType, DisconnectReason reason, bool connectionDelayed)
     {
@@ -105,6 +106,7 @@ public class NodeStatsTests
 
     [TestCase(null, DisconnectReason.Other, 0)]
     [TestCase(DisconnectType.Local, DisconnectReason.UselessPeer, -10000)]
+    [TestCase(DisconnectType.Local, DisconnectReason.TxFlooding, -10000)]
     [TestCase(DisconnectType.Local, DisconnectReason.PeerRefreshFailed, -500)]
     [TestCase(DisconnectType.Local, DisconnectReason.BreachOfProtocol, -10000)]
     [TestCase(DisconnectType.Remote, DisconnectReason.ClientQuitting, -1000)]
