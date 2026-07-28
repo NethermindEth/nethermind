@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Kademlia;
@@ -34,6 +36,48 @@ public class RandomWalkKademliaDiscoveryTests
         }
     }
 
+    [Test]
+    [CancelAfter(10000)]
+    public async Task DiscoverNodes_should_pace_iterations_to_minimum_iteration_duration(CancellationToken token)
+    {
+        TestKademlia kademlia = new();
+        RandomWalkKademliaDiscovery<int, int, int> discovery = new(
+            kademlia,
+            IntKeyOperator.Instance,
+            Int32KademliaDistance.Instance,
+            new KademliaConfig<int> { CurrentNodeId = 0 });
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(4).ToListAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes, Is.EqualTo(new[] { 1, 2, 1, 2 }));
+            Assert.That(stopwatch.Elapsed, Is.GreaterThanOrEqualTo(TimeSpan.FromMilliseconds(950)));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task DiscoverNodes_should_not_delay_when_lookup_exceeds_minimum_iteration_duration(CancellationToken token)
+    {
+        TestKademlia kademlia = new() { LookupDelay = TimeSpan.FromMilliseconds(1100) };
+        RandomWalkKademliaDiscovery<int, int, int> discovery = new(
+            kademlia,
+            IntKeyOperator.Instance,
+            Int32KademliaDistance.Instance,
+            new KademliaConfig<int> { CurrentNodeId = 0 });
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(3).ToListAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes, Is.EqualTo(new[] { 1, 2, 1 }));
+            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2.7)));
+        }
+    }
+
     private sealed class TestKademlia : IKademlia<int, int>
     {
         public event EventHandler<int>? OnNodeAdded { add { } remove { } }
@@ -41,6 +85,7 @@ public class RandomWalkKademliaDiscoveryTests
 
         public int LookupNodesCalls { get; private set; }
         public int? LastMaxResults { get; private set; }
+        public TimeSpan LookupDelay { get; set; }
 
         public void AddOrRefresh(int node) => throw new NotSupportedException();
 
@@ -56,7 +101,7 @@ public class RandomWalkKademliaDiscoveryTests
         {
             LookupNodesCalls++;
             LastMaxResults = maxResults;
-            return CreateAsyncEnumerable(1, 2);
+            return CreateAsyncEnumerable(LookupDelay, token, 1, 2);
         }
 
         public int[] GetKNeighbour(int target, int excluding = 0, bool excludeSelf = false) => throw new NotSupportedException();
@@ -77,8 +122,12 @@ public class RandomWalkKademliaDiscoveryTests
         public int CreateRandomKeyAtDistance(int nodePrefix, int depth) => depth;
     }
 
-    private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(params IEnumerable<T> items)
+    private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(TimeSpan delay, [EnumeratorCancellation] CancellationToken token, params IEnumerable<T> items)
     {
+        if (delay > TimeSpan.Zero)
+        {
+            await Task.Delay(delay, token);
+        }
         foreach (T item in items)
         {
             await Task.Yield();
