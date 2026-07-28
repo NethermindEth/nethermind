@@ -50,6 +50,39 @@ public class InstructionStreamTests
     }
 
     [Test]
+    public void TryBuild_RecordsWholeBlockStackBoundsBeforeFusion()
+    {
+        InstructionStream underflow = InstructionStream.TryBuild([
+            (byte)Instruction.POP,
+            (byte)Instruction.DUP3,
+            (byte)Instruction.PUSH1, 1,
+            (byte)Instruction.ADD,
+            (byte)Instruction.STOP,
+        ])!;
+        InstructionStream fusedPushPair = InstructionStream.TryBuild([
+            (byte)Instruction.PUSH1, 1,
+            (byte)Instruction.PUSH1, 2,
+            (byte)Instruction.ADD,
+            (byte)Instruction.STOP,
+        ])!;
+        InstructionStream fusedConstBinary = InstructionStream.TryBuild([
+            (byte)Instruction.PUSH1, 1,
+            (byte)Instruction.ADD,
+            (byte)Instruction.STOP,
+        ])!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(underflow.BlockStackRequirements, Is.EqualTo(new ushort[] { 4 }));
+            Assert.That(underflow.BlockStackGrowth, Is.EqualTo(new ushort[] { 1 }));
+            Assert.That(fusedPushPair.BlockStackRequirements, Is.EqualTo(new ushort[] { 0 }));
+            Assert.That(fusedPushPair.BlockStackGrowth, Is.EqualTo(new ushort[] { 2 }));
+            Assert.That(fusedConstBinary.BlockStackRequirements, Is.EqualTo(new ushort[] { 1 }));
+            Assert.That(fusedConstBinary.BlockStackGrowth, Is.EqualTo(new ushort[] { 1 }));
+        }
+    }
+
+    [Test]
     public void TryBuild_MaxSizeTypicalContract_StaysWithinRetainedCap()
     {
         // A max EIP-170 (24 KiB) contract of typical output must stay within the retained-size cap.
@@ -175,6 +208,8 @@ public class InstructionStreamTests
             Assert.That(stream.Ops[0].Advance, Is.EqualTo(duplicateCondition ? 6 : 5));
             Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[duplicateCondition ? 7 : 6]));
             Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(expectedGas));
+            Assert.That(stream.BlockStackRequirements[stream.Ops[0].BlockIndex], Is.EqualTo(1));
+            Assert.That(stream.BlockStackGrowth[stream.Ops[0].BlockIndex], Is.EqualTo(duplicateCondition ? 2 : 1));
             Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry),
                 "nothing can land inside the fused branch pattern");
         }
@@ -223,6 +258,8 @@ public class InstructionStreamTests
             Assert.That((byte)(stream.Ops[0].Operand >> 32), Is.EqualTo(maskPattern ? 8 : 3));
             Assert.That((uint)stream.Ops[0].Operand, Is.EqualTo(stream.PcToEntry[targetPc]));
             Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(expectedGas));
+            Assert.That(stream.BlockStackRequirements[stream.Ops[0].BlockIndex], Is.EqualTo(3));
+            Assert.That(stream.BlockStackGrowth[stream.Ops[0].BlockIndex], Is.EqualTo(1));
             Assert.That(stream.PcToEntry[maskPattern ? 2 : 1], Is.EqualTo(InstructionStream.InvalidEntry));
         }
     }
