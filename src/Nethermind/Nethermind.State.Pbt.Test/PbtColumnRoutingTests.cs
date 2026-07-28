@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -40,6 +42,38 @@ public class PbtColumnRoutingTests
         AssertOnlyIn(db, AccountStem.Bytes.ToArray(), PbtColumns.AccountLeaves, accountBlob, LeafColumns);
         AssertOnlyIn(db, CodeStem.Bytes.ToArray(), PbtColumns.CodeLeaves, codeBlob, LeafColumns);
         AssertOnlyIn(db, StorageStem.Bytes.ToArray(), PbtColumns.StorageLeaves, storageBlob, LeafColumns);
+    }
+
+    [Test]
+    public void Reader_transfers_owned_memory_with_ref_counted_lifetime()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        byte[] blob = Bytes.FromHexString("0xaabbcc");
+        byte[] node = Bytes.FromHexString("0xddeeff");
+        TrieNodeKey nodeKey = PbtPartitions.RootKey(PbtPartition.Account);
+        using (IPbtPersistence.IWriteBatch batch = StartBatch(db))
+        {
+            batch.SetLeafBlob(AccountStem, blob);
+            batch.SetTrieNode(nodeKey, node);
+        }
+
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        IPbtPersistence.IReader reader = persistence.CreateReader();
+        RefCountingMemory? memory = reader.GetLeafBlob(AccountStem);
+        using RefCountingMemory? trieNode = reader.GetTrieNode(nodeKey);
+        Assert.That(memory, Is.Not.Null);
+        Assert.That(reader.GetLeafBlob(CodeStem), Is.Null);
+        memory!.AcquireLease();
+
+        reader.Dispose();
+        ((IDisposable)memory).Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.GetSpan().ToArray(), Is.EqualTo(blob));
+            Assert.That(trieNode!.GetSpan().ToArray(), Is.EqualTo(node));
+        }
+        ((IDisposable)memory).Dispose();
     }
 
     [Test]

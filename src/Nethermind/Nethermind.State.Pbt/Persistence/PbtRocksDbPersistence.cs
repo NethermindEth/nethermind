@@ -149,22 +149,19 @@ public class PbtRocksDbPersistence : IPbtPersistence
             return ReadOwned(snapshot.GetColumn(TrieNodeColumn(key)), dbKey);
         }
 
-        /// <summary>Copies the native slice into a pooled buffer owned by the caller.</summary>
         private static RefCountingMemory? ReadOwned(IReadOnlyKeyValueStore column, scoped ReadOnlySpan<byte> key)
         {
-            Span<byte> value = column.GetSpan(key);
-            if (value.IsNull()) return null;
+            MemoryManager<byte>? memory = column.GetOwnedMemory(key);
+            if (memory is null) return null;
 
             try
             {
-                int length = value.Length;
-                byte[] rented = ArrayPool<byte>.Shared.Rent(length);
-                value.CopyTo(rented);
-                return RefCountingMemory.Owning(rented, length);
+                return RefCountingMemory.OwningRocksDb(memory);
             }
-            finally
+            catch
             {
-                column.DangerousReleaseMemory(value);
+                ((IDisposable)memory).Dispose();
+                throw;
             }
         }
 
