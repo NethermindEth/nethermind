@@ -172,6 +172,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.Swap1Binary:
                             exceptionType = EvmInstructions.FusedSwap1BinaryCore(ref stack, (Instruction)entry.Operand);
                             break;
+                        case (Instruction)FusedOpcode.Swap1Swap2:
+                            exceptionType = stack.Swap1Swap2();
+                            break;
+                        case (Instruction)FusedOpcode.Swap1Dup2:
+                            exceptionType = stack.Swap1Dup2();
+                            break;
                         case (Instruction)FusedOpcode.Pop2:
                             exceptionType = stack.Pop2Limbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
                             break;
@@ -371,6 +377,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 ref stack,
                                 (byte)(entry.Operand >> 32),
                                 out exceptionType))
+                            {
+                                entryIndex = (int)(uint)entry.Operand - 1;
+                            }
+
+                            break;
+                        case (Instruction)FusedOpcode.DupStaticJumpI:
+                            opCodeCount++;
+                            bool dupCondition = stack.PeekAtDepthIsNonZero(
+                                (byte)(entry.Operand >> 32),
+                                out exceptionType);
+                            if (exceptionType != EvmExceptionType.None)
+                                break;
+                            if (stack.Head >= EvmStack.MaxStackSize - 2)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+                            if (dupCondition)
                             {
                                 entryIndex = (int)(uint)entry.Operand - 1;
                             }

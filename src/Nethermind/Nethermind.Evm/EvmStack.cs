@@ -2349,6 +2349,65 @@ public ref struct EvmStack
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal readonly EvmExceptionType Swap1Swap2()
+    {
+        int head = Head;
+        if (head < 3)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        ref byte first = ref Unsafe.Add(ref _stack, (nuint)(uint)(head - 3) << 5);
+        EvmWord a = Unsafe.ReadUnaligned<EvmWord>(ref first);
+        EvmWord b = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref first, WordSize));
+        EvmWord c = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref first, 2 * WordSize));
+        Unsafe.WriteUnaligned(ref first, b);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref first, WordSize), c);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref first, 2 * WordSize), a);
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType Swap1Dup2()
+    {
+        int head = Head;
+        if (head < 2)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+        if (head >= MaxStackSize - 1)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+
+        ref byte first = ref Unsafe.Add(ref _stack, (nuint)(uint)(head - 2) << 5);
+        EvmWord a = Unsafe.ReadUnaligned<EvmWord>(ref first);
+        EvmWord b = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref first, WordSize));
+        Unsafe.WriteUnaligned(ref first, b);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref first, WordSize), a);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref first, 2 * WordSize), b);
+        Head = head + 1;
+        return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal readonly bool PeekAtDepthIsNonZero(int depth, out EvmExceptionType exceptionType)
+    {
+        int head = Head;
+        if (head < depth)
+        {
+            exceptionType = EvmExceptionType.StackUnderflow;
+            return false;
+        }
+
+        ref byte value = ref Unsafe.Add(ref _stack, (nuint)(uint)(head - depth) << 5);
+        exceptionType = EvmExceptionType.None;
+        return Unsafe.ReadUnaligned<EvmWord>(ref value) != default;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [UnscopedRef]
     internal ref byte PeekTopForDupBinary(int depth, out EvmWord duplicate, out EvmExceptionType exceptionType)
     {

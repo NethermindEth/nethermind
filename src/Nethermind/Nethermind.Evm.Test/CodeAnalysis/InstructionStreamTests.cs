@@ -227,12 +227,40 @@ public class InstructionStreamTests
         }
     }
 
+    [Test]
+    public void TryBuild_DupStaticJumpPattern_BecomesSingleEntry()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.DUP2,
+            (byte)Instruction.PUSH2, 0, 6,
+            (byte)Instruction.JUMPI,
+            (byte)Instruction.STOP,
+            (byte)Instruction.JUMPDEST,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst));
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.DupStaticJumpI));
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(5));
+            Assert.That((byte)(stream.Ops[0].Operand >> 32), Is.EqualTo(2));
+            Assert.That((uint)stream.Ops[0].Operand, Is.EqualTo(stream.PcToEntry[6]));
+            Assert.That(stream.BlockGas[stream.Ops[0].BlockIndex], Is.EqualTo(2 * GasCostOf.VeryLow + GasCostOf.JumpI));
+            Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry));
+        }
+    }
+
     [TestCase(Instruction.POP, Instruction.POP, FusedOpcode.Pop2, 0UL)]
     [TestCase(Instruction.SWAP2, Instruction.POP, FusedOpcode.SwapPop, 3UL)]
     [TestCase(Instruction.PUSH1, Instruction.DUP1, FusedOpcode.PushDup, 42UL)]
     [TestCase(Instruction.PUSH1, Instruction.DUP3, FusedOpcode.PushDup, (2UL << 60) | 42UL)]
     [TestCase(Instruction.DUP3, Instruction.AND, FusedOpcode.DupBinary, ((ulong)(byte)Instruction.AND << 8) | 3UL)]
     [TestCase(Instruction.SWAP1, Instruction.SUB, FusedOpcode.Swap1Binary, (ulong)(byte)Instruction.SUB)]
+    [TestCase(Instruction.SWAP1, Instruction.SWAP2, FusedOpcode.Swap1Swap2, 0UL)]
+    [TestCase(Instruction.SWAP1, Instruction.DUP2, FusedOpcode.Swap1Dup2, 0UL)]
     public void TryBuild_CommonStackPair_BecomesSingleEntry(
         Instruction first,
         Instruction second,
@@ -825,6 +853,31 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(FullStackMaskBranch) { TestName = "FullStackMaskIsZeroStaticJumpIOverflowsOnPush" };
         yield return new TestCaseData(new byte[]
         {
+            (byte)Instruction.PUSH1, 0x2A,
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.DUP2,
+            (byte)Instruction.PUSH2, 0, 10,
+            (byte)Instruction.JUMPI,
+            (byte)Instruction.STOP,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.RETURN,
+        })
+        { TestName = "DupStaticJumpITakenAndPreservesStack" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.DUP2,
+            (byte)Instruction.PUSH2, 0, 6,
+            (byte)Instruction.JUMPI,
+            (byte)Instruction.STOP,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "DupStaticJumpIUnderflowsOnDup" };
+        yield return new TestCaseData(new byte[]
+        {
             (byte)Instruction.PUSH1, 0x07,
             (byte)Instruction.DUP1,
             (byte)Instruction.ADD,
@@ -941,6 +994,31 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             (byte)Instruction.SWAP1,
             (byte)Instruction.SUB,
         }) { TestName = "FusedSwapBinaryUnderflowsOnSwap" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 1,
+            (byte)Instruction.PUSH1, 2,
+            (byte)Instruction.PUSH1, 3,
+            (byte)Instruction.SWAP1,
+            (byte)Instruction.SWAP2,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.RETURN,
+        }) { TestName = "FusedSwap1Swap2PreservesOrder" };
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 1,
+            (byte)Instruction.PUSH1, 2,
+            (byte)Instruction.SWAP1,
+            (byte)Instruction.DUP2,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.RETURN,
+        }) { TestName = "FusedSwap1Dup2PreservesOrder" };
         yield return new TestCaseData(new byte[]
         {
             (byte)Instruction.PUSH1, 0x80,
