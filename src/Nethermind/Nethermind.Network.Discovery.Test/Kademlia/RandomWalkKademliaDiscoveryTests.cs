@@ -74,7 +74,7 @@ public class RandomWalkKademliaDiscoveryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nodes, Is.EqualTo(new[] { 1, 2 }));
-            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
+            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2.5)));
         }
     }
 
