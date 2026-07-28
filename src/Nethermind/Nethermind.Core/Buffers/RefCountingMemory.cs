@@ -11,12 +11,11 @@ using RefCountingMemoryMetrics = Nethermind.Core.Buffers.Metrics.Metrics;
 namespace Nethermind.Core.Buffers;
 
 /// <summary>
-/// A ref-counted <see cref="MemoryManager{T}"/> over a byte array. Each <see cref="AcquireLease"/>
+/// A ref-counted <see cref="MemoryManager{T}"/> over byte memory. Each <see cref="AcquireLease"/>
 /// hands out one reference and each <see cref="IDisposable.Dispose"/> releases one; the last release
 /// runs cleanup exactly once. An <see cref="Owning"/> instance returns its buffer to
-/// <see cref="ArrayPool{T}.Shared"/> on that last release, so a value rented from the pool is
-/// recycled once every reader is done; a <see cref="Wrapping"/> instance leaves its array untouched,
-/// for buffers whose lifetime is owned elsewhere (e.g. arrays retained in a diff layer).
+/// <see cref="ArrayPool{T}.Shared"/> on that last release, an <see cref="OwningRocksDb"/> instance
+/// disposes its memory manager, and a <see cref="Wrapping"/> instance leaves its array untouched.
 /// </summary>
 /// <remarks>
 /// The lease counter is lock-free via <see cref="RefCountingLease"/>, so leases may be acquired and
@@ -25,27 +24,57 @@ namespace Nethermind.Core.Buffers;
 /// </remarks>
 public sealed class RefCountingMemory : MemoryManager<byte>
 {
-    private readonly byte[] _buffer;
+    internal enum BackingKind
+    {
+        Pooled,
+        Wrapped,
+        RocksDb,
+    }
+
+    private readonly byte[]? _buffer;
+    private readonly MemoryManager<byte>? _owner;
+    private readonly int _capacity;
     private int _length;
-    private readonly bool _pooled;
+    private readonly BackingKind _backingKind;
     private long _leases = RefCountingLease.Single;
 
-    private RefCountingMemory(byte[] buffer, int length, bool pooled)
+    private RefCountingMemory(byte[] buffer, int length, BackingKind backingKind)
     {
         _buffer = buffer;
+        _capacity = buffer.Length;
         _length = length;
-        _pooled = pooled;
-        RefCountingMemoryMetrics.ReportRefCountingMemoryAllocation(pooled, buffer.Length);
+        _backingKind = backingKind;
+        RefCountingMemoryMetrics.ReportRefCountingMemoryAllocation(backingKind, _capacity);
+    }
+
+    private RefCountingMemory(MemoryManager<byte> owner)
+    {
+        _owner = owner;
+        _capacity = owner.GetSpan().Length;
+        _length = _capacity;
+        _backingKind = BackingKind.RocksDb;
+        RefCountingMemoryMetrics.ReportRefCountingMemoryAllocation(_backingKind, _capacity);
     }
 
     /// <summary>
     /// Wraps a buffer rented from <see cref="ArrayPool{T}.Shared"/> (possibly oversized, so the value
     /// occupies its first <paramref name="length"/> bytes); the last release returns it to the pool.
     /// </summary>
-    public static RefCountingMemory Owning(byte[] pooledBuffer, int length) => new(pooledBuffer, length, pooled: true);
+    public static RefCountingMemory Owning(byte[] pooledBuffer, int length) => new(pooledBuffer, length, BackingKind.Pooled);
+
+    /// <summary>
+    /// Adopts memory owned by RocksDB without copying it; the last release disposes its manager.
+    /// </summary>
+    /// <param name="owner">The manager whose memory and lifetime are adopted.</param>
+    /// <returns>Ref-counted access to the adopted memory.</returns>
+    public static RefCountingMemory OwningRocksDb(MemoryManager<byte> owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return new RefCountingMemory(owner);
+    }
 
     /// <summary>Wraps an array whose lifetime is owned elsewhere; the last release does not free it.</summary>
-    public static RefCountingMemory Wrapping(byte[] array) => new(array, array.Length, pooled: false);
+    public static RefCountingMemory Wrapping(byte[] array) => new(array, array.Length, BackingKind.Wrapped);
 
     public static RefCountingMemory? WrappingOrNull(byte[]? array) => array is null ? null : Wrapping(array);
 
@@ -80,7 +109,9 @@ public sealed class RefCountingMemory : MemoryManager<byte>
         if (!RefCountingLease.TryAcquire(ref _leases)) throw new InvalidOperationException("The lease cannot be acquired");
     }
 
-    public override Span<byte> GetSpan() => _buffer.AsSpan(0, _length);
+    public override Span<byte> GetSpan() => _backingKind is BackingKind.RocksDb
+        ? _owner!.GetSpan()[.._length]
+        : _buffer.AsSpan(0, _length);
 
     public override MemoryHandle Pin(int elementIndex = 0) => default;
 
@@ -90,7 +121,14 @@ public sealed class RefCountingMemory : MemoryManager<byte>
     {
         if (!RefCountingLease.ReleaseOnce(ref _leases)) return;
 
-        if (_pooled) ArrayPool<byte>.Shared.Return(_buffer);
-        RefCountingMemoryMetrics.ReportRefCountingMemoryRelease(_pooled, _buffer.Length);
+        try
+        {
+            if (_backingKind is BackingKind.Pooled) ArrayPool<byte>.Shared.Return(_buffer!);
+            else if (_backingKind is BackingKind.RocksDb) ((IDisposable)_owner!).Dispose();
+        }
+        finally
+        {
+            RefCountingMemoryMetrics.ReportRefCountingMemoryRelease(_backingKind, _capacity);
+        }
     }
 }

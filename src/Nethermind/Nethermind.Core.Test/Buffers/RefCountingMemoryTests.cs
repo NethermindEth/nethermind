@@ -98,6 +98,52 @@ public class RefCountingMemoryTests
     }
 
     [Test]
+    public void OwningRocksDb_adopts_memory_until_the_final_lease_and_tracks_exclusive_metrics()
+    {
+        long initialPooledCount = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCount;
+        long initialPooledCapacity = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCapacity;
+        long initialNonPooledCount = RefCountingMemoryMetrics.ActiveNonPooledRefCountingMemoryCount;
+        long initialRocksDbCount = RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCount;
+        long initialRocksDbCapacity = RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCapacity;
+        byte[] array = [1, 2, 3];
+        TrackingMemoryManager owner = new(array);
+        RefCountingMemory? memory = null;
+
+        try
+        {
+            memory = RefCountingMemory.OwningRocksDb(owner);
+            array[1] = 4;
+            memory.AcquireLease();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memory.GetSpan().ToArray(), Is.EqualTo(new byte[] { 1, 4, 3 }), "owned memory is not copied");
+                Assert.That(owner.IsDisposed, Is.False, "owner before release");
+                AssertMetrics(initialPooledCount, initialPooledCapacity, initialNonPooledCount);
+                Assert.That(RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCount, Is.EqualTo(initialRocksDbCount + 1), "RocksDB count");
+                Assert.That(RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCapacity, Is.EqualTo(initialRocksDbCapacity + array.Length), "RocksDB capacity");
+            }
+
+            ((IDisposable)memory).Dispose();
+            Assert.That(owner.IsDisposed, Is.False, "owner with one remaining lease");
+
+            ((IDisposable)memory).Dispose();
+            memory = null;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(owner.IsDisposed, Is.True, "owner after final release");
+                AssertMetrics(initialPooledCount, initialPooledCapacity, initialNonPooledCount);
+                Assert.That(RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCount, Is.EqualTo(initialRocksDbCount), "RocksDB count after release");
+                Assert.That(RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCapacity, Is.EqualTo(initialRocksDbCapacity), "RocksDB capacity after release");
+            }
+        }
+        finally
+        {
+            ((IDisposable?)memory)?.Dispose();
+        }
+    }
+
+    [Test]
     public void Shrink_narrows_the_value_to_what_a_producer_wrote()
     {
         byte[] rented = ArrayPool<byte>.Shared.Rent(64);
@@ -109,6 +155,19 @@ public class RefCountingMemoryTests
 
         mem.Shrink(0);
         Assert.That(mem.GetSpan().IsEmpty);
+    }
+
+    private sealed class TrackingMemoryManager(byte[] array) : MemoryManager<byte>
+    {
+        public bool IsDisposed { get; private set; }
+
+        public override Span<byte> GetSpan() => array;
+
+        public override MemoryHandle Pin(int elementIndex = 0) => default;
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing) => IsDisposed = true;
     }
 
     private static void AssertMetrics(long pooledCount, long pooledCapacity, long nonPooledCount)
