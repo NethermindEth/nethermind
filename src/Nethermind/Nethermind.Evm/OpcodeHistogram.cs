@@ -12,6 +12,7 @@ internal static class OpcodeHistogram
 {
     private static readonly long[] s_counts = new long[byte.MaxValue + 1];
     private static readonly long[] s_pairCounts = new long[(byte.MaxValue + 1) * (byte.MaxValue + 1)];
+    private static readonly long[] s_streamCounts = new long[byte.MaxValue + 1];
     private static readonly Timer s_flushTimer = new(static _ => Flush(), null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
 
     [ThreadStatic]
@@ -30,6 +31,8 @@ internal static class OpcodeHistogram
 
     public static void Record(in StreamOp entry)
     {
+        s_streamCounts[entry.Opcode]++;
+
         if (entry.Kind is StreamOpKind.StaticJump or StreamOpKind.StaticJumpI)
         {
             Record(Instruction.PUSH2);
@@ -123,6 +126,15 @@ internal static class OpcodeHistogram
 
     private static string BuildReport()
     {
+        long streamTotal = 0;
+        for (int i = 0; i < s_streamCounts.Length; i++)
+            streamTotal += s_streamCounts[i];
+
+        int[] streamOrder = new int[s_streamCounts.Length];
+        for (int i = 0; i < streamOrder.Length; i++)
+            streamOrder[i] = i;
+        Array.Sort(streamOrder, static (a, b) => s_streamCounts[b].CompareTo(s_streamCounts[a]));
+
         long total = 0;
         for (int i = 0; i < s_counts.Length; i++)
             total += s_counts[i];
@@ -133,6 +145,15 @@ internal static class OpcodeHistogram
         Array.Sort(order, static (a, b) => s_counts[b].CompareTo(s_counts[a]));
 
         StringBuilder report = new();
+        report.AppendLine($"[STREAMDIAG] total={streamTotal:N0}");
+        foreach (int opcode in streamOrder)
+        {
+            long count = s_streamCounts[opcode];
+            if (count == 0)
+                continue;
+            report.AppendLine($"[STREAMDIAG] {GetStreamName((byte)opcode),-24} {count,16:N0} {(double)count / streamTotal,8:P2}");
+        }
+
         report.AppendLine($"[OPDIAG] total={total:N0}");
         foreach (int opcode in order)
         {
@@ -160,4 +181,37 @@ internal static class OpcodeHistogram
 
         return report.ToString();
     }
+
+    private static string GetStreamName(byte opcode) => opcode switch
+    {
+        FusedOpcode.Add => "FusedConstAdd",
+        FusedOpcode.Sub => "FusedConstSub",
+        FusedOpcode.Mul => "FusedConstMul",
+        FusedOpcode.Div => "FusedConstDiv",
+        FusedOpcode.SDiv => "FusedConstSDiv",
+        FusedOpcode.Mod => "FusedConstMod",
+        FusedOpcode.SMod => "FusedConstSMod",
+        FusedOpcode.Lt => "FusedConstLt",
+        FusedOpcode.Gt => "FusedConstGt",
+        FusedOpcode.SLt => "FusedConstSLt",
+        FusedOpcode.SGt => "FusedConstSGt",
+        FusedOpcode.Eq => "FusedConstEq",
+        FusedOpcode.And => "FusedConstAnd",
+        FusedOpcode.Or => "FusedConstOr",
+        FusedOpcode.Xor => "FusedConstXor",
+        FusedOpcode.Shl => "FusedConstShl",
+        FusedOpcode.Shr => "FusedConstShr",
+        FusedOpcode.StaticJump => "StaticJump",
+        FusedOpcode.StaticJumpI => "StaticJumpI",
+        FusedOpcode.IsZeroStaticJumpI => "IsZeroStaticJumpI",
+        FusedOpcode.DupIsZeroStaticJumpI => "DupIsZeroStaticJumpI",
+        FusedOpcode.Pop2 => "Pop2",
+        FusedOpcode.SwapPop => "SwapPop",
+        FusedOpcode.PushDup => "PushDup",
+        FusedOpcode.Push1Pair => "Push1Pair",
+        FusedOpcode.SignExtend => "FusedConstSignExtend",
+        FusedOpcode.DupBinary => "DupBinary",
+        FusedOpcode.Swap1Binary => "Swap1Binary",
+        _ => ((Instruction)opcode).ToString(),
+    };
 }
