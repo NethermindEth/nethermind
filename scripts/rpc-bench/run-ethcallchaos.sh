@@ -14,9 +14,8 @@ RPC_URL="${RPC_URL:-http://localhost:8545}"
 : "${OUT_DIR:?output directory for EthCallChaos results}"
 : "${SCRATCH_ROOT:?writable scratch root}"
 ECC_REPO="${ECC_REPO:-https://github.com/kamilchodola/EthCallChaos.git}"
-# Pin to a commit so a push can't change results or run unreviewed code (override
-# ECC_REF/ECC_REPO). NB: default branch (main) is a LICENSE placeholder; tool is on 'master'.
-ECC_REF="${ECC_REF:-a431c1758ad9763e9aa4eae4dd6de0d8bba60298}"
+# Pin to a release tag so a push can't change results or run unreviewed code (override ECC_REF/ECC_REPO).
+ECC_REF="${ECC_REF:-v1.0.0}"
 ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"          # optional path on the runner to a pristine corpus DB
 # corpus-v2: per-category evolved corpus (seeded from v1, diverse worst-per-shape coverage).
 ECC_CORPUS_URL="${ECC_CORPUS_URL:-https://github.com/kamilchodola/EthCallChaos/releases/download/corpus-v2/ethcallchaos.db}"
