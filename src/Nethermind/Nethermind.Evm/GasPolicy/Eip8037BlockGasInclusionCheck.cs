@@ -15,6 +15,16 @@ public static class Eip8037BlockGasInclusionCheck
 {
     public enum Outcome { Ok, RegularDimensionExceeded, StateDimensionExceeded }
 
+    /// <summary>
+    /// Validates that a transaction's worst-case per-dimension gas contribution fits in the
+    /// remaining block budget at inclusion time.
+    /// </summary>
+    /// <param name="blockGasLimit">Block gas limit bounding each dimension.</param>
+    /// <param name="cumulativeBlockRegular">Cumulative regular gas of all previously included txs.</param>
+    /// <param name="cumulativeBlockState">Cumulative state gas of all previously included txs.</param>
+    /// <param name="txGas">The candidate transaction's gas limit.</param>
+    /// <param name="intrinsicRegular">Intrinsic regular gas of the tx; subtracted from the state-dimension reservation.</param>
+    /// <param name="intrinsicState">Intrinsic state gas of the tx; subtracted from the regular-dimension reservation (cross-wired by design).</param>
     public static Outcome Validate(
         ulong blockGasLimit,
         ulong cumulativeBlockRegular,

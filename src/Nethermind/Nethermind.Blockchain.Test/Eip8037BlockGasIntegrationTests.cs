@@ -11,6 +11,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -104,8 +105,9 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// The inclusion check reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas - intrinsic.state)</c> in the
-    /// regular dimension, so a creation tx whose worst-case contribution fits is accepted.
+    /// For a creation tx <c>intrinsic.state</c> is 0 under Nethermind's top-frame state-gas charging
+    /// model (NEW_ACCOUNT is charged at runtime, not intrinsically), so the regular-dimension
+    /// reservation stays the flat <c>min(TX_MAX_GAS_LIMIT, tx.gas)</c> and an exact fit is accepted.
     /// </summary>
     [Test]
     public void Eip8037_creation_tx_regular_check_actual_usage_modest_accepts()
@@ -139,19 +141,54 @@ public class Eip8037BlockGasIntegrationTests
     public void Eip8037_single_tx_state_check_exceeds_block_limit_rejects()
     {
         ulong blockGasLimit = 16_777_216ul + 100ul; // cap + tiny headroom
+        Transaction onlyTx = Build.A.Transaction.WithHash(TestItem.KeccakA).SignedAndResolved().TestObject;
         // tx.gas = blockGasLimit + intrinsic_regular + 1 -> spec inclusion check rejects on state dim.
-        Transaction onlyTx = Build.A.Transaction.WithHash(TestItem.KeccakA)
-            .WithGasLimit(blockGasLimit + 21_000ul + 1ul).TestObject;
+        ulong intrinsicRegular = EthereumGasPolicy.CalculateIntrinsicGas(onlyTx, Amsterdam.Instance).Standard.Value;
+        onlyTx.GasLimit = blockGasLimit + intrinsicRegular + 1ul;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, onlyTx);
 
         GasValidationResultSlot[] results = ResultsForCount(1);
         // Simulate execution finishing with modest actual gas (post-execution view).
         // Spec inclusion check rejects before execution even though post-execution gas would fit.
-        results[0].TrySetResult(GasResult(block, 0, 21_000ul, 0ul));
+        results[0].TrySetResult(GasResult(block, 0, intrinsicRegular, 0ul));
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
             "EIP-8037 requires rejection at inclusion when tx.gas - intrinsic.regular > state_gas_available");
+    }
+
+    /// <summary>
+    /// Exact state-dimension boundary through the production intrinsic-gas path: with
+    /// <c>tx.gas = state_available + intrinsic.regular (+ delta)</c> the flat reservation rejects,
+    /// while subtracting the actual intrinsic regular gas fits exactly (delta 0) or exceeds by one
+    /// (delta 1). Pins <c>CheckPerTxInclusion</c>'s wiring — passing 0 or swapping the intrinsic
+    /// arguments flips the delta-0 verdict back to a rejection.
+    /// </summary>
+    [TestCase(0ul, true, TestName = "Eip8037_state_dimension_subtracts_intrinsic_regular_exact_fit_accepts")]
+    [TestCase(1ul, false, TestName = "Eip8037_state_dimension_subtracts_intrinsic_regular_exceeded_by_one_rejects")]
+    public void Eip8037_state_dimension_subtracts_intrinsic_regular(ulong delta, bool accepts)
+    {
+        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100_000ul;
+        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).SignedAndResolved().TestObject;
+        ulong intrinsicRegular = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance).Standard.Value;
+        Assert.That(intrinsicRegular, Is.GreaterThan(0ul), "vacuous if the production intrinsic regular gas is zero");
+        tx.GasLimit = blockGasLimit + intrinsicRegular + delta;
+        (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx);
+
+        GasValidationResultSlot[] results = ResultsForCount(1);
+        results[0].TrySetResult(GasResult(block, 0, intrinsicRegular, 0ul));
+
+        if (accepts)
+        {
+            Assert.DoesNotThrow(() =>
+                mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
+        }
+        else
+        {
+            InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() =>
+                mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
+            Assert.That(ex!.Message, Does.Contain("StateDimensionExceeded"));
+        }
     }
 
     /// <summary>
@@ -215,9 +252,10 @@ public class Eip8037BlockGasIntegrationTests
             static worldState => new EthereumCodeInfoRepository(worldState));
 
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;
-        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)
-            .WithGasLimit(blockGasLimit + 21_000ul + 1ul)
-            .TestObject;
+        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).SignedAndResolved().TestObject;
+        // tx.gas = blockGasLimit + intrinsic_regular + 1 -> spec inclusion check rejects on state dim.
+        ulong intrinsicRegular = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance).Standard.Value;
+        tx.GasLimit = blockGasLimit + intrinsicRegular + 1ul;
         Block block = Build.A.Block
             .WithNumber(1ul)
             .WithGasLimit(blockGasLimit)
