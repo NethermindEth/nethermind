@@ -2,32 +2,35 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Single-dispatch cross-client x rps sweep. One job loops CLIENTS x RPS_LIST with
-# ONE node up at a time (clean latency, no cross-node contention) and ALL clients
-# pinned to the same SNAPSHOT_BLOCK, so the comparison is apples-to-apples — the
-# thing a per-client, different-head run gets wrong. deep_check is on so each
-# cell captures raw responses for offline cross-client parity. Reuses
-# start-node.sh / run-jsonbench.sh / stop-node.sh and aggregates every cell's
-# jsonbench-summary.md into one matrix on $GITHUB_STEP_SUMMARY.
+# Single-dispatch cross-client sweep with TWO measurement modes, so per-call cost
+# and system-under-load behaviour never get conflated:
+#   ISOLATED - each scenario run alone at each rps (clean per-call latency, no
+#              cross-scenario contention). Catches per-call regressions precisely.
+#   MIXED    - all scenarios run together at each rps (realistic contention +
+#              saturation / head-of-line blocking). Catches system-level problems.
+# One node lifecycle per client (ISOLATED + MIXED share it), ALL clients pinned to
+# the same SNAPSHOT_BLOCK (apples-to-apples), deep_check on. Reuses start-node.sh /
+# run-jsonbench.sh / stop-node.sh; aggregates every cell into ISOLATED / MIXED /
+# DELTA matrices on $GITHUB_STEP_SUMMARY.
 #
-# A client whose node fails to start is skipped (its cells are absent from the
-# matrix) rather than failing the whole sweep — a 3x3 grid shouldn't die on one
-# bad node.
+# A client whose node fails to start is skipped rather than failing the whole run.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-: "${OUT_DIR:?base output directory for per-cell results}"
-: "${STATE_ROOT:?base directory for per-client node state}"
+: "${OUT_DIR:?base output directory}"
+: "${STATE_ROOT:?base per-client node state directory}"
 : "${SCRATCH_ROOT:?writable scratch root on the snapshot disk}"
-: "${NM_IMAGE:?built nethermind image ref (from the resolve/build step)}"
+: "${NM_IMAGE:?built nethermind image ref}"
 : "${SNAPSHOT_BLOCK:?shared head all clients are pinned to}"
 : "${JB_REF:?json-bench ref}"
-: "${JB_BENCHMARK_CONFIG:?benchmark config path (repo-relative to json-bench)}"
+: "${JB_BENCHMARK_CONFIG:?mixed (all-scenario) benchmark config, repo-relative}"
 
 CLIENTS="${CLIENTS:-nethermind geth reth}"
 RPS_LIST="${RPS_LIST:-100 250 500}"
+ISO_CONFIGS="${ISO_CONFIGS:-}"          # space-separated repo-relative single-scenario configs; empty = mixed only
 STATE_LAYOUT="${STATE_LAYOUT:-flat}"
-JB_DURATION="${JB_DURATION:-60s}"
+JB_DURATION="${JB_DURATION:-60s}"       # mixed-run load duration
+ISO_DURATION="${ISO_DURATION:-20s}"     # per-scenario isolated load duration (shorter; single call)
 NETWORK="${NETWORK:-mainnet}"
 JSONRPC_MODULES="${JSONRPC_MODULES:-Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
@@ -45,12 +48,21 @@ snap_path() {
   if [[ "$1" == "nethermind" ]]; then
     if [[ "$STATE_LAYOUT" == "flat" ]]; then echo "/mnt/sda/nethermind-flat-${SNAPSHOT_BLOCK}"
     else echo "/mnt/sda/nethermind-${SNAPSHOT_BLOCK}"; fi
-  else
-    echo "/mnt/sda/$1-${SNAPSHOT_BLOCK}"
-  fi
+  else echo "/mnt/sda/$1-${SNAPSHOT_BLOCK}"; fi
 }
 layout_flags() { [[ "$1" == "nethermind" && "$STATE_LAYOUT" == "flat" ]] && echo "--FlatDb.Enabled=true" || true; }
 isolation()    { [[ "$1" == "reth" ]] && echo "direct" || echo "overlay"; }
+
+# One json-bench cell: $1=config (repo-relative) $2=rps $3=duration $4=out dir $5=client
+run_cell() {
+  local cfg="$1" rps="$2" dur="$3" cell="$4" client="$5"
+  mkdir -p "$cell"
+  OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$client" LABEL="$client" \
+    SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
+    JB_BENCHMARK_CONFIG="$cfg" JB_RPS="$rps" JB_DURATION="$dur" \
+    JB_DEEP_CHECK="true" JB_HTML_REPORT="false" \
+    "$here/run-jsonbench.sh"
+}
 
 mkdir -p "$OUT_DIR" "$STATE_ROOT"
 declare -a SUMMARIES=()
@@ -61,7 +73,6 @@ for client in $CLIENTS; do
   cst="$STATE_ROOT/$client"; mkdir -p "$cst"
   cname="rpcbench-sweep-${client}-${GITHUB_RUN_ID:-local}"
   echo "::group::sweep ${client} (image=${img}, db=$(snap_path "$client"), head=${SNAPSHOT_BLOCK})"
-
   if ! CLIENT="$client" INSTANCE="primary" NODE_IMAGE="$img" \
        DB_SOURCE="$(snap_path "$client")" DB_ISOLATION="$(isolation "$client")" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
@@ -69,20 +80,23 @@ for client in $CLIENTS; do
        ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
        "$here/start-node.sh"; then
-    echo "::warning::${client} failed to start — skipping its cells"
-    echo "::endgroup::"
-    continue
+    echo "::warning::${client} failed to start — skipping its cells"; echo "::endgroup::"; continue
   fi
 
   for rps in $RPS_LIST; do
-    cell="$OUT_DIR/${client}-${rps}"; mkdir -p "$cell"
-    echo "-- cell ${client} @ rps=${rps} --"
-    OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$client" LABEL="${client}_${rps}" \
-      SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
-      JB_BENCHMARK_CONFIG="$JB_BENCHMARK_CONFIG" JB_RPS="$rps" JB_DURATION="$JB_DURATION" \
-      JB_DEEP_CHECK="true" JB_HTML_REPORT="false" \
-      "$here/run-jsonbench.sh" || echo "::warning::cell ${client}-${rps} failed"
-    [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("${client}:${rps}=$cell/jsonbench-summary.md")
+    # ISOLATED: each scenario alone
+    for icfg in $ISO_CONFIGS; do
+      scen="$(basename "$icfg" .yaml)"
+      cell="$OUT_DIR/iso/${client}/${rps}/${scen}"
+      echo "-- ISO ${client} ${scen} @ rps=${rps} --"
+      run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$client" || echo "::warning::iso ${client}/${scen}/${rps} failed"
+      [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${client}|${rps}=$cell/jsonbench-summary.md")
+    done
+    # MIXED: all scenarios together
+    mcell="$OUT_DIR/mix/${client}/${rps}"
+    echo "-- MIX ${client} @ rps=${rps} --"
+    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$client" || echo "::warning::mix ${client}/${rps} failed"
+    [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${client}|${rps}=$mcell/jsonbench-summary.md")
   done
 
   STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
@@ -90,16 +104,14 @@ for client in $CLIENTS; do
   echo "::endgroup::"
 done
 
-# ---- Aggregate every cell into one matrix on the job summary ----
 sink="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 {
-  echo "# Cross-client x rps sweep — same head ${SNAPSHOT_BLOCK}"
-  echo "_config: ${JB_BENCHMARK_CONFIG} @ json-bench ${JB_REF}, ${#SUMMARIES[@]} cells_"
+  echo "# Cross-client sweep — same head ${SNAPSHOT_BLOCK}"
+  echo "_${#SUMMARIES[@]} cells · isolated dur ${ISO_DURATION}, mixed dur ${JB_DURATION} · json-bench ${JB_REF}_"
   echo
 } >> "$sink"
 if [[ "${#SUMMARIES[@]}" -gt 0 ]]; then
   python3 "$here/percat-matrix.py" "${SUMMARIES[@]}" >> "$sink" || echo "aggregation failed" >> "$sink"
 else
-  echo "No cell summaries produced — every client failed to start." >> "$sink"
-  exit 1
+  echo "No cell summaries produced — every client failed to start." >> "$sink"; exit 1
 fi

@@ -674,8 +674,10 @@ jobs:
           export SNAPSHOT_BLOCK="$(get '.snapshot_block')";[[ -z "${SNAPSHOT_BLOCK}" ]] && export SNAPSHOT_BLOCK="25490000"
           export STATE_LAYOUT="$(get '.state_layout')";    [[ -z "${STATE_LAYOUT}" ]] && export STATE_LAYOUT="flat"
           export JB_BENCHMARK_CONFIG="$(get '.benchmark_config')"; [[ -z "${JB_BENCHMARK_CONFIG}" ]] && export JB_BENCHMARK_CONFIG="config/benchmark/ethcallchaos-percategory-validated.yaml"
-          export JB_REF="$(get '.ref')";                   [[ -z "${JB_REF}" ]] && export JB_REF="bbb38a67f210104eb21042a78d05bdc23d255cc9"
+          export JB_REF="$(get '.ref')";                   [[ -z "${JB_REF}" ]] && export JB_REF="b0a0112c51ce918041c2e110fcd0d056773f1735"
           export JB_DURATION="$(get '.duration')";         [[ -z "${JB_DURATION}" ]] && export JB_DURATION="60s"
+          export ISO_CONFIGS="$(get '.iso_configs')"
+          export ISO_DURATION="$(get '.iso_duration')";    [[ -z "${ISO_DURATION}" ]] && export ISO_DURATION="20s"
           export STATE_ROOT="${STATE_DIR}/sweep"
           ./scripts/rpc-bench/run-rpc-sweep.sh
 
