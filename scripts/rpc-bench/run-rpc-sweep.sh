@@ -119,7 +119,8 @@ sink="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
   echo
 } >> "$sink"
 if [[ "${#SUMMARIES[@]}" -gt 0 ]]; then
-  python3 "$here/percat-matrix.py" "${SUMMARIES[@]}" >> "$sink" || echo "aggregation failed" >> "$sink"
+  printf '%s\n' "${SUMMARIES[@]}" > "$OUT_DIR/summaries.manifest"  # via file — 100+ cells exceed ARG_MAX
+  python3 "$here/percat-matrix.py" "@$OUT_DIR/summaries.manifest" >> "$sink" || echo "aggregation failed" >> "$sink"
 else
   echo "No cell summaries produced — every client failed to start." >> "$sink"; exit 1
 fi

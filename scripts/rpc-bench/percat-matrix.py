@@ -43,9 +43,12 @@ def parse(path):
 
 
 def main():
+    argv = sys.argv[1:]
+    if len(argv) == 1 and argv[0].startswith("@"):  # @manifest: one 'key=path' per line (avoids ARG_MAX on big sweeps)
+        argv = [ln.strip() for ln in open(argv[0][1:], encoding="utf-8") if ln.strip()]
     iso, mix = {}, {}                 # iso[(scen,client,rps)]=ovr ; mix[(client,rps)]=(ovr,meth)
     clients, rpss, scen_iso, scen_mix = [], [], [], []
-    for arg in sys.argv[1:]:
+    for arg in argv:
         key, path = arg.split("=", 1)
         if key.startswith("iso|"):
             _, scen, client, rps = key.split("|")
