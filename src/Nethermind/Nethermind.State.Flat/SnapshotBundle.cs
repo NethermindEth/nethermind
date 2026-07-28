@@ -176,26 +176,6 @@ public sealed class SnapshotBundle : IDisposable
         return node;
     }
 
-    public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
-    {
-        // TrieWarmer only touch `_transientResource`
-        GuardDispose();
-
-        if (_transientResource.TryGetStateNode(path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else
-        {
-            node = _transientResource.GetOrAddStateNode(path,
-                DoFindStateNodeExternal(path, hash, out node)
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
-        }
-
-        return node;
-    }
-
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(null, path, hash, out node))
@@ -237,26 +217,6 @@ public sealed class SnapshotBundle : IDisposable
         else
         {
             node = new TrieNode(NodeType.Unknown, hash);
-        }
-
-        return node;
-    }
-
-
-    public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
-    {
-        GuardDispose();
-
-        if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else
-        {
-            node = _transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
-                DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
         }
 
         return node;

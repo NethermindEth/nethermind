@@ -49,13 +49,14 @@ internal sealed class FlatSparseTrieSession : IDisposable
     // dropped on account deletion. It persists across the scope's block commits, so a multi-block
     // branch reuses warm tries directly; at the scope boundary it is handed to the cross-scope
     // retention cache. The parallel storage phase borrows entries concurrently, under _retainedLock.
-    private Dictionary<Hash256AsKey, SparseTrie> _storageTries;
+    private Dictionary<ValueHash256, SparseTrie> _storageTries;
     private readonly Lock _retainedLock = new();
 
     // When false (no retention cache), tries are disposed at each commit so a multi-block scope
     // never accumulates a cross-block working set; when true they roll forward for reuse.
     private readonly bool _retentionEnabled;
 
+    private readonly Lock _statePrefetchLock = new();
     private SparseTrie? _stateTrie;
     private Hash256 _rootHash;
     private bool _stateDirty;
@@ -110,7 +111,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
         SparseTrie? retained;
         lock (_retainedLock)
         {
-            _storageTries.Remove(addressHash, out retained);
+            _storageTries.Remove(addressHash.ValueHash256, out retained);
         }
 
         if (retained is not null)
@@ -127,12 +128,76 @@ internal sealed class FlatSparseTrieSession : IDisposable
         return new SparseTrie(new FlatTrieNodeReader(_bundle, addressHash), anchorRoot, hint);
     }
 
+    /// <summary>Reveals one account path directly into the retained state-trie arena.</summary>
+    public void PrefetchState(in ValueHash256 key)
+    {
+        GuardPoisoned();
+        lock (_statePrefetchLock)
+        {
+            _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, address: null), _rootHash.ValueHash256);
+            _stateTrie.Prefetch(in key);
+        }
+    }
+
+    /// <summary>Reveals account paths as one batched sparse-trie traversal.</summary>
+    public void PrefetchState(ReadOnlySpan<ValueHash256> keys)
+    {
+        GuardPoisoned();
+        lock (_statePrefetchLock)
+        {
+            _stateTrie ??= new SparseTrie(new FlatTrieNodeReader(_bundle, address: null), _rootHash.ValueHash256);
+            _stateTrie.Prefetch(keys);
+        }
+    }
+
+    /// <summary>Reveals one slot path directly into the retained arena for its storage trie.</summary>
+    public void PrefetchStorage(in ValueHash256 addressHash, in ValueHash256 anchorRoot, in ValueHash256 key)
+    {
+        GuardPoisoned();
+        SparseTrie trie = GetOrCreatePrefetchStorageTrie(addressHash, in anchorRoot);
+
+        lock (trie)
+        {
+            trie.Prefetch(in key);
+        }
+    }
+
+    /// <summary>Reveals one account's slot paths as one batched sparse-trie traversal.</summary>
+    public void PrefetchStorage(in ValueHash256 addressHash, in ValueHash256 anchorRoot, ReadOnlySpan<ValueHash256> keys)
+    {
+        GuardPoisoned();
+        SparseTrie trie = GetOrCreatePrefetchStorageTrie(addressHash, in anchorRoot);
+
+        lock (trie)
+        {
+            trie.Prefetch(keys);
+        }
+    }
+
+    private SparseTrie GetOrCreatePrefetchStorageTrie(in ValueHash256 addressHash, in ValueHash256 anchorRoot)
+    {
+        lock (_retainedLock)
+        {
+            ref SparseTrie? retained = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(
+                _storageTries,
+                addressHash,
+                out bool exists);
+            if (!exists || retained!.RootHash != anchorRoot)
+            {
+                retained?.Dispose();
+                retained = new SparseTrie(new FlatTrieNodeReader(_bundle, addressHash.ToCommitment()), anchorRoot);
+            }
+
+            return retained;
+        }
+    }
+
     /// <summary>Rolls a published storage trie back into the warm set for reuse by later blocks.</summary>
     private void ReturnStorageTrie(Hash256 addressHash, SparseTrie trie)
     {
         lock (_retainedLock)
         {
-            _storageTries[addressHash] = trie;
+            _storageTries[addressHash.ValueHash256] = trie;
         }
     }
 
@@ -142,7 +207,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
         SparseTrie? retained;
         lock (_retainedLock)
         {
-            _storageTries.Remove(addressHash, out retained);
+            _storageTries.Remove(addressHash.ValueHash256, out retained);
         }
 
         retained?.Dispose();
@@ -323,6 +388,16 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
             _changedStorageTrees.Clear();
 
+            if (!_retentionEnabled)
+            {
+                foreach (KeyValuePair<ValueHash256, SparseTrie> kv in _storageTries)
+                {
+                    kv.Value.Dispose();
+                }
+
+                _storageTries.Clear();
+            }
+
             if (_stateTrie is not null)
             {
                 using ArrayPoolList<SparseTrieStagedNode> staged = new(_stateTrie.UnpublishedNodeCapacityHint);
@@ -426,7 +501,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
         _stateTrie?.Dispose();
         _stateTrie = null;
 
-        foreach (KeyValuePair<Hash256AsKey, SparseTrie> kv in _storageTries)
+        foreach (KeyValuePair<ValueHash256, SparseTrie> kv in _storageTries)
         {
             kv.Value.Dispose();
         }

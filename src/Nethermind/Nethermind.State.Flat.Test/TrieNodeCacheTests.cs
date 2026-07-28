@@ -374,48 +374,6 @@ public class ChildCacheTests
     }
 
     [Test]
-    public void GetOrAdd_ReturnsExistingNode_WhenPresent()
-    {
-        TreePath path = TreePath.FromHexString("abcd");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode existingNode = new(NodeType.Leaf, hash);
-        TrieNode newNode = new(NodeType.Leaf, hash);
-
-        _cache.Set(null, in path, existingNode);
-        TrieNode result = _cache.GetOrAdd(null, in path, newNode);
-
-        Assert.That(result, Is.SameAs(existingNode));
-    }
-
-    [Test]
-    public void GetOrAdd_AddsAndReturnsNewNode_WhenNotPresent()
-    {
-        TreePath path = TreePath.FromHexString("abcd");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode newNode = new(NodeType.Leaf, hash);
-
-        TrieNode result = _cache.GetOrAdd(null, in path, newNode);
-
-        Assert.That(result, Is.SameAs(newNode));
-        Assert.That(_cache.Count, Is.EqualTo(1));
-    }
-
-    [Test]
-    public void GetOrAdd_WithStorageAddress_ReturnsExistingNode()
-    {
-        Hash256 address = Keccak.Compute([0xaa, 0xbb]);
-        TreePath path = TreePath.FromHexString("1234");
-        Hash256 hash = Keccak.Compute([1, 2, 3]);
-        TrieNode existingNode = new(NodeType.Branch, hash);
-        TrieNode newNode = new(NodeType.Branch, hash);
-
-        _cache.Set(address, in path, existingNode);
-        TrieNode result = _cache.GetOrAdd(address, in path, newNode);
-
-        Assert.That(result, Is.SameAs(existingNode));
-    }
-
-    [Test]
     public void Reset_ClearsCache()
     {
         TreePath path = TreePath.FromHexString("abcd");

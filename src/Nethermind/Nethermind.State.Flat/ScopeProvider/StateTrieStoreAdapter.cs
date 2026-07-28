@@ -41,26 +41,6 @@ internal sealed class StateTrieStoreAdapter(
     }
 }
 
-internal sealed class StateTrieStoreWarmerAdapter(
-    SnapshotBundle bundle
-) : AbstractMinimalTrieStore
-{
-    public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
-    {
-        TrieNode node = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
-    }
-
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStateRlp(path, hash, flags);
-
-    public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
-    {
-        if (address is null) return this;
-        return new StorageTrieStoreWarmerAdapter(bundle, address);
-    }
-}
-
 internal sealed class StorageTrieStoreAdapter(
     SnapshotBundle bundle,
     ConcurrencyController concurrencyQuota,
@@ -92,19 +72,4 @@ internal sealed class StorageTrieStoreAdapter(
         protected override void PublishNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers) =>
             bundle.PublishStorageNodes(_nodes, addressHash, buffers);
     }
-}
-
-internal sealed class StorageTrieStoreWarmerAdapter(
-    SnapshotBundle bundle,
-    Hash256AsKey addressHash
-) : AbstractMinimalTrieStore
-{
-    public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
-    {
-        TrieNode node = bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
-    }
-
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
 }

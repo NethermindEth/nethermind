@@ -35,7 +35,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private bool _lastCommitClean;
 
     private readonly ConcurrencyController _concurrencyQuota;
-    private readonly PatriciaTree _warmupStateTree;
     // Diagnostic Patricia cross-check of the sparse root; non-null only under VerifyWithTrie.
     private readonly StateTree? _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
@@ -96,14 +95,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             : null;
 
-        _warmupStateTree = new(
-            new StateTrieStoreWarmerAdapter(snapshotBundle),
-            logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
-
         RetainedGeneration? checkedOut = sparseCache?.TryCheckout(currentStateId.StateRoot);
         SparseSession = new FlatSparseTrieSession(snapshotBundle, currentStateId.StateRoot.ToCommitment(), checkedOut, retentionEnabled: sparseCache is not null);
         _configuration = configuration;
@@ -118,8 +109,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        CancelHintBal();
-        WaitForOutstandingWarmups();
+        PauseAndDrainPrewarmer();
         // Offer the scope's warm generation to the retention cache only after a clean commit, so a
         // block that aborted mid-branch discards its (possibly mid-mutation) tries instead of
         // admitting them. ExtractGeneration transfers ownership; SparseSession.Dispose is then a
@@ -165,8 +155,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             if (stopwatch.ElapsedMilliseconds > 1000)
             {
                 ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
-                return;
+                if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s");
+                stopwatch.Restart();
             }
             spinWait.SpinOnce();
         }
@@ -176,6 +166,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void UpdateRootHash()
     {
+        PauseAndDrainPrewarmer();
         SparseSession.UpdateRootHash();
 
         if (_configuration.VerifyWithTrie)
@@ -186,6 +177,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 ThrowStateRootMismatch(SparseSession.RootHash, _stateTree!.RootHash, committed: false);
             }
         }
+
+        Interlocked.Increment(ref _hintSequenceId);
+        _pausePrewarmer = false;
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -217,8 +211,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (promote) _snapshotBundle.PromoteAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
-            if (_warmer.PushAddressJob(this, address, _hintSequenceId))
-                Interlocked.Increment(ref _outstandingWarmups);
+            QueueAddressWarmup(address);
+        }
+    }
+
+    private void QueueAddressWarmup(Address address)
+    {
+        Interlocked.Increment(ref _outstandingWarmups);
+        if (!_warmer.PushAddressJob(this, address, _hintSequenceId))
+        {
+            Interlocked.Decrement(ref _outstandingWarmups);
         }
     }
 
@@ -245,7 +247,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
-                // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
+                // Phase 1: storage-trie prefetch + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
                 void WarmAccount(int i)
                 {
@@ -253,10 +255,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
-
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
-                        && _warmer.PushAddressJob(this, address, snapshot))
-                        Interlocked.Increment(ref _outstandingWarmups);
 
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
@@ -272,23 +270,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     if (storageChangeCount > 0)
                     {
-                        FlatStorageTree storageWarmer = new(
-                            this,
-                            _warmer,
-                            _snapshotBundle,
-                            _configuration,
-                            _concurrencyQuota,
-                            storageRoot,
-                            address,
-                            _logManager);
-
-                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+                        using ArrayPoolList<ValueHash256> keys = new(storageChangeCount, storageChangeCount);
+                        for (int j = 0; j < storageChangeCount; j++)
                         {
-                            UInt256 key = slotChanges.Key;
-                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
-                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
-                                Interlocked.Increment(ref _outstandingWarmups);
+                            UInt256 slot = storageChanges[j].Key;
+                            _snapshotBundle.ShouldQueuePrewarm(address, slot);
+                            ValueHash256 key = ValueKeccak.Zero;
+                            StorageTree.ComputeKeyWithLookup(slot, ref key);
+                            keys[j] = key;
                         }
+
+                        TryPrefetchStorage(address, storageRoot, keys.AsSpan());
                     }
 
                     if (accounts is not null)
@@ -298,18 +290,72 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     }
                 }
 
+                void PrefetchAccountPaths()
+                {
+                    if (token.IsCancellationRequested
+                        || _hintSequenceId != snapshot
+                        || _pausePrewarmer
+                        || SparseSession.RootHash == Keccak.EmptyTreeHash)
+                    {
+                        return;
+                    }
+
+                    using ArrayPoolList<ValueHash256> keys = new(accountCount, accountCount);
+                    for (int i = 0; i < accountCount; i++)
+                    {
+                        Address address = accountChanges[i].Address;
+                        _snapshotBundle.ShouldQueuePrewarm(address);
+                        keys[i] = address.ToAccountPath;
+                    }
+
+                    try
+                    {
+                        SparseSession.PrefetchState(keys.AsSpan());
+                    }
+                    catch (Exception ex) when (ex is TrieException or NodeHashMismatchException or ObjectDisposedException)
+                    {
+                        LogBalPrefetchFailure("state", ex);
+                    }
+                }
+
+                void TryPrefetchStorage(Address address, Hash256 storageRoot, ReadOnlySpan<ValueHash256> keys)
+                {
+                    try
+                    {
+                        ValueHash256 addressHash = address.ToAccountPath;
+                        SparseSession.PrefetchStorage(in addressHash, storageRoot.ValueHash256, keys);
+                    }
+                    catch (Exception ex) when (ex is TrieException or NodeHashMismatchException or ObjectDisposedException)
+                    {
+                        LogBalPrefetchFailure("storage", ex);
+                    }
+                }
+
+                void WarmBal(int i)
+                {
+                    if (i == 0)
+                    {
+                        PrefetchAccountPaths();
+                    }
+                    else
+                    {
+                        WarmAccount(i - 1);
+                    }
+                }
+
                 // The shared ThreadPool is saturated by the parallel EVM executor
                 // during newPayload, so Parallel.For here gets starved exactly when
                 // warmup matters. The dedicated reader pool is idle at that point.
+                int warmJobCount = accountCount + 1;
                 if (_warmReadPool is not null)
                 {
                     WarmReadPool pool = _warmReadPool.Value;
-                    int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, accountCount / 64));
-                    pool.Run(accountCount, workers, WarmAccount, token);
+                    int workers = Math.Min(pool.MaxConcurrency, Math.Max(2, warmJobCount / 64));
+                    pool.Run(warmJobCount, workers, WarmBal, token);
                 }
                 else
                 {
-                    Parallel.For(0, accountCount, parallelOptions, WarmAccount);
+                    Parallel.For(0, warmJobCount, parallelOptions, WarmBal);
                 }
 
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
@@ -320,6 +366,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 accountChanges.Dispose();
             }
         }, token);
+    }
+
+    private void LogBalPrefetchFailure(string target, Exception ex)
+    {
+        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+        logger.DebugError($"BAL sparse {target} prefetch failed", ex);
     }
 
     private void RunSinkSlotReads(
@@ -390,9 +442,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
-                // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-                // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+                ValueHash256 key = address.ToAccountPath;
+                SparseSession.PrefetchState(in key);
 
                 return true;
             }
@@ -416,9 +467,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (IsDisposed || _pausePrewarmer) return;
         // The managed Address is materialized only after the dedupe bloom passes, so the
         // allocation happens at most once per account per block.
-        if (_snapshotBundle.ShouldQueuePrewarm(address)
-            && _warmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId))
-            Interlocked.Increment(ref _outstandingWarmups);
+        if (_snapshotBundle.ShouldQueuePrewarm(address))
+        {
+            QueueAddressWarmup(address.ToAddress());
+        }
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
@@ -427,8 +479,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
 
         FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address.ToAddress());
-        if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
-            Interlocked.Increment(ref _outstandingWarmups);
+        if (tree is null) return;
+
+        Interlocked.Increment(ref _outstandingWarmups);
+        if (!_warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
+        {
+            Interlocked.Decrement(ref _outstandingWarmups);
+        }
     }
 
     private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
@@ -485,7 +542,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
-        CancelHintBal();
+        PauseAndDrainPrewarmer();
         // Mutation in progress: the warm generation no longer matches a committed root until the
         // next Commit completes.
         _lastCommitClean = false;
@@ -494,8 +551,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void Commit(ulong blockNumber)
     {
-        _pausePrewarmer = true;
-
+        PauseAndDrainPrewarmer();
         SparseSession.UpdateRootHash();
 
         if (_configuration.VerifyWithTrie)
@@ -534,7 +590,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _currentStateId = newStateId;
         // The warm generation now matches this committed root; it may be admitted at scope dispose.
         _lastCommitClean = true;
+        Interlocked.Increment(ref _hintSequenceId);
         _pausePrewarmer = false;
+    }
+
+    private void PauseAndDrainPrewarmer()
+    {
+        _pausePrewarmer = true;
+        Interlocked.Increment(ref _hintSequenceId);
+        CancelHintBal();
+        WaitForOutstandingWarmups();
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.

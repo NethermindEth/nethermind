@@ -182,6 +182,62 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
     }
 
     /// <summary>
+    /// Reveals the committed paths for <paramref name="keys"/> without applying values or marking
+    /// the trie dirty. The materialized nodes remain in the arena for a later <see cref="Apply"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is the sparse-native prefetch path: it performs the same batched, hash-validated
+    /// reveal used by <see cref="Apply"/>, but leaves the trie root and publication state
+    /// unchanged. The caller remains the trie's sole external mutable owner.
+    /// </remarks>
+    public void Prefetch(ReadOnlySpan<ValueHash256> keys)
+    {
+        if (keys.IsEmpty || _rootHash == ValueKeccak.EmptyTreeHash)
+        {
+            return;
+        }
+
+        SparseTrieUpdate[] updates = ArrayPool<SparseTrieUpdate>.Shared.Rent(keys.Length);
+        try
+        {
+            for (int i = 0; i < keys.Length; i++)
+            {
+                updates[i] = new SparseTrieUpdate(keys[i], value: null);
+            }
+
+            Span<SparseTrieUpdate> sorted = updates.AsSpan(0, keys.Length);
+            sorted.Sort(default(UpdateKeyComparer));
+
+            int uniqueCount = 1;
+            for (int i = 1; i < sorted.Length; i++)
+            {
+                if (sorted[i].Key != sorted[uniqueCount - 1].Key)
+                {
+                    sorted[uniqueCount++] = sorted[i];
+                }
+            }
+
+            Reveal(sorted[..uniqueCount]);
+        }
+        finally
+        {
+            ArrayPool<SparseTrieUpdate>.Shared.Return(updates);
+        }
+    }
+
+    /// <summary>Reveals one committed path without allocating a batch buffer.</summary>
+    public void Prefetch(in ValueHash256 key)
+    {
+        if (_rootHash == ValueKeccak.EmptyTreeHash)
+        {
+            return;
+        }
+
+        SparseTrieUpdate update = new(key, value: null);
+        Reveal(System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref update, 1));
+    }
+
+    /// <summary>
     /// Re-encodes and hashes every dirty path post-order, staging persistable nodes, and returns
     /// the root hash. Idempotent until the next <see cref="Apply"/>.
     /// </summary>
@@ -2359,22 +2415,7 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
             int handle = AllocEncodingBytes(totalLength, concurrent);
             WriteNodeRlp(ref node, _arena.Bytes(handle, totalLength), contentLength, childRefLengths);
             ClearStagedRecord(ref node, concurrent);
-
-            // A leaf's previous owned RLP region dies here; a value still aliasing it is moved
-            // out first. Branch/extension regions may still back negative child entries, so
-            // they die with the node instead.
-            if (node.Kind == SparseNodeKind.Leaf && (node.Flags & SparseNodeFlags.OwnedRlp) != 0)
-            {
-                if ((node.Flags & SparseNodeFlags.OwnedValue) == 0)
-                {
-                    int movedValue = AllocEncodingBytes(node.ValueLength, concurrent);
-                    _arena.Bytes(node.ValueOffset, node.ValueLength).CopyTo(_arena.Bytes(movedValue, node.ValueLength));
-                    node.ValueOffset = movedValue;
-                    node.Flags |= SparseNodeFlags.OwnedValue;
-                }
-
-                ReleaseEncodingBytes(node.RlpLength, concurrent);
-            }
+            RetireCurrentRlp(ref node, concurrent);
 
             node.RlpOffset = handle;
             node.RlpLength = (ushort)totalLength;
@@ -2392,7 +2433,73 @@ internal sealed class SparseTrie(ISparseTrieNodeSource source, ValueHash256 anch
         // byte-identical node is an idempotent no-op, and detecting the restore would require
         // retaining every node's original hash.
         StageNode(ref node, path, rlp, concurrent);
+        RetireCurrentRlp(ref node, concurrent);
         node.Flags = (node.Flags | SparseNodeFlags.Unpublished) & ~(SparseNodeFlags.Dirty | SparseNodeFlags.Inline);
+    }
+
+    private void RetireCurrentRlp(ref SparseNode node, bool concurrent)
+    {
+        if ((node.Flags & SparseNodeFlags.OwnedRlp) == 0)
+        {
+            return;
+        }
+
+        if (node.Kind == SparseNodeKind.Leaf && (node.Flags & SparseNodeFlags.OwnedValue) == 0)
+        {
+            int movedValue = AllocEncodingBytes(node.ValueLength, concurrent);
+            _arena.Bytes(node.ValueOffset, node.ValueLength).CopyTo(_arena.Bytes(movedValue, node.ValueLength));
+            node.ValueOffset = movedValue;
+            node.Flags |= SparseNodeFlags.OwnedValue;
+        }
+
+        if (CurrentRlpBacksUnrevealedChildren(ref node))
+        {
+            Debug.Assert(node.ChildRefBackingRlpLength == 0);
+            node.ChildRefBackingRlpLength = node.RlpLength;
+        }
+        else
+        {
+            ReleaseEncodingBytes(node.RlpLength, concurrent);
+        }
+
+        node.RlpOffset = -1;
+        node.RlpLength = 0;
+        node.Flags &= ~SparseNodeFlags.OwnedRlp;
+    }
+
+    private bool CurrentRlpBacksUnrevealedChildren(ref SparseNode node)
+    {
+        int start = node.RlpOffset;
+        int end = start + node.RlpLength;
+
+        if (node.Kind == SparseNodeKind.Extension)
+        {
+            return EntryPointsIntoCurrentRlp(node.ChildSlice, start, end);
+        }
+
+        if (node.Kind == SparseNodeKind.Branch)
+        {
+            foreach (int entry in _arena.ChildSlice(node.ChildSlice, node.ChildCount))
+            {
+                if (EntryPointsIntoCurrentRlp(entry, start, end))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool EntryPointsIntoCurrentRlp(int entry, int start, int end)
+    {
+        if (entry >= 0)
+        {
+            return false;
+        }
+
+        int offset = ~entry;
+        return offset >= start && offset < end;
     }
 
     private int AllocEncodingBytes(int length, bool concurrent)

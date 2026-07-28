@@ -39,7 +39,7 @@ internal enum SparseNodeFlags : byte
     /// <summary>The value bytes were allocated for this node (not aliasing its original RLP), so they die with it.</summary>
     OwnedValue = 16,
 
-    /// <summary>The RLP region was allocated for this node (revealed copy or inline re-encode), not aliased from a parent.</summary>
+    /// <summary>The current <see cref="SparseNode.RlpOffset"/> region is owned by this node.</summary>
     OwnedRlp = 32,
 }
 
@@ -82,6 +82,9 @@ internal struct SparseNode
     public int StagedRecord;
 
     public ushort RlpLength;
+
+    /// <summary>Length of an older owned RLP still backing absolute unrevealed-child offsets.</summary>
+    public ushort ChildRefBackingRlpLength;
 
     /// <summary>Branch only: bit per nibble with a non-empty child.</summary>
     public ushort OccupiedMask;
@@ -246,6 +249,8 @@ internal sealed class SparseTrieArena : IDisposable
         {
             _deadBytes += node.RlpLength;
         }
+
+        _deadBytes += node.ChildRefBackingRlpLength;
 
         if ((node.Flags & SparseNodeFlags.OwnedValue) != 0)
         {

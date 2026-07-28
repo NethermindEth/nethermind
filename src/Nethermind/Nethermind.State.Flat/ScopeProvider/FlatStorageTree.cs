@@ -20,7 +20,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
     private readonly StorageTree _tree;
-    private readonly StorageTree _warmupStorageTree;
     private readonly Address _address;
     private readonly IFlatDbConfig _config;
     private readonly ITrieWarmer _trieCacheWarmer;
@@ -58,17 +57,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
-
         _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
         {
             RootHash = storageRoot
         };
-
-        // Set the rootref manually. Cut the call to find nodes by about 1/4th.
-        _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
-        _warmupStorageTree.SetRootHash(storageRoot, false);
-        _warmupStorageTree.RootRef = _tree.RootRef;
 
         _sparseRoot = storageRoot;
         _config = config;
@@ -113,9 +105,13 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
             // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
-            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId)
-                || _trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId))
-                _scope.IncrementOutstandingWarmups();
+            int sequenceId = _scope.HintSequenceId;
+            _scope.IncrementOutstandingWarmups();
+            if (!_trieCacheWarmer.PushSlotJob(this, index, sequenceId)
+                && !_trieCacheWarmer.PushSlotJobMpmc(this, index, sequenceId))
+            {
+                _scope.DecrementOutstandingWarmups();
+            }
         }
     }
 
@@ -136,12 +132,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             try
             {
-                // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
-                // this is just to warm up the nodes.
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
-
-                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                _scope.SparseSession.PrefetchStorage(_addressHash.ValueHash256, _sparseRoot.ValueHash256, in key);
                 return true;
             }
             finally

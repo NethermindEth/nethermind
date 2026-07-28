@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -123,6 +124,10 @@ public class SparseTrieTests
         Assert.That(sparseRoot, Is.EqualTo(patricia.RootHash.ValueHash256), "root");
         AssertSameNodes(recorder.Committed, DrainStaged(sparse));
     }
+
+    [Test]
+    public void Node_metadata_fits_one_cache_line() =>
+        Assert.That(Unsafe.SizeOf<SparseNode>(), Is.EqualTo(64));
 
     [TestCase("", 256)]
     [TestCase("abc0", 256)]
@@ -478,6 +483,40 @@ public class SparseTrieTests
     }
 
     [Test]
+    public void Prefetch_reveals_paths_without_dirtying_the_root()
+    {
+        (NodeStorage storage, Hash256 parentRoot) = BuildPatricia(
+        [
+            (K("1a"), V(1, 20)),
+            (K("2b"), V(2, 20)),
+        ]);
+        NodeStorageSource source = new(storage);
+        using SparseTrie sparse = new(source, parentRoot.ValueHash256);
+
+        sparse.Prefetch([K("1a"), K("2b"), K("1a")]);
+        int prefetchedNodes = source.ResolvedNodes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sparse.IsDirty, Is.False);
+            Assert.That(sparse.RootHash, Is.EqualTo(parentRoot.ValueHash256));
+        }
+
+        PatriciaTree expected = new(new RawScopedTrieStore(storage), parentRoot, true, NullLogManager.Instance);
+        expected.Set(K("1a").Bytes, V(9, 20));
+        expected.UpdateRootHash();
+
+        sparse.Apply([new SparseTrieUpdate(K("1a"), V(9, 20))]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prefetchedNodes, Is.GreaterThan(0));
+            Assert.That(source.ResolvedNodes, Is.EqualTo(prefetchedNodes), "apply reuses the prefetched path");
+            Assert.That(sparse.CalculateRoot(), Is.EqualTo(expected.RootHash.ValueHash256));
+        }
+    }
+
+    [Test]
     public void Delete_with_unrevealed_sibling_defers_and_resolves()
     {
         // Two leaves under one branch: deleting one forces the collapse to reveal the other.
@@ -728,6 +767,33 @@ public class SparseTrieTests
         // moved value; a wrong copy would produce a wrong root here.
         sparse.Apply([new SparseTrieUpdate(key3, null)]);
         Assert.That(sparse.CalculateRoot(), Is.EqualTo(parentRoot.ValueHash256), "restored root after collapse re-encodes the moved value");
+    }
+
+    [Test]
+    public void Reencoding_inline_branch_releases_previous_owned_rlp()
+    {
+        string stem = new('d', 63);
+        ValueHash256 key0 = new(stem + "0");
+        ValueHash256 key1 = new(stem + "1");
+        (NodeStorage storage, Hash256 parentRoot) = BuildPatricia([(key0, V(1, 1)), (key1, V(2, 1))]);
+        using SparseTrie sparse = new(new NodeStorageSource(storage), parentRoot.ValueHash256);
+
+        sparse.Apply([new SparseTrieUpdate(key0, V(3, 1))]);
+        sparse.CalculateRoot();
+
+        sparse.Apply([new SparseTrieUpdate(key0, V(4, 1))]);
+        long deadBefore = sparse.DeadBytes;
+        ValueHash256 root = sparse.CalculateRoot();
+
+        PatriciaTree patricia = new(new RawScopedTrieStore(storage), parentRoot, true, NullLogManager.Instance);
+        patricia.Set(key0.Bytes, V(4, 1));
+        patricia.UpdateRootHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(patricia.RootHash.ValueHash256));
+            Assert.That(sparse.DeadBytes - deadBefore, Is.EqualTo(25), "3-byte leaf plus 22-byte branch");
+        }
     }
 
     [Test]

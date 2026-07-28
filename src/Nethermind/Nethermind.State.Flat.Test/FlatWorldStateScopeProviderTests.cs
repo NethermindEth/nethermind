@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -1384,23 +1385,55 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public async Task Dispose_GivesUpWaiting_ReaderOutlivesInFlightWarmup()
+    public async Task StartWriteBatch_WaitsForWarmupPublishedBeforePushReturns()
     {
         BlockingPersistenceReader reader = new();
-        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+        using CallbackBeforeReturnTrieWarmer warmer = new(reader);
         FlatDbConfig config = new();
-        ResourcePool resourcePool = new(config);
-        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        await using TrieWarmer warmer = new(LimboLogs.Instance, config);
+        FlatWorldStateScope scope = CreateScope(reader, warmer, config);
 
-        FlatWorldStateScope scope = new(
-            new StateId(0, TestItem.KeccakA),
-            bundle,
-            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
-            Substitute.For<IFlatCommitTarget>(),
-            config,
-            warmer,
-            LimboLogs.Instance);
+        Task hintTask = Task.Run(() => scope.HintGet(TestItem.AddressA, null));
+        Assert.That(
+            warmer.CallbackStartedBeforePushReturned.Wait(TimeSpan.FromSeconds(30)),
+            Is.True,
+            "Warmup callback should enter persistence before PushAddressJob returns");
+
+        Task<IWorldStateScopeProvider.IWorldStateWriteBatch> batchTask =
+            Task.Run(() => scope.StartWriteBatch(0));
+        IWorldStateScopeProvider.IWorldStateWriteBatch? batch = null;
+
+        try
+        {
+            Assert.ThrowsAsync<TimeoutException>(async () =>
+                await batchTask.WaitAsync(TimeSpan.FromMilliseconds(250)));
+
+            warmer.AllowPushReturn.Set();
+            await hintTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.ThrowsAsync<TimeoutException>(async () =>
+                await batchTask.WaitAsync(TimeSpan.FromMilliseconds(250)));
+        }
+        finally
+        {
+            warmer.AllowPushReturn.Set();
+            reader.ResumeReads.Set();
+            await hintTask.WaitAsync(TimeSpan.FromSeconds(10));
+            await warmer.CallbackTask.WaitAsync(TimeSpan.FromSeconds(10));
+            batch = await batchTask.WaitAsync(TimeSpan.FromSeconds(10));
+            batch.Dispose();
+            scope.Dispose();
+        }
+
+        Assert.That(warmer.CallbackException, Is.TypeOf<MissingTrieNodeException>());
+    }
+
+    [Test]
+    public async Task Dispose_WaitsForSparseWarmupBeforeDisposingReader()
+    {
+        BlockingPersistenceReader reader = new();
+        FlatDbConfig config = new();
+        await using TrieWarmer warmer = new(LimboLogs.Instance, config);
+        FlatWorldStateScope scope = CreateScope(reader, warmer, config);
 
         // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
         // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
@@ -1408,14 +1441,95 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
 
         Task disposeTask = Task.Run(() => scope.Dispose());
-        await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
-
-        Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
-        Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+        Assert.ThrowsAsync<TimeoutException>(async () =>
+            await disposeTask.WaitAsync(TimeSpan.FromMilliseconds(250)));
 
         reader.ResumeReads.Set();
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.That(() => reader.IsDisposed, Is.True.After(5000, 50), "Reader should be disposed once the warmup job completes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
+            Assert.That(reader.IsDisposed, Is.True, "Reader should be disposed after the warmup job completes");
+        }
+    }
+
+    private static FlatWorldStateScope CreateScope(
+        BlockingPersistenceReader reader,
+        ITrieWarmer warmer,
+        FlatDbConfig config)
+    {
+        ReadOnlySnapshotBundle readOnlyBundle = new(
+            new SnapshotPooledList(0),
+            reader,
+            recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty());
+        ResourcePool resourcePool = new(config);
+        SnapshotBundle bundle = new(
+            readOnlyBundle,
+            Substitute.For<ITrieNodeCache>(),
+            resourcePool,
+            ResourcePool.Usage.MainBlockProcessing);
+
+        return new FlatWorldStateScope(
+            new StateId(0, TestItem.KeccakA),
+            bundle,
+            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
+            Substitute.For<IFlatCommitTarget>(),
+            config,
+            warmer,
+            LimboLogs.Instance);
+    }
+
+    [Test]
+    public void WarmupPopulatesSparseArenasDirectly()
+    {
+        InlineTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        CommitOneAccountWithStorage(scope, TestItem.AddressA);
+        Assert.That(scope.SparseSession.RetainedTrieCount, Is.Zero);
+
+        Assert.That(scope.Get(TestItem.AddressA), Is.Not.Null);
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+        storageTree.HintSet((UInt256)1, [1]);
+
+        Assert.That(scope.SparseSession.RetainedTrieCount, Is.EqualTo(2));
+
+        scope.Commit(2);
+
+        Assert.That(scope.SparseSession.RetainedTrieCount, Is.Zero);
+    }
+
+    [Test]
+    public void BalWarmupBatchesDirectlyIntoSparseArenas()
+    {
+        RecordingTrieWarmer warmer = new(acceptSlotJob: false, acceptMpmcSlotJob: false);
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        CommitOneAccountWithStorage(scope, TestItem.AddressA);
+        int addressJobsBefore = warmer.AddressJobPushes;
+        int slotJobsBefore = warmer.SlotJobPushes;
+        int mpmcSlotJobsBefore = warmer.MpmcSlotJobPushes;
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithStorageChanges(1, new StorageChange(0, 2))
+                    .TestObject)
+            .TestObject;
+
+        scope.HintBal(bal).GetAwaiter().GetResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.SparseSession.RetainedTrieCount, Is.EqualTo(2));
+            Assert.That(warmer.AddressJobPushes, Is.EqualTo(addressJobsBefore));
+            Assert.That(warmer.SlotJobPushes, Is.EqualTo(slotJobsBefore));
+            Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(mpmcSlotJobsBefore));
+        }
     }
 
     [TestCase(true, false, TestName = "StorageHintSet_SlotRingAccepts_DoesNotFallBack")]
@@ -1449,6 +1563,7 @@ public class FlatWorldStateScopeProviderTests
 
     private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
     {
+        public int AddressJobPushes { get; private set; }
         public int SlotJobPushes { get; private set; }
         public int MpmcSlotJobPushes { get; private set; }
 
@@ -1464,11 +1579,85 @@ public class FlatWorldStateScopeProviderTests
             return acceptMpmcSlotJob;
         }
 
-        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            AddressJobPushes++;
+            return false;
+        }
 
         public void OnEnterScope() { }
 
         public void OnExitScope() { }
+    }
+
+    private sealed class InlineTrieWarmer : ITrieWarmer
+    {
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            storageTree.WarmUpStorageTrie(index, sequenceId);
+            return true;
+        }
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            scope.WarmUpStateTrie(path!, sequenceId);
+            return true;
+        }
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+    }
+
+    private sealed class CallbackBeforeReturnTrieWarmer(BlockingPersistenceReader reader) : ITrieWarmer, IDisposable
+    {
+        public ManualResetEventSlim CallbackStartedBeforePushReturned { get; } = new(false);
+        public ManualResetEventSlim AllowPushReturn { get; } = new(false);
+        public Task CallbackTask { get; private set; } = Task.CompletedTask;
+        public Exception? CallbackException { get; private set; }
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            CallbackTask = Task.Run(() =>
+            {
+                try
+                {
+                    scope.WarmUpStateTrie(path!, sequenceId);
+                }
+                catch (TrieException ex)
+                {
+                    CallbackException = ex;
+                }
+            });
+            if (!reader.ReadEntered.Wait(TimeSpan.FromSeconds(30)))
+            {
+                throw new TimeoutException("Warmup callback did not enter persistence");
+            }
+
+            CallbackStartedBeforePushReturned.Set();
+            if (!AllowPushReturn.Wait(TimeSpan.FromSeconds(30)))
+            {
+                throw new TimeoutException("PushAddressJob was not allowed to return");
+            }
+
+            return true;
+        }
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+
+        public void Dispose()
+        {
+            CallbackStartedBeforePushReturned.Dispose();
+            AllowPushReturn.Dispose();
+        }
     }
 
     private sealed class BlockingPersistenceReader : IPersistence.IPersistenceReader

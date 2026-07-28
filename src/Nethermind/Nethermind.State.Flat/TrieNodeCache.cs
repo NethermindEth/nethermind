@@ -314,25 +314,5 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
             _shards[shard][idx] = (hashCode, node);
         }
-
-        public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode trieNode)
-        {
-            (int shard, int hashCode) = GetShardAndHashCode(address, path);
-            int idx = hashCode & _mask;
-
-            ref (int hashCode, TrieNode? node) entry = ref _shards[shard][idx];
-            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
-            if (maybeNode is not null)
-            {
-                if (maybeNode.Keccak == trieNode.Keccak) return maybeNode;
-            }
-            else
-            {
-                _count++; // Track count
-            }
-
-            entry = (hashCode, trieNode);
-            return trieNode;
-        }
     }
 }

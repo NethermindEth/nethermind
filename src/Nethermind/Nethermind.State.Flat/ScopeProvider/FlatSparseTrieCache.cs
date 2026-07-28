@@ -16,11 +16,11 @@ namespace Nethermind.State.Flat.ScopeProvider;
 internal sealed class RetainedGeneration(
     ValueHash256 stateRoot,
     SparseTrie stateTrie,
-    Dictionary<Hash256AsKey, SparseTrie> storageTries) : IDisposable
+    Dictionary<ValueHash256, SparseTrie> storageTries) : IDisposable
 {
     public ValueHash256 StateRoot { get; } = stateRoot;
     public SparseTrie StateTrie { get; } = stateTrie;
-    public Dictionary<Hash256AsKey, SparseTrie> StorageTries { get; } = storageTries;
+    public Dictionary<ValueHash256, SparseTrie> StorageTries { get; } = storageTries;
 
     /// <summary>Total pool-rented arena bytes across the state trie and every storage trie.</summary>
     public long RentedBytes
@@ -28,7 +28,7 @@ internal sealed class RetainedGeneration(
         get
         {
             long total = StateTrie.RentedBytes;
-            foreach (KeyValuePair<Hash256AsKey, SparseTrie> kv in StorageTries)
+            foreach (KeyValuePair<ValueHash256, SparseTrie> kv in StorageTries)
             {
                 total += kv.Value.RentedBytes;
             }
@@ -43,7 +43,7 @@ internal sealed class RetainedGeneration(
         get
         {
             long total = StateTrie.DeadBytes;
-            foreach (KeyValuePair<Hash256AsKey, SparseTrie> kv in StorageTries)
+            foreach (KeyValuePair<ValueHash256, SparseTrie> kv in StorageTries)
             {
                 total += kv.Value.DeadBytes;
             }
@@ -55,7 +55,7 @@ internal sealed class RetainedGeneration(
     public void Dispose()
     {
         StateTrie.Dispose();
-        foreach (KeyValuePair<Hash256AsKey, SparseTrie> kv in StorageTries)
+        foreach (KeyValuePair<ValueHash256, SparseTrie> kv in StorageTries)
         {
             kv.Value.Dispose();
         }
