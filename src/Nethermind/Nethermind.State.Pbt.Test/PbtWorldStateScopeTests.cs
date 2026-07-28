@@ -4,11 +4,13 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
 
@@ -174,6 +176,90 @@ public class PbtWorldStateScopeTests
         Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(slot), Is.EqualTo((byte[])[0xAB]), "and left its storage standing");
     }
 
+    [Test]
+    public async Task Hints_PromoteLatestValues_AndQueueTriePrewarms()
+    {
+        RecordingTrieWarmer warmer = new();
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+
+        Account hinted = Build.An.Account.WithBalance(1).TestObject;
+        Account actual = Build.An.Account.WithBalance(2).TestObject;
+        scope.HintGet(TestItem.AddressA, hinted);
+        Assert.That(scope.Get(TestItem.AddressA), Is.SameAs(hinted), "the promoted account is immediately readable");
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(TestItem.AddressA, actual);
+        }
+
+        scope.HintGet(TestItem.AddressA, hinted);
+        Assert.That(scope.Get(TestItem.AddressA), Is.SameAs(actual), "a stale hint cannot replace an authoritative account write");
+
+        IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressB);
+        UInt256 slot = 1000;
+        storage.HintSet(slot, [0xAB]);
+        storage.HintSet(slot, [0xCD]);
+        Assert.That(storage.Get(slot), Is.EqualTo((byte[])[0xCD]), "the latest storage hint wins");
+
+        storage.HintSet(slot, null);
+        Assert.That(storage.Get(slot), Is.EqualTo(StorageTree.ZeroBytes), "null promotes the canonical zero value");
+
+        storage.HintSet(slot, [0xCD]);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(TestItem.AddressB, 1))
+        {
+            storageBatch.Set(slot, [0xEF]);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Get(slot), Is.EqualTo((byte[])[0xEF]), "an authoritative slot write replaces the hint");
+            Assert.That(warmer.AddressJobs, Is.EqualTo(1), "one account stem is queued once per block");
+            Assert.That(warmer.SlotJobs, Is.EqualTo(1), "repeated writes to one storage stem are deduplicated");
+            Assert.That(warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence), Is.True);
+            Assert.That(warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence), Is.True);
+        }
+
+        scope.Commit(0);
+
+        ValueAddress addressA = new(TestItem.AddressA.Bytes);
+        ValueAddress addressB = new(TestItem.AddressB.Bytes);
+        scope.HintWarmAccount(in addressA);
+        scope.HintWarmSlot(in addressB, in slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.AddressJobs, Is.EqualTo(2), "the account stem may be queued for the next block");
+            Assert.That(warmer.MpmcSlotJobs, Is.EqualTo(1), "speculative slot warmups use the multi-producer queue");
+            Assert.That(warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence), Is.True);
+            Assert.That(warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence), Is.True);
+        }
+    }
+
+    [TestCase(true, 1)]
+    [TestCase(false, 2)]
+    public async Task HintSet_FallsBackToMpmc_AndRejectedJobsCanRetry(bool acceptMpmc, int expectedAttempts)
+    {
+        RecordingTrieWarmer warmer = new(acceptSlot: false, acceptMpmc: acceptMpmc);
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+        UInt256 slot = 1000;
+
+        storage.HintSet(slot, [0x01]);
+        storage.HintSet(slot, [0x02]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.SlotJobs, Is.EqualTo(expectedAttempts));
+            Assert.That(warmer.MpmcSlotJobs, Is.EqualTo(expectedAttempts));
+        }
+
+        if (acceptMpmc)
+            Assert.That(warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence), Is.True);
+    }
+
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)
     {
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
@@ -188,6 +274,49 @@ public class PbtWorldStateScopeTests
     /// returned sentinel: renting until the sentinel reappears drains exactly the backlog, whatever
     /// its size, without depending on the pool's cap.
     /// </remarks>
+    private sealed class RecordingTrieWarmer(bool acceptSlot = true, bool acceptMpmc = true) : ITrieWarmer
+    {
+        public int AddressJobs { get; private set; }
+        public int SlotJobs { get; private set; }
+        public int MpmcSlotJobs { get; private set; }
+        public int AddressSequence { get; private set; }
+        public int SlotSequence { get; private set; }
+        public ITrieWarmer.IAddressWarmer? AddressWarmer { get; private set; }
+        public ITrieWarmer.IStorageWarmer? StorageWarmer { get; private set; }
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            SlotJobs++;
+            StorageWarmer = storageTree;
+            SlotSequence = sequenceId;
+            return acceptSlot;
+        }
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            MpmcSlotJobs++;
+            StorageWarmer = storageTree;
+            SlotSequence = sequenceId;
+            return acceptMpmc;
+        }
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            AddressJobs++;
+            AddressWarmer = scope;
+            AddressSequence = sequenceId;
+            return true;
+        }
+
+        public void OnEnterScope()
+        {
+        }
+
+        public void OnExitScope()
+        {
+        }
+    }
+
     private static void DrainStemChangesPool()
     {
         SingleStemChanges sentinel = new();

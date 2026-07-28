@@ -225,6 +225,24 @@ public class PbtSnapshotBundle(
 
     public void SetAccount(Address address, Account? account) => PendingFlatWrites.Accounts[address] = account;
 
+    internal void PromoteAccount(Address address, Account? account) => PendingFlatWrites.Accounts.TryAdd(address, account);
+
+    /// <summary>Loads the hash-qualified trie groups and prior leaf needed to fold <paramref name="stem"/>.</summary>
+    internal bool WarmStemPath(PbtTrieLayout layout, PbtPartitionRoots roots, in Stem stem)
+    {
+        if (!TryBeginOwnershipTransfer()) return false;
+
+        try
+        {
+            PbtStemPathWarmer.Warm(this, layout, roots, stem);
+            return true;
+        }
+        finally
+        {
+            EndOwnershipTransfer();
+        }
+    }
+
     // A present zero is a write, not an absent entry.
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value) =>
         PendingFlatWrites.Slots[(address, slot)] = value;
@@ -313,7 +331,7 @@ public class PbtSnapshotBundle(
         ObjectDisposedException.ThrowIf(true, this);
     }
 
-    /// <summary>Holds off disposal for the duration of a write, unless the bundle is already disposed.</summary>
+    /// <summary>Holds off disposal while an operation accesses bundle-owned state, unless the bundle is already disposed.</summary>
     /// <remarks>
     /// The count is taken under the lock, and <see cref="Dispose"/> waits for it to drain before it clears
     /// the fields — so a caller that got past this may read them without the lock.

@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
@@ -20,7 +21,7 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// The scope retains the folded tree root and the header root separately. The latter is reported and
 /// used to key states so Patricia-rooted blocks validate against the root their header claims.
 /// </remarks>
-public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore
+public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore, ITrieWarmer.IAddressWarmer
 {
     private static readonly byte[] _clearedAccountHeader = new byte[2 * ValueHash256.MemorySize];
 
@@ -29,6 +30,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly bool _isReadOnly;
     private readonly PbtTrieLayout _writeLayout;
     private readonly int _rootFoldConcurrency;
+    private readonly ITrieWarmer _trieWarmer;
 
     // Storage and account writes use disjoint sub-index bands, allowing their batches to share this builder.
     private readonly PbtWriteBatchBuilder _writeBatchBuilder;
@@ -36,6 +38,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     // Not pooled: an unjoined code writer after a failed block could otherwise write into a later scope.
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
+    private readonly HashSet<Stem> _queuedPrewarms = [];
+    private readonly object _warmupLock = new();
 
     private StateId _currentStateId;
     private PbtPartitionRoots _partitionRoots;
@@ -47,6 +51,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     private bool _rootDirty;
     private bool _isDisposed;
+    private bool _pausePrewarmer;
+    private int _hintSequenceId;
+    private int _outstandingWarmups;
 
     public PbtWorldStateScope(
         in StateId currentStateId,
@@ -59,7 +66,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         PbtResourcePool.Usage usage,
         bool isReadOnly,
         PbtTrieLayout writeLayout,
-        int rootFoldConcurrency)
+        int rootFoldConcurrency,
+        ITrieWarmer trieWarmer)
     {
         _currentStateId = currentStateId;
         _currentHeader = currentHeader;
@@ -70,9 +78,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _isReadOnly = isReadOnly;
         _writeLayout = writeLayout;
         _rootFoldConcurrency = rootFoldConcurrency;
+        _trieWarmer = trieWarmer;
         _partitionRoots = bundle.PartitionRoots;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, _pendingCode);
+        _trieWarmer.OnEnterScope();
     }
 
     internal PbtSnapshotBundle Bundle { get; }
@@ -92,19 +102,88 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
-    public Account? Get(Address address) => Bundle.GetAccount(address);
+    public Account? Get(Address address)
+    {
+        Account? account = Bundle.GetAccount(address);
+        HintGet(address, account);
+        return account;
+    }
 
     public void HintGet(Address address, Account? account)
     {
+        Bundle.PromoteAccount(address, account);
+        QueueAccountPrewarm(address);
     }
+
+    public void HintWarmAccount(in ValueAddress address) => QueueAccountPrewarm(address.ToAddress());
+
+    public void HintWarmSlot(in ValueAddress address, in UInt256 index) =>
+        GetOrCreateStorageTree(address.ToAddress()).QueuePrewarm(index, multiProducer: true);
 
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
 
-    public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
+    public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => GetOrCreateStorageTree(address);
+
+    private PbtStorageTree GetOrCreateStorageTree(Address address)
     {
-        ref PbtStorageTree? tree = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-        if (!exists) tree = new PbtStorageTree(this, address);
-        return tree!;
+        lock (_storages)
+        {
+            ref PbtStorageTree? tree = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+            if (!exists) tree = new PbtStorageTree(this, address, _trieWarmer);
+            return tree!;
+        }
+    }
+
+    private void QueueAccountPrewarm(Address address)
+    {
+        Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
+        if (!TryReservePrewarm(stem, out int sequenceId)) return;
+
+        if (!_trieWarmer.PushAddressJob(this, address, sequenceId))
+            CancelPrewarm(stem);
+    }
+
+    internal bool TryReservePrewarm(in Stem stem, out int sequenceId)
+    {
+        lock (_warmupLock)
+        {
+            sequenceId = _hintSequenceId;
+            if (_isDisposed || _pausePrewarmer || !_queuedPrewarms.Add(stem)) return false;
+
+            _outstandingWarmups++;
+            return true;
+        }
+    }
+
+    internal void CancelPrewarm(in Stem stem)
+    {
+        lock (_warmupLock)
+        {
+            _queuedPrewarms.Remove(stem);
+            CompletePrewarmUnderLock();
+        }
+    }
+
+    internal int HintSequenceId => Volatile.Read(ref _hintSequenceId);
+
+    internal PbtTrieLayout WriteLayout => _writeLayout;
+
+    internal PbtPartitionRoots PartitionRoots => _partitionRoots;
+
+    internal bool IsDisposed => Volatile.Read(ref _isDisposed);
+
+    public bool WarmUpStateTrie(Address address, int sequenceId)
+    {
+        try
+        {
+            if (IsDisposed || HintSequenceId != sequenceId) return false;
+            Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
+            return Bundle.WarmStemPath(_writeLayout, _partitionRoots, stem);
+        }
+        finally
+        {
+            CompletePrewarm();
+        }
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch(this);
@@ -115,6 +194,21 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     /// no child header, so they use the folded root they carry when later processed.
     /// </remarks>
     public void UpdateRootHash()
+    {
+        if (!_rootDirty) return;
+
+        PauseAndDrainPrewarmer();
+        try
+        {
+            UpdateRootHashCore();
+        }
+        finally
+        {
+            ResumePrewarmer();
+        }
+    }
+
+    private void UpdateRootHashCore()
     {
         if (!_rootDirty) return;
 
@@ -163,37 +257,79 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     public void Commit(ulong blockNumber)
     {
-        UpdateRootHash();
-
-        StateId newStateId = new(blockNumber, _rootHash);
-        if (newStateId != _currentStateId)
+        PauseAndDrainPrewarmer();
+        try
         {
-            PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _partitionRoots);
-            if (_isReadOnly)
+            UpdateRootHashCore();
+
+            StateId newStateId = new(blockNumber, _rootHash);
+            if (newStateId != _currentStateId)
             {
-                snapshot.Dispose();
-            }
-            else
-            {
-                _commitTarget.AddSnapshot(snapshot);
+                PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _partitionRoots);
+                if (_isReadOnly)
+                {
+                    snapshot.Dispose();
+                }
+                else
+                {
+                    _commitTarget.AddSnapshot(snapshot);
+                }
+
+                _currentStateId = newStateId;
             }
 
-            _currentStateId = newStateId;
+            // Clear the header when no child was found so the next block does not resolve itself as its child.
+            _currentHeader = _childHeader;
+            _childHeader = null;
+
+            _pendingCode.Clear();
+            lock (_storages) _storages.Clear();
+            _rootDirty = false;
         }
+        finally
+        {
+            ResumePrewarmer();
+        }
+    }
 
-        // Clear the header when no child was found so the next block does not resolve itself as its child.
-        _currentHeader = _childHeader;
-        _childHeader = null;
+    /// <summary>Stops and joins warmers before the fold mutates or snapshot collection resets the mutable bundle.</summary>
+    private void PauseAndDrainPrewarmer()
+    {
+        lock (_warmupLock)
+        {
+            _pausePrewarmer = true;
+            _hintSequenceId++;
+            while (_outstandingWarmups != 0) Monitor.Wait(_warmupLock);
+            _queuedPrewarms.Clear();
+        }
+    }
 
-        _pendingCode.Clear();
-        _storages.Clear();
-        _rootDirty = false;
+    private void ResumePrewarmer()
+    {
+        lock (_warmupLock) _pausePrewarmer = false;
+    }
+
+    internal void CompletePrewarm()
+    {
+        lock (_warmupLock) CompletePrewarmUnderLock();
+    }
+
+    private void CompletePrewarmUnderLock()
+    {
+        if (--_outstandingWarmups == 0) Monitor.PulseAll(_warmupLock);
     }
 
     /// <remarks>Disposing returns pending stem-change maps to the pool when a scope is abandoned before its final fold.</remarks>
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        lock (_warmupLock)
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+            _pausePrewarmer = true;
+            _hintSequenceId++;
+            while (_outstandingWarmups != 0) Monitor.Wait(_warmupLock);
+        }
 
         try
         {
@@ -201,7 +337,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
         finally
         {
-            Bundle.Dispose();
+            try
+            {
+                Bundle.Dispose();
+            }
+            finally
+            {
+                _trieWarmer.OnExitScope();
+            }
         }
     }
 

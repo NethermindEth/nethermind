@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -139,7 +140,7 @@ public class PbtScopeProviderBenchmark
             repository, coordinator, persistence, resourcePool, _pbtStoreCache, compactor, new BenchProcessExitSource(_cts), new MetricsConfig(), LimboLogs.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            config.TrieNodeLayout, RootFoldConcurrency);
+            config.TrieNodeLayout, RootFoldConcurrency, new NoopTrieWarmer());
     }
 
     [Benchmark]
