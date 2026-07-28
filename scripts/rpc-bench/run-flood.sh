@@ -2,13 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Run the `flood` load-testing tool (kamilchodola fork, Vegeta backend) against
-# an already-running JSON-RPC node and collect per-test reports. When
-# REFERENCE_RPC_URL is set, runs flood's EQUALITY (differential) mode instead:
-# the same requests go to both nodes and their responses are compared.
-#
-# Tool-specific knobs are read from env (the workflow fills them from the
-# `tool_config` JSON): RATES, DURATION, DEEP_CHECK, TESTS, LABEL, EXTRA_ARGS.
+# Run the `flood` load-testing tool (kamilchodola fork, Vegeta backend) against a
+# running JSON-RPC node. REFERENCE_RPC_URL set => flood EQUALITY (differential) mode.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,9 +34,7 @@ EXTRA_ARGS="${EXTRA_ARGS:-}"
 mkdir -p "$OUT_DIR"
 export PATH="$HOME/.local/bin:$PATH"
 
-# ---------------------------------------------------------------------------
 # Install Vegeta (HTTP load generator used by flood).
-# ---------------------------------------------------------------------------
 if ! command -v vegeta >/dev/null 2>&1; then
   log "Installing vegeta $VEGETA_VERSION..."
   tmp="$(mktemp -d)"
@@ -59,21 +52,15 @@ if ! command -v vegeta >/dev/null 2>&1; then
 fi
 vegeta --version || true
 
-# ---------------------------------------------------------------------------
-# Install flood (kamilchodola fork). Prefer uv (guaranteed on this runner by
-# the expb workflow); fall back to pip like rpc-comparison.yml.
-# ---------------------------------------------------------------------------
+# Install flood (kamilchodola fork). Prefer uv (guaranteed by the expb workflow);
+# fall back to pip like rpc-comparison.yml.
 # Pin to FLOOD_REF unless the repo spec already carries its own '@<ref>'.
 flood_spec="$FLOOD_REPO"
 [[ -n "$FLOOD_REF" && "$FLOOD_REPO" != *@* ]] && flood_spec="${FLOOD_REPO}@${FLOOD_REF}"
 log "Installing flood from $flood_spec..."
 if command -v uv >/dev/null 2>&1; then
-  # Pin Python 3.10: flood's 2023-era pins (checkthechain -> pyarrow 12.0.1)
-  # only have prebuilt wheels up to cp311; newer interpreters force source
-  # builds that fail. lxml-html-clean restores the lxml.html.clean module that
-  # lxml 5.x split out (flood's results pipeline imports it via unpinned deps).
-  # No explicit package name: uv infers it from the git source and exposes the
-  # `flood` entry point regardless of the dist name.
+  # Pin Python 3.10: flood's 2023-era pins (pyarrow 12.0.1) only ship wheels up to
+  # cp311. lxml-html-clean restores lxml.html.clean that lxml 5.x split out.
   uv tool install --force --python 3.10 --with lxml-html-clean "$flood_spec" \
     || uv tool install --force --python 3.11 --with lxml-html-clean "$flood_spec"
   uv_bin="$(uv tool dir --bin)"
@@ -84,9 +71,7 @@ else
 fi
 command -v flood >/dev/null 2>&1 || die "flood not on PATH after install"
 
-# ---------------------------------------------------------------------------
 # Resolve the list of tests to run.
-# ---------------------------------------------------------------------------
 if [[ -z "$TESTS" ]]; then
   if [[ -n "$REFERENCE_RPC_URL" ]]; then
     # 'all' is flood's built-in run-every-equality-test name.
@@ -109,28 +94,19 @@ log "Will run ${#test_list[@]} flood test(s): ${test_list[*]}"
 deep=""
 [[ "$DEEP_CHECK" == "true" ]] && deep="--deep-check"
 
-# Word-split EXTRA_ARGS into an array so multiple flags still pass through as
-# separate args, but WITHOUT filename globbing — a literal '*'/'?' in a
-# user-supplied flag must not expand against the current directory.
+# Word-split EXTRA_ARGS into an array so flags pass as separate args WITHOUT
+# filename globbing (a literal '*'/'?' must not expand against cwd).
 read -ra extra_args_arr <<< "$EXTRA_ARGS"
 
-# ---------------------------------------------------------------------------
-# Run each test — single-node load test, or two-node equality (differential)
-# test when a reference node is configured. flood rejects --output/--rates/
-# --duration in equality mode (results go to stdout, captured per-test).
-# ---------------------------------------------------------------------------
+# Run each test — single-node load, or two-node equality when a reference is set.
+# flood rejects --output/--rates/--duration in equality mode (results go to stdout).
 if [[ -n "$REFERENCE_RPC_URL" ]]; then
   # Diffing nodes at different heads is meaningless ('latest' diverges).
   assert_same_head "$RPC_URL" "$REFERENCE_RPC_URL"
 fi
 
-# Non-zero invocations are tallied for a warning but do NOT fail the step on
-# their own: the fork's report/print stage is known to crash AFTER results.json
-# is written (toolstr API drift — the reason the summary renders from
-# results.json), so the exit code is not a reliable failure signal. What gates
-# the step is results completeness: every test must produce a parseable
-# results.json. Equality mode likewise gates on captured output, since its exit
-# code may merely signal response differences.
+# Exit code is not a reliable failure signal — the fork's reporter crashes AFTER
+# results.json is written. The step gates on results completeness, not exit code.
 run_failures=0
 for t in "${test_list[@]}"; do
   [[ -z "$t" ]] && continue
@@ -156,12 +132,8 @@ for t in "${test_list[@]}"; do
   fi
 done
 
-# ---------------------------------------------------------------------------
-# Build a markdown summary. Load tests render directly from results.json
-# (robust against the pretty-printer's loosely-pinned dependencies; vegeta
-# latencies are seconds); equality tests only print to stdout, so their
-# captured logs are embedded instead.
-# ---------------------------------------------------------------------------
+# Build a markdown summary. Load tests render from results.json (robust vs the
+# pretty-printer's loose pins; vegeta latencies are seconds); equality embeds logs.
 summary="$OUT_DIR/flood-summary.md"
 
 if [[ -n "$REFERENCE_RPC_URL" ]]; then

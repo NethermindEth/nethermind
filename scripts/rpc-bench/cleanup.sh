@@ -2,12 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Defensive cleanup for the RPC benchmark workflow: removes benchmark containers
-# from ANY run (stale ones included), unmounts everything under the scratch
-# root, and wipes only the scratch subtrees — with the same canonical-path
-# guards as start-node.sh, so a typo'd scratch_root/db_source can never turn
-# this into an rm -rf of the snapshot (or worse). Best-effort: never fails the
-# job, but refuses to delete anything it cannot prove is safe.
+# Defensive cleanup: reap benchmark containers (any run), unmount under scratch, wipe
+# only scratch subtrees — path-guarded (like start-node.sh) so a typo can't rm -rf the snapshot.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

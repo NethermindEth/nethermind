@@ -2,19 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Run the EthCallChaos tool (kamilchodola/EthCallChaos) against an already-running
-# JSON-RPC node. EthCallChaos is an ASP.NET app with no CLI: it is launched inside
-# a .NET SDK container, configured via environment variables, left to hammer the
-# node for a fixed duration, then its HTTP API is scraped for results.
-#
-# A pre-built corpus DB (SQLite) lets it replay representative eth_call workloads
-# instead of evolving from scratch. The corpus DB is COPIED to scratch so the
-# original stays pristine; it is the EthCallChaos tool's own DB, entirely separate
-# from the Nethermind state DB.
-#
-# Tool-specific knobs are read from env (the workflow fills them from the
-# `tool_config` JSON): ECC_REF, ECC_CORPUS_DB, ECC_RATE, ECC_PARALLEL,
-# ECC_DURATION, ECC_API_PORT, ECC_LEADERBOARD_TOP.
+# Run the EthCallChaos tool (kamilchodola/EthCallChaos, an ASP.NET app, no CLI) in a
+# .NET SDK container against a running JSON-RPC node; knobs come from ECC_* env vars.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,12 +14,8 @@ RPC_URL="${RPC_URL:-http://localhost:8545}"
 : "${OUT_DIR:?output directory for EthCallChaos results}"
 : "${SCRATCH_ROOT:?writable scratch root}"
 ECC_REPO="${ECC_REPO:-https://github.com/kamilchodola/EthCallChaos.git}"
-# Pin to a specific commit so a push to the repo's default branch cannot silently
-# change benchmark results (or run unreviewed code on the runner). Override
-# ECC_REF (sha/tag/branch) or ECC_REPO to move it.
-# NB: the repo's DEFAULT branch (main) is a LICENSE-only placeholder — the tool
-# lives on 'master'. This pin is master's HEAD (the configurable-thresholds
-# commit used by the validated 2026-06-10 run).
+# Pin to a commit so a push can't change results or run unreviewed code (override
+# ECC_REF/ECC_REPO). NB: default branch (main) is a LICENSE placeholder; tool is on 'master'.
 ECC_REF="${ECC_REF:-a431c1758ad9763e9aa4eae4dd6de0d8bba60298}"
 ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"          # optional path on the runner to a pristine corpus DB
 # corpus-v2: per-category evolved corpus (seeded from v1, diverse worst-per-shape coverage).
@@ -40,10 +25,8 @@ ECC_PARALLEL="${ECC_PARALLEL:-8}"           # -> Rpc__MaxParallelCalls
 ECC_DURATION="${ECC_DURATION:-300}"         # seconds of load
 ECC_API_PORT="${ECC_API_PORT:-5000}"
 ECC_LEADERBOARD_TOP="${ECC_LEADERBOARD_TOP:-50}"
-# The tool's default 'confirmed slow' gates (mean > 200ms, cv < 0.3) are tuned
-# for hunting pathological cases on remote nodes; against a fast local snapshot
-# node nothing qualifies and the leaderboard stays empty. CI defaults rank the
-# slowest validated cases regardless: mean > 1ms, cv gate effectively off.
+# Default gates (mean>200ms, cv<0.3) target remote nodes; a fast local snapshot
+# qualifies nothing, so CI ranks slowest cases regardless (mean>1ms, cv gate off).
 ECC_MIN_MEAN_MS="${ECC_MIN_MEAN_MS:-1}"
 ECC_MAX_CV="${ECC_MAX_CV:-10}"
 SDK_IMAGE="${SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0}"
@@ -57,13 +40,10 @@ work="$SCRATCH_ROOT/ethcallchaos"
 as_root rm -rf "$work"
 mkdir -p "$work"
 
-# ---------------------------------------------------------------------------
 # Fetch the tool source.
-# ---------------------------------------------------------------------------
 log "Cloning $ECC_REPO@$ECC_REF..."
-# Shallow-fetch a single ref. This accepts a commit sha, tag, or branch (GitHub
-# serves reachable commit shas), unlike 'git clone --branch' which rejects a
-# bare sha — required so ECC_REF can default to a pinned commit.
+# Shallow-fetch a single ref: accepts a sha/tag/branch, unlike 'git clone --branch'
+# which rejects a bare sha — needed so ECC_REF can default to a pinned commit.
 git init -q "$work/src"
 git -C "$work/src" remote add origin "$ECC_REPO"
 git -C "$work/src" fetch -q --depth 1 origin "$ECC_REF" \
@@ -73,10 +53,8 @@ git -C "$work/src" checkout -q FETCH_HEAD
 proj_dir="$work/src/src/EthCallChaos"
 [[ -d "$proj_dir" ]] || die "EthCallChaos project not found at $proj_dir"
 
-# ---------------------------------------------------------------------------
-# Resolve the corpus DB (copied so the source corpus stays pristine).
+# Resolve the corpus DB (copied so the source stays pristine).
 # Precedence: runner-local path > release URL > repo-committed > fresh.
-# ---------------------------------------------------------------------------
 if [[ -n "$ECC_CORPUS_DB" && -f "$ECC_CORPUS_DB" ]]; then
   cp "$ECC_CORPUS_DB" "$work/bench.db"
   log "Using provided corpus DB (copied): $ECC_CORPUS_DB"
@@ -90,10 +68,8 @@ else
   log "::warning::No corpus DB found — EthCallChaos will start from a fresh corpus (slower warmup, less representative)."
 fi
 
-# ---------------------------------------------------------------------------
-# Launch EthCallChaos inside a .NET SDK container (host network so it reaches
-# the node on localhost and exposes its API on the host).
-# ---------------------------------------------------------------------------
+# Launch in a .NET SDK container (host network to reach the node on localhost
+# and expose its API on the host).
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Launching EthCallChaos via $SDK_IMAGE (rate=$ECC_RATE/s, parallel=$ECC_PARALLEL, duration=${ECC_DURATION}s)..."
 docker run -d --name "$CONTAINER_NAME" \
@@ -116,9 +92,7 @@ docker run -d --name "$CONTAINER_NAME" \
   bash -lc "dotnet run -c Release" \
   || die "failed to launch EthCallChaos container"
 
-# ---------------------------------------------------------------------------
 # Wait for the API, run for the configured duration, scrape results.
-# ---------------------------------------------------------------------------
 api="http://localhost:${ECC_API_PORT}"
 log "Waiting for EthCallChaos API at $api/api/stats (build + start can take a few minutes)..."
 elapsed=0
@@ -138,9 +112,8 @@ log "API up after ${elapsed}s. Generating load for ${ECC_DURATION}s..."
 sleep "$ECC_DURATION"
 
 log "Scraping results..."
-# Scrape failures are only warned about here so the container logs and summary
-# are still collected — they fail the script at the end (a run without usable
-# stats must not publish as success).
+# Only warn on scrape failure here so logs/summary are still collected; the script
+# fails at the end (a run without usable stats must not publish as success).
 scrape_failed=0
 curl -sf "$api/api/stats" -o "$OUT_DIR/stats.json" \
   || { log "::warning::failed to scrape /api/stats"; scrape_failed=1; }
@@ -149,9 +122,8 @@ curl -sf "$api/api/leaderboard?top=${ECC_LEADERBOARD_TOP}&sortBy=mean_ms" -o "$O
 
 docker logs "$CONTAINER_NAME" > "$OUT_DIR/ethcallchaos.log" 2>&1 || true
 
-# Persist the evolved corpus itself (not just the scraped leaderboard) so a long
-# run's DB can be published as the next corpus release. Stop the container first
-# so SQLite is quiesced, then copy from scratch before teardown wipes it.
+# Persist the evolved corpus so a long run's DB can become the next release. Stop
+# the container first to quiesce SQLite, then copy before teardown wipes scratch.
 docker stop -t 20 "$CONTAINER_NAME" >/dev/null 2>&1 || true
 if [[ -s "$work/bench.db" ]]; then
   cp "$work/bench.db" "$OUT_DIR/ethcallchaos.db" 2>/dev/null \
@@ -160,9 +132,7 @@ if [[ -s "$work/bench.db" ]]; then
 fi
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
-# ---------------------------------------------------------------------------
 # Build a markdown summary.
-# ---------------------------------------------------------------------------
 summary="$OUT_DIR/ethcallchaos-summary.md"
 {
   echo "## RPC Benchmark — EthCallChaos"
@@ -189,9 +159,8 @@ summary="$OUT_DIR/ethcallchaos-summary.md"
 
 log "EthCallChaos summary written to $summary"
 
-# Enforce usable results only after the logs and summary are collected: the
-# quality gate must not pass on a run whose stats never materialized (e.g. the
-# container died mid-load or the API stopped responding).
+# Enforce usable results only after logs/summary are collected: the gate must not
+# pass on a run whose stats never materialized (container died / API stopped).
 if [[ "$scrape_failed" == "1" ]]; then
   die "EthCallChaos results could not be scraped — failing the benchmark step (container log is in the artifact)"
 fi

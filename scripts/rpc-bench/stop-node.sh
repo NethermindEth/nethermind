@@ -2,9 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Stop the benchmark node, collect its full logs (including the shutdown phase),
-# collect dotTrace snapshots, VERIFY the pristine DB snapshot is unchanged, and
-# tear down the isolated DB view. Exits non-zero if the snapshot was modified.
+# Stop the benchmark node, collect full logs (incl. shutdown) and dotTrace snapshots,
+# verify the pristine DB snapshot is unchanged, and tear down the isolated DB view.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,30 +25,22 @@ STOP_GRACE="${STOP_GRACE:-180}"     # seconds; SIGINT (stop-signal) lets dotTrac
 LOG_OUT="${LOG_OUT:-$STATE_DIR/node$SUFFIX.log}"
 integrity_fail=0
 
-# ---------------------------------------------------------------------------
-# 1) Graceful stop FIRST, then capture logs — so the shutdown window (dispose/
-#    flush exceptions, dotTrace finalize, the shutdown marker) is scanned too.
-# ---------------------------------------------------------------------------
+# 1) Graceful stop FIRST, then capture logs — so the shutdown window (dispose/flush
+#    exceptions, dotTrace finalize, shutdown marker) is scanned too.
 log "Stopping container '$CONTAINER_NAME' (grace ${STOP_GRACE}s for snapshot finalize)..."
 docker stop -t "$STOP_GRACE" "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 log "Capturing node logs -> $LOG_OUT"
 docker logs "$CONTAINER_NAME" > "$LOG_OUT" 2>&1 || true
 
-# ---------------------------------------------------------------------------
 # 2) Collect dotTrace snapshots (if profiling was enabled).
-# ---------------------------------------------------------------------------
 if [[ "${DOTTRACE:-}" == "true" ]]; then
   log "dotTrace snapshots under $DIAG_DIR/dottrace:"
   find "$DIAG_DIR/dottrace" -type f 2>/dev/null | sed 's/^/  /' || true
 fi
 
-# ---------------------------------------------------------------------------
-# 3) Verify the snapshot. Under overlay/copy/readonly-bind it must be unchanged
-#    (the hard DB-safety guarantee). Under 'direct' it is intentionally mounted
-#    read-write, so changes are expected: record what changed and warn, but do
-#    NOT fail the job or update the cross-run anchor.
-# ---------------------------------------------------------------------------
+# 3) Verify the snapshot: under overlay/copy/readonly-bind it MUST be unchanged
+#    (DB-safety); under 'direct' it's read-write so changes are expected — warn only.
 if [[ "${DB_ISOLATION:-}" == "direct" ]]; then
   log "direct mode: snapshot was mounted read-write — verifying scope of changes (not a failure)..."
   if ! db_fingerprint "$DB_SOURCE" "$FINAL_FILE"; then
@@ -63,8 +54,7 @@ if [[ "${DB_ISOLATION:-}" == "direct" ]]; then
   fi
 elif ! db_fingerprint "$DB_SOURCE" "$FINAL_FILE"; then
   # A fingerprint failure must never look like a clean snapshot: flag it and fall
-  # through to teardown + the final die (with set -e it would otherwise abort here
-  # and skip the umount/scratch cleanup below).
+  # through to teardown + final die (set -e would else skip umount/scratch cleanup).
   log "::error::Failed to compute the final DB fingerprint — snapshot integrity could not be verified."
   integrity_fail=1
 elif ! diff -q "$BASELINE_FILE" "$FINAL_FILE" >/dev/null 2>&1; then
@@ -82,9 +72,7 @@ else
   fi
 fi
 
-# ---------------------------------------------------------------------------
 # 4) Tear down the isolated view. Never touches DB_SOURCE.
-# ---------------------------------------------------------------------------
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 case "${DB_ISOLATION:-}" in
   overlay)

@@ -2,14 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Aggregate per-cell jsonbench-summary.md files from run-rpc-sweep.sh into three
-# views that keep per-call cost and system-under-load behaviour distinct:
-#   MIXED overall      - client x rps saturation view (throughput/checks/p90/p99)
-#   ISOLATED p99       - scenario x client@rps, each scenario run alone (per-call truth)
-#   MIXED p99          - scenario x client@rps, from the all-at-once run (contended)
-#   DELTA (mixed/iso)  - contention amplification per scenario (>1x = queued under load)
-# Args: 'iso|<scenario>|<client>|<rps>=<summary.md>' and 'mix|<client>|<rps>=<summary.md>'
-# (legacy '<client>:<rps>=<summary.md>' is treated as a MIXED cell).
+# Aggregate per-cell jsonbench-summary.md from run-rpc-sweep.sh into MIXED-overall/ISOLATED/MIXED-per-scenario views.
+# Args: 'iso|<scenario>|<client>|<rps>=<summary.md>', 'mix|<client>|<rps>=<summary.md>' (legacy '<client>:<rps>=<md>' = MIXED cell).
 import re
 import sys
 
@@ -75,9 +69,6 @@ def main():
             rpss.append(rps)
     rpss.sort(key=int)
     cols = [(c, r) for c in clients for r in rpss]
-
-    def col_hdr():
-        return "| " + " | ".join(f"{c[:4]}@{r}" for c, r in cols) + " |\n|" + "---|" * (len(cols) + 1)
 
     # 1) MIXED overall (saturation)
     print("## MIXED - overall (client x rps): throughput r/s / checks% / p90 / p99 ms\n")

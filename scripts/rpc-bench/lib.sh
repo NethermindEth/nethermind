@@ -2,8 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Shared helpers for the RPC benchmark scripts.
-# Sourced by start-node.sh / stop-node.sh / run-flood.sh / run-ethcallchaos.sh / cleanup.sh.
+# Shared helpers sourced by the RPC benchmark scripts (start/stop-node, run-flood, etc.).
 
 log() { printf '%s | %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -17,8 +16,7 @@ as_root() {
   fi
 }
 
-# Reject paths that are unsafe targets for recursive deletion: must be absolute,
-# canonical-ish (no '..'), not '/', and at least two components deep.
+# Reject paths unsafe for recursive deletion (absolute, no '..', not '/', >=2 deep).
 #   $1 = path, $2 = label for error messages.
 assert_sane_dir() {
   local p="$1" label="$2"
@@ -29,13 +27,11 @@ assert_sane_dir() {
   [[ "$trimmed" == */* ]] || die "$label '$p' is too shallow (need at least two path components)"
 }
 
-# Canonicalize DB_SOURCE and SCRATCH_ROOT (resolving symlinks so aliased paths
-# cannot defeat the check) and enforce that they are disjoint. Re-exports the
-# canonical values into the caller's variables.
+# Canonicalize DB_SOURCE and SCRATCH_ROOT (resolving symlinks so aliased paths can't
+# defeat the check), enforce they are disjoint, and re-export the canonical values.
 guard_paths() {
-  # Precondition: the caller must have already verified DB_SOURCE exists (with
-  # its own richer diagnostics). Fail hard rather than silently skip the
-  # security invariants below if that precondition is ever violated.
+  # Precondition: caller verified DB_SOURCE exists. Fail hard rather than silently
+  # skip the security invariants below if that precondition is ever violated.
   [[ -d "$DB_SOURCE" ]] || die "guard_paths: DB_SOURCE '$DB_SOURCE' is not a directory (caller must verify it exists first)"
   DB_SOURCE="$(realpath -e -- "$DB_SOURCE")" || die "cannot canonicalize DB_SOURCE"
   SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || die "cannot canonicalize SCRATCH_ROOT"
@@ -49,10 +45,8 @@ guard_paths() {
   esac
 }
 
-# Fail if anything is still mounted at or below the given directory — a guard
-# that must precede every recursive delete of scratch, so an rm -rf can never
-# run through a live overlay/bind mount.
-#   $1 = directory.
+# Fail if anything is still mounted at/below $1 — must precede every recursive
+# delete of scratch so an rm -rf never runs through a live overlay/bind mount.
 assert_no_mounts_under() {
   local dir mounts
   dir="$(realpath -m -- "$1")"
@@ -62,10 +56,8 @@ assert_no_mounts_under() {
   fi
 }
 
-# Remove benchmark containers from ANY run (names embed the run id, so a
-# hard-interrupted previous run leaves stale containers holding port 8545 and
-# the old overlay mount namespace).
-#   $@ = container name prefixes.
+# Remove benchmark containers from ANY run — a hard-interrupted run leaves stale
+# containers holding port 8545 and the old overlay mount ns. $@ = name prefixes.
 reap_stale_containers() {
   local prefix ids
   for prefix in "$@"; do
@@ -87,9 +79,8 @@ rpc_post() {
     -X POST --data "$body" "$url"
 }
 
-# Block until the node answers eth_blockNumber with a non-genesis head, or fail.
-# Dies early (with container logs) if the container exits while waiting.
-#   $1 = url, $2 = timeout seconds (default 1800), $3 = container name (optional).
+# Block until the node answers eth_blockNumber with a non-genesis head, or fail
+# (dies early with logs if the container exits). $1=url, $2=timeout s (def 1800), $3=container.
 wait_for_rpc() {
   local url="$1" timeout="${2:-1800}" container="${3:-}" elapsed=0 interval=5 resp head
   log "Waiting for JSON-RPC at $url (timeout ${timeout}s)..."
@@ -121,10 +112,8 @@ wait_for_rpc() {
   done
 }
 
-# Fail unless two nodes report the same eth_blockNumber head — comparing
-# responses across nodes at different heads produces meaningless diffs
-# ('latest' resolves differently). Use snapshot sets taken at the same block.
-#   $1 = primary url, $2 = reference url.
+# Fail unless both nodes report the same eth_blockNumber head — cross-node diffs at
+# different heads are meaningless ('latest' differs). $1 = primary url, $2 = reference url.
 assert_same_head() {
   local body='{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' a b
   a="$(rpc_post "$1" "$body" 2>/dev/null | jq -r '.result // empty')"
@@ -136,24 +125,8 @@ assert_same_head() {
   log "Both nodes report head block $((16#${a#0x})) ($a)."
 }
 
-# Compute a tamper tripwire over a snapshot directory and write it to a file.
-# The fingerprint captures:
-#   * a format-version header,
-#   * a full recursive listing of files/dirs/symlinks with type, size, mtime,
-#     mode, owner and symlink target, and
-#   * sha256 of the small control files RocksDB/Pebble/LevelDB rewrite the
-#     instant they open a DB read-write (CURRENT, IDENTITY, MANIFEST-*,
-#     OPTIONS-*) — this covers Nethermind and geth snapshots; reth's MDBX
-#     (a single mdbx.dat) has no such control files and is covered by the
-#     size/mtime listing, which any write to it changes.
-# Comparing the baseline (pre-run) against the final (post-run) fingerprint
-# detects any plausible modification of the pristine snapshot. Hashing is
-# limited to the small control files so the check stays fast on a multi-TB DB;
-# the residual blind spot (a size- and mtime-preserving in-place rewrite of an
-# unhashed SST body) requires deliberate tampering, not a misbehaving node.
-# Listing errors are fatal — a partial fingerprint must never masquerade as a
-# clean one (or trigger a false tamper alarm at teardown).
-#   $1 = directory, $2 = output file.
+# Tamper tripwire over a snapshot dir (recursive listing + sha256 of DB control files);
+# baseline-vs-final catches mutation. Listing errors fatal (no partial fingerprint). $1=dir, $2=out.
 db_fingerprint() {
   local dir="$1" out="$2" listing
   listing="$(mktemp)"

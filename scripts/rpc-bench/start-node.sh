@@ -2,25 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Start an execution-client node (nethermind | geth | reth) for RPC benchmarking
-# against an ISOLATED view of a pristine DB snapshot, mirroring how expb
-# (execution-payloads-benchmarks) uses the Nethermind snapshots on this runner:
-#   * the snapshot is the client's DATADIR and is bound to /execution-data
-#     (geth backups hold the contents of <datadir>/geth and are mounted one
-#     level down so geth finds <datadir>/geth/chaindata),
-#   * isolation backend 'overlay' matches expb's snapshot_backend: overlay
-#     (read-only lowerdir + scratch upperdir, redirect_dir/metacopy/volatile);
-#     'direct' skips isolation entirely and mounts the snapshot read-write (the
-#     node's startup writes land on it — accepted for reth, which otherwise
-#     pays ~200s to overlay-copy-up its single large mdbx.dat),
-#   * dotTrace profiling (nethermind only — it is .NET-specific) mounts the
-#     host-installed dottrace CLI into the container and wraps the entrypoint.
-# INSTANCE=reference starts a second, independently-isolated node (own scratch,
-# state file and fingerprint) for cross-client comparison runs.
-# Under overlay/copy/readonly-bind the pristine snapshot is NEVER mounted
-# writable; a tamper tripwire baseline is captured here and verified by
-# stop-node.sh. Under 'direct' the snapshot IS mutated and the tripwire only
-# records/warns.
+# Start an execution-client node (nethermind|geth|reth) for RPC benchmarking against an
+# isolated view of a pristine DB snapshot, mirroring how expb uses the snapshots here.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,10 +43,8 @@ HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
 JSONRPC_MODULES="${JSONRPC_MODULES:-Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug}"
 GETH_HTTP_API="${GETH_HTTP_API:-eth,net,web3,debug,txpool}"
 RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
-# eth_call gas cap applied identically to every client so a heavy call (e.g. a
-# deep Multicall3 aggregation from EthCallChaos) is served, not truncated, on all
-# of them — geth/reth default to 50M and Nethermind to 100M, which would make
-# cross-client timings incomparable. 1 Ggas covers the corpus's heaviest cases.
+# Identical eth_call gas cap across clients so a heavy call is served, not truncated —
+# geth/reth default to 50M and Nethermind to 100M, making cross-client timings incomparable.
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
@@ -103,18 +84,14 @@ for f in _snapshot_metadata.json _snapshot_web3_clientVersion.json; do
   fi
 done
 
-# ---------------------------------------------------------------------------
 # 1) Tamper tripwire baseline of the pristine snapshot.
-# ---------------------------------------------------------------------------
 BASELINE_FILE="$STATE_DIR/db-baseline$SUFFIX.txt"
 log "Computing DB integrity baseline (tamper tripwire)..."
 db_fingerprint "$DB_SOURCE" "$BASELINE_FILE"
 log "  baseline: $(wc -l < "$BASELINE_FILE") lines, sha256=$(sha256sum "$BASELINE_FILE" | cut -d' ' -f1)"
 
-# Cross-run anchor: compare against the fingerprint persisted by the last
-# cleanly-verified run, so a mutation during a hard-interrupted run (where the
-# verify step never executed) cannot be silently adopted as the new baseline.
-# Drift is a warning, not an error — admins legitimately refresh snapshots.
+# Compare against the last cleanly-verified run's fingerprint so a mutation during a
+# hard-interrupted run isn't silently adopted as baseline; drift warns (snapshots get refreshed).
 ANCHOR_DIR="$SCRATCH_ROOT/fingerprints"
 ANCHOR_FILE="$ANCHOR_DIR/$(basename "$DB_SOURCE").txt"
 mkdir -p "$ANCHOR_DIR"
@@ -125,13 +102,9 @@ if [[ -f "$ANCHOR_FILE" ]]; then
   fi
 fi
 
-# ---------------------------------------------------------------------------
 # 2) Build an isolated, writable datadir view without touching the source.
-# ---------------------------------------------------------------------------
-# Stale containers from a hard-interrupted previous run would still hold the old
-# overlay mount namespace and ports 8545/8546 — reap them before touching
-# scratch. Only the primary instance reaps: the reference node starts second and
-# must not kill the just-started primary of the SAME run.
+# Reap stale containers (old overlay mount + ports 8545/8546) before touching scratch.
+# Only primary reaps — reference starts second and must not kill this run's primary.
 if [[ "$INSTANCE" == "primary" ]]; then
   reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "jsonbench-"
 fi
@@ -179,14 +152,8 @@ case "$DB_ISOLATION" in
     MOUNT_OPT="ro"
     ;;
   direct)
-    # Mount the snapshot itself read-write — no overlay, no copy. The node opens
-    # the DB in place and makes its usual startup housekeeping writes (LOCK/LOG,
-    # RocksDB CURRENT/MANIFEST/OPTIONS or MDBX lock, WAL reconcile) directly on
-    # the snapshot. This is the ONLY mode that avoids overlayfs whole-file
-    # copy-up, which for reth's single large mdbx.dat costs ~200s at open.
-    # Tradeoff (accepted here): the snapshot is mutated — stop-node.sh records
-    # what changed and warns instead of failing, and does NOT run two nodes
-    # against the same snapshot concurrently. See README "direct".
+    # Mount the snapshot read-write — the only mode avoiding overlayfs whole-file copy-up
+    # (~200s for reth's mdbx.dat); snapshot is mutated, stop-node.sh warns. See README "direct".
     log "::warning::db_isolation=direct — mounting the pristine snapshot READ-WRITE; the node's startup writes will modify it (accepted tradeoff)."
     DATA_DIR_SOURCE="$DB_SOURCE"
     MOUNT_OPT="rw"
@@ -196,16 +163,14 @@ case "$DB_ISOLATION" in
     ;;
 esac
 
-# The geth backups on this runner hold the CONTENTS of <datadir>/geth
-# (chaindata, triedb, ...), so mount them one level down; geth then runs with
-# --datadir=$DATA_DIR_TARGET and finds $DATA_DIR_TARGET/geth/chaindata.
+# geth backups hold the CONTENTS of <datadir>/geth, so mount one level down; geth runs
+# with --datadir=$DATA_DIR_TARGET and finds $DATA_DIR_TARGET/geth/chaindata.
 DATA_MOUNT_TARGET="$DATA_DIR_TARGET"
 [[ "$CLIENT" == "geth" ]] && DATA_MOUNT_TARGET="$DATA_DIR_TARGET/geth"
 log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DATA_MOUNT_TARGET)"
 
-# Persist state for teardown/verification NOW — if docker run fails below,
-# stop-node.sh must still be able to verify the fingerprint and tear down the
-# mount (docker logs/stop on a never-started container are harmless no-ops).
+# Persist state for teardown NOW — if docker run fails below, stop-node.sh must still
+# verify the fingerprint and tear down the mount.
 {
   echo "CLIENT=$CLIENT"
   echo "INSTANCE=$INSTANCE"
@@ -220,9 +185,7 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DA
   echo "RPC_PORT=$RPC_PORT"
 } > "$STATE_DIR/node$SUFFIX.env"
 
-# ---------------------------------------------------------------------------
 # 3) Assemble the node command.
-# ---------------------------------------------------------------------------
 case "$CLIENT" in
   nethermind)
     # Mirrors expb's NethermindConfig.
@@ -299,9 +262,8 @@ fi
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
-# dotTrace (nethermind only): mount the host-installed CLI and wrap the node
-# binary, exactly as expb's --dottrace does. SIGINT (stop-signal) lets dotTrace
-# finalize the .dtp.
+# dotTrace (nethermind only): mount the host CLI and wrap the node binary, as expb's
+# --dottrace does. SIGINT (stop-signal) lets dotTrace finalize the .dtp.
 entry_args=()
 if [[ "$DOTTRACE" == "true" ]]; then
   if [[ ! -x "$DOTTRACE_HOST_PATH/dottrace" ]]; then
@@ -328,17 +290,13 @@ fi
 # geth/reth official images already have the client binary as their entrypoint;
 # node_args are passed as the container command.
 
-# ---------------------------------------------------------------------------
 # 4) Start the node.
-# ---------------------------------------------------------------------------
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Starting $CLIENT container '$CONTAINER_NAME'..."
 log "  node args: ${node_args[*]}"
 # ${arr[@]+...} keeps the empty-array expansion safe under set -u on bash < 4.4.
 docker run "${docker_args[@]}" "$NODE_IMAGE" ${entry_args[@]+"${entry_args[@]}"} "${node_args[@]}"
 
-# ---------------------------------------------------------------------------
 # 5) Wait for the node to serve JSON-RPC.
-# ---------------------------------------------------------------------------
 wait_for_rpc "http://localhost:${RPC_PORT}" "$HEALTH_TIMEOUT" "$CONTAINER_NAME"
 log "=== Node ready for benchmarking ==="

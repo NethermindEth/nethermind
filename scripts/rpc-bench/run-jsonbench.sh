@@ -2,25 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Run json-bench (NethermindEth/json-bench) against already-running JSON-RPC
-# node(s). Two modes:
-#   * benchmark — k6-driven load benchmark of the primary node (and, when a
-#     reference node is up, of both side by side). Reports come from k6's own
-#     summary.json: the pinned json-bench builds per-client/per-method metrics
-#     from it directly, so no Prometheus is involved (--prometheus is omitted).
-#     A benchmark_config points the load at a curated workload (e.g. the repo's
-#     head-only configs); its client list is rewritten to the node(s) here.
-#   * compare   — one-shot differential test: the same requests are sent to the
-#     primary and reference nodes and their responses are diffed
-#     (comparison-results.json + comparison-report.html).
-# The mode defaults to 'compare' when REFERENCE_RPC_URL is set, 'benchmark'
-# otherwise. The runner is built from a pinned commit via its own Dockerfile
-# (final image bundles the k6 binary) and runs on the host network.
-#
-# Tool-specific knobs are read from env (the workflow fills them from the
-# `tool_config` JSON): JB_REF, JB_MODE, JB_BENCHMARK_CONFIG, JB_COMPARE_CONFIG,
-# JB_RPS, JB_DURATION, JB_VUS, JB_CONCURRENCY, JB_TIMEOUT, JB_VALIDATE_SCHEMA,
-# JB_HTML_REPORT, JB_FAIL_ON_DIFF, JB_EXTRA_ARGS.
+# Run json-bench (NethermindEth/json-bench) against already-running JSON-RPC node(s):
+# 'benchmark' (k6 load, metrics from summary.json) or 'compare' (differential diff). Knobs from JB_* env.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,17 +23,12 @@ REFERENCE_CLIENT_TYPE="${REFERENCE_CLIENT_TYPE:-$REFERENCE_LABEL}"
 [[ -n "$REFERENCE_RPC_URL" && "$REFERENCE_LABEL" == "$LABEL" ]] && REFERENCE_LABEL="${REFERENCE_LABEL}_ref"
 
 JB_REPO="${JB_REPO:-https://github.com/NethermindEth/json-bench.git}"
-# Pin to a specific commit so a push to the repo's default branch cannot
-# silently change benchmark results (or run unreviewed code on the runner).
-# Override JB_REF (sha/tag/branch) or JB_REPO to move it. This commit makes
-# --prometheus optional (metrics built from summary.json) and drops the
-# invalid eth_getStorageAt corpus entry.
+# Pin the commit so a default-branch push can't change results or run unreviewed
+# code on the runner. Override JB_REF (sha/tag/branch) or JB_REPO to move it.
 JB_REF="${JB_REF:-89c65c73f4325e8b6e1de2c520690bf468eb6c52}"
 JB_MODE="${JB_MODE:-}"                       # benchmark | compare; empty = auto
-# Benchmark workload: a bare name resolves to config/benchmark/<name>.yaml, a
-# value with '/' is a repo-relative path, and an absolute path is read as-is.
-# Empty = a generated default read mix. Any config's client list is rewritten to
-# the node(s) started here, so the repo's multi-client head configs work as-is.
+# Benchmark workload: bare name -> config/benchmark/<name>.yaml, '/' = repo-relative,
+# absolute = as-is; empty = generated default read mix (client list is rewritten here).
 JB_BENCHMARK_CONFIG="${JB_BENCHMARK_CONFIG:-}"
 JB_COMPARE_CONFIG="${JB_COMPARE_CONFIG:-config/compare/defaults.yaml}"
 JB_RPS="${JB_RPS:-}"                         # override the workload's rps; empty = keep it (generated default: 100)
@@ -60,17 +38,14 @@ JB_CONCURRENCY="${JB_CONCURRENCY:-5}"        # compare mode
 JB_TIMEOUT="${JB_TIMEOUT:-30}"               # compare mode, per-request seconds
 JB_VALIDATE_SCHEMA="${JB_VALIDATE_SCHEMA:-false}"
 JB_HTML_REPORT="${JB_HTML_REPORT:-true}"
-# Deep-check: after the timed load, replay every workload request once and store
-# the raw responses (deep-check-<label>.jsonl) so a later cross-client pass can
-# diff them — catching wrong/partial/malformed results that the k6 `checks`
-# (has-a-response only) cannot. Off by default; benchmark mode only.
+# Deep-check: after the timed load, replay each request once and store raw responses
+# (deep-check-<label>.jsonl) for offline cross-client diffing (k6 checks only verify presence). Off; benchmark only.
 JB_DEEP_CHECK="${JB_DEEP_CHECK:-false}"
 # Response differences are reported (and warned about) by default; opt in to
 # failing the step on any diff once the method set is curated for the clients.
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
-# Benchmark gate: k6 exits 0 even at a 100% HTTP failure rate (the injected
-# per-call thresholds are loose by design), so the step fails itself when the
-# summary.json http fail rate exceeds this percentage.
+# k6 exits 0 even at 100% HTTP failure (thresholds are loose by design), so the step
+# fails itself when the summary.json fail rate exceeds this percentage.
 JB_MAX_FAIL_RATE_PCT="${JB_MAX_FAIL_RATE_PCT:-1}"
 JB_EXTRA_ARGS="${JB_EXTRA_ARGS:-}"
 CONTAINER_NAME="${JB_CONTAINER_NAME:-jsonbench-bench}"
@@ -94,9 +69,7 @@ work="$SCRATCH_ROOT/jsonbench"
 as_root rm -rf "$work"
 mkdir -p "$work/io/out"
 
-# ---------------------------------------------------------------------------
 # Fetch the tool source and build the runner image (bundles k6).
-# ---------------------------------------------------------------------------
 log "Cloning $JB_REPO@$JB_REF..."
 # Shallow-fetch a single ref; accepts a commit sha, tag, or branch (GitHub
 # serves reachable commit shas), unlike 'git clone --branch'.
@@ -115,9 +88,7 @@ log "Building $image_tag from runner/Dockerfile..."
 docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src" >/dev/null \
   || die "failed to build the json-bench runner image"
 
-# ---------------------------------------------------------------------------
 # Render the client registry (and, for benchmark mode, the default workload).
-# ---------------------------------------------------------------------------
 clients_yaml="$work/io/clients.yaml"
 {
   echo "clients:"
@@ -137,12 +108,8 @@ clients_yaml="$work/io/clients.yaml"
 log "Client registry:"
 sed 's/^/  /' "$clients_yaml"
 
-# Resolve a compare-config path. The compare loader runs it through
-# SafeReadPath, which rejects absolute paths and '..' — so the value passed to
-# --config must stay RELATIVE to the container's /jb working directory (the
-# checkout). Repo-relative paths pass through unchanged; an absolute host path
-# is copied into the checkout host-side (the /jb mount is ro only in the
-# container) and passed by its relative name.
+# SafeReadPath rejects absolute paths and '..', so --config must stay relative to the
+# container's /jb checkout; an absolute host path is copied in and passed by relative name.
 resolve_config() {
   local cfg="$1"
   if [[ "$cfg" == /* ]]; then
@@ -156,10 +123,8 @@ resolve_config() {
 }
 
 if [[ "$JB_MODE" == "benchmark" && -z "$JB_BENCHMARK_CONFIG" ]]; then
-  # Default workload: the same mainnet read mix as the repo's mixed.yaml, but
-  # targeting OUR registry names (the repo config references its own examples).
-  # The per-call thresholds are loose (never trip) and only exist to make k6
-  # emit a per-method http_req_duration sub-metric into summary.json.
+  # Default read mix targeting OUR registry names. Loose per-call thresholds never trip;
+  # they only make k6 emit a per-method http_req_duration sub-metric into summary.json.
   {
     echo "test_name: \"RPC read benchmark ($LABEL${REFERENCE_RPC_URL:+ vs $REFERENCE_LABEL})\""
     echo "description: \"Snapshot-backed read-path benchmark on the reproducible-benchmarks runner\""
@@ -208,12 +173,8 @@ CALLS
   } > "$work/io/benchmark.yaml"
   bench_cfg="/io/benchmark.yaml"
 elif [[ "$JB_MODE" == "benchmark" ]]; then
-  # Adapt a curated config to this run. The repo's head-only configs list five
-  # clients — which won't match a single-node run here — so we rewrite the client
-  # list to the node(s) started here, inject a loose per-call threshold (per-method
-  # sub-metrics), and apply any rps/vus/duration override. Their ./rpc-calls/*.jsonl
-  # fixtures stay relative and resolve via the container's /jb working directory.
-  # A bare name maps to config/benchmark/<name>.yaml.
+  # Adapt a curated config: rewrite its client list to our node(s), inject loose per-call
+  # thresholds (per-method sub-metrics), apply rps/vus/duration overrides. Fixtures stay relative.
   case "$JB_BENCHMARK_CONFIG" in
     /*)  src_bench="$JB_BENCHMARK_CONFIG" ;;
     */*) src_bench="$work/src/$JB_BENCHMARK_CONFIG" ;;
@@ -250,9 +211,8 @@ dur = os.environ.get("JB_DURATION", "").strip()
 if dur:
     cfg["duration"] = dur
 
-# Fixture paths stay relative to the checkout root: the container runs with its
-# working directory at /jb (the mounted checkout) and json-bench's loader rejects
-# absolute paths (SafeReadPath), so the config's ./rpc-calls/... resolve as-is.
+# Fixtures stay relative: container CWD is /jb and json-bench's loader (SafeReadPath)
+# rejects absolute paths, so ./rpc-calls/... resolve as-is.
 for call in cfg.get("calls", []) or []:
     if not call.get("thresholds"):
         call["thresholds"] = ["p(99)<600000"]
@@ -283,9 +243,7 @@ docker_common=(
 # A stale same-name container from a hard-interrupted run would fail docker run.
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
-# ---------------------------------------------------------------------------
 # Run the selected mode.
-# ---------------------------------------------------------------------------
 tool_failed=0
 if [[ "$JB_MODE" == "compare" ]]; then
   # Diffing nodes at different heads is meaningless ('latest' diverges).
@@ -307,10 +265,8 @@ if [[ "$JB_MODE" == "compare" ]]; then
     ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log" \
     || tool_failed=1
 else
-  # No Prometheus: the pinned json-bench builds per-client/per-method metrics
-  # straight from k6's summary.json when --prometheus is omitted. k6 still writes
-  # summary.json (via --summary-export) regardless, and the per-call thresholds
-  # above give it the per-method sub-metrics.
+  # No --prometheus: json-bench builds per-client/per-method metrics from k6's
+  # summary.json (which k6 writes anyway); per-call thresholds give the sub-metrics.
   html=()
   [[ "$JB_HTML_REPORT" == "true" ]] && html=(--html-report)
   log "json-bench benchmark (config: ${JB_BENCHMARK_CONFIG:-<generated default>}, summary.json metrics)..."
@@ -324,12 +280,8 @@ else
     || tool_failed=1
 fi
 
-# ---------------------------------------------------------------------------
-# Deep-check capture: replay every workload request ONCE (node still up) and
-# store raw responses for offline cross-client equality diffing. Runs after the
-# timed load so it never perturbs the k6 metrics. Keyed by a request fingerprint
-# so captures from independent single-client runs align. Non-fatal.
-# ---------------------------------------------------------------------------
+# Deep-check capture: replay each request once after the timed load (won't perturb k6),
+# storing raw responses keyed by request fingerprint for offline cross-client diff. Non-fatal.
 if [[ "$JB_DEEP_CHECK" == "true" && "$JB_MODE" == "benchmark" ]]; then
   dc_out="$OUT_DIR/deep-check-$LABEL.jsonl"
   log "Deep-check: capturing responses for every workload request (client=$LABEL) -> $(basename "$dc_out")..."
@@ -372,9 +324,7 @@ PY
   chmod a+rw "$dc_out" 2>/dev/null || true
 fi
 
-# ---------------------------------------------------------------------------
 # Collect outputs and build a markdown summary.
-# ---------------------------------------------------------------------------
 as_root chown -R "$(id -u):$(id -g)" "$work/io" 2>/dev/null || true
 if [[ -d "$work/io/out" ]]; then
   cp -r "$work/io/out/." "$OUT_DIR/" 2>/dev/null || true
@@ -421,10 +371,8 @@ else
   disp_rps="$(sed -nE 's/^rps:[[:space:]]*([0-9]+).*/\1/p' "$bench_meta" 2>/dev/null | head -1)"
   disp_vus="$(sed -nE 's/^vus:[[:space:]]*([0-9]+).*/\1/p' "$bench_meta" 2>/dev/null | head -1)"
 
-  # Parse k6's summary.json into overall + per-method tables (stdlib json only).
-  # The parser also emits the http fail rate (percent) for the gate below, and
-  # a parse failure is remembered — a present-but-unparseable summary.json must
-  # fail the step, not silently degrade to a "NO RESULTS" summary that passes.
+  # Parse k6's summary.json into overall + per-method tables and emit the http fail rate
+  # for the gate; a parse failure is remembered so it fails the step, not silent-passes.
   perf_md="$OUT_DIR/.jsonbench-perf.md"
   fail_pct_file="$OUT_DIR/.jsonbench-failrate"
   : > "$perf_md"

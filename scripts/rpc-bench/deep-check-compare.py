@@ -2,26 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Cross-client comparison of deep-check response captures produced by
-# run-jsonbench.sh (JB_DEEP_CHECK=1). Each client is benchmarked in its own
-# single-client run, so the captures are collected as separate artifacts and
-# diffed here offline — no co-located nodes required.
-#
-# For every workload request (aligned across clients by its fingerprint), each
-# client's response is reduced to a class:
-#   result:<sha>  the JSON-RPC `result`, hashed (deterministic at a pinned head)
-#   error:<code>  a JSON-RPC error, by code only (revert-reason text / the
-#                 cosmetic empty-revert `data:"0x"` vs absent are NOT flagged)
-#   malformed     neither result nor error, or a capture/transport failure
-#   missing       the request is absent from this client's capture
-# A request DIVERGES when clients disagree on class or on the result hash — i.e.
-# one client returned a different value, or succeeded where another reverted, or
-# produced malformed output. This catches exactly what the k6 `checks`
-# (has-a-response only) cannot: wrong / partial / malformed results.
-#
-# Usage:
-#   deep-check-compare.py <label>=<capture.jsonl> [<label>=<capture.jsonl> ...]
-# Exit code 1 if any request diverges or any client returned malformed output.
+# Cross-client parity check of run-jsonbench.sh deep-check captures (JB_DEEP_CHECK=1):
+# flags requests where clients disagree on result/error class. Exit 1 on divergence/malformed.
 
 import hashlib
 import json

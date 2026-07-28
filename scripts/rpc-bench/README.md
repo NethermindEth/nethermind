@@ -1,18 +1,13 @@
 # RPC benchmarking on the self-hosted runner
 
-This directory holds the scripts behind the
-[`run-rpc-benchmarks.yml`](../../.github/workflows/run-rpc-benchmarks.yml) workflow,
-which benchmarks an execution client's **state-reading JSON-RPC** (`eth_call`,
-`eth_getBalance`, `trace_*`, `debug_*`, …) on the self-hosted
-`reproducible-benchmarks` runner, reusing the DB snapshots that the EXPB
-reproducible-benchmarks workflow already keeps there. Nethermind is the primary
-target; **geth and reth** can also be benchmarked from their same-block snapshot
-sets, and a **comparison mode** runs two clients side by side and diffs their
-responses.
-
-It can drive three load tools and, optionally, capture a JetBrains dotTrace
-performance snapshot of the node (Nethermind only) and post-process it to XML —
-the same flow the EXPB workflow uses.
+Scripts behind the [`run-rpc-benchmarks.yml`](../../.github/workflows/run-rpc-benchmarks.yml)
+workflow, which benchmarks an execution client's **state-reading JSON-RPC**
+(`eth_call`, `eth_getBalance`, `trace_*`, `debug_*`, …) on the
+`reproducible-benchmarks` runner, reusing the EXPB workflow's DB snapshots.
+Nethermind is the primary target; **geth and reth** run from same-block snapshot
+sets, and a **comparison mode** diffs two clients side by side. Drives three load
+tools and can optionally capture a JetBrains dotTrace snapshot (Nethermind only)
+and post-process it to XML.
 
 ## Goals
 
@@ -24,19 +19,19 @@ the same flow the EXPB workflow uses.
 
 ## Alignment with expb
 
-Path selection and node startup deliberately mirror expb
-(`execution-payloads-benchmarks`), which uses the same snapshots on this runner:
+Path selection and node startup mirror expb (`execution-payloads-benchmarks`),
+which uses the same snapshots on this runner:
 
-- The snapshot is a Nethermind **datadir** (contains `<network>/` chain DB). It is
-  bound to `/execution-data` and the node runs
+- The snapshot is a Nethermind **datadir** (contains `<network>/` chain DB),
+  bound to `/execution-data`; the node runs
   `--datadir=/execution-data --Init.BaseDbPath=<network>` — same as expb's
   `NethermindConfig`.
 - `state_layout=flat` → `/mnt/sda/nethermind-flat-snapshot` + `--FlatDb.Enabled=true`
   (the `snapshot_source` of `github-action-mainnet-flat.yaml`);
   `halfpath` → `/mnt/sda/nethermind-snapshot`. Override via `node_config.db_source`.
-- The default `overlay` isolation is the same mechanism as expb's
-  `snapshot_backend: overlay`, including the `redirect_dir=on,metacopy=on,volatile`
-  mount options (with a plain-options fallback).
+- The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
+  including `redirect_dir=on,metacopy=on,volatile` mount options (plain-options
+  fallback).
 - The node gets expb's stability flags (`--Init.DiscoveryEnabled=false`,
   `--Network.MaxActivePeers=0`, `--Merge.SweepMemory=NoGC`,
   `--Merge.CompactMemory=No`, `--Merge.CollectionsPerDecommit=-1`,
@@ -47,16 +42,16 @@ Path selection and node startup deliberately mirror expb
 
 Besides the expb Nethermind snapshots, the runner keeps **same-block snapshot
 sets** under `/mnt/sda/<client>-<block>` — e.g. `geth-25490000`,
-`nethermind-25490000`, `nethermind-flat-25490000`, `reth-25490000` — all
-captured at the same head, each carrying provenance sidecars
-(`_snapshot_metadata.json`, `_snapshot_web3_clientVersion.json`,
-`_snapshot_eth_getBlockByNumber.json`) which `start-node.sh` logs at startup.
+`nethermind-25490000`, `nethermind-flat-25490000`, `reth-25490000` — all at the
+same head, each carrying provenance sidecars (`_snapshot_metadata.json`,
+`_snapshot_web3_clientVersion.json`, `_snapshot_eth_getBlockByNumber.json`) that
+`start-node.sh` logs at startup.
 
-The `snapshot_block` input selects a set (Nethermind resolves to
-`nethermind[-flat]-<block>` per `state_layout`). It defaults to empty (the expb
-snapshot) for Nethermind-only runs, and to `25490000` for geth/reth and for any
-comparison run — a comparison **requires both nodes at the same head**, which
-the same-block sets guarantee (`assert_same_head` enforces it before any diff).
+`snapshot_block` selects a set (Nethermind resolves to `nethermind[-flat]-<block>`
+per `state_layout`). It defaults to empty (the expb snapshot) for Nethermind-only
+runs, and to `25490000` for geth/reth and any comparison — a comparison
+**requires both nodes at the same head**, which the same-block sets guarantee
+(`assert_same_head` enforces it before any diff).
 
 Per-client node profiles in `start-node.sh`:
 
@@ -73,20 +68,18 @@ the logged `_snapshot_web3_clientVersion.json` sidecar.
 
 ## Comparison mode (`reference_client`)
 
-Setting `reference_client` starts a **second, independently-isolated node**
-(own overlay, scratch subtree, fingerprint tripwire, container) from that
-client's same-block snapshot on port 8546, then runs the selected tool in its
-comparison mode:
+Setting `reference_client` starts a **second, independently-isolated node** (own
+overlay, scratch subtree, fingerprint tripwire, container) from that client's
+same-block snapshot on port 8546, then runs the selected tool's comparison mode:
 
 - `benchmark_tool=jsonbench` → `runner compare`: one-shot differential test of a
   curated method list; writes `comparison-results.json` +
   `comparison-report.html` and a per-method diff table into the step summary.
-  This is the **recommended** comparison path. Failing the job on any diff is
-  opt-in (`tool_config.fail_on_diff`) — some differences (error wording, gas
-  estimates) are legitimate until the method list is curated per client pair.
-- `benchmark_tool=flood` → flood `--equality`: the fork's differential mode
-  (`flood all nethermind=… geth=… --equality`); results are captured from
-  stdout into the summary.
+  **Recommended** comparison path. Failing the job on any diff is opt-in
+  (`tool_config.fail_on_diff`) — some differences (error wording, gas estimates)
+  are legitimate until the method list is curated per client pair.
+- `benchmark_tool=flood` → flood `--equality`
+  (`flood all nethermind=… geth=… --equality`); results captured from stdout.
 - `benchmark_tool=ethcallchaos` → rejected in `resolve` (single-node tool).
 
 Both nodes share the runner, so comparison runs measure **correctness**, not
@@ -96,8 +89,8 @@ clean latency — for perf A/B use two separate single-node runs.
 
 Under `overlay`/`copy`/`readonly-bind` the pristine snapshot at `db_source` is
 **never mounted writable** — `start-node.sh` builds an isolated, writable *view*
-of it and gives the container only that view. `direct` is the exception: it
-mounts the snapshot itself read-write and accepts the node's startup writes.
+and gives the container only that view. `direct` is the exception: it mounts the
+snapshot itself read-write and accepts the node's startup writes.
 
 | `db_isolation` | Mechanism | Snapshot protection |
 |---|---|---|
@@ -108,47 +101,43 @@ mounts the snapshot itself read-write and accepts the node's startup writes.
 
 ### Why reth defaults to `direct`
 
-A node opens its DB engine **read-write** on startup even when it will only serve
-read RPC (there is no read-only node mode in nethermind/geth/reth), so the engine
-writes its lock + control files regardless. For RocksDB (nethermind) and Pebble
-(geth) those are a handful of tiny files, so `overlay`'s copy-up is trivial and
-the snapshot stays pristine. reth's MDBX is instead a **single large
-`mdbx.dat`**, and the first write forces overlayfs to copy the *entire* file up
-to the scratch layer before startup proceeds — measured at **~200 s** on the
-mainnet snapshot (vs ~11–15 s for nethermind/geth). `direct` avoids the copy-up
-by writing in place; reth then opens in seconds. The cost is that reth's snapshot
-is no longer byte-identical afterwards — acceptable because these are read-only
-benchmarks (no transactions, no `newPayload`), so the only changes are the
-engine's own startup housekeeping (lock, log, meta pages, WAL reconcile).
+Nodes open their DB engine **read-write** on startup even to serve read-only RPC
+(no read-only node mode exists in nethermind/geth/reth). For RocksDB (nethermind)
+and Pebble (geth) that touches a handful of tiny lock/control files, so
+`overlay`'s copy-up is trivial. reth's MDBX is a **single large `mdbx.dat`**, and
+the first write forces overlayfs to copy the *entire* file up before startup
+proceeds — **~200 s** on the mainnet snapshot vs ~11–15 s for nethermind/geth.
+`direct` writes in place, so reth opens in seconds. The cost: reth's snapshot is
+no longer byte-identical — acceptable for read-only benchmarks (no transactions,
+no `newPayload`), where the only writes are engine startup housekeeping.
 
-**`direct` caveats:** the snapshot is mutated, so (1) the tamper tripwire records
-the diff and warns instead of failing (see below); (2) do not point two nodes at
-the same `direct` snapshot concurrently (DB lock conflict) — comparison runs are
-fine because each client uses its own snapshot; (3) if this snapshot is shared
-with another consumer (e.g. expb reuses the nethermind sets), don't put that
-client on `direct` — which is why nethermind/geth stay on `overlay`.
+**`direct` caveats:** (1) the tamper tripwire records the diff and warns instead
+of failing (below); (2) never point two nodes at the same `direct` snapshot
+concurrently (DB lock conflict) — comparison runs are fine, each client uses its
+own snapshot; (3) if a snapshot is shared with another consumer (e.g. expb reuses
+the nethermind sets), don't put that client on `direct` — hence nethermind/geth
+stay on `overlay`.
 
 ### Tamper tripwire (active verification of goal #2)
 
-`start-node.sh` records a **fingerprint** of the snapshot before the run and
-`stop-node.sh` recomputes it after. The fingerprint is a full recursive listing
-(path, type, size, mtime, mode, owner, symlink target) plus a sha256 of the
-small RocksDB control files that get rewritten the instant a DB is opened
-read-write (`CURRENT`, `IDENTITY`, `MANIFEST-*`, `OPTIONS-*`). If anything
-differs, **the job fails** (except under `direct`, where changes are expected —
-there the tripwire logs how many fingerprint lines changed and warns, and does
-not update the cross-run anchor). Hashing is limited to the small control files so the
-check stays fast on a multi-TB DB; listing errors are fatal rather than
-silently producing a partial fingerprint. After a clean verification the
-fingerprint is persisted (`<scratch_root>/fingerprints/`) as a **cross-run
-anchor** — the next run warns if the snapshot changed in between (e.g. during a
-hard-interrupted run whose verify step never executed).
+`start-node.sh` fingerprints the snapshot before the run; `stop-node.sh`
+recomputes it after. The fingerprint is a full recursive listing (path, type,
+size, mtime, mode, owner, symlink target) plus a sha256 of the small RocksDB
+control files rewritten the instant a DB is opened read-write (`CURRENT`,
+`IDENTITY`, `MANIFEST-*`, `OPTIONS-*`). Any difference **fails the job** — except
+under `direct`, where changes are expected: it warns, logs the changed-line
+count, and does not update the cross-run anchor. Hashing only the control files
+keeps the check fast on a multi-TB DB; listing errors are fatal rather than
+producing a partial fingerprint. After a clean verify the fingerprint persists
+(`<scratch_root>/fingerprints/`) as a **cross-run anchor** — the next run warns
+if the snapshot changed in between (e.g. a hard-interrupted run whose verify
+never ran).
 
-Path safety is layered: the `resolve` job validates `db_source`/`scratch_root`
-shape, and every script canonicalizes them (`realpath`, symlink-proof), rejects
-shallow paths, enforces disjointness, and refuses any recursive delete while
-something is still mounted underneath ([`cleanup.sh`](cleanup.sh) applies the
-same guards in the workflow's defensive-cleanup step).
+Path safety is layered: `resolve` validates `db_source`/`scratch_root` shape, and
+every script canonicalizes them (`realpath`, symlink-proof), rejects shallow
+paths, enforces disjointness, and refuses any recursive delete while something is
+still mounted underneath ([`cleanup.sh`](cleanup.sh) applies the same guards in
+the workflow's defensive-cleanup step).
 
 ## Workflow inputs
 
@@ -168,8 +157,8 @@ same guards in the workflow's defensive-cleanup step).
 Image resolution without `docker_image` (Nethermind):
 `master`/`performance`/`paprika`/`release/*` reuse the prebuilt
 `nethermindeth/nethermind:<branch>` Docker Hub image; any other branch is built
-from `Dockerfile` directly on the runner. geth/reth default to their upstream
-images (see the table above).
+from `Dockerfile` on the runner. geth/reth default to their upstream images (see
+table above).
 
 ### `node_config` JSON
 
@@ -191,8 +180,8 @@ images (see the table above).
 ```
 
 > The load generator runs on the **same machine** as the node, so absolute
-> numbers include some co-location contention. Use the workflow for **relative**
-> comparisons (branch vs branch, before vs after a change). Pinning the node via
+> numbers include co-location contention. Use the workflow for **relative**
+> comparisons (branch vs branch, before vs after). Pinning via
 > `node_config.cpuset` (expb uses `2-7,10-15`) improves stability.
 
 ## The three tools and their configs
@@ -228,10 +217,9 @@ from `reference_client` and overridable via `mode`:
 
 - **benchmark** (single node, or both side by side): k6-driven load benchmark of
   a weighted call mix; produces `results.json` / `results.csv` / `report.html`.
-  Metrics come from k6's own `summary.json` — the pinned json-bench builds
-  per-client/per-method metrics from it directly, so **no Prometheus is
-  involved**. The summary renders an overall + per-method latency table parsed
-  from `summary.json`.
+  Metrics come from k6's own `summary.json` (**no Prometheus** — the pinned
+  json-bench builds per-client/per-method metrics from it directly), rendered as
+  an overall + per-method latency table.
 - **compare** (needs a reference node): one-shot differential test — each call
   from the compare config goes to both nodes and the responses are diffed.
 
@@ -264,8 +252,8 @@ k6 emits per-method sub-metrics into `summary.json`. The config's relative
 
 ### `ethcallchaos` — [kamilchodola/EthCallChaos](https://github.com/kamilchodola/EthCallChaos)
 
-An ASP.NET app (no CLI) that hammers `eth_call` and ranks the slowest cases. It
-is launched in a .NET SDK container, configured via env vars, run for a fixed
+An ASP.NET app (no CLI) that hammers `eth_call` and ranks the slowest cases.
+Launched in a .NET SDK container, configured via env vars, run for a fixed
 duration, then its HTTP API (`/api/stats`, `/api/leaderboard`) is scraped.
 
 ```json
@@ -292,9 +280,8 @@ in the tool repo → fresh evolution from scratch.
 
 ## dotTrace flow (goal #3)
 
-When `dottrace=true` (requires `client=nethermind` — dotTrace is .NET-specific) —
-using the same mechanism as expb's `--dottrace`, so it works with **any**
-Nethermind image (no special diag build):
+`dottrace=true` (requires `client=nethermind`) uses the same mechanism as expb's
+`--dottrace`, so it works with **any** Nethermind image (no special diag build):
 
 1. The host-installed dotTrace CLI (`/opt/dottrace`, installed on demand via
    `dotnet tool install JetBrains.dotTrace.GlobalTools`) is mounted read-only
@@ -307,12 +294,11 @@ Nethermind image (no special diag build):
 4. The `dottrace-summary` job runs [`scripts/dottrace-report.sh`](../dottrace-report.sh)
    `top` over each XML and writes the hot functions into the job summary.
 
-> The capture runs in dotTrace's default **sampling** mode (no
-> `--profiling-type` is passed) — deliberately, since JetBrains' Reporter.exe
-> cannot post-process Timeline snapshots into XML. The snapshot spans the
-> node's whole lifetime, including DB load and warmup. Keep the benchmark
-> `duration` the dominant phase, or analyze by time window, so RPC-call frames
-> dominate the captured `OwnTime`.
+> Capture runs in dotTrace's default **sampling** mode (no `--profiling-type`) —
+> deliberately, since Reporter.exe cannot post-process Timeline snapshots to XML.
+> The snapshot spans the node's whole lifetime (including DB load and warmup), so
+> keep the benchmark `duration` the dominant phase, or analyze by time window, so
+> RPC-call frames dominate the captured `OwnTime`.
 
 Download the `dottrace-reports` artifact and inspect locally:
 
@@ -325,14 +311,14 @@ scripts/dottrace-report.sh compare reports/before.xml reports/after.xml 30
 
 The `reproducible-benchmarks` self-hosted runner must provide:
 
-- **Docker** (the nodes run as containers; EthCallChaos runs in a .NET SDK
-  container; json-bench builds and runs its own runner image).
+- **Docker** (nodes run as containers; EthCallChaos runs in a .NET SDK container;
+  json-bench builds and runs its own runner image).
 - **The expb DB snapshots** (`/mnt/sda/nethermind-flat-snapshot`, …) and, for
   geth/reth or comparison runs, the **same-block snapshot sets**
   (`/mnt/sda/<client>-<block>`, e.g. `geth-25490000`).
 - **A writable scratch location** on the same large disk (default
   `/mnt/sda/expb-data/rpc-bench-scratch`).
-- **`mount`/`umount` privileges** and overlayfs (expb already uses both there).
+- **`mount`/`umount` privileges** and overlayfs (expb already uses both).
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
   `/opt/dottrace` is not already installed by previous expb dotTrace runs).

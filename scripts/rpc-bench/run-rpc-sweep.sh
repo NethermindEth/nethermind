@@ -2,18 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Single-dispatch cross-client sweep with TWO measurement modes, so per-call cost
-# and system-under-load behaviour never get conflated:
-#   ISOLATED - each scenario run alone at each rps (clean per-call latency, no
-#              cross-scenario contention). Catches per-call regressions precisely.
-#   MIXED    - all scenarios run together at each rps (realistic contention +
-#              saturation / head-of-line blocking). Catches system-level problems.
-# One node lifecycle per client (ISOLATED + MIXED share it), ALL clients pinned to
-# the same SNAPSHOT_BLOCK (apples-to-apples), deep_check on. Reuses start-node.sh /
-# run-jsonbench.sh / stop-node.sh; aggregates every cell into ISOLATED / MIXED /
-# DELTA matrices on $GITHUB_STEP_SUMMARY.
-#
-# A client whose node fails to start is skipped rather than failing the whole run.
+# Cross-client sweep, one node per client pinned to the same SNAPSHOT_BLOCK: ISOLATED
+# (each scenario alone) and MIXED (all together). A node that fails to start is skipped.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

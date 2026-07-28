@@ -2,16 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Aggregate the per-run jsonbench-summary.md files from several single-client
-# benchmark runs into one comparison matrix — the latency counterpart to
-# deep-check-compare.py (which checks response parity). Each benchmark runs one
-# client in isolation (clean timing), so a regression campaign dispatches N runs
-# (client x rps, or version x rps) and feeds their summaries here for a single
-# side-by-side table.
-#
-# Usage:
-#   latency-matrix.py <label>=<jsonbench-summary.md> [<label>=<...> ...]
-# Labels are shown verbatim as row keys (e.g. "reth@jul24", "nethermind@rps50").
+# Aggregate per-run jsonbench-summary.md from single-client runs into one latency
+# comparison matrix (counterpart to deep-check-compare.py's response-parity check).
 
 import re
 import sys
