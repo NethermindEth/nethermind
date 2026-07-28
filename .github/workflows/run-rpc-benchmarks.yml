@@ -25,6 +25,7 @@ on:
           - flood
           - ethcallchaos
           - jsonbench
+          - jsonbench-sweep
         default: flood
       client:
         description: Client to benchmark (geth/reth use their upstream images and the runner's <client>-<block> snapshot set)
@@ -432,7 +433,7 @@ jobs:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true'
     runs-on: [self-hosted, reproducible-benchmarks]
-    timeout-minutes: 360
+    timeout-minutes: 800
     env:
       # NB: the `runner` context is not available in job-level env, so OUT_DIR /
       # STATE_DIR are exported from $RUNNER_TEMP in the "Set up run paths" step.
@@ -512,6 +513,7 @@ jobs:
         run: docker pull "${REF_IMAGE}" || echo "Pull failed — assuming ${REF_IMAGE} is a local image."
 
       - name: Start node
+        if: needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
         env:
           CLIENT: ${{ needs.resolve.outputs.client }}
           INSTANCE: primary
@@ -652,8 +654,33 @@ jobs:
           STOP_GRACE: "180"
         run: NODE_ENV_FILE="${STATE_DIR}/node-reference.env" ./scripts/rpc-bench/stop-node.sh
 
+      - name: Run RPC sweep
+        id: run-sweep
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
+        env:
+          NM_IMAGE: ${{ needs.resolve.outputs.image_ref }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}
+          HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
+          NETWORK: ${{ needs.resolve.outputs.network }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg="${TOOL_CONFIG}"; [[ -z "${cfg}" ]] && cfg='{}'
+          get() { echo "${cfg}" | jq -r "$1 // empty"; }
+          export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind geth reth"
+          export RPS_LIST="$(get '.rps_list')";            [[ -z "${RPS_LIST}" ]] && export RPS_LIST="100 250 500"
+          export SNAPSHOT_BLOCK="$(get '.snapshot_block')";[[ -z "${SNAPSHOT_BLOCK}" ]] && export SNAPSHOT_BLOCK="25490000"
+          export STATE_LAYOUT="$(get '.state_layout')";    [[ -z "${STATE_LAYOUT}" ]] && export STATE_LAYOUT="flat"
+          export JB_BENCHMARK_CONFIG="$(get '.benchmark_config')"; [[ -z "${JB_BENCHMARK_CONFIG}" ]] && export JB_BENCHMARK_CONFIG="config/benchmark/ethcallchaos-percategory-validated.yaml"
+          export JB_REF="$(get '.ref')";                   [[ -z "${JB_REF}" ]] && export JB_REF="bbb38a67f210104eb21042a78d05bdc23d255cc9"
+          export JB_DURATION="$(get '.duration')";         [[ -z "${JB_DURATION}" ]] && export JB_DURATION="60s"
+          export STATE_ROOT="${STATE_DIR}/sweep"
+          ./scripts/rpc-bench/run-rpc-sweep.sh
+
       - name: Stop node and verify DB integrity
-        if: always()
+        if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
         env:
           STOP_GRACE: "180"
         run: ./scripts/rpc-bench/stop-node.sh
@@ -674,7 +701,7 @@ jobs:
 
       - name: Scan node logs for errors
         id: scan
-        if: always()
+        if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
         env:
           CLIENT: ${{ needs.resolve.outputs.client }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
@@ -815,7 +842,7 @@ jobs:
         run: ./scripts/rpc-bench/cleanup.sh || true
 
       - name: Enforce quality gates
-        if: always()
+        if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
         shell: bash
         run: |
           set -euo pipefail
