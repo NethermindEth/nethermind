@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (!e.Success) return;
 
             Db.Metrics.FullPruningLastDurationSeconds = (long)Stopwatch.GetElapsedTime(_pruningStartTimestamp).TotalSeconds;
-            Db.Metrics.FullPruningCount++;
+            Db.Metrics.IncrementFullPruningCount();
         }
 
         /// <summary>

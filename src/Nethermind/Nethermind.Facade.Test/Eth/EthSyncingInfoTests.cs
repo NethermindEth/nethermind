@@ -137,16 +137,16 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject)
                 .TestObject);
 
-            // First call starting timer
+            // First call starts the timer; at the metric's whole-second resolution this is still 0
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
+            Assert.That((long)ethSyncingInfo.UpdateAndGetSyncTime().TotalSeconds, Is.EqualTo(0));
 
             Thread.Sleep(100);
 
-            // Second call timer should count some time
+            // While syncing the timer accumulates
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
             TimeSpan whileSyncing = ethSyncingInfo.UpdateAndGetSyncTime();
-            Assert.That(whileSyncing.TotalMicroseconds, Is.Not.EqualTo(0));
+            Assert.That(whileSyncing, Is.GreaterThan(TimeSpan.Zero));
 
             // Sync ended: the total is retained (not reset to zero) so the final duration stays observable
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
@@ -154,7 +154,14 @@ namespace Nethermind.Facade.Test.Eth
                 .TestObject);
 
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime(), Is.GreaterThanOrEqualTo(whileSyncing));
+            TimeSpan afterSync = ethSyncingInfo.UpdateAndGetSyncTime();
+            Assert.That(afterSync, Is.GreaterThanOrEqualTo(whileSyncing));
+
+            // Falling behind again resumes (does not reset) the total — no false drop to zero
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject)
+                .TestObject);
+            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
+            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime(), Is.GreaterThanOrEqualTo(afterSync));
         }
 
         [TestCase(6178001UL, 6178000UL)]

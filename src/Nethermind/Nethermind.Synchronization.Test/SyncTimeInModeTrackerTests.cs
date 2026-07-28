@@ -17,6 +17,9 @@ public class SyncTimeInModeTrackerTests
 
     private long _now;
 
+    [SetUp]
+    public void SetUp() => Metrics.SyncTimeInModeSeconds.Clear();
+
     private (SyncTimeInModeTracker Tracker, ISyncModeSelector Selector) CreateTracker(SyncMode initialMode = SyncMode.None)
     {
         _now = 0;

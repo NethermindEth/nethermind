@@ -20,8 +20,12 @@ namespace Nethermind.Synchronization;
 /// <see cref="SyncMode"/> is a flag set and several stages can run in parallel, an interval is added to
 /// every active reportable flag, so the per-mode totals can sum to more than the wall-clock sync time.
 /// </remarks>
-public sealed class SyncTimeInModeTracker
+public sealed class SyncTimeInModeTracker : IDisposable
 {
+    // Leaf modes only: the composite SyncMode.FastBlocks bit is deliberately excluded because
+    // FastHeaders/FastBodies/FastReceipts/FastBlockAccessLists each already carry it, so including it
+    // would double-count. A hypothetical bare FastBlocks interval (no leaf flag set) is attributed to
+    // nothing rather than misattributed.
     private static readonly SyncMode[] ReportableModes =
     [
         SyncMode.WaitingForBlock,
@@ -38,6 +42,7 @@ public sealed class SyncTimeInModeTracker
         SyncMode.UpdatingPivot,
     ];
 
+    private readonly ISyncModeSelector _syncModeSelector;
     private readonly Func<long> _getTimestamp;
     private readonly Lock _lock = new();
     private readonly Dictionary<SyncMode, double> _secondsByMode = [];
@@ -45,19 +50,25 @@ public sealed class SyncTimeInModeTracker
     private SyncMode _currentMode;
     private long _lastTimestamp;
 
-    public SyncTimeInModeTracker(ISyncModeSelector syncModeSelector, Func<long>? getTimestamp = null)
+    public SyncTimeInModeTracker(ISyncModeSelector syncModeSelector)
+        : this(syncModeSelector, Stopwatch.GetTimestamp)
     {
-        _getTimestamp = getTimestamp ?? Stopwatch.GetTimestamp;
+    }
+
+    internal SyncTimeInModeTracker(ISyncModeSelector syncModeSelector, Func<long> getTimestamp)
+    {
+        _syncModeSelector = syncModeSelector;
+        _getTimestamp = getTimestamp;
         _currentMode = syncModeSelector.Current;
         _lastTimestamp = _getTimestamp();
 
         foreach (SyncMode mode in ReportableModes)
         {
             _secondsByMode[mode] = 0;
-            Metrics.SyncTimeInModeSeconds[mode] = 0;
+            Metrics.SyncTimeInModeSeconds.TryAdd(mode, 0);
         }
 
-        syncModeSelector.Changed += OnSyncModeChanged;
+        _syncModeSelector.Changed += OnSyncModeChanged;
     }
 
     /// <summary>
@@ -71,6 +82,8 @@ public sealed class SyncTimeInModeTracker
             Flush();
         }
     }
+
+    public void Dispose() => _syncModeSelector.Changed -= OnSyncModeChanged;
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {

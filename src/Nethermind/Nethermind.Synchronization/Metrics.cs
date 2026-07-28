@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization
         [GaugeMetric]
         [Description("Cumulative wall-clock seconds spent with each sync mode active. Modes can overlap, so the sum across modes may exceed the total sync time; retained after sync completes.")]
         [KeyIsLabel("sync_mode")]
-        public static ConcurrentDictionary<SyncMode, long> SyncTimeInModeSeconds { get; set; } = new();
+        public static ConcurrentDictionary<SyncMode, long> SyncTimeInModeSeconds { get; } = new();
 
         [DetailedMetric]
         [Description("Snap range result")]

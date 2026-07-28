@@ -140,12 +140,14 @@ namespace Nethermind.Db
         public static int StateDbPruning { get; set; }
 
         [GaugeMetric]
-        [Description("Duration of the last completed full pruning, in seconds.")]
+        [Description("Duration of the last full pruning's trie copy and commit (excludes waiting for a suitable state root), in seconds.")]
         public static long FullPruningLastDurationSeconds { get; set; }
 
         [CounterMetric]
         [Description("Number of full prunings completed since the node started.")]
-        public static long FullPruningCount;
+        public static long FullPruningCount => _fullPruningCount;
+        private static long _fullPruningCount;
+        internal static void IncrementFullPruningCount() => Interlocked.Increment(ref _fullPruningCount);
 
 #if ZK_EVM
         public static Dictionary<string, long> DbReads { get; } = [];

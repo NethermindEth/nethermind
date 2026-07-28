@@ -101,6 +101,9 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     public async Task records_duration_and_count_on_success()
     {
         long countBefore = Nethermind.Db.Metrics.FullPruningCount;
+        // Seed a sentinel so the assertion proves RecordPruningMetrics actually wrote the duration
+        // (a sub-second test prune truncates to 0, which would otherwise be indistinguishable from unset).
+        Nethermind.Db.Metrics.FullPruningLastDurationSeconds = -1;
         TestContext test = CreateTest();
         await test.RunFullPruning();
         Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore + 1));
