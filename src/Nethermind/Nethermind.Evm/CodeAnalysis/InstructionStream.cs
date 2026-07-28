@@ -129,8 +129,6 @@ internal sealed class InstructionStream
 
     public readonly StreamOp[] Ops;
     public readonly ulong[] BlockGas;
-    public readonly ushort[] BlockStackRequirements;
-    public readonly ushort[] BlockStackGrowth;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
     public readonly UInt256[] Constants;
     /// <summary>The same pool in stack representation (32 big-endian bytes per constant), so
@@ -143,25 +141,14 @@ internal sealed class InstructionStream
     public int RetainedBytes =>
         Ops.Length * Unsafe.SizeOf<StreamOp>()
         + BlockGas.Length * sizeof(ulong)
-        + BlockStackRequirements.Length * sizeof(ushort)
-        + BlockStackGrowth.Length * sizeof(ushort)
         + Constants.Length * Unsafe.SizeOf<UInt256>()
         + ConstantBytes.Length
         + PcToEntry.Length * sizeof(ushort);
 
-    private InstructionStream(
-        StreamOp[] ops,
-        ulong[] blockGas,
-        ushort[] blockStackRequirements,
-        ushort[] blockStackGrowth,
-        UInt256[] constants,
-        ushort[] pcToEntry,
-        bool buildConstantBytes)
+    private InstructionStream(StreamOp[] ops, ulong[] blockGas, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
     {
         Ops = ops;
         BlockGas = blockGas;
-        BlockStackRequirements = blockStackRequirements;
-        BlockStackGrowth = blockStackGrowth;
         Constants = constants;
         PcToEntry = pcToEntry;
 
@@ -188,15 +175,12 @@ internal sealed class InstructionStream
 
         List<StreamOp> ops = new(code.Length / 2);
         List<ulong> blockGas = new(code.Length / 16);
-        List<ushort> blockStackRequirements = new(code.Length / 16);
-        List<ushort> blockStackGrowth = new(code.Length / 16);
         List<UInt256> constants = new(code.Length / 32);
         ushort[] pcToEntry = new ushort[code.Length + 1];
         pcToEntry.AsSpan().Fill(InvalidEntry);
 
         int openBlock = -1;
         int openBlockOpcodeCount = 0;
-        int openBlockStackDelta = 0;
         int pc = 0;
         // ConstantBytes (the big-endian form) is read only by the fused bitwise cores; track whether any
         // get emitted so a stream whose constants feed only arithmetic/shift fusion skips that allocation.
@@ -213,8 +197,6 @@ internal sealed class InstructionStream
                 // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
                 // so the following ops must sit in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
-                blockStackRequirements.Add(0);
-                blockStackGrowth.Add(0);
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
                 openBlockOpcodeCount = 0;
@@ -228,8 +210,6 @@ internal sealed class InstructionStream
                 && TryReadStaticJumpTarget(code, pc + 3) is int dupAndDest and >= 0)
             {
                 blockGas.Add(4 * GasCostOf.VeryLow + GasCostOf.JumpI);
-                blockStackRequirements.Add((ushort)(instruction - Instruction.DUP1 + 1));
-                blockStackGrowth.Add(1);
                 ops.Add(new StreamOp(
                     FusedOpcode.DupAndIsZeroStaticJumpI,
                     StreamOpKind.FusedBlockFirst,
@@ -253,8 +233,6 @@ internal sealed class InstructionStream
                 && TryReadStaticJumpTarget(code, pc + 6) is int maskDest and >= 0)
             {
                 blockGas.Add(6 * GasCostOf.VeryLow + GasCostOf.JumpI);
-                blockStackRequirements.Add(3);
-                blockStackGrowth.Add(1);
                 ops.Add(new StreamOp(
                     FusedOpcode.MaskIsZeroStaticJumpI,
                     StreamOpKind.FusedBlockFirst,
@@ -275,8 +253,6 @@ internal sealed class InstructionStream
                 && TryReadStaticJumpTarget(code, pc + 2) is int dupIsZeroDest and >= 0)
             {
                 blockGas.Add(3 * GasCostOf.VeryLow + GasCostOf.JumpI);
-                blockStackRequirements.Add(1);
-                blockStackGrowth.Add(2);
                 ops.Add(new StreamOp(
                     FusedOpcode.DupIsZeroStaticJumpI,
                     StreamOpKind.FusedBlockFirst,
@@ -296,8 +272,6 @@ internal sealed class InstructionStream
                 && TryReadStaticJumpTarget(code, pc + 1) is int isZeroDest and >= 0)
             {
                 blockGas.Add(2 * GasCostOf.VeryLow + GasCostOf.JumpI);
-                blockStackRequirements.Add(1);
-                blockStackGrowth.Add(1);
                 ops.Add(new StreamOp(
                     FusedOpcode.IsZeroStaticJumpI,
                     StreamOpKind.BlockFirst,
@@ -336,17 +310,7 @@ internal sealed class InstructionStream
                     openBlockOpcodeCount = 0;
                 }
 
-                bool startsBlock = openBlock < 0;
-                if (startsBlock)
-                {
-                    blockGas.Add(0);
-                    blockStackRequirements.Add(0);
-                    blockStackGrowth.Add(0);
-                    openBlock = blockGas.Count - 1;
-                    openBlockStackDelta = 0;
-                }
-
-                if (!startsBlock
+                if (openBlock >= 0
                     && TryTakePrecedingStackPair(
                         ops,
                         instruction,
@@ -374,7 +338,7 @@ internal sealed class InstructionStream
                         (byte)(first.Advance + size),
                         stackPairOperand);
                 }
-                else if (!startsBlock
+                else if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -413,19 +377,17 @@ internal sealed class InstructionStream
                     }
 
                     StreamOpKind kind = StreamOpKind.InBlock;
-                    if (startsBlock)
+                    if (openBlock < 0)
+                    {
+                        blockGas.Add(0);
+                        openBlock = blockGas.Count - 1;
                         kind = StreamOpKind.BlockFirst;
+                    }
 
                     blockGas[openBlock] += cost;
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
                 }
 
-                UpdateStackBounds(
-                    instruction,
-                    ref openBlockStackDelta,
-                    blockStackRequirements,
-                    blockStackGrowth,
-                    openBlock);
                 openBlockOpcodeCount++;
             }
             else
@@ -476,14 +438,7 @@ internal sealed class InstructionStream
             }
         }
 
-        return new InstructionStream(
-            ops.ToArray(),
-            blockGas.ToArray(),
-            blockStackRequirements.ToArray(),
-            blockStackGrowth.ToArray(),
-            constants.ToArray(),
-            pcToEntry,
-            anyBitwiseFusion);
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry, anyBitwiseFusion);
     }
 
     /// <summary>
@@ -505,51 +460,6 @@ internal sealed class InstructionStream
         Instruction.POP or Instruction.PUSH0 => GasCostOf.Base,
         _ => NotInBlock,
     };
-
-    private static void UpdateStackBounds(
-        Instruction instruction,
-        ref int stackDelta,
-        List<ushort> requirements,
-        List<ushort> growth,
-        int blockIndex)
-    {
-        int inputs;
-        int outputDelta;
-        if (instruction is >= Instruction.PUSH0 and <= Instruction.PUSH32)
-        {
-            inputs = 0;
-            outputDelta = 1;
-        }
-        else if (instruction is >= Instruction.DUP1 and <= Instruction.DUP16)
-        {
-            inputs = instruction - Instruction.DUP1 + 1;
-            outputDelta = 1;
-        }
-        else if (instruction is >= Instruction.SWAP1 and <= Instruction.SWAP16)
-        {
-            inputs = instruction - Instruction.SWAP1 + 2;
-            outputDelta = 0;
-        }
-        else if (instruction is Instruction.ISZERO or Instruction.NOT)
-        {
-            inputs = 1;
-            outputDelta = 0;
-        }
-        else if (instruction == Instruction.POP)
-        {
-            inputs = 1;
-            outputDelta = -1;
-        }
-        else
-        {
-            inputs = 2;
-            outputDelta = -1;
-        }
-
-        requirements[blockIndex] = (ushort)Math.Max(requirements[blockIndex], inputs - stackDelta);
-        stackDelta += outputDelta;
-        growth[blockIndex] = (ushort)Math.Max(growth[blockIndex], stackDelta);
-    }
 
     /// <summary>Returns the PUSH2 immediate at <paramref name="pc"/> when it points at a JUMPDEST; -1 otherwise.</summary>
     private static int TryReadStaticJumpTarget(ReadOnlySpan<byte> code, int pc)

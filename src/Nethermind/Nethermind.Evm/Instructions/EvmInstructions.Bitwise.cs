@@ -71,16 +71,6 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void BitwiseCoreUnchecked<TOpBitwise>(ref EvmStack stack)
-        where TOpBitwise : struct, IOpBitwise
-    {
-        ref byte bytesRef = ref stack.Pop1PeekWordUnchecked(out EvmWord a);
-        EvmWord b = ReadUnaligned<EvmWord>(ref bytesRef);
-        WriteUnaligned(ref bytesRef, TOpBitwise.Operation(in a, in b));
-    }
-
     /// <summary>
     /// Implements the bitwise AND operation on two 256-bit vectors.
     /// </summary>

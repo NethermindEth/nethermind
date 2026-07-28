@@ -83,17 +83,6 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Math2ParamCoreUnchecked<TOpMath>(ref EvmStack stack)
-        where TOpMath : struct, IOpMath2Param
-    {
-        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
-        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpMath.Operation(in a, in b, out UInt256 result);
-        EvmStack.WriteUInt256ToSlot(ref topRef, in result);
-    }
-
     /// <summary>
     /// Implements addition of two 256-bit unsigned integers.
     /// </summary>

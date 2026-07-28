@@ -90,23 +90,6 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ShiftCoreUnchecked<TOpShift>(ref EvmStack stack)
-        where TOpShift : struct, IOpShift
-    {
-        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
-        if (!a.IsUint64 || a.u0 >= 256)
-        {
-            EvmStack.WriteUInt256ToSlot(ref topRef, in UInt256.Zero);
-            return;
-        }
-
-        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpShift.Operation(in a, in b, out UInt256 result);
-        EvmStack.WriteUInt256ToSlot(ref topRef, in result);
-    }
-
     /// <summary>
     /// Executes an arithmetic right shift (SAR) operation.
     /// Pops a shift amount and a value from the stack, interprets the value as signed,

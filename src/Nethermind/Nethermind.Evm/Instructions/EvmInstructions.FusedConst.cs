@@ -19,7 +19,11 @@ public static partial class EvmInstructions
     internal static EvmExceptionType FusedConstBinaryCore<TOpMath>(ref EvmStack stack, UInt256 a)
         where TOpMath : struct, IOpMath2Param
     {
-        ref byte topRef = ref stack.PeekBytesByRefUnchecked();
+        if (stack.Head == EvmStack.MaxStackSize - 1)
+            return EvmExceptionType.StackOverflow;
+
+        ref byte topRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
 
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         TOpMath.Operation(in a, in b, out UInt256 result);
@@ -33,7 +37,11 @@ public static partial class EvmInstructions
     internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, UInt256 a)
         where TOpShift : struct, IOpShift
     {
-        ref byte topRef = ref stack.PeekBytesByRefUnchecked();
+        if (stack.Head == EvmStack.MaxStackSize - 1)
+            return EvmExceptionType.StackOverflow;
+
+        ref byte topRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
 
         // Mirrors ShiftCore: amounts of 256 or more shift everything out.
         if (!a.IsUint64 || a.u0 >= 256)
@@ -57,7 +65,11 @@ public static partial class EvmInstructions
     internal static EvmExceptionType FusedConstBitwiseCore<TOpBitwise>(ref EvmStack stack, ref byte constantSlot)
         where TOpBitwise : struct, IOpBitwise
     {
-        ref byte topRef = ref stack.PeekBytesByRefUnchecked();
+        if (stack.Head == EvmStack.MaxStackSize - 1)
+            return EvmExceptionType.StackOverflow;
+
+        ref byte topRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
 
         EvmWord a = ReadUnaligned<EvmWord>(ref constantSlot);
         EvmWord b = ReadUnaligned<EvmWord>(ref topRef);
@@ -70,7 +82,11 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static EvmExceptionType FusedConstSignExtendCore(ref EvmStack stack, UInt256 byteIndex)
     {
-        ref byte topRef = ref stack.PeekBytesByRefUnchecked();
+        if (stack.Head == EvmStack.MaxStackSize - 1)
+            return EvmExceptionType.StackOverflow;
+
+        ref byte topRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
 
         ApplySignExtend(ref topRef, in byteIndex);
         return EvmExceptionType.None;

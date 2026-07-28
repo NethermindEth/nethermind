@@ -1421,16 +1421,6 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void PushZeroUnchecked()
-    {
-        int head = Head;
-        Head = head + 1;
-        Unsafe.WriteUnaligned(
-            ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)),
-            default(EvmWord));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType PushUInt32<TTracingInst>(uint value)
         where TTracingInst : struct, IFlag
     {
@@ -1495,16 +1485,6 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void PushUInt64Unchecked(ulong value)
-    {
-        int head = Head;
-        Head = head + 1;
-        Unsafe.WriteUnaligned(
-            ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)),
-            CreateWordFromUInt64(BinaryPrimitives.ReverseEndianness(value)));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal EvmExceptionType PushUInt64ThenDup(ulong operand)
     {
         int depth = (int)(operand >> 60) + 1;
@@ -1533,21 +1513,6 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void PushUInt64ThenDupUnchecked(ulong operand)
-    {
-        int depth = (int)(operand >> 60) + 1;
-        ulong value = operand & 0x0FFF_FFFF_FFFF_FFFF;
-        int head = Head;
-        Head = head + 2;
-        ref byte first = ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize));
-        Unsafe.WriteUnaligned(ref first, CreateWordFromUInt64(BinaryPrimitives.ReverseEndianness(value)));
-        ref byte source = ref (depth == 1
-            ? ref first
-            : ref Unsafe.Add(ref _stack, (nint)((uint)(head + 1 - depth) * WordSize)));
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref first, WordSize), Unsafe.ReadUnaligned<EvmWord>(ref source));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal EvmExceptionType PushUInt8Pair(ulong operand)
     {
         uint headOffset = (uint)Head;
@@ -1564,20 +1529,6 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref first, firstWord);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref first, WordSize), secondWord);
         return EvmExceptionType.None;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void PushUInt8PairUnchecked(ulong operand)
-    {
-        int head = Head;
-        Head = head + 2;
-        ref byte first = ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize));
-        Unsafe.WriteUnaligned(
-            ref first,
-            CreateWordFromUInt64(BinaryPrimitives.ReverseEndianness(operand >> 8)));
-        Unsafe.WriteUnaligned(
-            ref Unsafe.Add(ref first, WordSize),
-            CreateWordFromUInt64(BinaryPrimitives.ReverseEndianness((ulong)(byte)operand)));
     }
 
     /// <summary>
@@ -1630,14 +1581,6 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void PushUInt256Unchecked(in UInt256 value)
-    {
-        int head = Head;
-        Head = head + 1;
-        WriteUInt256ToSlot(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)), in value);
-    }
-
     public EvmExceptionType PushSignedInt256<TTracingInst>(in Int256.Int256 value)
         where TTracingInst : struct, IFlag
         => PushUInt256<TTracingInst>(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
@@ -1665,12 +1608,6 @@ public ref struct EvmStack
         Head = head;
         return true;
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void PopUnchecked() => Head--;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void Pop2Unchecked() => Head -= 2;
 
 #if ZK_EVM
     // Reads one big-endian 32-byte stack word into a UInt256. RISC-V has no byte-swap
@@ -2058,11 +1995,6 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal readonly bool PeekUInt256IsZeroUnchecked() =>
-        Unsafe.ReadUnaligned<EvmWord>(
-            ref Unsafe.Add(ref _stack, (nint)((uint)(Head - 1) * WordSize))) == default;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly ref byte PeekBytesByRef()
     {
         ref byte baseRef = ref _stack;
@@ -2073,11 +2005,6 @@ public ref struct EvmStack
         }
         return ref Unsafe.Add(ref baseRef, (nint)((uint)head * WordSize));
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [UnscopedRef]
-    internal readonly ref byte PeekBytesByRefUnchecked() =>
-        ref Unsafe.Add(ref _stack, (nint)((uint)(Head - 1) * WordSize));
 
     public readonly Span<byte> PeekWord256()
     {
@@ -2165,18 +2092,6 @@ public ref struct EvmStack
         return ref topRef;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [UnscopedRef]
-    internal ref byte Pop1Peek32BytesUnchecked(out UInt256 a)
-    {
-        uint head = (uint)Head;
-        Head = (int)(head - 1);
-        ref byte topRef = ref Unsafe.Add(ref _stack, (nint)((head - 2) * WordSize));
-        ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, WordSize), out a);
-        return ref topRef;
-    }
-
     /// <summary>
     /// Atomic pop-1 + peek-top for binary operations over the stack's native big-endian word representation.
     /// </summary>
@@ -2198,18 +2113,6 @@ public ref struct EvmStack
         ref byte topRef = ref Unsafe.Add(ref baseRef, (nint)((head - 2) * WordSize));
         a = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref topRef, WordSize));
         isValid = true;
-        return ref topRef;
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [UnscopedRef]
-    internal ref byte Pop1PeekWordUnchecked(out EvmWord a)
-    {
-        uint head = (uint)Head;
-        Head = (int)(head - 1);
-        ref byte topRef = ref Unsafe.Add(ref _stack, (nint)((head - 2) * WordSize));
-        a = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref topRef, WordSize));
         return ref topRef;
     }
 
@@ -2393,19 +2296,6 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void DupUnchecked(int depth)
-    {
-        int head = Head;
-        ref byte bytes = ref _stack;
-        nuint headOffset = (nuint)(uint)head << 5;
-        Head = head + 1;
-        Unsafe.WriteUnaligned(
-            ref Unsafe.Add(ref bytes, headOffset),
-            Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, headOffset - ((nuint)(uint)depth << 5))));
-    }
-
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
@@ -2439,19 +2329,6 @@ public ref struct EvmStack
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal readonly void SwapUnchecked(int depth)
-    {
-        ref byte bytes = ref _stack;
-        nuint headOffset = (nuint)(uint)Head << 5;
-        ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - ((nuint)(uint)depth << 5));
-        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
-        EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
-        Unsafe.WriteUnaligned(ref top, buffer);
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal EvmExceptionType SwapPop(int depth)
     {
         int head = Head;
@@ -2468,18 +2345,6 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
         Head = head - 1;
         return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void SwapPopUnchecked(int depth)
-    {
-        int head = Head;
-        nuint headOffset = (nuint)(uint)head << 5;
-        Unsafe.WriteUnaligned(
-            ref Unsafe.Add(ref _stack, headOffset - ((nuint)(uint)depth << 5)),
-            Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref _stack, headOffset - WordSize)));
-        Head = head - 1;
     }
 
     [SkipLocalsInit]
@@ -2506,17 +2371,6 @@ public ref struct EvmStack
         duplicate = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, headOffset - ((nuint)(uint)depth << 5)));
         exceptionType = EvmExceptionType.None;
         return ref top;
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [UnscopedRef]
-    internal ref byte PeekTopForDupBinaryUnchecked(int depth, out EvmWord duplicate)
-    {
-        nuint headOffset = (nuint)(uint)Head << 5;
-        duplicate = Unsafe.ReadUnaligned<EvmWord>(
-            ref Unsafe.Add(ref _stack, headOffset - ((nuint)(uint)depth << 5)));
-        return ref Unsafe.Add(ref _stack, headOffset - WordSize);
     }
 
     [SkipLocalsInit]

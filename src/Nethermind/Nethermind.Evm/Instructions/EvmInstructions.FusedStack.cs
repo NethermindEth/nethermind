@@ -14,7 +14,9 @@ public static partial class EvmInstructions
     internal static EvmExceptionType FusedDupBinaryCore(ref EvmStack stack, ulong operand)
     {
         int depth = (byte)operand;
-        ref byte topRef = ref stack.PeekTopForDupBinaryUnchecked(depth, out EvmWord duplicate);
+        ref byte topRef = ref stack.PeekTopForDupBinary(depth, out EvmWord duplicate, out EvmExceptionType exceptionType);
+        if (exceptionType != EvmExceptionType.None)
+            return exceptionType;
 
         return (Instruction)(byte)(operand >> 8) switch
         {
@@ -86,7 +88,9 @@ public static partial class EvmInstructions
     private static EvmExceptionType ApplySwapMath<TOpMath>(ref EvmStack stack)
         where TOpMath : struct, IOpMath2Param
     {
-        ref byte secondRef = ref stack.Pop1Peek32BytesUnchecked(out Int256.UInt256 top);
+        ref byte secondRef = ref stack.Pop1Peek32Bytes(out Int256.UInt256 top, out bool ok);
+        if (!ok)
+            return EvmExceptionType.StackUnderflow;
 
         EvmStack.ReadUInt256FromSlot(ref secondRef, out Int256.UInt256 second);
         TOpMath.Operation(in second, in top, out Int256.UInt256 result);
@@ -98,7 +102,9 @@ public static partial class EvmInstructions
     private static EvmExceptionType ApplySwapBitwise<TOpBitwise>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
     {
-        ref byte secondRef = ref stack.Pop1PeekWordUnchecked(out EvmWord top);
+        ref byte secondRef = ref stack.Pop1PeekWord(out EvmWord top, out bool ok);
+        if (!ok)
+            return EvmExceptionType.StackUnderflow;
 
         EvmWord second = ReadUnaligned<EvmWord>(ref secondRef);
         WriteUnaligned(ref secondRef, TOpBitwise.Operation(in second, in top));
@@ -107,9 +113,12 @@ public static partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool TestDupAndIsZero(ref EvmStack stack, int depth)
+    internal static bool TestDupAndIsZero(ref EvmStack stack, int depth, out EvmExceptionType exceptionType)
     {
-        ref byte topRef = ref stack.PeekTopForDupBinaryUnchecked(depth, out EvmWord duplicate);
+        ref byte topRef = ref stack.PeekTopForDupBinary(depth, out EvmWord duplicate, out exceptionType);
+        if (exceptionType != EvmExceptionType.None)
+            return false;
+
         EvmWord top = ReadUnaligned<EvmWord>(ref topRef);
         stack.Head--;
         return (top & duplicate) == default;
@@ -117,18 +126,24 @@ public static partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool TestMaskIsZero(ref EvmStack stack, byte shift)
+    internal static bool TestMaskIsZero(ref EvmStack stack, byte shift, out EvmExceptionType exceptionType)
     {
-        ref byte bSlot = ref stack.Pop1Peek32BytesUnchecked(out Int256.UInt256 a);
-        EvmStack.ReadUInt256FromSlot(ref bSlot, out Int256.UInt256 b);
-        stack.PopUnchecked();
-        ref byte cSlot = ref stack.PeekBytesByRefUnchecked();
-        EvmStack.ReadUInt256FromSlot(ref cSlot, out Int256.UInt256 c);
-        stack.PopUnchecked();
+        if (stack.Head >= EvmStack.MaxStackSize - 1)
+        {
+            exceptionType = EvmExceptionType.StackOverflow;
+            return false;
+        }
+
+        if (!stack.PopUInt256(out Int256.UInt256 a, out Int256.UInt256 b, out Int256.UInt256 c))
+        {
+            exceptionType = EvmExceptionType.StackUnderflow;
+            return false;
+        }
 
         Int256.UInt256 shiftAmount = shift;
         OpShl.Operation(in shiftAmount, in a, out Int256.UInt256 shifted);
         OpSub.Operation(in shifted, in b, out Int256.UInt256 subtracted);
+        exceptionType = EvmExceptionType.None;
         return (subtracted & c).IsZero;
     }
 }

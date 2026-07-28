@@ -84,15 +84,6 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Math1ParamCoreUnchecked<TOpMath>(ref EvmStack stack)
-        where TOpMath : struct, IOpMath1Param
-    {
-        ref byte bytesRef = ref stack.PeekBytesByRefUnchecked();
-        WriteUnaligned(ref bytesRef, TOpMath.Operation(ReadUnaligned<EvmWord>(ref bytesRef)));
-    }
-
     /// <summary>
     /// Implements the bitwise NOT operation.
     /// Computes the ones' complement of the input 256‐bit vector.
@@ -200,14 +191,6 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void SignExtendCoreUnchecked(ref EvmStack stack)
-    {
-        ref byte bytesRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 byteIndex);
-        ApplySignExtend(ref bytesRef, in byteIndex);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
