@@ -141,4 +141,8 @@ if [[ "${#LABELS[@]}" -ge 2 ]]; then
     fi
   done
 fi
-[[ "$node_issue" -eq 1 ]] && { echo "::error::node health issue (Exception / invalid block) in a sweep node log — failing"; exit 1; }
+if [[ "$node_issue" -eq 1 ]]; then
+  echo "::error::node health issue (Exception / invalid block) in a sweep node log — failing"
+  exit 1
+fi
+exit 0
