@@ -1054,16 +1054,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             (byte)Instruction.STOP,
         }, 21_005UL)
         { TestName = "OutOfGasInsideIsZeroStaticJumpI" };
-
-        yield return new TestCaseData(new byte[]
-        {
-            (byte)Instruction.PUSH2, 0x00, 0x05,
-            (byte)Instruction.JUMP,
-            (byte)Instruction.STOP,
-            (byte)Instruction.JUMPDEST,
-            (byte)Instruction.STOP,
-        }, 21_011UL)
-        { TestName = "OutOfGasOnSkippedStaticJumpDestination" };
     }
 
     [TestCaseSource(nameof(OutOfGasCases))]

@@ -267,7 +267,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmExceptionType.None;
                             break;
                         case (Instruction)FusedOpcode.StaticJump:
-                            // PUSH2 + JUMP, with the target JUMPDEST validated and charged on entry.
+                            // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
                             // Mirror the unfused PUSH2: at a full stack the PUSH2 overflows before the JUMP would
                             // pop it, so the fast path must fail with StackOverflow rather than execute the jump.
                             if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
@@ -285,11 +285,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             }
 
                             opCodeCount++;
-                            if (!TryEnterStaticJumpTarget(ops, (int)entry.Operand, ref gas, ref entryIndex, ref opCodeCount))
-                            {
-                                OpCodeCount += opCodeCount;
-                                goto OutOfGas;
-                            }
+                            // Set entryIndex to dest-1; the shared loop-tail entryIndex++ lands it on dest.
+                            // programCounter is transiently stale until the next entry sets it — fine, nothing reads it here.
+                            entryIndex = (int)entry.Operand - 1;
                             break;
                         case (Instruction)FusedOpcode.StaticJumpI:
                             // Same full-stack overflow as the unfused PUSH2, which pushes the destination before
@@ -310,11 +308,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
                             {
-                                if (!TryEnterStaticJumpTarget(ops, (int)entry.Operand, ref gas, ref entryIndex, ref opCodeCount))
-                                {
-                                    OpCodeCount += opCodeCount;
-                                    goto OutOfGas;
-                                }
+                                entryIndex = (int)entry.Operand - 1;
                             }
                             else if (conditionUnderflow)
                             {
@@ -323,7 +317,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         case (Instruction)FusedOpcode.IsZeroStaticJumpI:
-                            opCodeCount += 2;
+                            opCodeCount++;
                             if (stack.Head == 0)
                             {
                                 exceptionType = EvmExceptionType.StackUnderflow;
@@ -337,11 +331,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             if (!EvmInstructions.TestJumpCondition(ref stack, out _))
                             {
-                                if (!TryEnterStaticJumpTarget(ops, (int)entry.Operand, ref gas, ref entryIndex, ref opCodeCount))
-                                {
-                                    OpCodeCount += opCodeCount;
-                                    goto OutOfGas;
-                                }
+                                entryIndex = (int)entry.Operand - 1;
                             }
 
                             break;
@@ -360,11 +350,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             if (stack.PeekUInt256IsZero())
                             {
-                                if (!TryEnterStaticJumpTarget(ops, (int)entry.Operand, ref gas, ref entryIndex, ref opCodeCount))
-                                {
-                                    OpCodeCount += opCodeCount;
-                                    goto OutOfGas;
-                                }
+                                entryIndex = (int)entry.Operand - 1;
                             }
 
                             break;
@@ -375,11 +361,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 (byte)(entry.Operand >> 32),
                                 out exceptionType))
                             {
-                                if (!TryEnterStaticJumpTarget(ops, (int)(uint)entry.Operand, ref gas, ref entryIndex, ref opCodeCount))
-                                {
-                                    OpCodeCount += opCodeCount;
-                                    goto OutOfGas;
-                                }
+                                entryIndex = (int)(uint)entry.Operand - 1;
                             }
 
                             break;
@@ -390,11 +372,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 (byte)(entry.Operand >> 32),
                                 out exceptionType))
                             {
-                                if (!TryEnterStaticJumpTarget(ops, (int)(uint)entry.Operand, ref gas, ref entryIndex, ref opCodeCount))
-                                {
-                                    OpCodeCount += opCodeCount;
-                                    goto OutOfGas;
-                                }
+                                entryIndex = (int)(uint)entry.Operand - 1;
                             }
 
                             break;
@@ -549,29 +527,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
         if (_txTracer.IsCancelled)
             throw new OperationCanceledException("Cancellation Requested");
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool TryEnterStaticJumpTarget(
-        StreamOp[] ops,
-        int target,
-        ref TGasPolicy gas,
-        ref int entryIndex,
-        ref int opCodeCount)
-    {
-        if ((uint)(target + 1) >= (uint)ops.Length)
-        {
-            entryIndex = target - 1;
-            return true;
-        }
-
-        opCodeCount++;
-        if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
-            return false;
-
-        // The loop tail increments once, landing immediately after the already charged JUMPDEST.
-        entryIndex = target;
-        return true;
     }
 
     private enum MeteredOutcome : byte
