@@ -13,7 +13,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${NM_IMAGE:?built nethermind image ref}"
 : "${SNAPSHOT_BLOCK:?shared head all clients are pinned to}"
 : "${JB_REF:?json-bench ref}"
-: "${JB_BENCHMARK_CONFIG:?mixed (all-scenario) benchmark config, repo-relative}"
+# Mixed (all-scenario) config, repo-relative; 'none' skips the mixed run (isolated-only sweep).
+JB_BENCHMARK_CONFIG="${JB_BENCHMARK_CONFIG:-none}"
 
 CLIENTS="${CLIENTS:-nethermind geth reth}"
 RPS_LIST="${RPS_LIST:-100 250 500}"
@@ -94,11 +95,13 @@ for entry in $CLIENTS; do
       run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
       [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${label}|${rps}=$cell/jsonbench-summary.md")
     done
-    # MIXED: all scenarios together
-    mcell="$OUT_DIR/mix/${label}/${rps}"
-    echo "-- MIX ${label} @ rps=${rps} --"
-    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
-    [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
+    # MIXED: all scenarios together (skipped when JB_BENCHMARK_CONFIG=none — isolated-only sweep)
+    if [[ "$JB_BENCHMARK_CONFIG" != "none" ]]; then
+      mcell="$OUT_DIR/mix/${label}/${rps}"
+      echo "-- MIX ${label} @ rps=${rps} --"
+      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+      [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
+    fi
   done
 
   # stop-node.sh verifies the snapshot is pristine and exits non-zero on a DB-integrity/teardown failure. That must fail
