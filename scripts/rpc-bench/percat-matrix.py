@@ -78,7 +78,11 @@ def main():
         row = [c]
         for r in rpss:
             o = mix.get((c, r), (None, None))[0]
-            row.append(f"{o['tput']:.0f} / {o['checks']:.0f}% / {o['p90']:.0f} / {o['p99']:.0f}" if o else "-")
+            if not o:
+                row.append("-")
+            else:
+                ck = f"{o['checks']:.0f}%" if "checks" in o else "na"  # checks row absent when workload emits no k6 checks
+                row.append(f"{o.get('tput', 0):.0f} / {ck} / {o.get('p90', 0):.0f} / {o.get('p99', 0):.0f}")
         print("| " + " | ".join(row) + " |")
 
     # 2) ISOLATED per-scenario, each run ALONE at the full sweep rps.

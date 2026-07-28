@@ -71,7 +71,11 @@ guard_paths
 log "=== RPC benchmark node startup ==="
 log "Client:     $CLIENT  (instance: $INSTANCE)"
 log "Image:      $NODE_IMAGE"
-log "Snapshot:   $DB_SOURCE  (READ-ONLY — will not be modified)"
+if [[ "$DB_ISOLATION" == "direct" ]]; then
+  log "Snapshot:   $DB_SOURCE  (READ-WRITE bind — direct mode)"
+else
+  log "Snapshot:   $DB_SOURCE  (READ-ONLY — will not be modified)"
+fi
 log "Isolation:  $DB_ISOLATION"
 log "Scratch:    $SCRATCH_ROOT"
 log "dotTrace:   $DOTTRACE"

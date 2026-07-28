@@ -56,6 +56,7 @@ run_cell() {
 
 mkdir -p "$OUT_DIR" "$STATE_ROOT"
 declare -a SUMMARIES=()
+node_issue=0
 
 for client in $CLIENTS; do
   img="$(default_image "$client")" || { echo "skip $client: no image"; continue; }
@@ -91,6 +92,14 @@ for client in $CLIENTS; do
 
   STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" \
     "$here/stop-node.sh" || echo "::warning::stop-node failed for ${client}"
+  # Sweep mode isn't covered by the workflow's log-scan step, so scan each node log here (same patterns).
+  if [[ -f "$cst/node.log" ]]; then
+    clean="$cst/node.clean.log"
+    sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$cst/node.log" > "$clean"
+    grep -in "Exception" "$clean" | grep -vF 'Incorrect JSON RPC parameters' > "$cst/node.exc" || true
+    if [[ -s "$cst/node.exc" ]]; then echo "::warning::${client}: Exception(s) in node log:"; head -20 "$cst/node.exc"; node_issue=1; fi
+    if grep -qEi 'invalid[[:space:]_-]*block' "$clean"; then echo "::warning::${client}: invalid block in node log"; node_issue=1; fi
+  fi
   echo "::endgroup::"
 done
 
@@ -105,3 +114,4 @@ if [[ "${#SUMMARIES[@]}" -gt 0 ]]; then
 else
   echo "No cell summaries produced — every client failed to start." >> "$sink"; exit 1
 fi
+[[ "$node_issue" -eq 1 ]] && { echo "::error::node health issue (Exception / invalid block) in a sweep node log — failing"; exit 1; }
