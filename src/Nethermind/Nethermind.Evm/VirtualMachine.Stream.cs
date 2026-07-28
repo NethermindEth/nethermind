@@ -75,6 +75,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 ref readonly StreamOp entry = ref ops[entryIndex];
                 Instruction instruction = (Instruction)entry.Opcode;
+                OpcodeHistogram.Record(in entry);
 
                 if (entry.Kind < StreamOpKind.Boundary)
                 {

@@ -56,6 +56,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
+                OpcodeHistogram.Record(instruction);
 
                 // IsCancelled is an interface call; polling it per opcode is measurable on the
                 // cancelable (eth_call) path. Every 1024 opcodes still aborts within microseconds.
