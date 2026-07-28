@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
@@ -24,8 +25,15 @@ namespace Nethermind.Pbt;
 /// </remarks>
 public interface IPbtStore
 {
-    RefCountingMemory? GetTrieNode(in TrieNodeKey key);
-    void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node);
-    RefCountingMemory? GetLeafBlob(in Stem stem);
-    void SetLeafBlob(in Stem stem, RefCountingMemory? blob);
+    /// <summary>Gets the trie node group at <paramref name="key"/> that represents <paramref name="hash"/>.</summary>
+    RefCountingMemory? GetTrieNode(in TrieNodeKey key, in ValueHash256 hash);
+
+    /// <summary>Stores <paramref name="node"/> at <paramref name="key"/> as the group that represents <paramref name="hash"/>.</summary>
+    void SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory? node);
+
+    /// <summary>Gets the leaf blob for <paramref name="stem"/> whose leaf-subtree root is <paramref name="hash"/>.</summary>
+    RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash);
+
+    /// <summary>Stores <paramref name="blob"/> for <paramref name="stem"/> with leaf-subtree root <paramref name="hash"/>.</summary>
+    void SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory? blob);
 }
