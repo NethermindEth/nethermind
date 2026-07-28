@@ -12,6 +12,8 @@ using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis.IlEvm;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -36,6 +38,15 @@ namespace Nethermind.Init.Steps
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
 
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
+
+            IEvmConfig evmConfig = getApi.Config<IEvmConfig>();
+            IlEvm.Enabled = evmConfig.IlEvm;
+            IlEvm.CompileThreshold = evmConfig.IlEvmThreshold;
+            if (IlEvm.Enabled)
+            {
+                Logging.ILogger evmLogger = getApi.LogManager.GetClassLogger<InitializeBlockchain>();
+                if (evmLogger.IsInfo) evmLogger.Info($"IL-EVM enabled (compile threshold: {IlEvm.CompileThreshold})");
+            }
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?

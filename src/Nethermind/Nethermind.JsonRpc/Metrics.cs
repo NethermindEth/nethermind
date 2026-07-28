@@ -66,6 +66,14 @@ namespace Nethermind.JsonRpc
             Buckets = [10, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000])]
         [Description("Individual rpc call duration metric calls (microseconds)")]
         public static IMetricObserver JsonRpcCallDurationMicros = NoopMetricObserver.Instance;
+
+        [CounterMetric]
+        [Description("Number of eth_call executions served from the block-scoped result cache.")]
+        public static long EthCallCacheHits => Facade.EthCallResultCache.Hits;
+
+        [CounterMetric]
+        [Description("Number of eth_call executions that missed the block-scoped result cache.")]
+        public static long EthCallCacheMisses => Facade.EthCallResultCache.Misses;
     }
 
     internal sealed class JsonRpcMetricLabels(string method, bool success) : IMetricLabels

@@ -14,6 +14,8 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.CodeAnalysis.IlEvm;
 
 using static Nethermind.Evm.VirtualMachineStatics;
 
@@ -420,7 +422,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         return new TransactionSubstate(
-            callResult.Output,
+            // The top-level output escapes the VM (becomes the tx/eth_call result), so it must be a
+            // stable copy independent of the reusable return buffer. Once per transaction.
+            callResult.Output.ToArray(),
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
             _currentState.AccessTracker.Logs,
@@ -439,6 +443,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         bool invalidCode,
         ReadOnlyMemory<byte> code)
     {
+        // The init-code's return data is deployed as the contract's code and cached long-term, so it
+        // must be a stable copy — the return payload now lives in a reusable buffer that the next
+        // RETURN/REVERT overwrites. CREATE is rare, so this copy is not on a hot path.
+        code = code.ToArray();
+
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 

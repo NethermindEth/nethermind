@@ -3,6 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -22,6 +23,12 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private readonly Task _clearTimerTask;
 
+    // Read-through hot-slot value cache: (address, slot) -> value, shared across the periodic
+    // reader recreations. Consistency is free — the persisted state only changes on a write,
+    // and we Clear() this cache on write-batch completion (NOT on the 5s compaction timer,
+    // since compaction reorganizes SSTs without changing logical values).
+    private const int StorageReadCacheCapacity = 1 << 20; // ~1M entries (~100 MB)
+    private readonly AssociativeCache<StorageCell, CachedSlot> _storageCache = new(StorageReadCacheCapacity);
     private RefCountingPersistenceReader? _cachedReader;
     private int _isDisposed;
 
@@ -79,7 +86,8 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             {
                 _cachedReader = cachedReader = new RefCountingPersistenceReader(
                     _inner.CreateReader(),
-                    _logger
+                    _logger,
+                    _storageCache
                 );
             }
 
@@ -100,6 +108,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     public void Clear()
     {
         ClearReaderCache();
+        _storageCache.Clear();
         _inner.Clear();
     }
 
@@ -124,9 +133,25 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     private class ClearCacheOnWriteBatchComplete(IPersistence.IWriteBatch inner, CachedReaderPersistence parent)
         : IPersistence.IWriteBatch
     {
-        public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
+        // Per-slot invalidation keeps the value cache warm across blocks (hot, unchanged slots
+        // stay cached). Writes we cannot map to a (address, slot) cache key — raw/hashed writes
+        // from sync, self-destructs, range deletes — force a full clear on completion instead.
+        private bool _requiresFullClear;
+
+        public void SelfDestruct(Address addr)
+        {
+            inner.SelfDestruct(addr);
+            _requiresFullClear = true;
+        }
+
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => inner.SetStorage(addr, slot, value);
+
+        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        {
+            inner.SetStorage(addr, slot, value);
+            parent._storageCache.Delete(new StorageCell(addr, in slot));
+        }
+
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
@@ -142,6 +167,13 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
             // not in lock as it has its own lock
             parent.ClearReaderCache();
+
+            // Value cache is kept warm across blocks — SetStorage already invalidated the changed
+            // slots. Only writes that couldn't be mapped to a cache key force a full clear.
+            if (_requiresFullClear)
+            {
+                parent._storageCache.Clear();
+            }
         }
     }
 }
