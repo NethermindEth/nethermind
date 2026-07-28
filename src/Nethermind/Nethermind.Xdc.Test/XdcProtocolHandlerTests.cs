@@ -33,7 +33,7 @@ public class XdcProtocolHandlerTests
 {
     private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll(int suggestedAheadOfHead = 0)
+        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
@@ -47,7 +47,7 @@ public class XdcProtocolHandlerTests
         nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(headNumber).TestObject;
         Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
         blockTree.Head.Returns(headBlock);
         BlockHeader bestSuggested = suggestedAheadOfHead == 0
@@ -317,6 +317,36 @@ public class XdcProtocolHandlerTests
             votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
             timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
             session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        }
+    }
+
+    [TestCase(1u)]
+    [TestCase(2u)]
+    [TestCase(3u)]
+    public void HandleMessage_VoteAndTimeoutMsgAtGenesisBootstrap_AreProcessed(ulong round)
+    {
+        // At genesis every node reports isSyncing (bestSuggestedNumber == 0), so without a bootstrap
+        // exemption a chain stuck at genesis could never exchange the timeout/vote messages needed to
+        // form a TC and elect a later round's leader - regardless of how many rounds have timed out.
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, _)
+            = CreateAll(headNumber: 0);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            Vote vote = CreateVote(round);
+            ZeroPacket votePacket = CreatePacket(XdcMessageCode.VoteMsg);
+            serializer.Deserialize<VoteMsg>(votePacket.Content).Returns(new VoteMsg { Vote = vote });
+            handler.HandleMessage(votePacket);
+
+            Timeout timeout = CreateTimeout(round);
+            ZeroPacket timeoutPacket = CreatePacket(XdcMessageCode.TimeoutMsg);
+            serializer.Deserialize<TimeoutMsg>(timeoutPacket.Content).Returns(new TimeoutMsg { Timeout = timeout });
+            handler.HandleMessage(timeoutPacket);
+
+            votesManager.Received(1).OnReceiveVote(vote);
+            timeoutManager.Received(1).OnReceiveTimeout(timeout);
         }
     }
 

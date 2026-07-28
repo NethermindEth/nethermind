@@ -92,10 +92,11 @@ namespace Nethermind.Xdc
 
             if (_xdcContext.CurrentRound != 0)
             {
+                bool synced = IsSynced();
                 bool bootstrapChain = IsBootstrap();
-                if (IsSynced() || bootstrapChain)
+                if (synced || bootstrapChain)
                 {
-                    if (!IsSynced() && bootstrapChain)
+                    if (!synced && bootstrapChain)
                         _logger.Info("Starting round at genesis bootstrap");
 
                     XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
@@ -485,7 +486,9 @@ namespace Nethermind.Xdc
         private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
             epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
 
-        private bool IsSynced() => !_blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing && _blockTree.Head is not null;
+        private bool IsSynced() =>
+            (!_blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing && _blockTree.Head is not null)
+            || (_blockTree.Head?.Number == 0 && _xdcContext.CurrentRound != 1);
 
         /// <summary>
         /// True when this node is on a freshly bootstrapped chain where
@@ -500,7 +503,6 @@ namespace Nethermind.Xdc
             if (qc.Round != 0 || qc.BlockNumber != head.Number || qc.Hash != head.Hash)
                 return false;
 
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, 1);
             return _epochSwitchManager.GetEpochSwitchInfo(head) is { Masternodes.Length: > 0 };
         }
     }

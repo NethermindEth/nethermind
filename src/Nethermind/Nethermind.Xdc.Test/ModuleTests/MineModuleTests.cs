@@ -11,6 +11,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
+using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Linq;
@@ -182,6 +183,58 @@ internal class MineModuleTests
             Assert.Fail("Timed out waiting for first block proposal at genesis bootstrap");
 
         Assert.That(blocksProposed, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task TestStartArmsTimeoutTimerForNonLeaderAtGenesisBootstrap()
+    {
+        // Pins the behavior change from requiring the round-1 leader to only requiring a bootstrap
+        // chain: a non-leader signer must still arm the timeout timer so it can time out and vote
+        // for round 2 if the leader never proposes.
+        ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton(timeoutTimer));
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+        Assert.That(blockchain.XdcContext.CurrentRound, Is.EqualTo(1UL));
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address != leader));
+
+        blockchain.StartHotStuffModule();
+
+        timeoutTimer.Received(1).Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
+    }
+
+    [Test]
+    public async Task TestNewRoundKeepsArmingTimeoutTimerWhileStuckAtGenesis()
+    {
+        // Regression for the bootstrap-liveness gap: previously OnNewRound bailed on !IsSynced(),
+        // so a round-1 timeout certificate advancing the round past 1 would stop the timer from ever
+        // being rearmed, stalling forever at round 2 even though the chain never left genesis.
+        ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton(timeoutTimer));
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address != leader));
+
+        blockchain.StartHotStuffModule();
+        timeoutTimer.ClearReceivedCalls();
+
+        // Simulates a round-1 timeout certificate forming and advancing the round, without any block
+        // ever having been produced (tree.Head is still genesis).
+        blockchain.XdcContext.SetNewRound(2);
+
+        timeoutTimer.Received(1).Reset(Arg.Any<TimeSpan>());
     }
 
     [Test]
