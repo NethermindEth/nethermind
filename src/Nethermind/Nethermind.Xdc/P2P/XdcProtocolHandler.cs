@@ -56,11 +56,6 @@ internal class XdcProtocolHandler(
         if (packetType is XdcMessageCode.VoteMsg or XdcMessageCode.TimeoutMsg)
         {
             (bool isSyncing, ulong headNumber, ulong bestSuggested) = blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus);
-            // A chain stuck at genesis (nothing beyond it known to us or our peers) would otherwise never
-            // exchange the timeout/vote messages needed to form a TC and elect a later round's leader -
-            // BlockTreeExtensions.IsSyncing reports isSyncing whenever bestSuggested is 0. bestSuggested
-            // being non-zero means a peer has announced a block beyond genesis, so a node still at head 0
-            // in that case is genuinely syncing an existing chain, not bootstrapping a fresh one.
             bool isGenesisBootstrap = headNumber == 0 && bestSuggested == 0;
             if (isSyncing && !isGenesisBootstrap)
             {

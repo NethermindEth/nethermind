@@ -492,14 +492,6 @@ namespace Nethermind.Xdc
         /// True when this node is on a freshly bootstrapped chain where
         /// <see cref="IsSynced"/> is false only because genesis counts as syncing.
         /// </summary>
-        /// <remarks>
-        /// Deliberately independent of <see cref="IXdcConsensusContext.CurrentRound"/>: a round-1
-        /// timeout certificate can advance the round without any block ever being produced, and this
-        /// must keep returning true across those rounds for the timer/round task to keep running. The
-        /// genesis-QC match below is what excludes a node syncing an existing chain - its
-        /// <see cref="IXdcConsensusContext.HighestQC"/> comes from a peer's <c>SyncInfo</c> and will not
-        /// match genesis, regardless of round.
-        /// </remarks>
         private bool IsBootstrap()
         {
             if (_blockTree.Head?.Header is not XdcBlockHeader head)
