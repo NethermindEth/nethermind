@@ -25,9 +25,9 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
     ];
     private readonly Bucket<TrieNodeKey>[] _trieNodes =
     [
-        new(config.AccountTrieNodeCacheSizeBudget),
-        new(config.CodeTrieNodeCacheSizeBudget),
-        new(config.StorageTrieNodeCacheSizeBudget),
+        new(config.AccountTrieNodeCacheSizeBudget, trackTrieNodeMetrics: true),
+        new(config.CodeTrieNodeCacheSizeBudget, trackTrieNodeMetrics: true),
+        new(config.StorageTrieNodeCacheSizeBudget, trackTrieNodeMetrics: true),
     ];
 
     /// <summary>Returns a caller-owned lease when <paramref name="stem"/> is cached for <paramref name="hash"/>.</summary>
@@ -73,13 +73,15 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
         private readonly Lock _pruneLock = new();
         private readonly long _maxCacheMemoryThreshold;
         private readonly int _bucketMask;
+        private readonly bool _trackTrieNodeMetrics;
 
         private long _currentMemoryUsage;
         private int _nextShardToClear;
         private int _isDisposed;
 
-        public Bucket(ulong budget)
+        public Bucket(ulong budget, bool trackTrieNodeMetrics = false)
         {
+            _trackTrieNodeMetrics = trackTrieNodeMetrics;
             _maxCacheMemoryThreshold = budget > long.MaxValue ? long.MaxValue : (long)budget;
             long totalEntryCount = _maxCacheMemoryThreshold / EstimatedSizePerEntry;
             long targetBucketSize = (long)((totalEntryCount / UtilRatio) / ShardCount);
@@ -100,9 +102,13 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
             {
                 Entry? entry = _cacheShards[shardIdx][bucketIdx];
                 if (Volatile.Read(ref _isDisposed) != 0 || entry is null || !entry.Key.Equals(key) || entry.Hash != hash)
+                {
+                    if (_trackTrieNodeMetrics) Metrics.IncrementPbtTrieNodeCacheMisses();
                     return null;
+                }
 
                 entry.Memory.AcquireLease();
+                if (_trackTrieNodeMetrics) Metrics.IncrementPbtTrieNodeCacheHits();
                 return entry.Memory;
             }
         }
@@ -129,6 +135,7 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
                 int delta = size - previousSize;
                 _shardMemoryUsages[shardIdx] += delta;
                 Interlocked.Add(ref _currentMemoryUsage, delta);
+                if (_trackTrieNodeMetrics) Metrics.AddPbtTrieNodeCacheMemory(delta);
                 ((IDisposable?)old?.Memory)?.Dispose();
             }
 
@@ -170,6 +177,7 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
                 long freedMemory = _shardMemoryUsages[shardIdx];
                 _shardMemoryUsages[shardIdx] = 0;
                 Interlocked.Add(ref _currentMemoryUsage, -freedMemory);
+                if (_trackTrieNodeMetrics) Metrics.AddPbtTrieNodeCacheMemory(-freedMemory);
             }
         }
 
