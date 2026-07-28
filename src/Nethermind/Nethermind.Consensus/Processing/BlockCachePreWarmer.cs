@@ -50,7 +50,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private Task _speculativeTask = Task.CompletedTask;
     private long _speculativeGeneration = long.MinValue;
 
-    // Written only by the loop thread and read after it is joined, so the marker and its tx-hash set need no further sync.
+    // Only the speculative loop publishes non-null markers; processing paths clear them.
     private WarmMarker? _warmMarker;
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
@@ -115,7 +115,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
-            // No handoff means nothing warm to serve, so a block below the threshold executes with RLP caching off.
+            // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
             if (skipReactiveWarming) return Task.CompletedTask;
             _nodeStorageCache.Enabled = true;
         }
@@ -252,8 +252,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out ISet<Hash256>? warmedTxHashes)
     {
-        WarmMarker? marker = Volatile.Read(ref _warmMarker);
-        Volatile.Write(ref _warmMarker, null);
+        WarmMarker? marker = Interlocked.Exchange(ref _warmMarker, null);
         // ReferenceEquals on the per-fork spec singleton: a mismatch only disables the handoff, never a correctness issue.
         if (marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec))
         {
