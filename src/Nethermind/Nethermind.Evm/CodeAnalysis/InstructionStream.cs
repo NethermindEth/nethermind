@@ -26,7 +26,7 @@ internal enum StreamOpKind : byte
 
 /// <summary>
 /// Virtual opcodes for stream superinstructions, placed in byte values the EVM does not define
-/// (0x0C..0x0F, 0x21..0x2F, and 0xA5..0xAF gaps). The fingerprint gate keeps new forks (which might define
+/// (0x0C..0x0F, 0x21..0x2F, and 0xA5..0xB0 gaps). The fingerprint gate keeps new forks (which might define
 /// one of these) off the stream until reviewed.
 /// </summary>
 internal static class FusedOpcode
@@ -61,6 +61,7 @@ internal static class FusedOpcode
     public const byte Swap1Binary = 0xAD;
     public const byte DupAndIsZeroStaticJumpI = 0xAE;
     public const byte MaskIsZeroStaticJumpI = 0xAF;
+    public const byte PushDupBinary = 0xB0;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
@@ -327,16 +328,48 @@ internal sealed class InstructionStream
                 {
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
-                    StreamOpKind fusedKind = first.Kind == StreamOpKind.BlockFirst
-                        ? StreamOpKind.FusedBlockFirst
-                        : StreamOpKind.FusedInBlock;
-                    ops[^1] = new StreamOp(
-                        stackPairOpcode,
-                        fusedKind,
-                        first.Pc,
-                        first.BlockIndex,
-                        (byte)(first.Advance + size),
-                        stackPairOperand);
+                    if (stackPairOpcode == FusedOpcode.DupBinary
+                        && ops.Count >= 2
+                        && TryGetPush(ops[^2], out StreamOp push)
+                        && push.BlockIndex == first.BlockIndex)
+                    {
+                        pcToEntry[first.Pc] = InvalidEntry;
+                        ulong poolIndex;
+                        if ((Instruction)push.Opcode is >= Instruction.PUSH9 and <= Instruction.PUSH32)
+                        {
+                            poolIndex = push.Operand;
+                        }
+                        else
+                        {
+                            constants.Add(push.Operand);
+                            poolIndex = (ulong)(constants.Count - 1);
+                        }
+
+                        StreamOpKind fusedKind = push.Kind == StreamOpKind.BlockFirst
+                            ? StreamOpKind.FusedBlockFirst
+                            : StreamOpKind.FusedInBlock;
+                        ops[^2] = new StreamOp(
+                            FusedOpcode.PushDupBinary,
+                            fusedKind,
+                            push.Pc,
+                            push.BlockIndex,
+                            (byte)(push.Advance + first.Advance + size),
+                            PackPushDupBinaryOperand(stackPairOperand, poolIndex));
+                        ops.RemoveAt(ops.Count - 1);
+                    }
+                    else
+                    {
+                        StreamOpKind fusedKind = first.Kind == StreamOpKind.BlockFirst
+                            ? StreamOpKind.FusedBlockFirst
+                            : StreamOpKind.FusedInBlock;
+                        ops[^1] = new StreamOp(
+                            stackPairOpcode,
+                            fusedKind,
+                            first.Pc,
+                            first.BlockIndex,
+                            (byte)(first.Advance + size),
+                            stackPairOperand);
+                    }
                 }
                 else if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
@@ -474,14 +507,14 @@ internal sealed class InstructionStream
         if (ops.Count == 0)
             return false;
 
-        StreamOp last = ops[^1];
-        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
-            return false;
-        if ((Instruction)last.Opcode is not (>= Instruction.PUSH1 and <= Instruction.PUSH32))
-            return false;
+        return TryGetPush(ops[^1], out push);
+    }
 
-        push = last;
-        return true;
+    private static bool TryGetPush(StreamOp candidate, out StreamOp push)
+    {
+        push = candidate;
+        return candidate.Kind is StreamOpKind.BlockFirst or StreamOpKind.InBlock
+            && (Instruction)candidate.Opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32;
     }
 
     private static bool TryTakePrecedingStackPair(
@@ -559,6 +592,9 @@ internal sealed class InstructionStream
 
     private static ulong PackBranchOperand(byte value, int target) =>
         ((ulong)value << 32) | (uint)target;
+
+    private static ulong PackPushDupBinaryOperand(ulong dupBinaryOperand, ulong poolIndex) =>
+        (dupBinaryOperand << 32) | (uint)poolIndex;
 
     private static ulong ReadImmediate(ReadOnlySpan<byte> immediates)
     {
