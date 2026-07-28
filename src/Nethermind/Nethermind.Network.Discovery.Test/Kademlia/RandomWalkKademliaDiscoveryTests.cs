@@ -69,12 +69,12 @@ public class RandomWalkKademliaDiscoveryTests
             new KademliaConfig<int> { CurrentNodeId = 0 });
 
         Stopwatch stopwatch = Stopwatch.StartNew();
-        List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(2).ToListAsync(token);
+        List<int> nodes = await discovery.DiscoverNodes(1, 2, token).Take(3).ToListAsync(token);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(nodes, Is.EqualTo(new[] { 1, 2 }));
-            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2.5)));
+            Assert.That(nodes, Is.EqualTo(new[] { 1, 2, 1 }));
+            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2.7)));
         }
     }
 
