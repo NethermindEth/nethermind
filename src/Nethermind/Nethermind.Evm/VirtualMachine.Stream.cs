@@ -387,6 +387,46 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         break;
 
                     programCounter = entry.Pc + entry.Advance;
+
+                    int memoryEntryIndex = entryIndex + 1;
+                    if (entry.Kind <= StreamOpKind.FusedInBlock
+                        && (uint)memoryEntryIndex < (uint)ops.Length
+                        && ops[memoryEntryIndex].Kind == StreamOpKind.Boundary
+                        && (Instruction)ops[memoryEntryIndex].Opcode is Instruction.MSTORE or Instruction.MLOAD or Instruction.MCOPY)
+                    {
+                        ref readonly StreamOp memoryEntry = ref ops[memoryEntryIndex];
+                        Instruction memoryInstruction = (Instruction)memoryEntry.Opcode;
+
+                        if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                            CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
+
+                        TGasPolicy.OnBeforeInstructionTrace(in gas, memoryEntry.Pc, memoryInstruction, callDepth);
+                        opCodeCount++;
+
+                        int mpc = memoryEntry.Pc + 1;
+                        exceptionType = memoryInstruction switch
+                        {
+                            Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                            Instruction.MLOAD => EvmInstructions.InstructionMLoad<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                            _ => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                        };
+
+                        if (TGasPolicy.IsOutOfGas(in gas))
+                        {
+                            OpCodeCount += opCodeCount;
+                            goto OutOfGas;
+                        }
+
+                        TGasPolicy.OnAfterInstructionTrace(in gas);
+                        if (exceptionType != EvmExceptionType.None)
+                            break;
+
+                        metered = false;
+                        programCounter = memoryEntry.Pc + memoryEntry.Advance;
+                        entryIndex += 2;
+                        continue;
+                    }
+
                     entryIndex++;
                     continue;
                 }
