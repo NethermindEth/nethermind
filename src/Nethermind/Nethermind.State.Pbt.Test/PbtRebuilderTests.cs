@@ -16,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -66,12 +67,12 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         return leaves;
     }
 
-    private async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, int maxWindowStems, StateId targetState, PbtRocksDbPersistence target)
+    private async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, int maxWindowStems, StateId targetState, PbtRocksDbPersistence target, ILogManager? logManager = null)
     {
         ArrayPoolList<RebuildEntry> entries = new(leaves.Count); // ownership passes to Rebuild, which disposes it
         foreach (RebuildEntry leaf in leaves) entries.Add(leaf);
 
-        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, Config) { FlushEntryInterval = flushEntryInterval, MaxWindowStems = maxWindowStems };
+        PbtRebuilder rebuilder = new(target, logManager ?? LimboLogs.Instance, Config) { FlushEntryInterval = flushEntryInterval, MaxWindowStems = maxWindowStems };
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         channel.Writer.TryWrite(entries);
         channel.Writer.Complete();
@@ -138,6 +139,48 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
     }
 
     [Test]
+    public async Task Rebuild_logs_partition_local_progress()
+    {
+        List<string> messages = [];
+        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsInfo.Returns(true);
+        underlyingLogger.Info(Arg.Do<string>(messages.Add));
+        ILogger logger = new(underlyingLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<PbtRebuilder>().Returns(logger);
+        logManager.GetClassLogger<ProgressLogger>().Returns(logger);
+
+        List<RebuildEntry> leaves =
+        [
+            Entry(0x04, 0x00), // Account: 25% after its 0000 fixed prefix.
+            Entry(0x18, 0x00), // Code: 50% after its 0001 fixed prefix.
+            Entry(0xE0, 0x00), // Storage: 75% after its 1 fixed prefix.
+        ];
+        PbtTestLeaves.SortByTreeKey(leaves);
+
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence target = new(db, Config);
+        await Fold(leaves, int.MaxValue, int.MaxValue, new StateId(7, TestItem.KeccakA.ValueHash256), target, logManager);
+
+        bool accountLogged = false;
+        bool codeLogged = false;
+        bool storageLogged = false;
+        foreach (string message in messages)
+        {
+            accountLogged |= message.Contains("PBT rebuild Account") && message.Contains("25.00 %");
+            codeLogged |= message.Contains("PBT rebuild Code") && message.Contains("50.00 %");
+            storageLogged |= message.Contains("PBT rebuild Storage") && message.Contains("75.00 %");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountLogged, Is.True, "account progress is relative to the account root");
+            Assert.That(codeLogged, Is.True, "code progress is relative to the code root");
+            Assert.That(storageLogged, Is.True, "storage progress is relative to the storage root");
+        }
+    }
+
+    [Test]
     public async Task Rebuild_empty_source_produces_empty_tree()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
@@ -153,5 +196,13 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         Assert.That(root, Is.EqualTo(default(ValueHash256)), "an empty tree is 32 zero bytes");
         using IPbtPersistence.IReader reader = target.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(targetState));
+    }
+
+    private static RebuildEntry Entry(byte first, byte second)
+    {
+        byte[] stem = new byte[Stem.Length];
+        stem[0] = first;
+        stem[1] = second;
+        return new RebuildEntry(new Stem(stem), 0, TestItem.KeccakA.ValueHash256);
     }
 }
