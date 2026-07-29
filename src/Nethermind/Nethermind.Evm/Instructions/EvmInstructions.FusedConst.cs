@@ -17,7 +17,7 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType FusedConstBinaryCore<TOpMath>(ref EvmStack stack, UInt256 a)
+    internal static EvmExceptionType FusedConstBinaryCore<TOpMath>(ref EvmStack stack, in UInt256 a)
         where TOpMath : struct, IOpMath2Param
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
@@ -35,7 +35,7 @@ public static partial class EvmInstructions
     /// <summary>Fused <c>PUSH shift-amount; SHL/SHR</c>, mirroring <see cref="ShiftCore{TOpShift, TTracingInst}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, UInt256 a)
+    internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, in UInt256 a)
         where TOpShift : struct, IOpShift
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
