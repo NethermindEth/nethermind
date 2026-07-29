@@ -107,11 +107,6 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
                 }
 
                 if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Found {count} nodes from random Kademlia lookup.");
-
-                if (iterationTime.Elapsed < MinimumIterationDuration)
-                {
-                    await Task.Delay(MinimumIterationDuration - iterationTime.Elapsed, token);
-                }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -120,6 +115,19 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Random Kademlia discovery lookup failed.");
+            }
+
+            TimeSpan elapsed = iterationTime.Elapsed;
+            if (elapsed < MinimumIterationDuration)
+            {
+                try
+                {
+                    await Task.Delay(MinimumIterationDuration - elapsed, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    break;
+                }
             }
         }
     }

@@ -21,6 +21,7 @@ using ConcurrentCollections;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -1115,19 +1116,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    internal const int FullEnumerationBatchSize = 10_000;
+
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-        Iterator iterator = CreateIterator(ordered);
-        return GetAllCore(iterator);
-    }
-
-    protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle? ch = null)
-    {
-        ReadOptions readOptions = new();
-        readOptions.SetTailing(!ordered);
-        return CreateIterator(readOptions, ch);
+        ThrowIfDisposing();
+        return GetAllCore(ordered);
     }
 
     protected internal Iterator CreateIterator(ReadOptions readOptions, ColumnFamilyHandle? ch = null)
@@ -1145,25 +1139,36 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
     {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-        Iterator iterator = CreateIterator(ordered);
-        return GetAllKeysCore(iterator);
+        ThrowIfDisposing();
+        return GetAllKeysCore(ordered);
     }
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-        Iterator iterator = CreateIterator(ordered);
-        return GetAllValuesCore(iterator);
+        ThrowIfDisposing();
+        return GetAllValuesCore(ordered);
     }
+
+    internal void ThrowIfDisposing() => ObjectDisposedException.ThrowIf(_isDisposing, this);
 
     private void IteratorSeekToFirstWithErrorHandling(Iterator iterator)
     {
         try
         {
             iterator.SeekToFirst();
+        }
+        catch (RocksDbSharpException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
+    private void IteratorSeekWithErrorHandling(Iterator iterator, byte[] key)
+    {
+        try
+        {
+            iterator.Seek(key);
         }
         catch (RocksDbSharpException e)
         {
@@ -1198,59 +1203,98 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
-    {
-        try
-        {
-            IteratorSeekToFirstWithErrorHandling(iterator);
+    internal IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(bool ordered, ColumnFamilyHandle? ch = null) =>
+        GetAllCore(ordered, ch, static iterator => new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value()));
 
-            while (iterator.Valid())
+    internal IEnumerable<byte[]> GetAllKeysCore(bool ordered, ColumnFamilyHandle? ch = null) =>
+        GetAllCore(ordered, ch, static iterator => iterator.Key());
+
+    internal IEnumerable<byte[]> GetAllValuesCore(bool ordered, ColumnFamilyHandle? ch = null) =>
+        GetAllCore(ordered, ch, static iterator => iterator.Value());
+
+    private IEnumerable<T> GetAllCore<T>(bool ordered, ColumnFamilyHandle? ch, Func<Iterator, T> projection)
+    {
+        byte[]? resumeKey = null;
+        bool hasMore;
+
+        do
+        {
+            using ArrayPoolList<T> batch = new(FullEnumerationBatchSize);
+            hasMore = ReadFullEnumerationBatch(ordered, ch, resumeKey, projection, batch, out resumeKey);
+
+            foreach (T item in batch)
             {
-                yield return iterator.Value();
-                IteratorNextWithErrorHandling(iterator);
+                yield return item;
             }
         }
-        finally
-        {
-            IteratorDisposeWithErrorHandling(iterator);
-        }
+        while (hasMore);
     }
 
-    internal IEnumerable<byte[]> GetAllKeysCore(Iterator iterator)
+    private bool ReadFullEnumerationBatch<T>(
+        bool ordered,
+        ColumnFamilyHandle? ch,
+        byte[]? resumeKey,
+        Func<Iterator, T> projection,
+        ArrayPoolList<T> batch,
+        out byte[]? nextResumeKey)
     {
-        try
-        {
-            IteratorSeekToFirstWithErrorHandling(iterator);
-
-            while (iterator.Valid())
-            {
-                yield return iterator.Key();
-                IteratorNextWithErrorHandling(iterator);
-            }
-        }
-        finally
-        {
-            IteratorDisposeWithErrorHandling(iterator);
-        }
-    }
-
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
-    {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        ThrowIfDisposing();
+        nextResumeKey = null;
+        ReadOptions readOptions = new();
+        Iterator? iterator = null;
 
         try
         {
-            IteratorSeekToFirstWithErrorHandling(iterator);
+            readOptions.SetTailing(!ordered);
+            iterator = CreateIterator(readOptions, ch);
+
+            if (resumeKey is null)
+            {
+                IteratorSeekToFirstWithErrorHandling(iterator);
+            }
+            else
+            {
+                IteratorSeekWithErrorHandling(iterator, resumeKey);
+                if (iterator.Valid() && iterator.GetKeySpan().SequenceEqual(resumeKey))
+                {
+                    IteratorNextWithErrorHandling(iterator);
+                }
+            }
 
             while (iterator.Valid())
             {
-                yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
+                batch.Add(projection(iterator));
+                if (batch.Count == FullEnumerationBatchSize)
+                {
+                    byte[] boundaryKey = iterator.Key();
+                    IteratorNextWithErrorHandling(iterator);
+                    if (iterator.Valid())
+                    {
+                        nextResumeKey = boundaryKey;
+                        return true;
+                    }
+
+                    return false;
+                }
+
                 IteratorNextWithErrorHandling(iterator);
             }
+
+            return false;
         }
         finally
         {
-            IteratorDisposeWithErrorHandling(iterator);
+            try
+            {
+                if (iterator is not null)
+                {
+                    IteratorDisposeWithErrorHandling(iterator);
+                }
+            }
+            finally
+            {
+                RocksDbReader.DestroyReadOptions(readOptions);
+            }
         }
     }
 
