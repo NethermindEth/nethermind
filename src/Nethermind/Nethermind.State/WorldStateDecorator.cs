@@ -99,6 +99,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void RecalculateStateRoot()
         => State.RecalculateStateRoot();
 
+    /// <inheritdoc/>
+    public virtual Task BeginEarlyStorageRoots(Address? firstExcludedAddress, Address? secondExcludedAddress)
+        => State.BeginEarlyStorageRoots(firstExcludedAddress, secondExcludedAddress);
+
     public virtual void DeleteAccount(Address address)
         => State.DeleteAccount(address);
 

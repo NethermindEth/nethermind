@@ -311,6 +311,7 @@ public class BlockProcessorTests
         {
             Assert.That(countingState!.CommitWithoutRootsCount, Is.EqualTo(1));
             Assert.That(countingState.CommitWithRootsCount, Is.EqualTo(1));
+            Assert.That(countingState.EarlyStorageRootsCount, Is.EqualTo(1));
         }
     }
 
@@ -1726,6 +1727,13 @@ public class BlockProcessorTests
     {
         public int CommitWithoutRootsCount { get; private set; }
         public int CommitWithRootsCount { get; private set; }
+        public int EarlyStorageRootsCount { get; private set; }
+
+        public override Task BeginEarlyStorageRoots(Address? firstExcludedAddress, Address? secondExcludedAddress)
+        {
+            EarlyStorageRootsCount++;
+            return base.BeginEarlyStorageRoots(firstExcludedAddress, secondExcludedAddress);
+        }
 
         public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {

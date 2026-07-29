@@ -29,6 +29,8 @@ namespace Nethermind.State;
 internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
     : PartialStorageProviderBase(logManager)
 {
+    private const int ParallelStorageRootThreshold = 3;
+
     private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
@@ -259,8 +261,46 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots.Clear();
     }
 
+    internal bool HasPendingRoots => _toUpdateRoots.Count > 0;
+
+    internal void FlushToTreeExcept(
+        IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
+        Address? firstExcludedAddress,
+        Address? secondExcludedAddress)
+    {
+        if (_toUpdateRoots.Count == 0) return;
+
+        AddressAsKey? firstExcludedKey = firstExcludedAddress is null ? null : (AddressAsKey)firstExcludedAddress;
+        AddressAsKey? secondExcludedKey = secondExcludedAddress is null ? null : (AddressAsKey)secondExcludedAddress;
+        using ArrayPoolList<AddressAsKey> processed = new(_toUpdateRoots.Count);
+        foreach (KeyValuePair<AddressAsKey, bool> entry in _toUpdateRoots)
+        {
+            if (!entry.Value
+                || (firstExcludedKey.HasValue && entry.Key.Equals(firstExcludedKey.Value))
+                || (secondExcludedKey.HasValue && entry.Key.Equals(secondExcludedKey.Value)))
+            {
+                continue;
+            }
+
+            processed.Add(entry.Key);
+        }
+
+        if (processed.Count == 0) return;
+
+        UpdateRootHashes(writeBatch, processed);
+
+        foreach (AddressAsKey key in processed.AsSpan())
+        {
+            _toUpdateRoots.Remove(key);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch);
+
+    private partial void UpdateRootHashes(
+        IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
+        ArrayPoolList<AddressAsKey> keys);
 
     private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
@@ -277,6 +317,24 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             (int writes, int skipped) = contractState.ProcessStorageChanges(
                 writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges));
 
+            ReportMetrics(writes, skipped);
+        }
+    }
+
+    private void UpdateRootHashesSingleThread(
+        IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
+        ReadOnlySpan<AddressAsKey> keys)
+    {
+        foreach (AddressAsKey key in keys)
+        {
+            if (!_storages.TryGetValue(key, out PerContractState contractState))
+            {
+                Debug.Fail($"Storage root marked changed for {key} but no contract state is present");
+                continue;
+            }
+
+            (int writes, int skipped) = contractState.ProcessStorageChanges(
+                writeBatch.CreateStorageWriteBatch(key, contractState.EstimatedChanges));
             ReportMetrics(writes, skipped);
         }
     }
