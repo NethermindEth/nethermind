@@ -10,8 +10,8 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.CodeAnalysis;
 
 /// <summary>
-/// The first four values encode block charge and one additional covered opcode in their low bit. Every value below
-/// <see cref="Boundary"/> is predecoded and directly dispatched by the stream executor.
+/// The low bit marks an entry that covers one additional opcode. Bit 3 marks a block-first entry that also covers
+/// its preceding JUMPDEST. Every value below <see cref="Boundary"/> is directly dispatched by the stream executor.
 /// </summary>
 internal enum StreamOpKind : byte
 {
@@ -21,7 +21,9 @@ internal enum StreamOpKind : byte
     FusedInBlock = 3,
     StaticJump = 4,
     StaticJumpI = 5,
-    Boundary = 6,
+    JumpDestBlockFirst = 8,
+    JumpDestFusedBlockFirst = 9,
+    Boundary = 10,
 }
 
 /// <summary>
@@ -117,7 +119,7 @@ internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ush
 /// Consensus invariants: only static-gas ops are precharged. The actual gate is
 /// <c>spec.IncludePush0Instruction</c> — i.e. ANY fork &gt;= Shanghai runs the stream; there is no
 /// upper-bound fork check. The precharged gas costs are assumed fork-stable and MUST be revalidated
-/// whenever a new fork changes any of them. A JUMPDEST is a solo block; a truncated trailing PUSH stays
+/// whenever a new fork changes any of them. A JUMPDEST starts a new block; a truncated trailing PUSH stays
 /// a boundary op; nothing lands inside a fused pair; the executor recomputes the entry from the landing
 /// pc and re-meters any block entered past its charging entry (metered dispatch reads raw code, so gas
 /// stays exact).
@@ -194,12 +196,10 @@ internal sealed class InstructionStream
 
             if (instruction == Instruction.JUMPDEST)
             {
-                // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
-                // so the following ops must sit in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
-                openBlock = -1;
-                openBlockOpcodeCount = 0;
+                openBlock = blockGas.Count - 1;
+                openBlockOpcodeCount = 1;
             }
             else if (instruction is >= Instruction.DUP1 and <= Instruction.DUP16
                 && pc + 6 < code.Length
@@ -291,7 +291,7 @@ internal sealed class InstructionStream
             {
                 // PUSH2 const + JUMP/JUMPI to a validated JUMPDEST: one entry, target resolved to an
                 // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
-                // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
+                // landing block charges its JUMPDEST like a taken dynamic jump would.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
                 openBlock = -1;
                 openBlockOpcodeCount = 0;
@@ -327,9 +327,12 @@ internal sealed class InstructionStream
                 {
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
-                    StreamOpKind fusedKind = first.Kind == StreamOpKind.BlockFirst
-                        ? StreamOpKind.FusedBlockFirst
-                        : StreamOpKind.FusedInBlock;
+                    StreamOpKind fusedKind = first.Kind switch
+                    {
+                        StreamOpKind.BlockFirst => StreamOpKind.FusedBlockFirst,
+                        StreamOpKind.JumpDestBlockFirst => StreamOpKind.JumpDestFusedBlockFirst,
+                        _ => StreamOpKind.FusedInBlock,
+                    };
                     ops[^1] = new StreamOp(
                         stackPairOpcode,
                         fusedKind,
@@ -358,9 +361,12 @@ internal sealed class InstructionStream
                         poolIndex = (ulong)(constants.Count - 1);
                     }
 
-                    StreamOpKind fusedKind = push.Kind == StreamOpKind.BlockFirst
-                        ? StreamOpKind.FusedBlockFirst
-                        : StreamOpKind.FusedInBlock;
+                    StreamOpKind fusedKind = push.Kind switch
+                    {
+                        StreamOpKind.BlockFirst => StreamOpKind.FusedBlockFirst,
+                        StreamOpKind.JumpDestBlockFirst => StreamOpKind.JumpDestFusedBlockFirst,
+                        _ => StreamOpKind.FusedInBlock,
+                    };
                     ops[^1] = new StreamOp(fusedOpcode, fusedKind, push.Pc, push.BlockIndex, (byte)(push.Advance + size), poolIndex);
                 }
                 else
@@ -385,7 +391,23 @@ internal sealed class InstructionStream
                     }
 
                     blockGas[openBlock] += cost;
-                    ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
+                    if (kind == StreamOpKind.InBlock
+                        && ops[^1].Opcode == (byte)Instruction.JUMPDEST
+                        && ops[^1].Kind == StreamOpKind.BlockFirst)
+                    {
+                        pcToEntry[pc] = (ushort)(ops.Count - 1);
+                        ops[^1] = new StreamOp(
+                            (byte)instruction,
+                            StreamOpKind.JumpDestBlockFirst,
+                            (ushort)pc,
+                            (ushort)openBlock,
+                            (byte)size,
+                            operand);
+                    }
+                    else
+                    {
+                        ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
+                    }
                 }
 
                 openBlockOpcodeCount++;
@@ -475,7 +497,7 @@ internal sealed class InstructionStream
             return false;
 
         StreamOp last = ops[^1];
-        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
+        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.JumpDestBlockFirst or StreamOpKind.InBlock))
             return false;
         if ((Instruction)last.Opcode is not (>= Instruction.PUSH1 and <= Instruction.PUSH32))
             return false;
@@ -501,7 +523,7 @@ internal sealed class InstructionStream
             return false;
 
         StreamOp previous = ops[^1];
-        if (previous.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
+        if (previous.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.JumpDestBlockFirst or StreamOpKind.InBlock))
             return false;
 
         Instruction previousInstruction = (Instruction)previous.Opcode;
