@@ -34,16 +34,8 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         // public mempool this gate must be tightened to also require those DoS filters. Static
         // well-formedness is already enforced downstream by MalformedTxFilter regardless.
         //
-        // EIP8141: remaining pieces of the merged mempool lifecycle rules (ethereum/EIPs#12007) are
-        // deferred because they all require a frame-tx validation-prefix simulation + payer resolution
-        // layer that does not exist yet:
-        //   - per-payer / canonical-paymaster exposure accounting (reserved_pending_cost <= balance),
-        //     with atomic payer-switch on replacement;
-        //   - dependency-set-indexed revalidation on head change, incl. the payer balance/code trigger;
-        //   - the full eviction ordering (invalidated-first tier).
-        // The expiry-deadline eviction tier is implemented in TxPool.RemoveExpiredFrameTransactions,
-        // and the (sender, nonce) + both-fee bump replacement rule is already provided by the shared
-        // CompareReplacedTxByFee path.
+        // EIP8141: remaining ethereum/EIPs#12007 mempool rules (payer exposure accounting, dependency-set
+        // revalidation, full eviction ordering) are deferred — they need validation-prefix simulation.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

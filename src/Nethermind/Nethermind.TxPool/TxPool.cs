@@ -460,9 +460,16 @@ namespace Nethermind.TxPool
         /// <remarks>
         /// An expired frame transaction can never satisfy its validation prefix (the expiry-verifier predeploy
         /// reverts once <c>block.timestamp &gt; deadline</c>), so it must be evicted rather than re-propagated
-        /// (ethereum/EIPs#8141, "Revalidation"). The deadline is read statically from the expiry-verifier frame, so
+        /// (ethereum/EIPs#12007, "Revalidation"). The deadline is read statically from the expiry-verifier frame, so
         /// no validation-prefix re-simulation is required. Guarded by the fork flag so there is no cost on networks
         /// where EIP-8141 is not active.
+        /// <para>
+        /// The eviction predicate is <c>timestamp &gt; deadline</c> — deliberately the predeploy's exact revert
+        /// condition, not the tighter <c>timestamp &gt;= deadline</c>. Because block timestamps strictly increase, a
+        /// tx with <c>deadline == head.Timestamp</c> is already unincludable, so retaining it costs at most one slot;
+        /// keeping the pool predicate textually identical to the consensus rule guarantees the pool never evicts a tx
+        /// the predeploy would still accept.
+        /// </para>
         /// </remarks>
         private void RemoveExpiredFrameTransactions(Block block)
         {
@@ -480,7 +487,11 @@ namespace Nethermind.TxPool
                     && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
                     && timestamp > deadline)
                 {
-                    RemoveTransaction(tx.Hash);
+                    if (RemoveTransaction(tx.Hash))
+                    {
+                        Metrics.PendingTransactionsEvicted++;
+                        if (_logger.IsTrace) _logger.Trace($"Evicted expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
+                    }
                 }
             }
         }

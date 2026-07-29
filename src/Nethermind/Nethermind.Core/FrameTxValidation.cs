@@ -181,8 +181,10 @@ public static class FrameTxValidation
     /// The deadline is the big-endian <c>uint64</c> carried in the 8-byte data of the single VERIFY frame that
     /// targets <see cref="Eip8141Constants.ExpiryVerifierAddress"/>. The predeploy installed at that address reverts
     /// when <c>block.timestamp &gt; deadline</c>, so a frame transaction whose deadline has passed can never satisfy
-    /// its validation prefix and must be dropped from the public mempool (ethereum/EIPs#8141, "Revalidation").
-    /// Callers should invoke this only on well-formed frame transactions; the 8-byte data length is assumed.
+    /// its validation prefix and must be dropped from the public mempool (ethereum/EIPs#12007, "Revalidation").
+    /// Callers must invoke this only on well-formed frame transactions: <see cref="IsWellFormed"/> already rejects an
+    /// expiry-verifier frame whose data is not exactly <see cref="Eip8141Constants.ExpiryDataLength"/> bytes
+    /// (<c>InvalidExpiryFrame</c>), so the 8-byte length is an invariant here and is not re-checked.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
     /// <param name="deadline">The expiry deadline in Unix seconds when an expiry-verifier frame is present.</param>
@@ -201,8 +203,7 @@ public static class FrameTxValidation
         {
             TxFrame frame = frames[i];
             if (frame.Mode == TxFrame.ModeVerify
-                && frame.Target == Eip8141Constants.ExpiryVerifierAddress
-                && frame.Data.Length == Eip8141Constants.ExpiryDataLength)
+                && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
             {
                 deadline = BinaryPrimitives.ReadUInt64BigEndian(frame.Data.Span);
                 return true;

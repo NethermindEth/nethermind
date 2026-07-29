@@ -2087,7 +2087,7 @@ namespace Nethermind.TxPool.Test
         public async Task Expired_frame_transaction_is_dropped_on_new_head(ulong deadline, ulong headTimestamp, int expectedPending)
         {
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
-            Transaction frameTx = BuildFrameTxWithExpiry(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
@@ -2100,10 +2100,39 @@ namespace Nethermind.TxPool.Test
                 "expired frame transactions must be evicted on the new head, unexpired ones retained");
         }
 
-        private Transaction BuildFrameTxWithExpiry(ulong nonce, Address sender, ulong deadline)
+        // A frame tx carrying no expiry-verifier frame has no deadline, so the expiry pass must never evict it,
+        // regardless of the new head's timestamp. This pins the branch a future expiry-indexing optimisation is
+        // most likely to break (TryGetExpiryDeadline returning false).
+        [Test]
+        public async Task Frame_transaction_without_expiry_frame_survives_new_head()
         {
-            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-            BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline);
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ulong.MaxValue).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
+                "a frame transaction without an expiry frame has no deadline and must never be evicted by the expiry pass");
+        }
+
+        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline)
+        {
+            List<TxFrame> frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            ];
+
+            if (deadline is not null)
+            {
+                byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+                BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
+                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
+            }
 
             Transaction tx = new()
             {
@@ -2111,11 +2140,7 @@ namespace Nethermind.TxPool.Test
                 ChainId = _specProvider.ChainId,
                 Nonce = nonce,
                 SenderAddress = sender,
-                Frames =
-                [
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData),
-                ],
+                Frames = [.. frames],
                 FrameSignatures = [],
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,
