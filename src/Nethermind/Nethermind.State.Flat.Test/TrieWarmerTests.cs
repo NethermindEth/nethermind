@@ -104,6 +104,20 @@ public class TrieWarmerTests
     }
 
     [Test]
+    public async Task PushAddressJob_RunsOutsideThreadPool()
+    {
+        TrieWarmer warmer = new(_logManager, _config);
+        CountingAddressWarmer addressWarmer = new();
+        Address address = new("0x2222222222222222222222222222222222222222");
+
+        Assert.That(warmer.PushAddressJob(addressWarmer, address, sequenceId: 1), Is.True);
+        await WaitForConditionAsync(() => addressWarmer.Calls == 1, "addressWarmer.Calls should be 1");
+
+        Assert.That(addressWarmer.ThreadPoolCalls, Is.Zero);
+        await warmer.DisposeAsync();
+    }
+
+    [Test]
     public async Task PushSlotJobMpmc_Bursts_FanOutWithoutExceedingWorkerCount()
     {
         const int WorkerCount = 4;
@@ -268,11 +282,18 @@ public class TrieWarmerTests
     private sealed class CountingAddressWarmer : ITrieWarmer.IAddressWarmer
     {
         private int _calls;
+        private int _threadPoolCalls;
 
         public int Calls => Volatile.Read(ref _calls);
 
+        public int ThreadPoolCalls => Volatile.Read(ref _threadPoolCalls);
+
         public bool WarmUpStateTrie(Address address, int sequenceId)
         {
+            if (Thread.CurrentThread.IsThreadPoolThread)
+            {
+                Interlocked.Increment(ref _threadPoolCalls);
+            }
             Interlocked.Increment(ref _calls);
             return true;
         }
