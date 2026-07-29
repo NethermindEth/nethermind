@@ -243,17 +243,45 @@ public class Eip8141ScenarioTests
 
         if (swapReverts)
         {
-            // EIP8141-ISSUE: on batch rollback the approval log is dropped from the receipt's log
-            // union (and so from the bloom), but the per-frame receipt keeps it — the spec does not
-            // say which representation a rolled-back frame's logs should have, and the two diverge.
-            Assert.That(receipt.Logs, Is.Empty, "rolled-back batch logs must not reach the receipt log union");
-            Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1),
-                "the per-frame receipt currently keeps the rolled-back frame's log");
+            // ethereum/EIPs#12008: an unrolled batch discards the logs of frames that executed
+            // before the failure together with their state changes; those frame receipts retain
+            // their execution status and gas_used with empty logs. The transaction log set (the
+            // frame-order concatenation used for the header logsBloom and log indexing) therefore
+            // matches the per-frame receipts — the earlier union-vs-per-frame divergence is gone.
+            Assert.That(receipt.FrameReceipts![1].Logs, Is.Empty,
+                "the unrolled frame's per-frame receipt logs must be discarded");
+            Assert.That(receipt.FrameReceipts[1].GasUsed, Is.GreaterThan(0UL),
+                "the unrolled frame retains its recorded gas_used");
+            Assert.That(receipt.Logs, Is.Empty, "no logs survive the unrolled batch");
+            AssertBloomAndReceiptLogsAgree(receipt);
         }
         else
         {
             Assert.That(receipt.Logs, Has.Length.EqualTo(1), "the committed approval log lands in the receipt");
+            AssertBloomAndReceiptLogsAgree(receipt);
         }
+    }
+
+    // The transaction log set (built for the header logsBloom and log indexing) must equal the
+    // frame-order concatenation of the surviving per-frame receipt logs — the exact form the wire
+    // receipt is hashed into for the receipts root. Round-tripping through the receipts-message
+    // decoder rebuilds the union from the per-frame logs, so a match proves the bloom the header
+    // carries and the logs the receipts root commits to agree (ethereum/EIPs#12008).
+    private static void AssertBloomAndReceiptLogsAgree(TxReceipt receipt)
+    {
+        LogEntry[] frameOrderConcatenation = receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray();
+        Assert.That(receipt.Logs!.Length, Is.EqualTo(frameOrderConcatenation.Length),
+            "the tx log set must be the frame-order concatenation of the surviving frame logs");
+
+        ReceiptMessageDecoder decoder = new();
+        byte[] encoded = decoder.EncodeNew(receipt, RlpBehaviors.None);
+        RlpReader reader = new(encoded);
+        TxReceipt decoded = decoder.Decode(ref reader)!;
+
+        Assert.That(decoded.Logs!.Length, Is.EqualTo(receipt.Logs.Length),
+            "the wire receipt (hashed into the receipts root) must carry the same logs as the bloom reflects");
+        Assert.That(decoded.Bloom, Is.EqualTo(receipt.Bloom),
+            "the receipts-root logs and the header bloom must agree");
     }
 
     // Spec Expiry Verifier Frame: a VERIFY frame targeting EXPIRY_VERIFIER whose 8-byte big-endian

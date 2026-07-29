@@ -38,21 +38,23 @@ public class FrameTxReceiptDecoderTests
 
     // The storage form appends [payer, [frame_receipt, ...]] after the standard fields, so a
     // restart round-trips the execution results the block cannot reproduce. The union Logs and the
-    // per-frame logs are stored independently — a rolled-back batch frame keeps its log in the
-    // frame receipt while the union omits it, and storage must preserve exactly that divergence.
+    // per-frame logs are stored independently and must both survive; the receipt models a
+    // post-#12008 unrolled batch — an earlier frame that executed but was unrolled retains its
+    // status and gas_used with empty logs, so the stored union equals the frame-order
+    // concatenation of the surviving frame logs.
     [Test]
     public void StorageRoundtrip_PreservesPayerFrameReceiptsAndUnionLogs(
         [Values(true, false)] bool compactEncoding)
     {
-        LogEntry unionLog = Log(0x01);
-        LogEntry rolledBackLog = Log(0x02);
+        LogEntry survivorLog = Log(0x01);
         TxReceipt frameReceipt = CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [unionLog]),
-            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [rolledBackLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [survivorLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 30_000, []),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 40_000, []),
             new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []));
         frameReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
         frameReceipt.Sender = TestItem.AddressC;
-        frameReceipt.Logs = [unionLog];
+        frameReceipt.Logs = [survivorLog];
         frameReceipt.Bloom = new Bloom(frameReceipt.Logs);
         TxReceipt legacyReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
 

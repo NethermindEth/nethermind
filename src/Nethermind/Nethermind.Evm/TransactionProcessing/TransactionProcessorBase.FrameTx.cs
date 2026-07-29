@@ -120,6 +120,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Snapshot batchStartSnapshot = default;
         StackAccessTracker batchTracker = default;
         int batchStartLogCount = 0;
+        int batchStartIndex = 0;
         Address? batchStartPayer = null;
         bool batchStartSenderApproved = false;
         long batchStartRefund = 0;
@@ -137,6 +138,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
                 batchStartLogCount = allLogs.Count;
+                batchStartIndex = i;
                 batchStartPayer = frameContext.Payer;
                 batchStartSenderApproved = frameContext.SenderApproved;
                 batchStartRefund = refundCounter;
@@ -228,12 +230,23 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // Unroll the batch: restore state to before it began, drop its logs, and mark
                     // every remaining frame in the batch as skipped (status 0x2, gas refunded by
                     // not being consumed). The failed frame keeps its failure receipt.
-                    // EIP8141-ISSUE: the spec does not state the receipt status of frames that ran
-                    // successfully earlier in the batch before the rollback; earlier frames keep
-                    // their recorded receipts while their state and logs are rolled back.
                     WorldState.Restore(batchStartSnapshot);
                     batchTracker.Restore();
                     allLogs.RemoveRange(batchStartLogCount, allLogs.Count - batchStartLogCount);
+
+                    // Frames that executed before the failure keep their execution status and
+                    // gas_used but have their logs discarded together with their state changes when
+                    // the batch is unrolled (ethereum/EIPs#12008). This keeps the per-frame receipt
+                    // logs consistent with the transaction log set (the frame-order concatenation
+                    // used for the header logsBloom and log indexing), which drops them above.
+                    for (int s = batchStartIndex; s < i; s++)
+                    {
+                        TxFrameReceipt earlier = frameReceipts[s];
+                        if (earlier.Logs.Length > 0)
+                        {
+                            frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.GasUsed, []);
+                        }
+                    }
                     // EIP-8141 (ethereum/EIPs#11955): a failed batch unrolls ALL effects of any APPROVE
                     // it contained. Restore reverts the payer debit and sender nonce (world state); the
                     // approval context (payer, sender_approved) and refund counter are not world state,
