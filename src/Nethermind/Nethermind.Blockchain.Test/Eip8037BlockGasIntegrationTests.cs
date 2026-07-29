@@ -4,7 +4,6 @@
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
@@ -39,13 +38,12 @@ public class Eip8037BlockGasIntegrationTests
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        return new(
+        return ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState));
     }
 
@@ -205,13 +203,12 @@ public class Eip8037BlockGasIntegrationTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
-        BlockAccessListManager balManager = new(
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             specProvider,
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState));
 
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;

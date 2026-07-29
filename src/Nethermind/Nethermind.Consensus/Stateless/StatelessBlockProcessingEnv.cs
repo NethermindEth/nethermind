@@ -48,7 +48,7 @@ public class StatelessBlockProcessingEnv(
         StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
         BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
-        BlockAccessListManager blockAccessListManager = new(
+        BlockAccessListManager blockAccessListManager = ManualBlockAccessListManagerFactory.Create(
             WorldState,
             specProvider,
             blockhashProvider,
@@ -58,7 +58,6 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecution = false,
                 ParallelExecutionBatchRead = false
             },
-            new WithdrawalProcessorFactory(logManager),
             codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance),
             executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );

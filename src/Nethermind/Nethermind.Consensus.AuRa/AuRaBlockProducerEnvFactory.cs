@@ -15,6 +15,7 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
@@ -68,6 +69,9 @@ internal sealed class AuRaBlockProducerEnvFactory(
     {
         builder = base.ConfigureBuilder(builder)
             .AddScoped<IWithdrawalProcessor>(NullWithdrawalProcessor.Instance)
+            // Block production needs the BlockProductionWithdrawalProcessor-decorated BAL env, which the
+            // producer scope's IWithdrawalProcessor does not provide; override the AuRa validation-path factory.
+            .AddScoped<IBalProcessingEnvFactory, AuraBlockProductionBalProcessingEnvFactory>()
             .AddScoped<ITxFilter>(txAuRaFilterBuilders.CreateAuRaTxFilter(new LocalTxFilter(engineSigner)))
             .AddScoped<IAuRaValidator, IWorldState, ITransactionProcessor>(CreateAuRaValidator)
             .AddDecorator<ITxSource>(WrapTxSourceForProducer);

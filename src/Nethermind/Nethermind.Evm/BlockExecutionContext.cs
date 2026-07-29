@@ -20,6 +20,7 @@ public readonly struct BlockExecutionContext
     public readonly IReleaseSpec Spec;
     public readonly ValueHash256 PrevRandao;
     public readonly bool IsGenesis;
+    public readonly bool Parallel;
 
     public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec)
         : this(blockHeader, spec, GetBlobBaseFee(blockHeader, spec), GetDefaultPrevRandao(blockHeader)) { }
@@ -54,6 +55,21 @@ public readonly struct BlockExecutionContext
         Spec = spec;
         PrevRandao = prevRandao;
         IsGenesis = blockHeader.IsGenesis;
+        Parallel = false;
+    }
+
+    /// <summary>Copies <paramref name="other"/> with <see cref="Parallel"/> overridden.</summary>
+    public BlockExecutionContext(in BlockExecutionContext other, bool parallel)
+    {
+        Header = other.Header;
+        Coinbase = other.Coinbase;
+        Number = other.Number;
+        GasLimit = other.GasLimit;
+        BlobBaseFee = other.BlobBaseFee;
+        Spec = other.Spec;
+        PrevRandao = other.PrevRandao;
+        IsGenesis = other.IsGenesis;
+        Parallel = parallel;
     }
 
     private static ValueHash256 GetDefaultPrevRandao(BlockHeader blockHeader) => blockHeader.IsPostMerge

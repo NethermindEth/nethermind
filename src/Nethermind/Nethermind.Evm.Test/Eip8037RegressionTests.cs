@@ -208,9 +208,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             TestState,
             Machine,
             CodeInfoRepository,
-            GetLogManager(),
-            parallel: true);
-        parallelProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)));
+            GetLogManager());
+        parallelProcessor.SetBlockExecutionContext(
+            new BlockExecutionContext(new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), parallel: true));
 
         TestAllTracerWithOutput tracer = CreateTracer();
         parallelProcessor.Execute(transaction, tracer);

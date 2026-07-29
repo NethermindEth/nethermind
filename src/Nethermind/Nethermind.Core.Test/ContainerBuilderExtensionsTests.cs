@@ -86,4 +86,5 @@ public class ContainerBuilderExtensionsTests
 
         public void Dispose() => WasDisposed = true;
     }
+
 }

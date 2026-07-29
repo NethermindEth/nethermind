@@ -4,7 +4,6 @@
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -146,13 +145,12 @@ public class BlockAccessListSequentialValidationTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
-        BlockAccessListManager balManager = new(
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             specProvider,
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             static worldState => new EthereumCodeInfoRepository(worldState));
         return (stateProvider, balManager);
     }
