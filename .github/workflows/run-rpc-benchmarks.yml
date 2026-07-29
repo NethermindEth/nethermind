@@ -660,6 +660,7 @@ jobs:
           export ISO_DURATION="$(get '.iso_duration')";    [[ -z "${ISO_DURATION}" ]] && export ISO_DURATION="20s"
           export SNAP_LIST_ONLY="$(get '.snap_list_only')"     # "1" = list runner snapshots and exit
           export NM_SNAPSHOT_PATH="$(get '.nm_snapshot_path')" # explicit nethermind snapshot path override
+          export EXTRA_DOTNET_ENV="$(get '.extra_dotnet_env')" # space-separated NAME=VALUE, e.g. DOTNET_ReadyToRun=0
           export STATE_ROOT="${STATE_DIR}/sweep"
           ./scripts/rpc-bench/run-rpc-sweep.sh
 

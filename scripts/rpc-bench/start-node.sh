@@ -262,6 +262,11 @@ if [[ "$CLIENT" == "nethermind" ]]; then
     -e "DOTNET_TieredCompilation=0"
     -e "DOTNET_GCLatencyLevel=0"
   )
+  # Ad-hoc runtime-env overrides for isolating JIT/runtime-config effects (e.g.
+  # DOTNET_ReadyToRun=0). Space-separated NAME=VALUE pairs; empty by default.
+  for kv in ${EXTRA_DOTNET_ENV:-}; do
+    docker_args+=(-e "$kv")
+  done
 fi
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")

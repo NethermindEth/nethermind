@@ -103,6 +103,7 @@ for entry in $CLIENTS; do
        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$(layout_flags "$ctype")" \
        ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
+       EXTRA_DOTNET_ENV="${EXTRA_DOTNET_ENV:-}" \
        "$here/start-node.sh"; then
     echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
   fi
