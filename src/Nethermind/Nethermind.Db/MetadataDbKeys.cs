@@ -23,5 +23,6 @@ namespace Nethermind.Db
         public const int LowestInsertedBlockAccessListBlockNumber = 16;
         public const int BlockAccessListPruningDeletePointer = 17;
         public const int FlatDbCompactionOffset = 18;
+        public const int PbtCompactionOffset = 19;
     }
 }

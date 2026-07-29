@@ -13,7 +13,10 @@ using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Pbt;
+using Nethermind.State.Pbt.Mirror;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -32,7 +35,7 @@ public class WorldStateDbDeciderModuleTests
         PatriciaHasData = 8
     }
 
-    // Mirrors the 5 branches in FlatStateActivationPolicy at the full DI container level.
+    // Covers FlatStateActivationPolicy's branches through the DI container.
     [TestCase(Flags.None, false, Description = "Flat disabled → patricia")]
     [TestCase(Flags.Enabled | Flags.FlatHasData, true, Description = "Flat has committed state → flat")]
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState → flat")]
@@ -49,8 +52,7 @@ public class WorldStateDbDeciderModuleTests
             })
             .Build();
 
-        // Populate DBs before FlatStateActivationPolicy is evaluated.
-        // The policy is a lazy singleton — it's only constructed when IWorldStateManager is first resolved.
+        // FlatStateActivationPolicy is evaluated only when IWorldStateManager is first resolved.
         if (flags.HasFlag(Flags.FlatHasData))
             WriteFlatCurrentState(container, 1);
 
@@ -95,8 +97,21 @@ public class WorldStateDbDeciderModuleTests
             container.ResolveKeyed<IDb>(DbNames.BlockInfos).Set(new byte[16], Rlp.Encode(936UL).Bytes);
 
         Assert.That(container.Resolve<IStateBoundary>().BestPersistedState, Is.EqualTo(expected));
-        // IStateBoundary is injected into BlockTree's constructor; resolving the tree proves the
-        // graph stays cycle-free (the full IWorldStateManager graph would resolve the tree back).
+        // IStateBoundary is injected into BlockTree; resolving it verifies that the graph is cycle-free.
+        Assert.DoesNotThrow(() => container.Resolve<IBlockTree>());
+    }
+
+    /// <summary>Ensures a PBT persistence decorator does not create a backend-decision cycle.</summary>
+    [Test]
+    public void MirroringPbt_LeavesTheBackendDecisionCycleFree()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new PbtMirrorModule(new PbtConfig { Enabled = true, MirrorFlat = true }))
+            .Intercept<IFlatDbConfig>((cfg) => cfg.Enabled = true)
+            .Build();
+
+        Assert.DoesNotThrow(() => container.Resolve<IWorldStateManager>());
         Assert.DoesNotThrow(() => container.Resolve<IBlockTree>());
     }
 

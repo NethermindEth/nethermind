@@ -31,5 +31,6 @@ public static class NethermindPlugins
         typeof(Nethermind.Xdc.XdcPlugin),
         typeof(Nethermind.Xdc.XdcSubnetPlugin),
         typeof(Nethermind.StateDiffsWriter.StateDiffsWriterPlugin),
+        typeof(Nethermind.State.Pbt.PbtPlugin),
     ];
 }

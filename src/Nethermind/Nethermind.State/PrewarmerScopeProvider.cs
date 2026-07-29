@@ -32,13 +32,11 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 }
 
 /// <summary>
-/// Decorates a scope provider with the shared <see cref="PreBlockCaches"/>. A miss always backfills;
-/// relies on the driver clearing the caches between blocks (see <c>BranchProcessor</c>).
+/// Decorates a scope provider with shared <see cref="PreBlockCaches"/>, which the driver clears between blocks.
 /// </summary>
 /// <param name="prewarmerState">
-/// Carries the shared caches and <see cref="IPrewarmerState.IsPrewarmer"/>. On a cache hit a consumer seeds the
-/// scope-local cache via <c>HintGet</c> (for its later commit); a populator does not. A consumer scope registers
-/// itself as the block's <see cref="PreBlockCaches.MainScope"/>; a populator pushes trie warm-up hints into it.
+/// Carries the shared caches and role. Consumers seed their scope-local cache on hits and register the block's
+/// <see cref="PreBlockCaches.MainScope"/>; populators direct trie warm-up hints to that scope.
 /// </param>
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
@@ -79,7 +77,7 @@ public class PrewarmerScopeProvider(
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
-            // Unregister before teardown so no new warm hints target a disposing scope.
+            // Unregister before teardown so warm hints cannot target a disposing scope.
             if (!isPrewarmer) preBlockCaches.MainScope = null;
             baseScope.Dispose();
         }
@@ -144,9 +142,7 @@ public class PrewarmerScopeProvider(
             if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
-                // Consumers seed the scope-local cache on a hit for their later commit; populators don't.
-                // Pre-block counters are consumer-only: populators miss by design while filling the cache,
-                // so counting their probes would drag the exported coverage ratio below the true value.
+                // Only consumers seed their later commit and contribute coverage counters; populators fill the cache.
                 if (!isPrewarmer)
                 {
                     baseScope.HintGet(address, account);
@@ -158,7 +154,7 @@ public class PrewarmerScopeProvider(
             else
             {
                 account = GetFromBaseTree(in addressAsKey);
-                // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
+                // Backfill for other readers; SeqlockCache.Set supports concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
                 mainScope?.HintWarmAccount(new ValueAddress(address.Bytes));
                 if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
@@ -169,8 +165,7 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
-        // consumer hints go straight to the backend.
+        // Populators target the consumer scope, whose commit walks the hinted paths.
         public void HintWarmAccount(in ValueAddress address) =>
             (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(in address);
 
@@ -228,6 +223,8 @@ public class PrewarmerScopeProvider(
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
+        public bool IsKnownEmpty => baseStorageTree.IsKnownEmpty;
+
         public byte[] Get(in UInt256 index)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
@@ -241,7 +238,7 @@ public class PrewarmerScopeProvider(
             else
             {
                 value = LoadFromTreeStorage(in storageCell);
-                // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
+                // Backfill for other readers; SeqlockCache.Set supports concurrent writers.
                 preBlockCache.Set(in storageCell, value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
@@ -252,9 +249,7 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
-            // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per
-            // first-in-block touch by PersistentStorageProvider; counting it here again double-counted
-            // fully-cold reads. Populator probes are excluded — they miss by design while filling.
+            // Only consumer misses count: PersistentStorageProvider already counts cold tree reads.
             if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
 
             return baseStorageTree.Get(storageCell.Index);
