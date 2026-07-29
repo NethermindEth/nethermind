@@ -26,6 +26,9 @@ namespace Nethermind.Trie
     public sealed partial class TrieNode
     {
         internal const int BranchesCount = 16;
+        // 3-byte sequence prefix + 16 encoded hashes + the empty branch value.
+        private const int FullBranchRlpLength = 532;
+        private const int FullBranchFirstChildOffset = 3;
 #if DEBUG
         private static int _idCounter;
 
@@ -1223,6 +1226,12 @@ namespace Nethermind.Trie
 
         private void SeekChildNotNull(ref RlpReader rlpReader, int index)
         {
+            if (IsBranch && rlpReader.Length == FullBranchRlpLength)
+            {
+                rlpReader.Position = FullBranchFirstChildOffset + index * Rlp.LengthOfKeccakRlp;
+                return;
+            }
+
             rlpReader.Reset();
             rlpReader.SkipLength();
             if (index == 0 && IsExtension)
@@ -1317,6 +1326,21 @@ namespace Nethermind.Trie
             }
 
             RlpReader rlpReader = new(rlp);
+            if (rlp.Length == FullBranchRlpLength)
+            {
+                path.AppendMut(0);
+                for (int i = 0; i < BranchesCount; i++)
+                {
+                    path.SetLast(i);
+                    rlpReader.Position = FullBranchFirstChildOffset + i * Rlp.LengthOfKeccakRlp;
+                    Hash256 keccak = rlpReader.DecodeKeccak();
+                    output[i] = tree.FindCachedOrUnknown(path, keccak);
+                }
+
+                path.TruncateOne();
+                return BranchesCount;
+            }
+
             rlpReader.Reset();
             rlpReader.SkipLength();
 
@@ -1409,7 +1433,15 @@ namespace Nethermind.Trie
                     childOrRef = data;
                     if (childOrRef is null)
                     {
-                        if (_currentStreamIndex.HasValue && _currentStreamIndex <= i)
+                        if (node.IsBranch && rlp.Length == FullBranchRlpLength)
+                        {
+                            _rlpReader = new RlpReader(rlp)
+                            {
+                                Position = FullBranchFirstChildOffset + i * Rlp.LengthOfKeccakRlp
+                            };
+                            _currentStreamIndex = i;
+                        }
+                        else if (_currentStreamIndex.HasValue && _currentStreamIndex <= i)
                         {
                             int toSkip = i - _currentStreamIndex.Value;
                             for (int j = 0; j < toSkip; j++) _rlpReader.SkipItem();

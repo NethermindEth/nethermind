@@ -962,6 +962,45 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Can_read_all_children_from_full_branch_rlp()
+    {
+        Context context = new();
+        TreePath emptyPath = TreePath.Empty;
+        context.HeavyLeaf.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
+
+        TrieNode branch = new(NodeType.Branch);
+        for (int i = 0; i < 16; i++)
+        {
+            branch.SetChild(i, context.HeavyLeaf);
+        }
+
+        CappedArray<byte> rlp = branch.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        Assert.That(rlp.Length, Is.EqualTo(532));
+
+        TrieNode seekNode = new(NodeType.Branch, rlp);
+        for (int i = 0; i < 16; i++)
+        {
+            emptyPath = TreePath.Empty;
+            Assert.That(seekNode.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, i), Is.Not.Null);
+        }
+
+        TrieNode allChildrenNode = new(NodeType.Branch, rlp);
+        TrieNode?[] children = new TrieNode?[16];
+        emptyPath = TreePath.Empty;
+        Assert.That(allChildrenNode.ResolveAllChildBranch(NullTrieNodeResolver.Instance, ref emptyPath, children), Is.EqualTo(16));
+        Assert.That(children, Has.All.Not.Null);
+
+        TrieNode iteratorNode = new(NodeType.Branch, rlp);
+        TrieNode.ChildIterator iterator = iteratorNode.CreateChildIterator();
+        for (int i = 0; i < 16; i++)
+        {
+            emptyPath = TreePath.Empty;
+            emptyPath.AppendMut(i);
+            Assert.That(iterator.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref emptyPath, i), Is.Not.Null);
+        }
+    }
+
+    [Test]
     public void Do_Not_MarkUnpersistedChildAsPersisted()
     {
         InMemoryScopedTrieStore inMemoryScopedTrieStore = new();
