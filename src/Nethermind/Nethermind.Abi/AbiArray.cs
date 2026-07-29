@@ -31,20 +31,30 @@ public class AbiArray : AbiType
 
     public override (object, int) Decode(byte[] data, int position, bool packed)
     {
+        using DecodeBudgetScope decodeBudget = EnterDecodeBudget(data.Length);
         (UInt256 length, position) = UInt256.DecodeUInt(data, position, packed);
-        int sequenceLength = (int)length;
-        int elementHeadSize = GetElementHeadSize(ElementType, packed);
-        int allocationBoundElementSize = Math.Max(elementHeadSize, 1);
-
-        if ((uint)position > (uint)data.Length)
+        if (length > (UInt256)int.MaxValue)
         {
-            throw new AbiException($"Insufficient data to decode ABI array of {sequenceLength} elements at position {position}");
+            throw new AbiException($"ABI array length {length} exceeds the supported maximum");
         }
 
-        int allocationBoundDataLength = elementHeadSize == 0 ? data.Length : data.Length - position;
-        if ((ulong)(uint)sequenceLength * (uint)allocationBoundElementSize > (uint)allocationBoundDataLength)
+        int sequenceLength = (int)length;
+        int elementHeadSize = ElementType.GetHeadSize(packed);
+        if (elementHeadSize is 0)
         {
-            throw new AbiException($"Insufficient data to decode ABI array of {sequenceLength} elements at position {position}");
+            ConsumeZeroWidthElementBudget(sequenceLength, ElementType);
+        }
+        else
+        {
+            int remainingDataLength = data.Length - position;
+            ulong allocationSize = (ulong)(uint)sequenceLength * (uint)elementHeadSize;
+            if (allocationSize > (uint)remainingDataLength)
+            {
+                throw new AbiException(
+                    $"ABI array of {sequenceLength} {ElementType} elements requires an allocation bound of {allocationSize} bytes, but only {remainingDataLength} bytes are available");
+            }
+
+            ConsumeDecodeBudget(allocationSize, ElementType);
         }
 
         return DecodeSequence(ElementType.CSharpType, sequenceLength, ElementTypes, data, packed, position);
@@ -87,44 +97,5 @@ public class AbiArray : AbiType
         {
             yield return ElementType;
         }
-    }
-
-    private static int GetElementHeadSize(AbiType type, bool packed)
-    {
-        if (type.IsDynamic)
-        {
-            return PaddingSize;
-        }
-
-        if (type.ComponentTypes is { } componentTypes)
-        {
-            int tupleHeadSize = 0;
-            for (int i = 0; i < componentTypes.Count; i++)
-            {
-                tupleHeadSize = checked(tupleHeadSize + GetElementHeadSize(componentTypes[i], packed));
-            }
-
-            return tupleHeadSize;
-        }
-
-        if (type is AbiFixedLengthArray array)
-        {
-            return checked(array.Length * GetElementHeadSize(array.ElementType, packed));
-        }
-
-        if (!packed)
-        {
-            return PaddingSize;
-        }
-
-        return type switch
-        {
-            AbiBytes bytes => bytes.Length,
-            AbiInt abiInt => abiInt.LengthInBytes,
-            AbiUInt abiUInt => abiUInt.LengthInBytes,
-            AbiFixed => PaddingSize,
-            AbiUFixed => PaddingSize,
-            _ => 1,
-        };
     }
 }

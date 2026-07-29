@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using Nethermind.Blockchain.Contracts.Json;
@@ -37,7 +36,7 @@ namespace Nethermind.Abi
 
         public virtual bool IsDynamic => false;
 
-        internal virtual IReadOnlyList<AbiType>? ComponentTypes => null;
+        internal virtual int GetHeadSize(bool packed) => IsDynamic || !packed ? PaddingSize : 1;
 
         public abstract string Name { get; }
 

@@ -44,6 +44,7 @@ namespace Nethermind.Abi
             bool packed = (encodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed;
             bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
             int sigOffset = includeSig ? 4 : 0;
+            using AbiType.DecodeBudgetScope decodeBudget = AbiType.EnterDecodeBudget(data.Length);
             if (includeSig)
             {
                 if (data.Length < sigOffset)
@@ -57,6 +58,7 @@ namespace Nethermind.Abi
                 }
             }
 
+            AbiType.ConsumeDecodeBudget((uint)AbiType.GetSequenceHeadSize(signature.Types, packed), null);
             (object[] arguments, int position) = AbiType.DecodeSequence(signature.Types.Length, signature.Types, data, packed, sigOffset);
 
             if (position != data.Length)
