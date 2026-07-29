@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt;
 
@@ -15,21 +17,74 @@ namespace Nethermind.State.Pbt;
 /// for the hash supplied by its caller, which prevents a value from one fork being served to another.
 /// Every retained value and every returned value owns a separate <see cref="RefCountingMemory"/> lease.
 /// </remarks>
-/// <param name="config">The independent byte budget of each cache bucket.</param>
-public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
+public sealed class PbtStoreCache : IDisposable
 {
-    private readonly Bucket<Stem>[] _leafBlobs =
-    [
-        new(config.AccountLeafBlobCacheSizeBudget, Metrics.AccountLeafSnapshotMemory),
-        new(config.CodeLeafBlobCacheSizeBudget, Metrics.CodeLeafSnapshotMemory),
-        new(config.StorageLeafBlobCacheSizeBudget, Metrics.StorageLeafSnapshotMemory),
-    ];
-    private readonly Bucket<TrieNodeKey>[] _trieNodes =
-    [
-        new(config.AccountTrieNodeCacheSizeBudget, Metrics.AccountTrieSnapshotMemory),
-        new(config.CodeTrieNodeCacheSizeBudget, Metrics.CodeTrieSnapshotMemory),
-        new(config.StorageTrieNodeCacheSizeBudget, Metrics.StorageTrieSnapshotMemory),
-    ];
+    private const int AccountLeafBlobEstimatedSize = 4 * MemorySizes.KiB;
+    private const int CodeLeafBlobEstimatedSize = 4 * MemorySizes.KiB;
+    private const int StorageLeafBlobEstimatedSize = 40;
+
+    private readonly Bucket<Stem>[] _leafBlobs;
+    private readonly Bucket<TrieNodeKey>[] _trieNodes;
+
+    /// <summary>Creates the six independently budgeted cache buckets.</summary>
+    /// <param name="config">The independent byte budget of each cache bucket and the trie-node layout.</param>
+    public PbtStoreCache(IPbtConfig config)
+    {
+        int trieNodeEstimatedSize = EstimateTrieNodeSize(config.TrieNodeLayout);
+        _leafBlobs =
+        [
+            new(config.AccountLeafBlobCacheSizeBudget, EstimateLeafBlobSize(PbtPartition.Account), EvictionPolicy.Clock, Metrics.AccountLeafSnapshotMemory),
+            new(config.CodeLeafBlobCacheSizeBudget, EstimateLeafBlobSize(PbtPartition.Code), EvictionPolicy.Clock, Metrics.CodeLeafSnapshotMemory),
+            new(config.StorageLeafBlobCacheSizeBudget, EstimateLeafBlobSize(PbtPartition.Storage), EvictionPolicy.Clock, Metrics.StorageLeafSnapshotMemory),
+        ];
+        _trieNodes =
+        [
+            new(config.AccountTrieNodeCacheSizeBudget, trieNodeEstimatedSize, EvictionPolicy.ClearShard, Metrics.AccountTrieSnapshotMemory),
+            new(config.CodeTrieNodeCacheSizeBudget, trieNodeEstimatedSize, EvictionPolicy.ClearShard, Metrics.CodeTrieSnapshotMemory),
+            new(config.StorageTrieNodeCacheSizeBudget, trieNodeEstimatedSize, EvictionPolicy.ClearShard, Metrics.StorageTrieSnapshotMemory),
+        ];
+    }
+
+    internal static int EstimateLeafBlobSize(PbtPartition partition) => partition switch
+    {
+        PbtPartition.Account => AccountLeafBlobEstimatedSize,
+        PbtPartition.Code => CodeLeafBlobEstimatedSize,
+        PbtPartition.Storage => StorageLeafBlobEstimatedSize,
+        _ => throw new ArgumentOutOfRangeException(nameof(partition)),
+    };
+
+    internal static int EstimateTrieNodeSize(PbtTrieLayout layout)
+    {
+        PbtGroupFormat format = layout.GroupFormat();
+        return layout.Tiling() switch
+        {
+            PbtTiling.ClusteredFourLevel => EstimateClusterSize<PbtClusteredTileLayout>(format),
+            PbtTiling.FourLevel => EstimateGroupSize<PbtFourLevelTileLayout>(format),
+            PbtTiling.FiveLevel => EstimateGroupSize<PbtFiveLevelTileLayout>(format),
+            PbtTiling.SixLevel => EstimateGroupSize<PbtSixLevelTileLayout>(format),
+            PbtTiling.EightLevel => EstimateGroupSize<PbtEightLevelTileLayout>(format),
+            _ => throw new ArgumentOutOfRangeException(nameof(layout)),
+        };
+    }
+
+    private static int EstimateClusterSize<TLayout>(PbtGroupFormat format) where TLayout : IPbtTileLayout
+    {
+        int groupSize = EstimateGroupSize<TLayout>(format);
+        return PbtNodeCluster.EncodedLength(TLayout.BoundarySlots * groupSize, groupSize, TLayout.BoundarySlots);
+    }
+
+    private static int EstimateGroupSize<TLayout>(PbtGroupFormat format) where TLayout : IPbtTileLayout
+    {
+        int storedPositions = TLayout.BoundarySlots;
+        for (int width = 2; width < TLayout.BoundarySlots; width *= 2)
+        {
+            if (PbtLayout.TrieNodeGroupStoresInternalAtWidth(format, width))
+                storedPositions += TLayout.BoundarySlots / width;
+        }
+
+        return TLayout.MaxMaskTrailerLength + PbtSubtreeStats.EncodedLength + sizeof(byte)
+            + storedPositions * ValueHash256.MemorySize;
+    }
 
     /// <summary>Returns a caller-owned lease when <paramref name="stem"/> is cached for <paramref name="hash"/>.</summary>
     public RefCountingMemory? GetLeafBlob(in Stem stem, in ValueHash256 hash)
@@ -81,57 +136,70 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
     }
 
     /// <remarks>
-    /// Matches the flat-state trie cache: a byte of the key's path selects one of 256 shards (see
-    /// <see cref="ShardOf"/>), its hash code maps directly to an array bucket, collisions replace, and
-    /// over-budget eviction clears whole shards in round-robin order. Shard locks additionally protect
-    /// ref-counted lease transfer.
+    /// A byte of the key's path selects one of 256 independently byte-bounded shards (see
+    /// <see cref="ShardOf"/>), and its hash code maps directly to an array slot. The estimated entry
+    /// size controls only array sizing and collision rate; exact payload lengths enforce capacity.
+    /// Leaf shards evict individual cold entries with CLOCK, while trie shards clear together so a
+    /// nearby subtree is refreshed as a unit. Shard locks additionally protect ref-counted leases.
     /// </remarks>
     private sealed class Bucket<TKey> : IDisposable where TKey : notnull
     {
-        private const int EstimatedSizePerEntry = 700;
         private const double UtilRatio = 0.25;
         private const int ShardCount = 256;
+        private const int MinimumShardSlots = 16;
+        private const int MaximumShardSlots = 1 << 30;
 
         private readonly Entry?[][] _cacheShards;
         private readonly Lock[] _shardLocks = new Lock[ShardCount];
+        private readonly long[] _shardMemoryCapacities = new long[ShardCount];
         private readonly long[] _shardMemoryUsages = new long[ShardCount];
-        private readonly Lock _pruneLock = new();
-        private readonly long _maxCacheMemoryThreshold;
-        private readonly int _bucketMask;
+        private readonly int[] _clockHands = new int[ShardCount];
+        private readonly EvictionPolicy _evictionPolicy;
         private readonly PbtSnapshotMemoryLabel _metricsLabel;
 
-        private long _currentMemoryUsage;
-        private int _nextShardToClear;
         private int _isDisposed;
 
-        public Bucket(ulong budget, PbtSnapshotMemoryLabel metricsLabel)
+        public Bucket(ulong budget, int estimatedSizePerEntry, EvictionPolicy evictionPolicy, PbtSnapshotMemoryLabel metricsLabel)
         {
+            _evictionPolicy = evictionPolicy;
             _metricsLabel = metricsLabel;
-            _maxCacheMemoryThreshold = budget > long.MaxValue ? long.MaxValue : (long)budget;
-            long totalEntryCount = _maxCacheMemoryThreshold / EstimatedSizePerEntry;
-            long targetBucketSize = (long)((totalEntryCount / UtilRatio) / ShardCount);
-            _bucketMask = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(16, targetBucketSize)) - 1;
+
+            long totalBudget = budget > long.MaxValue ? long.MaxValue : (long)budget;
+            long capacityPerShard = totalBudget / ShardCount;
+            int remainder = (int)(totalBudget % ShardCount);
 
             _cacheShards = new Entry[ShardCount][];
             for (int i = 0; i < ShardCount; i++)
             {
-                _cacheShards[i] = new Entry[_bucketMask + 1];
+                long shardCapacity = capacityPerShard + (i < remainder ? 1 : 0);
+                _shardMemoryCapacities[i] = shardCapacity;
+                _cacheShards[i] = new Entry[ShardSize(shardCapacity, estimatedSizePerEntry)];
                 _shardLocks[i] = new Lock();
             }
         }
 
+        private static int ShardSize(long capacity, int estimatedSizePerEntry)
+        {
+            long totalEntryCount = capacity / estimatedSizePerEntry;
+            long targetSize = (long)(totalEntryCount / UtilRatio);
+            uint boundedSize = (uint)Math.Clamp(targetSize, MinimumShardSlots, MaximumShardSlots);
+            return (int)BitOperations.RoundUpToPowerOf2(boundedSize);
+        }
+
         public RefCountingMemory? Get(TKey key, int shardIdx, in ValueHash256 hash)
         {
-            int bucketIdx = (key.GetHashCode() & int.MaxValue) & _bucketMask;
+            Entry?[] shard = _cacheShards[shardIdx];
+            int bucketIdx = (key.GetHashCode() & int.MaxValue) & (shard.Length - 1);
             lock (_shardLocks[shardIdx])
             {
-                Entry? entry = _cacheShards[shardIdx][bucketIdx];
+                Entry? entry = shard[bucketIdx];
                 if (Volatile.Read(ref _isDisposed) != 0 || entry is null || !entry.Key.Equals(key) || entry.Hash != hash)
                 {
                     Metrics.PbtStoreCacheMisses.Increment(_metricsLabel);
                     return null;
                 }
 
+                if (_evictionPolicy is EvictionPolicy.Clock) entry.Referenced = true;
                 entry.Memory.AcquireLease();
                 Metrics.PbtStoreCacheHits.Increment(_metricsLabel);
                 return entry.Memory;
@@ -141,10 +209,10 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
         public void Set(TKey key, int shardIdx, in ValueHash256 hash, RefCountingMemory memory)
         {
             int size = memory.GetSpan().Length;
-            if (_maxCacheMemoryThreshold == 0 || size > _maxCacheMemoryThreshold || Volatile.Read(ref _isDisposed) != 0) return;
+            long capacity = _shardMemoryCapacities[shardIdx];
+            if (capacity == 0 || size > capacity || Volatile.Read(ref _isDisposed) != 0) return;
 
             memory.AcquireLease();
-            int bucketIdx = (key.GetHashCode() & int.MaxValue) & _bucketMask;
             lock (_shardLocks[shardIdx])
             {
                 if (Volatile.Read(ref _isDisposed) != 0)
@@ -153,59 +221,86 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
                     return;
                 }
 
-                Entry? old = _cacheShards[shardIdx][bucketIdx];
-                _cacheShards[shardIdx][bucketIdx] = new Entry(key, hash, memory, size);
+                Entry?[] shard = _cacheShards[shardIdx];
+                int bucketIdx = (key.GetHashCode() & int.MaxValue) & (shard.Length - 1);
+                Remove(shardIdx, bucketIdx);
 
-                int previousSize = old?.Size ?? 0;
-                int delta = size - previousSize;
-                _shardMemoryUsages[shardIdx] += delta;
-                Interlocked.Add(ref _currentMemoryUsage, delta);
-                Metrics.PbtStoreCacheMemory.AddBy(_metricsLabel, delta);
-                ((IDisposable?)old?.Memory)?.Dispose();
+                if (_shardMemoryUsages[shardIdx] > capacity - size)
+                {
+                    if (_evictionPolicy is EvictionPolicy.Clock) EvictWithClock(shardIdx, capacity - size);
+                    else ClearShard(shardIdx);
+                }
+
+                shard[bucketIdx] = new Entry(key, hash, memory, size);
+                _shardMemoryUsages[shardIdx] += size;
+                Metrics.PbtStoreCacheMemory.AddBy(_metricsLabel, size);
             }
-
-            Prune();
         }
 
-        private void Prune()
+        private void EvictWithClock(int shardIdx, long targetMemoryUsage)
         {
-            if (Volatile.Read(ref _currentMemoryUsage) <= _maxCacheMemoryThreshold) return;
-
-            lock (_pruneLock)
+            Entry?[] shard = _cacheShards[shardIdx];
+            int hand = _clockHands[shardIdx];
+            while (_shardMemoryUsages[shardIdx] > targetMemoryUsage)
             {
-                while (Volatile.Read(ref _currentMemoryUsage) > _maxCacheMemoryThreshold)
+                Entry? entry = shard[hand];
+                if (entry is not null)
                 {
-                    ClearShard(_nextShardToClear);
-                    _nextShardToClear = (_nextShardToClear + 1) & 255;
+                    if (entry.Referenced) entry.Referenced = false;
+                    else Remove(shardIdx, hand);
                 }
+
+                hand = (hand + 1) & (shard.Length - 1);
             }
+
+            _clockHands[shardIdx] = hand;
+        }
+
+        private void Remove(int shardIdx, int bucketIdx)
+        {
+            Entry? entry = _cacheShards[shardIdx][bucketIdx];
+            if (entry is null) return;
+
+            _cacheShards[shardIdx][bucketIdx] = null;
+            _shardMemoryUsages[shardIdx] -= entry.Size;
+            Metrics.PbtStoreCacheMemory.AddBy(_metricsLabel, -entry.Size);
+            ((IDisposable)entry.Memory).Dispose();
         }
 
         public void Dispose()
         {
-            lock (_pruneLock)
+            if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
+            for (int i = 0; i < ShardCount; i++)
             {
-                if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
-                for (int i = 0; i < ShardCount; i++) ClearShard(i);
-                _nextShardToClear = 0;
+                lock (_shardLocks[i]) ClearShard(i);
             }
         }
 
         private void ClearShard(int shardIdx)
         {
-            lock (_shardLocks[shardIdx])
-            {
-                Entry?[] shard = _cacheShards[shardIdx];
-                for (int i = 0; i < shard.Length; i++) ((IDisposable?)shard[i]?.Memory)?.Dispose();
-                Array.Clear(shard);
+            Entry?[] shard = _cacheShards[shardIdx];
+            for (int i = 0; i < shard.Length; i++) ((IDisposable?)shard[i]?.Memory)?.Dispose();
+            Array.Clear(shard);
 
-                long freedMemory = _shardMemoryUsages[shardIdx];
-                _shardMemoryUsages[shardIdx] = 0;
-                Interlocked.Add(ref _currentMemoryUsage, -freedMemory);
-                Metrics.PbtStoreCacheMemory.AddBy(_metricsLabel, -freedMemory);
-            }
+            long freedMemory = _shardMemoryUsages[shardIdx];
+            _shardMemoryUsages[shardIdx] = 0;
+            _clockHands[shardIdx] = 0;
+            Metrics.PbtStoreCacheMemory.AddBy(_metricsLabel, -freedMemory);
         }
 
-        private sealed record Entry(TKey Key, ValueHash256 Hash, RefCountingMemory Memory, int Size);
+        private sealed class Entry(TKey key, ValueHash256 hash, RefCountingMemory memory, int size)
+        {
+            public TKey Key { get; } = key;
+            public ValueHash256 Hash { get; } = hash;
+            public RefCountingMemory Memory { get; } = memory;
+            public int Size { get; } = size;
+            public bool Referenced { get; set; } = true;
+        }
+    }
+
+    private enum EvictionPolicy
+    {
+        Clock,
+        ClearShard,
     }
 }

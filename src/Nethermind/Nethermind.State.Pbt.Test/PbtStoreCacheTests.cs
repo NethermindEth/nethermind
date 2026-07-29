@@ -22,7 +22,7 @@ public class PbtStoreCacheTests
     [TestCase(true, PbtPartition.Storage)]
     public void EntriesRequireBothLogicalKeyAndHash(bool trieNode, PbtPartition partition)
     {
-        using PbtStoreCache cache = new(new PbtConfig());
+        using PbtStoreCache cache = new(ConfigWithBudget(trieNode, partition, 256));
         Stem key = StemFor(partition, 1);
         Stem other = StemFor(partition, 2);
         ValueHash256 hash = Hash(3);
@@ -59,7 +59,7 @@ public class PbtStoreCacheTests
         long memoryBaseline = Metrics.PbtStoreCacheMemory[label];
         long hitBaseline = Metrics.PbtStoreCacheHits[label];
         long missBaseline = Metrics.PbtStoreCacheMisses[label];
-        using PbtStoreCache cache = new(new PbtConfig());
+        using PbtStoreCache cache = new(ConfigWithBudget(trieNode, partition, 1280));
         Stem stem = StemFor(partition, 1);
         ValueHash256 hash = Hash(1);
         ValueHash256 otherHash = Hash(2);
@@ -92,9 +92,9 @@ public class PbtStoreCacheTests
     {
         PbtSnapshotMemoryLabel label = StoreCacheLabel(trieNode, PbtPartition.Account);
         long memoryBaseline = Metrics.PbtStoreCacheMemory[label];
-        using PbtStoreCache cache = new(ConfigWithBudget(trieNode, PbtPartition.Account, 1));
-        Stem firstStem = StemFor(PbtPartition.Account, 1);
-        Stem secondStem = StemFor(PbtPartition.Account, 2);
+        using PbtStoreCache cache = new(ConfigWithBudget(trieNode, PbtPartition.Account, 256));
+        Stem firstStem = StemInShard(PbtPartition.Account, 1, 1);
+        Stem secondStem = StemInShard(PbtPartition.Account, 1, 2);
         using RefCountingMemory first = Memory(1);
         using RefCountingMemory second = Memory(2);
 
@@ -112,11 +112,9 @@ public class PbtStoreCacheTests
     [TestCase(true)]
     public void ZeroBudgetDisablesOnlyItsBucket(bool trieNode)
     {
-        PbtConfig config = new()
-        {
-            AccountLeafBlobCacheSizeBudget = trieNode ? 1024UL : 0,
-            AccountTrieNodeCacheSizeBudget = trieNode ? 0 : 1024UL,
-        };
+        PbtConfig config = EmptyConfig();
+        config.AccountLeafBlobCacheSizeBudget = trieNode ? 256UL : 0;
+        config.AccountTrieNodeCacheSizeBudget = trieNode ? 0 : 256UL;
         using PbtStoreCache cache = new(config);
         Stem stem = StemFor(PbtPartition.Account, 1);
         TrieNodeKey key = TrieNodeKey.For(PbtPartitions.RootDepth(PbtPartition.Account), stem);
@@ -138,10 +136,10 @@ public class PbtStoreCacheTests
     [TestCase(true, PbtPartition.Storage)]
     public void EvictionReplacementAndDisposalReleaseCacheLeases(bool trieNode, PbtPartition partition)
     {
-        PbtConfig config = ConfigWithBudget(trieNode, partition, 1);
+        PbtConfig config = ConfigWithBudget(trieNode, partition, 256);
         PbtStoreCache cache = new(config);
-        Stem firstKey = StemFor(partition, 1);
-        Stem secondKey = StemFor(partition, 2);
+        Stem firstKey = StemInShard(partition, 1, 1);
+        Stem secondKey = StemInShard(partition, 1, 2);
         ValueHash256 firstHash = Hash(1);
         ValueHash256 secondHash = Hash(2);
         RefCountingMemory evicted = Memory(1);
@@ -180,7 +178,7 @@ public class PbtStoreCacheTests
     [TestCase(true, PbtPartition.Storage)]
     public void KeysDifferingBelowThePartitionPrefixShardApart(bool trieNode, PbtPartition partition)
     {
-        PbtStoreCache cache = new(ConfigWithBudget(trieNode, partition, 1));
+        PbtStoreCache cache = new(ConfigWithBudget(trieNode, partition, 256));
         Stem firstShard = StemBelowRoot(partition, 0);
         Stem secondShard = StemBelowRoot(partition, 1);
         ValueHash256 hash = Hash(1);
@@ -192,19 +190,18 @@ public class PbtStoreCacheTests
         Set(cache, trieNode, secondShard, hash, retained);
         ((IDisposable)retained).Dispose();
 
-        // The budget fits one entry, so the round-robin clear frees the shard it reaches first and stops
-        // there — which it can only do if the two stems did not land in one shard to begin with.
-        using RefCountingMemory? evictedMiss = Get(cache, trieNode, firstShard, hash);
-        RefCountingMemory? survivor = Get(cache, trieNode, secondShard, hash);
-        Assert.That(survivor?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 2 }), "one clear evicted both stems");
-        ((IDisposable?)survivor)?.Dispose();
-        cache.Dispose();
-
+        RefCountingMemory? first = Get(cache, trieNode, firstShard, hash);
+        RefCountingMemory? second = Get(cache, trieNode, secondShard, hash);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(evictedMiss, Is.Null);
-            Assert.That(TrackingMemoryProvider.CountUnreleased([evicted, retained]), Is.Zero);
+            Assert.That(first?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 1 }));
+            Assert.That(second?.GetSpan().ToArray(), Is.EqualTo(new byte[] { 2 }));
         }
+        ((IDisposable?)first)?.Dispose();
+        ((IDisposable?)second)?.Dispose();
+        cache.Dispose();
+
+        Assert.That(TrackingMemoryProvider.CountUnreleased([evicted, retained]), Is.Zero);
     }
 
     [TestCase(false, PbtPartition.Account)]
@@ -220,7 +217,7 @@ public class PbtStoreCacheTests
         long memoryBaseline = Metrics.PbtStoreCacheMemory[label];
         long hitBaseline = Metrics.PbtStoreCacheHits[label];
         long missBaseline = Metrics.PbtStoreCacheMisses[label];
-        using PbtStoreCache cache = new(ConfigWithBudget(trieNode, partition, 16));
+        using PbtStoreCache cache = new(ConfigWithBudget(trieNode, partition, 4096));
         Stem stem = StemFor(partition, 1);
         ValueHash256 hash = Hash(1);
         List<RefCountingMemory> values = new(operationCount);
@@ -248,14 +245,12 @@ public class PbtStoreCacheTests
     [Test]
     public void ExhaustingOneBucketDoesNotEvictAnother()
     {
-        PbtConfig config = new()
-        {
-            AccountLeafBlobCacheSizeBudget = 1,
-            CodeLeafBlobCacheSizeBudget = 1,
-        };
+        PbtConfig config = EmptyConfig();
+        config.AccountLeafBlobCacheSizeBudget = 256;
+        config.CodeLeafBlobCacheSizeBudget = 256;
         using PbtStoreCache cache = new(config);
-        Stem accountA = StemFor(PbtPartition.Account, 1);
-        Stem accountB = StemFor(PbtPartition.Account, 2);
+        Stem accountA = StemInShard(PbtPartition.Account, 1, 1);
+        Stem accountB = StemInShard(PbtPartition.Account, 1, 2);
         Stem code = StemFor(PbtPartition.Code, 1);
         ValueHash256 hash = Hash(1);
         using RefCountingMemory valueA = Memory(1);
@@ -275,17 +270,172 @@ public class PbtStoreCacheTests
         }
     }
 
+    [Test]
+    public void LeafClockGivesRecentlyReadEntryASecondChance()
+    {
+        PbtConfig config = ConfigWithBudget(false, PbtPartition.Account, 3 * 256);
+        using PbtStoreCache cache = new(config);
+        Stem[] stems = StemsInDistinctCacheSlots(false, 5);
+        ValueHash256 hash = Hash(1);
+        using RefCountingMemory first = Memory(1);
+        using RefCountingMemory second = Memory(2);
+        using RefCountingMemory third = Memory(3);
+        using RefCountingMemory fourth = Memory(4);
+        using RefCountingMemory fifth = Memory(5);
+
+        cache.SetLeafBlob(stems[0], hash, first);
+        cache.SetLeafBlob(stems[1], hash, second);
+        cache.SetLeafBlob(stems[2], hash, third);
+        cache.SetLeafBlob(stems[3], hash, fourth);
+        using (RefCountingMemory? recentlyRead = cache.GetLeafBlob(stems[1], hash)) { }
+        cache.SetLeafBlob(stems[4], hash, fifth);
+
+        using RefCountingMemory? firstMiss = cache.GetLeafBlob(stems[0], hash);
+        using RefCountingMemory? secondHit = cache.GetLeafBlob(stems[1], hash);
+        using RefCountingMemory? thirdMiss = cache.GetLeafBlob(stems[2], hash);
+        using RefCountingMemory? fourthHit = cache.GetLeafBlob(stems[3], hash);
+        using RefCountingMemory? fifthHit = cache.GetLeafBlob(stems[4], hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstMiss, Is.Null);
+            Assert.That(secondHit, Is.Not.Null);
+            Assert.That(thirdMiss, Is.Null);
+            Assert.That(fourthHit, Is.Not.Null);
+            Assert.That(fifthHit, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void LeafClockEvictsByExactPayloadBytes()
+    {
+        PbtConfig config = ConfigWithBudget(false, PbtPartition.Account, 5 * 256);
+        using PbtStoreCache cache = new(config);
+        Stem[] stems = StemsInDistinctCacheSlots(false, 3);
+        ValueHash256 hash = Hash(1);
+        using RefCountingMemory large = SizedMemory(4, 1);
+        using RefCountingMemory small = SizedMemory(1, 2);
+        using RefCountingMemory replacement = SizedMemory(2, 3);
+
+        cache.SetLeafBlob(stems[0], hash, large);
+        cache.SetLeafBlob(stems[1], hash, small);
+        cache.SetLeafBlob(stems[2], hash, replacement);
+
+        using RefCountingMemory? largeMiss = cache.GetLeafBlob(stems[0], hash);
+        using RefCountingMemory? smallHit = cache.GetLeafBlob(stems[1], hash);
+        using RefCountingMemory? replacementHit = cache.GetLeafBlob(stems[2], hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(largeMiss, Is.Null);
+            Assert.That(smallHit, Is.Not.Null);
+            Assert.That(replacementHit, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void TrieOverflowRefreshesWholeShard()
+    {
+        PbtConfig config = ConfigWithBudget(true, PbtPartition.Account, 2 * 256);
+        using PbtStoreCache cache = new(config);
+        Stem[] stems = StemsInDistinctCacheSlots(true, 3);
+        ValueHash256 hash = Hash(1);
+        using RefCountingMemory first = Memory(1);
+        using RefCountingMemory second = Memory(2);
+        using RefCountingMemory replacement = Memory(3);
+
+        Set(cache, true, stems[0], hash, first);
+        Set(cache, true, stems[1], hash, second);
+        Set(cache, true, stems[2], hash, replacement);
+
+        using RefCountingMemory? firstMiss = Get(cache, true, stems[0], hash);
+        using RefCountingMemory? secondMiss = Get(cache, true, stems[1], hash);
+        using RefCountingMemory? replacementHit = Get(cache, true, stems[2], hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstMiss, Is.Null);
+            Assert.That(secondMiss, Is.Null);
+            Assert.That(replacementHit, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void ShardBudgetsSplitExactRemainderAndRejectOversizedValues()
+    {
+        PbtConfig config = ConfigWithBudget(false, PbtPartition.Account, 257);
+        using PbtStoreCache cache = new(config);
+        Stem shardZero = StemBelowRoot(PbtPartition.Account, 0);
+        Stem shardOne = StemBelowRoot(PbtPartition.Account, 1);
+        ValueHash256 hash = Hash(1);
+        using RefCountingMemory twoBytes = SizedMemory(2, 1);
+        using RefCountingMemory oversized = SizedMemory(2, 2);
+        using RefCountingMemory oneByte = Memory(3);
+
+        cache.SetLeafBlob(shardZero, hash, twoBytes);
+        cache.SetLeafBlob(shardOne, hash, oversized);
+        using RefCountingMemory? shardZeroHit = cache.GetLeafBlob(shardZero, hash);
+        using RefCountingMemory? oversizedMiss = cache.GetLeafBlob(shardOne, hash);
+        cache.SetLeafBlob(shardOne, hash, oneByte);
+        using RefCountingMemory? shardOneHit = cache.GetLeafBlob(shardOne, hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shardZeroHit?.GetSpan().Length, Is.EqualTo(2));
+            Assert.That(oversizedMiss, Is.Null);
+            Assert.That(shardOneHit?.GetSpan().Length, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void StorageLeafCapacityUsesFortyByteEstimateAndExactPayloadLimit()
+    {
+        Assert.That(PbtStoreCache.EstimateLeafBlobSize(PbtPartition.Storage), Is.EqualTo(40));
+
+        PbtConfig config = ConfigWithBudget(false, PbtPartition.Storage, 40 * 256);
+        using PbtStoreCache cache = new(config);
+        Stem acceptedStem = StemInShard(PbtPartition.Storage, 1, 1);
+        Stem rejectedStem = StemInShard(PbtPartition.Storage, 2, 2);
+        ValueHash256 hash = Hash(1);
+        using RefCountingMemory accepted = SizedMemory(40, 1);
+        using RefCountingMemory rejected = SizedMemory(41, 2);
+
+        cache.SetLeafBlob(acceptedStem, hash, accepted);
+        cache.SetLeafBlob(rejectedStem, hash, rejected);
+
+        using RefCountingMemory? acceptedHit = cache.GetLeafBlob(acceptedStem, hash);
+        using RefCountingMemory? rejectedMiss = cache.GetLeafBlob(rejectedStem, hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(acceptedHit?.GetSpan().Length, Is.EqualTo(40));
+            Assert.That(rejectedMiss, Is.Null);
+        }
+    }
+
+    [Test]
+    public void LeafBlobEstimatesMatchPartitionPayloads()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PbtStoreCache.EstimateLeafBlobSize(PbtPartition.Account), Is.EqualTo(4 * 1024));
+            Assert.That(PbtStoreCache.EstimateLeafBlobSize(PbtPartition.Code), Is.EqualTo(4 * 1024));
+            Assert.That(PbtStoreCache.EstimateLeafBlobSize(PbtPartition.Storage), Is.EqualTo(40));
+        }
+    }
+
+    [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel, 16644)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, 11204)]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, 9028)]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, 657)]
+    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, 529)]
+    [TestCase(PbtTrieLayout.FiveLevelInterleaved, 1371)]
+    [TestCase(PbtTrieLayout.SixLevelInterleaved, 2735)]
+    [TestCase(PbtTrieLayout.SixLevelEvery3Depth, 2351)]
+    [TestCase(PbtTrieLayout.EightLevelInterleaved, 11049)]
+    [TestCase(PbtTrieLayout.EightLevelEvery4Depth, 8361)]
+    public void TrieNodeEstimateIsDerivedFromLayout(PbtTrieLayout layout, int expected) =>
+        Assert.That(PbtStoreCache.EstimateTrieNodeSize(layout), Is.EqualTo(expected));
+
     private static PbtConfig ConfigWithBudget(bool trieNode, PbtPartition partition, ulong budget)
     {
-        PbtConfig config = new()
-        {
-            AccountLeafBlobCacheSizeBudget = 0,
-            CodeLeafBlobCacheSizeBudget = 0,
-            StorageLeafBlobCacheSizeBudget = 0,
-            AccountTrieNodeCacheSizeBudget = 0,
-            CodeTrieNodeCacheSizeBudget = 0,
-            StorageTrieNodeCacheSizeBudget = 0,
-        };
+        PbtConfig config = EmptyConfig();
         if (trieNode)
         {
             if (partition == PbtPartition.Account) config.AccountTrieNodeCacheSizeBudget = budget;
@@ -301,14 +451,24 @@ public class PbtStoreCacheTests
         return config;
     }
 
+    private static PbtConfig EmptyConfig() => new()
+    {
+        AccountLeafBlobCacheSizeBudget = 0,
+        CodeLeafBlobCacheSizeBudget = 0,
+        StorageLeafBlobCacheSizeBudget = 0,
+        AccountTrieNodeCacheSizeBudget = 0,
+        CodeTrieNodeCacheSizeBudget = 0,
+        StorageTrieNodeCacheSizeBudget = 0,
+    };
+
     private static void Set(PbtStoreCache cache, bool trieNode, in Stem stem, in ValueHash256 hash, RefCountingMemory memory)
     {
-        if (trieNode) cache.SetTrieNode(TrieNodeKey.For(16, stem), hash, memory);
+        if (trieNode) cache.SetTrieNode(TrieNodeKey.For(24, stem), hash, memory);
         else cache.SetLeafBlob(stem, hash, memory);
     }
 
     private static RefCountingMemory? Get(PbtStoreCache cache, bool trieNode, in Stem stem, in ValueHash256 hash) =>
-        trieNode ? cache.GetTrieNode(TrieNodeKey.For(16, stem), hash) : cache.GetLeafBlob(stem, hash);
+        trieNode ? cache.GetTrieNode(TrieNodeKey.For(24, stem), hash) : cache.GetLeafBlob(stem, hash);
 
     private static Stem StemFor(PbtPartition partition, byte marker)
     {
@@ -321,6 +481,41 @@ public class PbtStoreCacheTests
         };
         bytes[1] = marker;
         return new Stem(bytes);
+    }
+
+    private static Stem StemInShard(PbtPartition partition, byte shardBits, ushort marker)
+    {
+        int rootDepth = PbtPartitions.RootDepth(partition);
+        int variableBits = 8 - rootDepth;
+        Stem stem = StemBelowRoot(partition, shardBits);
+        byte[] bytes = stem.Bytes.ToArray();
+        bytes[1] |= (byte)(marker & (0xFF >> rootDepth));
+        bytes[2] = (byte)(marker >> variableBits);
+        return new Stem(bytes);
+    }
+
+    private static Stem[] StemsInDistinctCacheSlots(bool trieNode, int count)
+    {
+        Stem?[] bySlot = new Stem?[16];
+        int found = 0;
+        for (int marker = 1; marker <= ushort.MaxValue && found < count; marker++)
+        {
+            Stem stem = StemInShard(PbtPartition.Account, 1, (ushort)marker);
+            int slot = (trieNode ? TrieNodeKey.For(24, stem).GetHashCode() : stem.GetHashCode()) & 15;
+            if (bySlot[slot] is not null) continue;
+            bySlot[slot] = stem;
+            found++;
+        }
+
+        if (found < count) throw new InvalidOperationException($"Could not find {count} distinct cache slots");
+
+        Stem[] result = new Stem[count];
+        int resultIndex = 0;
+        for (int slot = 0; slot < bySlot.Length && resultIndex < count; slot++)
+        {
+            if (bySlot[slot] is Stem stem) result[resultIndex++] = stem;
+        }
+        return result;
     }
 
     /// <summary>A stem whose eight bits below its partition's fixed prefix are <paramref name="shardBits"/>.</summary>
@@ -365,4 +560,11 @@ public class PbtStoreCacheTests
     }
 
     private static RefCountingMemory Memory(params byte[] bytes) => RefCountingMemory.Wrapping(bytes);
+
+    private static RefCountingMemory SizedMemory(int size, byte value)
+    {
+        byte[] bytes = new byte[size];
+        Array.Fill(bytes, value);
+        return RefCountingMemory.Wrapping(bytes);
+    }
 }
