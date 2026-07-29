@@ -58,6 +58,7 @@ internal static class FusedOpcode
     // below the 0xA5 range are 0x1F and 0x4C..0x4F; the 0xA5.. range is avoided because the
     // frame-transaction work claims part of it. Verified against Instruction.cs, not assumed.
     public const byte Push1Push1 = 0x1F;
+    public const byte StaticJumpINot = 0x4F;
     public const byte AndIsZero = 0x4C;
     public const byte PopPop = 0x4D;
     public const byte SwapPop = 0x4E;
@@ -297,6 +298,26 @@ internal sealed class InstructionStream
                 // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
                 // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
+
+                // An ISZERO feeding a static JUMPI inverts into the jump: its gas is already in its
+                // block's sum, so only the dispatch and the condition's stack round trip disappear.
+                // Only a non-charging entry may fold away, and both interior pcs unmap so the
+                // metered loop steps them raw.
+                if (conditional
+                    && ops.Count > 0
+                    && ops[^1].Kind == StreamOpKind.InBlock
+                    && (Instruction)ops[^1].Opcode == Instruction.ISZERO)
+                {
+                    StreamOp inverter = ops[^1];
+                    ops.RemoveAt(ops.Count - 1);
+                    pcToEntry[inverter.Pc] = InvalidEntry;
+                    pcToEntry[pc] = InvalidEntry;
+                    openBlock = -1;
+                    ops.Add(new StreamOp(FusedOpcode.StaticJumpINot, StreamOpKind.StaticJumpI, inverter.Pc, 0, (byte)(inverter.Advance + 4), (ulong)dest));
+                    pc += 4;
+                    continue;
+                }
+
                 openBlock = -1;
                 ops.Add(new StreamOp(
                     conditional ? FusedOpcode.StaticJumpI : FusedOpcode.StaticJump,

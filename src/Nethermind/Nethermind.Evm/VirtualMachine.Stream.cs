@@ -268,6 +268,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.JUMPDEST:
                             exceptionType = EvmExceptionType.None;
                             break;
+                        case (Instruction)FusedOpcode.StaticJumpINot:
+                            // ISZERO + PUSH2 + JUMPI: jump when the condition is zero. The inverter's
+                            // gas sits in its block; this op self-charges exactly what PUSH2+JUMPI would.
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+
+                            if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.JumpI))
+                            {
+                                TGasPolicy.SetOutOfGas(ref gas);
+                                OpCodeCount += opCodeCount;
+                                goto OutOfGas;
+                            }
+
+                            if (!EvmInstructions.TestJumpCondition(ref stack, out bool invertedUnderflow))
+                            {
+                                if (invertedUnderflow)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
+                                {
+                                    TGasPolicy.SetOutOfGas(ref gas);
+                                    OpCodeCount += opCodeCount;
+                                    goto OutOfGas;
+                                }
+
+                                entryIndex = (int)entry.Operand - 1;
+                            }
+
+                            break;
                         case (Instruction)FusedOpcode.StaticJump:
                             // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
                             // Mirror the unfused PUSH2: at a full stack the PUSH2 overflows before the JUMP would
