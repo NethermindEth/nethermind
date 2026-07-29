@@ -202,7 +202,15 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public void CommitTree() => _tree.Commit();
 
-    public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
+    public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(
+        int estimatedEntries,
+        Action<Address, Hash256> onRootUpdated) =>
+        CreateWriteBatch(estimatedEntries, onRootUpdated, static () => { });
+
+    internal IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(
+        int estimatedEntries,
+        Action<Address, Hash256> onRootUpdated,
+        Action onDisposed)
     {
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
                 estimatedEntries,
@@ -213,14 +221,18 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         return new StorageTreeBulkWriteBatch(
             storageTreeBulkWriteBatch,
-            this
+            this,
+            onDisposed
         );
     }
 
     private class StorageTreeBulkWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
-        FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
+        FlatStorageTree storageTree,
+        Action onDisposed) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        private int _disposed;
+
         public void Set(in UInt256 index, byte[] value)
         {
             storageTreeBulkWriteBatch.Set(in index, value);
@@ -233,6 +245,18 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             storageTree.SelfDestruct();
         }
 
-        public void Dispose() => storageTreeBulkWriteBatch.Dispose();
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+            try
+            {
+                storageTreeBulkWriteBatch.Dispose();
+            }
+            finally
+            {
+                onDisposed();
+            }
+        }
     }
 }

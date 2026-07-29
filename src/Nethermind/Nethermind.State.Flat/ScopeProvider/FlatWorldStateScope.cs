@@ -15,6 +15,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using CpuRuntimeInformation = Nethermind.Core.Cpu.RuntimeInformation;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -476,8 +477,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ILogger logger
     ) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
+        private static readonly int MaxConcurrentStorageRoots =
+            CpuRuntimeInformation.ParallelOptionsPhysicalCoresUpTo16.MaxDegreeOfParallelism;
+
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private Action<Address, Hash256>? _markDirty;
+        private Action? _storageWriteBatchDisposed;
+        private int _activeStorageWriteBatches;
+        private int _reservedStorageConcurrency;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -494,15 +502,57 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
         }
 
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) =>
-            scope
-                .CreateStorageTreeImpl(address)
-                .CreateWriteBatch(
-                    estimatedEntries: estimatedEntries,
-                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
+        {
+            ReserveStorageCommitConcurrency();
+            try
+            {
+                return scope
+                    .CreateStorageTreeImpl(address)
+                    .CreateWriteBatch(
+                        estimatedEntries: estimatedEntries,
+                        onRootUpdated: _markDirty ??= MarkDirty,
+                        onDisposed: _storageWriteBatchDisposed ??= StorageWriteBatchDisposed);
+            }
+            catch
+            {
+                StorageWriteBatchDisposed();
+                throw;
+            }
+        }
 
-        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
+        private void MarkDirty(Address address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+
+        private void ReserveStorageCommitConcurrency()
+        {
+            int active = Interlocked.Increment(ref _activeStorageWriteBatches);
+            // The outer root workers and inner trie-commit tasks share the same CPUs. Account for
+            // each additional root that can run concurrently, but not roots queued above the loop cap.
+            if (active > 1
+                && active <= MaxConcurrentStorageRoots
+                && scope._concurrencyQuota.TryRequestConcurrencyQuota())
+            {
+                Interlocked.Increment(ref _reservedStorageConcurrency);
+            }
+        }
+
+        private void StorageWriteBatchDisposed()
+        {
+            int active = Interlocked.Decrement(ref _activeStorageWriteBatches);
+            int reservationsToKeep = Math.Min(Math.Max(active - 1, 0), MaxConcurrentStorageRoots - 1);
+
+            while (true)
+            {
+                int reserved = Volatile.Read(ref _reservedStorageConcurrency);
+                if (reserved <= reservationsToKeep) return;
+
+                if (Interlocked.CompareExchange(ref _reservedStorageConcurrency, reserved - 1, reserved) == reserved)
+                {
+                    scope._concurrencyQuota.ReturnConcurrencyQuota();
+                }
+            }
+        }
 
         public void Dispose()
         {
