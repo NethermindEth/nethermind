@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -197,6 +198,84 @@ public class ParallelUnbalancedWorkTests
         {
             Assert.That(initCalls, Is.InRange(1, 2));
             Assert.That(emptyLocals, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public void For_DoesNotWaitForQueuedWorkersThatNeverStarted()
+    {
+        ConcurrentQueue<IThreadPoolWorkItem> queuedWorkers = new();
+        using ManualResetEventSlim workersQueued = new();
+        int actionCalls = 0;
+
+        Task loop = Task.Run(() => ParallelUnbalancedWork.For(
+            0,
+            100,
+            FourThreads,
+            _ => Interlocked.Increment(ref actionCalls),
+            workItem =>
+            {
+                queuedWorkers.Enqueue(workItem);
+                if (queuedWorkers.Count == FourThreads.MaxDegreeOfParallelism - 1)
+                {
+                    workersQueued.Set();
+                }
+            }));
+
+        bool allWorkersQueued = workersQueued.Wait(TimeSpan.FromSeconds(5));
+        bool completedBeforeWorkersStarted = allWorkersQueued && loop.Wait(TimeSpan.FromSeconds(1));
+
+        while (queuedWorkers.TryDequeue(out IThreadPoolWorkItem? worker))
+        {
+            worker.Execute();
+        }
+
+        Assert.That(loop.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allWorkersQueued, Is.True);
+            Assert.That(completedBeforeWorkersStarted, Is.True);
+            Assert.That(actionCalls, Is.EqualTo(100));
+        }
+    }
+
+    [Test]
+    public void For_WithThreadLocal_DoesNotWaitForQueuedWorkersThatNeverStarted()
+    {
+        ConcurrentQueue<IThreadPoolWorkItem> queuedWorkers = new();
+        using ManualResetEventSlim workersQueued = new();
+        int actionCalls = 0;
+
+        Task loop = Task.Run(() => ParallelUnbalancedWork.For(
+            0,
+            100,
+            FourThreads,
+            init: static () => 0,
+            action: (_, local) => local + 1,
+            @finally: local => Interlocked.Add(ref actionCalls, local),
+            queueWorker: workItem =>
+            {
+                queuedWorkers.Enqueue(workItem);
+                if (queuedWorkers.Count == FourThreads.MaxDegreeOfParallelism - 1)
+                {
+                    workersQueued.Set();
+                }
+            }));
+
+        bool allWorkersQueued = workersQueued.Wait(TimeSpan.FromSeconds(5));
+        bool completedBeforeWorkersStarted = allWorkersQueued && loop.Wait(TimeSpan.FromSeconds(1));
+
+        while (queuedWorkers.TryDequeue(out IThreadPoolWorkItem? worker))
+        {
+            worker.Execute();
+        }
+
+        Assert.That(loop.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allWorkersQueued, Is.True);
+            Assert.That(completedBeforeWorkersStarted, Is.True);
+            Assert.That(actionCalls, Is.EqualTo(100));
         }
     }
 
