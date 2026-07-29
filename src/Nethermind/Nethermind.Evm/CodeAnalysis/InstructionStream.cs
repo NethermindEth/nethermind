@@ -108,39 +108,6 @@ internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ush
     public readonly ulong Operand = operand;
 }
 
-/// <summary>The fields read for every dispatched entry, kept separate from the less frequently accessed operand.</summary>
-internal readonly struct StreamOpHeader(byte opcode, StreamOpKind kind, ushort pc, ushort blockIndex, byte advance)
-{
-    public readonly byte Opcode = opcode;
-    public readonly StreamOpKind Kind = kind;
-    public readonly byte Advance = advance;
-    public readonly ushort BlockIndex = blockIndex;
-    public readonly ushort Pc = pc;
-}
-
-/// <summary>Complete-entry view reconstructed from the split execution storage.</summary>
-internal readonly struct StreamOpCollection(StreamOpHeader[] headers, ulong[] operands)
-{
-    public int Length => headers.Length;
-
-    public StreamOp this[int index]
-    {
-        get
-        {
-            ref readonly StreamOpHeader header = ref headers[index];
-            return new StreamOp(
-                header.Opcode,
-                header.Kind,
-                header.Pc,
-                header.BlockIndex,
-                header.Advance,
-                operands[index]);
-        }
-    }
-
-    public StreamOp this[Index index] => this[index.GetOffset(Length)];
-}
-
 /// <summary>
 /// Bytecode preprocessed into a flat instruction stream with per-basic-block static gas sums
 /// and fused PUSH+op superinstructions, built once per <see cref="CodeInfo"/> and shared by
@@ -160,9 +127,7 @@ internal sealed class InstructionStream
     public const ushort InvalidEntry = ushort.MaxValue;
     private const int MaxBlockOpcodes = 1024;
 
-    public StreamOpCollection Ops => new(Headers, Operands);
-    internal readonly StreamOpHeader[] Headers;
-    internal readonly ulong[] Operands;
+    public readonly StreamOp[] Ops;
     public readonly ulong[] BlockGas;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
     public readonly UInt256[] Constants;
@@ -174,8 +139,7 @@ internal sealed class InstructionStream
     public readonly ushort[] PcToEntry;
 
     public int RetainedBytes =>
-        Headers.Length * Unsafe.SizeOf<StreamOpHeader>()
-        + Operands.Length * sizeof(ulong)
+        Ops.Length * Unsafe.SizeOf<StreamOp>()
         + BlockGas.Length * sizeof(ulong)
         + Constants.Length * Unsafe.SizeOf<UInt256>()
         + ConstantBytes.Length
@@ -183,15 +147,7 @@ internal sealed class InstructionStream
 
     private InstructionStream(StreamOp[] ops, ulong[] blockGas, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
     {
-        Headers = new StreamOpHeader[ops.Length];
-        Operands = new ulong[ops.Length];
-        for (int i = 0; i < ops.Length; i++)
-        {
-            StreamOp op = ops[i];
-            Headers[i] = new StreamOpHeader(op.Opcode, op.Kind, op.Pc, op.BlockIndex, op.Advance);
-            Operands[i] = op.Operand;
-        }
-
+        Ops = ops;
         BlockGas = blockGas;
         Constants = constants;
         PcToEntry = pcToEntry;
