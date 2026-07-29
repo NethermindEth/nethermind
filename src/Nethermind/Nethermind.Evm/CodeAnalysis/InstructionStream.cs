@@ -117,7 +117,7 @@ internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ush
 /// Consensus invariants: only static-gas ops are precharged. The actual gate is
 /// <c>spec.IncludePush0Instruction</c> — i.e. ANY fork &gt;= Shanghai runs the stream; there is no
 /// upper-bound fork check. The precharged gas costs are assumed fork-stable and MUST be revalidated
-/// whenever a new fork changes any of them. A JUMPDEST starts a new block; a truncated trailing PUSH stays
+/// whenever a new fork changes any of them. A JUMPDEST is a solo block; a truncated trailing PUSH stays
 /// a boundary op; nothing lands inside a fused pair; the executor recomputes the entry from the landing
 /// pc and re-meters any block entered past its charging entry (metered dispatch reads raw code, so gas
 /// stays exact).
@@ -194,10 +194,12 @@ internal sealed class InstructionStream
 
             if (instruction == Instruction.JUMPDEST)
             {
+                // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
+                // so the following ops must sit in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
-                openBlock = blockGas.Count - 1;
-                openBlockOpcodeCount = 1;
+                openBlock = -1;
+                openBlockOpcodeCount = 0;
             }
             else if (instruction is >= Instruction.DUP1 and <= Instruction.DUP16
                 && pc + 6 < code.Length
@@ -289,7 +291,7 @@ internal sealed class InstructionStream
             {
                 // PUSH2 const + JUMP/JUMPI to a validated JUMPDEST: one entry, target resolved to an
                 // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
-                // landing block charges its JUMPDEST and any following static-cost operations.
+                // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
                 openBlock = -1;
                 openBlockOpcodeCount = 0;
