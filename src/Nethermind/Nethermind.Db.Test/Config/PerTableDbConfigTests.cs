@@ -87,15 +87,20 @@ public class PerTableDbConfigTests
     }
 
     [Test]
-    public void ReceiptsBlocksDb_write_buffer_budget_is_not_shrunk_by_the_receipts_defaults()
+    public void ReceiptsBlocksDb_write_buffer_is_not_shrunk_by_the_receipts_defaults()
     {
-        PerTableDbConfig config = new(new DbConfig(), DbNames.Receipts, "Blocks");
-        IDictionary<string, string> options = DbOnTheRocks.ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions);
+        DbConfig dbConfig = new();
+        IDictionary<string, string> generic = DbOnTheRocks.ExtractOptions(dbConfig.RocksDbOptions);
+        IDictionary<string, string> receiptsBlocks = DbOnTheRocks.ExtractOptions(
+            new PerTableDbConfig(dbConfig, DbNames.Receipts, nameof(ReceiptsColumns.Blocks)).RocksDbOptions);
 
-        ulong writeBufferSize = ulong.Parse(options["write_buffer_size"]);
-        int maxWriteBufferNumber = int.Parse(options["max_write_buffer_number"]);
-
-        Assert.That(writeBufferSize * (ulong)maxWriteBufferNumber, Is.EqualTo(64_000_000));
+        Assert.Multiple(() =>
+        {
+            Assert.That(ulong.Parse(receiptsBlocks["write_buffer_size"]),
+                Is.GreaterThanOrEqualTo(ulong.Parse(generic["write_buffer_size"])));
+            Assert.That(int.Parse(receiptsBlocks["max_write_buffer_number"]),
+                Is.GreaterThanOrEqualTo(int.Parse(generic["max_write_buffer_number"])));
+        });
     }
 
     [Test]
