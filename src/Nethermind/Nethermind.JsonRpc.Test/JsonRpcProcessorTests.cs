@@ -201,16 +201,13 @@ public class JsonRpcProcessorTests
         string[] malformedItems = ["1", "\"invalid\"", "null", "[]", "true"];
         foreach (bool segmentedInput in new[] { false, true })
         {
-            for (int malformedIndex = 0; malformedIndex < 3; malformedIndex++)
+            foreach (string malformedItem in malformedItems)
             {
-                yield return new TestCaseData("1", malformedIndex, segmentedInput)
-                    .SetName($"Malformed number at index {malformedIndex}, segmented input: {segmentedInput}");
-            }
-
-            for (int i = 1; i < malformedItems.Length; i++)
-            {
-                yield return new TestCaseData(malformedItems[i], 1, segmentedInput)
-                    .SetName($"Malformed {malformedItems[i]} in middle, segmented input: {segmentedInput}");
+                for (int malformedIndex = 0; malformedIndex < 3; malformedIndex++)
+                {
+                    yield return new TestCaseData(malformedItem, malformedIndex, segmentedInput)
+                        .SetName($"Malformed {malformedItem} at index {malformedIndex}, segmented input: {segmentedInput}");
+                }
             }
         }
     }
@@ -220,6 +217,11 @@ public class JsonRpcProcessorTests
 
     private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null) =>
         ProcessAsync(processor, CreateReader(request), context, sink);
+
+    private static PipeReader CreateReader(string request, bool segmentedInput) =>
+        segmentedInput
+            ? PipeReader.Create(CreateSequence(request[..1], request[1..]))
+            : CreateReader(request);
 
     private static async ValueTask<CollectedJsonRpcResponses> ProcessAsync(
         JsonRpcProcessor processor,
@@ -705,9 +707,7 @@ public class JsonRpcProcessorTests
         ];
         requests.Insert(malformedIndex, malformedItem);
         string request = CreateBatchRequest([.. requests]);
-        PipeReader reader = segmentedInput
-            ? PipeReader.Create(CreateSequence(request[..1], request[1..]))
-            : CreateReader(request);
+        PipeReader reader = CreateReader(request, segmentedInput);
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, reader, CreateHttpContext());
 
@@ -729,6 +729,67 @@ public class JsonRpcProcessorTests
         }
 
         await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Invalid_batch_item_precedes_response_limit(bool segmentedInput)
+    {
+        IJsonRpcService service = CreateEchoService();
+        JsonRpcProcessor processor = CreateProcessor(service);
+        CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
+        string request = CreateBatchRequest(
+            CreateRequest("1", "eth_blockNumber"),
+            "1",
+            CreateRequest("2", "eth_chainId"));
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            processor,
+            CreateReader(request, segmentedInput),
+            CreateHttpContext(),
+            sink);
+
+        List<JsonRpcResponse> responses = AssertOnlyResult(result).BatchItems!;
+        Assert.That(responses, Has.Count.EqualTo(3));
+        Assert.That(responses[0], Is.TypeOf<JsonRpcSuccessResponse>());
+        Assert.That(responses[1], Is.TypeOf<JsonRpcErrorResponse>());
+        Assert.That(responses[2], Is.TypeOf<JsonRpcErrorResponse>());
+        JsonRpcErrorResponse invalidRequest = (JsonRpcErrorResponse)responses[1];
+        JsonRpcErrorResponse limitExceeded = (JsonRpcErrorResponse)responses[2];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responses[0].Id, Is.EqualTo(new JsonRpcId(1)));
+            Assert.That(invalidRequest.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+            Assert.That(limitExceeded.Id, Is.EqualTo(new JsonRpcId(2)));
+            Assert.That(limitExceeded.Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+        }
+
+        await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public async Task Empty_batch_returns_invalid_request(bool segmentedInput, bool isAuthenticated)
+    {
+        IJsonRpcService service = CreateEchoService();
+        JsonRpcProcessor processor = CreateProcessor(service);
+        using JsonRpcContext context = isAuthenticated
+            ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
+            : CreateHttpContext();
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            processor,
+            CreateReader("[]", segmentedInput),
+            context);
+
+        CollectedJsonRpcResult response = AssertOnlyResult(result);
+        Assert.That(response.Response, Is.TypeOf<JsonRpcErrorResponse>());
+        Assert.That(response.BatchItems, Is.Null);
+        JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response.Response!;
+        Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
     [TestCaseSource(nameof(MultipleDocumentRequestCases))]
@@ -801,7 +862,6 @@ public class JsonRpcProcessorTests
     [TestCase("\"aaa\"", true, null, TestName = "String root")]
     [TestCase("null", true, null, TestName = "Null root")]
     [TestCase("{}", false, null, TestName = "Empty object")]
-    [TestCase("[]", false, 0, TestName = "Empty array")]
     [TestCase("[{},{},{}]", false, 3, TestName = "Array of empty requests")]
     public async Task Can_handle_request_shapes(string request, bool shouldBeParseError, int? expectedBatchItems)
     {

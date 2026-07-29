@@ -187,6 +187,22 @@ public class StartupTests
     }
 
     [Test]
+    public async Task ProcessJsonRpcRequest_EmptyBatchReturnsInvalidRequest()
+    {
+        string response = await ProcessJsonRpcRequest("[]");
+
+        AssertJsonResponse(response, static root =>
+        {
+            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Object));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(root.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidRequest));
+            }
+        });
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task ProcessJsonRpcRequest_OverMaxRequestBodySize_ReturnsPayloadTooLarge()
     {

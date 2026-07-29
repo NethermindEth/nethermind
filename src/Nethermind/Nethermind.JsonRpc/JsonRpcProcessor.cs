@@ -640,6 +640,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return;
         }
 
+        if (requestCount == 0)
+        {
+            await WriteInvalidRequestAsync(sink, Stopwatch.GetTimestamp(), cancellationToken);
+            return;
+        }
+
         await sink.BeginBatchAsync(cancellationToken);
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
@@ -650,11 +656,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 requestIndex++;
                 JsonRpcRequest? jsonRpcRequest = item.ValueKind == JsonValueKind.Object ? CreateRequest(item) : null;
-                JsonRpcResult.Entry response = jsonRpcRequest is null
-                    ? CreateInvalidRequestEntry(Stopwatch.GetTimestamp())
-                    : isStopped
-                        ? CreateBatchResponseLimitEntry(jsonRpcRequest)
-                        : await HandleSingleRequest(jsonRpcRequest, context);
+                JsonRpcResult.Entry response = await DispatchBatchItem(jsonRpcRequest, isStopped, context);
 
                 if (_logger.IsTrace) _logger.Trace($"  {requestIndex}/{requestCount} JSON RPC request - {jsonRpcRequest?.ToString() ?? "invalid request"} handled after {response.Report.HandlingTimeMicroseconds}");
                 if (_logger.IsTrace) TraceResult(response);
@@ -708,6 +710,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             _logger.Debug(requestCount is null ? "JSON RPC batch request" : $"{requestCount} JSON RPC requests");
         }
 
+        if (requestCount == 0 || (requestCount is null && JsonRpcArrayReader.IsEmpty(batchBody)))
+        {
+            await WriteInvalidRequestAsync(sink, Stopwatch.GetTimestamp(), cancellationToken);
+            return;
+        }
+
         await sink.BeginBatchAsync(cancellationToken);
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
@@ -722,17 +730,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             while (JsonRpcArrayReader.TryReadNextItem(batchBody, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> itemBody))
             {
                 requestIndex++;
-                JsonRpcRequest? jsonRpcRequest = DeserializeBatchItem(itemBody, out JsonDocument? ownedRequestDocument);
-                if (jsonRpcRequest is not null)
+                if (TryDeserializeBatchItem(itemBody, out JsonRpcRequest? jsonRpcRequest, out JsonDocument? ownedRequestDocument))
                 {
                     batchRequestJsonLifetime.TrackUntilBatchEnd(jsonRpcRequest, ownedRequestDocument);
                 }
 
-                JsonRpcResult.Entry response = jsonRpcRequest is null
-                    ? CreateInvalidRequestEntry(Stopwatch.GetTimestamp())
-                    : isStopped
-                        ? CreateBatchResponseLimitEntry(jsonRpcRequest)
-                        : await HandleSingleRequest(jsonRpcRequest, context);
+                JsonRpcResult.Entry response = await DispatchBatchItem(jsonRpcRequest, isStopped, context);
 
                 if (_logger.IsTrace)
                 {
@@ -760,25 +763,39 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    private static JsonRpcRequest? DeserializeBatchItem(ReadOnlyMemory<byte> itemBody, out JsonDocument? requestDocument)
+    private ValueTask<JsonRpcResult.Entry> DispatchBatchItem(
+        JsonRpcRequest? request,
+        bool isStopped,
+        JsonRpcContext context) =>
+        request is null
+            ? ValueTask.FromResult(CreateInvalidRequestEntry(Stopwatch.GetTimestamp()))
+            : isStopped
+                ? ValueTask.FromResult(CreateBatchResponseLimitEntry(request))
+                : HandleSingleRequest(request, context);
+
+    private static bool TryDeserializeBatchItem(
+        ReadOnlyMemory<byte> itemBody,
+        [NotNullWhen(true)] out JsonRpcRequest? request,
+        out JsonDocument? requestDocument)
     {
-        ReadOnlySpan<byte> body = itemBody.Span[CountLeadingJsonWhitespace(itemBody.Span)..];
-        if (body.IsEmpty || body[0] != (byte)'{')
+        request = null;
+        if (itemBody.IsEmpty || itemBody.Span[0] != (byte)'{')
         {
             requestDocument = null;
-            return null;
+            return false;
         }
 
-        if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest))
+        if (TryReadObjectRequest(itemBody, out request))
         {
             requestDocument = null;
-            return directRequest;
+            return true;
         }
 
         requestDocument = JsonDocument.Parse(itemBody);
         try
         {
-            return CreateRequest(requestDocument.RootElement);
+            request = CreateRequest(requestDocument.RootElement);
+            return true;
         }
         catch
         {
