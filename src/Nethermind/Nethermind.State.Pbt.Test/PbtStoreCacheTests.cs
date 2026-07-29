@@ -47,63 +47,65 @@ public class PbtStoreCacheTests
         Assert.That(wrongKey, Is.Null);
     }
 
-    [Test]
-    public void TrieNodeMetricsTrackExactDeltasAndExcludeLeafBlobs()
+    [TestCase(false, PbtPartition.Account)]
+    [TestCase(false, PbtPartition.Code)]
+    [TestCase(false, PbtPartition.Storage)]
+    [TestCase(true, PbtPartition.Account)]
+    [TestCase(true, PbtPartition.Code)]
+    [TestCase(true, PbtPartition.Storage)]
+    public void MetricsTrackExactBucketDeltas(bool trieNode, PbtPartition partition)
     {
-        long memoryBaseline = Metrics.PbtTrieNodeCacheMemory;
-        long hitBaseline = Metrics.PbtTrieNodeCacheHits;
-        long missBaseline = Metrics.PbtTrieNodeCacheMisses;
+        PbtSnapshotMemoryLabel label = StoreCacheLabel(trieNode, partition);
+        long memoryBaseline = Metrics.PbtStoreCacheMemory[label];
+        long hitBaseline = Metrics.PbtStoreCacheHits[label];
+        long missBaseline = Metrics.PbtStoreCacheMisses[label];
         using PbtStoreCache cache = new(new PbtConfig());
-        Stem stem = StemFor(PbtPartition.Account, 1);
-        TrieNodeKey key = TrieNodeKey.For(16, stem);
+        Stem stem = StemFor(partition, 1);
         ValueHash256 hash = Hash(1);
         ValueHash256 otherHash = Hash(2);
-        using RefCountingMemory leaf = Memory(2, 3);
         using RefCountingMemory first = Memory(4, 5, 6);
         using RefCountingMemory replacement = Memory(7, 8, 9, 10, 11);
 
-        cache.SetLeafBlob(stem, hash, leaf);
-        using RefCountingMemory? leafHit = cache.GetLeafBlob(stem, hash);
-        AssertMetrics(memoryBaseline, hitBaseline, missBaseline);
+        using RefCountingMemory? miss = Get(cache, trieNode, stem, hash);
+        AssertMetrics(label, memoryBaseline, hitBaseline, missBaseline + 1);
 
-        using RefCountingMemory? miss = cache.GetTrieNode(key, hash);
-        AssertMetrics(memoryBaseline, hitBaseline, missBaseline + 1);
+        Set(cache, trieNode, stem, hash, first);
+        AssertMetrics(label, memoryBaseline + 3, hitBaseline, missBaseline + 1);
 
-        cache.SetTrieNode(key, hash, first);
-        AssertMetrics(memoryBaseline + 3, hitBaseline, missBaseline + 1);
+        using RefCountingMemory? hit = Get(cache, trieNode, stem, hash);
+        AssertMetrics(label, memoryBaseline + 3, hitBaseline + 1, missBaseline + 1);
 
-        using RefCountingMemory? hit = cache.GetTrieNode(key, hash);
-        AssertMetrics(memoryBaseline + 3, hitBaseline + 1, missBaseline + 1);
-
-        using RefCountingMemory? wrongHash = cache.GetTrieNode(key, otherHash);
+        using RefCountingMemory? wrongHash = Get(cache, trieNode, stem, otherHash);
         Assert.That(wrongHash, Is.Null);
-        AssertMetrics(memoryBaseline + 3, hitBaseline + 1, missBaseline + 2);
+        AssertMetrics(label, memoryBaseline + 3, hitBaseline + 1, missBaseline + 2);
 
-        cache.SetTrieNode(key, hash, replacement);
-        AssertMetrics(memoryBaseline + 5, hitBaseline + 1, missBaseline + 2);
+        Set(cache, trieNode, stem, hash, replacement);
+        AssertMetrics(label, memoryBaseline + 5, hitBaseline + 1, missBaseline + 2);
 
         cache.Dispose();
-        AssertMetrics(memoryBaseline, hitBaseline + 1, missBaseline + 2);
+        AssertMetrics(label, memoryBaseline, hitBaseline + 1, missBaseline + 2);
     }
 
-    [Test]
-    public void TrieNodeMemoryMetricTracksPruning()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void MemoryMetricTracksPruning(bool trieNode)
     {
-        long memoryBaseline = Metrics.PbtTrieNodeCacheMemory;
-        using PbtStoreCache cache = new(ConfigWithBudget(true, PbtPartition.Account, 1));
+        PbtSnapshotMemoryLabel label = StoreCacheLabel(trieNode, PbtPartition.Account);
+        long memoryBaseline = Metrics.PbtStoreCacheMemory[label];
+        using PbtStoreCache cache = new(ConfigWithBudget(trieNode, PbtPartition.Account, 1));
         Stem firstStem = StemFor(PbtPartition.Account, 1);
         Stem secondStem = StemFor(PbtPartition.Account, 2);
         using RefCountingMemory first = Memory(1);
         using RefCountingMemory second = Memory(2);
 
-        cache.SetTrieNode(TrieNodeKey.For(16, firstStem), Hash(1), first);
-        Assert.That(Metrics.PbtTrieNodeCacheMemory, Is.EqualTo(memoryBaseline + 1));
+        Set(cache, trieNode, firstStem, Hash(1), first);
+        Assert.That(Metrics.PbtStoreCacheMemory[label], Is.EqualTo(memoryBaseline + 1));
 
-        cache.SetTrieNode(TrieNodeKey.For(16, secondStem), Hash(2), second);
-        Assert.That(Metrics.PbtTrieNodeCacheMemory, Is.EqualTo(memoryBaseline + 1));
+        Set(cache, trieNode, secondStem, Hash(2), second);
+        Assert.That(Metrics.PbtStoreCacheMemory[label], Is.EqualTo(memoryBaseline + 1));
 
         cache.Dispose();
-        Assert.That(Metrics.PbtTrieNodeCacheMemory, Is.EqualTo(memoryBaseline));
+        Assert.That(Metrics.PbtStoreCacheMemory[label], Is.EqualTo(memoryBaseline));
     }
 
     [TestCase(false)]
@@ -214,9 +216,10 @@ public class PbtStoreCacheTests
     public void ConcurrentAccessBalancesEveryLease(bool trieNode, PbtPartition partition)
     {
         const int operationCount = 128;
-        long memoryBaseline = Metrics.PbtTrieNodeCacheMemory;
-        long hitBaseline = Metrics.PbtTrieNodeCacheHits;
-        long missBaseline = Metrics.PbtTrieNodeCacheMisses;
+        PbtSnapshotMemoryLabel label = StoreCacheLabel(trieNode, partition);
+        long memoryBaseline = Metrics.PbtStoreCacheMemory[label];
+        long hitBaseline = Metrics.PbtStoreCacheHits[label];
+        long missBaseline = Metrics.PbtStoreCacheMisses[label];
         using PbtStoreCache cache = new(ConfigWithBudget(trieNode, partition, 16));
         Stem stem = StemFor(partition, 1);
         ValueHash256 hash = Hash(1);
@@ -233,12 +236,12 @@ public class PbtStoreCacheTests
         });
 
         cache.Dispose();
-        long recordedLookups = Metrics.PbtTrieNodeCacheHits - hitBaseline + Metrics.PbtTrieNodeCacheMisses - missBaseline;
+        long recordedLookups = Metrics.PbtStoreCacheHits[label] - hitBaseline + Metrics.PbtStoreCacheMisses[label] - missBaseline;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(TrackingMemoryProvider.CountUnreleased(values), Is.Zero);
-            Assert.That(Metrics.PbtTrieNodeCacheMemory, Is.EqualTo(memoryBaseline));
-            Assert.That(recordedLookups, Is.EqualTo(trieNode ? operationCount : 0));
+            Assert.That(Metrics.PbtStoreCacheMemory[label], Is.EqualTo(memoryBaseline));
+            Assert.That(recordedLookups, Is.EqualTo(operationCount));
         }
     }
 
@@ -348,13 +351,16 @@ public class PbtStoreCacheTests
         return new ValueHash256(bytes);
     }
 
-    private static void AssertMetrics(long memory, long hits, long misses)
+    private static PbtSnapshotMemoryLabel StoreCacheLabel(bool trieNode, PbtPartition partition) => new(
+        partition.ToString().ToLowerInvariant(), trieNode ? "trie" : "leaf");
+
+    private static void AssertMetrics(PbtSnapshotMemoryLabel label, long memory, long hits, long misses)
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Metrics.PbtTrieNodeCacheMemory, Is.EqualTo(memory), "memory");
-            Assert.That(Metrics.PbtTrieNodeCacheHits, Is.EqualTo(hits), "hits");
-            Assert.That(Metrics.PbtTrieNodeCacheMisses, Is.EqualTo(misses), "misses");
+            Assert.That(Metrics.PbtStoreCacheMemory[label], Is.EqualTo(memory), "memory");
+            Assert.That(Metrics.PbtStoreCacheHits[label], Is.EqualTo(hits), "hits");
+            Assert.That(Metrics.PbtStoreCacheMisses[label], Is.EqualTo(misses), "misses");
         }
     }
 
