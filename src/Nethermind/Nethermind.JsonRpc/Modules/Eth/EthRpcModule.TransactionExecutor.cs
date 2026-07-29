@@ -42,8 +42,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                using RpcLimits.EvmExecutionSlot executionSlot = RpcLimits.AcquireEvmExecutionSlot();
-
                 if (stateOverride is not null)
                 {
                     IReleaseSpec spec = specProvider.GetSpec(header);
