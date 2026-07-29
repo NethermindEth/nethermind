@@ -137,7 +137,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
-    public void UpdateRootHash() => _stateTree.UpdateRootHash(canBeParallel: false);
+    public void UpdateRootHash() => _stateTree.UpdateRootHash();
 
     public Account? Get(Address address)
     {
