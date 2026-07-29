@@ -27,7 +27,7 @@ using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1;
 
 public class Snap1ProtocolHandlerTests
 {

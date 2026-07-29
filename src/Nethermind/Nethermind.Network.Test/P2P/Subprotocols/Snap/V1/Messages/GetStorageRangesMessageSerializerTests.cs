@@ -13,7 +13,7 @@ using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.State.Snap;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class GetStorageRangesMessageSerializerTests

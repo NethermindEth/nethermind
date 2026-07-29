@@ -29,7 +29,7 @@ public class SnapP2PCapabilityResolverTests
         HashSet<Capability> capabilities = [];
         resolver.Resolve(capabilities);
 
-        Assert.That(capabilities.Contains(new Capability(Protocol.Snap, 1)), Is.EqualTo(expected));
+        Assert.That(capabilities.Contains(new Capability(Protocol.Snap, SnapVersions.Snap1)), Is.EqualTo(expected));
     }
 
     [TestCase(false, true, SyncMode.StateNodes, SyncMode.Full, true, TestName = "Snap sync finishing flips snap and fires Changed")]
