@@ -941,6 +941,42 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(secondRoundTracer.Reads, Is.Empty);
     }
 
+    [TestCase(RoundBoundary.None)]
+    [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
+    [TestCase(RoundBoundary.ReadOnlyCommit)]
+    [TestCase(RoundBoundary.CommitAfterWrite)]
+    public void Original_available_after_repeat_read(RoundBoundary boundary)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, _values[1]);
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(cell);
+
+        switch (boundary)
+        {
+            case RoundBoundary.ResetKeepingBlockChanges:
+                provider.Reset(resetBlockChanges: false);
+                break;
+            case RoundBoundary.ReadOnlyCommit:
+                provider.Commit(Frontier.Instance);
+                break;
+            case RoundBoundary.CommitAfterWrite:
+                // A write in the round is what routes the commit through CommitCore, the clear
+                // site that a read-only commit skips.
+                provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
+                provider.Commit(Frontier.Instance);
+                break;
+        }
+
+        provider.Get(cell);
+
+        Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+    }
+
     [Test]
     public void Eip161_empty_account_with_storage_does_not_throw_on_commit()
     {
@@ -1215,6 +1251,14 @@ public class StorageProviderTests(bool useFlat)
                 writtenData.SelfDestructed[address] = true;
             }
         }
+    }
+
+    public enum RoundBoundary
+    {
+        None,
+        ResetKeepingBlockChanges,
+        ReadOnlyCommit,
+        CommitAfterWrite,
     }
 
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer
