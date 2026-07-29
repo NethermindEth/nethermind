@@ -96,8 +96,9 @@ public sealed class DetectionScanner(
                 }
                 catch (OperationCanceledException)
                 {
+                    // pre-empted mid-chunk — keep contracts found so far (don't advance the upper bound), shrink, retry
                     Shrink(key);
-                    Persist(chainId, account, existing.Contracts, existing.NftContracts, existing.ScannedFrom, existing.Head, existing.Complete);
+                    Persist(chainId, account, fErc20, fNfts, existing.ScannedFrom, existing.Head, existing.Complete);
                     Schedule(req);
                     return Task.CompletedTask;
                 }

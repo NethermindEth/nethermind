@@ -123,6 +123,29 @@ public class DetectionScannerTests
     }
 
     [Test]
+    public async Task Forward_phase_keeps_partial_results_when_cancelled()
+    {
+        // fully scanned down to genesis up to block 5; the chain has since advanced, so the forward phase runs
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], [], 0, 5, true, 0));
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        Address newToken = new("0x3333333333333333333333333333333333333333");
+        // the first topic scan finds a new token, then a later scan in the same chunk is pre-empted
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns(_ => (IEnumerable<FilterLog>)[Log(newToken, Transfer, Keccak.Zero, Keccak.Zero)],
+                     _ => throw new OperationCanceledException());
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunNext(); // forward chunk pre-empted after finding newToken
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        Assert.That(entry!.Head, Is.EqualTo(5), "upper bound not advanced on cancellation");
+        Assert.That(entry.Complete, Is.True);
+        Assert.That(entry.Contracts, Does.Contain(newToken.ToString()), "contract found before pre-emption is persisted, not discarded");
+        Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contract retained");
+        Assert.That(_scheduler.Count, Is.EqualTo(1), "the forward chunk was rescheduled to retry");
+    }
+
+    [Test]
     public void No_op_when_complete_and_head_unchanged()
     {
         _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], [], 0, 100, true, 0));
