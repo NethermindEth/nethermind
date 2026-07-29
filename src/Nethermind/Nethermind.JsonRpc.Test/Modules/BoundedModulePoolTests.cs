@@ -39,7 +39,6 @@ public class BoundedModulePoolTests
     public Task Initialize()
     {
         RpcLimits.Init(queuedLimit: 0, sharedLimit: 0);
-        RpcLimits.InitEvmExecutionLimit(0);
 
         ITxPool txPool = NullTxPool.Instance;
 
@@ -80,28 +79,10 @@ public class BoundedModulePoolTests
     }
 
     [TearDown]
-    public void ResetRpcLimits()
-    {
-        RpcLimits.Init(queuedLimit: 0, sharedLimit: 0);
-        RpcLimits.InitEvmExecutionLimit(0);
-    }
+    public void ResetRpcLimits() => RpcLimits.Init(queuedLimit: 0, sharedLimit: 0);
 
     [Test]
     public async Task Ensure_concurrency() => await _modulePool.GetModule(false);
-
-    [Test]
-    public async Task Ensure_evm_execution_is_queued_and_released()
-    {
-        RpcLimits.InitEvmExecutionLimit(1);
-
-        RpcLimits.EvmExecutionSlot first = await RpcLimits.AcquireEvmExecutionSlot(required: true);
-        ValueTask<RpcLimits.EvmExecutionSlot> pending = RpcLimits.AcquireEvmExecutionSlot(required: true);
-        Assert.That(pending.IsCompleted, Is.False);
-
-        first.Dispose();
-        RpcLimits.EvmExecutionSlot second = await pending;
-        second.Dispose();
-    }
 
     [Test]
     public async Task Ensure_limited_exclusive()

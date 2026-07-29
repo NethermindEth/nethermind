@@ -153,16 +153,11 @@ public class RpcModuleProviderTests
     [TestCase(nameof(IEthRpcModule.eth_call))]
     [TestCase(nameof(IEthRpcModule.eth_estimateGas))]
     [TestCase(nameof(IEthRpcModule.eth_createAccessList))]
-    public void Evm_call_methods_use_shared_module_with_execution_queue(string methodName)
+    public void Evm_call_methods_use_shared_module(string methodName)
     {
         _moduleProvider.Register(new TestModulePool<IEthRpcModule>(Substitute.For<IEthRpcModule>()));
 
-        RpcModuleProvider.ResolvedMethodInfo method = _moduleProvider.Resolve(methodName)!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(method.ReadOnly, Is.True);
-            Assert.That(method.IsEvmExecution, Is.True);
-        }
+        Assert.That(_moduleProvider.Resolve(methodName)!.ReadOnly, Is.True);
     }
 
     [Test]

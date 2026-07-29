@@ -22,9 +22,6 @@ public interface IJsonRpcConfig : IConfig
         Description = """
             The max number of concurrent requests waiting in the exclusive (non-sharable) queue for:
 
-            - `eth_call`
-            - `eth_createAccessList`
-            - `eth_estimateGas`
             - `eth_getLogs`
             - `eth_newFilter`
             - `eth_newBlockFilter`
@@ -155,9 +152,12 @@ public interface IJsonRpcConfig : IConfig
             - `eth_newPendingTransactionFilter`
             - `eth_uninstallFilter`
 
-            This also limits active `eth_call`, `eth_estimateGas`, and `eth_createAccessList`
-            executions on the sharable module. Additional EVM calls wait asynchronously and
-            count toward `RequestQueueLimit`. Defaults to the number of logical processors.
+            This limits the load on the CPU and I/O to reasonable levels. If the limit is exceeded,
+            HTTP 503 is returned along with the JSON-RPC error. Also acts as the hard active
+            concurrency cap on the override-path env pool used by sharable `eth_call` /
+            `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
+            overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Defaults
+            to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
