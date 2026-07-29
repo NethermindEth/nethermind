@@ -174,13 +174,6 @@ internal sealed class InstructionStream
         pcToEntry.AsSpan().Fill(InvalidEntry);
 
         int openBlock = -1;
-        // A JUMPDEST whose successor can carry its gas emits no entry of its own: the block is opened
-        // here and the next in-block op becomes its charging entry, so a jump landing on the JUMPDEST
-        // pc charges exactly the same gas while one dispatch per jump target disappears. Until that
-        // first op is emitted the block has no charging entry, so fusion must not reach back across
-        // the JUMPDEST (a jump landing there would skip the PUSH the fused op needs).
-        bool blockNeedsFirstOp = false;
-        bool previousWasElidedJumpDest = false;
         int pc = 0;
         // ConstantBytes (the big-endian form) is read only by the fused bitwise cores; track whether any
         // get emitted so a stream whose constants feed only arithmetic/shift fusion skips that allocation.
@@ -194,28 +187,15 @@ internal sealed class InstructionStream
 
             if (instruction == Instruction.JUMPDEST)
             {
-                // Two in a row must not merge: a jump to the second would then charge both.
-                if (!previousWasElidedJumpDest && CanCarryJumpDestGas(code, pc + 1))
-                {
-                    blockGas.Add(GasCostOf.JumpDest);
-                    openBlock = blockGas.Count - 1;
-                    blockNeedsFirstOp = true;
-                    previousWasElidedJumpDest = true;
-                    pc += size;
-                    continue;
-                }
-
                 // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
                 // so the following ops must sit in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
-                blockNeedsFirstOp = false;
             }
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
-                    && !blockNeedsFirstOp
                     && TryFuseGluePair(code, ops, instruction, pc, out StreamOp glued))
                 {
                     blockGas[openBlock] += cost;
@@ -223,7 +203,6 @@ internal sealed class InstructionStream
                     ops[^1] = glued;
                 }
                 else if (openBlock >= 0
-                    && !blockNeedsFirstOp
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -268,11 +247,6 @@ internal sealed class InstructionStream
                         openBlock = blockGas.Count - 1;
                         kind = StreamOpKind.BlockFirst;
                     }
-                    else if (blockNeedsFirstOp)
-                    {
-                        kind = StreamOpKind.BlockFirst;
-                        blockNeedsFirstOp = false;
-                    }
 
                     blockGas[openBlock] += cost;
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
@@ -288,8 +262,6 @@ internal sealed class InstructionStream
                 // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
                 openBlock = -1;
-                blockNeedsFirstOp = false;
-                previousWasElidedJumpDest = false;
                 ops.Add(new StreamOp(
                     conditional ? FusedOpcode.StaticJumpI : FusedOpcode.StaticJump,
                     conditional ? StreamOpKind.StaticJumpI : StreamOpKind.StaticJump,
@@ -301,11 +273,8 @@ internal sealed class InstructionStream
             {
                 // Dynamic JUMP/JUMPI/PUSH2 and trailing truncated PUSHes.
                 openBlock = -1;
-                blockNeedsFirstOp = false;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, 0));
             }
-
-            if (instruction != Instruction.JUMPDEST) previousWasElidedJumpDest = false;
 
             pc += size;
         }
@@ -379,6 +348,14 @@ internal sealed class InstructionStream
         }
         else if (firstOp == Instruction.PUSH1 && second == Instruction.PUSH1)
         {
+            // Folding a constant into the following arithmetic op saves a dispatch AND a stack
+            // round trip, so it outranks pairing the two pushes: leave the second PUSH1 alone when
+            // the op after it would consume it.
+            if (pc + 2 < code.Length && FusedOpcode.TryMap((Instruction)code[pc + 2], out _))
+            {
+                return false;
+            }
+
             // Both immediates travel in the operand: the first PUSH's value in the low byte, this
             // one's in the next, and the executor pushes low then high in that order.
             fused = FusedOpcode.Push1Push1;
@@ -403,17 +380,6 @@ internal sealed class InstructionStream
         int size = second == Instruction.PUSH1 ? 2 : 1;
         glued = new StreamOp(fused, first.Kind, first.Pc, first.BlockIndex, (byte)(first.Advance + size), operand);
         return true;
-    }
-
-    /// <summary>
-    /// True when the op at <paramref name="pc"/> will be emitted as an in-block entry, so it can act as
-    /// the charging entry for a block seeded with a preceding JUMPDEST's gas.
-    /// </summary>
-    private static bool CanCarryJumpDestGas(ReadOnlySpan<byte> code, int pc)
-    {
-        if ((uint)pc >= (uint)code.Length) return false;
-        Instruction next = (Instruction)code[pc];
-        return GetInBlockCost(next) != NotInBlock && pc + GetImmediateByteCount(next) < code.Length;
     }
 
     /// <summary>Returns the PUSH2 immediate at <paramref name="pc"/> when it points at a JUMPDEST; -1 otherwise.</summary>
