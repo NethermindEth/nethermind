@@ -4,7 +4,9 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
@@ -37,6 +39,42 @@ internal static class StreamInterpreter
 
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
+    private const int TosNone = 0;
+    private const int TosVal = 1;
+    private const int TosBytes = 2;
+
+    /// <summary>Opcodes whose in-block cases handle the cached top themselves; anything else spills
+    /// before dispatch so the shared cores see authoritative stack memory.</summary>
+    private static ReadOnlySpan<byte> TosAwareBitmap => new byte[32]
+    {
+        0xFE, 0xF0, 0xF0, 0x83, 0xFE, 0xFF, 0x00, 0x00,
+        0x00, 0x20, 0x01, 0x88, 0xFD, 0xFF, 0xFF, 0xFF,
+        0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsTosAware(Instruction instruction)
+    {
+        int i = (int)instruction;
+        return (TosAwareBitmap[i >> 3] & (1 << (i & 7))) != 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static UInt256 TosToValue(in EvmWord bytes)
+    {
+        EvmWord w = bytes;
+        return EvmStack.ReadUInt256FromSlot(ref Unsafe.As<EvmWord, byte>(ref w));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmWord TosToBytes(in UInt256 value)
+    {
+        EvmWord w = default;
+        EvmStack.WriteUInt256ToSlot(ref Unsafe.As<EvmWord, byte>(ref w), in value);
+        return w;
+    }
+
     /// <summary>
     /// Executes a frame over the preprocessed <see cref="InstructionStream"/>: per-block static gas charged
     /// once at each block's first entry, in-block ops run gas-free cores. Non-tracing tip-fork frames only.
@@ -66,6 +104,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         int opCodeCount = 0;
         int nextCancellationCheck = CancellationCheckMask + 1;
         bool metered = false;
+        // Top-of-stack cache: when tosState != TosNone the slot at Head-1 is stale and the cached
+        // copy is authoritative; Head counts the cached word. Every exit from the aware cases spills
+        // first - the cores, the metered loop, tracing and resume all read stack memory.
+        UInt256 tosVal = default;
+        EvmWord tosBytes = default;
+        int tosState = TosNone;
 
         // Resume pcs land one past code end at most; the bound guards a truncated trailing PUSH.
         int entryIndex = programCounter == 0
@@ -102,6 +146,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                     if (metered)
                     {
+                        if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+                        else if (tosState == TosBytes) Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+                        tosState = TosNone;
                         // By-value in, struct out: ref params would evict the loop's hot locals from registers.
                         MeteredResult result = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, entry.Pc, opCodeCount, callDepth);
                         programCounter = result.ProgramCounter;
@@ -120,68 +167,411 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         break;
                     }
 
+                    if (tosState != TosNone && !IsTosAware(instruction))
+                    {
+                        if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+                        else Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+                        tosState = TosNone;
+                    }
+
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
 
                     // Gas already charged at the block entry, so the cores are gas-free.
                     switch (instruction)
                     {
                         case (Instruction)FusedOpcode.Add:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAdd>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpAdd.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAdd>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Sub:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpSub.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Mul:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpMul.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Div:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpDiv.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.SDiv:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpSDiv.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Mod:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpMod.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.SMod:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpSMod.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Lt:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpLt.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Gt:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpGt.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.SLt:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpSLt.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.SGt:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                EvmInstructions.OpSGt.Operation(in constants[(int)entry.Operand], in tosVal, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Eq:
-                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                tosBytes = EvmInstructions.OpBitwiseEq.Operation(Unsafe.ReadUnaligned<EvmWord>(ref constantBytes[(int)entry.Operand * 32]), tosBytes);
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.And:
-                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                tosBytes = EvmInstructions.OpBitwiseAnd.Operation(Unsafe.ReadUnaligned<EvmWord>(ref constantBytes[(int)entry.Operand * 32]), tosBytes);
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Or:
-                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                tosBytes = EvmInstructions.OpBitwiseOr.Operation(Unsafe.ReadUnaligned<EvmWord>(ref constantBytes[(int)entry.Operand * 32]), tosBytes);
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Xor:
-                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                tosBytes = EvmInstructions.OpBitwiseXor.Operation(Unsafe.ReadUnaligned<EvmWord>(ref constantBytes[(int)entry.Operand * 32]), tosBytes);
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Shl:
-                            exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                ref readonly UInt256 shift = ref constants[(int)entry.Operand];
+                                if (!shift.IsUint64 || shift.u0 >= 256)
+                                {
+                                    tosVal = default;
+                                }
+                                else
+                                {
+                                    if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                    EvmInstructions.OpShl.Operation(in shift, in tosVal, out UInt256 result);
+                                    tosVal = result;
+                                }
+
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Shr:
-                            exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in constants[(int)entry.Operand]);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head == EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                ref readonly UInt256 shift = ref constants[(int)entry.Operand];
+                                if (!shift.IsUint64 || shift.u0 >= 256)
+                                {
+                                    tosVal = default;
+                                }
+                                else
+                                {
+                                    if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                    EvmInstructions.OpShr.Operation(in shift, in tosVal, out UInt256 result);
+                                    tosVal = result;
+                                }
+
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in constants[(int)entry.Operand]);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.PopPop:
-                            exceptionType = EvmInstructions.FusedPopPopCore(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                stack.Head -= 2;
+                                tosState = TosNone;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.FusedPopPopCore(ref stack);
+                            }
+
                             break;
                         case (Instruction)FusedOpcode.Push1Push1:
-                            exceptionType = EvmInstructions.FusedPush1Push1Core(ref stack, entry.Operand);
+                        {
+                            if (stack.Head > EvmStack.MaxStackSize - 2)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+
+                            if (tosState != TosNone)
+                            {
+                                if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+                                else Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+                            }
+
+                            UInt256 low = entry.Operand & 0xFF;
+                            EvmStack.WriteUInt256ToSlot(ref stack.PushBytesRef(), in low);
+                            stack.Head++;
+                            tosVal = (entry.Operand >> 8) & 0xFF;
+                            tosState = TosVal;
                             break;
+                        }
                         case (Instruction)FusedOpcode.SwapPop:
                             exceptionType = stack.SwapPop((int)entry.Operand);
                             break;
@@ -189,25 +579,158 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = stack.AndIsZero();
                             break;
                         case Instruction.ADD:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                stack.Head--;
+                                EvmStack.ReadUInt256FromSlot(ref stack.PeekBytesByRef(), out UInt256 under);
+                                EvmInstructions.OpAdd.Operation(in tosVal, in under, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
+                            }
+
                             break;
                         case Instruction.SUB:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSub, OffFlag>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                stack.Head--;
+                                EvmStack.ReadUInt256FromSlot(ref stack.PeekBytesByRef(), out UInt256 under);
+                                EvmInstructions.OpSub.Operation(in tosVal, in under, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSub, OffFlag>(ref stack);
+                            }
+
                             break;
                         case Instruction.MUL:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMul, OffFlag>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                stack.Head--;
+                                EvmStack.ReadUInt256FromSlot(ref stack.PeekBytesByRef(), out UInt256 under);
+                                EvmInstructions.OpMul.Operation(in tosVal, in under, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMul, OffFlag>(ref stack);
+                            }
+
                             break;
                         case Instruction.DIV:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpDiv, OffFlag>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                stack.Head--;
+                                EvmStack.ReadUInt256FromSlot(ref stack.PeekBytesByRef(), out UInt256 under);
+                                EvmInstructions.OpDiv.Operation(in tosVal, in under, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpDiv, OffFlag>(ref stack);
+                            }
+
                             break;
                         case Instruction.SDIV:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSDiv, OffFlag>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                stack.Head--;
+                                EvmStack.ReadUInt256FromSlot(ref stack.PeekBytesByRef(), out UInt256 under);
+                                EvmInstructions.OpSDiv.Operation(in tosVal, in under, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSDiv, OffFlag>(ref stack);
+                            }
+
                             break;
                         case Instruction.MOD:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMod, OffFlag>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                stack.Head--;
+                                EvmStack.ReadUInt256FromSlot(ref stack.PeekBytesByRef(), out UInt256 under);
+                                EvmInstructions.OpMod.Operation(in tosVal, in under, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMod, OffFlag>(ref stack);
+                            }
+
                             break;
                         case Instruction.SMOD:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosBytes) tosVal = TosToValue(in tosBytes);
+                                stack.Head--;
+                                EvmStack.ReadUInt256FromSlot(ref stack.PeekBytesByRef(), out UInt256 under);
+                                EvmInstructions.OpSMod.Operation(in tosVal, in under, out UInt256 result);
+                                tosVal = result;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
+                            }
+
                             break;
                         case Instruction.LT:
                             exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpLtBytes>(ref stack);
@@ -222,22 +745,113 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpSGtBytes>(ref stack);
                             break;
                         case Instruction.EQ:
-                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                stack.Head--;
+                                tosBytes = EvmInstructions.OpBitwiseEq.Operation(Unsafe.ReadUnaligned<EvmWord>(ref stack.PeekBytesByRef()), tosBytes);
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack);
+                            }
+
                             break;
                         case Instruction.AND:
-                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                stack.Head--;
+                                tosBytes = EvmInstructions.OpBitwiseAnd.Operation(Unsafe.ReadUnaligned<EvmWord>(ref stack.PeekBytesByRef()), tosBytes);
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack);
+                            }
+
                             break;
                         case Instruction.OR:
-                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                stack.Head--;
+                                tosBytes = EvmInstructions.OpBitwiseOr.Operation(Unsafe.ReadUnaligned<EvmWord>(ref stack.PeekBytesByRef()), tosBytes);
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack);
+                            }
+
                             break;
                         case Instruction.XOR:
-                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                stack.Head--;
+                                tosBytes = EvmInstructions.OpBitwiseXor.Operation(Unsafe.ReadUnaligned<EvmWord>(ref stack.PeekBytesByRef()), tosBytes);
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack);
+                            }
+
                             break;
                         case Instruction.ISZERO:
-                            exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpIsZero>(ref stack);
+                            if (tosState == TosVal)
+                            {
+                                tosVal = tosVal.IsZero ? UInt256.One : default;
+                            }
+                            else if (tosState == TosBytes)
+                            {
+                                tosVal = tosBytes == default(EvmWord) ? UInt256.One : default;
+                                tosState = TosVal;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpIsZero>(ref stack);
+                            }
+
                             break;
                         case Instruction.NOT:
-                            exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpNot>(ref stack);
+                            if (tosState != TosNone)
+                            {
+                                if (tosState == TosVal) tosBytes = TosToBytes(in tosVal);
+                                tosBytes = ~tosBytes;
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpNot>(ref stack);
+                            }
+
                             break;
                         case Instruction.SHL:
                             exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShl, OffFlag>(ref stack);
@@ -246,23 +860,117 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShr, OffFlag>(ref stack);
                             break;
                         case Instruction.POP:
-                            exceptionType = stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
+                            if (tosState != TosNone)
+                            {
+                                stack.Head--;
+                                tosState = TosNone;
+                            }
+                            else
+                            {
+                                exceptionType = stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
+                            }
+
                             break;
                         case Instruction.PUSH0:
-                            exceptionType = stack.PushZero<OffFlag>();
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+
+                            if (tosState != TosNone)
+                            {
+                                if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+                                else Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+                            }
+
+                            stack.Head++;
+                            tosVal = default;
+                            tosState = TosVal;
                             break;
                         case Instruction.PUSH1:
                         case >= Instruction.PUSH3 and <= Instruction.PUSH8:
                             // Analyzer pre-decoded full-width immediates; a truncated trailing PUSH stays a boundary op.
-                            exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+
+                            if (tosState != TosNone)
+                            {
+                                if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+                                else Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+                            }
+
+                            stack.Head++;
+                            tosVal = entry.Operand;
+                            tosState = TosVal;
                             break;
                         case >= Instruction.PUSH9 and <= Instruction.PUSH32:
-                            exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+
+                            if (tosState != TosNone)
+                            {
+                                if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+                                else Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+                            }
+
+                            stack.Head++;
+                            tosVal = constants[(int)entry.Operand];
+                            tosState = TosVal;
                             break;
-                        case >= Instruction.DUP1 and <= Instruction.DUP8:
+                        case Instruction.DUP1:
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head >= EvmStack.MaxStackSize - 1)
+                                {
+                                    exceptionType = EvmExceptionType.StackOverflow;
+                                    break;
+                                }
+
+                                // Materialize the duplicate below; the cached copy stays the top.
+                                ref byte dupSlot = ref stack.PeekBytesByRef();
+                                if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref dupSlot, in tosVal);
+                                else Unsafe.WriteUnaligned(ref dupSlot, tosBytes);
+                                stack.Head++;
+                            }
+                            else
+                            {
+                                exceptionType = stack.Dup<OffFlag>(1);
+                            }
+
+                            break;
+                        case >= Instruction.DUP2 and <= Instruction.DUP8:
                             exceptionType = stack.Dup<OffFlag>(instruction - Instruction.DUP1 + 1);
                             break;
-                        case >= Instruction.SWAP1 and <= Instruction.SWAP8:
+                        case Instruction.SWAP1:
+                            if (tosState != TosNone)
+                            {
+                                if (stack.Head < 2)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                ref byte swapUnder = ref Unsafe.Subtract(ref stack.PeekBytesByRef(), EvmStack.WordSize);
+                                EvmWord swapped = Unsafe.ReadUnaligned<EvmWord>(ref swapUnder);
+                                if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref swapUnder, in tosVal);
+                                else Unsafe.WriteUnaligned(ref swapUnder, tosBytes);
+                                tosBytes = swapped;
+                                tosState = TosBytes;
+                            }
+                            else
+                            {
+                                exceptionType = stack.Swap<OffFlag>(2);
+                            }
+
+                            break;
+                        case >= Instruction.SWAP2 and <= Instruction.SWAP8:
                             exceptionType = stack.Swap<OffFlag>(instruction - Instruction.SWAP1 + 2);
                             break;
                         case Instruction.JUMPDEST:
@@ -305,7 +1013,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 goto OutOfGas;
                             }
 
-                            if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
+                        {
+                            bool taken;
+                            if (tosState != TosNone)
+                            {
+                                taken = tosState == TosVal ? !tosVal.IsZero : tosBytes != default(EvmWord);
+                                stack.Head--;
+                                tosState = TosNone;
+                            }
+                            else
+                            {
+                                taken = EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow);
+                                if (conditionUnderflow)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+                            }
+
+                            if (taken)
                             {
                                 if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
                                 {
@@ -316,12 +1042,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                                 entryIndex = (int)entry.Operand - 1;
                             }
-                            else if (conditionUnderflow)
-                            {
-                                exceptionType = EvmExceptionType.StackUnderflow;
-                            }
 
                             break;
+                        }
                         default:
                             // Unreachable: every in-block opcode has a case above. Fail closed rather than
                             // mis-dispatch a precharged op and corrupt gas.
@@ -336,6 +1059,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     entryIndex++;
                     continue;
                 }
+
+                if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+                else if (tosState == TosBytes) Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+                tosState = TosNone;
 
                 // Fast path for single-byte, dynamic-gas memory ops: they never redirect control flow,
                 // so direct dispatch (no table calli) + sequential advance (no pcToEntry landing
@@ -425,6 +1152,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
             }
 
+            if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+            else if (tosState == TosBytes) Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+            tosState = TosNone;
+
             OpCodeCount += opCodeCount;
         }
 
@@ -459,6 +1190,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
 
     OutOfGas:
+        if (tosState == TosVal) EvmStack.WriteUInt256ToSlot(ref stack.PeekBytesByRef(), in tosVal);
+        else if (tosState == TosBytes) Unsafe.WriteUnaligned(ref stack.PeekBytesByRef(), tosBytes);
+        tosState = TosNone;
         TGasPolicy.SetOutOfGas(ref gas);
         exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
