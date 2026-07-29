@@ -48,7 +48,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         TxFrame[] frames = tx.Frames!;
         UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
-        if (!TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out UInt256 premiumPerGas) && ShouldValidateGas(tx, opts))
+        UInt256 premiumPerGas = UInt256.Zero;
+        if (ShouldValidateGas(tx, opts) && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
         {
             TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
             return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(
