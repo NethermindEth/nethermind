@@ -78,7 +78,7 @@ public static class IntrinsicGasCalculator
             throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
-    internal static (ulong RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
+    internal static (ulong ExecutionCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
     {
         AuthorizationTuple[]? authList = transaction.AuthorizationList;
         if (authList is null)
@@ -92,9 +92,9 @@ public static class IntrinsicGasCalculator
         }
 
         ulong authCount = (ulong)authList.Length;
-        ulong perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
+        ulong perAuthExecution = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseExecution : GasCostOf.PerAuthBaseExecution;
         return spec.IsEip8037Enabled
-            ? (authCount * perAuthRegular, 0)
+            ? (authCount * perAuthExecution, 0)
             : (authCount * GasCostOf.NewAccount, 0);
 
         [DoesNotReturn, StackTraceHidden]

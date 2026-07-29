@@ -1902,7 +1902,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.CreateRegular + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
+                GasCostOf.CreateExecution + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "create_oog_pre_state_access" };
 
@@ -1923,7 +1923,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.CreateRegular + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
+                GasCostOf.CreateExecution + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "create2_oog_pre_state_access" };
 
@@ -2002,7 +2002,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.ColdSLoad + GasCostOf.SSetRegular - 1,
+                GasCostOf.ColdSLoad + GasCostOf.SSetExecution - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "sstore_oog_post_state_access" };
 

@@ -298,8 +298,8 @@ public static partial class EvmInstructions
             false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
         };
 
-        // EIP-8038 adds an ACCOUNT_WRITE regular charge on top of the NEW_ACCOUNT state gas;
-        // charge regular first so a regular-gas OOG does not spill state gas.
+        // EIP-8038 adds an ACCOUNT_WRITE execution charge on top of the NEW_ACCOUNT state gas;
+        // charge execution first so an execution-gas OOG does not spill state gas.
         bool outOfGas = chargesNewAccount &&
             !((!spec.IsEip8038Enabled || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
               && TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));

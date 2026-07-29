@@ -41,10 +41,10 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [TestCase(1, ExpectedResult = 6ul)]
     [TestCase(32, ExpectedResult = 6ul)]
     [TestCase(33, ExpectedResult = 12ul)]
-    public ulong Code_deposit_regular_cost(int codeLength)
+    public ulong Code_deposit_execution_cost(int codeLength)
     {
-        CodeDepositHandler.CalculateCost(Amsterdam.Instance, codeLength, out ulong regularCost, out _);
-        return regularCost;
+        CodeDepositHandler.CalculateCost(Amsterdam.Instance, codeLength, out ulong executionCost, out _);
+        return executionCost;
     }
 
     [TestCase(1, ExpectedResult = 1530L)]
@@ -57,7 +57,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void System_transaction_gas_keeps_regular_budget_and_state_reservoir()
+    public void System_transaction_gas_keeps_execution_budget_and_state_reservoir()
     {
         EthereumGasPolicy intrinsicGas = EthereumGasPolicy.CreateSystemTransactionIntrinsicGas(Eip8037Constants.SystemCallGasLimit);
         EthereumGasPolicy availableGas = EthereumGasPolicy.CreateSystemTransactionAvailableGas(Eip8037Constants.SystemCallGasLimit, in intrinsicGas, Amsterdam.Instance);
@@ -101,7 +101,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Regular_transaction_gas_uses_tx_cap_even_when_intrinsic_state_matches_system_reservoir()
+    public void Execution_transaction_gas_uses_tx_cap_even_when_intrinsic_state_matches_system_reservoir()
     {
         EthereumGasPolicy intrinsicGas = new()
         {
@@ -130,9 +130,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
     {
         EthereumGasPolicy gas = default;
 
-        bool success = CodeDepositHandler.CalculateCost(Amsterdam.Instance, 33, in gas, out ulong regularCost, out long stateCost);
+        bool success = CodeDepositHandler.CalculateCost(Amsterdam.Instance, 33, in gas, out ulong executionCost, out long stateCost);
 
-        Assert.That((success, regularCost, stateCost),
+        Assert.That((success, executionCost, stateCost),
             Is.EqualTo((true, 12L, GasCostOf.CodeDepositState * 33)));
     }
 
@@ -149,7 +149,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Amsterdam_access_list_floor_pricing_is_added_to_regular_and_floor_intrinsic_gas()
+    public void Amsterdam_access_list_floor_pricing_is_added_to_execution_and_floor_intrinsic_gas()
     {
         AccessList accessList = new AccessList.Builder()
             .AddAddress(TestItem.AddressA)
@@ -165,17 +165,17 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
         // Access-list entries repriced to the cold costs; the value-bearing recipient touch
         // adds COLD_ACCOUNT_ACCESS + TRANSFER_LOG + TX_VALUE.
-        ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+        ulong recipientExecution = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
         ulong accessListBaseCost = Eip8038Constants.AccessListAddressCost + 3 * Eip8038Constants.AccessListStorageKeyCost;
         ulong accessListFloorTokens = (20ul + 3ul * 32ul) * Amsterdam.Instance.GasCosts.TxDataNonZeroMultiplier;
         ulong accessListFloorCost = accessListFloorTokens * Amsterdam.Instance.GasCosts.TotalCostFloorPerToken;
-        ulong expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + accessListBaseCost + accessListFloorCost;
-        ulong expectedFloorGas = GasCostOf.TransactionEip2780 + recipientRegular + accessListFloorCost;
+        ulong expectedExecution = GasCostOf.TransactionEip2780 + recipientExecution + accessListBaseCost + accessListFloorCost;
+        ulong expectedFloorGas = GasCostOf.TransactionEip2780 + recipientExecution + accessListFloorCost;
 
-        Assert.That(splitIntrinsicGas.Standard.Value, Is.EqualTo(expectedRegular));
+        Assert.That(splitIntrinsicGas.Standard.Value, Is.EqualTo(expectedExecution));
         Assert.That(splitIntrinsicGas.Standard.StateReservoir, Is.Zero);
         Assert.That(splitIntrinsicGas.FloorGas.Value, Is.EqualTo(expectedFloorGas));
-        Assert.That(intrinsicGas.Standard, Is.EqualTo(expectedRegular));
+        Assert.That(intrinsicGas.Standard, Is.EqualTo(expectedExecution));
         Assert.That(intrinsicGas.FloorGas, Is.EqualTo(expectedFloorGas));
     }
 
@@ -191,14 +191,14 @@ public class Eip8037Tests : VirtualMachineTestsBase
             .TestObject;
 
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Prague.Instance);
-        ulong expectedRegular = GasCostOf.Transaction + GasCostOf.AccessAccountListEntry + GasCostOf.AccessStorageListEntry;
+        ulong expectedExecution = GasCostOf.Transaction + GasCostOf.AccessAccountListEntry + GasCostOf.AccessStorageListEntry;
 
-        Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(expectedRegular));
+        Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(expectedExecution));
         Assert.That(intrinsicGas.FloorGas.Value, Is.EqualTo(GasCostOf.Transaction));
     }
 
     [Test]
-    public void State_gas_consumption_spills_to_regular_gas()
+    public void State_gas_consumption_spills_to_execution_gas()
     {
         EthereumGasPolicy gas = new() { Value = 100, StateReservoir = 50, StateGasUsed = 0 };
 
@@ -249,7 +249,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Intrinsic_regular_gas_above_the_tx_cap_saturates_into_the_reservoir()
+    public void Intrinsic_execution_gas_above_the_tx_cap_saturates_into_the_reservoir()
     {
         EthereumGasPolicy intrinsic = new() { Value = Eip7825Constants.DefaultTxGasLimitCap + 1, StateReservoir = 0 };
 
@@ -303,9 +303,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
             StateGasUsed = GasCostOf.PerAuthBaseState,
         };
 
-        ulong regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, stateGasFloor: 0);
+        ulong executionRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, stateGasFloor: 0);
 
-        Assert.That(regularRefund, Is.Zero);
+        Assert.That(executionRefund, Is.Zero);
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
             Is.EqualTo((0L, 0L, GasCostOf.PerAuthBaseState, 0L)));
     }
@@ -316,13 +316,13 @@ public class Eip8037Tests : VirtualMachineTestsBase
         IReleaseSpec spec = new OverridableReleaseSpec(Cancun.Instance) { IsEip8038Enabled = true };
         EthereumGasPolicy gas = default;
 
-        ulong regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, spec, stateGasFloor: 0);
+        ulong executionRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, spec, stateGasFloor: 0);
 
-        Assert.That(regularRefund, Is.EqualTo(GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost));
+        Assert.That(executionRefund, Is.EqualTo(GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost));
     }
 
     [Test]
-    public void State_gas_refund_of_spilled_charge_returns_to_regular_gas_not_reservoir()
+    public void State_gas_refund_of_spilled_charge_returns_to_execution_gas_not_reservoir()
     {
         // Source-based (LIFO) refund: a charge that spilled into gas_left must be refunded to gas_left;
         // inflating the reservoir would let later operations draw state gas the spec says is unavailable.
@@ -330,11 +330,11 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 4000), Is.True);
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
-            Is.EqualTo((6000L, 0L, 4000L, 4000L)), "charge with empty reservoir spills into regular gas");
+            Is.EqualTo((6000L, 0L, 4000L, 4000L)), "charge with empty reservoir spills into execution gas");
 
         EthereumGasPolicy.RefundStateGas(ref gas, 4000, stateGasFloor: 0);
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed),
-            Is.EqualTo((10_000L, 0L, 0L)), "spilled refund returns to regular gas, reservoir stays empty");
+            Is.EqualTo((10_000L, 0L, 0L)), "spilled refund returns to execution gas, reservoir stays empty");
     }
 
     [Test]
@@ -345,7 +345,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 4000), Is.True);
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
-            Is.EqualTo((10_000L, 1000L, 4000L, 0L)), "reservoir-funded charge does not touch regular gas");
+            Is.EqualTo((10_000L, 1000L, 4000L, 0L)), "reservoir-funded charge does not touch execution gas");
 
         EthereumGasPolicy.RefundStateGas(ref gas, 4000, stateGasFloor: 0);
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed),
@@ -531,21 +531,21 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void Code_deposit_halt_removes_merged_child_state_usage_without_refunding_reservoir_twice()
     {
-        ulong parentRegularGas = 1_000;
-        ulong childRegularGas = 500;
+        ulong parentExecutionGas = 1_000;
+        ulong childExecutionGas = 500;
         long parentStateGasUsed = GasCostOf.CreateState;
         long childStateGasUsed = GasCostOf.NewAccountState + GasCostOf.SSetState;
         long childRemainingStateReservoir = 123;
         EthereumGasPolicy parent = new()
         {
-            Value = parentRegularGas,
+            Value = parentExecutionGas,
             StateReservoir = parentStateGasUsed + childStateGasUsed + childRemainingStateReservoir,
             StateGasSpill = 77,
             StateGasSpillRefunded = 33,
         };
 
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref parent, parentStateGasUsed), Is.True);
-        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, childRegularGas);
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, childExecutionGas);
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref child, childStateGasUsed), Is.True);
         EthereumGasPolicy.Refund(ref parent, in child);
 
@@ -561,7 +561,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
             ),
             Is.EqualTo(
                 (
-                    parentRegularGas + childRegularGas,
+                    parentExecutionGas + childExecutionGas,
                     childRemainingStateReservoir + childStateGasUsed,
                     parentStateGasUsed,
                     77L,
@@ -593,7 +593,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     public void Top_level_halt_block_state_gas_is_intrinsic_floor_not_spill()
     {
         // Top-level halt: block_state = post-reset StateGasUsed (intrinsic floor); the spilled
-        // portion was paid from gas_left and burns as regular gas.
+        // portion was paid from gas_left and burns as execution gas.
         EthereumGasPolicy gas = new() { Value = 100_000, StateReservoir = 1_000, StateGasUsed = 0 };
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 5_000), Is.True);
         Assert.That((gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill), Is.EqualTo((0L, 5_000L, 4_000L)),
@@ -601,10 +601,10 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: 1_000, initialStateGasUsed: 0);
 
-        // Block_state = post-reset StateGasUsed (0); the spill burns as regular gas.
+        // Block_state = post-reset StateGasUsed (0); the spill burns as execution gas.
         long blockLevelContribution = gas.StateGasUsed;
         Assert.That(blockLevelContribution, Is.EqualTo(0L),
-            "block-level sum_state contribution = post-reset floor (0); spill is burned as regular gas");
+            "block-level sum_state contribution = post-reset floor (0); spill is burned as execution gas");
         Assert.That((gas.StateReservoir, gas.StateGasSpill), Is.EqualTo((1_000L, 0L)));
     }
 
@@ -632,7 +632,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     public void Top_level_halt_block_state_gas_per_tx_pattern_with_spill()
     {
         // Per-tx pattern with spill: the reservoir-portion is refunded and the spill is burned as
-        // regular gas. Block-level sum_state contribution per halt = post-reset StateGasUsed
+        // execution gas. Block-level sum_state contribution per halt = post-reset StateGasUsed
         // (intrinsic floor); the spill is NOT added to block_state.
         const long perTxGasLimit = 1_000_000;
         const long intrinsicStateGas = 0;
@@ -647,7 +647,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         long blockLevelContribution = gas.StateGasUsed;
         Assert.That(blockLevelContribution, Is.EqualTo(intrinsicStateGas),
-            "per-tx block-level contribution = intrinsic floor; the spill is burned as regular gas");
+            "per-tx block-level contribution = intrinsic floor; the spill is burned as execution gas");
     }
 
     [Test]
@@ -714,8 +714,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     public void Top_level_halt_block_state_is_full_intrinsic_not_reduced_by_spill()
     {
         // New halt model (RefundOnTopLevelHalt): block_state = full intrinsic floor. Unlike the OLD
-        // model that subtracted burned spill from block_state (moving it to block_regular), the spill
-        // is now burned as regular gas via gas_left, so no explicit block_state subtraction is applied.
+        // model that subtracted burned spill from block_state (moving it to block_execution), the spill
+        // is now burned as execution gas via gas_left, so no explicit block_state subtraction is applied.
         const long intrinsicStateGas = GasCostOf.CreateState;
         const long innerRevertSpill = 4_174;
 

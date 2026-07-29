@@ -137,17 +137,17 @@ internal class TransactionProcessorEip7702Tests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
-        // Intrinsic regular = TX base + value-bearing recipient touch + EIP-7702 per-auth regular.
+        // Intrinsic execution = TX base + value-bearing recipient touch + EIP-7702 per-auth execution.
         // Applying a valid authorization writes the authority leaf once; state charges are direct
         // top-frame charges and are not refunded.
-        ulong intrinsicRegularGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
-            + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseRegular;
-        ulong topFrameRegularGas = Eip8038Constants.AccountWrite;
+        ulong intrinsicExecutionGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
+            + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseExecution;
+        ulong topFrameExecutionGas = Eip8038Constants.AccountWrite;
         ulong topFrameStateGas = (ulong)expectedTopFrameStateGas;
-        ulong expectedSpentGas = intrinsicRegularGas + topFrameRegularGas + topFrameStateGas;
+        ulong expectedSpentGas = intrinsicExecutionGas + topFrameExecutionGas + topFrameStateGas;
         Assert.That(tx.SpentGas, Is.EqualTo(expectedSpentGas));
         Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(expectedSpentGas));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicRegularGas + topFrameRegularGas, topFrameStateGas)));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicExecutionGas + topFrameExecutionGas, topFrameStateGas)));
         Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(authorityNonce + 1));
 
         byte[] expectedCode = clearDelegation

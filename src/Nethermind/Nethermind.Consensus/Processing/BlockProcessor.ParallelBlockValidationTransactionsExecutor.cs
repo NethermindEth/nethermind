@@ -72,7 +72,7 @@ public partial class BlockProcessor
                 && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock)
                 && !processingOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            ulong totalRegularGas = 0;
+            ulong totalExecutionGas = 0;
             ulong totalStateGas = 0;
 
             balManager.NextTransaction();
@@ -83,11 +83,11 @@ public partial class BlockProcessor
                 Transaction currentTx = block.Transactions[i];
                 if (shouldValidate)
                 {
-                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas);
+                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalExecutionGas, totalStateGas);
                 }
 
                 ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner);
-                totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
+                totalExecutionGas = receiptsTracer.CumulativeExecutionGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
