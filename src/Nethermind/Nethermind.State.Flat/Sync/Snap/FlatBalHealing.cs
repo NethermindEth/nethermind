@@ -197,10 +197,10 @@ public class FlatBalHealing(
                     ReadOnlySpan<byte> full = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref w), 32);
                     ReadOnlySpan<byte> trimmed = full.WithoutLeadingZeros();
                     storage.Set(slot, trimmed.ToArray());
-                    batch.SetStorage(address, slot, trimmed.IsEmpty ? null : SlotValue.FromSpanWithoutLeadingZero(trimmed));
+                    batch.SetStorage(address, slot, trimmed.IsZero() ? null : SlotValue.FromSpanWithoutLeadingZero(trimmed));
                 }
 
-                storage.Commit();
+                storage.Commit(false, WriteFlags.DisableWAL);
                 account = account.WithChangedStorageRoot(storage.RootHash);
             }
 
@@ -211,7 +211,7 @@ public class FlatBalHealing(
             if (toWrite is null) batch.SelfDestruct(address);
         }
 
-        stateTree.Commit();
+        stateTree.Commit(false, WriteFlags.DisableWAL);
         return stateTree.RootHash;
     }
 
