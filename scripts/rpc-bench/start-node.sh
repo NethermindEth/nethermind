@@ -267,6 +267,12 @@ docker_args=(
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
 if [[ -n "$OPCODE_HISTOGRAM_PATH" ]]; then
+  # The report has to land on a mounted path or it dies with the container. The diag dir is only
+  # mounted by the dotTrace branch above, so mount it here too when dotTrace is off.
+  if [[ "$DOTTRACE" != "true" ]]; then
+    mkdir -p "$DIAG_DIR/dottrace"
+    docker_args+=(-v "$DIAG_DIR/dottrace:/dottrace-output:rw")
+  fi
   docker_args+=(-e "NETHERMIND_OPCODE_HISTOGRAM=$OPCODE_HISTOGRAM_PATH")
   log "Opcode histogram enabled, writing to $OPCODE_HISTOGRAM_PATH inside the container."
 fi

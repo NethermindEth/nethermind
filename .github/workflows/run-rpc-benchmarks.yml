@@ -667,8 +667,10 @@ jobs:
           STOP_GRACE: "180"
         run: ./scripts/rpc-bench/stop-node.sh
 
+      # Not gated on dottrace: the same directory carries the opcode-histogram report, and the
+      # body already no-ops when the directory is absent or empty.
       - name: Collect dotTrace snapshots
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+        if: always()
         shell: bash
         env:
           ARCHIVE: ${{ runner.temp }}/dottrace-rpcbench.zip
