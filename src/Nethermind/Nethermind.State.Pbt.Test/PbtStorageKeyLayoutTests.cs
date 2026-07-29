@@ -145,6 +145,7 @@ public class PbtStorageKeyLayoutTests
     [TestCase(PbtTrieLayout.SixLevelEvery3Depth, PbtTrieLayout.SixLevelInterleaved, false, TestName = "six-level, reverse levels")]
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.FourLevelInterleaved, true, TestName = "clustered to independent")]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelInterleaved, true, TestName = "independent to clustered")]
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.FiveLevelInterleaved, true, TestName = "another tiling, odd width")]
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.SixLevelInterleaved, true, TestName = "another tiling")]
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.EightLevelInterleaved, true, TestName = "another tiling, wider")]
     public void ReopeningAPopulatedDatabase_IsRefusedOnlyUnderAnotherTiling(PbtTrieLayout writtenAs, PbtTrieLayout reopenAs, bool refused)

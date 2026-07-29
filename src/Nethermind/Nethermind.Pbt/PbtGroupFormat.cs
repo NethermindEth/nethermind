@@ -11,10 +11,9 @@ public enum PbtGroupFormat : byte
     EveryLevel = 0x01,
 
     /// <summary>
-    /// Only the even group-relative levels (0, 2 and the boundary), skipping the internal nodes of
-    /// levels 1 and 3 — a kept node's stored children are its grandchildren. A skipped node's hash is
-    /// folded from its children wherever it is needed, so nothing about the trie is lost. Stem nodes
-    /// are stored wherever they land, skipped level or not.
+    /// Every second internal level, anchored at the boundary — a kept node's stored children are its
+    /// grandchildren. A skipped node's hash is folded from its children wherever it is needed, so
+    /// nothing about the trie is lost. Stem nodes are stored wherever they land, skipped level or not.
     /// </summary>
     Interleaved = 0x03,
 

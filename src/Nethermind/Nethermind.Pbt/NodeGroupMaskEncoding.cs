@@ -46,7 +46,7 @@ internal static class NodeGroupMaskEncoding
             if (beforeFixedTail.Length < maskLength) throw new InvalidDataException("Trie node group mask trailer is truncated");
             entries = beforeFixedTail[..^maskLength];
             ReadOnlySpan<byte> masks = beforeFixedTail[^maskLength..];
-            int positionBytes = TLayout.PositionCount <= 31 ? sizeof(uint) : 2 * sizeof(ulong);
+            int positionBytes = TLayout.PositionCount <= 31 ? sizeof(uint) : TLayout.PositionMaskWordCount * sizeof(ulong);
             presence = masks[..positionBytes];
             stems = masks.Slice(positionBytes, positionBytes);
             chains = masks[(2 * positionBytes)..];

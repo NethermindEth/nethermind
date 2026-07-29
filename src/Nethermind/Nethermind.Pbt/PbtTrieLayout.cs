@@ -57,6 +57,10 @@ public enum PbtTrieLayout : byte
     /// blobs retain the existing every-other-depth <see cref="PbtLeafFormat.Interleaved"/> policy.
     /// </remarks>
     SixLevelEvery3Depth,
+
+    /// <inheritdoc cref="PbtTiling.FiveLevel"/>
+    /// <remarks>Every other level stored, on both sides (<see cref="PbtGroupFormat.Interleaved"/>).</remarks>
+    FiveLevelInterleaved,
 }
 
 public static class PbtTrieLayoutExtensions
@@ -71,6 +75,7 @@ public static class PbtTrieLayoutExtensions
         PbtTrieLayout.SixLevelInterleaved or PbtTrieLayout.SixLevelEvery3Depth => PbtTiling.SixLevel,
         PbtTrieLayout.EightLevelInterleaved or PbtTrieLayout.EightLevelEvery4Depth => PbtTiling.EightLevel,
         PbtTrieLayout.FourLevelInterleaved or PbtTrieLayout.FourLevelBoundaryOnly => PbtTiling.FourLevel,
+        PbtTrieLayout.FiveLevelInterleaved => PbtTiling.FiveLevel,
         _ => throw new ArgumentOutOfRangeException(nameof(layout)),
     };
 
@@ -82,7 +87,8 @@ public static class PbtTrieLayoutExtensions
         PbtTrieLayout.ClusteredFourLevelInterleaved
             or PbtTrieLayout.SixLevelInterleaved
             or PbtTrieLayout.EightLevelInterleaved
-            or PbtTrieLayout.FourLevelInterleaved => PbtGroupFormat.Interleaved,
+            or PbtTrieLayout.FourLevelInterleaved
+            or PbtTrieLayout.FiveLevelInterleaved => PbtGroupFormat.Interleaved,
         PbtTrieLayout.ClusteredFourLevelBoundaryOnly or PbtTrieLayout.FourLevelBoundaryOnly => PbtGroupFormat.BoundaryOnly,
         PbtTrieLayout.EightLevelEvery4Depth => PbtGroupFormat.Every4Depth,
         PbtTrieLayout.SixLevelEvery3Depth => PbtGroupFormat.Every3Depth,

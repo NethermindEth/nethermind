@@ -25,9 +25,10 @@ internal readonly record struct Boundary(ValueHash256 Hash, Stem Stem, RefCounti
 /// the node's hash coming from <see cref="GroupRebuild.Fold"/>'s output rather than an entry.
 /// </summary>
 /// <remarks>
-/// A <see cref="PbtGroupFormat.Interleaved"/> group stores no internal node at an odd level, and no
-/// group stores its own internal root (the parent caches it in its boundary slot), so there is no
-/// entry for the parent to read the hash back out of; it takes the hash the fold hands up instead.
+/// A <see cref="PbtGroupFormat.Interleaved"/> group stores no internal node at every second level
+/// counting up from its boundary, and no group stores its own internal root (the parent caches it in
+/// its boundary slot), so there is no entry for the parent to read the hash back out of; it takes the
+/// hash the fold hands up instead.
 /// The offset alone tells a stored node from such an unstored one (<see cref="IsStored"/>).
 /// </remarks>
 internal readonly record struct FoldedNode(NodeKind Kind, int Offset)

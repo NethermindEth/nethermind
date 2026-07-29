@@ -32,6 +32,9 @@ internal static class PbtStemPathWarmer
             case PbtTiling.FourLevel:
                 WarmPartition<PbtFourLevelTileLayout>(bundle, partition, root, stem);
                 break;
+            case PbtTiling.FiveLevel:
+                WarmPartition<PbtFiveLevelTileLayout>(bundle, partition, root, stem);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(layout));
         }

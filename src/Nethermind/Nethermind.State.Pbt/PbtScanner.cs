@@ -192,6 +192,8 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         (PbtTiling.EightLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtEightLevelTileLayout, PbtDepth1>>(partition),
         (PbtTiling.FourLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtFourLevelTileLayout, PbtDepth4>>(partition),
         (PbtTiling.FourLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtFourLevelTileLayout, PbtDepth1>>(partition),
+        (PbtTiling.FiveLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtFiveLevelTileLayout, PbtDepth4>>(partition),
+        (PbtTiling.FiveLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtFiveLevelTileLayout, PbtDepth1>>(partition),
         (PbtTiling.ClusteredFourLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtClusteredTileLayout, PbtDepth4>>(partition),
         (PbtTiling.ClusteredFourLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtClusteredTileLayout, PbtDepth1>>(partition),
         _ => throw new ArgumentOutOfRangeException(nameof(partition)),

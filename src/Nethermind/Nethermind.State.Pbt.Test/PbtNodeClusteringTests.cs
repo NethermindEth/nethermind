@@ -33,19 +33,18 @@ public class PbtNodeClusteringTests
     /// depth. The clustered tiling folds every other one into its parent, while an independent tiling
     /// gives every group a key of its own.
     /// </summary>
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, true)]
-    [TestCase(PbtTrieLayout.FourLevelInterleaved, false)]
-    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, false)]
-    public void GroupLevels_AreStoredAccordingToTheTiling(PbtTrieLayout layout, bool clustered)
+    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, true, 4)]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, false, 4)]
+    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, false, 4)]
+    [TestCase(PbtTrieLayout.FiveLevelInterleaved, false, 5)]
+    public void GroupLevels_AreStoredAccordingToTheTiling(PbtTrieLayout layout, bool clustered, int levelsPerGroup)
     {
-        // stem i is zero but for nibble i, so it parts from every deeper one inside the group at 4i
         const int Levels = 8;
         List<(byte[], byte[]?)> writes = [];
         for (int level = 0; level < Levels; level++)
         {
             byte[] stem = new byte[Stem.Length];
-            int nibble = level + 1;
-            stem[nibble >> 1] = (byte)((nibble & 1) == 0 ? 0x10 : 0x01);
+            SetBit(stem, PbtKeyDerivation.ZoneBits + (level + 1) * levelsPerGroup - 1);
             writes.Add(([.. stem, 5], Value));
         }
 
@@ -56,7 +55,7 @@ public class PbtNodeClusteringTests
         harness.ApplyBatch(writes);
 
         int[] nodeDepths = [.. harness.FlattenedNodes().Keys.Select(key => (int)key.Depth).Order()];
-        Assert.That(nodeDepths, Is.EqualTo(Enumerable.Range(0, Levels).Select(level => PbtKeyDerivation.ZoneBits + level * Layout.LevelsPerGroup)));
+        Assert.That(nodeDepths, Is.EqualTo(Enumerable.Range(0, Levels).Select(level => PbtKeyDerivation.ZoneBits + level * levelsPerGroup)));
         IEnumerable<int> storedDepths = clustered
             ? nodeDepths.Where(depth => depth == PbtKeyDerivation.ZoneBits || !Layout.IsClusteringDepth(depth - Layout.LevelsPerGroup - PbtKeyDerivation.ZoneBits))
             : nodeDepths;
