@@ -14,10 +14,7 @@ namespace Nethermind.Core.Threading;
 public class ParallelUnbalancedWork : IThreadPoolWorkItem
 {
     public static readonly ParallelOptions DefaultOptions = new() { MaxDegreeOfParallelism = Cpu.RuntimeInformation.ProcessorCount };
-    private static readonly Action<IThreadPoolWorkItem> QueueWorker =
-        static workItem => ThreadPool.UnsafeQueueUserWorkItem(workItem, preferLocal: false);
     private readonly Data _data;
-    private readonly bool _isQueuedWorker;
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers.
@@ -36,27 +33,24 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
     /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
-        => For(fromInclusive, toExclusive, parallelOptions, action, QueueWorker);
-
-    internal static void For(
-        int fromInclusive,
-        int toExclusive,
-        ParallelOptions parallelOptions,
-        Action<int> action,
-        Action<IThreadPoolWorkItem> queueWorker)
     {
         int threads = GetWorkerCount(fromInclusive, toExclusive, parallelOptions);
         if (threads == 0) return;
 
-        using Data data = new(fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
+        Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
         for (int i = 0; i < threads - 1; i++)
         {
-            queueWorker(new ParallelUnbalancedWork(data, isQueuedWorker: true));
+            ThreadPool.UnsafeQueueUserWorkItem(new ParallelUnbalancedWork(data), preferLocal: false);
         }
 
-        new ParallelUnbalancedWork(data, isQueuedWorker: false).Execute();
-        data.CloseWorkerRegistrationAndWait();
+        new ParallelUnbalancedWork(data).Execute();
+
+        // If there are still active threads, wait for them to complete
+        if (data.ActiveThreads > 0)
+        {
+            data.Event.Wait();
+        }
 
         // Rethrow the first captured worker exception, if any, on the calling thread
         data.ThrowIfFaulted();
@@ -82,24 +76,6 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         Func<int, TLocal, TLocal> action,
         Action<TLocal> @finally)
         => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, init, default, action, @finally);
-
-    internal static void For<TLocal>(
-        int fromInclusive,
-        int toExclusive,
-        ParallelOptions parallelOptions,
-        Func<TLocal> init,
-        Func<int, TLocal, TLocal> action,
-        Action<TLocal> @finally,
-        Action<IThreadPoolWorkItem> queueWorker)
-        => InitProcessor<TLocal>.For(
-            fromInclusive,
-            toExclusive,
-            parallelOptions,
-            init,
-            default,
-            action,
-            @finally,
-            queueWorker);
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers, with thread-local data, initialization, and finalization functions.
@@ -166,19 +142,13 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// Initializes a new instance of the <see cref="ParallelUnbalancedWork"/> class.
     /// </summary>
     /// <param name="data">The shared data for the parallel work.</param>
-    private ParallelUnbalancedWork(Data data, bool isQueuedWorker)
-    {
-        _data = data;
-        _isQueuedWorker = isQueuedWorker;
-    }
+    private ParallelUnbalancedWork(Data data) => _data = data;
 
     /// <summary>
     /// Executes the parallel work item.
     /// </summary>
     public void Execute()
     {
-        if (_isQueuedWorker && !_data.TryRegisterWorker()) return;
-
         try
         {
             try
@@ -201,10 +171,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         }
         finally
         {
-            if (_isQueuedWorker)
-            {
-                _data.MarkWorkerCompleted();
-            }
+            // Signal that this thread has completed its work
+            _data.MarkThreadCompleted();
         }
     }
 
@@ -225,18 +193,15 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <summary>
     /// Represents the base data shared among threads during parallel execution.
     /// </summary>
-    private class BaseData(int fromInclusive, int toExclusive, CancellationToken token) : IDisposable
+    private class BaseData(int threads, int fromInclusive, int toExclusive, CancellationToken token)
     {
-        private const int WorkerRegistrationClosed = int.MinValue;
-        private const int ActiveWorkerMask = int.MaxValue;
-
         /// <summary>
         /// Gets the shared counter for indices.
         /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
 
-        private readonly ManualResetEventSlim _workersCompleted = new(initialState: false);
-        private int _workerState;
+        public ManualResetEventSlim Event { get; } = new(initialState: false);
+        private int _activeThreads = threads;
         private int _faulted;
         private ExceptionDispatchInfo? _exception;
         public CancellationToken CancellationToken { get; } = token;
@@ -247,37 +212,9 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public int ToExclusive => toExclusive;
 
         /// <summary>
-        /// Registers a queued worker unless the calling thread has finished claiming work.
+        /// Gets the number of active threads.
         /// </summary>
-        public bool TryRegisterWorker()
-        {
-            int workerState = Volatile.Read(ref _workerState);
-            while ((workerState & WorkerRegistrationClosed) == 0)
-            {
-                int updatedState = workerState + 1;
-                int observedState = Interlocked.CompareExchange(ref _workerState, updatedState, workerState);
-                if (observedState == workerState) return true;
-                workerState = observedState;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Prevents queued workers that have not started yet from joining and waits only for workers
-        /// that registered before the caller exhausted the range.
-        /// </summary>
-        public void CloseWorkerRegistrationAndWait()
-        {
-            int previousState = Interlocked.Or(ref _workerState, WorkerRegistrationClosed);
-            if ((previousState & ActiveWorkerMask) == 0)
-            {
-                _workersCompleted.Set();
-                return;
-            }
-
-            _workersCompleted.Wait();
-        }
+        public int ActiveThreads => Volatile.Read(ref _activeThreads);
 
         /// <summary>
         /// Whether any worker has captured an exception. Used by workers to short-circuit
@@ -303,26 +240,27 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public void ThrowIfFaulted() => Volatile.Read(ref _exception)?.Throw();
 
         /// <summary>
-        /// Marks a registered queued worker as completed.
+        /// Marks a thread as completed.
         /// </summary>
-        public void MarkWorkerCompleted()
+        /// <returns>The number of remaining active threads.</returns>
+        public int MarkThreadCompleted()
         {
-            int workerState = Interlocked.Decrement(ref _workerState);
-            if ((workerState & WorkerRegistrationClosed) != 0
-                && (workerState & ActiveWorkerMask) == 0)
-            {
-                _workersCompleted.Set();
-            }
-        }
+            int remaining = Interlocked.Decrement(ref _activeThreads);
 
-        public void Dispose() => _workersCompleted.Dispose();
+            if (remaining == 0)
+            {
+                Event.Set();
+            }
+
+            return remaining;
+        }
     }
 
     /// <summary>
     /// Represents the data shared among threads for the parallel action.
     /// </summary>
-    private class Data(int fromInclusive, int toExclusive, Action<int> action, CancellationToken token) :
-        BaseData(fromInclusive, toExclusive, token)
+    private class Data(int threads, int fromInclusive, int toExclusive, Action<int> action, CancellationToken token) :
+        BaseData(threads, fromInclusive, toExclusive, token)
     {
         /// <summary>
         /// Gets the action to be executed for each iteration.
@@ -355,25 +293,28 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             Func<TLocal>? init,
             TLocal? initValue,
             Func<int, TLocal, TLocal> action,
-            Action<TLocal>? @finally = null,
-            Action<IThreadPoolWorkItem>? queueWorker = null)
+            Action<TLocal>? @finally = null)
         {
             int threads = GetWorkerCount(fromInclusive, toExclusive, parallelOptions);
             if (threads == 0) return;
 
             // Create shared data with thread-local initializers and finalizers
-            using Data<TLocal> data = new(fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
-            queueWorker ??= QueueWorker;
+            Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
 
             // Queue work items to the thread pool for all threads except the current one
             for (int i = 0; i < threads - 1; i++)
             {
-                queueWorker(new InitProcessor<TLocal>(data, isQueuedWorker: true));
+                ThreadPool.UnsafeQueueUserWorkItem(new InitProcessor<TLocal>(data), preferLocal: false);
             }
 
             // Execute work on the current thread
-            new InitProcessor<TLocal>(data, isQueuedWorker: false).Execute();
-            data.CloseWorkerRegistrationAndWait();
+            new InitProcessor<TLocal>(data).Execute();
+
+            // If there are still active threads, wait for them to complete
+            if (data.ActiveThreads > 0)
+            {
+                data.Event.Wait();
+            }
 
             // Rethrow the first captured worker exception, if any, on the calling thread
             data.ThrowIfFaulted();
@@ -385,21 +326,13 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Initializes a new instance of the <see cref="InitProcessor{TLocal}"/> class.
         /// </summary>
         /// <param name="data">The shared data for the parallel work.</param>
-        private readonly bool _isQueuedWorker;
-
-        private InitProcessor(Data<TLocal> data, bool isQueuedWorker)
-        {
-            _data = data;
-            _isQueuedWorker = isQueuedWorker;
-        }
+        private InitProcessor(Data<TLocal> data) => _data = data;
 
         /// <summary>
         /// Executes the parallel work item with thread-local data.
         /// </summary>
         public void Execute()
         {
-            if (_isQueuedWorker && !_data.TryRegisterWorker()) return;
-
             TLocal? value = default;
             // Track Init success so a throwing Init does not leak into Finally with default(TLocal)
             // — matches BCL Parallel.For<TLocal>, which only invokes localFinally when localInit ran.
@@ -443,10 +376,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                         _data.CaptureException(ex);
                     }
                 }
-                if (_isQueuedWorker)
-                {
-                    _data.MarkWorkerCompleted();
-                }
+                _data.MarkThreadCompleted();
             }
         }
 
@@ -454,14 +384,14 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Represents the data shared among threads for the parallel action with thread-local data.
         /// </summary>
         /// <typeparam name="TValue">The type of the thread-local data.</typeparam>
-        private class Data<TValue>(
+        private class Data<TValue>(int threads,
             int fromInclusive,
             int toExclusive,
             Func<int, TLocal, TLocal> action,
             Func<TValue>? init,
             TValue? initValue,
             Action<TValue>? @finally,
-            CancellationToken token) : BaseData(fromInclusive, toExclusive, token)
+            CancellationToken token) : BaseData(threads, fromInclusive, toExclusive, token)
         {
             /// <summary>
             /// Gets the action to be executed for each iteration.
