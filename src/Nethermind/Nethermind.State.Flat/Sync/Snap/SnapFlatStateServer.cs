@@ -14,16 +14,14 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
-public class FlatSnapServer(
+public class SnapFlatStateServer(
     IFlatDbManager flatDbManager,
-    IReadOnlyKeyValueStore codeDb,
     IFlatStateRootIndex stateRootIndex,
-    ILogManager logManager) : ISnapServer
+    ILogManager logManager) : ISnapStateServer
 {
     public bool CanServe => true;
 
-    private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapServer>();
-    private readonly SnapCodeServer _codeServer = new(codeDb);
+    private readonly ILogger _logger = logManager.GetClassLogger<SnapFlatStateServer>();
 
     // Flat state uses HintCacheMiss since it has different I/O patterns than Patricia
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
@@ -52,7 +50,7 @@ public class FlatSnapServer(
         {
             if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
 
-            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
             int pathLength = pathSet.Count;
             using DeferredRlpItemList.Builder builder = new(pathLength);
             DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
@@ -114,9 +112,6 @@ public class FlatSnapServer(
         }
     }
 
-    public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken) =>
-        _codeServer.GetByteCodes(requestedHashes, byteLimit, cancellationToken);
-
     public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
         Hash256 rootHash,
         in ValueHash256 startingHash,
@@ -129,7 +124,7 @@ public class FlatSnapServer(
 
         using (bundle)
         {
-            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
             AccountCollector accounts = new();
             (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
@@ -161,7 +156,7 @@ public class FlatSnapServer(
 
         using (bundle)
         {
-            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
             ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
             ValueHash256 limitHash1 = limitHash ?? ValueKeccak.MaxValue;
@@ -242,7 +237,7 @@ public class FlatSnapServer(
     {
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
         PatriciaTree tree = new(trieStore, logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 

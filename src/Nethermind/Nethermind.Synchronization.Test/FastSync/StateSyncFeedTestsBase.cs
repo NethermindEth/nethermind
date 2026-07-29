@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -242,7 +243,7 @@ public abstract class StateSyncFeedTestsBase(
 
         private readonly IDb _codeDb;
         private readonly IReadOnlyKeyValueStore _stateDb;
-        private readonly ISnapServer _snapServer;
+        private readonly SnapServer _snapServer;
 
         private Hash256[]? _filter;
         private readonly Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? _executorResultFunction;
@@ -271,9 +272,10 @@ public abstract class StateSyncFeedTestsBase(
                 Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
             _snapServer = new SnapServer(
-                trieStore.AsReadOnly(),
+                new SnapStateServer(trieStore.AsReadOnly(), LimboLogs.Instance),
                 codeDb,
-                LimboLogs.Instance);
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IBlockAccessListStore>());
         }
 
         public int MaxResponseLength { get; set; } = int.MaxValue;
