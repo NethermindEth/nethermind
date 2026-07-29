@@ -37,24 +37,28 @@ public class FrameTxReceiptDecoderTests
     }
 
     // The storage form appends [payer, [frame_receipt, ...]] after the standard fields, so a
-    // restart round-trips the execution results the block cannot reproduce. The union Logs and the
-    // per-frame logs are stored independently and must both survive; the receipt models a
-    // post-#12008 unrolled batch — an earlier frame that executed but was unrolled retains its
-    // status and gas_used with empty logs, so the stored union equals the frame-order
-    // concatenation of the surviving frame logs.
+    // restart round-trips the execution results the block cannot reproduce. Unlike the wire form
+    // (which drops the union and rebuilds it from the frame logs on decode), storage persists the
+    // union Logs and the per-frame logs as INDEPENDENT fields and reads Logs back from its own
+    // stored field. To pin that field-level fidelity — that the decoder round-trips the union
+    // verbatim and never re-derives it — the union here is deliberately NOT the frame-order
+    // concatenation. This shape is artificial (post-#12008 a real receipt's union equals the
+    // concatenation); a decoder that rebuilt Logs from the frame receipts would fail the final
+    // assertion below.
     [Test]
     public void StorageRoundtrip_PreservesPayerFrameReceiptsAndUnionLogs(
         [Values(true, false)] bool compactEncoding)
     {
-        LogEntry survivorLog = Log(0x01);
+        LogEntry unionLog = Log(0x01);
+        LogEntry frameOnlyLog = Log(0x02);
         TxReceipt frameReceipt = CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [survivorLog]),
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 30_000, []),
-            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 40_000, []),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [unionLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [frameOnlyLog]),
             new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []));
         frameReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
         frameReceipt.Sender = TestItem.AddressC;
-        frameReceipt.Logs = [survivorLog];
+        // Union omits frameOnlyLog, so it diverges from the frame-order concatenation on purpose.
+        frameReceipt.Logs = [unionLog];
         frameReceipt.Bloom = new Bloom(frameReceipt.Logs);
         TxReceipt legacyReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
 

@@ -253,13 +253,58 @@ public class Eip8141ScenarioTests
             Assert.That(receipt.FrameReceipts[1].GasUsed, Is.GreaterThan(0UL),
                 "the unrolled frame retains its recorded gas_used");
             Assert.That(receipt.Logs, Is.Empty, "no logs survive the unrolled batch");
-            AssertBloomAndReceiptLogsAgree(receipt);
         }
         else
         {
             Assert.That(receipt.Logs, Has.Length.EqualTo(1), "the committed approval log lands in the receipt");
-            AssertBloomAndReceiptLogsAgree(receipt);
         }
+
+        AssertBloomAndReceiptLogsAgree(receipt);
+    }
+
+    // Pins the lower bound of the unrolled-batch log-clear window. A frame that runs and commits
+    // BEFORE the batch emits a log that must survive the unroll, while the batch's own frame logs
+    // are discarded. AtomicApproveAndSwap cannot catch a `batchStartIndex` that is too low (a stale
+    // value or a hard-coded 0): its only log-emitting frame is inside the batch, so an over-wide
+    // clear window still leaves receipt.Logs empty and passes. Here an off-by-one that started
+    // clearing at or below the pre-batch frame would wipe the surviving log and fail.
+    [Test]
+    public void UnrolledBatch_DiscardsBatchLogsButKeepsPreBatchLogs()
+    {
+        Address logger = TestItem.AddressD;
+        Address token = TestItem.AddressE;
+        Address dex = TestItem.AddressF;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        // Pre-batch frame: emits a log and commits normally, outside the batch.
+        DeployContract(logger, Prepare.EvmCode.Log(0, 0).Op(Instruction.STOP).Done);
+        // Batch frame: records an allowance and emits a log that the unroll must discard.
+        DeployContract(token, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .Log(0, 0)
+            .Op(Instruction.STOP).Done);
+        // Terminal batch frame reverts, unrolling the batch.
+        DeployContract(dex, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            SenderFrame(logger),
+            SenderFrame(token, flags: TxFrame.AtomicBatchFlag),
+            SenderFrame(dex));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        {
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
+        }));
+        Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1),
+            "the pre-batch frame's log survives — the clear window must not reach below the batch start");
+        Assert.That(receipt.FrameReceipts[2].Logs, Is.Empty, "the unrolled batch frame's log is discarded");
+        Assert.That(receipt.Logs, Has.Length.EqualTo(1), "exactly the one pre-batch log survives the unroll");
+        Assert.That(receipt.Logs![0], Is.SameAs(receipt.FrameReceipts[1].Logs[0]),
+            "the surviving tx log is precisely the pre-batch frame's log");
+        AssertBloomAndReceiptLogsAgree(receipt);
     }
 
     // The transaction log set (built for the header logsBloom and log indexing) must equal the
@@ -270,7 +315,8 @@ public class Eip8141ScenarioTests
     private static void AssertBloomAndReceiptLogsAgree(TxReceipt receipt)
     {
         LogEntry[] frameOrderConcatenation = receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray();
-        Assert.That(receipt.Logs!.Length, Is.EqualTo(frameOrderConcatenation.Length),
+        // Same LogEntry references, so reference equality is enough to pin contents and order.
+        Assert.That(receipt.Logs, Is.EqualTo(frameOrderConcatenation),
             "the tx log set must be the frame-order concatenation of the surviving frame logs");
 
         ReceiptMessageDecoder decoder = new();
@@ -278,9 +324,10 @@ public class Eip8141ScenarioTests
         RlpReader reader = new(encoded);
         TxReceipt decoded = decoder.Decode(ref reader)!;
 
-        Assert.That(decoded.Logs!.Length, Is.EqualTo(receipt.Logs.Length),
+        Assert.That(decoded.Logs!.Length, Is.EqualTo(frameOrderConcatenation.Length),
             "the wire receipt (hashed into the receipts root) must carry the same logs as the bloom reflects");
-        Assert.That(decoded.Bloom, Is.EqualTo(receipt.Bloom),
+        // LogEntry has no value equality, so compare the derived bloom rather than the entries.
+        Assert.That(decoded.Bloom, Is.EqualTo(new Bloom(frameOrderConcatenation)),
             "the receipts-root logs and the header bloom must agree");
     }
 

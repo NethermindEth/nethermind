@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -93,7 +92,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.MaxFeePerBlobGas.GetValueOrDefault());
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
-        List<LogEntry> allLogs = [];
         ulong totalFrameGasUsed = 0;
         // EIP-3529 storage refunds accumulate into a single transaction-scoped counter (ethereum/EIPs#11940).
         long refundCounter = 0;
@@ -119,7 +117,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         bool inBatch = false;
         Snapshot batchStartSnapshot = default;
         StackAccessTracker batchTracker = default;
-        int batchStartLogCount = 0;
         int batchStartIndex = 0;
         Address? batchStartPayer = null;
         bool batchStartSenderApproved = false;
@@ -137,7 +134,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchStartSnapshot = WorldState.TakeSnapshot();
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
-                batchStartLogCount = allLogs.Count;
                 batchStartIndex = i;
                 batchStartPayer = frameContext.Payer;
                 batchStartSenderApproved = frameContext.SenderApproved;
@@ -203,7 +199,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameSucceeded ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure,
                 frameGasUsed,
                 frameLogs);
-            allLogs.AddRange(frameLogs);
 
             if (frame.Mode == TxFrame.ModeVerify && !frameSucceeded)
             {
@@ -227,18 +222,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 if (!frameSucceeded)
                 {
-                    // Unroll the batch: restore state to before it began, drop its logs, and mark
-                    // every remaining frame in the batch as skipped (status 0x2, gas refunded by
-                    // not being consumed). The failed frame keeps its failure receipt.
+                    // Unroll the batch: restore state to before it began and mark every remaining
+                    // frame in the batch as skipped (status 0x2, gas refunded by not being
+                    // consumed). The failed frame keeps its failure receipt.
                     WorldState.Restore(batchStartSnapshot);
                     batchTracker.Restore();
-                    allLogs.RemoveRange(batchStartLogCount, allLogs.Count - batchStartLogCount);
 
                     // Frames that executed before the failure keep their execution status and
                     // gas_used but have their logs discarded together with their state changes when
-                    // the batch is unrolled (ethereum/EIPs#12008). This keeps the per-frame receipt
-                    // logs consistent with the transaction log set (the frame-order concatenation
-                    // used for the header logsBloom and log indexing), which drops them above.
+                    // the batch is unrolled (ethereum/EIPs#12008). Clearing the per-frame receipts
+                    // is sufficient: the transaction log set is derived from them after the loop, so
+                    // the cleared frames drop out of the header logsBloom and log indexing too.
                     for (int s = batchStartIndex; s < i; s++)
                     {
                         TxFrameReceipt earlier = frameReceipts[s];
@@ -327,11 +321,48 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameReceiptTracer.ReportFrameTxReceipt(payer, frameReceipts);
             }
 
+            // The transaction log set is definitionally the frame-order concatenation of the
+            // surviving per-frame receipt logs (ethereum/EIPs#12008). Deriving it here rather than
+            // maintaining a parallel union during the loop keeps the two representations from ever
+            // diverging: an unrolled batch clears its frames' logs above, so they drop out of both.
+            LogEntry[] txLogs = ConcatFrameLogs(frameReceipts);
             GasConsumed gasConsumed = new(spentGas, spentGas, spentGas);
-            tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], allLogs.ToArray());
+            tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], txLogs);
         }
 
         return TransactionResult.Ok;
+    }
+
+    /// <summary>
+    /// The transaction log set: the frame-order concatenation of the per-frame receipt logs.
+    /// </summary>
+    /// <remarks>
+    /// After an atomic batch is unrolled its frames carry empty logs, so this derivation yields
+    /// exactly the surviving logs and cannot diverge from the per-frame receipts by construction
+    /// (ethereum/EIPs#12008).
+    /// </remarks>
+    private static LogEntry[] ConcatFrameLogs(TxFrameReceipt[] frameReceipts)
+    {
+        int total = 0;
+        foreach (TxFrameReceipt frameReceipt in frameReceipts)
+        {
+            total += frameReceipt.Logs.Length;
+        }
+
+        if (total == 0) return [];
+
+        LogEntry[] logs = new LogEntry[total];
+        int written = 0;
+        foreach (TxFrameReceipt frameReceipt in frameReceipts)
+        {
+            LogEntry[] frameLogs = frameReceipt.Logs;
+            for (int j = 0; j < frameLogs.Length; j++)
+            {
+                logs[written++] = frameLogs[j];
+            }
+        }
+
+        return logs;
     }
 
     /// <summary>
