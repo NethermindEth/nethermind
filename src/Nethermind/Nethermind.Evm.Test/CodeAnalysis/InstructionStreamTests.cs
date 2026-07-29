@@ -917,12 +917,14 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             (byte)Instruction.PUSH1, 32,
             (byte)Instruction.PUSH0,
             (byte)Instruction.RETURN,
-        }) { TestName = "FusedDupBinaryPreservesOperandOrder" };
+        })
+        { TestName = "FusedDupBinaryPreservesOperandOrder" };
         yield return new TestCaseData(new byte[]
         {
             (byte)Instruction.DUP3,
             (byte)Instruction.AND,
-        }) { TestName = "FusedDupBinaryUnderflowsOnDup" };
+        })
+        { TestName = "FusedDupBinaryUnderflowsOnDup" };
         yield return new TestCaseData(FullStackDupBinary) { TestName = "FullStackFusedDupBinaryOverflowsOnDup" };
         yield return new TestCaseData(new byte[]
         {
@@ -935,12 +937,14 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             (byte)Instruction.PUSH1, 32,
             (byte)Instruction.PUSH0,
             (byte)Instruction.RETURN,
-        }) { TestName = "FusedSwapBinaryPreservesOperandOrder" };
+        })
+        { TestName = "FusedSwapBinaryPreservesOperandOrder" };
         yield return new TestCaseData(new byte[]
         {
             (byte)Instruction.SWAP1,
             (byte)Instruction.SUB,
-        }) { TestName = "FusedSwapBinaryUnderflowsOnSwap" };
+        })
+        { TestName = "FusedSwapBinaryUnderflowsOnSwap" };
         yield return new TestCaseData(new byte[]
         {
             (byte)Instruction.PUSH1, 0x80,
@@ -951,12 +955,14 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             (byte)Instruction.PUSH1, 32,
             (byte)Instruction.PUSH0,
             (byte)Instruction.RETURN,
-        }) { TestName = "FusedSignExtend" };
+        })
+        { TestName = "FusedSignExtend" };
         yield return new TestCaseData(new byte[]
         {
             (byte)Instruction.PUSH1, 0,
             (byte)Instruction.SIGNEXTEND,
-        }) { TestName = "FusedSignExtendUnderflows" };
+        })
+        { TestName = "FusedSignExtendUnderflows" };
         yield return new TestCaseData(FullStackSignExtend) { TestName = "FullStackFusedSignExtendOverflowsOnPush" };
         yield return new TestCaseData(BitwiseFusionWithConstant) { TestName = "BitwiseFusionWithConstant" };
         yield return new TestCaseData(SolidityExampleCall) { TestName = "SolidityExampleCreateAndCall" };
