@@ -96,8 +96,10 @@ public sealed class SnapServer(
             if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
 
             Hash256 hash = blockHash.ToCommitment();
-            BlockHeader? header = blockTree.FindHeader(hash);
-            using MemoryManager<byte>? balRlp = header is null ? null : blockAccessListStore.GetRlp(header.Number, hash);
+            BlockHeader? header = blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            using MemoryManager<byte>? balRlp = header?.BlockAccessListHash is null
+                ? null
+                : blockAccessListStore.GetRlp(header.Number, hash);
 
             if (balRlp is null)
             {
