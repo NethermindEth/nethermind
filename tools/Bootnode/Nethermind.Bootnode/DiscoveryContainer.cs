@@ -58,6 +58,7 @@ internal static class DiscoveryContainer
         builder.RegisterInstance(logManager).As<ILogManager>().SingleInstance();
         builder.RegisterInstance(networkConfig).As<INetworkConfig>().SingleInstance();
         builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>().SingleInstance();
+        builder.RegisterInstance(BootnodeForkInfo.Instance).As<IForkInfo>().SingleInstance();
         builder.RegisterInstance(processExitSource).As<IProcessExitSource>().SingleInstance();
         builder.RegisterInstance(Timestamper.Default).As<ITimestamper>().SingleInstance();
         builder.RegisterInstance(TimerFactory.Default).As<ITimerFactory>().SingleInstance();
@@ -144,5 +145,18 @@ internal static class DiscoveryContainer
     {
         IIPResolver.NethermindIp resolvedIp = ipResolver.Resolve().GetAwaiter().GetResult();
         return new Enode(nodeKey.PublicKey, resolvedIp.ExternalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
+    }
+
+    private sealed class BootnodeForkInfo : IForkInfo
+    {
+        public static BootnodeForkInfo Instance { get; } = new();
+
+        public ForkId GetForkId(ulong headNumber, ulong headTimestamp) => new(0, 0);
+
+        public Nethermind.Network.ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head) => Nethermind.Network.ValidationResult.Valid;
+
+        public bool IsForkIdCompatible(ForkId peerId) => true;
+
+        public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head) => default;
     }
 }

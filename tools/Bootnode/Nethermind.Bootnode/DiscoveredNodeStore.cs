@@ -113,7 +113,7 @@ internal sealed class DiscoveredNodeStore
             allConfiguredCount);
     }
 
-    public static string InferProtocol(Node node) => string.IsNullOrEmpty(node.Enr) ? "discv4" : "discv5";
+    public static string InferProtocol(Node node) => node.Enr is null ? "discv4" : "discv5";
 
     private static void IncrementProtocolCounts(
         string protocol,

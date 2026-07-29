@@ -34,7 +34,7 @@ internal sealed record NodeDto(
             node.Host,
             node.Port,
             configuredEnode ?? (protocol == "configured" ? node.ToString(Node.Format.ENode) : null),
-            string.IsNullOrEmpty(node.Enr) ? null : node.Enr,
+            node.Enr?.ToString(),
             protocol,
             active,
             isBootnode,

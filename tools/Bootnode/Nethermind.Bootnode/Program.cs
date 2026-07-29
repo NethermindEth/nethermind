@@ -461,7 +461,7 @@ static async Task<BootnodeIdentity> CreateIdentity(
     NodeRecord nodeRecord = await nodeRecordProvider.GetCurrentAsync(cancellationToken);
     return new BootnodeIdentity(
         enode.ToString() ?? string.Empty,
-        nodeRecord.EnrString,
+        nodeRecord.ToString(),
         nodeRecord.EnrSequence,
         nodeKey.PublicKey.ToString(false),
         nodeKey.PublicKey.Address.ToString());
