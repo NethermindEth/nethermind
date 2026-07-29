@@ -191,34 +191,6 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Early_storage_roots_apply_to_accounts_and_leave_excluded_storage_for_final_commit()
-    {
-        using Context ctx = new(useFlat, setInitialState: false);
-        WorldState provider = ctx.StateProvider;
-        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
-
-        provider.CreateAccount(ctx.Address1, 0);
-        provider.CreateAccount(ctx.Address2, 0);
-        StorageCell finalizedCell = new(ctx.Address1, 1);
-        StorageCell excludedCell = new(ctx.Address2, 1);
-        provider.Set(finalizedCell, _values[1]);
-        provider.Set(excludedCell, _values[1]);
-        provider.Commit(Frontier.Instance, commitRoots: false);
-
-        provider.BeginEarlyStorageRoots(ctx.Address2, null).GetAwaiter().GetResult();
-        provider.Set(excludedCell, _values[2]);
-        provider.Commit(Frontier.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.Get(finalizedCell).ToArray(), Is.EqualTo(_values[1]));
-            Assert.That(provider.Get(excludedCell).ToArray(), Is.EqualTo(_values[2]));
-            Assert.That(provider.GetAccount(ctx.Address1).StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
-            Assert.That(provider.GetAccount(ctx.Address2).StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
-        }
-    }
-
-    [Test]
     public void Original_value_tracks_transaction_start_across_stacked_writes()
     {
         using Context ctx = new(useFlat);

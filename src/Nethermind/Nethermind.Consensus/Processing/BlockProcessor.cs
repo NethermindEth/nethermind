@@ -175,10 +175,6 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
-        Task earlyStorageRootsTask = _stateProvider.BeginEarlyStorageRoots(
-            spec.Eip7002ContractAddress,
-            spec.Eip7251ContractAddress);
-
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
@@ -203,8 +199,6 @@ public partial class BlockProcessor(
         {
             ApplyMinerRewards(block, blockTracer, spec);
             _systemContractHandler.ProcessWithdrawals(block, spec);
-
-            earlyStorageRootsTask.GetAwaiter().GetResult();
 
             // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
             // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.

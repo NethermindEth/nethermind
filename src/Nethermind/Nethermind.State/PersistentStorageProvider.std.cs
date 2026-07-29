@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -15,14 +14,9 @@ namespace Nethermind.State;
 
 internal sealed partial class PersistentStorageProvider
 {
-    private static ParallelOptions EarlyStorageRootParallelOptions { get; } = new()
-    {
-        MaxDegreeOfParallelism = Math.Min(RuntimeInformation.ProcessorCount, 2)
-    };
-
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        if (_toUpdateRoots.Count >= ParallelStorageRootThreshold)
+        if (_toUpdateRoots.Count >= 3)
             UpdateRootHashesMultiThread(writeBatch);
         else
             UpdateRootHashesSingleThread(writeBatch);
@@ -82,56 +76,5 @@ internal sealed partial class PersistentStorageProvider
             },
             (state) => ReportMetrics(state.writes, state.skips)
         );
-    }
-
-    private partial void UpdateRootHashes(
-        IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
-        ArrayPoolList<AddressAsKey> keys)
-    {
-        if (keys.Count < ParallelStorageRootThreshold)
-        {
-            UpdateRootHashesSingleThread(writeBatch, keys.AsSpan());
-            return;
-        }
-
-        using ArrayPoolList<(
-            AddressAsKey Key, PerContractState ContractState,
-            IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
-            )> storages = new(keys.Count);
-
-        foreach (AddressAsKey key in keys.AsSpan())
-        {
-            if (_storages.TryGetValue(key, out PerContractState contractState))
-            {
-                storages.Add((
-                    key,
-                    contractState,
-                    writeBatch.CreateStorageWriteBatch(key, contractState.EstimatedChanges)));
-            }
-            else
-            {
-                Debug.Fail($"Storage root marked changed for {key} but no contract state is present");
-            }
-        }
-
-        if (storages.Count == 0) return;
-
-        storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
-
-        ParallelUnbalancedWork.For(
-            0,
-            storages.Count,
-            EarlyStorageRootParallelOptions,
-            (storages, writes: 0, skips: 0),
-            static (i, state) =>
-            {
-                ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) entry =
-                    ref state.storages.GetRef(i);
-                (int writes, int skipped) = entry.ContractState.ProcessStorageChanges(entry.WriteBatch);
-                state.writes += writes;
-                state.skips += skipped;
-                return state;
-            },
-            static state => ReportMetrics(state.writes, state.skips));
     }
 }

@@ -34,14 +34,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
-    /// Starts computing roots for storage that is final for the current block.
-    /// </summary>
-    /// <param name="firstExcludedAddress">A contract whose storage may still change before the final commit.</param>
-    /// <param name="secondExcludedAddress">A second contract whose storage may still change before the final commit.</param>
-    /// <returns>A task that completes when the finalized storage roots have been computed.</returns>
-    Task BeginEarlyStorageRoots(Address? firstExcludedAddress, Address? secondExcludedAddress) => Task.CompletedTask;
-
-    /// <summary>
     /// Return the original persistent storage value from the storage cell.
     /// Span is valid until the next call on this <see cref="IWorldState"/> instance.
     /// </summary>
