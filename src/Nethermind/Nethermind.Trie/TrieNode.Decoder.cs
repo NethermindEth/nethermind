@@ -142,7 +142,7 @@ namespace Nethermind.Trie
                 Metrics.IncrementTreeNodeRlpEncodings();
 
                 const int valueRlpLength = 1;
-                int contentLength = valueRlpLength + (UseParallel(canBeParallel, item) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool, canBeParallel));
+                int contentLength = valueRlpLength + (UseParallel(canBeParallel, item) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool, canBeParallel));
                 int sequenceLength = Rlp.LengthOfSequence(contentLength);
                 CappedArray<byte> result = pool.SafeRent(sequenceLength);
                 Span<byte> resultSpan = result.AsSpan();
@@ -181,17 +181,18 @@ namespace Nethermind.Trie
                     ? GetChildrenRlpLengthForBranchRlp(tree, ref path, item, bufferPool, canBeParallel)
                     : GetChildrenRlpLengthForBranchNonRlp(tree, ref path, item, bufferPool, canBeParallel);
 
-            private static int GetChildrenRlpLengthForBranchParallel(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel) =>
+            private static int GetChildrenRlpLengthForBranchParallel(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool) =>
                 // Tail call optimized.
                 item.HasRlp
-                    ? GetChildrenRlpLengthForBranchRlpParallel(tree, path, item, bufferPool, canBeParallel)
-                    : GetChildrenRlpLengthForBranchNonRlpParallel(tree, path, item, bufferPool, canBeParallel);
+                    ? GetChildrenRlpLengthForBranchRlpParallel(tree, path, item, bufferPool)
+                    : GetChildrenRlpLengthForBranchNonRlpParallel(tree, path, item, bufferPool);
 
-            private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool bufferPool, bool canBeParallel)
+            // The parent already distributes the complete branch frontier, so each worker resolves its subtree serially.
+            private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool bufferPool)
             {
                 int totalLength = 0;
                 ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                    (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
+                    (local: 0, item, tree, bufferPool, rootPath),
                     static (i, state) =>
                     {
                         object? data = state.item._nodeData[i];
@@ -208,7 +209,7 @@ namespace Nethermind.Trie
                             TreePath path = state.rootPath;
                             path.AppendMut(i);
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
+                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: false);
                             state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
 
@@ -248,11 +249,11 @@ namespace Nethermind.Trie
                 return totalLength;
             }
 
-            private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
+            private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool)
             {
                 int totalLength = 0;
                 ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                    (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
+                    (local: 0, item, tree, bufferPool, rootPath),
                     static (i, state) =>
                     {
                         RlpReader rlpReader = state.item.RlpReader;
@@ -276,7 +277,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
+                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: false);
                             state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
 

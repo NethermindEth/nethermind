@@ -497,6 +497,45 @@ public class PatriciaTreeBulkSetterTests
     }
 #pragma warning restore CS0162 // Unreachable code detected
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void BulkSetAndRootHash_LargeDeletionBatchMatchesSequentialResult(bool commitInitialTree)
+    {
+        const int existingCount = 4096;
+        const int deletedCount = existingCount * 3 / 4;
+        List<(Hash256 key, byte[] value)> items = GenRandomOfLength(existingCount);
+
+        Hash256 CalculateRoot(PatriciaTree.Flags flags)
+        {
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestMemDb()));
+            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> existingEntries = new(existingCount);
+
+            foreach ((Hash256 key, byte[] value) in items)
+            {
+                existingEntries.Add(new PatriciaTree.BulkSetEntry(key, value));
+            }
+
+            tree.BulkSet(existingEntries, PatriciaTree.Flags.DoNotParallelize);
+            if (commitInitialTree)
+            {
+                tree.Commit();
+            }
+
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> deletedEntries = new(deletedCount);
+            for (int i = 0; i < deletedCount; i++)
+            {
+                deletedEntries.Add(new PatriciaTree.BulkSetEntry(items[i].key, []));
+            }
+
+            tree.BulkSet(deletedEntries, flags);
+            tree.UpdateRootHash(flags != PatriciaTree.Flags.DoNotParallelize);
+            return tree.RootHash;
+        }
+
+        Assert.That(CalculateRoot(PatriciaTree.Flags.None), Is.EqualTo(CalculateRoot(PatriciaTree.Flags.DoNotParallelize)));
+    }
+
     [Test]
     public void BulkSet_ShouldThrowOnNonUniqueEntries()
     {
