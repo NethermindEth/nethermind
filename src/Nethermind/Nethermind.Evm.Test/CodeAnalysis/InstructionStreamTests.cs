@@ -104,28 +104,23 @@ public class InstructionStreamTests
     }
 
     [Test]
-    public void TryBuild_Jumpdest_IsFoldedIntoFollowingStaticEntry()
+    public void TryBuild_Jumpdest_GetsItsOwnSoloBlock()
     {
         byte[] code =
         [
             (byte)Instruction.JUMPDEST,
             (byte)Instruction.PUSH1, 0x01,
-            (byte)Instruction.ADD,
-            (byte)Instruction.STOP,
+            (byte)Instruction.POP,
         ];
 
         InstructionStream stream = InstructionStream.TryBuild(code)!;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.BlockGas, Is.EqualTo(new[] { GasCostOf.JumpDest + 2 * GasCostOf.VeryLow }));
-            Assert.That(stream.Ops, Has.Length.EqualTo(2));
-            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.JumpDestFusedBlockFirst));
-            Assert.That(stream.Ops[0].Pc, Is.EqualTo(1));
-            Assert.That(stream.Ops[0].Advance, Is.EqualTo(3));
-            Assert.That(stream.PcToEntry[0], Is.EqualTo(0));
-            Assert.That(stream.PcToEntry[1], Is.EqualTo(0));
-            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary));
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(2),
+                "a fused PUSH2+JUMP lands one past the JUMPDEST, so the ops after it need a separately charged block");
+            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.JumpDest));
+            Assert.That(stream.BlockGas[1], Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Base));
         }
     }
 

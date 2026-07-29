@@ -78,28 +78,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 if (entry.Kind < StreamOpKind.Boundary)
                 {
-                    int coveredJumpDestination = (byte)entry.Kind >> 3;
-                    int pendingJumpDestination =
-                        coveredJumpDestination != 0 && programCounter != entry.Pc ? 1 : 0;
-
-                    if (entry.Kind is StreamOpKind.BlockFirst
-                        or StreamOpKind.FusedBlockFirst
-                        or StreamOpKind.JumpDestBlockFirst
-                        or StreamOpKind.JumpDestFusedBlockFirst)
+                    if (entry.Kind <= StreamOpKind.FusedBlockFirst)
                     {
                         if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                             CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
 
-                        ulong gasToConsume = blockGas[entry.BlockIndex]
-                            - (ulong)(coveredJumpDestination - pendingJumpDestination) * GasCostOf.JumpDest;
-                        metered = !TGasPolicy.TryConsume(ref gas, gasToConsume);
+                        metered = !TGasPolicy.TryConsume(ref gas, blockGas[entry.BlockIndex]);
                     }
 
                     if (metered)
                     {
                         // By-value in, struct out: ref params would evict the loop's hot locals from registers.
-                        int meteredProgramCounter = entry.Pc - pendingJumpDestination;
-                        MeteredResult result = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, meteredProgramCounter, opCodeCount, callDepth);
+                        MeteredResult result = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, entry.Pc, opCodeCount, callDepth);
                         programCounter = result.ProgramCounter;
                         opCodeCount = result.OpCodeCount;
                         entryIndex = result.EntryIndex;
@@ -117,7 +107,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
 
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
-                    opCodeCount += 1 + ((byte)entry.Kind & 1) + pendingJumpDestination;
+                    opCodeCount += 1 + ((byte)entry.Kind & 1);
 
                     // Gas already charged at the block entry, so the cores are gas-free. Must stay inline (JIT).
                     switch (instruction)
