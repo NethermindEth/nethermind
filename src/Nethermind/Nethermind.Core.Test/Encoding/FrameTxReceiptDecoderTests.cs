@@ -36,15 +36,9 @@ public class FrameTxReceiptDecoderTests
         AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
     }
 
-    // The storage form appends [payer, [frame_receipt, ...]] after the standard fields, so a
-    // restart round-trips the execution results the block cannot reproduce. Unlike the wire form
-    // (which drops the union and rebuilds it from the frame logs on decode), storage persists the
-    // union Logs and the per-frame logs as INDEPENDENT fields and reads Logs back from its own
-    // stored field. To pin that field-level fidelity — that the decoder round-trips the union
-    // verbatim and never re-derives it — the union here is deliberately NOT the frame-order
-    // concatenation. This shape is artificial (post-#12008 a real receipt's union equals the
-    // concatenation); a decoder that rebuilt Logs from the frame receipts would fail the final
-    // assertion below.
+    // Storage persists the union Logs and the per-frame logs as independent fields (unlike the wire
+    // form, which rebuilds the union from the frame logs on decode). The union here is deliberately
+    // NOT the frame-order concatenation, pinning that the decoder reads Logs back verbatim.
     [Test]
     public void StorageRoundtrip_PreservesPayerFrameReceiptsAndUnionLogs(
         [Values(true, false)] bool compactEncoding)

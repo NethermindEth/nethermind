@@ -243,11 +243,8 @@ public class Eip8141ScenarioTests
 
         if (swapReverts)
         {
-            // ethereum/EIPs#12008: an unrolled batch discards the logs of frames that executed
-            // before the failure together with their state changes; those frame receipts retain
-            // their execution status and gas_used with empty logs. The transaction log set (the
-            // frame-order concatenation used for the header logsBloom and log indexing) therefore
-            // matches the per-frame receipts — the earlier union-vs-per-frame divergence is gone.
+            // ethereum/EIPs#12008: an unrolled batch discards the logs of frames that ran before the
+            // failure along with their state, but keeps their status and gas_used.
             Assert.That(receipt.FrameReceipts![1].Logs, Is.Empty,
                 "the unrolled frame's per-frame receipt logs must be discarded");
             Assert.That(receipt.FrameReceipts[1].GasUsed, Is.GreaterThan(0UL),
@@ -262,12 +259,10 @@ public class Eip8141ScenarioTests
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
-    // Pins the lower bound of the unrolled-batch log-clear window. A frame that runs and commits
-    // BEFORE the batch emits a log that must survive the unroll, while the batch's own frame logs
-    // are discarded. AtomicApproveAndSwap cannot catch a `batchStartIndex` that is too low (a stale
-    // value or a hard-coded 0): its only log-emitting frame is inside the batch, so an over-wide
-    // clear window still leaves receipt.Logs empty and passes. Here an off-by-one that started
-    // clearing at or below the pre-batch frame would wipe the surviving log and fail.
+    // Pins the lower bound of the unrolled-batch log-clear window. AtomicApproveAndSwap can't catch a
+    // batchStartIndex that is too low: its only log-emitting frame is inside the batch, so an over-wide
+    // clear still passes. Here a pre-batch frame emits a surviving log, so clearing at or below the
+    // batch start would wipe it and fail.
     [Test]
     public void UnrolledBatch_DiscardsBatchLogsButKeepsPreBatchLogs()
     {
@@ -307,11 +302,9 @@ public class Eip8141ScenarioTests
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
-    // The transaction log set (built for the header logsBloom and log indexing) must equal the
-    // frame-order concatenation of the surviving per-frame receipt logs — the exact form the wire
-    // receipt is hashed into for the receipts root. Round-tripping through the receipts-message
-    // decoder rebuilds the union from the per-frame logs, so a match proves the bloom the header
-    // carries and the logs the receipts root commits to agree (ethereum/EIPs#12008).
+    // Asserts the tx log set equals the frame-order concatenation of the surviving frame logs, and
+    // that a wire round-trip yields the same bloom — i.e. the header logsBloom and the receipts-root
+    // logs agree.
     private static void AssertBloomAndReceiptLogsAgree(TxReceipt receipt)
     {
         LogEntry[] frameOrderConcatenation = receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray();
