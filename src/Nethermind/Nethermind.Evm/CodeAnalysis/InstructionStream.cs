@@ -213,7 +213,7 @@ internal sealed class InstructionStream
             {
                 if (openBlock >= 0
                     && !blockNeedsFirstOp
-                    && TryFuseGluePair(ops, instruction, pc, out StreamOp glued))
+                    && TryFuseGluePair(code, ops, instruction, pc, out StreamOp glued))
                 {
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
@@ -358,7 +358,7 @@ internal sealed class InstructionStream
     /// block) and the failure type matches per-op interpretation: the pair's single bounds check
     /// rejects exactly the stack depths at which one of the two halves would have failed.
     /// </summary>
-    private static bool TryFuseGluePair(List<StreamOp> ops, Instruction second, int pc, out StreamOp glued)
+    private static bool TryFuseGluePair(ReadOnlySpan<byte> code, List<StreamOp> ops, Instruction second, int pc, out StreamOp glued)
     {
         glued = default;
         if (ops.Count == 0) return false;
@@ -376,9 +376,10 @@ internal sealed class InstructionStream
         }
         else if (firstOp == Instruction.PUSH1 && second == Instruction.PUSH1)
         {
-            // Low byte is pushed first, so the executor pushes low then high.
+            // Both immediates travel in the operand: the first PUSH's value in the low byte, this
+            // one's in the next, and the executor pushes low then high in that order.
             fused = FusedOpcode.Push1Push1;
-            operand = first.Operand;
+            operand = first.Operand | ((ulong)code[pc + 1] << 8);
         }
         else
         {
