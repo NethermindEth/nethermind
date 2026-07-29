@@ -34,6 +34,7 @@ if [[ "${SNAP_LIST_ONLY:-}" == "1" ]]; then
     [[ -d "$d" ]] || continue
     echo "--- $d ($(du -sh "$d" 2>/dev/null | cut -f1)) ---"
     [[ -f "$d/_snapshot_metadata.json" ]] && { echo "[metadata]"; cat "$d/_snapshot_metadata.json"; echo; }
+    [[ -f "$d/_snapshot_eth_getBlockByNumber.json" ]] && { echo "[head block]"; cat "$d/_snapshot_eth_getBlockByNumber.json"; echo; }
     ls "$d" 2>/dev/null | head -20
   done
   df -h /mnt/sda 2>/dev/null || true
