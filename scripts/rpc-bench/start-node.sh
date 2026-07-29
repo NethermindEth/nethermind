@@ -48,6 +48,15 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+
+# The opcode histogram is driven by an environment variable, and additional_nethermind_flags is the
+# only per-run string the workflow already plumbs down to here, so accept it as a pseudo-flag and
+# translate it. Diagnostic branch only: costs ~4% when on, and nothing at all when absent.
+OPCODE_HISTOGRAM_PATH=""
+if [[ "$ADDITIONAL_FLAGS" == *--OpcodeHistogram=* ]]; then
+  OPCODE_HISTOGRAM_PATH="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/.*--OpcodeHistogram=([^ ]*).*/\1/')"
+  ADDITIONAL_FLAGS="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/--OpcodeHistogram=[^ ]*//')"
+fi
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
@@ -257,6 +266,10 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
+if [[ -n "$OPCODE_HISTOGRAM_PATH" ]]; then
+  docker_args+=(-e "NETHERMIND_OPCODE_HISTOGRAM=$OPCODE_HISTOGRAM_PATH")
+  log "Opcode histogram enabled, writing to $OPCODE_HISTOGRAM_PATH inside the container."
+fi
 if [[ "$CLIENT" == "nethermind" ]]; then
   docker_args+=(
     -e "DOTNET_TieredCompilation=0"
