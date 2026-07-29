@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -21,6 +22,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private const int BufferSize = 1024 * 16;
     private const int SlotBufferSize = 1024 * 8;
     private const int DisposeTimeoutMilliseconds = 1000;
+    private const int JobBatchSize = 64;
+    private const int BatchDrainQueueDepth = JobBatchSize * 2;
 
     private readonly ILogger _logger;
 
@@ -112,13 +115,19 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void Execute(Processor processor)
     {
+        Job[] batch = ArrayPool<Job>.Shared.Rent(JobBatchSize);
+        UInt256[] indexBuffer = ArrayPool<UInt256>.Shared.Rent(JobBatchSize);
         try
         {
             while (true)
             {
-                while (TryDequeue(out Job job))
+                int drainLimit = PendingHint() >= BatchDrainQueueDepth ? JobBatchSize : 1;
+                int count = 0;
+                while (count < drainLimit && TryDequeue(out batch[count])) count++;
+                if (count > 0)
                 {
-                    HandleJob(in job);
+                    HandleJobs(batch.AsSpan(0, count), indexBuffer);
+                    continue;
                 }
 
                 processor.ClearScheduled();
@@ -136,7 +145,51 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
         finally
         {
+            ArrayPool<Job>.Shared.Return(batch, clearArray: true);
+            ArrayPool<UInt256>.Shared.Return(indexBuffer);
             OnProcessorStopped();
+        }
+    }
+
+    private static void HandleJobs(Span<Job> jobs, UInt256[] indexBuffer)
+    {
+        for (int i = 0; i < jobs.Length; i++)
+        {
+            object? target = jobs[i].scopeOrStorageTree;
+            if (target is null) continue;
+
+            if (target is ITrieWarmer.IAddressWarmer)
+            {
+                HandleJob(in jobs[i]);
+                continue;
+            }
+
+            int sequenceId = jobs[i].sequenceId;
+            int count = 0;
+            indexBuffer[count++] = jobs[i].index;
+            for (int j = i + 1; j < jobs.Length; j++)
+            {
+                if (ReferenceEquals(jobs[j].scopeOrStorageTree, target) && jobs[j].sequenceId == sequenceId)
+                {
+                    indexBuffer[count++] = jobs[j].index;
+                    jobs[j] = default;
+                }
+            }
+
+            if (count == 1)
+            {
+                HandleJob(in jobs[i]);
+                continue;
+            }
+
+            try
+            {
+                ((ITrieWarmer.IStorageWarmer)target).WarmUpStorageTrieBatch(indexBuffer.AsSpan(0, count), sequenceId);
+            }
+            catch (TrieNodeException) { }
+            catch (NodeHashMismatchException) { }
+            catch (ObjectDisposedException) { }
+            catch (NullReferenceException) when (IsDisposedJobTarget(in jobs[i])) { }
         }
     }
 

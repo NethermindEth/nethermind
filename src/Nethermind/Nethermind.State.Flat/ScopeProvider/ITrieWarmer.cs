@@ -39,5 +39,18 @@ public interface ITrieWarmer
     public interface IStorageWarmer
     {
         bool WarmUpStorageTrie(UInt256 index, int sequenceId);
+
+        /// <summary>
+        /// Warms a batch of slots, sharing traversal work when the implementation supports it.
+        /// </summary>
+        bool WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId)
+        {
+            bool any = false;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                any |= WarmUpStorageTrie(indices[i], sequenceId);
+            }
+            return any;
+        }
     }
 }

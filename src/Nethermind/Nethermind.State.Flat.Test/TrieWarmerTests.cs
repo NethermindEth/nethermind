@@ -17,6 +17,7 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Test;
 
 [TestFixture]
+[NonParallelizable]
 public class TrieWarmerTests
 {
     private static readonly TestCaseData[] SlotJobCases =
@@ -200,6 +201,67 @@ public class TrieWarmerTests
         {
             storageWarmer.Release();
             await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Test]
+    public async Task PushSlotJobs_SameTarget_AllWarmedExactlyOnceAcrossSingleAndBatchDispatch()
+    {
+        const int JobCount = 150;
+
+        TrieWarmer warmer = new(_logManager, _config);
+        using BlockingStorageWarmer blockingWarmer = new(parallelismTarget: 2);
+        BatchCountingStorageWarmer countingWarmer = new();
+
+        try
+        {
+            Assert.That(warmer.PushSlotJobMpmc(blockingWarmer, 1, sequenceId: 1), Is.True);
+            Assert.That(warmer.PushSlotJobMpmc(blockingWarmer, 2, sequenceId: 2), Is.True);
+            Assert.That(blockingWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+
+            for (int i = 0; i < JobCount; i++)
+            {
+                Assert.That(warmer.PushSlotJobMpmc(countingWarmer, (UInt256)(uint)i, sequenceId: 7), Is.True);
+            }
+
+            blockingWarmer.Release();
+            await WaitForConditionAsync(
+                () => countingWarmer.TotalWarmedSlots == JobCount,
+                $"all {JobCount} slots should be warmed exactly once");
+            Assert.That(countingWarmer.MaxBatchSize, Is.GreaterThan(1));
+        }
+        finally
+        {
+            blockingWarmer.Release();
+            await warmer.DisposeAsync();
+        }
+    }
+
+    private sealed class BatchCountingStorageWarmer : ITrieWarmer.IStorageWarmer
+    {
+        private int _totalWarmedSlots;
+        private int _maxBatchSize;
+
+        public int TotalWarmedSlots => Volatile.Read(ref _totalWarmedSlots);
+
+        public int MaxBatchSize => Volatile.Read(ref _maxBatchSize);
+
+        public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
+        {
+            Interlocked.Increment(ref _totalWarmedSlots);
+            return true;
+        }
+
+        public bool WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId)
+        {
+            Interlocked.Add(ref _totalWarmedSlots, indices.Length);
+            int max;
+            while (indices.Length > (max = Volatile.Read(ref _maxBatchSize)))
+            {
+                if (Interlocked.CompareExchange(ref _maxBatchSize, indices.Length, max) == max) break;
+            }
+
+            return true;
         }
     }
 
