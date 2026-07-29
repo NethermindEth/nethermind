@@ -21,7 +21,8 @@ namespace Nethermind.Facade.Find
         IReceiptFinder? receiptFinder,
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
-        IReceiptsRecovery? receiptsRecovery)
+        IReceiptsRecovery? receiptsRecovery,
+        IReceiptConfig? receiptConfig = null)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
@@ -32,6 +33,9 @@ namespace Nethermind.Facade.Find
         private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+        // With receipts derived from state, a body absent from disk is not absent from the node, so it cannot gate
+        // availability.
+        private readonly bool _bodiesOnDisk = receiptConfig?.DeriveFromState != true;
         private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private readonly ILogger _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -61,13 +65,13 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
+            if (_bodiesOnDisk && fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
             {
                 throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
+            if (_bodiesOnDisk && toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
             {
                 throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
             }

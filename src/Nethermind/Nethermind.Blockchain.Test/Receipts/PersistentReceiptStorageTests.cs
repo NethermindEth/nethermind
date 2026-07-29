@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
@@ -476,19 +477,14 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Deriving_from_state_skips_bodies_but_keeps_the_transaction_index()
+    public void Deriving_from_state_skips_bodies_on_the_processing_path()
     {
         _receiptConfig.DeriveFromState = true;
         CreateStorage();
 
-        (Block block, TxReceipt[] receipts) = InsertBlock();
+        Block block = ProcessBlock();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(BodyIsPersisted(block), Is.False);
-            Assert.That(_storage.FindBlockHash(receipts[0].TxHash!), Is.EqualTo(block.Hash),
-                "without the transaction index nothing could find the block to regenerate from");
-        }
+        Assert.That(BodyIsPersisted(block), Is.False);
     }
 
     // Pre-EIP-658 receipts carry a post-transaction state root that re-execution cannot reproduce, so they stay
@@ -502,17 +498,42 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _receiptConfig.DeriveFromState = true;
         CreateStorage();
 
-        (Block block, _) = InsertBlock();
+        Block block = ProcessBlock();
 
         Assert.That(BodyIsPersisted(block), Is.EqualTo(expectPersisted));
+    }
+
+    // Only block processing produces regenerable blocks. Sync, era import and migration must write through - the
+    // migration in particular deletes the legacy key afterwards, so a skipped write there would destroy the bodies.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Deriving_from_state_does_not_skip_bodies_outside_block_processing(bool viaMigration)
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        if (viaMigration)
+            ((IReceiptMigrationStore)_storage).InsertForMigration(block, receipts);
+        else
+            _storage.Insert(block, receipts);
+
+        Assert.That(BodyIsPersisted(block), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Storing_bodies_is_the_default()
     {
-        (Block block, _) = InsertBlock();
+        Block block = ProcessBlock();
 
         Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    private Block ProcessBlock()
+    {
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        _storage.InsertDeferred(block, receipts, _specProvider.GetSpec((ForkActivation)block.Header.Number));
+        return block;
     }
 
     // A fresh instance over the same database has an empty receipts cache, so this reads through to the column.

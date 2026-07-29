@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Receipts;
@@ -22,9 +23,13 @@ namespace Nethermind.Consensus.Receipts;
 /// </remarks>
 public sealed class RegeneratingReceiptFinder(
     IReceiptFinder inner,
+    IReceiptStorage storage,
     IBlockFinder blockFinder,
     ReceiptsRegenerator regenerator) : IReceiptFinder
 {
+    private const int CacheSize = 16;
+    private readonly LruCache<ValueHash256, TxReceipt[]> _regenerated = new(CacheSize, CacheSize, "regenerated receipts");
+
     public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
 
     public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
@@ -43,8 +48,12 @@ public sealed class RegeneratingReceiptFinder(
 
     public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
     {
-        if (inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator)) return true;
-        if (!TryRegenerate(FindBlock(blockHash), out TxReceipt[]? regenerated)) return false;
+        // The storage answers true with an empty iterator when the body is absent, so it cannot be used to detect
+        // that; probe for the body first, or eth_getLogs reports no logs at all for a derived block.
+        if (storage.HasBlock(blockNumber, blockHash)) return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+
+        if (!TryRegenerate(FindBlock(blockHash), out TxReceipt[]? regenerated))
+            return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
         // The array-backed iterator is the same one InMemoryReceiptStorage uses; the obsoletion targets the
         // storage-side callers that should stream from disk, which a regenerated block by definition cannot.
@@ -65,6 +74,12 @@ public sealed class RegeneratingReceiptFinder(
             return false;
         }
 
-        return regenerator.TryRegenerate(block, out receipts);
+        // Without this every repeated query for the same block pays another full block execution.
+        if (_regenerated.TryGet(block.Hash!, out receipts)) return true;
+
+        if (!regenerator.TryRegenerate(block, out receipts)) return false;
+
+        _regenerated.Set(block.Hash!, receipts);
+        return true;
     }
 }

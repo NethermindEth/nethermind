@@ -34,6 +34,7 @@ public class ReceiptRegenerationModule : Module
         .AddSingleton<ReceiptsRegenerator>()
         .AddSingleton<IReceiptFinder>(ctx => new RegeneratingReceiptFinder(
             ctx.Resolve<FullInfoReceiptFinder>(),
+            ctx.Resolve<IReceiptStorage>(),
             ctx.Resolve<IBlockFinder>(),
             ctx.Resolve<ReceiptsRegenerator>()));
 }

@@ -57,7 +57,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly ILogIndexStorage _logIndexStorage;
     private readonly ILogIndexConfig _config;
     private readonly IReceiptStorage _receiptStorage;
-    private readonly IReceiptFinder _receiptFinder;
     private readonly ILogManager _logManager;
     private Timer? _progressLoggerTimer;
 
@@ -78,12 +77,11 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
-        IReceiptFinder receiptFinder, ILogManager logManager)
+        ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(receiptStorage);
-        ArgumentNullException.ThrowIfNull(receiptFinder);
         ArgumentNullException.ThrowIfNull(logManager);
         ArgumentNullException.ThrowIfNull(syncConfig);
 
@@ -92,7 +90,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _blockTree = blockTree;
         _syncConfig = syncConfig;
         _receiptStorage = receiptStorage;
-        _receiptFinder = receiptFinder;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
         _pivotTask = _pivotSource.Task;
@@ -484,7 +481,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return true;
         }
 
-        TxReceipt[] receipts = _receiptFinder.Get(block) ?? [];
+        TxReceipt[] receipts = _receiptStorage.Get(block) ?? [];
 
         if (receipts.Length == 0)
         {

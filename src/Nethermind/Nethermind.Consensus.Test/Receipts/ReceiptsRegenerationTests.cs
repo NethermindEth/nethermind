@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -100,7 +101,7 @@ public class ReceiptsRegenerationTests
 
         IReceiptFinder inner = Substitute.For<IReceiptFinder>();
         inner.Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).Returns(storedOnDisk ? stored : []);
-        RegeneratingReceiptFinder finder = new(inner, _chain.BlockFinder, _regenerator);
+        RegeneratingReceiptFinder finder = new(inner, _chain.ReceiptStorage, _chain.BlockFinder, _regenerator);
 
         TxReceipt[] served = finder.Get(block);
         if (storedOnDisk)
@@ -116,7 +117,7 @@ public class ReceiptsRegenerationTests
 
         IReceiptFinder inner = Substitute.For<IReceiptFinder>();
         inner.Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).Returns([]);
-        RegeneratingReceiptFinder finder = new(inner, _chain.BlockFinder, _regenerator);
+        RegeneratingReceiptFinder finder = new(inner, _chain.ReceiptStorage, _chain.BlockFinder, _regenerator);
 
         Assert.That(finder.Get(genesis), Is.Empty);
     }
@@ -170,7 +171,16 @@ public class ReceiptsRegenerationTests
         BinaryPrimitives.WriteUInt64BigEndian(bodyKey, block.Number);
         block.Hash!.Bytes.CopyTo(bodyKey.AsSpan(8));
 
-        TxReceipt[] served = chain.Container.Resolve<IReceiptFinder>().Get(block);
+        // The live storage caches every processed block, so reading through it would be served from memory and would
+        // pass even with regeneration removed. A fresh instance over the same database has a cold cache.
+        IReceiptFinder cold = ColdFinder(chain);
+        TxReceipt[] served = cold.Get(block);
+        bool gotIterator = cold.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator);
+        int iterated = 0;
+        using (iterator)
+        {
+            while (iterator.TryGetNext(out _)) iterated++;
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -178,8 +188,28 @@ public class ReceiptsRegenerationTests
             Assert.That(served, Has.Length.EqualTo(1));
             Assert.That(ReceiptsRootCalculator.Instance.GetReceiptsRoot(served, chain.SpecProvider.GetSpec(block.Header), block.Header.ReceiptsRoot),
                 Is.EqualTo(block.Header.ReceiptsRoot));
+            Assert.That(gotIterator, Is.True, "eth_getLogs reads receipts through the iterator");
+            Assert.That(iterated, Is.EqualTo(1), "the iterator must yield the regenerated receipts, not an empty span");
             Assert.That(chain.ReceiptStorage.FindBlockHash(transfer.Hash!), Is.EqualTo(block.Hash));
         }
+    }
+
+    private static IReceiptFinder ColdFinder(RecoverReceiptsBlockchain chain)
+    {
+        IReceiptsRecovery recovery = chain.Container.Resolve<IReceiptsRecovery>();
+        PersistentReceiptStorage storage = new(
+            chain.Container.Resolve<IColumnsDb<ReceiptsColumns>>(),
+            chain.SpecProvider,
+            recovery,
+            chain.BlockTree,
+            chain.Container.Resolve<IBlockStore>(),
+            chain.Container.Resolve<IReceiptConfig>());
+
+        return new RegeneratingReceiptFinder(
+            new FullInfoReceiptFinder(storage, recovery, chain.BlockFinder),
+            storage,
+            chain.BlockFinder,
+            chain.Container.Resolve<ReceiptsRegenerator>());
     }
 
     private Task<Block> AddBlock(Transaction[] transactions) => _chain.AddBlock(transactions);

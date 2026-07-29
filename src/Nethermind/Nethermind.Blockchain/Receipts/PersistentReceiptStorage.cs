@@ -525,7 +525,9 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_pendingReceipts is null)
             {
-                Insert(block, txReceipts, spec, ensureCanonical: false);
+                InsertCore(block, txReceipts, spec, ensureCanonical: false, WriteFlags.None, lastBlockNumber: null,
+                    storeBody: StoresBodies(spec));
+                if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
                 return;
             }
 
@@ -567,14 +569,19 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
         }
 
-        [SkipLocalsInit]
         /// <summary>
-        /// Whether this block's receipt bodies are written to disk. Pre-EIP-658 receipts carry a post-transaction
-        /// state root that re-execution cannot reproduce, so they are stored even when deriving from state.
+        /// Whether the block-processing path writes this block's receipt bodies. Pre-EIP-658 receipts carry a
+        /// post-transaction state root that re-execution cannot reproduce, so they are stored even when deriving.
         /// </summary>
+        /// <remarks>
+        /// Only block processing may skip the write, because only its blocks are regenerable. Sync, era import and
+        /// receipt migration write through unconditionally — migration in particular deletes the legacy key after
+        /// re-inserting, so a skipped write there would destroy the bodies.
+        /// </remarks>
         private bool StoresBodies(IReleaseSpec spec) => !_receiptConfig.DeriveFromState || !spec.IsEip658Enabled;
 
-        private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber)
+        [SkipLocalsInit]
+        private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber, bool storeBody = true)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -591,7 +598,7 @@ namespace Nethermind.Blockchain.Receipts
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            if (StoresBodies(spec))
+            if (storeBody)
             {
                 using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(txReceipts, behaviors);
                 Span<byte> blockNumPrefixed = stackalloc byte[40];

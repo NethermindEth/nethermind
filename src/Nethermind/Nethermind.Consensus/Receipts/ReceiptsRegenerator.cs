@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -64,8 +65,13 @@ public sealed class ReceiptsRegenerator(
         try
         {
             using Scope<ReceiptsRegenerationEnv> scope = envSource.BuildAndOverride(parent.Clone());
+
+            // NoValidation is required, not an optimisation: the shared validator is the merge plugin's
+            // InvalidBlockInterceptor, which records into the process-wide InvalidChainTracker and could make the
+            // Engine API reject valid blocks. The receipts root is checked below instead.
             (Block _, TxReceipt[] regenerated) = scope.Component.BlockProcessor
-                .ProcessOne(isolated, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, spec, CancellationToken.None);
+                .ProcessOne(isolated, ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation,
+                    NullBlockTracer.Instance, spec, CancellationToken.None);
 
             Hash256 regeneratedRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(regenerated, spec, block.Header.ReceiptsRoot);
             if (regeneratedRoot != block.Header.ReceiptsRoot)
@@ -78,6 +84,12 @@ public sealed class ReceiptsRegenerator(
 
             receipts = regenerated;
             return true;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Missing state history or a pruned trie node means "cannot regenerate", not a failed query.
+            if (_logger.IsWarn) _logger.Warn($"Could not regenerate receipts for block {block.Number} ({block.Hash}): {e.Message}");
+            return false;
         }
         finally
         {
