@@ -319,25 +319,35 @@ public class Eip8141CanonicalPaymasterTests
         Assert.That(validationGas, Is.LessThan(15_000UL), "well under the recommended pay-frame gas bound");
     }
 
-    // 12. Audit finding F1: the empty-msg gate is a value check (SIGPARAM(msg, 1) != 0), not a length
-    // check. A 32-byte all-zero msg is non-empty, yet SIGPARAM pushes its value (zero), so it passes
-    // the gate. With the signature resolved over the explicit zero digest (msg is non-empty), the
-    // resolved signer still equals slot 0, so payment is approved and the transaction succeeds. This
-    // pins the current != 0 behavior; a strict len(msg) == 0 fix would reject the non-empty msg and
-    // flip this case to invalid. Factual scope: the signature must still come from the real signer, so
-    // this is not a signer-bypass — it decouples the authorization from the canonical sig hash.
+    // 12. Audit finding F1 (corrected). F1 was derived from a stale ethereum/EIPs#12012 draft; the
+    // live spec reserves the 32-byte all-zero digest as an invalid msg, so the value check and the
+    // empty-msg requirement coincide exactly and there is no live footgun. Nethermind already enforces
+    // this in static validation (FrameTxValidation.ZeroDigestMsg), so a full node never admits such a
+    // tx. This test pins both layers:
+    //   (a) the real, end-to-end defense — static validation rejects the sponsored tx before it can
+    //       execute; and
+    //   (b) defense-in-depth — the paymaster's SIGPARAM(msg, 1) != 0 gate is a value check, so a
+    //       32-byte zero digest would pass that gate IF it ever reached execution. It never does in a
+    //       full node because static validation rejects it first.
     [Test]
-    public void AllZeroMsgAtIndex1_PassesValueGate_ApprovesPayment()
+    public void AllZeroMsgAtIndex1_RejectedByStaticValidation_ExecutionGateIsValueOnly()
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
         DeployPaymaster(PaymasterCode, Signer, 1.Ether);
         Transaction tx = SponsoredTx(0);
         SignEntries(tx, [(SenderKey, null, []), (SignerKey, Signer, new byte[32])]);
 
-        TxReceipt receipt = ProcessBlock(BlockTimestamp, tx)[0];
+        // (a) A full node rejects the tx as malformed before any frame runs.
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, out string? error);
+        Assert.That(wellFormed, Is.False, "static validation rejects a 32-byte zero digest msg");
+        Assert.That(error, Is.EqualTo(FrameTxValidation.ZeroDigestMsg));
 
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "a 32-byte zero msg passes the != 0 value gate");
-        Assert.That(receipt.Payer, Is.EqualTo(Paymaster), "payment is approved because the signer resolves to slot 0");
+        // (b) Driving the processor directly bypasses static validation; the value-only execution gate
+        // then lets the zero digest through because the signer still resolves to slot 0. This documents
+        // the execution gate's nature only — it is not reachable end-to-end.
+        TxReceipt receipt = ProcessBlock(BlockTimestamp, tx)[0];
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "the execution gate is value-only and does not itself catch the zero digest");
+        Assert.That(receipt.Payer, Is.EqualTo(Paymaster));
     }
 
     // 13. A matured withdrawal whose value-bearing CALL to the signer fails reverts the whole finalize
