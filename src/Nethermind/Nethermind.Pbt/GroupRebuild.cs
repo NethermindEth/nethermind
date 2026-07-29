@@ -290,6 +290,20 @@ internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
             return isGroupRoot ? FoldedNode.Unstored : FoldedNode.Stored(NodeKind.Internal, offset);
         }
 
+        bool useCompactFold = width switch
+        {
+            4 => _format == PbtGroupFormat.Interleaved,
+            8 => _format == PbtGroupFormat.Every3Depth,
+            16 => _format is PbtGroupFormat.BoundaryOnly or PbtGroupFormat.Every4Depth,
+            _ => false,
+        };
+        if (useCompactFold
+            && !_boundary.Stems.AnyInRange(firstSlot, width)
+            && !_boundary.Chains.AnyInRange(firstSlot, width))
+        {
+            return FoldCompact(ref writer, position, firstSlot, width, out hash);
+        }
+
         // a boundary slot: its internal node is the cached pointer to the child blob
         if (width == 1)
         {
@@ -322,6 +336,33 @@ internal ref struct GroupRebuild<TLayout> where TLayout : IPbtTileLayout
         // The hash is folded either way — the root depends on every level of it. A format that
         // skips this level, and the group root whatever the format (the parent caches it in its
         // boundary slot), simply does not write it down, handing it to the parent instead.
+        bool storeHere = PbtLayout.TrieNodeGroupStoresInternalAtWidth(_format, width) && width != TLayout.BoundarySlots;
+        return storeHere
+            ? FoldedNode.Stored(NodeKind.Internal, AppendInternal(ref writer, position, hash))
+            : FoldedNode.Unstored;
+    }
+
+    private FoldedNode FoldCompact(ref BufferWriter writer, int position, int firstSlot, int width, out ValueHash256 hash)
+    {
+        int start = writer.WrittenCount;
+        ushort presenceMask = 0;
+        for (int source = 0; source < width; source++)
+        {
+            int sourceSlot = firstSlot + source;
+            int sourcePosition = PbtLayout.TrieNodeGroupBoundarySlotPosition(sourceSlot);
+            FoldedNode child = Fold(ref writer, sourcePosition, sourceSlot, 1, out _);
+            if (child.Kind != NodeKind.Absent) presenceMask |= (ushort)(1 << source);
+        }
+
+        ReadOnlySpan<byte> compactSources = writer.WrittenSpan[start..writer.WrittenCount];
+        Debug.Assert(compactSources.Length == BitOperations.PopCount(presenceMask) * PbtTrieNodeGroup.Slot.InternalLength);
+        hash = width switch
+        {
+            4 => Blake3Hash.FoldFour(compactSources, (byte)presenceMask),
+            8 => Blake3Hash.FoldEight(compactSources, (byte)presenceMask),
+            _ => Blake3Hash.FoldSixteen(compactSources, presenceMask),
+        };
+
         bool storeHere = PbtLayout.TrieNodeGroupStoresInternalAtWidth(_format, width) && width != TLayout.BoundarySlots;
         return storeHere
             ? FoldedNode.Stored(NodeKind.Internal, AppendInternal(ref writer, position, hash))

@@ -12,6 +12,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.State.Pbt" />
     <InternalsVisibleTo Include="Nethermind.State.Pbt.Test" />
+    <InternalsVisibleTo Include="Nethermind.Benchmark" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Nethermind.Numerics.Int256" />
