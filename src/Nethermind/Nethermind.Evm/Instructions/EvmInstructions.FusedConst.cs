@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.Unsafe;
+using Nethermind.Core;
 
 namespace Nethermind.Evm;
 
