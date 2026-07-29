@@ -369,6 +369,91 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
     }
 
+    /// <summary>
+    /// Enough slots that the storage root is a branch with 16 hashed children,
+    /// which triggers the partitioned verification path in hashed mode.
+    /// </summary>
+    private const int LargeStorageSlotCount = 512;
+
+    private static (UInt256 slot, byte[] value)[] CreateLargeStorageSlots()
+    {
+        (UInt256 slot, byte[] value)[] slots = new (UInt256, byte[])[LargeStorageSlotCount];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            slots[i] = ((UInt256)i, [(byte)(i % 255 + 1)]);
+        }
+        return slots;
+    }
+
+    [Test]
+    public void Verify_Storage_LargeTrie_AllMatch()
+    {
+        Address address = TestItem.AddressA;
+        (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
+        StorageTree storageTree = CreateStorageTree(address, slots);
+        Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
+
+        _stateTree.Set(address, account);
+        _stateTree.Commit();
+        Hash256 stateRoot = _stateTree.RootHash;
+
+        StateId toState = new(1, stateRoot);
+        WriteAccountToFlat(address, account, toState);
+        foreach ((UInt256 slot, byte[] value) in slots)
+        {
+            WriteStorageDirectToDb(address, slot, value);
+        }
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new(_logManager);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+            // Exact count also guards against double-counting at partition boundaries
+            Assert.That(verifier.Stats.SlotCount, Is.EqualTo(LargeStorageSlotCount));
+            Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(0));
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public void Verify_Storage_LargeTrie_DetectsIssues()
+    {
+        Address address = TestItem.AddressA;
+        (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
+        StorageTree storageTree = CreateStorageTree(address, slots);
+        Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
+
+        _stateTree.Set(address, account);
+        _stateTree.Commit();
+        Hash256 stateRoot = _stateTree.RootHash;
+
+        StateId toState = new(1, stateRoot);
+        WriteAccountToFlat(address, account, toState);
+        // Slot 0 omitted from flat -> missing in flat
+        for (int i = 1; i < slots.Length; i++)
+        {
+            WriteStorageDirectToDb(address, slots[i].slot, slots[i].value);
+        }
+        WriteStorageDirectToDb(address, slots[1].slot, [0xFF]); // Wrong value -> mismatched
+        WriteStorageDirectToDb(address, 1000, [0xAB]); // Not in trie -> missing in trie
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new(_logManager);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.SlotCount, Is.EqualTo(LargeStorageSlotCount + 1));
+            Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(1));
+        }
+    }
+
     [Test]
     public void Verify_EmptyStorageRoot_DetectsOrphanedFlatStorage()
     {

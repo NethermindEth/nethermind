@@ -23,7 +23,9 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class FlatTrieVerifier
 {
-    private const int StorageChannelCapacity = 1;
+    // Deep enough that account partitions keep enqueuing while workers are stuck on large contracts;
+    // jobs are small (one struct per account), so the memory cost is negligible.
+    private const int StorageChannelCapacity = 1024;
     private const int FlatKeyLength = 20;
     private const int PartitionCount = 8;
 
@@ -476,11 +478,85 @@ public class FlatTrieVerifier
             return;
         }
 
-        using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
-        TrieLeafIterator trieIter = new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
 
-        bool hasFlat = flatIter.MoveNext();
+        // A single whale contract otherwise pins one worker for the whole channel drain — split its
+        // co-iteration across the same key-space partitions used for accounts.
+        if (ShouldSplitStorage(storageTrieStore, job.StorageRoot))
+        {
+            ParallelOptions parallelOptions = new()
+            {
+                MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2),
+                CancellationToken = cancellationToken
+            };
+            Parallel.For(0, PartitionCount, parallelOptions, partition =>
+            {
+                (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
+                VerifyStorageHashedRange(job, reader, storageTrieStore, startKey, endKey, endExclusive: true, cancellationToken);
+            });
+        }
+        else
+        {
+            VerifyStorageHashedRange(job, reader, storageTrieStore, ValueKeccak.Zero, ValueKeccak.MaxValue, endExclusive: false, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Decides whether a storage trie is large enough to verify partitioned in parallel.
+    /// </summary>
+    /// <remarks>
+    /// A root that is a branch with all 16 children stored by hash implies a trie of at least a few
+    /// hundred slots, where partitioning pays off; smaller tries stay on the cheaper sequential path.
+    /// Splitting is range-based and correct regardless of the root shape — this is only a size heuristic.
+    /// </remarks>
+    private static bool ShouldSplitStorage(IScopedTrieStore storageTrieStore, Hash256 storageRoot)
+    {
+        TreePath emptyPath = TreePath.Empty;
+        TrieNode root = storageTrieStore.FindCachedOrUnknown(emptyPath, storageRoot);
+        try
+        {
+            root.ResolveNode(storageTrieStore, emptyPath);
+        }
+        catch (TrieNodeException)
+        {
+            return false;
+        }
+
+        if (!root.IsBranch) return false;
+
+        for (int i = 0; i < 16; i++)
+        {
+            // A null child hash means the child is either absent or inlined — both imply a small subtree.
+            if (root.GetChildHash(i) is null) return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Verifies one slot-key range of a storage trie by co-iterating flat and trie leaves.
+    /// </summary>
+    /// <remarks>
+    /// The flat storage iterator's end bound is inclusive while <see cref="TrieLeafIterator"/>'s is
+    /// exclusive. With <paramref name="endExclusive"/> the flat entry equal to <paramref name="endKey"/>
+    /// is dropped so partitioned calls cover disjoint [start, end) ranges on both sides; without it the
+    /// full-range behavior (flat inclusive of 0xFF…FF, trie unranged) is preserved.
+    /// </remarks>
+    private void VerifyStorageHashedRange(
+        in StorageVerificationJob job,
+        IPersistence.IPersistenceReader reader,
+        IScopedTrieStore storageTrieStore,
+        in ValueHash256 startKey,
+        in ValueHash256 endKey,
+        bool endExclusive,
+        CancellationToken cancellationToken)
+    {
+        using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, startKey, endKey);
+        TrieLeafIterator trieIter = endExclusive
+            ? new(storageTrieStore, job.StorageRoot, LogTrieNodeException, startKey, endKey)
+            : new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
+
+        bool hasFlat = MoveNextFlat(flatIter, endExclusive, endKey);
         bool hasTrie = trieIter.MoveNext();
 
         while (hasFlat || hasTrie)
@@ -497,7 +573,7 @@ public class FlatTrieVerifier
             {
                 Interlocked.Increment(ref _slotCount);
                 VerifySlotMatch(flatIter.CurrentValue, trieIter.CurrentLeaf!, job.FlatAccountKey, flatIter.CurrentKey);
-                hasFlat = flatIter.MoveNext();
+                hasFlat = MoveNextFlat(flatIter, endExclusive, endKey);
                 hasTrie = trieIter.MoveNext();
             }
             else if (cmp < 0 || !hasTrie)
@@ -509,7 +585,7 @@ public class FlatTrieVerifier
                     if (_logger.IsWarn) _logger.Warn($"Storage slot in flat not in trie. Account: {job.FlatAccountKey}, Slot: {flatIter.CurrentKey}");
                     DiagnoseTriePath(storageTrieStore, job.StorageRoot, flatIter.CurrentKey);
                 }
-                hasFlat = flatIter.MoveNext();
+                hasFlat = MoveNextFlat(flatIter, endExclusive, endKey);
             }
             else
             {
@@ -520,6 +596,9 @@ public class FlatTrieVerifier
             }
         }
     }
+
+    private static bool MoveNextFlat(IPersistence.IFlatIterator flatIter, bool endExclusive, in ValueHash256 endKey) =>
+        flatIter.MoveNext() && (!endExclusive || flatIter.CurrentKey < endKey);
 
     private void VerifyStoragePreimage(
         StorageVerificationJob job,
