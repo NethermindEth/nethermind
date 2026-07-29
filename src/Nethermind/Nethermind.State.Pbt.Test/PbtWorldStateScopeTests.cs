@@ -237,27 +237,63 @@ public class PbtWorldStateScopeTests
         }
     }
 
-    [TestCase(true, 1)]
-    [TestCase(false, 2)]
-    public async Task HintSet_FallsBackToMpmc_AndRejectedJobsCanRetry(bool acceptMpmc, int expectedAttempts)
+    [Test]
+    public async Task AcceptedTrieWarmerJobsAndDeduplicatedHintsAreCounted()
+    {
+        RecordingTrieWarmer warmer = new();
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        ValueAddress address = new(TestItem.AddressA.Bytes);
+        UInt256 slot = 1000;
+        long triggeredBaseline = Metrics.PbtTrieWarmerTriggered;
+        long skippedBaseline = Metrics.PbtTrieWarmerSkippedByDeduplication;
+
+        scope.HintWarmAccount(in address);
+        scope.HintWarmAccount(in address);
+        scope.HintWarmSlot(in address, in slot);
+        scope.HintWarmSlot(in address, in slot);
+
+        bool accountWarmed = warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence);
+        bool storageWarmed = warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountWarmed, Is.True, "account warmer completed");
+            Assert.That(storageWarmed, Is.True, "storage warmer completed");
+            Assert.That(Metrics.PbtTrieWarmerTriggered - triggeredBaseline, Is.EqualTo(2), "accepted jobs");
+            Assert.That(Metrics.PbtTrieWarmerSkippedByDeduplication - skippedBaseline, Is.EqualTo(2), "deduplicated hints");
+        }
+    }
+
+    [TestCase(true, 1, 1, 1)]
+    [TestCase(false, 2, 0, 0)]
+    public async Task HintSet_FallsBackToMpmc_AndRejectedJobsCanRetry(
+        bool acceptMpmc,
+        int expectedAttempts,
+        int expectedTriggered,
+        int expectedSkipped)
     {
         RecordingTrieWarmer warmer = new(acceptSlot: false, acceptMpmc: acceptMpmc);
         await using PbtTestContext ctx = new(trieWarmer: warmer);
         using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
         IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
         UInt256 slot = 1000;
+        long triggeredBaseline = Metrics.PbtTrieWarmerTriggered;
+        long skippedBaseline = Metrics.PbtTrieWarmerSkippedByDeduplication;
 
         storage.HintSet(slot, [0x01]);
         storage.HintSet(slot, [0x02]);
+
+        if (acceptMpmc)
+            Assert.That(warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence), Is.True);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(warmer.SlotJobs, Is.EqualTo(expectedAttempts));
             Assert.That(warmer.MpmcSlotJobs, Is.EqualTo(expectedAttempts));
+            Assert.That(Metrics.PbtTrieWarmerTriggered - triggeredBaseline, Is.EqualTo(expectedTriggered), "accepted jobs");
+            Assert.That(Metrics.PbtTrieWarmerSkippedByDeduplication - skippedBaseline, Is.EqualTo(expectedSkipped), "deduplicated hints");
         }
-
-        if (acceptMpmc)
-            Assert.That(warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence), Is.True);
     }
 
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)

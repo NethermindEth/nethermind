@@ -49,7 +49,8 @@ public sealed class PbtStorageTree(
             ? trieWarmer.PushSlotJobMpmc(this, index, sequenceId)
             : trieWarmer.PushSlotJob(this, index, sequenceId)
                 || trieWarmer.PushSlotJobMpmc(this, index, sequenceId);
-        if (!queued) scope.CancelPrewarm(stem);
+        if (queued) Metrics.IncrementPbtTrieWarmerTriggered();
+        else scope.CancelPrewarm(stem);
     }
 
     public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
