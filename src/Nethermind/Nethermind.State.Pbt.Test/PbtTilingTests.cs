@@ -199,6 +199,30 @@ public class PbtTilingTests(PbtTrieLayout layout)
     }
 
     /// <summary>
+    /// Sparse ordinary child groups occupy several four-slot windows of a parent tile. Rewriting one
+    /// child refolds its window while leaving the other retained windows available for clean copying.
+    /// </summary>
+    [Test]
+    public void RewriteAcrossSparseFourSlotWindows_MatchesReferenceAndFreshFold()
+    {
+        int[] occupiedSlots = [0, 2, 3, 5, 8, 10, 11, 15];
+        List<(byte[] Key, byte[]? Value)> writes = [];
+        foreach (int slot in occupiedSlots)
+        {
+            writes.Add((OrdinaryBoundaryKey(slot, 0), Value));
+            writes.Add((OrdinaryBoundaryKey(slot, 1), Rewritten));
+        }
+
+        PbtTreeHarness harness = NewHarness();
+        Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
+        AssertCanonical(harness, writes);
+
+        writes[4] = (writes[4].Key, Rewritten);
+        Assert.That(harness.ApplyBatch([writes[4]]), Is.EqualTo(ReferenceRoot(writes)));
+        AssertCanonical(harness, writes);
+    }
+
+    /// <summary>
     /// Rounds of pseudo-random inserts, updates and deletes over a store that carries across them, with
     /// the root checked against the oracle every round and the bytes against a fresh fold of the
     /// surviving state — which is what pins that an incremental rebuild leaves the canonical form.
@@ -293,6 +317,13 @@ public class PbtTilingTests(PbtTrieLayout layout)
     /// <summary>A key whose path leads into boundary <paramref name="slot"/> of the first tile below the partition root.</summary>
     private byte[] BoundaryKey(int slot) =>
         [.. PbtPartitions.RootKey(Partition).ChildGroup(0, LevelsPerGroup).ChildGroup(slot, LevelsPerGroup).Path.Bytes, (byte)5];
+
+    /// <summary>A key below a branching child group, so its parent's boundary slot holds an ordinary internal hash.</summary>
+    private byte[] OrdinaryBoundaryKey(int slot, int childSlot) =>
+        [.. PbtPartitions.RootKey(Partition)
+            .ChildGroup(0, LevelsPerGroup)
+            .ChildGroup(slot, LevelsPerGroup)
+            .ChildGroup(childSlot, LevelsPerGroup).Path.Bytes, (byte)5];
 
     /// <summary>Either a fresh random key, or one already live, so that updates and deletes hit something.</summary>
     private static byte[] RandomKey(Random random, Dictionary<string, byte[]> live)

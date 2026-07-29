@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -165,6 +166,136 @@ public static class Blake3Managed
         InitialCv(cv);
         Compress<TShape>(cv, ref lowRef, ref highRef, 0, BlockLength, ChunkStart | ChunkEnd | Root);
         WriteWords(cv, output32);
+    }
+
+    internal static void FoldFour(ReadOnlySpan<byte> compactSources, byte presenceMask, Span<byte> output32)
+    {
+        Debug.Assert((presenceMask & ~0x0F) == 0);
+        presenceMask &= 0x0F;
+        Debug.Assert(compactSources.Length == BitOperations.PopCount(presenceMask) * 32);
+
+        bool leftPresent = (presenceMask & 0x03) != 0;
+        bool rightPresent = (presenceMask & 0x0C) != 0;
+        if (!leftPresent && !rightPresent)
+        {
+            output32.Clear();
+            return;
+        }
+
+        Span<byte> firstLevel = stackalloc byte[BlockLength];
+        if (!leftPresent)
+        {
+            CompressPresentPair(compactSources, presenceMask, 2, firstLevel[32..]);
+            HashPairLowZero(firstLevel[32..], output32);
+            return;
+        }
+
+        if (!rightPresent)
+        {
+            CompressPresentPair(compactSources, presenceMask, 0, firstLevel);
+            HashPairHighZero(firstLevel, output32);
+            return;
+        }
+
+        CompressPresentPair(compactSources, presenceMask, 0, firstLevel);
+        CompressPresentPair(compactSources, presenceMask, 2, firstLevel[32..]);
+        HashPair(firstLevel, firstLevel[32..], output32);
+    }
+
+    internal static void FoldEight(ReadOnlySpan<byte> compactSources, byte presenceMask, Span<byte> output32)
+    {
+        Debug.Assert(compactSources.Length == BitOperations.PopCount(presenceMask) * 32);
+
+        byte leftMask = (byte)(presenceMask & 0x0F);
+        byte rightMask = (byte)(presenceMask >> 4);
+        if (leftMask == 0 && rightMask == 0)
+        {
+            output32.Clear();
+            return;
+        }
+
+        Span<byte> halves = stackalloc byte[BlockLength];
+        int leftLength = BitOperations.PopCount(leftMask) * 32;
+        if (leftMask == 0)
+        {
+            FoldFour(compactSources, rightMask, halves[32..]);
+            HashPairLowZero(halves[32..], output32);
+            return;
+        }
+
+        if (rightMask == 0)
+        {
+            FoldFour(compactSources, leftMask, halves);
+            HashPairHighZero(halves, output32);
+            return;
+        }
+
+        FoldFour(compactSources[..leftLength], leftMask, halves);
+        FoldFour(compactSources[leftLength..], rightMask, halves[32..]);
+        HashPair(halves, halves[32..], output32);
+    }
+
+    internal static void FoldSixteen(ReadOnlySpan<byte> compactSources, ushort presenceMask, Span<byte> output32)
+    {
+        Debug.Assert(compactSources.Length == BitOperations.PopCount(presenceMask) * 32);
+
+        byte leftMask = (byte)presenceMask;
+        byte rightMask = (byte)(presenceMask >> 8);
+        if (leftMask == 0 && rightMask == 0)
+        {
+            output32.Clear();
+            return;
+        }
+
+        Span<byte> halves = stackalloc byte[BlockLength];
+        int leftLength = BitOperations.PopCount(leftMask) * 32;
+        if (leftMask == 0)
+        {
+            FoldEight(compactSources, rightMask, halves[32..]);
+            HashPairLowZero(halves[32..], output32);
+            return;
+        }
+
+        if (rightMask == 0)
+        {
+            FoldEight(compactSources, leftMask, halves);
+            HashPairHighZero(halves, output32);
+            return;
+        }
+
+        FoldEight(compactSources[..leftLength], leftMask, halves);
+        FoldEight(compactSources[leftLength..], rightMask, halves[32..]);
+        HashPair(halves, halves[32..], output32);
+    }
+
+    private static void CompressPresentPair(ReadOnlySpan<byte> compactSources, byte presenceMask, int firstSource, Span<byte> output32)
+    {
+        bool lowPresent = (presenceMask & (1 << firstSource)) != 0;
+        bool highPresent = (presenceMask & (1 << (firstSource + 1))) != 0;
+        Debug.Assert(lowPresent || highPresent);
+
+        if (!lowPresent)
+        {
+            HashPairLowZero(CompactSource(compactSources, presenceMask, firstSource + 1), output32);
+        }
+        else if (!highPresent)
+        {
+            HashPairHighZero(CompactSource(compactSources, presenceMask, firstSource), output32);
+        }
+        else
+        {
+            ReadOnlySpan<byte> low = CompactSource(compactSources, presenceMask, firstSource);
+            ReadOnlySpan<byte> high = CompactSource(compactSources, presenceMask, firstSource + 1);
+            CompressPair<FullBlock>(ref Reference(low), ref Reference(high), output32);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> CompactSource(ReadOnlySpan<byte> compactSources, byte presenceMask, int source)
+    {
+        Debug.Assert((presenceMask & (1 << source)) != 0);
+        int precedingSources = BitOperations.PopCount((uint)(presenceMask & ((1 << source) - 1)));
+        return compactSources.Slice(precedingSources * 32, 32);
     }
 
     private static bool IsZero(ReadOnlySpan<byte> value) => value.IndexOfAnyExcept((byte)0) < 0;
