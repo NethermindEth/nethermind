@@ -171,25 +171,35 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume<LowGasCost>(ref gas);
+        return SignExtendCore(ref stack);
+    }
 
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType SignExtendCore(ref EvmStack stack)
+    {
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))
             goto StackUnderflow;
-        if (a >= BigInt32)
-        {
-            // If the index is out-of-range, no extension is needed.
-            if (!stack.EnsureDepth(1))
-                goto StackUnderflow;
-            return EvmExceptionType.None;
-        }
 
-        int position = 31 - (int)a;
-
-        // Peek at the 256-bit word without removing it.
         ref byte bytesRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref bytesRef))
             goto StackUnderflow;
 
+        ApplySignExtend(ref bytesRef, in a);
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ApplySignExtend(ref byte bytesRef, in UInt256 byteIndex)
+    {
+        if (!byteIndex.IsUint64 || byteIndex.u0 >= 32)
+            return;
+
+        int position = 31 - (int)byteIndex.u0;
         Span<byte> bytes = MemoryMarshal.CreateSpan(ref bytesRef, EvmStack.WordSize);
         sbyte sign = (sbyte)bytes[position];
 
@@ -204,10 +214,5 @@ public static partial class EvmInstructions
             // Fill with 0xFF bytes.
             BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
         }
-
-        return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     }
 }

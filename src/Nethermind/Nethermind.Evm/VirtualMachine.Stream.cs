@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
@@ -63,6 +62,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ushort[] pcToEntry = stream.PcToEntry;
         int callDepth = VmState.Env.CallDepth;
         int opCodeCount = 0;
+        int nextCancellationCheck = 0;
         bool metered = false;
 
         // Resume pcs land one past code end at most; the bound guards a truncated trailing PUSH.
@@ -80,6 +80,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     if (entry.Kind <= StreamOpKind.FusedBlockFirst)
                     {
+                        if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                            CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
+
                         metered = !TGasPolicy.TryConsume(ref gas, blockGas[entry.BlockIndex]);
                     }
 
@@ -102,9 +105,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                         break;
                     }
-
-                    if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
-                        ThrowStreamOperationCanceledException();
 
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
                     opCodeCount += 1 + ((byte)entry.Kind & 1);
@@ -163,6 +163,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.Shr:
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, constants[(int)entry.Operand]);
                             break;
+                        case (Instruction)FusedOpcode.SignExtend:
+                            exceptionType = EvmInstructions.FusedConstSignExtendCore(ref stack, constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.DupBinary:
+                            exceptionType = EvmInstructions.FusedDupBinaryCore(ref stack, entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.Swap1Binary:
+                            exceptionType = EvmInstructions.FusedSwap1BinaryCore(ref stack, (Instruction)entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.Pop2:
+                            exceptionType = stack.Pop2Limbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
+                            break;
+                        case (Instruction)FusedOpcode.SwapPop:
+                            exceptionType = stack.SwapPop((int)entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.PushDup:
+                            exceptionType = stack.PushUInt64ThenDup(entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.Push1Pair:
+                            exceptionType = stack.PushUInt8Pair(entry.Operand);
+                            break;
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
                             break;
@@ -183,6 +204,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             break;
                         case Instruction.SMOD:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SIGNEXTEND:
+                            exceptionType = EvmInstructions.SignExtendCore(ref stack);
                             break;
                         case Instruction.LT:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpLt, OffFlag>(ref stack);
@@ -226,18 +250,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.PUSH0:
                             exceptionType = stack.PushZero<OffFlag>();
                             break;
-                        case Instruction.PUSH1:
-                        case >= Instruction.PUSH3 and <= Instruction.PUSH8:
+                        case >= Instruction.PUSH1 and <= Instruction.PUSH8:
                             // Analyzer pre-decoded full-width immediates; a truncated trailing PUSH stays a boundary op.
                             exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
                             break;
                         case >= Instruction.PUSH9 and <= Instruction.PUSH32:
                             exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
                             break;
-                        case >= Instruction.DUP1 and <= Instruction.DUP8:
+                        case >= Instruction.DUP1 and <= Instruction.DUP16:
                             exceptionType = stack.Dup<OffFlag>(instruction - Instruction.DUP1 + 1);
                             break;
-                        case >= Instruction.SWAP1 and <= Instruction.SWAP8:
+                        case >= Instruction.SWAP1 and <= Instruction.SWAP16:
                             exceptionType = stack.Swap<OffFlag>(instruction - Instruction.SWAP1 + 2);
                             break;
                         case Instruction.JUMPDEST:
@@ -247,6 +270,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
                             // Mirror the unfused PUSH2: at a full stack the PUSH2 overflows before the JUMP would
                             // pop it, so the fast path must fail with StackOverflow rather than execute the jump.
+                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                                CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
                             if (stack.Head >= EvmStack.MaxStackSize - 1)
                             {
                                 exceptionType = EvmExceptionType.StackOverflow;
@@ -267,6 +292,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.StaticJumpI:
                             // Same full-stack overflow as the unfused PUSH2, which pushes the destination before
                             // JUMPI pops it; fail with StackOverflow instead of testing the condition and jumping.
+                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                                CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
                             if (stack.Head >= EvmStack.MaxStackSize - 1)
                             {
                                 exceptionType = EvmExceptionType.StackOverflow;
@@ -286,6 +313,66 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             else if (conditionUnderflow)
                             {
                                 exceptionType = EvmExceptionType.StackUnderflow;
+                            }
+
+                            break;
+                        case (Instruction)FusedOpcode.IsZeroStaticJumpI:
+                            opCodeCount++;
+                            if (stack.Head == 0)
+                            {
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                                break;
+                            }
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+
+                            if (!EvmInstructions.TestJumpCondition(ref stack, out _))
+                            {
+                                entryIndex = (int)entry.Operand - 1;
+                            }
+
+                            break;
+                        case (Instruction)FusedOpcode.DupIsZeroStaticJumpI:
+                            opCodeCount += 2;
+                            if (stack.Head == 0)
+                            {
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                                break;
+                            }
+                            if (stack.Head >= EvmStack.MaxStackSize - 2)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+
+                            if (stack.PeekUInt256IsZero())
+                            {
+                                entryIndex = (int)entry.Operand - 1;
+                            }
+
+                            break;
+                        case (Instruction)FusedOpcode.DupAndIsZeroStaticJumpI:
+                            opCodeCount += 3;
+                            if (EvmInstructions.TestDupAndIsZero(
+                                ref stack,
+                                (byte)(entry.Operand >> 32),
+                                out exceptionType))
+                            {
+                                entryIndex = (int)(uint)entry.Operand - 1;
+                            }
+
+                            break;
+                        case (Instruction)FusedOpcode.MaskIsZeroStaticJumpI:
+                            opCodeCount += 5;
+                            if (EvmInstructions.TestMaskIsZero(
+                                ref stack,
+                                (byte)(entry.Operand >> 32),
+                                out exceptionType))
+                            {
+                                entryIndex = (int)(uint)entry.Operand - 1;
                             }
 
                             break;
@@ -310,8 +397,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // and dominated them — a boundary op always resets the open block, so metered stays off.
                 if (instruction is Instruction.MSTORE or Instruction.MLOAD or Instruction.MCOPY)
                 {
-                    if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
-                        ThrowStreamOperationCanceledException();
+                    if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                        CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
 
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
                     opCodeCount++;
@@ -342,8 +429,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // Boundary op: standard handler + epilogue. Structured control flow only —
                 // backward gotos make the loop irreducible and the JIT stops optimizing it.
                 programCounter = entry.Pc;
-                if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
-                    ThrowStreamOperationCanceledException();
+                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                    CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
 
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
                 programCounter++;
@@ -432,8 +519,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         _currentState.Gas = gas;
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
 
-        [DoesNotReturn]
-        static void ThrowStreamOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void CheckStreamCancellation(ref int nextCancellationCheck, int opCodeCount)
+    {
+        nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
+        if (_txTracer.IsCancelled)
+            throw new OperationCanceledException("Cancellation Requested");
     }
 
     private enum MeteredOutcome : byte

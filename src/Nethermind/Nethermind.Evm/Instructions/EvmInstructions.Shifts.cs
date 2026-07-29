@@ -68,18 +68,23 @@ public static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
-        // Amortise the bounds check across both operands (mirrors InstructionSar).
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool ok);
+        if (!ok) goto StackUnderflow;
 
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
         if (!a.IsUint64 || a.u0 >= 256)
         {
-            return stack.PushZero<TTracingInst>();
+            EvmStack.WriteUInt256ToSlot(ref topRef, in UInt256.Zero);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+            return EvmExceptionType.None;
         }
 
+        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         // Perform the shift operation using the specific implementation.
         TOpShift.Operation(in a, in b, out UInt256 result);
-        return stack.PushUInt256<TTracingInst>(in result);
+        EvmStack.WriteUInt256ToSlot(ref topRef, in result);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

@@ -58,15 +58,8 @@ public static partial class EvmInstructions
     internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
     {
-        // Pop the first operand from the stack by reference to minimize copying.
-        ref byte bytesRef = ref stack.PopBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        // Read the 256-bit vector from unaligned memory.
-        EvmWord aVec = ReadUnaligned<EvmWord>(ref bytesRef);
-
-        // Peek at the top of the stack for the second operand without removing it.
-        bytesRef = ref stack.PeekBytesByRef();
-        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+        ref byte bytesRef = ref stack.Pop1PeekWord(out EvmWord aVec, out bool ok);
+        if (!ok) goto StackUnderflow;
         EvmWord bVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
         // Write the result directly into the memory of the top stack element.

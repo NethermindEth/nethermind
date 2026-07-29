@@ -58,6 +58,24 @@ namespace Nethermind.Evm.Benchmark
 
         private static readonly byte[] StraightLine = BuildStraightLine();
 
+        private static readonly byte[] SolidityBranchLoop =
+        [
+            (byte)Instruction.PUSH2, 0x04, 0x00,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH1, 0x01,
+            (byte)Instruction.SWAP1,
+            (byte)Instruction.SUB,
+            (byte)Instruction.DUP1,
+            (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH2, 0x00, 0x12,
+            (byte)Instruction.JUMPI,
+            (byte)Instruction.PUSH2, 0x00, 0x03,
+            (byte)Instruction.JUMP,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.POP,
+            (byte)Instruction.STOP,
+        ];
+
         private static byte[] BuildStraightLine()
         {
             List<byte> code = [(byte)Instruction.PUSH1, 0x55];
@@ -112,9 +130,10 @@ namespace Nethermind.Evm.Benchmark
 
         private ExecutionEnvironment _straightLineEnvironment;
         private ExecutionEnvironment _memoryHeavyEnvironment;
+        private ExecutionEnvironment _solidityBranchEnvironment;
 
         private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.OsakaActivation);
-        private readonly ITxTracer _txTracer = NullTxTracer.Instance;
+        private readonly ITxTracer _txTracer = new CancellationTxTracer(NullTxTracer.Instance);
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
         private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
@@ -128,8 +147,7 @@ namespace Nethermind.Evm.Benchmark
         public void GlobalSetup()
         {
             StreamInterpreter.Enabled = Mode != InterpreterMode.ByteCodeLoop;
-            // These frames run non-cancelable, so force the stream past the call-context gate to measure it.
-            StreamInterpreter.ForceAllContexts = Mode != InterpreterMode.ByteCodeLoop;
+            StreamInterpreter.ForceAllContexts = false;
 
             BlockHeader header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One,
                 MainnetSpecProvider.ParisBlockNumber + 4, Int64.MaxValue,
@@ -175,6 +193,16 @@ namespace Nethermind.Evm.Benchmark
                 value: 0,
                 inputData: default
             );
+
+            _solidityBranchEnvironment = ExecutionEnvironment.Rent(
+                executingAccount: Address.Zero,
+                codeSource: Address.Zero,
+                caller: Address.Zero,
+                codeInfo: new CodeInfo(SolidityBranchLoop),
+                callDepth: 0,
+                value: 0,
+                inputData: default
+            );
         }
 
         [GlobalCleanup]
@@ -183,6 +211,7 @@ namespace Nethermind.Evm.Benchmark
             _environment.Dispose();
             _straightLineEnvironment.Dispose();
             _memoryHeavyEnvironment.Dispose();
+            _solidityBranchEnvironment.Dispose();
             _stateScope.Dispose();
             StreamInterpreter.Enabled = Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
             StreamInterpreter.ForceAllContexts = false;
@@ -212,6 +241,15 @@ namespace Nethermind.Evm.Benchmark
         {
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
                 EthereumGasPolicy.FromULong(100_000_000), ExecutionType.TRANSACTION, _memoryHeavyEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+            _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
+            _stateProvider.Reset();
+        }
+
+        [Benchmark]
+        public void ExecuteSolidityBranchLoop()
+        {
+            using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
+                EthereumGasPolicy.FromULong(100_000_000), ExecutionType.TRANSACTION, _solidityBranchEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
