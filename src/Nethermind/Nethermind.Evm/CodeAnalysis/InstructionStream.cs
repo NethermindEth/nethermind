@@ -174,6 +174,11 @@ internal sealed class InstructionStream
         pcToEntry.AsSpan().Fill(InvalidEntry);
 
         int openBlock = -1;
+        // Elision experiment: a JUMPDEST whose successor can carry its gas emits no entry; the next
+        // in-block op becomes the charging entry. Guards: never two in a row, no fusion into the
+        // seeded block before its charging entry exists, successor must be in-block.
+        bool blockNeedsFirstOp = false;
+        bool previousWasElidedJumpDest = false;
         int pc = 0;
         // ConstantBytes (the big-endian form) is read only by the fused bitwise cores; track whether any
         // get emitted so a stream whose constants feed only arithmetic/shift fusion skips that allocation.
@@ -187,6 +192,16 @@ internal sealed class InstructionStream
 
             if (instruction == Instruction.JUMPDEST)
             {
+                if (!previousWasElidedJumpDest && CanCarryJumpDestGas(code, pc + 1))
+                {
+                    blockGas.Add(GasCostOf.JumpDest);
+                    openBlock = blockGas.Count - 1;
+                    blockNeedsFirstOp = true;
+                    previousWasElidedJumpDest = true;
+                    pc += size;
+                    continue;
+                }
+
                 // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
                 // so the following ops must sit in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
@@ -196,6 +211,7 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
+                    && !blockNeedsFirstOp
                     && TryFuseGluePair(code, ops, instruction, pc, out StreamOp glued))
                 {
                     blockGas[openBlock] += cost;
@@ -203,6 +219,7 @@ internal sealed class InstructionStream
                     ops[^1] = glued;
                 }
                 else if (openBlock >= 0
+                    && !blockNeedsFirstOp
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -247,6 +264,11 @@ internal sealed class InstructionStream
                         openBlock = blockGas.Count - 1;
                         kind = StreamOpKind.BlockFirst;
                     }
+                    else if (blockNeedsFirstOp)
+                    {
+                        kind = StreamOpKind.BlockFirst;
+                        blockNeedsFirstOp = false;
+                    }
 
                     blockGas[openBlock] += cost;
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
@@ -262,6 +284,7 @@ internal sealed class InstructionStream
                 // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
                 openBlock = -1;
+                blockNeedsFirstOp = false;
                 ops.Add(new StreamOp(
                     conditional ? FusedOpcode.StaticJumpI : FusedOpcode.StaticJump,
                     conditional ? StreamOpKind.StaticJumpI : StreamOpKind.StaticJump,
@@ -273,8 +296,11 @@ internal sealed class InstructionStream
             {
                 // Dynamic JUMP/JUMPI/PUSH2 and trailing truncated PUSHes.
                 openBlock = -1;
+                blockNeedsFirstOp = false;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, 0));
             }
+
+            if (instruction != Instruction.JUMPDEST) previousWasElidedJumpDest = false;
 
             pc += size;
         }
@@ -380,6 +406,13 @@ internal sealed class InstructionStream
         int size = second == Instruction.PUSH1 ? 2 : 1;
         glued = new StreamOp(fused, first.Kind, first.Pc, first.BlockIndex, (byte)(first.Advance + size), operand);
         return true;
+    }
+
+    private static bool CanCarryJumpDestGas(ReadOnlySpan<byte> code, int pc)
+    {
+        if ((uint)pc >= (uint)code.Length) return false;
+        Instruction next = (Instruction)code[pc];
+        return GetInBlockCost(next) != NotInBlock && pc + GetImmediateByteCount(next) < code.Length;
     }
 
     /// <summary>Returns the PUSH2 immediate at <paramref name="pc"/> when it points at a JUMPDEST; -1 otherwise.</summary>
