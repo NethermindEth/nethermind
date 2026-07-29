@@ -13,6 +13,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -326,9 +327,51 @@ namespace Nethermind.Trie
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
+            if (canBeParallel && _writeBeforeCommit >= 512)
+            {
+                ResolveDirtyRootGrandchildren();
+            }
+
             TreePath path = TreePath.Empty;
             RootRef?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
+        }
+
+        private void ResolveDirtyRootGrandchildren()
+        {
+            TrieNode? root = RootRef;
+            if (root is null || !root.IsBranch || !root.IsDirty) return;
+
+            using ArrayPoolList<(TrieNode Node, TreePath Path)> jobs = new(TrieNode.BranchesCount * TrieNode.BranchesCount);
+            TreePath rootPath = TreePath.Empty;
+
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                if (!root.TryGetDirtyChild(i, out TrieNode? child) || !child.IsBranch) continue;
+
+                TreePath childPath = root.GetChildPath(rootPath, i);
+                for (int j = 0; j < TrieNode.BranchesCount; j++)
+                {
+                    if (child.TryGetDirtyChild(j, out TrieNode? grandchild))
+                    {
+                        jobs.Add((grandchild, child.GetChildPath(childPath, j)));
+                    }
+                }
+            }
+
+            if (jobs.Count <= TrieNode.BranchesCount) return;
+
+            ParallelUnbalancedWork.For(
+                0,
+                jobs.Count,
+                ParallelUnbalancedWork.DefaultOptions,
+                (jobs, TrieStore, _bufferPool),
+                static (i, state) =>
+                {
+                    (TrieNode node, TreePath path) = state.jobs[i];
+                    node.ResolveKey(state.TrieStore, ref path, bufferPool: state._bufferPool, canBeParallel: false);
+                    return state;
+                });
         }
 
         public void SetRootHash(Hash256? value, bool resetObjects)
