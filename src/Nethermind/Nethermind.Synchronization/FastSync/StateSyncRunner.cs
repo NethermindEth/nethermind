@@ -57,7 +57,7 @@ public class StateSyncRunner(
                     if (_logger.IsInfo) _logger.Info("Starting snap sync. at pivot block " + (stateSyncPivot.GetPivotHeader()?.Number.ToString() ?? "<unknown>"));
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed. at pivot block " + (stateSyncPivot.GetPivotHeader()?.Number.ToString() ?? "<unknown>"));
-                        
+
                     if (syncConfig.Snap2Enabled && await RunBalHealing(firstPivot, token))
                         return;
                 }
@@ -117,10 +117,10 @@ public class StateSyncRunner(
                     return false;
                 }
 
-                if(currentPivot.Number == nextPivot.Number)
+                if (currentPivot.Number == nextPivot.Number)
                 {
 
-                    if(stateSyncPivot.CanFinalize(currentPivot))
+                    if (stateSyncPivot.CanFinalize(currentPivot))
                     {
                         break;
                     }
@@ -142,8 +142,8 @@ public class StateSyncRunner(
                     return false;
                 }
             }
-            
-            if(root != currentPivot.StateRoot)
+
+            if (root != currentPivot.StateRoot)
             {
                 if (_logger.IsError) _logger.Error($"BAL healing failed - produced root {root} does not match pivot state root {currentPivot.StateRoot}.");
                 return false;

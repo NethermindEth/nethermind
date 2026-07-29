@@ -39,7 +39,7 @@ public class BalFetcher(
             ulong windowEnd = Math.Min(windowStart + WindowSize - 1, to.Number);
 
             int noProgress = 0;
-            while(true)
+            while (true)
             {
                 token.ThrowIfCancellationRequested();
                 using ArrayPoolList<BlockHeader> missing = Missing(windowStart, windowEnd);
@@ -49,7 +49,7 @@ public class BalFetcher(
                 int stored = await peerPool.AllocateAndRun(peer => FetchFromPeer(peer, missing, token),
                     PeerStrategy, AllocationContexts.State, token);
 
-                if(stored == 0)
+                if (stored == 0)
                     noProgress++;
                 else
                     noProgress = 0;
