@@ -49,7 +49,7 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public bool UseDefaultDiscv5Bootnodes { get; set; } = true;
 
-    public DiscoveryVersion DiscoveryVersion { get; set; } = DiscoveryVersion.V4;
+    public DiscoveryVersion DiscoveryVersion { get; set; } = DiscoveryVersion.All;
 
     public int ConcurrentDiscoveryJob { get; set; } = 10;
 }
