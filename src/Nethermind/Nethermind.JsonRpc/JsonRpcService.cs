@@ -77,16 +77,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ex = inner;
         }
 
-        bool suppressWarning = ex is LimitExceededException or ConcurrencyLimitReachedException;
-        (int errorCode, string errorText) = ex switch
+        (int errorCode, string errorText, bool suppressWarning) = ex switch
         {
-            LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests"),
-            ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout"),
-            _ => (ErrorCodes.InternalError, "Internal error"),
+            LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests", true),
+            ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout", true),
+            _ => (ErrorCodes.InternalError, "Internal error", false),
         };
 
         if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
+        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)

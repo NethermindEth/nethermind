@@ -607,12 +607,8 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public void Invocation_limit_exceeded_does_not_log_expected_overload_error()
+    public void Invocation_limit_exceeded_suppresses_warning()
     {
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsError.Returns(true);
-        _logManager = new OneLoggerLogManager(new ILogger(logger));
-
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(new LimitExceededException("limit"));
 
@@ -622,7 +618,41 @@ public class JsonRpcServiceTests
             "Too many requests");
 
         Assert.That(response.Error!.SuppressWarning, Is.True);
+    }
+
+    [TestCaseSource(nameof(ModuleRentalOverloadExceptions))]
+    public void Module_rental_overload_does_not_log_or_return_exception_data(
+        Exception exception,
+        int expectedCode,
+        string expectedMessage)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(exception));
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            TestRequestWithPool(pool, "eth_getLogs", "{}"),
+            expectedCode,
+            expectedMessage);
+
+        Assert.That(response.Error!.SuppressWarning, Is.True);
+        Assert.That(response.Error.Data, Is.Null);
         logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception?>());
+    }
+
+    private static IEnumerable<TestCaseData> ModuleRentalOverloadExceptions()
+    {
+        yield return new TestCaseData(
+            new LimitExceededException("limit"),
+            ErrorCodes.LimitExceeded,
+            "Too many requests");
+        yield return new TestCaseData(
+            new ModuleRentalTimeoutException("timeout"),
+            ErrorCodes.ModuleTimeout,
+            "Timeout");
     }
 
     [Test]
