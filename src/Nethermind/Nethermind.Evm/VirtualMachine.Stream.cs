@@ -78,17 +78,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 if (entry.Kind < StreamOpKind.Boundary)
                 {
-                    int pendingJumpDestination = 0;
+                    int coveredJumpDestination = (byte)entry.Kind >> 3;
+                    int pendingJumpDestination =
+                        coveredJumpDestination != 0 && programCounter != entry.Pc ? 1 : 0;
 
                     if (entry.Kind is StreamOpKind.BlockFirst
                         or StreamOpKind.FusedBlockFirst
                         or StreamOpKind.JumpDestBlockFirst
                         or StreamOpKind.JumpDestFusedBlockFirst)
                     {
-                        int coveredJumpDestination = (byte)entry.Kind >> 3;
-                        pendingJumpDestination =
-                            coveredJumpDestination != 0 && programCounter != entry.Pc ? 1 : 0;
-
                         if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                             CheckStreamCancellation(ref nextCancellationCheck, opCodeCount);
 
