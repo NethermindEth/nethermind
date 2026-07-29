@@ -37,13 +37,16 @@ public sealed class RegeneratingReceiptFinder(
     public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
     {
         TxReceipt[] stored = inner.Get(block, recover, recoverSender);
-        return stored.Length > 0 || !TryRegenerate(block, out TxReceipt[]? regenerated) ? stored : regenerated;
+        if (stored.Length > 0) return stored;
+        return TryRegenerate(block, out TxReceipt[]? regenerated) ? regenerated : Unavailable(block, stored);
     }
 
     public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
     {
         TxReceipt[] stored = inner.Get(blockHash, recover);
-        return stored.Length > 0 || !TryRegenerate(FindBlock(blockHash), out TxReceipt[]? regenerated) ? stored : regenerated;
+        if (stored.Length > 0) return stored;
+        Block? block = FindBlock(blockHash);
+        return TryRegenerate(block, out TxReceipt[]? regenerated) ? regenerated : Unavailable(block, stored);
     }
 
     public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
@@ -52,8 +55,12 @@ public sealed class RegeneratingReceiptFinder(
         // that; probe for the body first, or eth_getLogs reports no logs at all for a derived block.
         if (storage.HasBlock(blockNumber, blockHash)) return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
-        if (!TryRegenerate(FindBlock(blockHash), out TxReceipt[]? regenerated))
+        Block? found = FindBlock(blockHash);
+        if (!TryRegenerate(found, out TxReceipt[]? regenerated))
+        {
+            Unavailable(found, []);
             return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        }
 
         // The array-backed iterator is the same one InMemoryReceiptStorage uses; the obsoletion targets the
         // storage-side callers that should stream from disk, which a regenerated block by definition cannot.
@@ -62,6 +69,19 @@ public sealed class RegeneratingReceiptFinder(
 #pragma warning restore 618
         return true;
     }
+
+    /// <summary>
+    /// Reports that a block's receipts are neither stored nor reproducible, unless it has no receipts to begin with.
+    /// </summary>
+    /// <remarks>
+    /// A caller cannot tell an empty result from an unanswerable one, so a block that does have transactions must
+    /// fail loudly: silently returning no receipts reads as "no logs here" to an indexer.
+    /// </remarks>
+    private static TxReceipt[] Unavailable(Block? block, TxReceipt[] stored) =>
+        block is null || block.Transactions.Length == 0
+            ? stored
+            : throw new ResourceNotFoundException(
+                $"Receipts for block {block.Number} ({block.Hash}) are neither stored nor reproducible from state history.");
 
     private Block? FindBlock(Hash256 blockHash) =>
         blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

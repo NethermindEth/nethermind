@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Receipts;
 using Nethermind.Core;
+using Nethermind.JsonRpc;
 using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Init.Modules;
@@ -29,8 +30,11 @@ public class ReceiptRegenerationModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<RegeneratingReceiptsEnvSourceFactory>()
-        .AddSingleton<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>, RegeneratingReceiptsEnvSourceFactory>(
-            factory => factory.Create(Environment.ProcessorCount))
+        // Each retained environment holds a world state and a full processing chain, and a regenerating query is as
+        // expensive as executing a block — so it is bounded by the same knob that bounds the eth module itself.
+        .AddSingleton<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>>(ctx =>
+            ctx.Resolve<RegeneratingReceiptsEnvSourceFactory>()
+               .Create(ctx.Resolve<IJsonRpcConfig>().EthModuleConcurrentInstances ?? Environment.ProcessorCount))
         .AddSingleton<ReceiptsRegenerator>()
         .AddSingleton<IReceiptFinder>(ctx => new RegeneratingReceiptFinder(
             ctx.Resolve<FullInfoReceiptFinder>(),

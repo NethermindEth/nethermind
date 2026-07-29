@@ -20,6 +20,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -194,6 +197,40 @@ public class ReceiptsRegenerationTests
         }
     }
 
+    // Consumers reach receipts through whatever the container hands them, and IReceiptStorage also satisfies
+    // IReceiptFinder - so a consumer asking for the storage silently bypasses regeneration and the compiler cannot
+    // catch it. Building the decorator by hand (ColdFinder) cannot detect that; this resolves the graph instead.
+    [Test]
+    public async Task Deriving_from_state_serves_receipts_through_the_resolved_eth_module()
+    {
+        using RecoverReceiptsBlockchain chain = await RecoverReceiptsBlockchain.Create();
+
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
+        Transaction transfer = Build.A.Transaction
+            .WithChainId(chain.SpecProvider.ChainId)
+            .WithNonce(nonce)
+            .WithTo(TestItem.AddressD)
+            .WithValue(1)
+            .WithGasPrice(1)
+            .WithGasLimit(GasCostOf.Transaction)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        Block block = await chain.AddBlock(transfer);
+        // The live storage caches every processed block, so without a cold cache the read would be served from
+        // memory and would pass even with regeneration bypassed - which is exactly the bug this pins.
+        ((PersistentReceiptStorage)chain.Container.Resolve<IReceiptStorage>()).ClearCache();
+
+        ResultWrapper<ReceiptForRpc[]> receipts = chain.Container.Resolve<EthModuleFactory>().Create()
+            .eth_getBlockReceipts(new BlockParameter(block.Number));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(receipts.Data, Has.Length.EqualTo(1), "eth_getBlockReceipts must not report a derived block as receipt-less");
+            Assert.That(receipts.Data[0].TransactionHash, Is.EqualTo(transfer.Hash));
+        }
+    }
+
     private static IReceiptFinder ColdFinder(RecoverReceiptsBlockchain chain)
     {
         IReceiptsRecovery recovery = chain.Container.Resolve<IReceiptsRecovery>();
@@ -286,6 +323,6 @@ public class ReceiptsRegenerationTests
         }
 
         protected override IEnumerable<IConfig> CreateConfigs() =>
-            [.. base.CreateConfigs(), new ReceiptConfig { DeriveFromState = true }];
+            [.. base.CreateConfigs(), new ReceiptConfig { DeriveFromState = true }, new FlatDbConfig { Enabled = true, HistoryEnabled = true }];
     }
 }

@@ -20,7 +20,9 @@ public class PseudoNethermindModuleTests
     public void Peer_facing_receipt_finder_is_never_the_regenerating_one(bool deriveFromState)
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new ReceiptConfig { DeriveFromState = deriveFromState }))
+            .AddModule(new TestNethermindModule(
+                new ReceiptConfig { DeriveFromState = deriveFromState },
+                new FlatDbConfig { Enabled = true, HistoryEnabled = true }))
             .Build();
 
         using (Assert.EnterMultipleScope())
