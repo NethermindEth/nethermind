@@ -24,6 +24,23 @@ public class PbtTrieNodeGroupTests
     private static readonly PbtGroupFormat[] Formats =
         [PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved, PbtGroupFormat.BoundaryOnly, PbtGroupFormat.Every3Depth];
 
+    [Test]
+    public void FiveLevelMasks_UseSingleWordsAndRejectTheUnusedPositionBit()
+    {
+        byte[] encoded = new byte[PbtTrieNodeGroup<PbtFiveLevelTileLayout>.MaxEncodedLength];
+        PbtGroupEncoder<PbtFiveLevelTileLayout> encoder = new(encoded, PbtGroupFormat.Interleaved);
+        encoder.AppendInternal(0, default);
+        int length = encoder.Finish(new PbtSubtreeStats(1));
+
+        int expectedTrailerLength = 2 * sizeof(ulong) + sizeof(uint) + PbtSubtreeStats.EncodedLength + sizeof(byte);
+        Assert.That(length, Is.EqualTo(PbtTrieNodeGroup.Slot.InternalLength + expectedTrailerLength));
+        Assert.That(() => PbtTrieNodeGroup<PbtFiveLevelTileLayout>.Decode(encoded.AsSpan(0, length)), Throws.Nothing);
+
+        byte[] highBit = encoded[..length];
+        highBit[PbtTrieNodeGroup.Slot.InternalLength + sizeof(ulong) - 1] |= 0x80;
+        Assert.That(() => PbtTrieNodeGroup<PbtFiveLevelTileLayout>.Decode(highBit), Throws.TypeOf<InvalidDataException>());
+    }
+
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
     [TestCase(PbtGroupFormat.Every3Depth)]

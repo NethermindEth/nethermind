@@ -434,8 +434,7 @@ public readonly ref struct PbtTrieNodeGroup<TLayout> where TLayout : IPbtTileLay
         NodeGroupMaskEncoding.Read<TLayout>(data, out ReadOnlySpan<byte> entries, out ReadOnlySpan<byte> presence,
             out ReadOnlySpan<byte> stems, out ReadOnlySpan<byte> chains, out CompactBitmap256 compactChains, out _);
 
-        int positionBytes = TLayout.PositionMaskWordCount * sizeof(ulong);
-        int unusedPositionBits = positionBytes * 8 - TLayout.PositionCount;
+        int unusedPositionBits = presence.Length * 8 - TLayout.PositionCount;
         if (unusedPositionBits != 0 && (presence[^1] >> (8 - unusedPositionBits) != 0 || stems[^1] >> (8 - unusedPositionBits) != 0))
             throw new InvalidDataException("Invalid trie node group bitmaps");
 

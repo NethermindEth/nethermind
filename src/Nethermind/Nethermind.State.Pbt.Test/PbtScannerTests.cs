@@ -131,6 +131,7 @@ public class PbtScannerTests
     /// </remarks>
     [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.FiveLevelInterleaved)]
     [TestCase(PbtTrieLayout.SixLevelInterleaved)]
     [TestCase(PbtTrieLayout.SixLevelEvery3Depth)]
     [TestCase(PbtTrieLayout.EightLevelInterleaved)]
