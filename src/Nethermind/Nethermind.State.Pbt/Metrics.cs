@@ -115,6 +115,22 @@ public static class Metrics
 
     internal static void IncrementPbtTrieNodeCacheMisses() => Interlocked.Increment(ref _pbtTrieNodeCacheMisses);
 
+    private static long _pbtTrieWarmerTriggered;
+
+    [CounterMetric]
+    [Description("Pbt trie-warmer jobs successfully queued")]
+    public static long PbtTrieWarmerTriggered => Volatile.Read(ref _pbtTrieWarmerTriggered);
+
+    internal static void IncrementPbtTrieWarmerTriggered() => Interlocked.Increment(ref _pbtTrieWarmerTriggered);
+
+    private static long _pbtTrieWarmerSkippedByDeduplication;
+
+    [CounterMetric]
+    [Description("Pbt trie-warmer hints skipped because the stem was already reserved in the current scope")]
+    public static long PbtTrieWarmerSkippedByDeduplication => Volatile.Read(ref _pbtTrieWarmerSkippedByDeduplication);
+
+    internal static void IncrementPbtTrieWarmerSkippedByDeduplication() => Interlocked.Increment(ref _pbtTrieWarmerSkippedByDeduplication);
+
     [DetailedMetric]
     [CounterMetric]
     [Description("Reads served by a pbt bundle's leaf blob cache")]

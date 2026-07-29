@@ -138,7 +138,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
         if (!TryReservePrewarm(stem, out int sequenceId)) return;
 
-        if (!_trieWarmer.PushAddressJob(this, address, sequenceId))
+        if (_trieWarmer.PushAddressJob(this, address, sequenceId))
+            Metrics.IncrementPbtTrieWarmerTriggered();
+        else
             CancelPrewarm(stem);
     }
 
@@ -147,7 +149,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         lock (_warmupLock)
         {
             sequenceId = _hintSequenceId;
-            if (_isDisposed || _pausePrewarmer || !_queuedPrewarms.Add(stem)) return false;
+            if (_isDisposed || _pausePrewarmer) return false;
+            if (!_queuedPrewarms.Add(stem))
+            {
+                Metrics.IncrementPbtTrieWarmerSkippedByDeduplication();
+                return false;
+            }
 
             _outstandingWarmups++;
             return true;
