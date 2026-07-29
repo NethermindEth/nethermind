@@ -41,7 +41,7 @@ public class BootnodeDiscoveryV5NodeSourceTests
         NodeRecord nodeRecord = await provider.GetCurrentAsync();
         Node discoveryNode = new(privateKey.PublicKey, "127.0.0.1", 30303)
         {
-            Enr = nodeRecord.EnrString,
+            Enr = nodeRecord,
             IsBootnode = true
         };
         Node currentNode = new(currentPrivateKey.PublicKey, "127.0.0.2", 30303);
@@ -65,8 +65,9 @@ public class BootnodeDiscoveryV5NodeSourceTests
             Assert.That(Node.TryFromEnr(nodeRecord, out _), Is.False);
             Assert.That(emitted, Is.Not.Null);
             Assert.That(emitted!.Id, Is.EqualTo(privateKey.PublicKey));
-            Assert.That(emitted.Port, Is.EqualTo(30303));
-            Assert.That(emitted.Enr, Is.EqualTo(nodeRecord.EnrString));
+            Assert.That(emitted.Port, Is.Zero);
+            Assert.That(emitted.DiscoveryPort, Is.EqualTo(30303));
+            Assert.That(emitted.Enr, Is.EqualTo(nodeRecord));
         }
     }
 

@@ -41,7 +41,7 @@ public class BootnodeDiscv4SerializersTests
         int destinationTcpPort;
         try
         {
-            Rlp.ValueDecoderContext ctx = CreatePayloadContext(buffer);
+            RlpReader ctx = CreatePayloadContext(buffer);
             ctx.ReadSequenceLength();
             ctx.DecodeInt();
 
@@ -92,7 +92,7 @@ public class BootnodeDiscv4SerializersTests
         int remoteTcpPort;
         try
         {
-            Rlp.ValueDecoderContext ctx = CreatePayloadContext(buffer);
+            RlpReader ctx = CreatePayloadContext(buffer);
             ctx.ReadSequenceLength();
             int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -131,13 +131,13 @@ public class BootnodeDiscv4SerializersTests
             SerializerInfo.Create(new EnrResponseMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)));
     }
 
-    private static Rlp.ValueDecoderContext CreatePayloadContext(IByteBuffer buffer)
+    private static RlpReader CreatePayloadContext(IByteBuffer buffer)
     {
         byte[] packet = buffer.ReadAllBytesAsArray();
-        return new Rlp.ValueDecoderContext(packet.AsMemory((32 + 64 + 1 + 1)..));
+        return new RlpReader(packet.AsMemory((32 + 64 + 1 + 1)..));
     }
 
-    private static (int udpPort, int tcpPort) DecodeNeighborPorts(ref Rlp.ValueDecoderContext ctx)
+    private static (int udpPort, int tcpPort) DecodeNeighborPorts(ref RlpReader ctx)
     {
         int nodeEnd = ctx.ReadSequenceLength() + ctx.Position;
         ctx.DecodeByteArraySpan(RlpLimit.For<IPEndPoint>(16, nameof(IPEndPoint.Address)));

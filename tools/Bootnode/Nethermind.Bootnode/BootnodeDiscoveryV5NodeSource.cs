@@ -149,14 +149,14 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
     private bool TryCreateDiscoveryCandidate(Node discoveryNode, [NotNullWhen(true)] out Node? discoveryCandidate)
     {
         discoveryCandidate = null;
-        if (string.IsNullOrEmpty(discoveryNode.Enr))
+        NodeRecord? record = discoveryNode.Enr;
+        if (record is null)
         {
             return false;
         }
 
         try
         {
-            NodeRecord record = NodeRecord.FromEnrString(discoveryNode.Enr);
             if (recordFilter.Excludes(record))
             {
                 return false;

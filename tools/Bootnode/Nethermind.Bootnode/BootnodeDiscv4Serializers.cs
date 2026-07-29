@@ -27,16 +27,16 @@ internal sealed class BootnodePingMsgSerializer(
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
-        stream.Encode(msg.Version);
-        EncodeEndpoint(stream, msg.SourceAddress, sourceAddressLength, tcpPort: 0);
-        EncodeEndpoint(stream, msg.DestinationAddress, destinationAddressLength, tcpPort: 0);
-        stream.Encode(msg.ExpirationTime);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
+        writer.Encode(msg.Version);
+        EncodeEndpoint(ref writer, msg.SourceAddress, sourceAddressLength, tcpPort: 0);
+        EncodeEndpoint(ref writer, msg.DestinationAddress, destinationAddressLength, tcpPort: 0);
+        writer.Encode(msg.ExpirationTime);
 
         if (msg.EnrSequence.HasValue)
         {
-            stream.Encode(msg.EnrSequence.Value);
+            writer.Encode(msg.EnrSequence.Value);
         }
 
         byteBuffer.ResetIndex();
@@ -50,7 +50,7 @@ internal sealed class BootnodePingMsgSerializer(
     public PingMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey farPublicKey, ValueHash256 mdc, IByteBuffer data) = PrepareForDeserialization(msgBytes);
-        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
+        RlpReader ctx = new(data.AsSpan());
         ctx.ReadSequenceLength();
         int version = ctx.DecodeInt();
 
@@ -102,12 +102,12 @@ internal sealed class BootnodePingMsgSerializer(
         return (Rlp.LengthOfSequence(contentLength), contentLength, sourceAddressLength, destinationAddressLength);
     }
 
-    private static void EncodeEndpoint(RlpStream stream, IPEndPoint address, int length, int tcpPort)
+    private static void EncodeEndpoint(ref ByteBufferRlpWriter writer, IPEndPoint address, int length, int tcpPort)
     {
-        stream.StartSequence(length);
-        EncodeIpAddress(stream, address.Address);
-        stream.Encode(address.Port);
-        stream.Encode(tcpPort);
+        writer.StartSequence(length);
+        EncodeIpAddress(ref writer, address.Address);
+        writer.Encode(address.Port);
+        writer.Encode(tcpPort);
     }
 
     private static int GetEndpointLength(IPEndPoint address, int tcpPort)
@@ -121,16 +121,16 @@ internal sealed class BootnodePingMsgSerializer(
             _ => Rlp.LengthOf(address.GetAddressBytes())
         };
 
-    private static void EncodeIpAddress(RlpStream stream, IPAddress address)
+    private static void EncodeIpAddress(ref ByteBufferRlpWriter writer, IPAddress address)
     {
         Span<byte> bytes = stackalloc byte[16];
         if (address.TryWriteBytes(bytes, out int bytesWritten))
         {
-            stream.Encode(bytes[..bytesWritten]);
+            writer.Encode(bytes[..bytesWritten]);
             return;
         }
 
-        stream.Encode(address.GetAddressBytes());
+        writer.Encode(address.GetAddressBytes());
     }
 }
 
@@ -148,23 +148,23 @@ internal sealed class BootnodeNeighborsMsgSerializer(
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
         if (msg.Nodes.Count != 0)
         {
-            stream.StartSequence(nodesContentLength);
+            writer.StartSequence(nodesContentLength);
             for (int i = 0; i < msg.Nodes.Count; i++)
             {
                 Node node = msg.Nodes[i];
-                SerializeNode(stream, node.Address, node.Id.Bytes, tcpPort: 0);
+                SerializeNode(ref writer, node.Address, node.Id.Bytes, tcpPort: 0);
             }
         }
         else
         {
-            stream.Encode(Rlp.OfEmptyList);
+            writer.Encode(Rlp.OfEmptyList);
         }
 
-        stream.Encode(msg.ExpirationTime);
+        writer.Encode(msg.ExpirationTime);
         byteBuffer.ResetIndex();
 
         AddSignatureAndMdc(byteBuffer, totalLength + 1);
@@ -174,7 +174,7 @@ internal sealed class BootnodeNeighborsMsgSerializer(
     {
         (PublicKey farPublicKey, _, IByteBuffer data) = PrepareForDeserialization(msgBytes);
 
-        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
+        RlpReader ctx = new(data.AsSpan());
         ctx.ReadSequenceLength();
         int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(nodesEnd);
@@ -209,7 +209,7 @@ internal sealed class BootnodeNeighborsMsgSerializer(
         return totalLength;
     }
 
-    private static Node DecodeNode(ref Rlp.ValueDecoderContext ctx)
+    private static Node DecodeNode(ref RlpReader ctx)
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
@@ -254,14 +254,14 @@ internal sealed class BootnodeNeighborsMsgSerializer(
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void SerializeNode(RlpStream stream, IPEndPoint address, byte[] id, int tcpPort)
+    private static void SerializeNode(ref ByteBufferRlpWriter writer, IPEndPoint address, byte[] id, int tcpPort)
     {
         int length = GetLengthSerializeNode(address, id, tcpPort);
-        stream.StartSequence(length);
-        EncodeIpAddress(stream, address.Address);
-        stream.Encode(address.Port);
-        stream.Encode(tcpPort);
-        stream.Encode(id);
+        writer.StartSequence(length);
+        EncodeIpAddress(ref writer, address.Address);
+        writer.Encode(address.Port);
+        writer.Encode(tcpPort);
+        writer.Encode(id);
     }
 
     private static int GetLengthSerializeNode(IPEndPoint address, byte[] id, int tcpPort)
@@ -275,15 +275,15 @@ internal sealed class BootnodeNeighborsMsgSerializer(
             _ => Rlp.LengthOf(address.GetAddressBytes())
         };
 
-    private static void EncodeIpAddress(RlpStream stream, IPAddress address)
+    private static void EncodeIpAddress(ref ByteBufferRlpWriter writer, IPAddress address)
     {
         Span<byte> bytes = stackalloc byte[16];
         if (address.TryWriteBytes(bytes, out int bytesWritten))
         {
-            stream.Encode(bytes[..bytesWritten]);
+            writer.Encode(bytes[..bytesWritten]);
             return;
         }
 
-        stream.Encode(address.GetAddressBytes());
+        writer.Encode(address.GetAddressBytes());
     }
 }
