@@ -79,6 +79,7 @@ public class PbtScopeProviderBenchmark
     [Params(
         PbtTrieLayout.ClusteredFourLevelInterleaved,
         PbtTrieLayout.FourLevelInterleaved,
+        PbtTrieLayout.FiveLevelInterleaved,
         PbtTrieLayout.SixLevelInterleaved,
         PbtTrieLayout.SixLevelEvery3Depth,
         PbtTrieLayout.EightLevelInterleaved)]

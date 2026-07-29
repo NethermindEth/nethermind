@@ -175,6 +175,7 @@ public class PbtSnapshotBundleTests
     [TestCase(PbtTrieLayout.EightLevelEvery4Depth)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved)]
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly)]
+    [TestCase(PbtTrieLayout.FiveLevelInterleaved)]
     public void WarmStemPath_ReadsHashQualifiedTrieGroupsAndThePriorLeaf(PbtTrieLayout layout)
     {
         using PbtSnapshotBundle bundle = Bundle(sharedLayers: [], localLayers: []);
