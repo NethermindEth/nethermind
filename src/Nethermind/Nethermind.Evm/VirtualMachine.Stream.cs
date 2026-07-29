@@ -337,11 +337,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
-                // Fast path for single-byte, dynamic-gas memory ops: they never redirect control flow,
-                // so direct dispatch (no table calli) + sequential advance (no pcToEntry landing
-                // recompute). The general boundary epilogue below is pure overhead for these cheap ops
-                // and dominated them — a boundary op always resets the open block, so metered stays off.
-                if (instruction is Instruction.MSTORE or Instruction.MLOAD or Instruction.MCOPY)
+                // Linear boundary: a self-charging table op that always falls through on success, so
+                // the open block continues across it - table dispatch + sequential advance, no landing
+                // recompute and no block reset. The general epilogue below is for ops that redirect.
+                if (entry.Kind == StreamOpKind.BoundaryLinear)
                 {
                     if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                         ThrowStreamOperationCanceledException();
@@ -350,12 +349,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     opCodeCount++;
 
                     int mpc = entry.Pc + 1;
-                    exceptionType = instruction switch
-                    {
-                        Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
-                        Instruction.MLOAD => EvmInstructions.InstructionMLoad<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
-                        _ => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
-                    };
+                    exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref mpc);
 
                     if (TGasPolicy.IsOutOfGas(in gas))
                     {
@@ -366,7 +360,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     TGasPolicy.OnAfterInstructionTrace(in gas);
                     if (exceptionType != EvmExceptionType.None) break;
 
-                    metered = false;
                     programCounter = entry.Pc + entry.Advance;
                     entryIndex++;
                     continue;

@@ -22,6 +22,10 @@ internal enum StreamOpKind : byte
     StaticJump = 4,
     StaticJumpI = 5,
     Boundary = 6,
+    /// <summary>Self-charging table op that neither redirects control nor ends the frame, so the
+    /// open block continues across it: the executor advances sequentially with no landing
+    /// recompute, and the ops after it keep their precharge in the same block.</summary>
+    BoundaryLinear = 7,
 }
 
 /// <summary>
@@ -293,6 +297,12 @@ internal sealed class InstructionStream
                 pc += 4;
                 continue;
             }
+            else if (IsLinearBoundary(instruction))
+            {
+                // The block stays open: the op self-charges and always falls through on success,
+                // and any fault burns the frame's gas anyway, so the precharge above it is exact.
+                ops.Add(new StreamOp((byte)instruction, StreamOpKind.BoundaryLinear, (ushort)pc, 0, (byte)size, 0));
+            }
             else
             {
                 // Dynamic JUMP/JUMPI/PUSH2 and trailing truncated PUSHes.
@@ -337,6 +347,17 @@ internal sealed class InstructionStream
     /// excluded to keep the switch within the size the JIT inlines.
     /// </summary>
     public const ulong NotInBlock = ulong.MaxValue;
+
+    /// <summary>Dynamic-gas ops that always fall through on success: no control redirect, no frame
+    /// end, and no observation of remaining gas (which excludes GAS, the CALL family and CREATE:
+    /// they either observe gas, forward it, or suspend the frame mid-block).</summary>
+    public static bool IsLinearBoundary(Instruction instruction) => instruction switch
+    {
+        Instruction.MSTORE or Instruction.MLOAD or Instruction.MSTORE8 or Instruction.MCOPY
+            or Instruction.KECCAK256 or Instruction.CALLDATALOAD or Instruction.CALLDATACOPY
+            or Instruction.SLOAD => true,
+        _ => false,
+    };
 
     public static ulong GetInBlockCost(Instruction instruction) => instruction switch
     {
