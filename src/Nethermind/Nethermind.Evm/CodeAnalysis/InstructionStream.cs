@@ -220,6 +220,14 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
+                    && TryFoldConstantPair(ops, constants, pcToEntry, instruction, pc, (byte)size))
+                {
+                    // Entry surgery happened inside; the original ops' gas and count stay in the block
+                    // so the charge and the executed-op metric keep matching the bytecode loop.
+                    blockGas[openBlock] += cost;
+                    blockOpCount[openBlock]++;
+                }
+                else if (openBlock >= 0
                     && TryFuseGluePair(code, ops, instruction, pc, out StreamOp glued))
                 {
                     blockGas[openBlock] += cost;
@@ -372,6 +380,84 @@ internal sealed class InstructionStream
         Instruction.POP or Instruction.PUSH0 => GasCostOf.Base,
         _ => NotInBlock,
     };
+
+    /// <summary>
+    /// Folds PUSHx a; PUSHx b; binop into a single pooled push of the computed result, using the
+    /// same operation implementations the executor dispatches, so analysis and execution can never
+    /// disagree on semantics (division by zero, wrapping, shift saturation). Gas and the per-block
+    /// op count are left to the caller: the block still charges and counts every original op, the
+    /// stream just stops dispatching them. Cascades, because the folded entry is itself a const
+    /// push - the (1 &lt;&lt; n) - 1 mask idiom collapses to one entry from five.
+    /// </summary>
+    private static bool TryFoldConstantPair(List<StreamOp> ops, List<UInt256> constants, ushort[] pcToEntry, Instruction instruction, int pc, byte size)
+    {
+        if (ops.Count < 2)
+            return false;
+
+        StreamOp top = ops[^1];
+        StreamOp under = ops[^2];
+        if (top.BlockIndex != under.BlockIndex)
+            return false;
+        if (!TryGetConstPush(in top, constants, out UInt256 a) || !TryGetConstPush(in under, constants, out UInt256 b))
+            return false;
+
+        int advance = under.Advance + top.Advance + size;
+        if (advance > byte.MaxValue)
+            return false;
+
+        UInt256 result;
+        switch (instruction)
+        {
+            case Instruction.ADD: EvmInstructions.OpAdd.Operation(in a, in b, out result); break;
+            case Instruction.SUB: EvmInstructions.OpSub.Operation(in a, in b, out result); break;
+            case Instruction.MUL: EvmInstructions.OpMul.Operation(in a, in b, out result); break;
+            case Instruction.DIV: EvmInstructions.OpDiv.Operation(in a, in b, out result); break;
+            case Instruction.SDIV: EvmInstructions.OpSDiv.Operation(in a, in b, out result); break;
+            case Instruction.MOD: EvmInstructions.OpMod.Operation(in a, in b, out result); break;
+            case Instruction.SMOD: EvmInstructions.OpSMod.Operation(in a, in b, out result); break;
+            case Instruction.LT: EvmInstructions.OpLt.Operation(in a, in b, out result); break;
+            case Instruction.GT: EvmInstructions.OpGt.Operation(in a, in b, out result); break;
+            case Instruction.SLT: EvmInstructions.OpSLt.Operation(in a, in b, out result); break;
+            case Instruction.SGT: EvmInstructions.OpSGt.Operation(in a, in b, out result); break;
+            case Instruction.AND: result = a & b; break;
+            case Instruction.OR: result = a | b; break;
+            case Instruction.XOR: result = a ^ b; break;
+            case Instruction.EQ: result = a == b ? UInt256.One : default; break;
+            case Instruction.SHL: result = !a.IsUint64 || a.u0 >= 256 ? default : b << (int)a.u0; break;
+            case Instruction.SHR: result = !a.IsUint64 || a.u0 >= 256 ? default : b >> (int)a.u0; break;
+            default: return false;
+        }
+
+        constants.Add(result);
+        pcToEntry[top.Pc] = InvalidEntry;
+        pcToEntry[pc] = InvalidEntry;
+        ops.RemoveAt(ops.Count - 1);
+        ops[^1] = new StreamOp((byte)Instruction.PUSH32, under.Kind, under.Pc, under.BlockIndex, (byte)advance, (ulong)(constants.Count - 1));
+        return true;
+    }
+
+    /// <summary>A plain, unfused in-block push whose value analysis knows exactly.</summary>
+    private static bool TryGetConstPush(in StreamOp entry, List<UInt256> constants, out UInt256 value)
+    {
+        value = default;
+        if (entry.Kind is not (StreamOpKind.InBlock or StreamOpKind.BlockFirst))
+            return false;
+
+        Instruction opcode = (Instruction)entry.Opcode;
+        if (opcode == Instruction.PUSH1 || (opcode >= Instruction.PUSH3 && opcode <= Instruction.PUSH8))
+        {
+            value = entry.Operand;
+            return true;
+        }
+
+        if (opcode >= Instruction.PUSH9 && opcode <= Instruction.PUSH32)
+        {
+            value = constants[(int)entry.Operand];
+            return true;
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Fuses two adjacent glue ops into one entry when the previously emitted entry is the plain,
