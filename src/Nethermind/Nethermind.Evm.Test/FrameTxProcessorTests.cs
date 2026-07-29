@@ -151,6 +151,28 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_TracingFees_ReportsThePremiumAndTheBurntBaseFee()
+    {
+        const ulong baseFee = 7;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.DecodedMaxFeePerGas = 10;
+
+        FeesTracer tracer = new();
+        TransactionResult result = Process(tx, baseFeePerGas: baseFee, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        // The default 1-wei priority fee makes the beneficiary credit equal the spent gas.
+        UInt256 spentGas = _stateProvider.GetBalance(Beneficiary);
+        Assert.That(spentGas, Is.Not.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo(spentGas), "premium half");
+            Assert.That(tracer.BurntFees, Is.EqualTo(spentGas * baseFee), "burnt half");
+        }
+    }
+
+    [Test]
     public void Execute_MaxFeeBelowBaseFee_ReturnsMaxFeePerGasBelowBaseFee()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));

@@ -321,6 +321,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.Restore(txSnapshot);
         }
 
+        if (tracer.IsTracingFees)
+        {
+            // As in PayFees, the burnt half is capped at the effective price paid so validation-off
+            // runs with max fee below base fee do not over-report.
+            UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
+            tracer.ReportFees(fees, effectiveBaseFee * spentGas);
+        }
+
         if (tracer.IsTracingReceipt)
         {
             if (tracer is IFrameTxReceiptTracer frameReceiptTracer)
