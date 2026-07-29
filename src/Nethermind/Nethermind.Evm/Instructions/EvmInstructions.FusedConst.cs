@@ -57,6 +57,35 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Fused <c>POP; POP</c>. One bounds check for two drops: the depths this rejects are exactly the
+    /// depths at which one of the two POPs would have underflowed, so the failure matches per-op
+    /// interpretation. Gas is precharged by the block, as for any in-block entry.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedPopPopCore(ref EvmStack stack)
+    {
+        if (stack.Head < 2) return EvmExceptionType.StackUnderflow;
+        stack.Head -= 2;
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
+    /// Fused <c>PUSH1 a; PUSH1 b</c>, with both immediates packed into the entry operand: <c>a</c> in
+    /// the low byte, <c>b</c> in the next. One overflow check covers both pushes for the same reason
+    /// the pop pair needs only one underflow check.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedPush1Push1Core(ref EvmStack stack, ulong packed)
+    {
+        if (stack.Head > EvmStack.MaxStackSize - 2) return EvmExceptionType.StackOverflow;
+        EvmExceptionType result = stack.PushUInt64<OffFlag>(packed & 0xFF);
+        if (result != EvmExceptionType.None) return result;
+        return stack.PushUInt64<OffFlag>((packed >> 8) & 0xFF);
+    }
+
+    /// <summary>
     /// Fused <c>PUSH const; bitwise-op</c> over the stack-representation pool: one vector load per
     /// operand, no limb conversion.
     /// </summary>
