@@ -182,6 +182,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         firstCallFrame.Output = new ArrayPoolList<byte>(output);
+
+        // A reverted sub-call's logs are rolled back from the receipt
+        if (_config.WithLog) ClearFailedLogs(firstCallFrame, false);
     }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)

@@ -89,9 +89,9 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer());
+            Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer(), "successful parent frame must keep its log");
             Assert.That(childFrame.Error, Is.Not.Null, "inner call must have reverted");
-            Assert.That(childFrame.Logs, Is.Null, "phantom transfer log on a reverted frame must be cleared (geth parity)");
+            Assert.That(childFrame.Logs, Is.Null, "phantom transfer log on a reverted frame must be cleared");
         }
     }
 
