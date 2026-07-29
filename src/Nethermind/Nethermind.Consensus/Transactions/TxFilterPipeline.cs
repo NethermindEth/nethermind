@@ -27,7 +27,7 @@ public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
             bool isAllowed = filter.IsAllowed(tx, parentHeader, currentSpec);
             if (!isAllowed)
             {
-                if (_logger.IsDebug) _logger.Debug($"Rejected tx ({isAllowed}) {tx.ToShortString()}");
+                if (_logger.IsTrace) _logger.Trace($"Rejected tx ({isAllowed}) {tx.ToShortString()}");
                 return isAllowed;
             }
         }
