@@ -34,7 +34,14 @@ if [[ "${SNAP_LIST_ONLY:-}" == "1" ]]; then
     [[ -d "$d" ]] || continue
     echo "--- $d ($(du -sh "$d" 2>/dev/null | cut -f1)) ---"
     [[ -f "$d/_snapshot_metadata.json" ]] && { echo "[metadata]"; cat "$d/_snapshot_metadata.json"; echo; }
-    [[ -f "$d/_snapshot_eth_getBlockByNumber.json" ]] && { echo "[head block]"; cat "$d/_snapshot_eth_getBlockByNumber.json"; echo; }
+    # jq-extract only the scalar fields — the full cached block includes its whole
+    # transaction list (huge), which previously blew past the log capture entirely.
+    if [[ -f "$d/_snapshot_eth_getBlockByNumber.json" ]]; then
+      echo "[head block]"
+      jq -c '.result | {number,gasLimit,gasUsed,baseFeePerGas,timestamp,hash}' "$d/_snapshot_eth_getBlockByNumber.json" 2>/dev/null \
+        || head -c 500 "$d/_snapshot_eth_getBlockByNumber.json"
+      echo
+    fi
     ls "$d" 2>/dev/null | head -20
   done
   df -h /mnt/sda 2>/dev/null || true
