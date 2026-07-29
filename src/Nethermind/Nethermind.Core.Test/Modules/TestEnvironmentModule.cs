@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Test;
 using Nethermind.TxPool;
@@ -84,12 +85,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 ISyncServer syncServer = ctx.Resolve<ISyncServer>();
                 IEnode enode = ctx.Resolve<IEnode>();
-                IWorldStateManager worldStateManager = ctx.Resolve<IWorldStateManager>();
-                ISnapSyncPeer? snapSyncPeer = null;
-                if (worldStateManager.SnapServer is not null)
-                {
-                    snapSyncPeer = new MockSnapSyncPeer(worldStateManager.SnapServer);
-                }
+                ISnapServer snapServer = ctx.Resolve<ISnapServer>();
+                ISnapSyncPeer? snapSyncPeer = snapServer.CanServe ? new MockSnapSyncPeer(snapServer) : null;
 
                 return new SyncPeerMock(blockTree, syncServer, enode.PublicKey, snapSyncPeer: snapSyncPeer);
             })

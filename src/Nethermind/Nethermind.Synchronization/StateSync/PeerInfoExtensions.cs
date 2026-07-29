@@ -16,5 +16,5 @@ public static class PeerInfoExtensions
     public static bool CanGetSnapData(this PeerInfo peerInfo) => peerInfo.SyncPeer.CanGetSnapData();
 
     public static bool CanGetSnapData(this ISyncPeer peer) =>
-        peer.TryGetSatelliteProtocol<object>(Protocol.Snap, out _);
+        peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapPeer) && snapPeer.SnapProtocolVersion < SnapVersions.Snap2;
 }

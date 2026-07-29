@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -22,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -242,7 +244,7 @@ public abstract class StateSyncFeedTestsBase(
 
         private readonly IDb _codeDb;
         private readonly IReadOnlyKeyValueStore _stateDb;
-        private readonly ISnapServer _snapServer;
+        private readonly SnapServer _snapServer;
 
         private Hash256[]? _filter;
         private readonly Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? _executorResultFunction;
@@ -271,9 +273,10 @@ public abstract class StateSyncFeedTestsBase(
                 Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
             _snapServer = new SnapServer(
-                trieStore.AsReadOnly(),
+                new SnapStateServer(trieStore.AsReadOnly(), LimboLogs.Instance),
                 codeDb,
-                LimboLogs.Instance);
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IBlockAccessListStore>());
         }
 
         public int MaxResponseLength { get; set; } = int.MaxValue;
@@ -335,7 +338,7 @@ public abstract class StateSyncFeedTestsBase(
             GetTrieNodes(new GetTrieNodesRequest()
             {
                 RootHash = request.RootHash,
-                AccountAndStoragePaths = SnapProtocolHandler.GetPathGroups(request),
+                AccountAndStoragePaths = Snap1ProtocolHandler.GetPathGroups(request),
             }, token);
 
         public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
