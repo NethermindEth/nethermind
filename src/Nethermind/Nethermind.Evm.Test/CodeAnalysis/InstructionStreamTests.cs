@@ -114,8 +114,8 @@ public class InstructionStreamTests
         {
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.StaticJump),
                 "an analysis-validated PUSH2+JUMP pair jumps straight to its target entry");
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5]),
-                "the operand is the pre-resolved target entry index");
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5] + 1),
+                "the jump charges the JUMPDEST itself, so the operand points one entry past the solo marker");
             Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
         }
     }

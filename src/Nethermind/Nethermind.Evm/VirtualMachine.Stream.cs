@@ -58,11 +58,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         StreamOp[] ops = stream.Ops;
         ulong[] blockGas = stream.BlockGas;
+        ushort[] blockOpCount = stream.BlockOpCount;
         Int256.UInt256[] constants = stream.Constants;
         byte[] constantBytes = stream.ConstantBytes;
         ushort[] pcToEntry = stream.PcToEntry;
         int callDepth = VmState.Env.CallDepth;
         int opCodeCount = 0;
+        int nextCancellationCheck = CancellationCheckMask + 1;
         bool metered = false;
 
         // Resume pcs land one past code end at most; the bound guards a truncated trailing PUSH.
@@ -81,7 +83,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     if (entry.Kind <= StreamOpKind.FusedBlockFirst)
                     {
-                        metered = !TGasPolicy.TryConsume(ref gas, blockGas[entry.BlockIndex]);
+                        if (TGasPolicy.TryConsume(ref gas, blockGas[entry.BlockIndex]))
+                        {
+                            metered = false;
+                            opCodeCount += blockOpCount[entry.BlockIndex];
+                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                            {
+                                nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
+                                if (_txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                            }
+                        }
+                        else
+                        {
+                            metered = true;
+                        }
                     }
 
                     if (metered)
@@ -104,11 +120,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         break;
                     }
 
-                    if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
-                        ThrowStreamOperationCanceledException();
-
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
-                    opCodeCount += 1 + ((byte)entry.Kind & 1);
 
                     // Gas already charged at the block entry, so the cores are gas-free.
                     switch (instruction)

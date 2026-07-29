@@ -123,6 +123,10 @@ internal sealed class InstructionStream
 
     public readonly StreamOp[] Ops;
     public readonly ulong[] BlockGas;
+    /// <summary>Ops the bytecode loop would execute per block (fused pairs count as two, an elided
+    /// JUMPDEST counts in the block that carries its gas). Consumed once per block charge, so the
+    /// hot loop drops its per-op counter updates; a block that faults mid-run is counted whole.</summary>
+    public readonly ushort[] BlockOpCount;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
     public readonly UInt256[] Constants;
     /// <summary>The same pool in stack representation (32 big-endian bytes per constant), so
@@ -135,14 +139,16 @@ internal sealed class InstructionStream
     public int RetainedBytes =>
         Ops.Length * Unsafe.SizeOf<StreamOp>()
         + BlockGas.Length * sizeof(ulong)
+        + BlockOpCount.Length * sizeof(ushort)
         + Constants.Length * Unsafe.SizeOf<UInt256>()
         + ConstantBytes.Length
         + PcToEntry.Length * sizeof(ushort);
 
-    private InstructionStream(StreamOp[] ops, ulong[] blockGas, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
+    private InstructionStream(StreamOp[] ops, ulong[] blockGas, ushort[] blockOpCount, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
     {
         Ops = ops;
         BlockGas = blockGas;
+        BlockOpCount = blockOpCount;
         Constants = constants;
         PcToEntry = pcToEntry;
 
@@ -168,6 +174,7 @@ internal sealed class InstructionStream
             return null;
 
         List<StreamOp> ops = new(code.Length / 2);
+        List<ushort> blockOpCount = new(64);
         List<ulong> blockGas = new(code.Length / 16);
         List<UInt256> constants = new(code.Length / 32);
         ushort[] pcToEntry = new ushort[code.Length + 1];
@@ -193,6 +200,7 @@ internal sealed class InstructionStream
                     // (straight-line ops cannot divert), and both jump flavors charge it at the jump
                     // and land one entry past. The successor opens a fresh block below.
                     blockGas[openBlock] += GasCostOf.JumpDest;
+                    blockOpCount[openBlock]++;
                     openBlock = -1;
                     pc += size;
                     continue;
@@ -201,6 +209,7 @@ internal sealed class InstructionStream
                 // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
                 // so the following ops must sit in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
+                blockOpCount.Add(1);
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
             }
@@ -210,6 +219,7 @@ internal sealed class InstructionStream
                     && TryFuseGluePair(code, ops, instruction, pc, out StreamOp glued))
                 {
                     blockGas[openBlock] += cost;
+                    blockOpCount[openBlock]++;
                     pcToEntry[pc] = InvalidEntry;
                     ops[^1] = glued;
                 }
@@ -236,6 +246,7 @@ internal sealed class InstructionStream
                     StreamOpKind fusedKind = push.Kind == StreamOpKind.BlockFirst
                         ? StreamOpKind.FusedBlockFirst
                         : StreamOpKind.FusedInBlock;
+                    blockOpCount[openBlock]++;
                     ops[^1] = new StreamOp(fusedOpcode, fusedKind, push.Pc, push.BlockIndex, (byte)(push.Advance + size), poolIndex);
                 }
                 else
@@ -255,11 +266,13 @@ internal sealed class InstructionStream
                     if (openBlock < 0)
                     {
                         blockGas.Add(0);
+                        blockOpCount.Add(0);
                         openBlock = blockGas.Count - 1;
                         kind = StreamOpKind.BlockFirst;
                     }
 
                     blockGas[openBlock] += cost;
+                    blockOpCount[openBlock]++;
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
                 }
             }
@@ -315,7 +328,7 @@ internal sealed class InstructionStream
             }
         }
 
-        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry, anyBitwiseFusion);
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), blockOpCount.ToArray(), constants.ToArray(), pcToEntry, anyBitwiseFusion);
     }
 
     /// <summary>
