@@ -299,6 +299,7 @@ namespace Nethermind.TxPool
 
                         ReAddReorganisedTransactions(args.PreviousBlock);
                         RemoveProcessedTransactions(args.Block);
+                        RemoveExpiredFrameTransactions(args.Block);
 
                         if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
                         {
@@ -451,6 +452,37 @@ namespace Nethermind.TxPool
             bool removed = RemoveTransaction(tx.Hash);
             _broadcaster.EnsureStopBroadcastUpToNonce(tx.SenderAddress!, tx.Nonce);
             return removed;
+        }
+
+        /// <summary>
+        /// Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.
+        /// </summary>
+        /// <remarks>
+        /// An expired frame transaction can never satisfy its validation prefix (the expiry-verifier predeploy
+        /// reverts once <c>block.timestamp &gt; deadline</c>), so it must be evicted rather than re-propagated
+        /// (ethereum/EIPs#8141, "Revalidation"). The deadline is read statically from the expiry-verifier frame, so
+        /// no validation-prefix re-simulation is required. Guarded by the fork flag so there is no cost on networks
+        /// where EIP-8141 is not active.
+        /// </remarks>
+        private void RemoveExpiredFrameTransactions(Block block)
+        {
+            if (!_specProvider.GetSpec(block.Header).IsEip8141Enabled)
+            {
+                return;
+            }
+
+            ulong timestamp = block.Timestamp;
+            Transaction[] snapshot = _transactions.GetSnapshot();
+            for (int i = 0; i < snapshot.Length; i++)
+            {
+                Transaction tx = snapshot[i];
+                if (tx.SupportsFrames
+                    && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
+                    && timestamp > deadline)
+                {
+                    RemoveTransaction(tx.Hash);
+                }
+            }
         }
 
         public void AddPeer(ITxPoolPeer peer)

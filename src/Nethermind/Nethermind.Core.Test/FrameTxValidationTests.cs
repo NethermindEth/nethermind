@@ -178,4 +178,43 @@ public class FrameTxValidationTests
         digest[31] = 1;
         return digest;
     }
+
+    [Test]
+    public void TryGetExpiryDeadline_ReadsBigEndianDeadlineFromExpiryFrame()
+    {
+        const ulong expected = 0x0102_0304_0506_0708UL;
+        byte[] data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        Transaction tx = CreateValidFrameTx(t => t.Frames =
+        [
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
+        ]);
+
+        bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
+
+        Assert.That(found, Is.True);
+        Assert.That(deadline, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void TryGetExpiryDeadline_WithoutExpiryFrame_ReturnsFalse()
+    {
+        Transaction tx = CreateValidFrameTx(static _ => { });
+
+        bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
+
+        Assert.That(found, Is.False);
+        Assert.That(deadline, Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void TryGetExpiryDeadline_NoFrames_ReturnsFalse()
+    {
+        Transaction tx = new() { Type = TxType.FrameTx, Frames = null };
+
+        bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
+
+        Assert.That(found, Is.False);
+        Assert.That(deadline, Is.EqualTo(0UL));
+    }
 }

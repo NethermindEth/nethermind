@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -2075,6 +2076,53 @@ namespace Nethermind.TxPool.Test
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "frame transactions must enter the pool once the EIP-8141 fork is active");
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction must be pending");
             }
+        }
+
+        // EIP-8141 (ethereum/EIPs#12007): the expiry-verifier predeploy reverts once block.timestamp > deadline,
+        // so a pending frame transaction whose deadline has passed can never be included and must be evicted on the
+        // new head. deadline == timestamp is still valid (revert is strictly greater-than).
+        [TestCase(1_000UL, 1_500UL, 0, TestName = "deadline in the past is dropped")]
+        [TestCase(2_000UL, 1_500UL, 1, TestName = "deadline in the future is retained")]
+        [TestCase(1_500UL, 1_500UL, 1, TestName = "deadline equal to head timestamp is retained")]
+        public async Task Expired_frame_transaction_is_dropped_on_new_head(ulong deadline, ulong headTimestamp, int expectedPending)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction frameTx = BuildFrameTxWithExpiry(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending),
+                "expired frame transactions must be evicted on the new head, unexpired ones retained");
+        }
+
+        private Transaction BuildFrameTxWithExpiry(ulong nonce, Address sender, ulong deadline)
+        {
+            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+            BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline);
+
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = nonce,
+                SenderAddress = sender,
+                Frames =
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData),
+                ],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
         }
 
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
