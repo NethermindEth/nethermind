@@ -88,10 +88,10 @@ public class BlockAccessListSequentialValidationTests
 
         // EIP-7928 BAL generation records touched accounts even when no state value changes.
         ReadOnlyAccountChanges? systemAccount = generated.GetAccountChanges(Address.SystemUser);
+        Assert.That(systemAccount, Is.Not.Null);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(systemAccount, Is.Not.Null);
             Assert.That(systemAccount!.BalanceChanges, Is.Empty);
             Assert.That(systemAccount.NonceChanges, Is.Empty);
             Assert.That(systemAccount.CodeChanges, Is.Empty);
