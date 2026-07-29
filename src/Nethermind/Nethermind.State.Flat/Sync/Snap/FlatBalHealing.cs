@@ -203,6 +203,7 @@ public class FlatBalHealing(
                 account = account.WithChangedStorageRoot(storage.RootHash);
             }
 
+            // EIP-158: a touched account with zero nonce and balance and no code is removed, whatever its storage.
             Account? toWrite = account.IsEmpty ? null : account;
             stateTree.Set(address, toWrite);
             batch.SetAccount(address, toWrite);

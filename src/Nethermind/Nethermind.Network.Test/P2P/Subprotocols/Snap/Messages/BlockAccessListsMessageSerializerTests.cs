@@ -15,7 +15,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
 
-            BlockAccessListsMessage message = new(new ByteArrayListAdapter(data)) { RequestId = 1 };
+            using BlockAccessListsMessage message = new(new ByteArrayListAdapter(data)) { RequestId = 1 };
 
             BlockAccessListsMessageSerializer serializer = new();
 

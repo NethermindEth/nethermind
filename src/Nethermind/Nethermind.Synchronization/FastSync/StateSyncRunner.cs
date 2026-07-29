@@ -54,9 +54,9 @@ public class StateSyncRunner(
                 if (syncConfig.SnapSync)
                 {
                     BlockHeader? firstPivot = stateSyncPivot.GetPivotHeader();
-                    if (_logger.IsInfo) _logger.Info("Starting snap sync. at pivot block " + (stateSyncPivot.GetPivotHeader()?.Number.ToString() ?? "<unknown>"));
+                    if (_logger.IsInfo) _logger.Info("Starting snap sync.");
                     await snapSyncRunner.Run(token);
-                    if (_logger.IsInfo) _logger.Info("Snap sync completed. at pivot block " + (stateSyncPivot.GetPivotHeader()?.Number.ToString() ?? "<unknown>"));
+                    if (_logger.IsInfo) _logger.Info("Snap sync completed.");
 
                     if (syncConfig.Snap2Enabled && await RunBalHealing(firstPivot, token))
                         return;
@@ -119,7 +119,6 @@ public class StateSyncRunner(
 
                 if (currentPivot.Number == nextPivot.Number)
                 {
-
                     if (stateSyncPivot.CanFinalize(currentPivot))
                     {
                         break;
@@ -169,7 +168,6 @@ public class StateSyncRunner(
             return false;
         }
     }
-
 
     public async Task RunStateSyncRounds(CancellationToken token)
     {
