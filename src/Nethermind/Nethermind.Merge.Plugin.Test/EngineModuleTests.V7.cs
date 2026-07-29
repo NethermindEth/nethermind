@@ -340,6 +340,40 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV6_resubmitting_canonical_block_with_same_inclusion_list_stays_valid()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] inclusionList = [Rlp.Encode(tx).Bytes];
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: inclusionList));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
+
+        ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
+            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+        Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(first.Data.InclusionListSatisfied, Is.True);
+
+        // Promote to canonical head, then re-submit the same (block, IL).
+        await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+
+        // The re-submission must reuse the cached result (VALID + satisfied), not regress to SYNCING or re-execute.
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(resend.Data.InclusionListSatisfied, Is.True);
+    }
+
+    [Test]
     public async Task Should_build_block_including_reversed_nonce_inclusion_list()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
