@@ -6,5 +6,4 @@ namespace Nethermind.Network.Contract.P2P;
 public static class SnapVersions
 {
     public const byte Snap1 = 1;
-    public const byte Snap2 = 2;
 }
