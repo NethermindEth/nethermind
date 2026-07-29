@@ -114,7 +114,9 @@ public class DbConfig : IDbConfig
     public string? ReceiptsTransactionsDbAdditionalRocksDbOptions { get; set; }
 
     public string ReceiptsBlocksDbRocksDbOptions { get; set; } =
-        "compaction_pri=kOldestLargestSeqFirst;";
+        "compaction_pri=kOldestLargestSeqFirst;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=4;";
     public string? ReceiptsBlocksDbAdditionalRocksDbOptions { get; set; }
 
     public string BlocksDbRocksDbOptions { get; set; } =

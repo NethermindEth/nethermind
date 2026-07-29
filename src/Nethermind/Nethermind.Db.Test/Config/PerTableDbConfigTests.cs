@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
+using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using NUnit.Framework;
 
@@ -82,6 +84,18 @@ public class PerTableDbConfigTests
 
         PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
         Assert.That(config.FlushOnExit, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ReceiptsBlocksDb_write_buffer_budget_is_not_shrunk_by_the_receipts_defaults()
+    {
+        PerTableDbConfig config = new(new DbConfig(), DbNames.Receipts, "Blocks");
+        IDictionary<string, string> options = DbOnTheRocks.ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions);
+
+        ulong writeBufferSize = ulong.Parse(options["write_buffer_size"]);
+        int maxWriteBufferNumber = int.Parse(options["max_write_buffer_number"]);
+
+        Assert.That(writeBufferSize * (ulong)maxWriteBufferNumber, Is.EqualTo(64_000_000));
     }
 
     [Test]
