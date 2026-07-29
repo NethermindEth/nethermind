@@ -39,10 +39,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         ulong remainingGas = TSelf.GetRemainingGas(in gas);
         long stateReservoir = TSelf.GetStateReservoir(in gas);
         Int128 preRefundGas = (Int128)txGasLimit - remainingGas - stateReservoir;
-        Debug.Assert(preRefundGas >= 0 && preRefundGas <= ulong.MaxValue,
+        bool inRange = preRefundGas >= 0 && preRefundGas <= ulong.MaxValue;
+        Debug.Assert(inRange,
             $"Gas invariant violated: pre-refund gas ({preRefundGas}) must fit in ulong for gas limit ({txGasLimit}), remaining gas ({remainingGas}), and state reservoir ({stateReservoir}).");
         // Charging the full limit avoids undercharging and makes validation reject divergent gas accounting.
-        return preRefundGas >= 0 && preRefundGas <= ulong.MaxValue ? (ulong)preRefundGas : txGasLimit;
+        return inRange ? (ulong)preRefundGas : txGasLimit;
     }
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
@@ -319,6 +320,7 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
 
+    // The intrinsic reservoir holds the intrinsic state cost, non-negative by construction, so the cast cannot wrap.
     public ulong StandardGas => TGasPolicy.GetRemainingGas(Standard) + (ulong)TGasPolicy.GetStateReservoir(Standard);
     public ulong MinRequiredGasLimit => Math.Max(StandardGas, TGasPolicy.GetRemainingGas(FloorGas));
 
