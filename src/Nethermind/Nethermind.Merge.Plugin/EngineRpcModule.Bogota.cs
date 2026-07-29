@@ -71,7 +71,8 @@ public partial class EngineRpcModule : IEngineRpcModule
             // newPayloadV6 input cap. An oversized or unparsable IL is a no-op, not a protocol error.
             if (ExceedsAggregateInclusionListBound(ilTxs))
             {
-                if (_logger.IsDebug) _logger.Debug($"engine_forkchoiceUpdatedV5: discarding oversized inclusion list ({ilTxs.Length} entries)");
+                // Warn once per FCU (not per improvement iteration) — the block will build without the IL.
+                if (_logger.IsWarn) _logger.Warn($"engine_forkchoiceUpdatedV5: discarding oversized inclusion list ({ilTxs.Length} entries); building without it.");
             }
             else
             {
@@ -81,7 +82,7 @@ public partial class EngineRpcModule : IEngineRpcModule
                 }
                 catch (Exception ex) when (ex is RlpException or ArgumentException)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"engine_forkchoiceUpdatedV5: discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message})");
+                    if (_logger.IsWarn) _logger.Warn($"engine_forkchoiceUpdatedV5: discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
                 }
             }
         }

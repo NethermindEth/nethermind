@@ -33,9 +33,9 @@ public class InclusionListTxSource(
         if (_decodedByAttributes.TryGetValue(il, out Transaction[]? txs)) return txs;
 
         // A miss for a non-empty IL means Set never completed for this attrs instance — e.g. a malformed
-        // or oversized IL was discarded in engine_forkchoiceUpdatedV5. Surface it so a resulting
-        // self-unsatisfied payload can be traced back here instead of appearing only at the proposer.
-        if (_logger.IsWarn) _logger.Warn($"No decoded inclusion list for this build ({il.Length} entries) — building without it.");
+        // or oversized IL discarded in engine_forkchoiceUpdatedV5, which already warned once with the cause.
+        // Debug-level here since GetTransactions runs once per improvement iteration for the whole slot.
+        if (_logger.IsDebug) _logger.Debug($"No decoded inclusion list for this build ({il.Length} entries) — building without it.");
         return [];
     }
 

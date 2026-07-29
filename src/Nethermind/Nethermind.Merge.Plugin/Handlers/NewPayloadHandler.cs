@@ -218,6 +218,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
                 return cachedResult;
             }
+
+            // No retained result (node restart / cache eviction): the block is canonical, so it was
+            // already accepted. Its inclusion-list compliance can no longer be re-derived once the parent
+            // state is pruned, and SYNCING for a canonical block is worse than the pre-EIP-7805 answer.
+            if (!_stateReader.HasStateForBlock(parentHeader))
+            {
+                if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored, inclusion list not re-checkable (parent state pruned). Block {block.ToString(Block.Format.Short)} found in main chain.");
+                return NewPayloadV1Result.Valid(block.Hash);
+            }
         }
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
