@@ -54,6 +54,10 @@ internal static class FusedOpcode
     // (PUSH1 PUSH1) of all dispatches on a heavy eth_call workload.
     public const byte PopPop = 0x1E;
     public const byte Push1Push1 = 0x1F;
+    // 0x4B..0x4C, the gap above BLOBBASEFEE. SWAPn POP is 2.5% of dispatches across the widths that
+    // appear, AND ISZERO is 1.5%.
+    public const byte SwapPop = 0x4B;
+    public const byte AndIsZero = 0x4C;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
@@ -380,6 +384,17 @@ internal sealed class InstructionStream
             // one's in the next, and the executor pushes low then high in that order.
             fused = FusedOpcode.Push1Push1;
             operand = first.Operand | ((ulong)code[pc + 1] << 8);
+        }
+        else if (second == Instruction.POP && firstOp is >= Instruction.SWAP1 and <= Instruction.SWAP8)
+        {
+            // Swap depth as the executor takes it: SWAP1 exchanges the top with the slot two down.
+            fused = FusedOpcode.SwapPop;
+            operand = (ulong)(firstOp - Instruction.SWAP1 + 2);
+        }
+        else if (firstOp == Instruction.AND && second == Instruction.ISZERO)
+        {
+            fused = FusedOpcode.AndIsZero;
+            operand = 0;
         }
         else
         {

@@ -170,6 +170,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.Push1Push1:
                             exceptionType = EvmInstructions.FusedPush1Push1Core(ref stack, entry.Operand);
                             break;
+                        case (Instruction)FusedOpcode.SwapPop:
+                            exceptionType = stack.SwapPop((int)entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.AndIsZero:
+                            exceptionType = stack.AndIsZero();
+                            break;
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
                             break;

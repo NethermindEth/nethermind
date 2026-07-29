@@ -2212,6 +2212,66 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
+    /// <summary>
+    /// Fused <c>SWAPn; POP</c>: the swap partner slot takes the top word and the top is dropped, which
+    /// is what the pair leaves behind without moving the discarded word. One depth check suffices: the
+    /// swap already requires <c>Head &gt;= depth</c> and depth is at least 2, so the pop cannot underflow
+    /// separately.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType SwapPop(int depth)
+    {
+        int head = Head;
+        if (head < depth)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        ref byte bytes = ref _stack;
+        nuint headOffset = (nuint)(uint)head << 5;
+
+        ref byte partner = ref Unsafe.Add(ref bytes, headOffset - ((nuint)(uint)depth << 5));
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
+
+        Unsafe.WriteUnaligned(ref partner, Unsafe.ReadUnaligned<EvmWord>(ref top));
+        Head = head - 1;
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
+    /// Fused <c>AND; ISZERO</c> run straight over the stack representation: the conjunction only has to
+    /// be compared against zero, so neither operand is converted to limbs and the intermediate is never
+    /// written back.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType AndIsZero()
+    {
+        int head = Head;
+        if (head < 2)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        ref byte bytes = ref _stack;
+        nuint headOffset = (nuint)(uint)head << 5;
+
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
+        ref byte second = ref Unsafe.Add(ref bytes, headOffset - (WordSize * 2));
+
+        bool isZero = (Unsafe.ReadUnaligned<EvmWord>(ref top) & Unsafe.ReadUnaligned<EvmWord>(ref second)) == default;
+
+        Unsafe.WriteUnaligned(ref second, default(EvmWord));
+        if (isZero)
+        {
+            Unsafe.Add(ref second, WordSize - 1) = 1;
+        }
+
+        Head = head - 1;
+        return EvmExceptionType.None;
+    }
+
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
