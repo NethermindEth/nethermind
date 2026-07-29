@@ -5,22 +5,22 @@ using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
-    public class TrieNodesMessageSerializer : IZeroMessageSerializer<TrieNodesMessage>
+    public class ByteCodesMessageSerializer : IZeroMessageSerializer<ByteCodesMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
+        public void Serialize(IByteBuffer byteBuffer, ByteCodesMessage message)
         {
-            int nodesLength = Rlp.LengthOfByteArrayList(message.Nodes);
-            int contentLength = Rlp.LengthOf(message.RequestId) + nodesLength;
+            int codesLength = Rlp.LengthOfByteArrayList(message.Codes);
+            int contentLength = Rlp.LengthOf(message.RequestId) + codesLength;
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
-            writer.WriteByteArrayList(message.Nodes);
+            writer.WriteByteArrayList(message.Codes);
         }
 
-        public TrieNodesMessage Deserialize(IByteBuffer byteBuffer)
+        public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             RlpReader ctx = new(memoryOwner.Memory.Span);
@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 memoryOwner = null;
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 
-                return new TrieNodesMessage(list) { RequestId = requestId };
+                return new ByteCodesMessage(list) { RequestId = requestId };
             }
             catch
             {

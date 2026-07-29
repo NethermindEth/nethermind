@@ -3,12 +3,13 @@
 
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 
-namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetByteCodesMessage : SnapMessageBase
     {
-        public override int PacketType => SnapMessageCode.GetByteCodes;
+        public override int PacketType => Snap1MessageCode.GetByteCodes;
 
         /// <summary>
         /// Code hashes to retrieve the code for

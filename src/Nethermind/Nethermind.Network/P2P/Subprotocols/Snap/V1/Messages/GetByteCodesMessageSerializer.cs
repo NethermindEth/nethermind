@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetByteCodesMessageSerializer : SnapSerializerBase<GetByteCodesMessage>
     {

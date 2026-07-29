@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
-namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public sealed class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
     {
