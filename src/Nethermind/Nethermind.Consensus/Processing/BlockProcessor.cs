@@ -164,15 +164,16 @@ public partial class BlockProcessor(
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        CommitState(spec);
+
+        // Both execution paths flush these journaled system writes: sequential transactions commit
+        // individually, and BAL parallel execution commits while applying the final state changes.
+        // The mandatory post-withdrawal commit below covers empty blocks.
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
-
-        CommitState(spec);
 
         if (spec.IsEip4844Enabled)
         {

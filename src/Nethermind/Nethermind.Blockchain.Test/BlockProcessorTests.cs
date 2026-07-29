@@ -42,6 +42,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
 using Nethermind.Trie;
@@ -255,9 +256,11 @@ public class BlockProcessorTests
 
     private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
+        IBlockCachePreWarmer? preWarmer = null,
+        Func<IWorldState, IWorldState>? decorateStateProvider = null)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        stateProvider = decorateStateProvider?.Invoke(stateProvider) ?? stateProvider;
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
@@ -286,6 +289,29 @@ public class BlockProcessorTests
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
+    }
+
+    [Test]
+    public void Block_processing_commits_state_only_at_required_boundaries()
+    {
+        CommitCountingWorldState? countingState = null;
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(
+            decorateStateProvider: state => countingState = new CommitCountingWorldState(state));
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithHeader(header).TestObject;
+
+        branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.None,
+            NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(countingState!.CommitWithoutRootsCount, Is.EqualTo(1));
+            Assert.That(countingState.CommitWithRootsCount, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1693,6 +1719,26 @@ public class BlockProcessorTests
 
             public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
                 blockTracer.RecordOpcode();
+        }
+    }
+
+    private sealed class CommitCountingWorldState(IWorldState state) : WorldStateDecorator(state)
+    {
+        public int CommitWithoutRootsCount { get; private set; }
+        public int CommitWithRootsCount { get; private set; }
+
+        public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
+        {
+            if (commitRoots)
+            {
+                CommitWithRootsCount++;
+            }
+            else
+            {
+                CommitWithoutRootsCount++;
+            }
+
+            base.Commit(releaseSpec, tracer, isGenesis, commitRoots);
         }
     }
 }
