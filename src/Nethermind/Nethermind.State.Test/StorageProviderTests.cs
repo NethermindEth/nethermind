@@ -1253,7 +1253,7 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    private enum RoundBoundary
+    public enum RoundBoundary
     {
         None,
         ResetKeepingBlockChanges,
