@@ -462,6 +462,30 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(5)]
+    public void ElisionBisect(int counter)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(counter)
+            .Op(Instruction.JUMPDEST)
+            .PushData(1).Op(Instruction.SWAP1).Op(Instruction.SUB)
+            .Op(Instruction.DUP1)
+            .PushData(2).Op(Instruction.JUMPI)
+            .Op(Instruction.STOP)
+            .Done;
+
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+        System.Console.WriteLine($"BISECT counter={counter} baseline={baseline.GasSpent} streamed={streamed.GasSpent} delta={(long)streamed.GasSpent - (long)baseline.GasSpent}");
+        Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+            "gas must match per taken-jump count: a landing that re-charges the JUMPDEST scales the error with the jump count");
+    }
+
     private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream, ulong gasLimit = 8_000_000)
     {
         TestState.CreateAccount(CalleeAddress, 1000000);

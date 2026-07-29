@@ -265,7 +265,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 exceptionType = EvmExceptionType.StackOverflow;
                                 break;
                             }
-                            if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump))
+                            if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump + GasCostOf.JumpDest))
                             {
                                 TGasPolicy.SetOutOfGas(ref gas);
                                 OpCodeCount += opCodeCount;
@@ -273,8 +273,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             }
 
                             opCodeCount++;
-                            // Set entryIndex to dest-1; the shared loop-tail entryIndex++ lands it on dest.
-                            // programCounter is transiently stale until the next entry sets it — fine, nothing reads it here.
+                            // The operand entry sits one past the JUMPDEST, whose gas this op already charged;
+                            // the shared loop-tail entryIndex++ lands there. programCounter is transiently
+                            // stale until the next entry sets it — fine, nothing reads it here.
                             entryIndex = (int)entry.Operand - 1;
                             break;
                         case (Instruction)FusedOpcode.StaticJumpI:
@@ -294,6 +295,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
                             {
+                                if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
+                                {
+                                    TGasPolicy.SetOutOfGas(ref gas);
+                                    OpCodeCount += opCodeCount;
+                                    goto OutOfGas;
+                                }
+
                                 entryIndex = (int)entry.Operand - 1;
                             }
                             else if (conditionUnderflow)

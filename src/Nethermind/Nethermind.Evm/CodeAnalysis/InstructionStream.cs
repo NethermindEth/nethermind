@@ -174,11 +174,6 @@ internal sealed class InstructionStream
         pcToEntry.AsSpan().Fill(InvalidEntry);
 
         int openBlock = -1;
-        // Elision experiment: a JUMPDEST whose successor can carry its gas emits no entry; the next
-        // in-block op becomes the charging entry. Guards: never two in a row, no fusion into the
-        // seeded block before its charging entry exists, successor must be in-block.
-        bool blockNeedsFirstOp = false;
-        bool previousWasElidedJumpDest = false;
         int pc = 0;
         // ConstantBytes (the big-endian form) is read only by the fused bitwise cores; track whether any
         // get emitted so a stream whose constants feed only arithmetic/shift fusion skips that allocation.
@@ -192,12 +187,13 @@ internal sealed class InstructionStream
 
             if (instruction == Instruction.JUMPDEST)
             {
-                if (!previousWasElidedJumpDest && CanCarryJumpDestGas(code, pc + 1))
+                if (openBlock >= 0 && CanCarryJumpDestGas(code, pc + 1))
                 {
-                    blockGas.Add(GasCostOf.JumpDest);
-                    openBlock = blockGas.Count - 1;
-                    blockNeedsFirstOp = true;
-                    previousWasElidedJumpDest = true;
+                    // No entry: fall-through pays the marker as part of the block that flows into it
+                    // (straight-line ops cannot divert), and both jump flavors charge it at the jump
+                    // and land one entry past. The successor opens a fresh block below.
+                    blockGas[openBlock] += GasCostOf.JumpDest;
+                    openBlock = -1;
                     pc += size;
                     continue;
                 }
@@ -211,7 +207,6 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
-                    && !blockNeedsFirstOp
                     && TryFuseGluePair(code, ops, instruction, pc, out StreamOp glued))
                 {
                     blockGas[openBlock] += cost;
@@ -219,7 +214,6 @@ internal sealed class InstructionStream
                     ops[^1] = glued;
                 }
                 else if (openBlock >= 0
-                    && !blockNeedsFirstOp
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -264,11 +258,6 @@ internal sealed class InstructionStream
                         openBlock = blockGas.Count - 1;
                         kind = StreamOpKind.BlockFirst;
                     }
-                    else if (blockNeedsFirstOp)
-                    {
-                        kind = StreamOpKind.BlockFirst;
-                        blockNeedsFirstOp = false;
-                    }
 
                     blockGas[openBlock] += cost;
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
@@ -284,7 +273,6 @@ internal sealed class InstructionStream
                 // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
                 openBlock = -1;
-                blockNeedsFirstOp = false;
                 ops.Add(new StreamOp(
                     conditional ? FusedOpcode.StaticJumpI : FusedOpcode.StaticJump,
                     conditional ? StreamOpKind.StaticJumpI : StreamOpKind.StaticJump,
@@ -296,11 +284,8 @@ internal sealed class InstructionStream
             {
                 // Dynamic JUMP/JUMPI/PUSH2 and trailing truncated PUSHes.
                 openBlock = -1;
-                blockNeedsFirstOp = false;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, 0));
             }
-
-            if (instruction != Instruction.JUMPDEST) previousWasElidedJumpDest = false;
 
             pc += size;
         }
@@ -322,6 +307,10 @@ internal sealed class InstructionStream
                 // to stream so the bytecode loop's ValidateJump produces the correct failure.
                 if (targetEntry == InvalidEntry)
                     return null;
+                // The jump charges the JUMPDEST itself, so it lands one entry past a solo marker;
+                // an elided marker has no entry and pcToEntry already points past it.
+                if (targetEntry < ops.Count && (Instruction)ops[targetEntry].Opcode == Instruction.JUMPDEST)
+                    targetEntry++;
                 ops[i] = new StreamOp(op.Opcode, op.Kind, op.Pc, op.BlockIndex, op.Advance, targetEntry);
             }
         }
