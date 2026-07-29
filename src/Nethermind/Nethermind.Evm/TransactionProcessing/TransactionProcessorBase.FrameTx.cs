@@ -84,8 +84,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // would have its blob reservation fully refunded (blobs go uncharged) and BlobGasUsed is not
         // set. Blob support is deferred pending the upstream blob-semantics spec; devnets do not send
         // blob frame txs. Charge blob gas (and reject or account it) once that lands.
+        // Overflow-checked like BuyGas: premium <= max fee and spentGas <= txGasLimit, so bounding
+        // this product also bounds the settlement products (spentCost, fees) below.
         ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
-        UInt256 maxCost = (UInt256)txGasLimit * tx.DecodedMaxFeePerGas + (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault();
+        if (UInt256.MultiplyOverflow((UInt256)txGasLimit, tx.DecodedMaxFeePerGas, out UInt256 maxCost)
+            || UInt256.MultiplyOverflow((UInt256)blobGas, tx.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 maxBlobCost)
+            || UInt256.AddOverflow(maxCost, maxBlobCost, out maxCost))
+        {
+            TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE");
+            return RequiredBalanceExceeds256Bits(tx);
+        }
 
         FrameTxContext frameContext = new(
             sender,

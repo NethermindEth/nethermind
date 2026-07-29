@@ -166,6 +166,28 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
+    {
+        // max_fee = max_priority = 2^255 with an even tx gas limit (415_950 here) wraps maxCost to
+        // 0 mod 2^256: unchecked, the payer gate passes for free and a wrapped premium is credited
+        // to the beneficiary out of nothing.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient));
+        tx.GasPrice = UInt256.One << 255;
+        tx.DecodedMaxFeePerGas = UInt256.One << 255;
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance));
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
+        }
+    }
+
+    [Test]
     public void Execute_SenderFrameBeforeExecutionApproval_TransactionInvalid()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
