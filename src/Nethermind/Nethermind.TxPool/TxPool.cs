@@ -84,6 +84,11 @@ namespace Nethermind.TxPool
         private bool _isDisposed;
         private long _pendingTransactionsAdded = 0;
 
+        // Count of pending frame txs carrying an EIP-8141 expiry deadline; lets the per-head expiry
+        // pass skip the pool walk entirely when there is nothing to expire (the case on every network
+        // where the fork is inactive). Maintained under the pool lock via the Inserted/Removed events.
+        private int _expiringFrameTxCount;
+
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
@@ -236,8 +241,19 @@ namespace Nethermind.TxPool
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
-        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args) => AddPendingDelegations(args.Value);
-        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
+        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
+        {
+            AddPendingDelegations(args.Value);
+            if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+        }
+
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        {
+            RemovePendingDelegations(args.Value);
+            if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
+        }
+
+        private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)
@@ -458,22 +474,16 @@ namespace Nethermind.TxPool
         /// Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.
         /// </summary>
         /// <remarks>
-        /// An expired frame transaction can never satisfy its validation prefix (the expiry-verifier predeploy
-        /// reverts once <c>block.timestamp &gt; deadline</c>), so it must be evicted rather than re-propagated
-        /// (ethereum/EIPs#12007, "Revalidation"). The deadline is read statically from the expiry-verifier frame, so
-        /// no validation-prefix re-simulation is required. Guarded by the fork flag so there is no cost on networks
-        /// where EIP-8141 is not active.
-        /// <para>
-        /// The eviction predicate is <c>timestamp &gt; deadline</c> — deliberately the predeploy's exact revert
-        /// condition, not the tighter <c>timestamp &gt;= deadline</c>. Because block timestamps strictly increase, a
-        /// tx with <c>deadline == head.Timestamp</c> is already unincludable, so retaining it costs at most one slot;
-        /// keeping the pool predicate textually identical to the consensus rule guarantees the pool never evicts a tx
-        /// the predeploy would still accept.
-        /// </para>
+        /// An expired frame tx can never be included (the expiry-verifier predeploy reverts once
+        /// <c>block.timestamp &gt; deadline</c>), so it is evicted rather than re-propagated. The predicate matches
+        /// that revert condition exactly (not <c>&gt;=</c>) so the pool never drops a tx the predeploy would accept.
+        /// The count guard skips the pool walk when no expiring frame tx is present.
+        /// EIP8141: a deadline-ordered index (evict without scanning) is deferred to the scalable eviction layer.
         /// </remarks>
         private void RemoveExpiredFrameTransactions(Block block)
         {
-            if (!_specProvider.GetSpec(block.Header).IsEip8141Enabled)
+            if (Volatile.Read(ref _expiringFrameTxCount) == 0
+                || !_specProvider.GetSpec(block.Header).IsEip8141Enabled)
             {
                 return;
             }

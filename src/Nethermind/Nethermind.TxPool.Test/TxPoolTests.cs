@@ -2078,9 +2078,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141 (ethereum/EIPs#12007): the expiry-verifier predeploy reverts once block.timestamp > deadline,
-        // so a pending frame transaction whose deadline has passed can never be included and must be evicted on the
-        // new head. deadline == timestamp is still valid (revert is strictly greater-than).
+        // EIP-8141: expired frame txs must be evicted on the new head; deadline == timestamp is still valid
+        // (the predeploy reverts only on strictly greater-than).
         [TestCase(1_000UL, 1_500UL, 0, TestName = "deadline in the past is dropped")]
         [TestCase(2_000UL, 1_500UL, 1, TestName = "deadline in the future is retained")]
         [TestCase(1_500UL, 1_500UL, 1, TestName = "deadline equal to head timestamp is retained")]
@@ -2100,9 +2099,8 @@ namespace Nethermind.TxPool.Test
                 "expired frame transactions must be evicted on the new head, unexpired ones retained");
         }
 
-        // A frame tx carrying no expiry-verifier frame has no deadline, so the expiry pass must never evict it,
-        // regardless of the new head's timestamp. This pins the branch a future expiry-indexing optimisation is
-        // most likely to break (TryGetExpiryDeadline returning false).
+        // No expiry frame means no deadline, so the expiry pass (and the count guard that gates it) must never
+        // evict it, whatever the head timestamp.
         [Test]
         public async Task Frame_transaction_without_expiry_frame_survives_new_head()
         {
@@ -2118,6 +2116,25 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
                 "a frame transaction without an expiry frame has no deadline and must never be evicted by the expiry pass");
+        }
+
+        // Fast path: a non-frame tx is never counted or evicted by the expiry pass, even with the fork active
+        // and an extreme head timestamp.
+        [Test]
+        public async Task Regular_transaction_survives_expiry_pass_when_fork_active()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ulong.MaxValue).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
+                "the expiry pass must only ever touch frame transactions carrying a deadline");
         }
 
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline)
