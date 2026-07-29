@@ -75,6 +75,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 ref readonly StreamOp entry = ref ops[entryIndex];
                 Instruction instruction = (Instruction)entry.Opcode;
+                if (OpcodeHistogram.IsEnabled) OpcodeHistogram.Record(instruction);
 
                 if (entry.Kind < StreamOpKind.Boundary)
                 {
@@ -482,6 +483,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
 
             Instruction instruction = (Instruction)Unsafe.Add(ref code, programCounter);
+            if (OpcodeHistogram.IsEnabled) OpcodeHistogram.Record(instruction);
 
             if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                 throw new OperationCanceledException("Cancellation Requested");
