@@ -348,6 +348,17 @@ public class VotesManagerTests
     }
 
     [Test]
+    public void OnNewBlock_HeaderOnlySuggestion_DoesNotThrow()
+    {
+        // IBlockTree.SuggestHeader raises NewSuggestedBlock with a null block, so dereferencing it threw
+        // a NullReferenceException back out through BlockTree.Suggest, failing the suggestion itself.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        _ = new VoteManagerBuilder { BlockTree = blockTree }.Build();
+
+        Assert.DoesNotThrow(() => blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(null!)));
+    }
+
+    [Test]
     public async Task OnNewBlock_QcAlreadyBuiltByHandleVote_DoesNotBuildAgain()
     {
         PrivateKey[] keys = MakeKeys(20);
