@@ -86,8 +86,13 @@ wait_for_rpc() {
   log "Waiting for JSON-RPC at $url (timeout ${timeout}s)..."
   while true; do
     if [[ -n "$container" ]] && ! docker ps --format '{{.Names}}' | grep -qx "$container"; then
-      log "Container '$container' exited while waiting for RPC. Last 100 log lines:"
-      docker logs "$container" 2>&1 | tail -n 100 || true
+      log "Container '$container' exited while waiting for RPC."
+      local full; full="$(docker logs "$container" 2>&1 || true)"
+      # A long --help dump (unrecognized/invalid CLI arg on an older build) buries the real
+      # error past the tail window — surface any error-signal lines from the FULL log first.
+      printf '%s\n' "$full" | grep -inE 'error|exception|unrecognized|unhandled|unknown option|invalid' | head -20
+      echo "--- last 100 log lines ---"
+      printf '%s\n' "$full" | tail -n 100
       die "node container died before serving JSON-RPC"
     fi
     resp="$(rpc_post "$url" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)"
