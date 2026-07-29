@@ -50,14 +50,13 @@ internal static class FusedOpcode
     public const byte Shr = 0x2D;
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
-    // Glue pairs, in the 0x1E..0x1F gap above SAR. Measured at 2.7% (POP POP) and 2.2%
-    // (PUSH1 PUSH1) of all dispatches on a heavy eth_call workload.
-    public const byte PopPop = 0x1E;
+    // Glue pairs. 0x1E is CLZ and 0x4B is SLOTNUM in this tree, so the only bytes left undefined
+    // below the 0xA5 range are 0x1F and 0x4C..0x4F; the 0xA5.. range is avoided because the
+    // frame-transaction work claims part of it. Verified against Instruction.cs, not assumed.
     public const byte Push1Push1 = 0x1F;
-    // 0x4B..0x4C, the gap above BLOBBASEFEE. SWAPn POP is 2.5% of dispatches across the widths that
-    // appear, AND ISZERO is 1.5%.
-    public const byte SwapPop = 0x4B;
     public const byte AndIsZero = 0x4C;
+    public const byte PopPop = 0x4D;
+    public const byte SwapPop = 0x4E;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
