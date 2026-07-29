@@ -3,6 +3,7 @@
 
 using System.Numerics;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 
@@ -19,15 +20,15 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
 {
     private readonly Bucket<Stem>[] _leafBlobs =
     [
-        new(config.AccountLeafBlobCacheSizeBudget),
-        new(config.CodeLeafBlobCacheSizeBudget),
-        new(config.StorageLeafBlobCacheSizeBudget),
+        new(config.AccountLeafBlobCacheSizeBudget, Metrics.AccountLeafSnapshotMemory),
+        new(config.CodeLeafBlobCacheSizeBudget, Metrics.CodeLeafSnapshotMemory),
+        new(config.StorageLeafBlobCacheSizeBudget, Metrics.StorageLeafSnapshotMemory),
     ];
     private readonly Bucket<TrieNodeKey>[] _trieNodes =
     [
-        new(config.AccountTrieNodeCacheSizeBudget, trackTrieNodeMetrics: true),
-        new(config.CodeTrieNodeCacheSizeBudget, trackTrieNodeMetrics: true),
-        new(config.StorageTrieNodeCacheSizeBudget, trackTrieNodeMetrics: true),
+        new(config.AccountTrieNodeCacheSizeBudget, Metrics.AccountTrieSnapshotMemory),
+        new(config.CodeTrieNodeCacheSizeBudget, Metrics.CodeTrieSnapshotMemory),
+        new(config.StorageTrieNodeCacheSizeBudget, Metrics.StorageTrieSnapshotMemory),
     ];
 
     /// <summary>Returns a caller-owned lease when <paramref name="stem"/> is cached for <paramref name="hash"/>.</summary>
@@ -97,15 +98,15 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
         private readonly Lock _pruneLock = new();
         private readonly long _maxCacheMemoryThreshold;
         private readonly int _bucketMask;
-        private readonly bool _trackTrieNodeMetrics;
+        private readonly PbtSnapshotMemoryLabel _metricsLabel;
 
         private long _currentMemoryUsage;
         private int _nextShardToClear;
         private int _isDisposed;
 
-        public Bucket(ulong budget, bool trackTrieNodeMetrics = false)
+        public Bucket(ulong budget, PbtSnapshotMemoryLabel metricsLabel)
         {
-            _trackTrieNodeMetrics = trackTrieNodeMetrics;
+            _metricsLabel = metricsLabel;
             _maxCacheMemoryThreshold = budget > long.MaxValue ? long.MaxValue : (long)budget;
             long totalEntryCount = _maxCacheMemoryThreshold / EstimatedSizePerEntry;
             long targetBucketSize = (long)((totalEntryCount / UtilRatio) / ShardCount);
@@ -127,12 +128,12 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
                 Entry? entry = _cacheShards[shardIdx][bucketIdx];
                 if (Volatile.Read(ref _isDisposed) != 0 || entry is null || !entry.Key.Equals(key) || entry.Hash != hash)
                 {
-                    if (_trackTrieNodeMetrics) Metrics.IncrementPbtTrieNodeCacheMisses();
+                    Metrics.PbtStoreCacheMisses.Increment(_metricsLabel);
                     return null;
                 }
 
                 entry.Memory.AcquireLease();
-                if (_trackTrieNodeMetrics) Metrics.IncrementPbtTrieNodeCacheHits();
+                Metrics.PbtStoreCacheHits.Increment(_metricsLabel);
                 return entry.Memory;
             }
         }
@@ -159,7 +160,7 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
                 int delta = size - previousSize;
                 _shardMemoryUsages[shardIdx] += delta;
                 Interlocked.Add(ref _currentMemoryUsage, delta);
-                if (_trackTrieNodeMetrics) Metrics.AddPbtTrieNodeCacheMemory(delta);
+                Metrics.PbtStoreCacheMemory.AddBy(_metricsLabel, delta);
                 ((IDisposable?)old?.Memory)?.Dispose();
             }
 
@@ -201,7 +202,7 @@ public sealed class PbtStoreCache(IPbtConfig config) : IDisposable
                 long freedMemory = _shardMemoryUsages[shardIdx];
                 _shardMemoryUsages[shardIdx] = 0;
                 Interlocked.Add(ref _currentMemoryUsage, -freedMemory);
-                if (_trackTrieNodeMetrics) Metrics.AddPbtTrieNodeCacheMemory(-freedMemory);
+                Metrics.PbtStoreCacheMemory.AddBy(_metricsLabel, -freedMemory);
             }
         }
 

@@ -91,29 +91,30 @@ public static class Metrics
         Interlocked.Add(ref _pbtBaseSnapshotCount, direction);
     }
 
-    private static long _pbtTrieNodeCacheMemory;
-
     [GaugeMetric]
-    [Description("Retained payload bytes in the shared pbt trie-node cache, excluding cache entry and data-structure overhead")]
-    public static long PbtTrieNodeCacheMemory => Volatile.Read(ref _pbtTrieNodeCacheMemory);
-
-    internal static void AddPbtTrieNodeCacheMemory(long delta) => Interlocked.Add(ref _pbtTrieNodeCacheMemory, delta);
-
-    private static long _pbtTrieNodeCacheHits;
+    [Description("Retained payload bytes in the shared pbt store cache, by partition and value type, excluding cache entry and data-structure overhead")]
+    [KeyIsLabel("partition", "type")]
+    public static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> PbtStoreCacheMemory { get; } = NewStoreCacheMetric();
 
     [CounterMetric]
-    [Description("Reads served by the shared pbt trie-node cache")]
-    public static long PbtTrieNodeCacheHits => Volatile.Read(ref _pbtTrieNodeCacheHits);
-
-    internal static void IncrementPbtTrieNodeCacheHits() => Interlocked.Increment(ref _pbtTrieNodeCacheHits);
-
-    private static long _pbtTrieNodeCacheMisses;
+    [Description("Reads served by the shared pbt store cache, by partition and value type")]
+    [KeyIsLabel("partition", "type")]
+    public static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> PbtStoreCacheHits { get; } = NewStoreCacheMetric();
 
     [CounterMetric]
-    [Description("Reads that missed the shared pbt trie-node cache")]
-    public static long PbtTrieNodeCacheMisses => Volatile.Read(ref _pbtTrieNodeCacheMisses);
+    [Description("Reads that missed the shared pbt store cache, by partition and value type")]
+    [KeyIsLabel("partition", "type")]
+    public static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> PbtStoreCacheMisses { get; } = NewStoreCacheMetric();
 
-    internal static void IncrementPbtTrieNodeCacheMisses() => Interlocked.Increment(ref _pbtTrieNodeCacheMisses);
+    private static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> NewStoreCacheMetric() => new()
+    {
+        [AccountLeafSnapshotMemory] = 0,
+        [AccountTrieSnapshotMemory] = 0,
+        [CodeLeafSnapshotMemory] = 0,
+        [CodeTrieSnapshotMemory] = 0,
+        [StorageLeafSnapshotMemory] = 0,
+        [StorageTrieSnapshotMemory] = 0,
+    };
 
     private static long _pbtTrieWarmerTriggered;
 
@@ -153,7 +154,7 @@ public static class Metrics
     public static IMetricObserver PbtSnapshotBundleBlockNumberDepth { get; set; } = new NoopMetricObserver();
 }
 
-/// <summary>Metric labels identifying a PBT snapshot partition and its retained value type.</summary>
+/// <summary>Metric labels identifying a PBT partition and value type.</summary>
 public readonly record struct PbtSnapshotMemoryLabel(string Partition, string Type) : IMetricLabels
 {
     /// <inheritdoc/>
