@@ -7,6 +7,7 @@ namespace Nethermind.Core;
 public static class Eip8037Constants
 {
     /// <summary> Execution gas component of the EIP-7702 auth-base cost under the two-dimensional gas model. </summary>
+    /// <remarks> Spelled <c>REGULAR_PER_AUTH_BASE_COST</c> in EIP-8037; renamed here for consistency with the execution-gas dimension. </remarks>
     public const ulong PerAuthBaseExecutionCost = 7_500;
 
     /// <summary> State bytes charged per authorization tuple for the state-gas dimension. </summary>

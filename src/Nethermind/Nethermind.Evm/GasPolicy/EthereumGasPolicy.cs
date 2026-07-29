@@ -425,7 +425,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
     {
         // No StateGasSpillRefunded marking here: the credit-time LIFO refill already marked,
-        // and the marks arrive via the regular child-gas merge.
+        // and the marks arrive via the normal child-gas merge.
         long discardableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, discardableStateGas);
         gas.StateGasUsed -= appliedRefund;

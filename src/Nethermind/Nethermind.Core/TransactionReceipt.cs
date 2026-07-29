@@ -66,7 +66,7 @@ namespace Nethermind.Core
         public ulong BlockGasUsed { get; set; }
         /// <summary>EIP-8037 state-dim gas (storage / state-mutating ops) used by block accounting.</summary>
         public ulong StorageGasUsed { get; set; }
-        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas).</summary>
+        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas). Not the EIP-8037 execution-dimension block-accounting figure — see <see cref="BlockGasUsed"/>.</summary>
         public ulong ExecutionGasUsed { get; set; }
         /// <summary>Effective gas price after EIP-1559 baseFee adjustment - computed at receipt-build time.</summary>
         public UInt256 EffectiveGasPrice { get; set; }
