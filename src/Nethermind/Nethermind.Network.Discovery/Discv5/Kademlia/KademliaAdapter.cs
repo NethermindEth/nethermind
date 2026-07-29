@@ -294,6 +294,7 @@ public sealed class KademliaAdapter(
         {
             if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} {(hasSession ? "with existing session" : "without session")}, bytes: {packet.Length}.");
             await discoveryHandler.SendAsync(packet, receiver.Address, token);
+            RecordSent(message);
             return pendingNonceKey;
         }
         catch
@@ -312,6 +313,7 @@ public sealed class KademliaAdapter(
 
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, receiver.Address, token);
+        RecordSent(message);
     }
 
     [SkipLocalsInit]
@@ -395,6 +397,7 @@ public sealed class KademliaAdapter(
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash.ValueHash256, endpoint), session);
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {requestedEnrSequence}.");
         await discoveryHandler.SendAsync(handshakePacket, endpoint, token);
+        RecordSent("Handshake");
     }
 
     private async Task HandleOrdinary(IPEndPoint endpoint, Packet packet, CancellationToken token)
@@ -492,6 +495,7 @@ public sealed class KademliaAdapter(
         {
             if (_logger.IsTrace) _logger.Trace($"Resending discv5 WHOAREYOU challenge to {endpoint}.");
             await discoveryHandler.SendAsync(existingChallenge.Packet, endpoint, token);
+            RecordSent("WhoAreYou");
             return;
         }
 
@@ -506,7 +510,13 @@ public sealed class KademliaAdapter(
         SetSentChallenge(challengeKey, packet);
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 WHOAREYOU challenge to {endpoint}, known ENR seq: {enrSequence}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, endpoint, token);
+        RecordSent("WhoAreYou");
     }
+
+    private static void RecordSent(Discv5Message message) => RecordSent(message.MessageType.ToString());
+
+    private static void RecordSent(string messageType)
+        => Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv5", messageType));
 
     private async Task HandleHandshakeMessage(
         IPEndPoint endpoint,

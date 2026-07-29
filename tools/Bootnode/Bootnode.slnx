@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Nethermind.Bootnode/Nethermind.Bootnode.csproj" />
+  <Project Path="Nethermind.Bootnode.Test/Nethermind.Bootnode.Test.csproj" />
+</Solution>
