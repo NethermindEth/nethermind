@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -25,7 +26,7 @@ namespace Nethermind.Evm.Test;
 /// <summary>
 /// End-to-end EIP-8141 outer-loop scenarios from the spec "Behavior" section, executed through
 /// <c>TransactionProcessor.Execute</c> under the prototype fork. Frames run with a base fee of 0 and
-/// 1 wei fees so balance assertions stay simple.
+/// 1 wei fees by default so balance assertions stay simple.
 /// State is NOT rolled back when a frame transaction turns out invalid mid-loop — in block
 /// processing an invalid transaction invalidates the block, so nothing observes that state.
 /// </summary>
@@ -41,6 +42,7 @@ public class FrameTxProcessorTests
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Observer = TestItem.AddressB;
     private static readonly Address Recipient = TestItem.AddressC;
+    private static readonly Address Beneficiary = TestItem.AddressE;
 
     [SetUp]
     public void Setup()
@@ -123,6 +125,88 @@ public class FrameTxProcessorTests
         UInt256 balance = _stateProvider.GetBalance(Sender);
         Assert.That(balance, Is.LessThan(1.Ether), "payer charged");
         Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)frame.GasLimit), "unused gas refunded");
+    }
+
+    [TestCase(7ul, 2ul, 10ul, 2ul, TestName = "Execute_NonZeroBaseFee_PremiumIsTheRequestedPriorityFee")]
+    [TestCase(7ul, 5ul, 8ul, 1ul, TestName = "Execute_NonZeroBaseFee_PremiumCappedByMaxFeeMinusBaseFee")]
+    public void Execute_NonZeroBaseFee_PaysBeneficiaryThePremiumAndBurnsTheBaseFee(
+        ulong baseFee, ulong priorityFee, ulong maxFee, ulong expectedPremium)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.GasPrice = priorityFee;
+        tx.DecodedMaxFeePerGas = maxFee;
+
+        CallOutputTracer tracer = new();
+        TransactionResult result = Process(tx, baseFeePerGas: baseFee, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        UInt256 spentGas = (UInt256)tracer.GasSpent;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(spentGas * expectedPremium), "beneficiary gets the premium only");
+            Assert.That(_stateProvider.GetBalance(Sender) + _stateProvider.GetBalance(Beneficiary),
+                Is.EqualTo(1.Ether - spentGas * baseFee), "the base fee share is burned");
+        }
+    }
+
+    [Test]
+    public void Execute_TracingFees_ReportsThePremiumAndTheBurntBaseFee()
+    {
+        const ulong baseFee = 7;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.DecodedMaxFeePerGas = 10;
+
+        FeesTracer tracer = new();
+        TransactionResult result = Process(tx, baseFeePerGas: baseFee, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        // The default 1-wei priority fee makes the beneficiary credit equal the spent gas.
+        UInt256 spentGas = _stateProvider.GetBalance(Beneficiary);
+        Assert.That(spentGas, Is.Not.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo(spentGas), "premium half");
+            Assert.That(tracer.BurntFees, Is.EqualTo(spentGas * baseFee), "burnt half");
+        }
+    }
+
+    [Test]
+    public void Execute_MaxFeeBelowBaseFee_ReturnsMaxFeePerGasBelowBaseFee()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.DecodedMaxFeePerGas = 5;
+
+        TransactionResult result = Process(tx, baseFeePerGas: 10);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
+        Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
+    }
+
+    [Test]
+    public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
+    {
+        // max_fee = max_priority = 2^255 with an even tx gas limit (415_950 here) wraps maxCost to
+        // 0 mod 2^256: unchecked, the payer gate passes for free and a wrapped premium is credited
+        // to the beneficiary out of nothing.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient));
+        tx.GasPrice = UInt256.One << 255;
+        tx.DecodedMaxFeePerGas = UInt256.One << 255;
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance));
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
+        }
     }
 
     [Test]
@@ -563,13 +647,14 @@ public class FrameTxProcessorTests
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
     }
 
-    private TransactionResult Process(Transaction tx)
+    private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
-            .WithBaseFeePerGas(0)
+            .WithBaseFeePerGas(baseFeePerGas)
+            .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
             .WithGasLimit(30_000_000).TestObject;
-        return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+        return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
     }
 
     private void DeploySmartSender(byte[] code) => DeployContract(Sender, code, 1.Ether);
