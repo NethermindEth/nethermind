@@ -191,6 +191,10 @@ namespace Nethermind.TxPool
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
+            // EIP-8141: resolve and record the frame-tx payer for downstream mempool policy; runs
+            // last so only otherwise-admissible frame txs (sender already recovered) are resolved.
+            postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
+
             _postHashFilters = postHashFilters.ToArray();
 
             int? reportMinutes = txPoolConfig.ReportMinutes;
