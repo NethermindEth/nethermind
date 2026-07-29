@@ -259,16 +259,20 @@ public class Eip8141ScenarioTests
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
-    // Pins the lower bound of the unrolled-batch log-clear window. AtomicApproveAndSwap can't catch a
-    // batchStartIndex that is too low: its only log-emitting frame is inside the batch, so an over-wide
-    // clear still passes. Here a pre-batch frame emits a surviving log, so clearing at or below the
-    // batch start would wipe it and fail.
+    // Pins the bounds of the unrolled-batch log-clear window and that the batch can unroll in the
+    // middle of the frame list. AtomicApproveAndSwap can't catch a batchStartIndex that is too low
+    // (its only log-emitting frame is inside the batch, so an over-wide clear still passes) nor a
+    // clear that runs past the batch, because nothing runs after its terminal frame. Here a pre-batch
+    // frame and a post-batch frame each emit a surviving log, so the derived tx log union must be
+    // exactly [pre-batch log] ++ [] ++ [post-batch log] in frame order: clearing at or below the batch
+    // start wipes the pre-batch log, and resuming at i = terminal must leave the post-batch log intact.
     [Test]
-    public void UnrolledBatch_DiscardsBatchLogsButKeepsPreBatchLogs()
+    public void UnrolledBatch_DiscardsBatchLogsKeepsPreAndPostBatchLogs()
     {
         Address logger = TestItem.AddressD;
         Address token = TestItem.AddressE;
         Address dex = TestItem.AddressF;
+        Address postLogger = Recipient;
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
         // Pre-batch frame: emits a log and commits normally, outside the batch.
         DeployContract(logger, Prepare.EvmCode.Log(0, 0).Op(Instruction.STOP).Done);
@@ -279,26 +283,33 @@ public class Eip8141ScenarioTests
             .Op(Instruction.STOP).Done);
         // Terminal batch frame reverts, unrolling the batch.
         DeployContract(dex, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        // Post-batch frame: runs after the unroll resumes at i = terminal, emits a surviving log.
+        DeployContract(postLogger, Prepare.EvmCode.Log(0, 0).Op(Instruction.STOP).Done);
 
         Transaction tx = FrameTx(Sender, nonce: 0,
             SelfVerifyFrame(),
             SenderFrame(logger),
             SenderFrame(token, flags: TxFrame.AtomicBatchFlag),
-            SenderFrame(dex));
+            SenderFrame(dex),
+            SenderFrame(postLogger));
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
         Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
         {
-            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
-            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+            TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess,
         }));
         Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1),
             "the pre-batch frame's log survives — the clear window must not reach below the batch start");
         Assert.That(receipt.FrameReceipts[2].Logs, Is.Empty, "the unrolled batch frame's log is discarded");
-        Assert.That(receipt.Logs, Has.Length.EqualTo(1), "exactly the one pre-batch log survives the unroll");
+        Assert.That(receipt.FrameReceipts[4].Logs, Has.Length.EqualTo(1),
+            "the post-batch frame's log survives — the clear window must not run past the batch");
+        Assert.That(receipt.Logs, Has.Length.EqualTo(2), "exactly the pre- and post-batch logs survive the unroll");
         Assert.That(receipt.Logs![0], Is.SameAs(receipt.FrameReceipts[1].Logs[0]),
-            "the surviving tx log is precisely the pre-batch frame's log");
+            "the first surviving tx log is the pre-batch frame's log");
+        Assert.That(receipt.Logs[1], Is.SameAs(receipt.FrameReceipts[4].Logs[0]),
+            "the second surviving tx log is the post-batch frame's log — frame order is preserved");
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
