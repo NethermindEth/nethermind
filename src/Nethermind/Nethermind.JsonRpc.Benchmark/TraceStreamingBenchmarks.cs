@@ -179,10 +179,10 @@ public class TraceStreamingBenchmarks
         tracer.ReportAction(1_000_000, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
         for (int op = 0; op < opcodeCount; op++)
         {
-            tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - op, _env);
+            tracer.StartOperation(op, Instruction.SSTORE, (ulong)(1_000_000 - op), _env);
             tracer.ReportStackPush(value);
             tracer.ReportStorageChange(value, value);
-            tracer.ReportOperationRemainingGas(900_000 - op);
+            tracer.ReportOperationRemainingGas((ulong)(900_000 - op));
         }
         tracer.ReportActionEnd(0, default);
         tracer.MarkAsSuccess(Address.Zero, default, [], []);
@@ -232,7 +232,7 @@ public class TraceStreamingBenchmarks
     {
         Pc = pc,
         Cost = 3,
-        Used = 1_000_000 - pc,
+        Used = (ulong)(1_000_000 - pc),
         Push = [],
     };
 

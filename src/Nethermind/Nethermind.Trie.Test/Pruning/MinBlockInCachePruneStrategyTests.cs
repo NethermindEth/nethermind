@@ -14,8 +14,8 @@ namespace Nethermind.Trie.Test.Pruning
     {
         private IPruningStrategy _baseStrategy;
         private MinBlockInCachePruneStrategy _strategy;
-        private const long MinBlockFromPersisted = 5;
-        private const long PruneBoundary = 32;
+        private const ulong MinBlockFromPersisted = 5;
+        private const ulong PruneBoundary = 32;
 
         [SetUp]
         public void Setup()
@@ -27,8 +27,8 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void ShouldPruneDirtyNode_should_return_false_when_block_difference_is_less_than_min_block_from_persisted()
         {
-            long latestCommittedBlock = 100;
-            long lastPersistedBlock = latestCommittedBlock - PruneBoundary - MinBlockFromPersisted + 1;
+            ulong latestCommittedBlock = 100;
+            ulong lastPersistedBlock = latestCommittedBlock - PruneBoundary - MinBlockFromPersisted + 1;
             TrieStoreState state = new(100, 200, latestCommittedBlock, lastPersistedBlock);
 
             _baseStrategy.ShouldPruneDirtyNode(state).Returns(true);
@@ -38,12 +38,25 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void ShouldPruneDirtyNode_should_delegate_to_base_strategy_when_block_difference_is_greater_than_or_equal_to_min_block_from_persisted()
         {
-            long latestCommittedBlock = 100;
-            long lastPersistedBlock = latestCommittedBlock - PruneBoundary - MinBlockFromPersisted;
+            ulong latestCommittedBlock = 100;
+            ulong lastPersistedBlock = latestCommittedBlock - PruneBoundary - MinBlockFromPersisted;
             TrieStoreState state = new(100, 200, latestCommittedBlock, lastPersistedBlock);
 
             _baseStrategy.ShouldPruneDirtyNode(state).Returns(true);
             Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.True);
+        }
+
+        // Regression: ulong subtraction must not wrap. The block count since last persist is
+        // below the boundary (so master returned false), but a naive ulong subtraction underflows
+        // to near-ulong.MaxValue and would let the base strategy prune.
+        [TestCase(10ul, 0ul, TestName = "latest committed block below prune boundary")]
+        [TestCase(40ul, 20ul, TestName = "last persisted block ahead of reorg boundary")]
+        public void ShouldPruneDirtyNode_should_return_false_without_underflow_when_few_blocks_since_persist(ulong latestCommittedBlock, ulong lastPersistedBlock)
+        {
+            TrieStoreState state = new(100, 200, latestCommittedBlock, lastPersistedBlock);
+
+            _baseStrategy.ShouldPruneDirtyNode(state).Returns(true);
+            Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.False);
         }
     }
 }

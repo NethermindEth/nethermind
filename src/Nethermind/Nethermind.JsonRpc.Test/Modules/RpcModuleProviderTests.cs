@@ -110,16 +110,16 @@ public class RpcModuleProviderTests
     }
 
     [Test]
-    public void Allows_to_replace_modules()
+    public async Task Allows_to_replace_modules()
     {
-        SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
-        _moduleProvider.Register(pool);
-        Assert.That(_moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)), Is.EqualTo(pool));
+        INetRpcModule first = Substitute.For<INetRpcModule>();
+        _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(first));
+        Assert.That(await _moduleProvider.Rent(nameof(INetRpcModule.net_listening), true), Is.SameAs(first));
 
-        SingletonModulePool<INetRpcModule> pool2 = new(Substitute.For<INetRpcModule>());
-        _moduleProvider.Register(pool2);
+        INetRpcModule second = Substitute.For<INetRpcModule>();
+        _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(second));
 
-        Assert.That(_moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)), Is.EqualTo(pool2));
+        Assert.That(await _moduleProvider.Rent(nameof(INetRpcModule.net_listening), true), Is.SameAs(second));
     }
 
     [TestCase("engine_newPayloadV4", ModuleType.Engine)]
@@ -151,16 +151,16 @@ public class RpcModuleProviderTests
     }
 
     [Test]
-    public void Hot_method_cache_updates_after_module_replacement()
+    public async Task Hot_method_cache_updates_after_module_replacement()
     {
-        TestModulePool<HotEngineRpcModule> firstPool = new(new HotEngineRpcModule());
-        _moduleProvider.Register(firstPool);
-        Assert.That(_moduleProvider.GetPoolForMethod("engine_newPayloadV4"), Is.EqualTo(firstPool));
+        HotEngineRpcModule first = new();
+        _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(first));
+        Assert.That(await _moduleProvider.Rent("engine_newPayloadV4", true), Is.SameAs(first));
 
-        TestModulePool<HotEngineRpcModule> secondPool = new(new HotEngineRpcModule());
-        _moduleProvider.Register(secondPool);
+        HotEngineRpcModule second = new();
+        _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(second));
 
-        Assert.That(_moduleProvider.GetPoolForMethod("engine_newPayloadV4"), Is.EqualTo(secondPool));
+        Assert.That(await _moduleProvider.Rent("engine_newPayloadV4", true), Is.SameAs(second));
     }
 
     [Test]

@@ -58,7 +58,7 @@ public class CallResultWithProof : IDisposable
     /// In-VM failures (revert, out-of-gas, etc.) succeed at the JSON-RPC layer and carry an in-payload
     /// error object plus the witness — exactly the state the verifier needs to re-prove the failure.
     /// </remarks>
-    public static ResultWrapper<CallResultWithProof> FromWitnessResult(SingleCallWitnessResult result, long txGasLimit = 0)
+    public static ResultWrapper<CallResultWithProof> FromWitnessResult(SingleCallWitnessResult result, ulong txGasLimit = 0)
     {
         if (result.InputError)
         {

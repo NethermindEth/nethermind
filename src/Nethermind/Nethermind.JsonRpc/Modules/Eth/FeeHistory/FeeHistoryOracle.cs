@@ -27,15 +27,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private static readonly ResultWrapper<FeeHistoryResults> _validationPassed = ResultWrapper<FeeHistoryResults>.Success(null);
         private const int MaxBlockCount = 1024;
         private const int RewardPercentilesLengthLimit = 100;
-        private readonly int _oldestBlockDistanceFromHeadAllowedInCache;
-        private long _lastCleanupHeadBlockNumber = 0;
+        private readonly ulong _oldestBlockDistanceFromHeadAllowedInCache;
+        private ulong _lastCleanupHeadBlockNumber = 0;
         private Task? _cleanupTask = null;
         private readonly ConcurrentDictionary<Hash256AsKey, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
 
-        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, int? maxDistanceFromHead = null)
+        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, ulong? maxDistanceFromHead = null)
         {
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             }
         });
 
-        private readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
+        private readonly record struct RewardInfo(ulong GasUsed, UInt256 PremiumPerGas);
 
         private readonly struct RewardInfoByPremiumAscendingComparer : IComparer<RewardInfo>
         {
@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         private readonly record struct BlockFeeHistorySearchInfo(
-            long BlockNumber,
+            ulong BlockNumber,
             UInt256 BlockBaseFeePerGas,
             UInt256 BaseFeePerGasEst,
             UInt256 BaseFeePerBlobGas,
@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double GasUsedRatio,
             double BlobGasUsedRatio,
             Hash256? ParentHash,
-            long GasUsed,
+            ulong GasUsed,
             int BlockTransactionsLength,
             List<RewardInfo> RewardsInBlocks);
 
@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     : SaveHistorySearchInfo(block);
         }
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, long blockNumber)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber)
         {
             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
             {
@@ -154,10 +154,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         private bool ShouldCache(Block block) =>
-            _blockTree.Head is null || block.Number >= _blockTree.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache;
+            _blockTree.Head is null || block.Number >= _blockTree.Head.Number.SaturatingSub(_oldestBlockDistanceFromHeadAllowedInCache);
 
         public ResultWrapper<FeeHistoryResults> GetFeeHistory(
-            int blockCount,
+            ulong blockCount,
             BlockParameter newestBlock,
             double[] rewardPercentiles)
         {
@@ -175,14 +175,16 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             if (historyInfo is null)
             {
-                return ResultWrapper<FeeHistoryResults>.Fail("upstream does not have the requested block yet",
-                    ErrorCodes.InternalError);
+                BlockHeader? header = _blockTree.FindHeader(newestBlock);
+                return header is null
+                    ? ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound)
+                    : ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
             }
 
             BlockFeeHistorySearchInfo info = historyInfo.Value;
 
             // Assumes if blockCount is ever greater than the BlockNumber then BlockNumber must fall within integer size limits
-            int effectiveBlockCount = info.BlockNumber < blockCount - 1 ? (int)info.BlockNumber + 1 : blockCount;
+            int effectiveBlockCount = info.BlockNumber < blockCount - 1 ? (int)info.BlockNumber + 1 : (int)blockCount;
             int tempBlockCount = effectiveBlockCount + 1;
             ArrayPoolList<UInt256> baseFeePerGas = new(tempBlockCount, tempBlockCount);
             ArrayPoolList<UInt256> baseFeePerBlobGas = new(tempBlockCount, tempBlockCount);
@@ -192,7 +194,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? new ArrayPoolList<ArrayPoolList<UInt256>>(effectiveBlockCount, effectiveBlockCount)
                 : null;
 
-            long oldestBlockNumber = info.BlockNumber;
+            ulong oldestBlockNumber = info.BlockNumber;
             baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
             baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
 
@@ -222,8 +224,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private void TryRunCleanup()
         {
-            long headNumber = _blockTree.Head?.Number ?? 0;
-            long lastCleanupHeadBlockNumber = _lastCleanupHeadBlockNumber;
+            ulong headNumber = _blockTree.Head?.Number ?? 0;
+            ulong lastCleanupHeadBlockNumber = _lastCleanupHeadBlockNumber;
             if (lastCleanupHeadBlockNumber != headNumber
                 && _feeHistoryCache.Count > 2 * MaxBlockCount // let's let the cache grow a bit and do less cleanup
                 && _cleanupTask is null
@@ -254,12 +256,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private List<RewardInfo> GetRewardsInBlock(Block block)
         {
-            static IEnumerable<long> CalculateGasUsed(TxReceipt[] txReceipts)
+            static IEnumerable<ulong> CalculateGasUsed(TxReceipt[] txReceipts)
             {
-                long previousGasUsedTotal = 0;
+                ulong previousGasUsedTotal = 0;
                 foreach (TxReceipt receipt in txReceipts)
                 {
-                    long gasUsedTotal = receipt.GasUsedTotal;
+                    ulong gasUsedTotal = receipt.GasUsedTotal;
                     yield return gasUsedTotal - previousGasUsedTotal;
                     previousGasUsedTotal = gasUsedTotal;
                 }
@@ -267,14 +269,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             TxReceipt[] receipts = _receiptStorage.Get(block, false);
             Transaction[] txs = block.Transactions;
-            using ArrayPoolListRef<long> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
+            using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
                 ? CalculateGasUsed(receipts)
                 // If no receipts available, approximate on GasLimit
                 // We could just go with null here too and just don't return percentiles
                 : txs.Select(static tx => tx.GasLimit));
 
             List<RewardInfo> rewardInfos = new(txs.Length);
-            Span<long> gasUsedSpan = gasUsed.AsSpan();
+            Span<ulong> gasUsedSpan = gasUsed.AsSpan();
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i].TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
@@ -291,13 +293,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double[] rewardPercentiles,
             List<RewardInfo> rewardsInBlock)
         {
-            long sumGasUsed = rewardsInBlock[0].GasUsed;
+            ulong sumGasUsed = rewardsInBlock[0].GasUsed;
             int txIndex = 0;
             ArrayPoolList<UInt256> percentileValues = new(rewardPercentiles.Length);
 
             foreach (double percentile in rewardPercentiles)
             {
-                double thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
+                ulong thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
                 while (txIndex + 1 < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
                 {
                     txIndex++;
@@ -310,7 +312,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return percentileValues;
         }
 
-        private static ResultWrapper<FeeHistoryResults> Validate(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles)
+        private static ResultWrapper<FeeHistoryResults> Validate(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles)
         {
             if (newestBlock.Type == BlockParameterType.BlockHash)
             {

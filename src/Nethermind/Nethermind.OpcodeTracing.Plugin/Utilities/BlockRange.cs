@@ -14,7 +14,7 @@ public readonly record struct BlockRange
     /// <param name="startBlock">The first block number (inclusive).</param>
     /// <param name="endBlock">The last block number (inclusive).</param>
     /// <exception cref="ArgumentException">Thrown when end block is less than start block or start block is negative.</exception>
-    public BlockRange(long startBlock, long endBlock)
+    public BlockRange(ulong startBlock, ulong endBlock)
     {
         if (endBlock < startBlock)
         {
@@ -33,15 +33,15 @@ public readonly record struct BlockRange
     /// <summary>
     /// Gets the first block number in the range (inclusive).
     /// </summary>
-    public long StartBlock { get; }
+    public ulong StartBlock { get; }
 
     /// <summary>
     /// Gets the last block number in the range (inclusive).
     /// </summary>
-    public long EndBlock { get; }
+    public ulong EndBlock { get; }
 
     /// <summary>
     /// Gets the total number of blocks in this range.
     /// </summary>
-    public long Count => EndBlock - StartBlock + 1;
+    public ulong Count => EndBlock - StartBlock + 1;
 }

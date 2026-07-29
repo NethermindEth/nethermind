@@ -8,7 +8,7 @@ namespace Nethermind.TxPool;
 
 public interface IBlobTxStorage : ITxStorage
 {
-    bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions);
-    void AddBlobTransactionsFromBlock(long blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions);
-    void DeleteBlobTransactionsFromBlock(long blockNumber);
+    bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[]? blockBlobTransactions);
+    void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions);
+    void DeleteBlobTransactionsFromBlock(ulong blockNumber);
 }

@@ -155,14 +155,14 @@ public abstract class StateSyncFeedTestsBase(
             .AddSingleton<ISyncProgressResolver>(static _ =>
             {
                 ISyncProgressResolver resolver = Substitute.For<ISyncProgressResolver>();
-                resolver.FindBestHeader().Returns(0L);
-                resolver.FindBestFullState().Returns(0L);
+                resolver.FindBestHeader().Returns(0UL);
+                resolver.FindBestFullState().Returns(0UL);
                 return resolver;
             })
             .AddSingleton<IBeaconSyncStrategy>(static _ =>
             {
                 IBeaconSyncStrategy strategy = Substitute.For<IBeaconSyncStrategy>();
-                strategy.GetTargetBlockHeight().Returns((long?)0L);
+                strategy.GetTargetBlockHeight().Returns((ulong?)0UL);
                 return strategy;
             });
 

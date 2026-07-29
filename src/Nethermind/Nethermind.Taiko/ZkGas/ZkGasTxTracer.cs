@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -29,7 +30,7 @@ public sealed class ZkGasTxTracer : TxTracer
 
     // Per-opcode step tracking
     private byte _currentOpcode;
-    private long _currentGasStart;
+    private ulong _currentGasStart;
     private bool _stepActive;
 
     // Deferred spawn opcode charging
@@ -42,7 +43,7 @@ public sealed class ZkGasTxTracer : TxTracer
     // Precompile tracking
     private bool _pendingPrecompile;
     private Address? _precompileAddress;
-    private long _precompileGasStart;
+    private ulong _precompileGasStart;
 
     /// <summary>
     /// Creates a new ZK gas tracer backed by the provided meter.
@@ -58,7 +59,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Captures the opcode and pre-execution gas for the current step.
     /// Flushes any previously deferred spawn opcode charge first.
     /// </summary>
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         FlushDeferredStep();
 
@@ -72,15 +73,14 @@ public sealed class ZkGasTxTracer : TxTracer
     /// charging until we learn whether child work was dispatched. For all other
     /// opcodes, charges immediately.
     /// </summary>
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_stepActive)
             return;
 
         _stepActive = false;
 
-        long delta = _currentGasStart - gas;
-        ulong rawGas = delta > 0 ? (ulong)delta : 0;
+        ulong rawGas = _currentGasStart.SaturatingSub(gas);
 
         if (IsSpawnOpcode(_currentOpcode))
         {
@@ -106,7 +106,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Tracks call/create actions. Marks the deferred spawn opcode as spawned and
     /// captures precompile gas start for separate precompile charging.
     /// </summary>
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         // Mark the deferred step as having actually spawned child work
         if (_hasDeferredStep)
@@ -126,7 +126,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Charges precompile ZK gas when a precompile call completes successfully.
     /// Also flushes the deferred spawn step since the action is now resolved.
     /// </summary>
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
@@ -136,7 +136,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Charges precompile ZK gas when a create-type action ends.
     /// Also flushes the deferred spawn step since the action is now resolved.
     /// </summary>
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
@@ -219,7 +219,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Charges precompile ZK gas on revert.
     /// Also flushes the deferred spawn step.
     /// </summary>
-    public override void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
@@ -253,16 +253,16 @@ public sealed class ZkGasTxTracer : TxTracer
         _meter.ChargeOpcode(_deferredOpcode, rawGas);
     }
 
-    private void ChargePrecompileIfPending(long gasRemaining)
+    private void ChargePrecompileIfPending(ulong gasRemaining)
     {
         if (!_pendingPrecompile)
             return;
 
         _pendingPrecompile = false;
-        long gasUsed = _precompileGasStart - gasRemaining;
+        ulong gasUsed = _precompileGasStart.SaturatingSub(gasRemaining);
         if (gasUsed > 0 && _precompileAddress is not null)
         {
-            _meter.ChargePrecompile(_precompileAddress, (ulong)gasUsed);
+            _meter.ChargePrecompile(_precompileAddress, gasUsed);
         }
 
         _precompileAddress = null;

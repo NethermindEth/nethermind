@@ -24,7 +24,8 @@ public class DiscoveryAppTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bootNodes, Has.Count.EqualTo(1));
-            Assert.That(bootNodes[0].Port, Is.EqualTo(9001));
+            Assert.That(bootNodes[0].Port, Is.EqualTo(30303));
+            Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(9001));
             Assert.That(bootNodes[0].Host, Is.EqualTo("8.8.8.8"));
         }
     }

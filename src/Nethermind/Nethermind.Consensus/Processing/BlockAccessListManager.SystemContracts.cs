@@ -7,17 +7,14 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
-using Nethermind.Specs;
 
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// System-contract and validator-orchestration bridges. Each helper routes its work through
 /// the appropriate worldstate pulled from the tx-processor pool — pre-execution callers
-/// (beacon root, blockhash, AuRa) use the pre slot; post-execution callers (withdrawals,
+/// (beacon root, blockhash) use the pre slot; post-execution callers (withdrawals,
 /// execution requests) use the post slot.
 /// </summary>
 public partial class BlockAccessListManager
@@ -38,18 +35,6 @@ public partial class BlockAccessListManager
         new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
-    public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
-    {
-        if (!Enabled)
-        {
-            return;
-        }
-
-        stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
-        stateProvider.CreateAccount(withdrawalContractAddress, UInt256.Zero, UInt256.Zero);
-        stateProvider.Commit(spec.ForSystemTransaction(true, false), commitRoots: false);
-    }
-
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         CheckInitialized();
@@ -68,6 +53,8 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        IExecutionRequestsProcessor executionRequestsProcessor =
+            (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
+        executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

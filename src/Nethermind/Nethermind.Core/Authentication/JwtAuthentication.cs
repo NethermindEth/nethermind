@@ -266,7 +266,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         // Overflow-safe absolute-difference check: casting to ulong maps negative values to
         // large positives, so (ulong)(a - b + c) > (ulong)(2*c) is equivalent to |a - b| > c
         // without needing Math.Abs (which can overflow on long.MinValue).
-        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
         {
             if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
             return true;
@@ -402,7 +402,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         long issuedAtUnix = jwtToken.IssuedAt.ToUnixTimeSeconds();
 
         // Unsigned range check: |iat - now| <= TTL without Math.Abs overflow guard
-        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
         {
             if (_logger.IsWarn) WarnTokenExpired(issuedAtUnix, nowUnixSeconds);
             return false;
@@ -478,7 +478,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
 
         // Unsigned range check: |iat - now| <= TTL
-        if ((ulong)(_cachedTokenIat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(_cachedTokenIat - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
         {
             Volatile.Write(ref _cachedToken, null);
             return false;

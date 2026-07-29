@@ -488,9 +488,9 @@ public partial class EngineModuleTests
         BlockDecoder blockDecoder = new();
 
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
-        blockTree.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+        blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(i => GetHeader(input.Impl(i)));
-        blockStore.GetRlp(Arg.Any<long>(), Arg.Any<Hash256>())
+        blockStore.GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>())
             .Returns(i =>
             {
                 Block? block = input.Impl(i);
@@ -529,6 +529,7 @@ public partial class EngineModuleTests
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
 
+
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) => builder
@@ -557,7 +558,10 @@ public partial class EngineModuleTests
             new ExecutionPayloadBodyV1Result([], null)
         ]);
 
-        await AssertStreamedJsonMatchesSerializer(response);
+        string streamedJson = await AssertStreamedJsonMatchesSerializer(response);
+
+        // V1 bodies predate EIP-7928 and must not carry the blockAccessList key.
+        Assert.That(streamedJson, Does.Not.Contain("blockAccessList"));
     }
 
     [Test]
@@ -921,11 +925,11 @@ public partial class EngineModuleTests
             new TestCaseData(((Func<CallInfo, Block?> BlockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> ExpectedBodies))(blockFinder, expectedBodies))
                 .SetName(name);
 
-        static Block BuildBlock(CallInfo i) => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject;
+        static Block BuildBlock(CallInfo i) => Build.A.Block.WithNumber(i.ArgAt<ulong>(0)).TestObject;
         ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
         yield return Case("AllMissing", _ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
-        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<long>(0) % 2 == 0 ? BuildBlock(i) : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
+        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<ulong>(0) % 2 == 0 ? BuildBlock(i) : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
         yield return Case("AllPresent", BuildBlock, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
     }
 

@@ -1,0 +1,292 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.TxPool;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.CensorshipDetector.Plugin.Test;
+
+[TestFixture]
+public class CensorshipDetectorTests
+{
+    private ILogManager _logManager;
+    private TestReadOnlyStateProvider _stateProvider;
+    private IBlockTree _blockTree;
+    private IBranchProcessor _branchProcessor;
+    private ISpecProvider _specProvider;
+    private IEthereumEcdsa _ethereumEcdsa;
+    private IComparer<Transaction> _comparer;
+    private ITransactionComparerProvider _transactionComparerProvider;
+    private IMainProcessingContext _mainProcessingContext;
+    private TxPool.TxPool _txPool;
+    private CensorshipDetector _censorshipDetector;
+
+    [SetUp]
+    public void Setup()
+    {
+        _logManager = LimboLogs.Instance;
+        _stateProvider = new TestReadOnlyStateProvider();
+        _branchProcessor = Substitute.For<IBranchProcessor>();
+        _mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        _mainProcessingContext.BranchProcessor.Returns(_branchProcessor);
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await _txPool.DisposeAsync();
+        _censorshipDetector.Dispose();
+    }
+
+    // Address Censorship is given to be false here since censorship is not being detected for any address.
+    [Test]
+    public async Task Censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_true_for_all_blocks_in_main_cache()
+    {
+        _txPool = CreatePool();
+        _censorshipDetector = new(_blockTree, _txPool, _transactionComparerProvider, _mainProcessingContext, _logManager, new CensorshipDetectorConfig() { });
+
+        Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
+        Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
+        Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressA);
+        Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressA);
+        Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressA);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx4]).WithParentHash(TestItem.KeccakA).TestObject;
+        Hash256 blockHash1 = block1.Hash!;
+        await BlockProcessingWorkflowAsync(block1);
+
+        Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx3]).WithParentHash(blockHash1).TestObject;
+        Hash256 blockHash2 = block2.Hash!;
+        await BlockProcessingWorkflowAsync(block2);
+
+        Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx2]).WithParentHash(blockHash2).TestObject;
+        Hash256 blockHash3 = block3.Hash!;
+        await BlockProcessingWorkflowAsync(block3);
+
+        Block block4 = Build.A.Block.WithNumber(4).WithBaseFeePerGas(0).WithTransactions([tx1]).WithParentHash(blockHash3).TestObject;
+        await BlockProcessingWorkflowAsync(block4);
+
+        Assert.That(_censorshipDetector.GetCensoredBlocks(), Does.Contain(new BlockNumberHash(block4)));
+    }
+
+    // Address Censorship is given to be false here since censorship is not being detected for any address.
+    [Test]
+    public async Task No_censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_false_for_some_blocks_in_main_cache()
+    {
+        _txPool = CreatePool();
+        _censorshipDetector = new(_blockTree, _txPool, _transactionComparerProvider, _mainProcessingContext, _logManager, new CensorshipDetectorConfig() { });
+
+        Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
+        Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
+        Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressA);
+        Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressA);
+        Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressA);
+
+        // high-paying tx censorship: true
+        Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx4]).WithParentHash(TestItem.KeccakA).TestObject;
+        Hash256 blockHash1 = block1.Hash!;
+        await BlockProcessingWorkflowAsync(block1);
+
+        // address censorship: false
+        Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx3, tx5]).WithParentHash(blockHash1).TestObject;
+        Hash256 blockHash2 = block2.Hash!;
+        await BlockProcessingWorkflowAsync(block2);
+
+        // high-paying tx censorship: false
+        Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx2]).WithParentHash(blockHash2).TestObject;
+        Hash256 blockHash3 = block3.Hash!;
+        await BlockProcessingWorkflowAsync(block3);
+
+        // high-paying tx censorship: false
+        Block block4 = Build.A.Block.WithNumber(4).WithBaseFeePerGas(0).WithTransactions([tx1]).WithParentHash(blockHash3).TestObject;
+        await BlockProcessingWorkflowAsync(block4);
+
+        Assert.That(_censorshipDetector.GetCensoredBlocks(), Does.Not.Contain(new BlockNumberHash(block4)));
+    }
+
+    // High-Paying Tx Censorship is given to be false here.
+    [Test]
+    public async Task Censorship_when_high_paying_tx_censorship_is_false_and_address_censorship_is_true_for_all_blocks_in_main_cache()
+    {
+        _txPool = CreatePool();
+        _censorshipDetector = new(
+            _blockTree,
+            _txPool,
+            _transactionComparerProvider,
+            _mainProcessingContext,
+            _logManager,
+            new CensorshipDetectorConfig()
+            {
+                AddressesForCensorshipDetection = [
+                    TestItem.AddressA.ToString(),
+                    TestItem.AddressB.ToString(),
+                    TestItem.AddressC.ToString(),
+                    TestItem.AddressD.ToString(),
+                    TestItem.AddressE.ToString(),
+                    TestItem.AddressF.ToString()]
+            });
+
+        Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
+        Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
+        Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressC);
+        Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressD);
+        Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressE);
+        Transaction tx6 = SubmitTxToPool(6, TestItem.PrivateKeyF, TestItem.AddressF);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx1, tx6]).WithParentHash(TestItem.KeccakA).TestObject;
+        Hash256 blockHash1 = block1.Hash!;
+        await BlockProcessingWorkflowAsync(block1);
+
+        Transaction tx7 = SubmitTxToPool(7, TestItem.PrivateKeyA, TestItem.AddressA);
+        Transaction tx8 = SubmitTxToPool(8, TestItem.PrivateKeyF, TestItem.AddressF);
+
+        Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx2, tx8]).WithParentHash(blockHash1).TestObject;
+        Hash256 blockHash2 = block2.Hash!;
+        await BlockProcessingWorkflowAsync(block2);
+
+        Transaction tx9 = SubmitTxToPool(9, TestItem.PrivateKeyB, TestItem.AddressB);
+        Transaction tx10 = SubmitTxToPool(10, TestItem.PrivateKeyF, TestItem.AddressF);
+
+        Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx3, tx10]).WithParentHash(blockHash2).TestObject;
+        Hash256 blockHash3 = block3.Hash!;
+        await BlockProcessingWorkflowAsync(block3);
+
+        Transaction tx11 = SubmitTxToPool(11, TestItem.PrivateKeyC, TestItem.AddressC);
+        Transaction tx12 = SubmitTxToPool(12, TestItem.PrivateKeyF, TestItem.AddressF);
+
+        Block block4 = Build.A.Block.WithNumber(4).WithBaseFeePerGas(0).WithTransactions([tx4, tx12]).WithParentHash(blockHash3).TestObject;
+        await BlockProcessingWorkflowAsync(block4);
+
+        Assert.That(_censorshipDetector.GetCensoredBlocks(), Does.Contain(new BlockNumberHash(block4)));
+    }
+
+    // High-Paying Tx Censorship is given to be false here.
+    [Test]
+    public async Task No_censorship_when_high_paying_tx_censorship_is_false_and_address_censorship_is_false_for_some_blocks_in_main_cache()
+    {
+        _txPool = CreatePool();
+        _censorshipDetector = new(
+            _blockTree,
+            _txPool,
+            _transactionComparerProvider,
+            _mainProcessingContext,
+            _logManager,
+            new CensorshipDetectorConfig()
+            {
+                AddressesForCensorshipDetection = [
+                    TestItem.AddressA.ToString(),
+                    TestItem.AddressB.ToString(),
+                    TestItem.AddressC.ToString(),
+                    TestItem.AddressD.ToString(),
+                    TestItem.AddressE.ToString()]
+            });
+
+        Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
+        Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressB);
+        Transaction tx3 = SubmitTxToPool(3, TestItem.PrivateKeyC, TestItem.AddressC);
+        Transaction tx4 = SubmitTxToPool(4, TestItem.PrivateKeyD, TestItem.AddressD);
+        Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressE);
+
+        // address censorship: false
+        Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx3, tx4, tx5]).WithParentHash(TestItem.KeccakA).TestObject;
+        Hash256 blockHash1 = block1.Hash!;
+        await BlockProcessingWorkflowAsync(block1);
+
+        Transaction tx6 = SubmitTxToPool(6, TestItem.PrivateKeyC, TestItem.AddressC);
+        Transaction tx7 = SubmitTxToPool(7, TestItem.PrivateKeyD, TestItem.AddressD);
+        Transaction tx8 = SubmitTxToPool(8, TestItem.PrivateKeyE, TestItem.AddressE);
+
+        // address censorship: false
+        Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx7, tx8]).WithParentHash(blockHash1).TestObject;
+        Hash256 blockHash2 = block2.Hash!;
+        await BlockProcessingWorkflowAsync(block2);
+
+        Transaction tx9 = SubmitTxToPool(9, TestItem.PrivateKeyD, TestItem.AddressD);
+        Transaction tx10 = SubmitTxToPool(10, TestItem.PrivateKeyE, TestItem.AddressE);
+
+        // address censorship: true
+        Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx1, tx10]).WithParentHash(blockHash2).TestObject;
+        Hash256 blockHash3 = block3.Hash!;
+        await BlockProcessingWorkflowAsync(block3);
+
+        // address censorship: false
+        Block block4 = Build.A.Block.WithNumber(4).WithBaseFeePerGas(0).WithTransactions([tx2, tx6, tx9]).WithParentHash(blockHash3).TestObject;
+        await BlockProcessingWorkflowAsync(block4);
+
+        Assert.That(_censorshipDetector.GetCensoredBlocks(), Does.Not.Contain(new BlockNumberHash(block4)));
+    }
+
+    private TxPool.TxPool CreatePool(bool eip1559Enabled = true)
+    {
+        if (eip1559Enabled)
+        {
+            _specProvider = SpecProviderSubstitute.Create();
+            _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
+        }
+        else
+        {
+            _specProvider = MainnetSpecProvider.Instance;
+        }
+
+        _blockTree = Substitute.For<IBlockTree>();
+        _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1_000_000).TestObject);
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(1_000_000).TestObject);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+        _transactionComparerProvider = new TransactionComparerProvider(_specProvider, _blockTree);
+        _comparer = _transactionComparerProvider.GetDefaultComparer();
+
+        return new(
+            _ethereumEcdsa,
+            new BlobTxStorage(),
+            new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(_specProvider, _blockTree),
+                _blockTree,
+                _stateProvider),
+            new TxPoolConfig(),
+            new TxValidator(_specProvider.ChainId),
+            _logManager,
+            _comparer);
+    }
+
+    private async Task BlockProcessingWorkflowAsync(Block block)
+    {
+        _branchProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
+        await _censorshipDetector.ProcessingTaskFor(block.Number, block.Hash);
+        Assert.That(_censorshipDetector.BlockPotentiallyCensored(block.Number, block.Hash), Is.True);
+
+        foreach (Transaction tx in block.Transactions)
+        {
+            _txPool.RemoveTransaction(tx.Hash);
+        }
+    }
+
+    private Transaction SubmitTxToPool(int maxPriorityFeePerGas, PrivateKey privateKey, Address address)
+    {
+        Transaction tx = Build.A.Transaction.
+                        WithType(TxType.EIP1559).
+                        WithMaxFeePerGas(20.Wei).
+                        WithMaxPriorityFeePerGas(maxPriorityFeePerGas.Wei).
+                        WithTo(address).
+                        SignedAndResolved(_ethereumEcdsa, privateKey).
+                        TestObject;
+        _stateProvider.CreateAccount(tx.SenderAddress, 1_000_000.Wei);
+        AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        return tx;
+    }
+}

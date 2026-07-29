@@ -20,7 +20,7 @@ public class XdcBeaconSyncStrategy(ISyncConfig syncConfig) : IBeaconSyncStrategy
 
     public bool MergeTransitionFinished => false;
 
-    public long? GetTargetBlockHeight() => _syncConfig.PivotNumber > 0 ? _syncConfig.PivotNumber : null;
+    public ulong? GetTargetBlockHeight() => _syncConfig.PivotNumber > 0 ? _syncConfig.PivotNumber : null;
 
     public Hash256? GetFinalizedHash() => null;
 

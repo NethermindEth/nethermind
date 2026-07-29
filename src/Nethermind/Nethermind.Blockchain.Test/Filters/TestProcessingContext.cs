@@ -21,6 +21,7 @@ internal class TestBranchProcessor : IBranchProcessor
 {
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing { add { } remove { } }
+    public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted { add { } remove { } }
     public event EventHandler<BlockEventArgs>? BlockProcessing { add { } remove { } }
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks,

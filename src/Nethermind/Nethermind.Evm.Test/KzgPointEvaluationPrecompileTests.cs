@@ -55,8 +55,8 @@ public class KzgPointEvaluationPrecompileTests
     [TestCaseSource(nameof(GasTests))]
     public void Test_PointEvaluationPrecompile_Has_Specific_Constant_Gas_Cost(byte[] input)
     {
-        const long fixedGasCost = 50000;
-        long gasSpent = KzgPointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
+        const ulong fixedGasCost = 50000;
+        ulong gasSpent = KzgPointEvaluationPrecompile.Instance.DataGasCost(input, Cancun.Instance) +
                         KzgPointEvaluationPrecompile.Instance.BaseGasCost(Cancun.Instance);
         Assert.That(gasSpent, Is.EqualTo(fixedGasCost));
     }

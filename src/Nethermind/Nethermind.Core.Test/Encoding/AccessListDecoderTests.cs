@@ -88,9 +88,10 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((string TestName, AccessList? AccessList) testCase)
         {
-            RlpStream rlpStream = new(10000);
-            _decoder.Encode(rlpStream, testCase.AccessList);
-            Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+            byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
+            RlpWriter writer = new(bytes);
+            _decoder.Encode(ref writer, testCase.AccessList);
+            RlpReader ctx = new(bytes);
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
@@ -105,10 +106,10 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_value((string TestName, AccessList? AccessList) testCase)
         {
-            RlpStream rlpStream = new(10000);
-            _decoder.Encode(rlpStream, testCase.AccessList);
-            rlpStream.Position = 0;
-            Rlp.ValueDecoderContext ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
+            byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
+            RlpWriter writer = new(bytes);
+            _decoder.Encode(ref writer, testCase.AccessList);
+            RlpReader ctx = new(bytes.AsSpan());
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
@@ -131,7 +132,7 @@ namespace Nethermind.Core.Test.Encoding
 
             void DecodeStream()
             {
-                Rlp.ValueDecoderContext ctx = new RlpStream(invalid).Data.AsSpan().AsRlpValueContext();
+                RlpReader ctx = new(invalid.AsSpan());
                 _decoder.Decode(ref ctx);
             }
 
@@ -139,7 +140,7 @@ namespace Nethermind.Core.Test.Encoding
 
             void DecodeContext()
             {
-                Rlp.ValueDecoderContext ctx = invalid.AsSpan().AsRlpValueContext();
+                RlpReader ctx = new(invalid.AsSpan());
                 _decoder.Decode(ref ctx);
             }
 

@@ -45,7 +45,7 @@ public interface IRbuilderRpcModule
 public class AccountChange
 {
     [JsonPropertyName("nonce")]
-    public UInt256? Nonce { get; set; }
+    public ulong? Nonce { get; set; }
 
     [JsonPropertyName("balance")]
     public UInt256? Balance { get; set; }

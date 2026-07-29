@@ -107,10 +107,7 @@ namespace Nethermind.Init.Steps
             List<Task> allRequiredSteps = [];
             foreach (StepWrapper stepWrapper in stepInfoMap.Values)
             {
-                StepInfo stepInfo = stepWrapper.StepInfo;
-                Task task = ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
-                if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
-                allRequiredSteps.Add(task);
+                allRequiredSteps.Add(ExecuteStep(stepWrapper, stepInfoMap, cancellationToken));
             }
             return allRequiredSteps;
         }
@@ -127,23 +124,28 @@ namespace Nethermind.Init.Steps
                         throw new StepDependencyException($"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} was not created.");
                     dependencies.AddRange(value);
                 }
-                await stepWrapper.StartExecute(dependencies, cancellationToken);
 
-                if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.GetType().Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+                await stepWrapper.WaitForDependencies(dependencies, cancellationToken);
+
+                if (_logger.IsDebug) _logger.Debug($"Executing step: {stepWrapper.StepInfo}");
+
+                await stepWrapper.RunStep(cancellationToken);
+
+                if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.StepInfo.StepType.Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             }
             catch (Exception exception) when (exception is not TaskCanceledException)
             {
                 if (stepWrapper.Step.MustInitialize)
                 {
-                    if (_logger.IsError) _logger.Error($"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
+                    if (_logger.IsError) _logger.Error($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
                     throw;
                 }
 
-                if (_logger.IsWarn) _logger.Warn($"Step {stepWrapper.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
+                if (_logger.IsWarn) _logger.Warn($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
             }
             finally
             {
-                if (_logger.IsDebug) _logger.Debug($"{stepWrapper.GetType().Name,-24} complete");
+                if (_logger.IsDebug) _logger.Debug($"{stepWrapper.StepInfo.StepType.Name,-24} complete");
             }
         }
 
@@ -271,11 +273,15 @@ namespace Nethermind.Init.Steps
 
             private readonly TaskCompletionSource _taskCompletedSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            public async Task StartExecute(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
+            public async Task WaitForDependencies(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
             {
                 cancellationToken.Register(() => _taskCompletedSource.TrySetCanceled());
 
                 await Task.WhenAll(dependentSteps.Select(s => s.StepTask));
+            }
+
+            public async Task RunStep(CancellationToken cancellationToken)
+            {
                 try
                 {
                     await Step.Execute(cancellationToken);

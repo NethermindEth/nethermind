@@ -38,8 +38,8 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
     {
         set => _entries.Add(kind switch
         {
-            ForkActivationKind.Block => new ForkSpec(key, value),
-            ForkActivationKind.Timestamp => new ForkSpec((ulong)key, value),
+            ForkActivationKind.Block => ForkSpec.AtBlock((ulong)key, value),
+            ForkActivationKind.Timestamp => ForkSpec.AtTimestamp((ulong)key, value),
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         });
     }
@@ -48,8 +48,8 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
     {
         set => _entries.Add(kind switch
         {
-            ForkActivationKind.Block => new ForkSpec((long)key, value),
-            ForkActivationKind.Timestamp => new ForkSpec(key, value),
+            ForkActivationKind.Block => ForkSpec.AtBlock(key, value),
+            ForkActivationKind.Timestamp => ForkSpec.AtTimestamp(key, value),
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         });
     }
@@ -82,9 +82,9 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
     /// <param name="prepend">Activations to emit before iterating the schedule (e.g. Sepolia's merge-block
     /// boundary, which has no corresponding schedule entry).</param>
     public ForkActivation[] ToTransitionActivations(
-        long postMergeBlock = 0L,
+        ulong postMergeBlock = 0,
         bool incrementBlockPerTimestampFork = true,
-        ReadOnlySpan<long> excludeBlocks = default,
+        ReadOnlySpan<ulong> excludeBlocks = default,
         ReadOnlySpan<ForkActivation> prepend = default)
     {
         int count = prepend.Length;
@@ -104,7 +104,7 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
         ForkActivation[] result = new ForkActivation[count];
         prepend.CopyTo(result);
         int index = prepend.Length;
-        int timestampIndex = 0;
+        ulong timestampIndex = 0;
         for (int i = 1; i < _entries.Count; i++)
         {
             ForkSpec fork = _entries[i];
@@ -115,7 +115,7 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
             }
             else if (fork.Timestamp is { } timestamp)
             {
-                long blockForTimestamp = incrementBlockPerTimestampFork
+                ulong blockForTimestamp = incrementBlockPerTimestampFork
                     ? postMergeBlock + timestampIndex
                     : postMergeBlock;
                 result[index++] = (blockForTimestamp, timestamp);

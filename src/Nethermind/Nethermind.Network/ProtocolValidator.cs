@@ -27,13 +27,11 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IForkInfo _forkInfo;
         private readonly Regex? _clientIdPattern;
-        private readonly IPeerManager _peerManager;
 
         public ProtocolValidator(
             INodeStatsManager nodeStatsManager,
             IBlockTree blockTree,
             IForkInfo forkInfo,
-            IPeerManager peerManager,
             INetworkConfig networkConfig,
             ILogManager logManager
         )
@@ -46,10 +44,9 @@ namespace Nethermind.Network
             _nodeStatsManager = nodeStatsManager;
             _blockTree = blockTree;
             _forkInfo = forkInfo;
-            _peerManager = peerManager;
         }
 
-        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs) => protocol switch
+        public bool ValidateOrDisconnect(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs) => protocol switch
         {
             Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
             Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
@@ -73,12 +70,6 @@ namespace Nethermind.Network
             catch (RegexMatchTimeoutException)
             {
                 session.InitiateDisconnect(DisconnectReason.ClientFiltered, "clientId regex timeout");
-                return false;
-            }
-
-            if (_peerManager.ActivePeersCount > _peerManager.MaxActivePeers)
-            {
-                session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"Too many peer");
                 return false;
             }
 

@@ -103,10 +103,5 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public Rlp Just_rlp_aligned_56B() => new(new byte[1]);
 
-        [Benchmark]
-        public RlpStream Just_rlp_stream_64B() => new(new byte[7]);
-
-        [Benchmark]
-        public RlpStream Just_rlp_stream_160B() => new(new byte[100]);
     }
 }

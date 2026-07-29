@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,8 +30,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
     }
     public bool NoTxPool { get; set; }
-    public long GasLimit { get; set; }
-    public override long? GetGasLimit() => GasLimit;
+    public ulong GasLimit { get; set; }
+    public override ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator) => GasLimit;
 
     /// <remarks>
     /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
@@ -74,7 +75,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         base.ComputePayloadIdMembersSize()
         + sizeof(bool) // noTxPool
         + (Keccak.Size * TransactionsLength) // Txs
-        + sizeof(long) // gasLimit
+        + sizeof(ulong) // gasLimit
         + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
@@ -94,8 +95,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             }
         }
 
-        BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), GasLimit);
-        offset += sizeof(long);
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(offset, sizeof(ulong)), GasLimit);
+        offset += sizeof(ulong);
 
         if (EIP1559Params is not null)
         {

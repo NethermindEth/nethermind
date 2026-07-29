@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Xdc.Types;
 
@@ -27,8 +28,9 @@ internal class XdcBlockTree(
     IChainLevelInfoRepository? chainLevelInfoRepository,
     ISpecProvider? specProvider,
     ISyncConfig? syncConfig,
+    IStateBoundary? stateBoundary,
     ILogManager? logManager,
-    long genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, syncConfig, logManager, genesisBlockNumber)
+    ulong genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, syncConfig, stateBoundary, logManager, genesisBlockNumber)
 {
     private readonly IXdcConsensusContext _xdcConsensus = xdcConsensus;
 
@@ -50,7 +52,7 @@ internal class XdcBlockTree(
         }
 
         BlockHeader current = header;
-        for (long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
+        while (true)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
                 return AddBlockResult.InvalidBlock;
@@ -62,8 +64,6 @@ internal class XdcBlockTree(
             if (current is null)
                 return AddBlockResult.UnknownParent;
         }
-        //This is not possible to reach
-        return AddBlockResult.InvalidBlock;
     }
 
     protected override bool HeadImprovementRequirementsSatisfied(BlockHeader header)
@@ -72,7 +72,7 @@ internal class XdcBlockTree(
             return true;
 
         return header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader headBlock &&
-            IsSameTdButSelfMined(newBlock, headBlock);
+            IsSameTdButPreferred(newBlock, headBlock);
     }
 
     protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
@@ -81,19 +81,31 @@ internal class XdcBlockTree(
             return true;
 
         return header is XdcBlockHeader newBlock && BestSuggestedBody?.Header is XdcBlockHeader bestBlock &&
-            IsSameTdButSelfMined(newBlock, bestBlock);
+            IsSameTdButPreferred(newBlock, bestBlock);
     }
 
     public override bool IsBetterThanHead(BlockHeader? header)
     {
-        if (base.IsBetterThanHead(header))
-            return true;
+        // Base falls back to comparing hashes on an equal-TD tie, which is meaningless for XDPoS
+        // (every proposal at a height ties on TD) and would let an arbitrary hash ordering override
+        // the round-based tie-break below. Decide equal-TD ties between two XDC headers here first.
+        if (header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader headBlock &&
+            newBlock.TotalDifficulty == headBlock.TotalDifficulty)
+            return IsSameTdButPreferred(newBlock, headBlock);
 
-        return header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader bestBlock &&
-            IsSameTdButSelfMined(newBlock, bestBlock);
+        return base.IsBetterThanHead(header);
     }
 
-    // Allow overriding head with self-mined blocks with the same TD
-    private static bool IsSameTdButSelfMined(XdcBlockHeader newHeader, XdcBlockHeader oldHeader) =>
-        newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.IsSelfMined;
+    internal static bool IsSameTdButPreferred(XdcBlockHeader newHeader, XdcBlockHeader oldHeader)
+    {
+        if (newHeader.TotalDifficulty != oldHeader.TotalDifficulty)
+            return false;
+
+        ulong? newRound = newHeader.ExtraConsensusData?.BlockRound;
+        ulong? oldRound = oldHeader.ExtraConsensusData?.BlockRound;
+        if (newRound is null || oldRound is null)
+            return false;
+
+        return newRound != oldRound ? newRound > oldRound : newHeader.IsSelfMined;
+    }
 }

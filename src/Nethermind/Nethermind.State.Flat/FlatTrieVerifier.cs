@@ -383,11 +383,11 @@ public class FlatTrieVerifier
     {
         ReadOnlySpan<byte> trieAccountRlp = trieLeaf.Value.AsSpan();
 
-        Rlp.ValueDecoderContext flatCtx = new(flatAccountRlp);
-        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatCtx);
+        RlpReader flatReader = new(flatAccountRlp);
+        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatReader);
 
-        Rlp.ValueDecoderContext trieCtx = new(trieAccountRlp);
-        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieCtx);
+        RlpReader trieReader = new(trieAccountRlp);
+        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieReader);
 
         if (flatAccount != trieAccount)
         {
@@ -411,11 +411,11 @@ public class FlatTrieVerifier
         ChannelWriter<StorageVerificationJob> storageWriter,
         CancellationToken cancellationToken)
     {
-        Rlp.ValueDecoderContext flatCtx = new(flatAccountRlp);
-        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatCtx);
+        RlpReader flatReader = new(flatAccountRlp);
+        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatReader);
 
-        Rlp.ValueDecoderContext trieCtx = new(trieAccountRlp);
-        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieCtx);
+        RlpReader trieReader = new(trieAccountRlp);
+        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieReader);
 
         if (flatAccount != trieAccount)
         {
@@ -607,7 +607,7 @@ public class FlatTrieVerifier
             return;
         }
 
-        Rlp.ValueDecoderContext ctx = new(trieValue);
+        RlpReader ctx = new(trieValue);
         byte[] decodedTrieValue = ctx.DecodeByteArray();
 
         ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
@@ -623,8 +623,8 @@ public class FlatTrieVerifier
     private void VerifySlotMatchPreimageWithRlp(ReadOnlySpan<byte> flatValue, ReadOnlySpan<byte> trieValueRlp, in ValueHash256 accountKey, in ValueHash256 slotKey)
     {
         // Decode RLP to get the actual value
-        Rlp.ValueDecoderContext ctx = new(trieValueRlp);
-        byte[] decodedTrieValue = ctx.DecodeByteArray();
+        RlpReader reader = new(trieValueRlp);
+        byte[] decodedTrieValue = reader.DecodeByteArray();
 
         ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
         ReadOnlySpan<byte> trieTrimmed = decodedTrieValue.AsSpan().WithoutLeadingZeros();

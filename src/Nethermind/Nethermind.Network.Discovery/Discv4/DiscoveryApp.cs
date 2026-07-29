@@ -41,7 +41,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         _discv4Services = rootScope.BeginLifetimeScope(
             (builder) =>
             {
-                Node currentNode = new(enode.PublicKey, enode.HostIp.ToString(), networkConfig.DiscoveryPort, true);
+                Node currentNode = new(enode.PublicKey, enode.HostIp.ToString(), networkConfig.P2PPort, networkConfig.DiscoveryPort, true);
 
                 builder
                     .AddModule(new KademliaModule(currentNode, bootNodes))
@@ -80,7 +80,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                 continue;
             }
 
-            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.DiscoveryPort));
+            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort));
         }
 
         return bootNodes;

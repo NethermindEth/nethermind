@@ -14,7 +14,7 @@ public class BalRecorderSpecProvider(ISpecProvider inner, BalRecorderSpecSwitch 
     // repeated GetSpec / GenesisSpec calls don't allocate a new decorator each time.
     private readonly ConcurrentDictionary<IReleaseSpec, IReleaseSpec> _wrapped = new(ReferenceEqualityComparer.Instance);
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) =>
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null) =>
         inner.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
     public ForkActivation? MergeBlockNumber => inner.MergeBlockNumber;
@@ -22,7 +22,7 @@ public class BalRecorderSpecProvider(ISpecProvider inner, BalRecorderSpecSwitch 
     public UInt256? TerminalTotalDifficulty => inner.TerminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => Wrap(inner.GenesisSpec);
     public bool GenesisStateUnavailable => inner.GenesisStateUnavailable;
-    public long? DaoBlockNumber => inner.DaoBlockNumber;
+    public ulong? DaoBlockNumber => inner.DaoBlockNumber;
     public ulong? BeaconChainGenesisTimestamp => inner.BeaconChainGenesisTimestamp;
     public ulong NetworkId => inner.NetworkId;
     public ulong ChainId => inner.ChainId;

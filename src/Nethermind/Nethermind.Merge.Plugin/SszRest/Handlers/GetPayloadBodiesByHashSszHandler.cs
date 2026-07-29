@@ -15,8 +15,9 @@ using Nethermind.JsonRpc;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /engine/v{N}/payloads/bodies/by-hash</c>, the SSZ-REST equivalent
-/// of <c>engine_getPayloadBodiesByHashV{N}</c>. Generic over a per-version descriptor
+/// Handles <c>POST /engine/v2/bodies/hash</c>, the SSZ-REST equivalent
+/// of <c>engine_getPayloadBodiesByHashV{N}</c> (the version is selected by the
+/// <c>Eth-Execution-Version</c> header). Generic over a per-version descriptor
 /// so adding a Vn+1 endpoint is one new descriptor + one DI line.
 /// </summary>
 public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
@@ -44,10 +45,10 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
         if (result.Result.ResultType == ResultType.Success && result.Data is { Count: > 0 } data)
         {
-            string? urlFork = ctx.Items.TryGetValue("SszRouteFork", out object? f) ? f as string : null;
-            if (urlFork is not null)
+            string? requestedFork = GetRequestedFork(ctx);
+            if (requestedFork is not null)
             {
-                TResult?[] filtered = BodiesForkFilter.FilterByHash(data, hashes, urlFork, blockFinder, specProvider);
+                TResult?[] filtered = BodiesForkFilter.FilterByHash(data, hashes, requestedFork, blockFinder, specProvider);
                 ResultWrapper<IReadOnlyList<TResult?>> wrapped = ResultWrapper<IReadOnlyList<TResult?>>.Success(filtered);
                 wrapped.AddDisposable(result.Dispose);
                 result = wrapped;

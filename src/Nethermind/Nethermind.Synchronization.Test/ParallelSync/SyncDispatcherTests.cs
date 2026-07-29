@@ -364,6 +364,7 @@ public class SyncDispatcherTests
     [TestCase(true, 1, 1, 24)]
     [TestCase(true, 2, 1, 32)]
     [TestCase(true, 1, 2, 32)]
+    [NonParallelizable]
     public async Task Test_release_before_processing_complete(bool isMultiSync, int processingThread, int peerCount, int expectedHighestRequest)
     {
         TestSyncFeed syncFeed = new(isMultiSync, 999999);

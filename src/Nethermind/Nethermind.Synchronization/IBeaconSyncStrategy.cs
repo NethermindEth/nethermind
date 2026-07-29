@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization
 
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => true;
         public bool MergeTransitionFinished => false;
-        public long? GetTargetBlockHeight() => null;
+        public ulong? GetTargetBlockHeight() => null;
         public Hash256? GetFinalizedHash() => null;
         public Hash256? GetHeadBlockHash() => null;
 
@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization
 
         public bool MergeTransitionFinished { get; }
 
-        public long? GetTargetBlockHeight();
+        public ulong? GetTargetBlockHeight();
         public Hash256? GetFinalizedHash();
         public Hash256? GetHeadBlockHash();
     }

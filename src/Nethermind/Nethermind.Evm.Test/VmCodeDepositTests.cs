@@ -14,9 +14,9 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
-        private long _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
+        private ulong _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
 
-        protected override long BlockNumber => _blockNumber;
+        protected override ulong BlockNumber => _blockNumber;
 
         [SetUp]
         public override void Setup()

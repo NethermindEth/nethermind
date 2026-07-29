@@ -34,5 +34,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
+
+        [Test]
+        public void Roundtrip_Defaults()
+        {
+            GetAccountRangeMessage msg = new()
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                AccountRange = new(Keccak.OfAnEmptyString, Keccak.Zero)
+            };
+            GetAccountRangeMessageSerializer serializer = new();
+
+            byte[] bytes = serializer.Serialize(msg);
+            GetAccountRangeMessage deserializedMsg = serializer.Deserialize(bytes);
+
+            Assert.That(deserializedMsg.AccountRange.LimitHash, Is.EqualTo(Keccak.MaxValue));
+            Assert.That(deserializedMsg.ResponseBytes, Is.EqualTo(1000_000));
+
+            SerializerTester.TestZero(serializer, msg);
+        }
     }
 }

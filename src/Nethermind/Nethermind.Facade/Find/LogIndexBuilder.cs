@@ -51,7 +51,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly CancellationTokenSource _cancellationSource = new();
     private CancellationToken CancellationToken => _cancellationSource.Token;
 
-    private int MaxReorgDepth => _config.MaxReorgDepth!.Value;
+    private ulong MaxReorgDepth => _config.MaxReorgDepth!.Value;
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ILogIndexStorage _logIndexStorage;
@@ -60,8 +60,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly ILogManager _logManager;
     private Timer? _progressLoggerTimer;
 
-    private readonly TaskCompletionSource<int> _pivotSource = new(RunContinuationsAsynchronously);
-    private readonly Task<int> _pivotTask;
+    private readonly TaskCompletionSource<ulong> _pivotSource = new(RunContinuationsAsynchronously);
+    private readonly Task<ulong> _pivotTask;
 
     private readonly List<Task> _tasks = [];
 
@@ -101,8 +101,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private void StartProcessing(bool isForward)
     {
-        // Do not start backward sync if the target is already reached
-        if (!isForward && _logIndexStorage.MinBlockNumber <= MinTargetBlockNumber)
+        // Skip backward sync if storage already reached the target. Null MinBlockNumber
+        // means nothing indexed yet — must not skip.
+        if (!isForward && _logIndexStorage.MinBlockNumber is { } minStored && (ulong)minStored <= MinTargetBlockNumber)
         {
             MarkCompleted(false);
             return;
@@ -127,8 +128,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
 
-            TrySetPivot(_logIndexStorage.MaxBlockNumber);
-            TrySetPivot((int)_blockTree.SyncPivot.BlockNumber);
+            TrySetPivot(_logIndexStorage.MaxBlockNumber is { } storedMax ? (ulong)storedMax : null);
+            TrySetPivot(_blockTree.SyncPivot.BlockNumber);
 
             if (!_pivotTask.IsCompleted && _logger.IsInfo)
                 _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
@@ -216,7 +217,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         Direction(isForward: true).Progress?.LogProgress();
     }
 
-    private bool TrySetPivot(int? blockNumber)
+    private bool TrySetPivot(ulong? blockNumber)
     {
         if (blockNumber is not { } number || number is 0)
             return false;
@@ -242,15 +243,18 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private void OnReceiptsInserted(object? sender, ReceiptsEventArgs args)
     {
-        int next = (int)args.BlockHeader.Number;
-        if (TrySetPivot(next))
+        if (TrySetPivot(args.BlockHeader.Number))
             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
     }
 
-    public int MaxTargetBlockNumber => (int)Math.Max(_blockTree.BestKnownNumber - MaxReorgDepth, 0);
+    public ulong MaxTargetBlockNumber => _blockTree.BestKnownNumber >= MaxReorgDepth
+        ? _blockTree.BestKnownNumber - MaxReorgDepth
+        : 0UL;
 
     // Block 0 should always be present
-    public int MinTargetBlockNumber => (int)(_syncConfig.AncientReceiptsBarrierCalc <= 1 ? 0 : _syncConfig.AncientReceiptsBarrierCalc);
+    public ulong MinTargetBlockNumber => _syncConfig.AncientReceiptsBarrierCalc <= 1
+        ? 0UL
+        : _syncConfig.AncientReceiptsBarrierCalc;
 
     public bool IsRunning { get; private set; }
     public DateTimeOffset? LastUpdate { get; private set; }
@@ -324,7 +328,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         UpdateProgress();
 
-        if (_logIndexStorage.MinBlockNumber <= MinTargetBlockNumber)
+        if (_logIndexStorage.MinBlockNumber <= (int)MinTargetBlockNumber)
             MarkCompleted(false);
     }
 
@@ -332,27 +336,16 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     {
         try
         {
-            int pivotNumber = await _pivotTask;
+            ulong pivotNumber = await _pivotTask;
 
             ProcessingQueue queue = Direction(isForward).Queue!;
 
-            int? next = GetNextBlockNumber(isForward);
-            if (next is not { } start)
-            {
-                if (isForward)
-                {
-                    start = pivotNumber;
-                }
-                else
-                {
-                    start = pivotNumber - 1;
-                }
-            }
+            int start = GetNextBlockNumber(isForward) ?? (isForward ? (int)pivotNumber : (int)pivotNumber - 1);
 
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
-                if (!isForward && start < MinTargetBlockNumber)
+                if (!isForward && start < (int)MinTargetBlockNumber)
                 {
                     if (_logger.IsTrace)
                         _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
@@ -362,8 +355,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 int batchSize = _config.MaxBatchSize;
                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
-                end = Math.Max(end, MinTargetBlockNumber);
-                end = Math.Min(end, MaxTargetBlockNumber);
+                end = Math.Max(end, (int)MinTargetBlockNumber);
+                end = Math.Min(end, (int)MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
                 (int from, int to) = isForward
@@ -399,21 +392,30 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private void UpdateProgress()
     {
         if (!_pivotTask.IsCompletedSuccessfully) return;
-        int pivotNumber = _pivotTask.Result;
+        ulong pivotNumber = _pivotTask.Result;
 
         ref DirectionState forward = ref Direction(isForward: true);
         if (forward.Progress is { HasEnded: false } forwardProgress)
         {
-            forwardProgress.TargetValue = Math.Max(0, _blockTree.BestKnownNumber - MaxReorgDepth - pivotNumber + 1);
-            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max ? max - pivotNumber + 1 : 0);
+            ulong bestKnown = _blockTree.BestKnownNumber;
+            forwardProgress.TargetValue = bestKnown >= MaxReorgDepth + pivotNumber
+                ? bestKnown - MaxReorgDepth - pivotNumber + 1UL
+                : 0UL;
+            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max && (ulong)max >= pivotNumber
+                ? (ulong)max - pivotNumber + 1UL
+                : 0UL);
             forwardProgress.CurrentQueued = forward.Queue!.QueueCount;
         }
 
         ref DirectionState backward = ref Direction(isForward: false);
         if (backward.Progress is { HasEnded: false } backwardProgress)
         {
-            backwardProgress.TargetValue = pivotNumber - MinTargetBlockNumber;
-            backwardProgress.Update(_logIndexStorage.MinBlockNumber is { } min ? pivotNumber - min : 0);
+            backwardProgress.TargetValue = pivotNumber >= MinTargetBlockNumber
+                ? pivotNumber - MinTargetBlockNumber
+                : 0UL;
+            backwardProgress.Update(_logIndexStorage.MinBlockNumber is { } min && pivotNumber >= (ulong)min
+                ? pivotNumber - (ulong)min
+                : 0UL);
             backwardProgress.CurrentQueued = backward.Queue!.QueueCount;
         }
     }
@@ -444,9 +446,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (to - from > buffer.Length)
             throw new InvalidOperationException($"{GetLogPrefix()}: buffer size is too small: {buffer.Length} / {to - from}");
 
-        // Check the immediate next block first
         int nextIndex = isForward ? from : to - 1;
-        if (!TryGetBlockReceipts(nextIndex, out buffer[0]))
+        if (!TryGetBlockReceipts((ulong)nextIndex, out buffer[0]))
             return ReadOnlySpan<BlockReceipts>.Empty;
 
         Parallel.For(from, to, new()
@@ -457,7 +458,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         {
             int bufferIndex = isForward ? i - from : to - 1 - i;
             if (buffer[bufferIndex] == default)
-                TryGetBlockReceipts(i, out buffer[bufferIndex]);
+                TryGetBlockReceipts((ulong)i, out buffer[bufferIndex]);
         });
 
         int endIndex = Array.IndexOf(buffer, default);
@@ -465,18 +466,18 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     }
 
     // TODO: move to IReceiptStorage?
-    private bool TryGetBlockReceipts(int i, out BlockReceipts blockReceipts)
+    private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts)
     {
         blockReceipts = default;
 
-        if (_blockTree.FindBlock(i, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
+        if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
         {
             return false;
         }
 
         if (!block.Header.HasTransactions)
         {
-            blockReceipts = new(i, []);
+            blockReceipts = new((int)blockNumber, []);
             return true;
         }
 
@@ -487,7 +488,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             return false; // block should have transactions but nothing in storage
         }
 
-        blockReceipts = new(i, receipts);
+        blockReceipts = new((int)blockNumber, receipts);
         return true;
     }
 

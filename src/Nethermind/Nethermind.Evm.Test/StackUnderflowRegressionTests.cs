@@ -8,7 +8,7 @@ namespace Nethermind.Evm.Test;
 
 public class StackUnderflowRegressionTests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     // Each case leaves the stack exactly one item short of what the opcode's converted pop needs:

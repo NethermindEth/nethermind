@@ -36,7 +36,7 @@ public class EraTestModule(bool useRealValidator = false) : Module
             });
     }
 
-    public static async Task<IContainer> CreateExportedEraEnvWithCompleteBlockBuilder(int chainLength = 512, int start = 0, int end = 0, CancellationToken cancellationToken = default)
+    public static async Task<IContainer> CreateExportedEraEnvWithCompleteBlockBuilder(int chainLength = 512, ulong start = 0, ulong end = 0, CancellationToken cancellationToken = default)
     {
         IContainer testCtx = new ContainerBuilder()
             .AddModule(new EraTestModule(useRealValidator: true))
@@ -54,7 +54,7 @@ public class EraTestModule(bool useRealValidator = false) : Module
         return testCtx;
     }
 
-    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, int start = 0, int end = 0)
+    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, ulong start = 0, ulong end = 0)
     {
         IContainer testCtx = BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
         await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), start, end);

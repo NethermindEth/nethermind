@@ -5,22 +5,21 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Rlpx;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
@@ -32,13 +31,12 @@ public static class NettyMemoryEstimator
         // For some reason needs to be half page size to get page size
         Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
 
-    public static long Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1L << arenaOrder) * PageSize;
+    public static ulong Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1UL << arenaOrder) * PageSize;
 }
 
 [RunnerStepDependencies(
     typeof(LoadGenesisBlock),
     typeof(SetupKeyStore),
-    typeof(InitializePlugins),
     typeof(InitializeBlockchain))]
 #pragma warning disable IDE0290 // Primary constructor would shadow discard `_` used in fire-and-forget patterns
 public class InitializeNetwork : IStep
@@ -56,13 +54,15 @@ public class InitializeNetwork : IStep
     private readonly IStaticNodesManager _staticNodesManager;
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly IEnode _enode;
-    private readonly INethermindPlugin[] _plugins;
     private readonly Lazy<IProtocolsManager> _protocolsManager;
-    private readonly Lazy<SnapCapabilitySwitcher> _snapCapabilitySwitcher;
 
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
+    private readonly IFlatDbConfig _flatDbConfig;
+    private readonly IPruningConfig _pruningConfig;
+    private readonly INodeStorageFactory _nodeStorageFactory;
+    private readonly FlatStateActivationPolicy _flatStateActivationPolicy;
     private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
@@ -81,12 +81,14 @@ public class InitializeNetwork : IStep
         IStaticNodesManager staticNodesManager,
         ITrustedNodesManager trustedNodesManager,
         IEnode enode,
-        INethermindPlugin[] plugins,
         Lazy<IProtocolsManager> protocolsManager,
-        Lazy<SnapCapabilitySwitcher> snapCapabilitySwitcher,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
+        IFlatDbConfig flatDbConfig,
+        IPruningConfig pruningConfig,
+        INodeStorageFactory nodeStorageFactory,
+        FlatStateActivationPolicy flatStateActivationPolicy,
         ILogManager logManager
     )
     {
@@ -102,12 +104,14 @@ public class InitializeNetwork : IStep
         _staticNodesManager = staticNodesManager;
         _trustedNodesManager = trustedNodesManager;
         _enode = enode;
-        _plugins = plugins;
         _protocolsManager = protocolsManager;
-        _snapCapabilitySwitcher = snapCapabilitySwitcher;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
+        _flatDbConfig = flatDbConfig;
+        _pruningConfig = pruningConfig;
+        _nodeStorageFactory = nodeStorageFactory;
+        _flatStateActivationPolicy = flatStateActivationPolicy;
         _logManager = logManager;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
@@ -151,12 +155,6 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
-        {
-            _snapCapabilitySwitcher.Value.EnableSnapCapabilityUntilSynced();
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
-
         if (cancellationToken.IsCancellationRequested)
         {
             return;
@@ -197,6 +195,7 @@ public class InitializeNetwork : IStep
             _logger.Error("Unable to start the peer manager.", e);
         }
 
+        ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatStateActivationPolicy, _flatDbConfig, _initConfig, _pruningConfig, _nodeStorageFactory);
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
         ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
@@ -204,6 +203,37 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ");
         ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
+    }
+
+    private static string GetDbLayoutPostfix(FlatStateActivationPolicy flatStateActivationPolicy, IFlatDbConfig flatDbConfig, IInitConfig initConfig, IPruningConfig pruningConfig, INodeStorageFactory nodeStorageFactory)
+    {
+        // Gate on the resolved backend decision, not flatDbConfig.Enabled: a flat-enabled node can still run
+        // on patricia (e.g. an existing patricia state with ImportFromPruningTrieState off). See FlatStateActivationPolicy.
+        if (flatStateActivationPolicy.ShouldTurnOnFlatDb())
+        {
+            return flatDbConfig.Layout switch
+            {
+                FlatLayout.Flat => "-f",
+                FlatLayout.FlatInTrie => "-fit",
+                FlatLayout.PreimageFlat => "-pf",
+                _ => ""
+            };
+        }
+
+        // Prefer the scheme actually detected from the state DB over the configured preference, which
+        // defaults to Current. Mirrors NodeStorageFactory.WrapKeyValueStore: Current resolves to HalfPath.
+        INodeStorage.KeyScheme scheme = nodeStorageFactory.CurrentKeyScheme
+            ?? (initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Current
+                ? initConfig.StateDbKeyScheme
+                : INodeStorage.KeyScheme.HalfPath);
+
+        bool isArchive = pruningConfig.Mode == PruningMode.None;
+        return scheme switch
+        {
+            INodeStorage.KeyScheme.Hash => isArchive ? "-hA" : "-h",
+            INodeStorage.KeyScheme.HalfPath => isArchive ? "-hpA" : "-hp",
+            _ => ""
+        };
     }
 
     private Task StartDiscovery()
@@ -258,24 +288,16 @@ public class InitializeNetwork : IStep
 
     protected virtual async Task InitPeer()
     {
-        IProtocolsManager protocolsManager = _protocolsManager.Value;
+        // Force creation so the protocols manager subscribes to session events before the RLPx listener starts.
+        _ = _protocolsManager.Value;
 
-        if (_syncConfig.SnapServingEnabled == true)
-        {
-            protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        }
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
             _ = _enrDiscoveryAppFeeder.Run();
         }
 
-        foreach (INethermindPlugin plugin in _plugins)
-        {
-            await plugin.InitNetworkProtocol();
-        }
-
-        // Capabilities must be finalized before the RLPx listener accepts peers. Otherwise
+        // Capabilities must be resolved before the RLPx listener accepts peers. Otherwise
         // early sessions can negotiate only the default ETH version and never upgrade.
         await _rlpxPeer.Init();
 

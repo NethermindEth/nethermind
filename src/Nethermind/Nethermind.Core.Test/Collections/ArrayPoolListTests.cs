@@ -221,6 +221,19 @@ public class ArrayPoolListTests
     }
 
     [Test]
+    public void Construct_from_ICollection_copies_all_items()
+    {
+        // HashSet is an ICollection<T> but neither an array nor a list, so it exercises the bulk CopyTo path.
+        HashSet<int> source = Enumerable.Range(0, 50).ToHashSet();
+        using ArrayPoolList<int> list = new(source.Count, source);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EquivalentTo(source));
+            Assert.That(list.Count, Is.EqualTo(50));
+        }
+    }
+
+    [Test]
     public void Should_implement_IList_the_same_as_IListT()
     {
         using ArrayPoolList<int> listT = new(1024);

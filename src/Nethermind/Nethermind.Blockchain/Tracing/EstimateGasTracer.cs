@@ -23,13 +23,13 @@ public class EstimateGasTracer : TxTracer
 
     public byte[]? ReturnValue { get; set; }
 
-    private long NonIntrinsicGasSpentBeforeRefund { get; set; }
+    private ulong NonIntrinsicGasSpentBeforeRefund { get; set; }
 
-    internal long GasSpent { get; set; }
+    internal ulong GasSpent { get; set; }
 
-    internal long IntrinsicGasAt { get; set; }
+    internal ulong IntrinsicGasAt { get; set; }
 
-    internal long TotalRefund { get; private set; }
+    internal ulong TotalRefund { get; private set; }
 
     public string? Error { get; set; }
 
@@ -56,34 +56,34 @@ public class EstimateGasTracer : TxTracer
         StatusCode = Evm.StatusCode.Failure;
     }
 
-    private class GasAndNesting(long gasOnStart, int nestingLevel)
+    private class GasAndNesting(ulong gasOnStart, int nestingLevel)
     {
-        public long GasOnStart { get; set; } = gasOnStart;
-        public long GasUsageFromChildren { get; set; }
-        public long GasLeft { get; set; }
+        public ulong GasOnStart { get; set; } = gasOnStart;
+        public ulong GasUsageFromChildren { get; set; }
+        public ulong GasLeft { get; set; }
         public int NestingLevel { get; set; } = nestingLevel;
 
-        private long MaxGasNeeded
+        private ulong MaxGasNeeded
         {
             get
             {
-                long maxGasNeeded = GasOnStart + ExtraGasPressure - GasLeft + GasUsageFromChildren;
+                ulong maxGasNeeded = GasOnStart + ExtraGasPressure - GasLeft + GasUsageFromChildren;
                 for (int i = 0; i < NestingLevel; i++)
                 {
-                    maxGasNeeded = (long)Math.Ceiling(maxGasNeeded * 64m / 63);
+                    maxGasNeeded = (ulong)Math.Ceiling(maxGasNeeded * 64m / 63);
                 }
 
                 return maxGasNeeded;
             }
         }
 
-        public long AdditionalGasRequired => MaxGasNeeded - (GasOnStart - GasLeft);
-        public long ExtraGasPressure { get; set; }
+        public ulong AdditionalGasRequired => MaxGasNeeded - (GasOnStart - GasLeft);
+        public ulong ExtraGasPressure { get; set; }
     }
 
-    internal long CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
+    internal ulong CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
     {
-        long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
+        ulong intrinsicGas = tx.GasLimit - IntrinsicGasAt;
         return _currentGasAndNesting.Peek().AdditionalGasRequired +
                RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund,
                    releaseSpec);
@@ -95,7 +95,7 @@ public class EstimateGasTracer : TxTracer
 
     private readonly Stack<GasAndNesting> _currentGasAndNesting = new();
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
         if (_currentNestingLevel == -1)
@@ -116,9 +116,9 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => UpdateAdditionalGas(gas);
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => UpdateAdditionalGas(gas);
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         UpdateAdditionalGas(gas);
 
     public override void ReportActionError(EvmExceptionType exceptionType)
@@ -127,7 +127,7 @@ public class EstimateGasTracer : TxTracer
         UpdateAdditionalGas();
     }
 
-    public void ReportActionError(EvmExceptionType exceptionType, long gasLeft)
+    public void ReportActionError(EvmExceptionType exceptionType, ulong gasLeft)
     {
         ReportOperationError(exceptionType);
         UpdateAdditionalGas(gasLeft);
@@ -146,7 +146,7 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    private void UpdateAdditionalGas(long? gasLeft = null)
+    private void UpdateAdditionalGas(ulong? gasLeft = null)
     {
         if (_isInPrecompile)
         {
@@ -171,9 +171,9 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    public override void ReportRefund(long refund) => TotalRefund += refund;
+    public override void ReportRefund(long refund) => TotalRefund += (ulong)refund;
 
-    public override void ReportExtraGasPressure(long extraGasPressure) =>
+    public override void ReportExtraGasPressure(ulong extraGasPressure) =>
         _currentGasAndNesting.Peek().ExtraGasPressure =
             Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
 }

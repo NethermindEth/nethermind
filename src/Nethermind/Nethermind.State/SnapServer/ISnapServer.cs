@@ -25,8 +25,15 @@ namespace Nethermind.State.SnapServer;
 
 public interface ISnapServer
 {
+    const long HardResponseByteLimit = 2000000;
+    const int HardResponseNodeLimit = 100000;
+
     bool CanServe { get; }
-    IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken);
+    IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>
+        GetTrieNodes(pathSet, rootHash, long.MaxValue, cancellationToken);
+
+    IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken);
+
     IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
 
     (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(Hash256 rootHash,

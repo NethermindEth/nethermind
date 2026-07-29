@@ -135,7 +135,8 @@ namespace Nethermind.Core.Crypto
 
         private readonly ValueHash256 _hash256;
 
-        [ThreadStatic] private static byte[]? _threadStaticBuffer;
+        [ThreadStatic]
+        private static byte[]? _threadStaticBuffer;
 
         public ref readonly ValueHash256 ValueHash256 => ref _hash256;
 

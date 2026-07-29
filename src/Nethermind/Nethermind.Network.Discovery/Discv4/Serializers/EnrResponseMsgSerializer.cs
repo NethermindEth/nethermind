@@ -24,10 +24,10 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        NettyRlpStream rlpStream = new(byteBuffer);
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(msg.RequestKeccak);
-        msg.NodeRecord.Encode(rlpStream);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
+        writer.Encode(msg.RequestKeccak);
+        msg.NodeRecord.Encode(ref writer);
 
         byteBuffer.ResetIndex();
         AddSignatureAndMdc(byteBuffer, totalLength + 1);
@@ -36,7 +36,7 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
     public EnrResponseMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
-        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
+        RlpReader ctx = new(data.AsSpan());
         ctx.ReadSequenceLength();
         Hash256? requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
 

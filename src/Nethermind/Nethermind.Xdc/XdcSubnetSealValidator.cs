@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
-using System;
 
 namespace Nethermind.Xdc;
 
@@ -17,6 +19,8 @@ internal sealed class XdcSubnetSealValidator(
     IEpochSwitchManager epochSwitchManager,
     ISpecProvider specProvider) : XdcSealValidator(masternodesCalculator, epochSwitchManager, specProvider)
 {
+    protected override RlpDecoder<BlockHeader> HeaderDecoder { get; } = new XdcSubnetHeaderDecoder();
+
     public override bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {
         if (header is not XdcSubnetBlockHeader xdcHeader)

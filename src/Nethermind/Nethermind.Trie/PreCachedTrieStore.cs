@@ -33,11 +33,11 @@ public sealed class PreCachedTrieStore : ITrieStore
 
     public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => _inner.BeginCommit(address, root, writeFlags);
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => _inner.BeginBlockCommit(blockNumber);
+    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => _inner.BeginBlockCommit(blockNumber);
 
     public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
 
-    public bool HasRoot(Hash256 stateRoot, long blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
+    public bool HasRoot(Hash256 stateRoot, ulong blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
 

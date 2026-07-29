@@ -30,6 +30,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
         private readonly IStateBoundaryWriter _stateBoundary;
+        private readonly IStateBoundary _stateBoundaryReader;
         private readonly IStateReader _stateReader;
         private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
@@ -48,6 +49,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateBoundaryWriter stateBoundary,
+            IStateBoundary stateBoundaryReader,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
@@ -62,6 +64,7 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
             _stateBoundary = stateBoundary;
+            _stateBoundaryReader = stateBoundaryReader;
             _stateReader = stateReader;
             _processExitSource = processExitSource;
             _logManager = logManager;
@@ -145,7 +148,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private async Task RunFullPruning(IPruningContext pruningContext, CancellationToken cancellationToken)
         {
-            long blockToWaitFor = 0;
+            ulong blockToWaitFor = 0;
             await WaitForMainChainChange((e) =>
             {
                 if (e.Headers.Count == 0) return false;
@@ -158,13 +161,13 @@ namespace Nethermind.Blockchain.FullPruning
 
             await WaitForMainChainChange((e) =>
             {
-                if (_blockTree.BestPersistedState >= blockToWaitFor) return true;
-                if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {blockToWaitFor} in order to not lose any cached state.");
+                if (_stateBoundaryReader.BestPersistedState >= blockToWaitFor) return true;
+                if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_stateBoundaryReader.BestPersistedState}, waiting for state {blockToWaitFor} in order to not lose any cached state.");
                 return false;
             }, cancellationToken);
 
-            long stateToCopy = _blockTree.BestPersistedState.Value;
-            long blockToPruneAfter = stateToCopy + _pruningConfig.PruningBoundary;
+            ulong stateToCopy = _stateBoundaryReader.BestPersistedState.Value;
+            ulong blockToPruneAfter = stateToCopy + _pruningConfig.PruningBoundary;
 
             await WaitForMainChainChange((e) =>
             {
@@ -221,7 +224,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private void TryCopyTrie(IPruningContext pruning, BlockHeader? baseBlock, long stateToCopy, CancellationToken cancellationToken)
+        private void TryCopyTrie(IPruningContext pruning, BlockHeader? baseBlock, ulong stateToCopy, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;

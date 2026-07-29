@@ -33,10 +33,10 @@ public class CustomSpecProvider : SpecProviderBase, ISpecProvider
         TransitionActivations = orderedTransitions.Select(static t => t.Activation).ToArray();
     }
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            _theMergeBlock = (ForkActivation)blockNumber;
+            _theMergeBlock = (ForkActivation)blockNumber.Value;
         if (terminalTotalDifficulty is not null)
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
@@ -46,7 +46,7 @@ public class CustomSpecProvider : SpecProviderBase, ISpecProvider
     public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
     public UInt256? TerminalTotalDifficulty { get; set; }
 
-    public long? DaoBlockNumber
+    public ulong? DaoBlockNumber
     {
         get
         {

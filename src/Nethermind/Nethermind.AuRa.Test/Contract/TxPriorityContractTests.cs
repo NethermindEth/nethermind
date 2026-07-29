@@ -321,12 +321,12 @@ public class TxPriorityContractTests
             return b;
         }
 
-        private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, UInt256 baseNonce, params Transaction[] transactions)
+        private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, ulong baseNonce, params Transaction[] transactions)
         {
-            for (int index = 0; index < transactions.Length; index++)
+            for (uint index = 0; index < transactions.Length; index++)
             {
                 Transaction transaction = transactions[index];
-                transaction.Nonce = (UInt256)index + baseNonce;
+                transaction.Nonce = index + baseNonce;
                 ecdsa.Sign(key, transaction, true);
                 transaction.SenderAddress = key.Address;
                 transaction.Hash = transaction.CalculateHash();

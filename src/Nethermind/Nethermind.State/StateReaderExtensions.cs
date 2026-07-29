@@ -14,7 +14,7 @@ namespace Nethermind.State
 {
     public static class StateReaderExtensions
     {
-        public static UInt256 GetNonce(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
+        public static ulong GetNonce(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {
             stateReader.TryGetAccount(baseBlock, address, out AccountStruct account);
             return account.Nonce;

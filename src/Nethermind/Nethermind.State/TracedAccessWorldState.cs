@@ -23,12 +23,8 @@ namespace Nethermind.State;
 /// <c>_generatingBlockAccessList</c> without a null-check, so a missed setup fails fast with
 /// <see cref="NullReferenceException"/> at the first write rather than silently corrupting BAL output.
 /// </remarks>
-public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IPreBlockCaches, IBlockAccessListSource
+public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
-    public PreBlockCaches Caches => (ScopeProvider as IPreBlockCaches)?.Caches
-        ?? throw new InvalidOperationException($"{nameof(IPreBlockCaches)} is unavailable from the wrapped world state's scope provider.");
-    public bool IsWarmWorldState => (ScopeProvider as IPreBlockCaches)?.IsWarmWorldState ?? false;
-
     // Set by SetGeneratingBlockAccessList; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
@@ -89,18 +85,18 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return GetInternal(accountChanges, in storageCell);
     }
 
-    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
-        UInt256? currentNonce = GetNonceCurrent(address);
+        ulong? currentNonce = GetNonceCurrent(address);
         base.IncrementNonce(address, delta, out oldNonce);
         oldNonce = currentNonce ?? oldNonce;
-        _generatingBlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
+        _generatingBlockAccessList.AddNonceChange(address, oldNonce + delta);
     }
 
-    public override void SetNonce(Address address, in UInt256 nonce)
+    public override void SetNonce(Address address, in ulong nonce)
     {
         base.SetNonce(address, nonce);
-        _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
+        _generatingBlockAccessList.AddNonceChange(address, nonce);
     }
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -128,7 +124,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return ref base.GetBalance(address);
     }
 
-    public override UInt256 GetNonce(Address address)
+    public override ulong GetNonce(Address address)
     {
         AddAccountRead(address);
         return GetNonceInternal(address);
@@ -174,13 +170,13 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         base.DeleteAccount(address);
     }
 
-    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
         base.CreateAccount(address, balance, nonce);
     }
 
-    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
         base.CreateAccountIfNotExists(address, balance, nonce);
@@ -278,6 +274,13 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         base.ClearStorage(address);
     }
 
+    public override void DecrementNonce(Address address, ulong delta)
+    {
+        ulong? currentNonce = GetNonceCurrent(address);
+        base.DecrementNonce(address, delta);
+        ulong oldNonce = currentNonce ?? (GetNonce(address) + delta);
+        _generatingBlockAccessList.AddNonceChange(address, oldNonce - delta);
+    }
     private UInt256 GetBalanceInternal(Address address)
         => GetBalanceCurrent(address) ?? base.GetBalance(address);
 
@@ -287,10 +290,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return accountChanges?.BalanceChange?.Value;
     }
 
-    private UInt256 GetNonceInternal(Address address)
+    private ulong GetNonceInternal(Address address)
         => GetNonceCurrent(address) ?? base.GetNonce(address);
 
-    private UInt256? GetNonceCurrent(Address address)
+    private ulong? GetNonceCurrent(Address address)
     {
         AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         return accountChanges?.NonceChange?.Value;
@@ -360,16 +363,16 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return null;
     }
 
-    private void RecordCreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    private void RecordCreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         AddAccountRead(address);
         if (!balance.IsZero)
         {
             _generatingBlockAccessList.AddBalanceChange(address, 0, balance);
         }
-        if (!nonce.IsZero)
+        if (nonce != 0)
         {
-            _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
+            _generatingBlockAccessList.AddNonceChange(address, nonce);
         }
     }
 

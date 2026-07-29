@@ -693,7 +693,9 @@ public class AdminModuleTests
 
         raiseEvent();
 
-        Assert.That(manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)), Is.EqualTo(shouldReceive), "the subscription should fire within the timeout");
+        // Dispatch is async (background channel reader), so a tight deadline yields false timeouts under load.
+        TimeSpan timeout = shouldReceive ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(1);
+        Assert.That(manualResetEvent.WaitOne(timeout), Is.EqualTo(shouldReceive), "the subscription should fire within the timeout");
         subscriptionId = peerEventsSubscription.Id;
         if (disposeSubscription)
         {

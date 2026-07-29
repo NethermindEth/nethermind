@@ -22,6 +22,6 @@ namespace Nethermind.Taiko.Precompiles;
 /// </remarks>
 public interface IContextAwarePrecompile : IPrecompile
 {
-    Result<(byte[] returnValue, long gasConsumed)> Run(
+    Result<(byte[] returnValue, ulong gasConsumed)> Run(
         ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, in PrecompileExtras extras);
 }

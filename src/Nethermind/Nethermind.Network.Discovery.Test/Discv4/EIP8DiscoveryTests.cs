@@ -52,6 +52,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                                  "42124e";
             PongMsg pong = _messageSerializationService.Deserialize<PongMsg>(Bytes.FromHexString(encodedPong));
             Assert.That(pong.ExpirationTime, Is.EqualTo(1136239445));
+            Assert.That(pong.EnrSequence, Is.Null);
         }
 
         [Test]

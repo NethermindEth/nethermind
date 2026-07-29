@@ -30,7 +30,7 @@ public class CustomSpecProviderTests
     [Test]
     public void Can_find_dao_block_number()
     {
-        long daoBlockNumber = 100;
+        ulong daoBlockNumber = 100;
         CustomSpecProvider specProvider = new(
             ((ForkActivation)0L, Frontier.Instance),
             ((ForkActivation)daoBlockNumber, Dao.Instance));

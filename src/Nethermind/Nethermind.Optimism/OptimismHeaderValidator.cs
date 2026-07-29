@@ -99,7 +99,7 @@ public class OptimismHeaderValidator(
                 return false;
             }
 
-            if (blobGasUsed > (ulong)header.GasLimit)
+            if (blobGasUsed > header.GasLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
                 error = ErrorMessages.DaFootprintExceededGasLimit;

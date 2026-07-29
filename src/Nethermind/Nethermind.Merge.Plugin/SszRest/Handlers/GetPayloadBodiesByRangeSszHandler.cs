@@ -14,8 +14,9 @@ using Nethermind.JsonRpc;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>GET /engine/v2/{fork}/bodies?from=N&amp;count=M</c>, the SSZ-REST equivalent
-/// of <c>engine_getPayloadBodiesByRangeV{N}</c>. Generic over a per-version descriptor
+/// Handles <c>GET /engine/v2/bodies?from=N&amp;count=M</c>, the SSZ-REST equivalent
+/// of <c>engine_getPayloadBodiesByRangeV{N}</c> (the version is selected by the
+/// <c>Eth-Execution-Version</c> header). Generic over a per-version descriptor
 /// so adding a Vn+1 endpoint is one new descriptor + one DI line.
 /// </summary>
 public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(
@@ -33,14 +34,14 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         // body is empty for GET; parameters come from the query string.
-        if (!QueryParams.TryReadLong(ctx, "from", static n => n >= 0,
-                "must be a non-negative integer block number", out long start, out Task? error))
+        if (!QueryParams.TryReadUlong(ctx, "from", static n => true,
+                "must be a non-negative integer block number", out ulong start, out Task? error))
         {
             await error;
             return;
         }
-        if (!QueryParams.TryReadLong(ctx, "count", static n => n > 0,
-                "must be a positive integer", out long count, out error))
+        if (!QueryParams.TryReadUlong(ctx, "count", static n => n > 0,
+                "must be a positive integer", out ulong count, out error))
         {
             await error;
             return;
@@ -53,10 +54,10 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(
             return;
         }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, start, count);
-        string? urlFork = ctx.Items.TryGetValue("SszRouteFork", out object? f) ? f as string : null;
-        if (urlFork is not null && result.Result.ResultType == ResultType.Success && result.Data is { Count: > 0 } data)
+        string? requestedFork = GetRequestedFork(ctx);
+        if (requestedFork is not null && result.Result.ResultType == ResultType.Success && result.Data is { Count: > 0 } data)
         {
-            TResult?[] filtered = BodiesForkFilter.FilterByRange(data, start, urlFork, blockFinder, specProvider);
+            TResult?[] filtered = BodiesForkFilter.FilterByRange(data, start, requestedFork, blockFinder, specProvider);
             ResultWrapper<IReadOnlyList<TResult?>> wrapped = ResultWrapper<IReadOnlyList<TResult?>>.Success(filtered);
             wrapped.AddDisposable(result.Dispose);
             result = wrapped;

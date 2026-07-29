@@ -4,9 +4,9 @@
 namespace Nethermind.State;
 
 /// <summary>
-/// Read-only view of the persisted state window. Implemented by <see cref="IWorldStateManager"/>;
-/// each backend reports the floor from its own state-tracking layer (trie: a co-located metadata
-/// store; flat: the persistence manager).
+/// Read-only view of the persisted state window. Registered per-backend (trie: a co-located
+/// metadata store; flat: the persistence manager) rather than off <see cref="IWorldStateManager"/>,
+/// so it can be injected into components built before the manager (e.g. the block tree).
 /// </summary>
 public interface IStateBoundary
 {
@@ -15,14 +15,20 @@ public interface IStateBoundary
     /// completes (= pivot) and after a full pruning run completes (= copied state's block).
     /// Null if never set (archive node syncing from genesis).
     /// </summary>
-    long? OldestStateBlock { get; }
+    ulong? OldestStateBlock { get; }
 
     /// <summary>
     /// Configured rolling-window retention in blocks (e.g. trie memory pruning). Null when
     /// there is no rolling window (archive, full pruning, flat storage); the absolute floor
     /// is reported via <see cref="OldestStateBlock"/> instead.
     /// </summary>
-    long? RetentionWindowBlocks { get; }
+    ulong? RetentionWindowBlocks { get; }
+
+    /// <summary>
+    /// Highest block whose state is durably persisted; null when unknown (fresh node or still
+    /// syncing). The ceiling counterpart to the <see cref="OldestStateBlock"/> floor.
+    /// </summary>
+    ulong? BestPersistedState { get; }
 }
 
 /// <summary>
@@ -37,5 +43,17 @@ public interface IStateBoundary
 /// </remarks>
 public interface IStateBoundaryWriter
 {
-    long? OldestStateBlock { set; }
+    ulong? OldestStateBlock { set; }
+}
+
+/// <summary>Empty boundary for construction sites with no state backend (e.g. simulated block trees).</summary>
+public sealed class NullStateBoundary : IStateBoundary
+{
+    public static readonly NullStateBoundary Instance = new();
+
+    private NullStateBoundary() { }
+
+    public ulong? OldestStateBlock => null;
+    public ulong? RetentionWindowBlocks => null;
+    public ulong? BestPersistedState => null;
 }

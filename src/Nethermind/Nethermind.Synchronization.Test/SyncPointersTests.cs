@@ -85,5 +85,5 @@ public class SyncPointersTests
         new(blocksDb ?? new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), metadataDb, receiptConfig ?? new ReceiptConfig());
 
     private static long DecodePointer(byte[] pointerBytes) =>
-        new Rlp.ValueDecoderContext(pointerBytes).DecodeLong();
+        new RlpReader(pointerBytes).DecodeLong();
 }

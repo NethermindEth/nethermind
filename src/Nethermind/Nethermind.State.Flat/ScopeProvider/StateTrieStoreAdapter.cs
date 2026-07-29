@@ -34,11 +34,10 @@ internal sealed class StateTrieStoreAdapter(
 
     private class Committer(SnapshotBundle bundle, ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
-        public override TrieNode CommitNode(ref TreePath path, TrieNode node)
-        {
-            bundle.SetStateNode(path, node);
-            return node;
-        }
+        protected override void WriteNode(in TreePath path, TrieNode node) => bundle.SetStateNode(path, node);
+
+        protected override void PublishNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers) =>
+            bundle.PublishStateNodes(buffers);
     }
 }
 
@@ -80,13 +79,18 @@ internal sealed class StorageTrieStoreAdapter(
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         new Committer(bundle, addressHash, concurrencyQuota);
 
-    private class Committer(SnapshotBundle bundle, Hash256AsKey addressHash, ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
+    private class Committer(
+        SnapshotBundle bundle,
+        Hash256AsKey addressHash,
+        ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
-        public override TrieNode CommitNode(ref TreePath path, TrieNode node)
-        {
-            bundle.SetStorageNode(addressHash, path, node);
-            return node;
-        }
+        private readonly AddressStorageNodeDictionary.AddressNodes _nodes = bundle.GetStorageNodeDestination(addressHash);
+
+        protected override void WriteNode(in TreePath path, TrieNode node) =>
+            bundle.SetStorageNode(_nodes, addressHash, path, node);
+
+        protected override void PublishNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers) =>
+            bundle.PublishStorageNodes(_nodes, addressHash, buffers);
     }
 }
 

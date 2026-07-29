@@ -3,6 +3,19 @@ name: Trivy scanner
 on:
   pull_request:
     branches: [master]
+    # Trivy scans the built Docker image; only re-scan on PRs that can change that image's
+    # contents. Docs-only PRs skip it. The weekly `schedule` still catches newly-disclosed CVEs
+    # in unchanged dependencies, and `push: master` scans every merge.
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'scripts/entrypoint.sh'
+      - 'Directory.Packages.props'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'nuget.config'
+      - 'global.json'
+      - '.github/workflows/trivy.yml'
   push:
     branches: [master]
   schedule:

@@ -18,6 +18,8 @@ namespace Nethermind.Core.Collections
 
         public static T? GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int)(index % array.Count)];
 
+        public static T? GetItemRoundRobin<T>(this IList<T> array, ulong index) => array.Count == 0 ? default : array[(int)(index % (ulong)array.Count)];
+
         /// <summary>
         /// Performs a binary search on the specified collection.
         /// </summary>
@@ -57,7 +59,7 @@ namespace Nethermind.Core.Collections
             return ~lower;
         }
 
-        public static bool TryGetForBlock(this IList<long> list, in long blockNumber, out long item) =>
+        public static bool TryGetForBlock(this IList<ulong> list, in ulong blockNumber, out ulong item) =>
             list.TryGetSearchedItem(blockNumber, static (b, c) => b.CompareTo(c), out item);
 
         public static bool TryGetSearchedItem<T, TComparable>(this IList<T> list, in TComparable searchedItem, Func<TComparable, T, int> comparer, out T? item)

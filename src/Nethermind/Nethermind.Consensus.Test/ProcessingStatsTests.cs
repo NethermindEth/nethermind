@@ -54,7 +54,7 @@ public class ProcessingStatsTests
             AssertStats(stats, blockCount: 2, blockFrom: 1, blockTo: 2, processingMs: 500, mGasPerSecond: 10);
         });
 
-    private static void AssertStats(BlockStatistics stats, long blockCount, long blockFrom, long blockTo, double processingMs, double mGasPerSecond)
+    private static void AssertStats(BlockStatistics stats, long blockCount, ulong blockFrom, ulong blockTo, double processingMs, double mGasPerSecond)
     {
         using (Assert.EnterMultipleScope())
         {
@@ -114,12 +114,12 @@ public class ProcessingStatsTests
         double originalMgas = BlockchainMetrics.Mgas;
         double originalMgasPerSec = BlockchainMetrics.MgasPerSec;
         long originalTransactions = BlockchainMetrics.Transactions;
-        long originalBlocks = BlockchainMetrics.Blocks;
-        long originalBlockchainHeight = BlockchainMetrics.BlockchainHeight;
+        ulong originalBlocks = BlockchainMetrics.Blocks;
+        ulong originalBlockchainHeight = BlockchainMetrics.BlockchainHeight;
         UInt256 originalTotalDifficulty = BlockchainMetrics.TotalDifficulty;
         UInt256 originalLastDifficulty = BlockchainMetrics.LastDifficulty;
-        long originalGasUsed = BlockchainMetrics.GasUsed;
-        long originalGasLimit = BlockchainMetrics.GasLimit;
+        ulong originalGasUsed = BlockchainMetrics.GasUsed;
+        ulong originalGasLimit = BlockchainMetrics.GasLimit;
 
         try
         {
@@ -150,7 +150,7 @@ public class ProcessingStatsTests
             Block block,
             BlockHeader baseBlock,
             long blockCount,
-            long gasUsed,
+            ulong gasUsed,
             long transactionCount,
             long processingMicroseconds) =>
             GenerateReport(new BlockData

@@ -15,7 +15,7 @@ public static class BlockRangeValidator
     /// <param name="currentChainTip">The current chain tip block number.</param>
     /// <param name="mode">The tracing mode being used.</param>
     /// <returns>A validation result indicating success, warnings, or errors.</returns>
-    public static ValidationResult Validate(IOpcodeTracingConfig config, long currentChainTip, TracingMode mode = TracingMode.RealTime)
+    public static ValidationResult Validate(IOpcodeTracingConfig config, ulong currentChainTip, TracingMode mode = TracingMode.RealTime)
     {
         if (config is null)
         {
@@ -29,38 +29,13 @@ public static class BlockRangeValidator
         }
 
         // Explicit range validation
-        if (config.StartBlock.HasValue && config.EndBlock.HasValue)
+        if (config.StartBlock.HasValue && config.EndBlock.HasValue
+            && config.StartBlock.Value > config.EndBlock.Value)
         {
-            if (config.StartBlock.Value > config.EndBlock.Value)
-            {
-                return ValidationResult.Error($"Invalid range: StartBlock ({config.StartBlock}) > EndBlock ({config.EndBlock})");
-            }
-
-            if (config.StartBlock.Value < 0)
-            {
-                return ValidationResult.Error("StartBlock must be non-negative");
-            }
-
-            if (config.EndBlock.Value < 0)
-            {
-                return ValidationResult.Error("EndBlock must be non-negative");
-            }
+            return ValidationResult.Error($"Invalid range: StartBlock ({config.StartBlock}) > EndBlock ({config.EndBlock})");
         }
 
-        // Validate StartBlock non-negative when only StartBlock is specified
-        if (config.StartBlock.HasValue && !config.EndBlock.HasValue && config.StartBlock.Value < 0)
-        {
-            return ValidationResult.Error("StartBlock must be non-negative");
-        }
-
-        // Validate EndBlock non-negative when only EndBlock is specified
-        if (config.EndBlock.HasValue && !config.StartBlock.HasValue && config.EndBlock.Value < 0)
-        {
-            return ValidationResult.Error("EndBlock must be non-negative");
-        }
-
-        // Validate RecentBlocks parameter
-        if (config.RecentBlocks.HasValue && config.RecentBlocks.Value <= 0)
+        if (config.RecentBlocks is 0)
         {
             return ValidationResult.Error("RecentBlocks parameter must be positive");
         }

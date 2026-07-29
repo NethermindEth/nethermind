@@ -28,14 +28,23 @@ public interface IBranchProcessor
         CancellationToken token = default);
 
     /// <summary>
-    /// Fired after a block has been processed.
+    /// Fired after a single block has been processed.
     /// </summary>
     event EventHandler<BlockProcessedEventArgs> BlockProcessed;
 
     /// <summary>
-    /// Fired when a branch is being processed.
+    /// Fired before processing a branch, which may contain multiple blocks.
     /// </summary>
     event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
+
+    /// <summary>
+    /// Fired after a branch-processing attempt completes or fails.
+    /// </summary>
+    /// <remarks>
+    /// This is a completion signal. The event args distinguish the attempted branch from the
+    /// number of blocks that actually completed processing.
+    /// </remarks>
+    event EventHandler<BranchProcessingCompletedEventArgs> BranchProcessingCompleted;
 
     /// <summary>
     /// Fired when a block is being processed.

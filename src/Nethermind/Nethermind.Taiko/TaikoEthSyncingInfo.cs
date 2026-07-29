@@ -34,10 +34,10 @@ public sealed class TaikoEthSyncingInfo(
 
     public SyncingResult GetFullInfo()
     {
-        long suggestedHeader = blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-        long beaconSuggestedHeader = blockTree.BestSuggestedBeaconHeader?.Number ?? 0;
-        long bestSuggestedNumber = Math.Max(suggestedHeader, beaconSuggestedHeader);
-        long headNumberOrZero = blockTree.Head?.Number ?? 0;
+        ulong suggestedHeader = blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+        ulong beaconSuggestedHeader = blockTree.BestSuggestedBeaconHeader?.Number ?? 0;
+        ulong bestSuggestedNumber = Math.Max(suggestedHeader, beaconSuggestedHeader);
+        ulong headNumberOrZero = blockTree.Head?.Number ?? 0;
         bool isSyncing = bestSuggestedNumber == 0 || bestSuggestedNumber > headNumberOrZero + EthSyncingInfo.MaxDistanceForSynced;
 
         if (isSyncing)
@@ -46,7 +46,7 @@ public sealed class TaikoEthSyncingInfo(
             {
                 CurrentBlock = headNumberOrZero,
                 HighestBlock = bestSuggestedNumber,
-                StartingBlock = 0L,
+                StartingBlock = 0UL,
                 SyncMode = inner.SyncMode,
                 IsSyncing = true
             };

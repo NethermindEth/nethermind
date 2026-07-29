@@ -284,9 +284,9 @@ internal class HeaderVerificationTests
     private void Sign(Vote vote, Consensus.ISigner signer)
     {
         VoteDecoder voteEncoder = new();
-        KeccakRlpStream stream = new();
-        voteEncoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        ValueHash256 hash = stream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        voteEncoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
+        ValueHash256 hash = writer.GetValueHash();
         signer.TrySign(in hash, out Signature signature);
         vote.Signature = signature;
         vote.Signer = signer.Address;

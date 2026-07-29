@@ -29,9 +29,9 @@ internal class SubnetEpochSwitchManagerTests
         _epochSwitchManager = new SubnetEpochSwitchManager(_config, _tree, _snapshotManager);
     }
 
-    [TestCase(20L, 10, true)]
-    [TestCase(5L, 10, false)]
-    public void IsEpochSwitchAtBlock_BlockNumberBased(long blockNumber, int epochLength, bool expected)
+    [TestCase(20UL, 10UL, true)]
+    [TestCase(5UL, 10UL, false)]
+    public void IsEpochSwitchAtBlock_BlockNumberBased(ulong blockNumber, ulong epochLength, bool expected)
     {
         XdcReleaseSpec releaseSpec = new()
         {
@@ -47,9 +47,9 @@ internal class SubnetEpochSwitchManagerTests
         Assert.That(_epochSwitchManager.IsEpochSwitchAtBlock(header), Is.EqualTo(expected));
     }
 
-    [TestCase(9L, 10, true)]   // parent.Number + 1 = 10, 10 % 10 == 0
-    [TestCase(5L, 10, false)]  // parent.Number + 1 = 6
-    public void IsEpochSwitchAtRound_DerivedFromParentBlockNumber(long parentNumber, int epochLength, bool expected)
+    [TestCase(9UL, 10UL, true)]   // parent.Number + 1 = 10, 10 % 10 == 0
+    [TestCase(5UL, 10UL, false)]  // parent.Number + 1 = 6
+    public void IsEpochSwitchAtRound_DerivedFromParentBlockNumber(ulong parentNumber, ulong epochLength, bool expected)
     {
         XdcReleaseSpec releaseSpec = new()
         {

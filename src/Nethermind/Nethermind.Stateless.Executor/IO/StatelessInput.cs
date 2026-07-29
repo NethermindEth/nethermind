@@ -16,7 +16,7 @@ public partial class StatelessInput<TExecutionPayload> where TExecutionPayload
 
     public ChainConfig ChainConfig { get; set; }
 
-    [SszList(0x10_0000)]
+    [SszList(0x8000)]
     public SszPublicKeys[] PublicKeys { get; set; } = [];
 }
 

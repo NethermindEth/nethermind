@@ -172,7 +172,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
-            IByteArrayList? trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
+            IByteArrayList? trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, getTrieNodesMessage.Bytes, cancellationToken);
             return new TrieNodesMessage(trieNodes);
         }
 

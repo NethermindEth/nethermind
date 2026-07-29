@@ -55,11 +55,10 @@ public static class EraPathUtils
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
         => GetAllEraFiles(directoryPath, network, new RealFileSystem());
 
-    public static string Filename(string network, long epoch, Hash256 lastBlockHash)
+    public static string Filename(string network, ulong epoch, Hash256 lastBlockHash)
     {
         ArgumentException.ThrowIfNullOrEmpty(network);
         ArgumentNullException.ThrowIfNull(lastBlockHash);
-        ArgumentOutOfRangeException.ThrowIfLessThan(epoch, 0);
 
         return $"{network}-{epoch:D5}-{lastBlockHash.ToString(true)[2..10]}-{NoProofsProfile}{FileExtension}";
     }

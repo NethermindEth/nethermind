@@ -260,6 +260,20 @@ public class TreePathTests
         Assert.That(path.Length, Is.EqualTo(0));
     }
 
+    [TestCase("", "000000")]
+    [TestCase("01", "100001")]
+    [TestCase("0001020304", "012345")]
+    public void TestEncodeWith3Byte(string nibbleHex, string expectedEncodedHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath path = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[3];
+        path.EncodeWith3Byte(buffer);
+
+        Assert.That(buffer.ToArray().ToHexString(), Is.EqualTo(expectedEncodedHex));
+    }
+
     [TestCase("", "0000000000000000")]
     [TestCase("01", "1000000000000001")]
     [TestCase("000102030405060708", "0123456780000009")]
@@ -274,6 +288,40 @@ public class TreePathTests
         path.EncodeWith8Byte(buffer);
 
         Assert.That(buffer.ToArray().ToHexString(), Is.EqualTo(expectedEncodedHex));
+    }
+
+    [TestCase("")]
+    [TestCase("01")]
+    [TestCase("0001020304")]
+    [TestCase("000102030405")]
+    [TestCase("00010203040506")]
+    public void TestRoundtripWith4Byte(string nibbleHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath original = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[4];
+        original.EncodeWith4Byte(buffer);
+        TreePath decoded = TreePath.DecodeWith4Byte(buffer);
+
+        Assert.That(decoded, Is.EqualTo(original));
+    }
+
+    [TestCase("")]
+    [TestCase("01")]
+    [TestCase("000102030405060708")]
+    [TestCase("000102030405060708090a0b0c0d0e")]
+    [TestCase("000102030405")]
+    public void TestRoundtripWith8Byte(string nibbleHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath original = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[8];
+        original.EncodeWith8Byte(buffer);
+        TreePath decoded = TreePath.DecodeWith8Byte(buffer);
+
+        Assert.That(decoded, Is.EqualTo(original));
     }
 
     private static TreePath CreateFullTreePath()

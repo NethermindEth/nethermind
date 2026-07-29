@@ -14,11 +14,11 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
 {
     protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
 
-    protected override void EncodeSignature(Signature? signature, RlpStream stream, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
     {
     }
 
-    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
@@ -26,7 +26,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.To = decoderContext.DecodeAddress();
         transaction.Mint = decoderContext.DecodeUInt256();
         transaction.Value = decoderContext.DecodeUInt256();
-        transaction.GasLimit = decoderContext.DecodePositiveLong();
+        transaction.GasLimit = decoderContext.DecodeULong();
         transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
         transaction.Data = decoderContext.DecodeByteArray();
     }
@@ -41,20 +41,20 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         + Rlp.LengthOf(transaction.SenderAddress)
         + Rlp.LengthOf(transaction.To)
         + Rlp.LengthOf(transaction.Mint)
-        + Rlp.LengthOf(in transaction.ValueRef)
+        + Rlp.LengthOf(transaction.ValueRef)
         + Rlp.LengthOf(transaction.GasLimit)
         + Rlp.LengthOf(transaction.IsOPSystemTransaction)
         + Rlp.LengthOf(transaction.Data);
 
-    protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.Encode(transaction.SourceHash);
-        stream.Encode(transaction.SenderAddress);
-        stream.Encode(transaction.To);
-        stream.Encode(transaction.Mint);
-        stream.Encode(in transaction.ValueRef);
-        stream.Encode(transaction.GasLimit);
-        stream.Encode(transaction.IsOPSystemTransaction);
-        stream.Encode(transaction.Data);
+        writer.Encode(transaction.SourceHash);
+        writer.Encode(transaction.SenderAddress);
+        writer.Encode(transaction.To);
+        writer.Encode(transaction.Mint);
+        writer.Encode(in transaction.ValueRef);
+        writer.Encode(transaction.GasLimit);
+        writer.Encode(transaction.IsOPSystemTransaction);
+        writer.Encode(transaction.Data);
     }
 }

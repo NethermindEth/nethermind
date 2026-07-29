@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
@@ -121,44 +122,51 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return new ValueHash256(hash);
     }
 
-    protected static void Encode(RlpStream stream, IPEndPoint address, int length)
+    protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int length)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+        => Encode(ref writer, address, address.Port, length);
+
+    protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int tcpPort, int length)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        stream.StartSequence(length);
-        IPAddressRlp.Encode(stream, address.Address);
-        //tcp port
-        stream.Encode(address.Port);
-        //udp port
-        stream.Encode(address.Port);
+        writer.StartSequence(length);
+        IPAddressRlp.Encode(ref writer, address.Address);
+        writer.Encode(address.Port);
+        writer.Encode(tcpPort);
     }
 
-    protected static int GetIPEndPointLength(IPEndPoint address)
+    protected static int GetIPEndPointLength(IPEndPoint address) => GetIPEndPointLength(address, address.Port);
+
+    protected static int GetIPEndPointLength(IPEndPoint address, int tcpPort)
     {
         int length = IPAddressRlp.GetLength(address.Address);
         length += Rlp.LengthOf(address.Port);
-        length += Rlp.LengthOf(address.Port);
+        length += Rlp.LengthOf(tcpPort);
         return length;
     }
 
-    protected static void SerializeNode(RlpStream stream, IPEndPoint address, byte[] id)
+    protected static void SerializeNode<TWriter>(ref TWriter writer, Node node)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int length = GetLengthSerializeNode(address, id);
-        stream.StartSequence(length);
-        IPAddressRlp.Encode(stream, address.Address);
-        //tcp port
-        stream.Encode(address.Port);
-        //udp port
-        stream.Encode(address.Port);
-        stream.Encode(id);
+        int length = GetLengthSerializeNode(node);
+        writer.StartSequence(length);
+        IPAddressRlp.Encode(ref writer, node.Address.Address);
+        writer.Encode(node.DiscoveryPort);
+        writer.Encode(GetSerializedTcpPort(node));
+        writer.Encode(node.Id.Bytes);
     }
 
-    protected static int GetLengthSerializeNode(IPEndPoint address, byte[] id)
+    protected static int GetLengthSerializeNode(Node node)
     {
-        int length = IPAddressRlp.GetLength(address.Address);
-        length += Rlp.LengthOf(address.Port);
-        length += Rlp.LengthOf(address.Port);
-        length += Rlp.LengthOf(id);
+        int tcpPort = GetSerializedTcpPort(node);
+        int length = IPAddressRlp.GetLength(node.Address.Address);
+        length += Rlp.LengthOf(node.DiscoveryPort);
+        length += Rlp.LengthOf(tcpPort);
+        length += Rlp.LengthOf(node.Id.Bytes);
         return length;
     }
+
+    private static int GetSerializedTcpPort(Node node) => node.Port;
 
     protected static void PrepareBufferForSerialization(IByteBuffer byteBuffer, int dataLength, byte msgType)
     {

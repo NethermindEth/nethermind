@@ -46,7 +46,7 @@ public class BackgroundTaskSchedulerBurstTests
         for (int cycle = 0; cycle < cycles; cycle++)
         {
             // Start block processing — tasks should be paused, not executed
-            _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+            BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
             for (int i = 0; i < tasksPerCycle; i++)
             {
@@ -63,7 +63,7 @@ public class BackgroundTaskSchedulerBurstTests
             }
 
             // End block processing — paused tasks should now resume and execute
-            _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+            RaiseBranchProcessingCompleted(branchProcessing);
             await Task.Delay(200);
         }
 
@@ -87,4 +87,14 @@ public class BackgroundTaskSchedulerBurstTests
             Is.EqualTo(postCycleCount).After(5000, 10),
             "all post-cycle tasks should execute after block processing ends");
     }
+
+    private BlocksProcessingEventArgs RaiseBlocksProcessing()
+    {
+        BlocksProcessingEventArgs args = new([]);
+        _branchProcessor.BlocksProcessing += Raise.EventWith(args);
+        return args;
+    }
+
+    private void RaiseBranchProcessingCompleted(BlocksProcessingEventArgs args) =>
+        _branchProcessor.BranchProcessingCompleted += Raise.EventWith(new BranchProcessingCompletedEventArgs(args.Blocks, 0));
 }

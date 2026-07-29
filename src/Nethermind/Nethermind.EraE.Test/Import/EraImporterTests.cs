@@ -40,11 +40,18 @@ public class EraImporterTests
         const int chainLength = 32;
         await using ImportEnvironment env = await CreateImportEnvironment(chainLength);
 
-        await env.Sut.Import(env.ExportPath, 0, long.MaxValue, null);
+        await env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null);
 
-        for (long i = 1; i < chainLength; i++)
+        for (ulong i = 1; i < chainLength; i++)
         {
             Assert.That(env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"block {i} should have been imported");
+        }
+
+        Block expectedFinalizedBlock = env.SourceCtx.Resolve<IBlockTree>().FindBlock((ulong)chainLength - 1)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.TargetTree.FinalizedHash, Is.EqualTo(expectedFinalizedBlock.Hash));
+            Assert.That(env.TargetTree.LastFinalizedBlockLevel, Is.EqualTo((ulong)chainLength - 1));
         }
     }
 
@@ -55,7 +62,7 @@ public class EraImporterTests
         string accumulatorPath = System.IO.Path.Combine(env.ExportPath, EraExporter.AccumulatorFileName);
 
         Assert.That(
-            () => env.Sut.Import(env.ExportPath, 0, long.MaxValue, accumulatorPath),
+            () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, accumulatorPath),
             Throws.Nothing);
     }
 
@@ -71,7 +78,7 @@ public class EraImporterTests
         await System.IO.File.WriteAllLinesAsync(checksumPath, lines);
 
         Assert.That(
-            () => env.Sut.Import(env.ExportPath, 0, long.MaxValue, null),
+            () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
             Throws.TypeOf<EraVerificationException>());
     }
 
@@ -90,7 +97,7 @@ public class EraImporterTests
         await System.IO.File.WriteAllLinesAsync(fakeAccumulatorPath, fakeLines);
 
         Assert.That(
-            () => env.Sut.Import(env.ExportPath, 0, long.MaxValue, fakeAccumulatorPath),
+            () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, fakeAccumulatorPath),
             Throws.TypeOf<EraVerificationException>());
     }
 
@@ -101,7 +108,7 @@ public class EraImporterTests
 
         await env.Sut.Import(env.ExportPath, 0, 15, null);
 
-        for (long i = 1; i <= 15; i++)
+        for (ulong i = 1; i <= 15; i++)
             Assert.That(env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"block {i} should have been imported");
 
         Assert.That(env.TargetTree.FindBlock(16, BlockTreeLookupOptions.None), Is.Null, "block 16 is outside the requested range");
@@ -112,9 +119,9 @@ public class EraImporterTests
     {
         await using ImportEnvironment env = await CreateImportEnvironment();
 
-        await env.Sut.Import(env.ExportPath, 0, long.MaxValue, null);
+        await env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null);
 
-        Assert.That(() => env.Sut.Import(env.ExportPath, 0, long.MaxValue, null), Throws.Nothing,
+        Assert.That(() => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null), Throws.Nothing,
             "re-importing the same range must be idempotent");
     }
 
@@ -128,12 +135,12 @@ public class EraImporterTests
 
         IReceiptStorage sourceReceipts = env.SourceCtx.Resolve<IReceiptStorage>();
 
-        await env.Sut.Import(env.ExportPath, 0, long.MaxValue, null);
+        await env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null);
 
         IReceiptStorage targetReceipts = env.TargetCtx.Resolve<IReceiptStorage>();
         IBlockTree sourceTree = env.SourceCtx.Resolve<IBlockTree>();
 
-        for (long i = 1; i < chainLength; i++)
+        for (ulong i = 1; i < chainLength; i++)
         {
             Block? original = sourceTree.FindBlock(i, BlockTreeLookupOptions.None);
             Block? imported = env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None);
@@ -165,12 +172,12 @@ public class EraImporterTests
             .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true })
             .Build();
 
-        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, long.MaxValue, null);
+        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, null);
 
         IReceiptStorage sourceReceipts = sourceCtx.Resolve<IReceiptStorage>();
         IReceiptStorage targetReceipts = targetCtx.Resolve<IReceiptStorage>();
 
-        for (long i = 1; i < chainLength; i++)
+        for (ulong i = 1; i < chainLength; i++)
         {
             Block? original = sourceTree.FindBlock(i, BlockTreeLookupOptions.None);
             Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
@@ -200,7 +207,7 @@ public class EraImporterTests
             .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
             .TestObject;
 
-        for (long i = 1; i < chainLength; i++)
+        for (ulong i = 1; i < chainLength; i++)
         {
             Block block = sourceTree.FindBlock(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
             targetTree.Insert(block,
@@ -212,9 +219,9 @@ public class EraImporterTests
             .AddSingleton<IBlockTree>(targetTree)
             .Build();
 
-        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, long.MaxValue, null);
+        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, null);
 
-        for (long i = 1; i < chainLength; i++)
+        for (ulong i = 1; i < chainLength; i++)
         {
             Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
             Assert.That(imported, Is.Not.Null, $"block {i} should exist");
@@ -229,7 +236,7 @@ public class EraImporterTests
             configure: b => b.AddSingleton<IBlockValidator>(Always.Invalid));
 
         Assert.That(
-            () => env.Sut.Import(env.ExportPath, 0, long.MaxValue, null),
+            () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
             Throws.TypeOf<EraVerificationException>());
     }
 

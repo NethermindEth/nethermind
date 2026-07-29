@@ -13,14 +13,14 @@ namespace Ethereum.Difficulty.Test
         ulong parentTimestamp,
         UInt256 parentDifficulty,
         ulong currentTimestamp,
-        long currentBlockNumber,
+        ulong currentBlockNumber,
         UInt256 currentDifficulty,
         bool parentHasUncles)
     {
         public ulong ParentTimestamp { get; set; } = parentTimestamp;
         public UInt256 ParentDifficulty { get; set; } = parentDifficulty;
         public ulong CurrentTimestamp { get; set; } = currentTimestamp;
-        public long CurrentBlockNumber { get; set; } = currentBlockNumber;
+        public ulong CurrentBlockNumber { get; set; } = currentBlockNumber;
         public bool ParentHasUncles { get; set; } = parentHasUncles;
         public UInt256 CurrentDifficulty { get; set; } = currentDifficulty;
         public string Name { get; set; } = name;

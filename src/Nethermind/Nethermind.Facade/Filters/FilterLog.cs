@@ -6,11 +6,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Facade.Filters
 {
-    public class FilterLog(long logIndex, long blockNumber, ulong blockTimestamp, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false) : ILogEntry
+    public class FilterLog(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false) : ILogEntry
     {
         public Address Address { get; } = address;
         public Hash256 BlockHash { get; } = blockHash;
-        public long BlockNumber { get; } = blockNumber;
+        public ulong BlockNumber { get; } = blockNumber;
         public ulong BlockTimestamp { get; } = blockTimestamp;
         public byte[] Data { get; } = data;
         public long LogIndex { get; } = logIndex;

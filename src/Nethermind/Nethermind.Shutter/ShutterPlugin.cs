@@ -3,8 +3,6 @@
 
 using System;
 using System.IO.Abstractions;
-using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -35,22 +33,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     public string Author => "Nethermind";
     public bool Enabled => shutterConfig.Enabled && mergeConfig.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
 
-    private ILogger _logger;
-
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
-
-    public Task Init(INethermindApi nethermindApi)
-    {
-        _logger = nethermindApi.LogManager.GetClassLogger<ShutterPlugin>();
-        if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
-        return Task.CompletedTask;
-    }
-
-    public Task InitRpcModules()
-    {
-        if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-        return Task.CompletedTask;
-    }
 
     public IModule? Module => new ShutterPluginModule();
 }

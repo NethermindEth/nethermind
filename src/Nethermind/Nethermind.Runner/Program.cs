@@ -43,6 +43,9 @@ using Testably.Abstractions;
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 #endif
 
+if (!BitConverter.IsLittleEndian)
+    throw new PlatformNotSupportedException("Nethermind requires a little-endian platform.");
+
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches

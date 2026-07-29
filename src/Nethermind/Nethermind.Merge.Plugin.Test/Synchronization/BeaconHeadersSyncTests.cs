@@ -178,7 +178,7 @@ public class BeaconHeadersSyncTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
-        blockTree.SyncPivot.Returns((1000, Keccak.Zero));
+        blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
         ISyncReport report = Substitute.For<ISyncReport>();
         ProgressLogger progressLogger = new("", LimboLogs.Instance);
         report.BeaconHeaders.Returns(progressLogger);
@@ -233,19 +233,19 @@ public class BeaconHeadersSyncTests
 
         Context ctx = new() { BlockTree = blockTree, SyncConfig = syncConfig, BeaconPivot = pivot };
 
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 0, 501);
+        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 0UL, 501UL);
 
         // move best pointers forward as proxy for chain merge
         Block highestBlock = syncedBlockTree.FindBlock(700, BlockTreeLookupOptions.None)!;
         blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
 
         pivot.EnsurePivot(syncedBlockTree.FindHeader(900, BlockTreeLookupOptions.None));
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 701);
+        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700UL, 701UL);
 
         highestBlock = syncedBlockTree.FindBlock(900, BlockTreeLookupOptions.None)!;
         blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900, 901);
+        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900UL, 901UL);
     }
 
     [Test]
@@ -310,14 +310,14 @@ public class BeaconHeadersSyncTests
         // PivotDestinationNumber rising above _lowestRequestedHeaderNumber mid-sync must not produce
         // a batch with negative RequestSize.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.SyncPivot.Returns((1000, Keccak.Zero));
+        blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
         blockTree.LowestInsertedBeaconHeader.Returns((BlockHeader?)null);
 
         IBeaconPivot beaconPivot = Substitute.For<IBeaconPivot>();
-        beaconPivot.PivotNumber.Returns(2000);
+        beaconPivot.PivotNumber.Returns(2000UL);
         beaconPivot.PivotHash.Returns(TestItem.KeccakA);
         beaconPivot.PivotParentHash.Returns(TestItem.KeccakB);
-        beaconPivot.PivotDestinationNumber.Returns(1100);
+        beaconPivot.PivotDestinationNumber.Returns(1100UL);
 
         Context ctx = new()
         {
@@ -357,7 +357,7 @@ public class BeaconHeadersSyncTests
         };
 
         int chainLength = 111;
-        int pivotNumber = 100;
+        uint pivotNumber = 100;
 
         Context ctx = new()
         {
@@ -372,7 +372,7 @@ public class BeaconHeadersSyncTests
         // First batch, should be enough to merge chain
         HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
         Assert.That(request!, Is.Not.Null);
-        request!.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
+        request!.Response = TestRange.ULongRange(request.StartNumber, request.RequestSize)
             .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
             .ToPooledList(request.RequestSize);
 
@@ -388,8 +388,8 @@ public class BeaconHeadersSyncTests
         Assert.That(request, Is.Not.Null);
 
         // We respond it again
-        request!.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
-            .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
+        request!.Response = TestRange.ULongRange(request.StartNumber, request.RequestSize)
+            .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
             .ToPooledList(request.RequestSize);
         ctx.Feed.HandleResponse(request);
         request.Dispose();
@@ -405,8 +405,8 @@ public class BeaconHeadersSyncTests
         BlockTree blockTree,
         BlockTree syncedBlockTree,
         IBeaconPivot pivot,
-        long bestPointer,
-        long endLowestBeaconHeader)
+        ulong bestPointer,
+        ulong endLowestBeaconHeader)
     {
         BlockHeader? startBestHeader = syncedBlockTree.FindHeader(bestPointer, BlockTreeLookupOptions.None);
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None);
@@ -442,19 +442,18 @@ public class BeaconHeadersSyncTests
         BlockTree blockTree,
         BlockTree syncedBlockTree,
         IBeaconPivot pivot,
-        long endLowestBeaconHeader)
+        ulong endLowestBeaconHeader)
     {
         ctx.Feed.InitializeFeed();
-        long lowestHeaderNumber = pivot.PivotNumber;
+        ulong lowestHeaderNumber = pivot.PivotNumber;
         while (lowestHeaderNumber > endLowestBeaconHeader)
         {
             using HeadersSyncBatch? batch = await ctx.Feed.PrepareRequest();
             Assert.That(batch, Is.Not.Null);
             BuildHeadersSyncBatchResponse(batch, syncedBlockTree);
             ctx.Feed.HandleResponse(batch);
-            lowestHeaderNumber = lowestHeaderNumber - batch!.RequestSize < endLowestBeaconHeader
-                ? endLowestBeaconHeader
-                : lowestHeaderNumber - batch.RequestSize;
+            lowestHeaderNumber = lowestHeaderNumber.SaturatingSub((ulong)batch!.RequestSize);
+            if (lowestHeaderNumber < endLowestBeaconHeader) lowestHeaderNumber = endLowestBeaconHeader;
 
             BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
             Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(lowestHeader?.Number));
@@ -475,10 +474,11 @@ public class BeaconHeadersSyncTests
         batch.Response = new ArrayPoolList<BlockHeader?>(headers.Count, headers);
     }
 
-    private static IBeaconPivot PreparePivot(long blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)
+    private static IBeaconPivot PreparePivot(ulong blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)
     {
         IBeaconPivot pivot = new BeaconPivot(syncConfig, new MemDb(), blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
         pivot.EnsurePivot(pivotHeader ?? Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
         return pivot;
     }
+
 }

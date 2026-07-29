@@ -19,25 +19,27 @@ internal static class MessageCodec
         new TalkRespMsgSerializer(),
     ];
 
-    public static NettyRlpStream Encode(Discv5Message message)
+    public static ArrayPoolSpan<byte> Encode(Discv5Message message)
     {
         IMsgSerializer serializer = GetSerializer(message.MessageType);
         int contentLength = serializer.GetContentLength(message);
-        NettyRlpStream stream = new(NethermindBuffers.Default.Buffer(Rlp.LengthOfSequence(contentLength) + 1));
+        ArrayPoolSpan<byte> buffer = new(Rlp.LengthOfSequence(contentLength) + 1);
 
         try
         {
-            stream.WriteByte((byte)message.MessageType);
-            stream.StartSequence(contentLength);
-            serializer.Serialize(stream, message);
+            Span<byte> span = buffer;
+            span[0] = (byte)message.MessageType;
+            RlpWriter writer = new(span[1..]);
+            writer.StartSequence(contentLength);
+            serializer.Serialize(ref writer, message);
         }
         catch
         {
-            stream.Dispose();
+            buffer.Dispose();
             throw;
         }
 
-        return stream;
+        return buffer;
     }
 
     public static Discv5Message Decode(ReadOnlySpan<byte> message)
@@ -61,7 +63,7 @@ internal static class MessageCodec
         {
             MessageType messageType = (MessageType)message[0];
             IMsgSerializer serializer = GetSerializer(messageType);
-            Rlp.ValueDecoderContext ctx = new(message[1..]);
+            RlpReader ctx = new(message[1..]);
             int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
 
             decoded = serializer.Deserialize(ref ctx, ownedMessage, owner);

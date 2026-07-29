@@ -18,23 +18,23 @@ namespace Nethermind.Network.P2P.Messages
         {
             (int totalLength, int innerLength) = GetLength(msg);
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), force: true);
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(totalLength);
-            stream.Encode(msg.P2PVersion);
-            stream.Encode(msg.ClientId);
-            stream.StartSequence(innerLength);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(totalLength);
+            writer.Encode(msg.P2PVersion);
+            writer.Encode(msg.ClientId);
+            writer.StartSequence(innerLength);
             foreach (Capability? capability in msg.Capabilities.AsSpan())
             {
                 string protocolCode = capability.ProtocolCode.ToLowerInvariant();
                 int capabilityLength = Rlp.LengthOf(protocolCode);
                 capabilityLength += Rlp.LengthOf(capability.Version);
-                stream.StartSequence(capabilityLength);
-                stream.Encode(protocolCode);
-                stream.Encode(capability.Version);
+                writer.StartSequence(capabilityLength);
+                writer.Encode(protocolCode);
+                writer.Encode(capability.Version);
             }
 
-            stream.Encode(msg.ListenPort);
-            stream.Encode(msg.NodeId.Bytes);
+            writer.Encode(msg.ListenPort);
+            writer.Encode(msg.NodeId.Bytes);
         }
 
         private static (int, int) GetLength(HelloMessage msg)
@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Messages
         public HelloMessage Deserialize(IByteBuffer msgBytes) =>
             msgBytes.DeserializeRlp(Deserialize);
 
-        private static HelloMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static HelloMessage Deserialize(ref RlpReader ctx)
         {
             ctx.ReadSequenceLength();
 
@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P.Messages
             helloMessage.P2PVersion = ctx.DecodeByte();
             helloMessage.ClientId = ctx.DecodeString(ClientIdRlpLimit);
 
-            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
+            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref RlpReader c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;

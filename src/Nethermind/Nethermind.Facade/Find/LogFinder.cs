@@ -21,12 +21,13 @@ namespace Nethermind.Facade.Find
         IReceiptFinder? receiptFinder,
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
-        IReceiptsRecovery? receiptsRecovery,
-        int maxBlockDepth = 1000)
+        IReceiptsRecovery? receiptsRecovery)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
         private static int ParallelLock = 0;
+
+        public static bool IsParallelScanSlotHeld => Volatile.Read(ref ParallelLock) != 0;
 
         private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -75,7 +76,7 @@ namespace Nethermind.Facade.Find
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
+        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
             RunParallel(blockNumbers,
                 number => FindLogsInBlock(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
 
@@ -86,58 +87,58 @@ namespace Nethermind.Facade.Find
                 return source.SelectMany(worker);
             }
 
-            static IEnumerable<T> ReleaseLockOnDispose(IEnumerable<T> source, bool runParallel, CancellationToken ct)
-            {
-                try
-                {
-                    foreach (T item in source)
-                    {
-                        yield return item;
-                        ct.ThrowIfCancellationRequested();
-                    }
-                }
-                finally
-                {
-                    if (runParallel)
-                    {
-                        Interlocked.CompareExchange(ref ParallelLock, 0, 1);
-                    }
-                    Interlocked.Decrement(ref ParallelExecutions);
-                }
-            }
-
             // we want to support one parallel eth_getLogs call for maximum performance
             // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
-            int parallelLock = Interlocked.CompareExchange(ref ParallelLock, 1, 0);
+            return RunParallelLazy(source, worker, cancellationToken);
+        }
+
+        // Must stay a lazy iterator: the lock is acquired on the first MoveNext and released in the finally,
+        // so acquire and release share one enumerator lifetime. An eager version would leak the lock when the
+        // result is never enumerated.
+        private IEnumerable<FilterLog> RunParallelLazy<T>(IEnumerable<T> source, Func<T, IEnumerable<FilterLog>> worker, CancellationToken cancellationToken)
+        {
+            bool canRunParallel = Interlocked.CompareExchange(ref ParallelLock, 1, 0) == 0;
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
-            bool canRunParallel = parallelLock == 0;
-
-            IEnumerable<T> wrapped = ReleaseLockOnDispose(source, canRunParallel, cancellationToken);
-
-            if (canRunParallel)
+            try
             {
-                if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
-                wrapped = wrapped.AsParallel() // can yield big performance improvements
-                    .AsOrdered() // we want to keep block order
-                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
-            }
+                if (_logger.IsTrace) _logger.Trace(canRunParallel
+                    ? $"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}."
+                    : $"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
 
-            return wrapped.SelectMany(worker);
+                IEnumerable<T> wrapped = canRunParallel
+                    ? source.AsParallel().AsOrdered().WithDegreeOfParallelism(_rpcConfigGetLogsThreads)
+                    : source;
+
+                foreach (FilterLog log in wrapped.SelectMany(worker))
+                {
+                    yield return log;
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+            }
+            finally
+            {
+                if (canRunParallel)
+                {
+                    Interlocked.CompareExchange(ref ParallelLock, 0, 1);
+                }
+                Interlocked.Decrement(ref ParallelExecutions);
+            }
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            static IEnumerable<long> BlockNumbers(long from, long count)
+            if (toBlock.Number < fromBlock.Number)
             {
-                for (long i = 0; i < count; i++) yield return from + i;
+                return [];
             }
 
-            long rangeSize = Math.Min(maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
-            bool tryParallel = rangeSize >= _rpcConfigGetLogsThreads;
+            static IEnumerable<ulong> BlockNumbers(ulong from, ulong count)
+            {
+                for (ulong i = 0; i < count; i++) yield return from + i;
+            }
+
+            ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
+            bool tryParallel = rangeSize >= (ulong)_rpcConfigGetLogsThreads;
             return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
         }
 
@@ -146,7 +147,7 @@ namespace Nethermind.Facade.Find
                 ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
                 : [];
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {
@@ -183,7 +184,7 @@ namespace Nethermind.Facade.Find
                                 logList ??= [];
                                 Hash256[] topics = log.Topics;
 
-                                topics ??= iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
+                                topics ??= iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
@@ -218,9 +219,9 @@ namespace Nethermind.Facade.Find
             return logList ?? (IEnumerable<FilterLog>)[];
         }
 
-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
-            TxReceipt[]? GetReceipts(Hash256 hash, long number)
+            TxReceipt[]? GetReceipts(Hash256 hash, ulong number)
             {
                 bool canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
                 if (canUseHash)
@@ -285,7 +286,7 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        protected BlockHeader? FindHeaderOrLogError(long blockNumber, CancellationToken token)
+        protected BlockHeader? FindHeaderOrLogError(ulong blockNumber, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
 

@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using NSubstitute;
@@ -25,7 +24,6 @@ public class KademliaTests
     private IContainer CreateKadContainer(KademliaConfig<ValueHash256> config) =>
         new ContainerBuilder()
             .AddModule(new KademliaModule<ValueHash256, ValueHash256, Hash256>())
-            .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
             .AddSingleton<ITimestamper>(new ManualTimestamper(new System.DateTime(2025, 5, 13, 21, 0, 0, System.DateTimeKind.Utc)))
             .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
             .AddSingleton<IKeyOperator<ValueHash256, ValueHash256, Hash256>>(new ValueHashKeyOperator<ValueHash256>(static node => node))

@@ -28,7 +28,7 @@ public class MintedRecordContract : IMintedRecordContract
     {
         XdcTransactionProcessor xdcTransactionProcessor = (XdcTransactionProcessor)transactionProcessor;
         IWorldState worldState = xdcTransactionProcessor.RewardWorldState;
-        UInt256 epochNumber = (ulong)spec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / (ulong)spec.EpochLength;
+        UInt256 epochNumber = spec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / spec.EpochLength;
         UInt256 blockNumber = (UInt256)header.Number;
 
         worldState.CreateAccountIfNotExists(MintedRecordAddress, UInt256.Zero);
@@ -62,7 +62,7 @@ public class MintedRecordContract : IMintedRecordContract
         WriteStorage(worldState, MintedRecordPostMintedBase + epochNumber, totalMinted);
         WriteStorage(worldState, MintedRecordPostBurnedBase + epochNumber, totalBurned);
         WriteStorage(worldState, MintedRecordPostRewardBlockBase + epochNumber, blockNumber);
-        worldState.IncrementNonce(MintedRecordAddress, UInt256.One, out _);
+        worldState.IncrementNonce(MintedRecordAddress, 1UL, out _);
     }
 
     private static UInt256 ReadStorage(IWorldState worldState, UInt256 slot)

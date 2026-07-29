@@ -32,7 +32,7 @@ namespace Nethermind.Consensus
         bool TransitionFinished { get; }
         public Hash256? ConfiguredTerminalBlockHash { get; }
 
-        public long? ConfiguredTerminalBlockNumber { get; }
+        public ulong? ConfiguredTerminalBlockNumber { get; }
 
         // We can get TerminalBlock from three different points in the system:
         // 1) Block Processing - it is needed because we need to switch classes, for example, block production, during the transition

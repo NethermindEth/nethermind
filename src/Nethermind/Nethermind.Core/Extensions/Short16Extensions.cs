@@ -18,11 +18,7 @@ public static class Short16Extensions
     public static byte[] ToBigEndianByteArray(this ushort value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(bytes);
-        }
-
+        Array.Reverse(bytes);
         return bytes;
     }
 

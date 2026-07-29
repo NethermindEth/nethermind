@@ -5,8 +5,10 @@ using System;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
+using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
@@ -31,6 +33,17 @@ internal class WorldStateDbDeciderModule : Module
                     return flatFactory();
                 })
 
+            // Injected into the block tree at construction time, so it must not resolve
+            // IWorldStateManager (whose graph resolves the block tree back).
+            .AddSingleton<IStateBoundary, FlatStateActivationPolicy, IFlatDbConfig, Func<FlatStateBoundary>, Func<StateBoundaryStore>>(
+                (policy, flatDbConfig, flatBoundary, trieBoundary) =>
+                    !policy.ShouldTurnOnFlatDb() ? trieBoundary()
+                    // ImportFlatDb copies trie state at blockTree.Head, so during import the head
+                    // must still rewind to the trie's persisted block; the flat DB is empty then.
+                    : flatDbConfig.ImportFromPruningTrieState
+                        ? new ImportFallbackStateBoundary(flatBoundary(), trieBoundary())
+                        : flatBoundary())
+
             .AddSingleton<IPruningTrieStateAdminRpcModule, FlatStateActivationPolicy, Func<FlatWorldStateModule.PruningTrieStateAdminRpcModuleStub>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
                 (policy, flatFactory, patriciaFactory) =>
                     policy.ShouldTurnOnFlatDb()
@@ -54,4 +67,13 @@ internal class WorldStateDbDeciderModule : Module
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
                         : (IFullStateFinder)patriciaFactory());
+
+    private sealed class ImportFallbackStateBoundary(
+        FlatStateBoundary flat,
+        StateBoundaryStore trie) : IStateBoundary
+    {
+        public ulong? OldestStateBlock => flat.OldestStateBlock;
+        public ulong? RetentionWindowBlocks => flat.RetentionWindowBlocks;
+        public ulong? BestPersistedState => flat.BestPersistedState ?? trie.BestPersistedState;
+    }
 }

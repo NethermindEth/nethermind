@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using System.IO.Hashing;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
@@ -49,23 +51,22 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     }
 
-    public bool ShouldPrewarm(Address address, UInt256? slot)
+    public bool ShouldPrewarm(Address address, UInt256? slot) => ShouldPrewarm(address.Bytes, slot);
+
+    public bool ShouldPrewarm(in ValueAddress address, UInt256? slot) => ShouldPrewarm(address.AsSpan, slot);
+
+    private bool ShouldPrewarm(ReadOnlySpan<byte> addressBytes, UInt256? slot)
     {
-        ulong hash;
-        if (slot is null)
+        long hash = SpanExtensions.FastHash64For20Bytes(ref MemoryMarshal.GetReference(addressBytes));
+        if (slot is not null)
         {
-            hash = XxHash64.HashToUInt64(address.Bytes);
-        }
-        else
-        {
-            Span<byte> buffer = stackalloc byte[20 + 32];
-            address.Bytes.CopyTo(buffer);
-            slot.Value.ToBigEndian(buffer[20..]);
-            hash = XxHash64.HashToUInt64(buffer);
+            UInt256 slotValue = slot.Value;
+            hash ^= SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref slotValue));
         }
 
-        if (PrewarmedAddresses.MightContain(hash)) return false;
-        PrewarmedAddresses.Add(hash);
+        ulong bloomKey = (ulong)hash;
+        if (PrewarmedAddresses.MightContain(bloomKey)) return false;
+        PrewarmedAddresses.Add(bloomKey);
         return true;
     }
 

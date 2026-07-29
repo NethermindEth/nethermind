@@ -112,7 +112,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         return payloadId;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMultiStartRequest(string payloadId, long number) => _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
+        void LogMultiStartRequest(string payloadId, ulong number) => _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
     }
 
     protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
@@ -350,21 +350,21 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             Block? block = t.Result;
             if (block is not null && !ReferenceEquals(block, currentBestBlock))
             {
-                int blobs = 0;
+                ulong blobs = 0UL;
                 int blobTx = 0;
                 UInt256 gas = 0;
                 foreach (Transaction tx in block.Transactions)
                 {
-                    int blobCount = tx.GetBlobCount();
-                    if (blobCount > 0)
+                    ulong blobCount = (ulong)tx.GetBlobCount();
+                    if (blobCount > 0UL)
                     {
                         blobs += blobCount;
                         blobTx++;
                         tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
-                        gas += (ulong)tx.SpentGas * premiumPerGas;
+                        gas += tx.SpentGas * premiumPerGas;
                     }
                 }
-                _logger.Info($" Produced {blockFees.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {((blobs > 0) ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
+                _logger.Info($" Produced {blockFees.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4} {block.ToString(block.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,8:N2} ms {((blobs > 0UL) ? $"{blobs,2:N0} blobs in {blobTx,2:N0} tx @ {(decimal)gas / weiToGwei,7:N0} gwei" : "")}");
             }
             else
             {

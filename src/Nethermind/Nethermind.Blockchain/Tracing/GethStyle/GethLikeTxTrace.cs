@@ -18,9 +18,7 @@ public class GethLikeTxTrace : IDisposable
 
     public GethLikeTxTrace() { }
 
-    public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
-
-    public long Gas { get; set; }
+    public ulong Gas { get; set; }
 
     public bool Failed { get; set; }
 

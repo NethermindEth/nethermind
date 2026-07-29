@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-#if DEBUG
-using System.Diagnostics;
-#endif
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
+using Queue =
+#if ZK_EVM
+        Nethermind.Evm.ZkEvmQueue<Nethermind.Evm.ExecutionEnvironment>;
+#else
+        System.Collections.Concurrent.ConcurrentQueue<Nethermind.Evm.ExecutionEnvironment>;
+#endif
 
 namespace Nethermind.Evm
 {
@@ -17,7 +19,7 @@ namespace Nethermind.Evm
     /// </summary>
     public sealed class ExecutionEnvironment : IDisposable
     {
-        private static readonly ConcurrentQueue<ExecutionEnvironment> _pool = new();
+        private static readonly Queue _pool = new();
         private UInt256 _value;
 
         /// <summary>
@@ -69,7 +71,7 @@ namespace Nethermind.Evm
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
-            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new ExecutionEnvironment();
+            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new();
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
             env.Caller = caller;
@@ -102,8 +104,7 @@ namespace Nethermind.Evm
         }
 
 #if DEBUG
-
-        private readonly StackTrace _creationStackTrace = new();
+        private readonly System.Diagnostics.StackTrace _creationStackTrace = new();
 
         ~ExecutionEnvironment()
         {

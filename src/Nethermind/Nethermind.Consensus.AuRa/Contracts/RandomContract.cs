@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            long transitionBlock,
+            ulong transitionBlock,
             ISigner signer)
             : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Constant = GetConstant(readOnlyTxProcessorSource);
         }
 
-        public long Activation { get; }
+        public ulong Activation { get; }
 
         public (IRandomContract.Phase Phase, UInt256 Round) GetPhase(BlockHeader parentHeader)
         {

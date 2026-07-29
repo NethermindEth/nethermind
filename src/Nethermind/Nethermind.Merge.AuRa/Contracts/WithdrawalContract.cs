@@ -21,7 +21,7 @@ public class WithdrawalContract(
     IAbiEncoder abiEncoder,
     Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IWithdrawalContract
 {
-    private const long GasLimit = SystemTransactionGasLimit;
+    private const ulong GasLimit = SystemTransactionGasLimit;
 
     public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, IList<ulong> amounts, IList<Address> addresses)
     {

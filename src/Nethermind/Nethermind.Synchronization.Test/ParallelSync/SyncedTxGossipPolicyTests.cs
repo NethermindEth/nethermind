@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -69,9 +70,21 @@ public class SyncedTxGossipPolicyTests
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
     }
 
-    private class MutableSelector(SyncMode initial) : ISyncModeSelector
+    [Test]
+    public async Task WaitUntilMode_WillNotMissTransitionBeforeSubscription()
+    {
+        MutableSelector selector = new(SyncMode.FastSync, static selector => selector.Current = SyncMode.Full);
+        using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(1));
+
+        await ((ISyncModeSelector)selector).WaitUntilMode(mode => mode == SyncMode.Full, cancellationTokenSource.Token);
+
+        Assert.That(selector.Current, Is.EqualTo(SyncMode.Full));
+    }
+
+    private class MutableSelector(SyncMode initial, Action<MutableSelector>? beforeChangedSubscription = null) : ISyncModeSelector
     {
         private SyncMode _current = initial;
+        private EventHandler<SyncModeChangedEventArgs>? _changed;
 
         public SyncMode Current
         {
@@ -80,13 +93,22 @@ public class SyncedTxGossipPolicyTests
             {
                 SyncMode previous = _current;
                 _current = value;
-                Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, value));
+                _changed?.Invoke(this, new SyncModeChangedEventArgs(previous, value));
             }
         }
 
         public event EventHandler<SyncModeChangedEventArgs> Preparing { add { } remove { } }
         public event EventHandler<SyncModeChangedEventArgs> Changing { add { } remove { } }
-        public event EventHandler<SyncModeChangedEventArgs>? Changed;
+        public event EventHandler<SyncModeChangedEventArgs>? Changed
+        {
+            add
+            {
+                beforeChangedSubscription?.Invoke(this);
+                _changed += value;
+            }
+            remove => _changed -= value;
+        }
+
         public Task StopAsync() => Task.CompletedTask;
         public Task StartAsync() => Task.CompletedTask;
         public void Update() { }

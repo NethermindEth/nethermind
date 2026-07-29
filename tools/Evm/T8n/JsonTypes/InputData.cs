@@ -23,7 +23,7 @@ public class InputData
     {
         if (TxRlp is not null)
         {
-            Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(TxRlp));
+            RlpReader ctx = new(Bytes.FromHexString(TxRlp));
             return decoder.DecodeArray(ref ctx);
         }
 

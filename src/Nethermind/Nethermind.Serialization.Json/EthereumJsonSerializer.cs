@@ -84,7 +84,7 @@ namespace Nethermind.Serialization.Json
 
         public string Serialize<T>(T value, bool indented = false) => JsonSerializer.Serialize<T>(value, GetSerializerOptions(indented));
 
-        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> instanceConverters = null, int maxDepth = DefaultMaxDepth)
+        private static JsonSerializerOptions CreateOptions(bool indented, bool strictQuantity = false, IEnumerable<JsonConverter> instanceConverters = null, int maxDepth = DefaultMaxDepth)
         {
             SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers);
 
@@ -102,10 +102,10 @@ namespace Nethermind.Serialization.Json
                 TypeInfoResolver = BuildTypeInfoResolver(additionalResolvers),
                 Converters =
                 {
-                    new LongConverter(),
-                    new UInt256Converter(),
+                    new LongConverter(strictQuantity),
+                    new UInt256Converter(strictQuantity),
                     new EvmWordConverter(),
-                    new ULongConverter(),
+                    new ULongConverter(strictQuantity),
                     new IntConverter(),
                     new ByteArrayConverter(),
                     new HexBytesConverter(),
@@ -113,9 +113,9 @@ namespace Nethermind.Serialization.Json
                     new ByteReadOnlyMemoryConverter(),
                     new NullableByteReadOnlyMemoryConverter(),
                     new ArrayPoolListByteHexConverter(),
-                    new NullableLongConverter(),
-                    new NullableULongConverter(),
-                    new NullableUInt256Converter(),
+                    new NullableLongConverter(strictQuantity),
+                    new NullableULongConverter(strictQuantity),
+                    new NullableUInt256Converter(strictQuantity),
                     new NullableIntConverter(),
                     new TxTypeConverter(),
                     new DoubleConverter(),
@@ -212,6 +212,9 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
+        /// <summary>Options for RPC request parameter deserialization, enforcing EIP-1474 QUANTITY format when <see cref="StrictHexFormat"/> is <see langword="true"/>.</summary>
+        public static JsonSerializerOptions JsonRpcRequestOptions { get; private set; } = CreateOptions(indented: false);
+
         private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: true);
         private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: false);
 
@@ -298,6 +301,7 @@ namespace Nethermind.Serialization.Json
         {
             JsonOptions = CreateOptions(indented: false);
             JsonOptionsIndented = CreateOptions(indented: true);
+            JsonRpcRequestOptions = CreateOptions(indented: false, strictQuantity: _strictHexFormat);
             Interlocked.Increment(ref _optionsVersion);
         }
 

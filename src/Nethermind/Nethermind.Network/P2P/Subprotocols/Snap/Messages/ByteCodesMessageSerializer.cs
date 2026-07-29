@@ -14,16 +14,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int codesLength = Rlp.LengthOfByteArrayList(message.Codes);
             int contentLength = Rlp.LengthOf(message.RequestId) + codesLength;
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            NettyRlpStream rlpStream = new(byteBuffer);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
-            rlpStream.WriteByteArrayList(message.Codes);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
+            writer.Encode(message.RequestId);
+            writer.WriteByteArrayList(message.Codes);
         }
 
         public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startPos = ctx.Position;
             RlpByteArrayList? list = null;
 

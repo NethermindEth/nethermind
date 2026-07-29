@@ -315,7 +315,9 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
-            public PruningContext WithMaxDepth(int maxDepth) => WithPruningConfig((cfg) => cfg.PruningBoundary = maxDepth);
+            public PruningContext WithMaxDepth(int maxDepth) => WithMaxDepth((ulong)maxDepth);
+
+            public PruningContext WithMaxDepth(ulong maxDepth) => WithPruningConfig((cfg) => cfg.PruningBoundary = maxDepth);
 
             public PruningContext WithPruningConfig(Action<IPruningConfig> configurer)
             {
@@ -1059,7 +1061,7 @@ namespace Nethermind.Trie.Test
         [NonParallelizable]
         public void When_Reorg_OldValueIsNotRemoved()
         {
-            long previousMaxDepth = Reorganization.MaxDepth;
+            ulong previousMaxDepth = Reorganization.MaxDepth;
             Reorganization.MaxDepth = 2;
 
             try

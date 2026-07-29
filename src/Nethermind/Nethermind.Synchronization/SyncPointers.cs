@@ -18,8 +18,8 @@ public class SyncPointers : ISyncPointers
 
     private static readonly byte[] LegacyLowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
 
-    private long? _lowestInsertedBodyNumber;
-    public long? LowestInsertedBodyNumber
+    private ulong? _lowestInsertedBodyNumber;
+    public ulong? LowestInsertedBodyNumber
     {
         get => _lowestInsertedBodyNumber;
         set
@@ -29,9 +29,9 @@ public class SyncPointers : ISyncPointers
         }
     }
 
-    private long? _lowestInsertedReceiptBlock;
+    private ulong? _lowestInsertedReceiptBlock;
 
-    public long? LowestInsertedReceiptBlockNumber
+    public ulong? LowestInsertedReceiptBlockNumber
     {
         get => _lowestInsertedReceiptBlock;
         set
@@ -44,9 +44,9 @@ public class SyncPointers : ISyncPointers
         }
     }
 
-    private long? _lowestInsertedBlockAccessListBlock;
+    private ulong? _lowestInsertedBlockAccessListBlock;
 
-    public long? LowestInsertedBlockAccessListBlockNumber
+    public ulong? LowestInsertedBlockAccessListBlockNumber
     {
         get => _lowestInsertedBlockAccessListBlock;
         set
@@ -76,7 +76,7 @@ public class SyncPointers : ISyncPointers
         }
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
-        _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBytes).DecodeLong();
+        _lowestInsertedReceiptBlock = lowestBytes is null ? (ulong?)null : new RlpReader(lowestBytes).DecodeULong();
 
         _lowestInsertedBlockAccessListBlock =
             ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
@@ -88,14 +88,14 @@ public class SyncPointers : ISyncPointers
         }
     }
 
-    private static long? ReadPointer(IDb sourceDb, int metadataKey)
+    private static ulong? ReadPointer(IDb sourceDb, int metadataKey)
     {
         byte[]? pointerBytes = sourceDb.Get(metadataKey);
         return pointerBytes is null ? null : DecodePointer(pointerBytes);
     }
 
-    private static long DecodePointer(byte[] pointerBytes) =>
-        new Rlp.ValueDecoderContext(pointerBytes).DecodeLong();
+    private static ulong DecodePointer(byte[] pointerBytes) =>
+        new RlpReader(pointerBytes).DecodeULong();
 
     private void MigrateLegacyLowestInsertedBodyNumber(IDb blocksDb)
     {

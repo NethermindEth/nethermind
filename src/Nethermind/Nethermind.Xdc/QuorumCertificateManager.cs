@@ -5,8 +5,8 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Errors;
@@ -92,8 +92,6 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
         if (committed)
         {
-            _logger.Info($"Committed new block {grandParent!.ToString(BlockHeader.Format.Short)} round={grandParent.ExtraConsensusData!.BlockRound}");
-
             XdcBlockHeader parent = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash!)!;
             _ = _forensicsProcessor.ForensicsMonitoring([parent, proposedBlockHeader], qc);
 
@@ -108,7 +106,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
 
-        if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
+        // Rewritten from `(Number - 2) <= SwitchBlock` to avoid ulong underflow at Number < 2,
+        // which would otherwise wrap to a huge value and invert the guard.
+        if (proposedBlockHeader.Number <= spec.SwitchBlock + 2)
         {
             if (_logger.IsDebug) _logger.Debug($"Block {proposedBlockHeader.Number} is too close to switch block {spec.SwitchBlock}, skipping commit.");
             return null;
@@ -221,13 +221,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             }
         }
 
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        long gapNumber = epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) - (long)spec.Gap;
+        ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong epochBase = epochSwitchNumber - (epochSwitchNumber % spec.EpochLength);
+        ulong gapNumber = epochBase.SaturatingSub(spec.Gap);
 
-        if (epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) < (long)spec.Gap)
-            gapNumber = 0;
-
-        if (gapNumber != (long)qc.GapNumber)
+        if (gapNumber != qc.GapNumber)
         {
             error = $"Gap number mismatch between QC Gap {qc.GapNumber} and {gapNumber}";
             return false;
@@ -254,9 +252,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
     private static ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
     {
-        KeccakRlpStream stream = new();
-        _voteDecoder.Encode(stream, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
-        return stream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _voteDecoder.Encode(ref writer, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
+        return writer.GetValueHash();
     }
 
     public void Initialize(XdcBlockHeader current)
@@ -268,7 +266,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             if (current.ExtraConsensusData is null && _logger.IsInfo)
                 _logger.Info($"Block {current.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data; initializing consensus on round 1.");
             latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
-                    (ulong)Math.Max(0, current.Number - spec.Gap));
+                    current.Number.SaturatingSub(spec.Gap));
             _context.HighestQC = latestQc;
             _context.SetNewRound(1);
         }

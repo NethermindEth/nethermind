@@ -26,21 +26,21 @@ public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address curr
     public Address CurrentCoinbase { get; set; } = currentCoinbase;
     public UInt256? CurrentDifficulty { get; set; }
     public UInt256? CurrentBaseFee { get; set; }
-    public long CurrentGasLimit { get; set; }
-    public long CurrentNumber { get; set; }
+    public ulong CurrentGasLimit { get; set; }
+    public ulong CurrentNumber { get; set; }
     public ulong CurrentTimestamp { get; set; }
     public Hash256? CurrentRandom { get; set; }
     public ulong? CurrentExcessBlobGas { get; set; }
-    public UInt256? ParentBlobGasUsed { get; set; }
-    public UInt256? ParentExcessBlobGas { get; set; }
+    public ulong? ParentBlobGasUsed { get; set; }
+    public ulong? ParentExcessBlobGas { get; set; }
     public Withdrawal[]? Withdrawals { get; set; }
     public ulong ParentTimestamp { get; set; }
     public UInt256? ParentDifficulty { get; set; }
     public Hash256? ParentUncleHash { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public UInt256? ParentBaseFee { get; set; }
-    public long ParentGasUsed { get; set; }
-    public long ParentGasLimit { get; set; }
+    public ulong ParentGasUsed { get; set; }
+    public ulong ParentGasLimit { get; set; }
     public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
     public Ommer[] Ommers { get; set; } = [];
     public ulong StateChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
@@ -62,8 +62,8 @@ public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address curr
         if (ParentExcessBlobGas.HasValue && ParentBlobGasUsed.HasValue)
         {
             BlockHeader parentHeader = Build.A.BlockHeader
-                .WithExcessBlobGas((ulong)ParentExcessBlobGas)
-                .WithBlobGasUsed((ulong)ParentBlobGasUsed)
+                .WithExcessBlobGas(ParentExcessBlobGas.Value)
+                .WithBlobGasUsed(ParentBlobGasUsed.Value)
                 .TestObject;
             header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Spec);
         }

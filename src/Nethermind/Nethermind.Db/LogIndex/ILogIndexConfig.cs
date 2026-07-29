@@ -25,7 +25,7 @@ public interface ILogIndexConfig : IConfig
         DefaultValue = "64",
         HiddenFromDocs = true
     )]
-    public int? MaxReorgDepth { get; set; }
+    public ulong? MaxReorgDepth { get; set; }
 
     [ConfigItem(
         Description = "Maximum number of blocks with receipts to add to index per iteration.",

@@ -26,8 +26,8 @@ public class ExternalRpcIntegrationTests
     public async Task CanonicalTreeIsConsistent()
     {
         IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-        int destinationBlockNumber = 5000;
-        long? currentBlockNumber = null;
+        uint destinationBlockNumber = 5000;
+        ulong? currentBlockNumber = null;
         Hash256? currentHash = null;
         BasicJsonRpcClient client = new(new Uri("http://127.0.0.1:8545"), jsonSerializer, LimboLogs.Instance);
         do
@@ -51,8 +51,8 @@ public class ExternalRpcIntegrationTests
     public async Task ParentTimestampIsAlwaysLowerThanChildTimestamp()
     {
         IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-        int destinationBlockNumber = 5000;
-        long? currentBlockNumber = null;
+        uint destinationBlockNumber = 5000;
+        ulong? currentBlockNumber = null;
         UInt256? childTimestamp = null;
         BasicJsonRpcClient client = new(new Uri("http://127.0.0.1:8545"), jsonSerializer, LimboLogs.Instance);
         do

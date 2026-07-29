@@ -41,8 +41,9 @@ internal class XdcTransactionProcessor(
         IReleaseSpec spec,
         ITxTracer tracer,
         in TransactionSubstate substate,
-        long spentGas,
+        ulong spentGas,
         in UInt256 premiumPerGas,
+        in UInt256 effectiveGasPrice,
         in UInt256 blobBaseFee,
         int statusCode)
     {
@@ -52,7 +53,7 @@ internal class XdcTransactionProcessor(
 
         if (!xdcSpec.IsTipTrc21FeeEnabled)
         {
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
             return;
         }
 
@@ -61,8 +62,8 @@ internal class XdcTransactionProcessor(
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
-        UInt256 fee = effectiveGasPrice * (ulong)spentGas;
+        UInt256 feeEffectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
+        UInt256 fee = feeEffectiveGasPrice * spentGas;
 
         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 
@@ -122,7 +123,7 @@ internal class XdcTransactionProcessor(
         {
             if (tx.IsSignTransaction(xdcSpec))
             {
-                UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
+                ulong nonce = WorldState.GetNonce(tx.SenderAddress);
 
                 if (nonce < tx.Nonce)
                 {
@@ -142,7 +143,7 @@ internal class XdcTransactionProcessor(
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec _, in EthereumGasPolicy intrinsicGas, long minGasRequired, bool validate)
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec _, in EthereumGasPolicy intrinsicGas, ulong minGasRequired, bool validate)
     {
         IXdcReleaseSpec spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
         if (tx.RequiresSpecialHandling(spec))
@@ -170,7 +171,7 @@ internal class XdcTransactionProcessor(
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
-    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit) =>
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit) =>
         tx.RequiresSpecialHandling((IXdcReleaseSpec)spec)
             ? new IntrinsicGas<EthereumGasPolicy>()
             : base.CalculateIntrinsicGas(tx, spec, blockGasLimit);

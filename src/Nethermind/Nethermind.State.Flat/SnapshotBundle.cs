@@ -24,8 +24,8 @@ public sealed class SnapshotBundle : IDisposable
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
     private ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _changedSlots = null!;
-    private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
-    private ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _changedStorageNodes = null!;
+    private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
+    private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
@@ -71,15 +71,24 @@ public sealed class SnapshotBundle : IDisposable
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
     }
 
-    public Account? GetAccount(Address address) => DoGetAccount(address, false);
+    public Account? GetAccount(Address address) => DoGetAccount(address, excludeChanged: false, out _);
 
-    private Account? DoGetAccount(Address address, bool excludeChanged)
+    internal Account? GetAccount(Address address, out bool isInCurrentSnapshot) =>
+        DoGetAccount(address, excludeChanged: false, out isInCurrentSnapshot);
+
+    private Account? DoGetAccount(Address address, bool excludeChanged, out bool isInCurrentSnapshot)
     {
         GuardDispose();
 
         HashedKey<Address> key = new(address);
 
-        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc)) return acc;
+        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc))
+        {
+            isInCurrentSnapshot = true;
+            return acc;
+        }
+
+        isInCurrentSnapshot = false;
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -149,11 +158,11 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (_transientResource.TryGetStateNode(path, hash, out node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (DoFindStateNodeExternal(path, hash, out node))
         {
@@ -173,7 +182,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else
         {
@@ -190,7 +199,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         if (_trieNodeCache.TryGet(null, path, hash, out node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
         }
 
@@ -199,7 +208,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStateNode(key, out node))
             {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
         }
@@ -215,11 +224,11 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
         {
@@ -239,7 +248,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else
         {
@@ -259,7 +268,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
         }
 
@@ -268,7 +277,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorageNode(key, out node))
             {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
         }
@@ -299,27 +308,69 @@ public sealed class SnapshotBundle : IDisposable
         // Note: Hot path
         _trieChanged = true;
         _changedStateNodes[path] = newNode;
-
-        // Note to self:
-        // Skipping the cached resource update and doing it in background in TrieNodeCache barely make a dent
-        // to block processing time but increase the trie node add time by 3x.
         _transientResource.UpdateStateNode(path, newNode);
     }
 
+    internal void PublishStateNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    {
+        _changedStateNodes.EnsureCapacity(_changedStateNodes.Count + CountBufferedNodes(buffers));
+
+        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
+        {
+            foreach ((TreePath path, TrieNode node) in buffer) SetStateNode(path, node);
+        }
+    }
+
+    internal AddressStorageNodeDictionary.AddressNodes GetStorageNodeDestination(Hash256 address) =>
+        _changedStorageNodes.GetOrAddAddress(address);
+
     // This is called only during trie commit
     public void SetStorageNode(Hash256 addr, in TreePath path, TrieNode newNode)
+    {
+        GuardDispose();
+        SetStorageNode(GetStorageNodeDestination(addr), addr, path, newNode);
+    }
+
+    internal void SetStorageNode(
+        AddressStorageNodeDictionary.AddressNodes nodes,
+        Hash256 addr,
+        in TreePath path,
+        TrieNode newNode)
     {
         GuardDispose();
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         // Note: Hot path
         _trieChanged = true;
-        _changedStorageNodes[(addr, path)] = newNode;
+        nodes.Set(path, newNode);
         _transientResource.UpdateStorageNode(addr, path, newNode);
+    }
+
+    internal void PublishStorageNodes(
+        AddressStorageNodeDictionary.AddressNodes nodes,
+        Hash256 address,
+        IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    {
+        nodes.EnsureAdditionalCapacity(CountBufferedNodes(buffers));
+
+        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
+        {
+            foreach ((TreePath path, TrieNode node) in buffer) SetStorageNode(nodes, address, path, node);
+        }
+    }
+
+    private static int CountBufferedNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    {
+        int count = 0;
+        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers) count += buffer.Count;
+        return count;
     }
 
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
+
+    internal void PromoteAccount(Address address, Account? account) =>
+        _changedAccounts.TryAdd(address, account);
 
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {
@@ -342,7 +393,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        Account? account = DoGetAccount(address, excludeChanged: true);
+        Account? account = DoGetAccount(address, excludeChanged: true, out _);
         // So... a clear is always sent even on a new account. This makes is a minor optimization as
         // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
@@ -351,20 +402,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (!isNewAccount)
         {
-            // Collect keys first to avoid modifying during iteration
-            using ArrayPoolListRef<HashedKey<(Hash256, TreePath)>> storageKeysToRemove = new(16);
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in _changedStorageNodes)
-            {
-                if (kvp.Key.Key.Item1 == addressHash)
-                {
-                    storageKeysToRemove.Add(kvp.Key);
-                }
-            }
-
-            foreach (HashedKey<(Hash256, TreePath)> key in storageKeysToRemove)
-            {
-                _changedStorageNodes.TryRemove(key, out _);
-            }
+            _changedStorageNodes.RemoveAddress(addressHash);
 
             using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
@@ -386,6 +424,22 @@ public sealed class SnapshotBundle : IDisposable
     // It is a net improvement to check and modify the bloom filter before calling the trie warmer push
     // as most of the slot should already be queued by prewarmer.
     public bool ShouldQueuePrewarm(Address address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
+
+    public bool ShouldQueuePrewarm(in ValueAddress address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
+
+    /// <summary>
+    /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
+    /// </summary>
+    /// <remarks>
+    /// Warmer jobs race scope disposal by design; the managed fallout is caught in the warmer, but a read that is
+    /// already inside the persistence reader when the last lease is released would touch a freed native RocksDB
+    /// snapshot and crash the process. Holding a lease per in-flight traversal defers that release until the job ends.
+    /// </remarks>
+    /// <returns><c>false</c> when the bundle is already fully disposed; the caller must skip the traversal.</returns>
+    internal bool TryLeaseReadOnlyBundle() => _readOnlySnapshotBundle.TryLease();
+
+    /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
+    internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
@@ -429,6 +483,8 @@ public sealed class SnapshotBundle : IDisposable
             _transientResource.Reset();
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
+            ExpandCurrentPooledContent();
+            _trieChanged = false;
 
             return (null, null);
         }

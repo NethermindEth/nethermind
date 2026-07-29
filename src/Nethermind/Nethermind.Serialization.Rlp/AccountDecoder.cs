@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -21,7 +22,7 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder(bool slimFormat = false) => _slimFormat = slimFormat;
 
-        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
+        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref RlpReader context)
         {
             context.SkipLength();
             context.SkipItem();
@@ -33,7 +34,7 @@ namespace Nethermind.Serialization.Rlp
             return (codeHash, storageRoot);
         }
 
-        public Hash256 DecodeStorageRootOnly(ref Rlp.ValueDecoderContext context)
+        public Hash256 DecodeStorageRootOnly(ref RlpReader context)
         {
             context.SkipLength();
             context.SkipItem();
@@ -42,42 +43,61 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        public override void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
-            Encode(item, stream);
+            Encode(item, ref writer);
         }
 
-        public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)
+        public void Encode<TWriter>(Account account, ref TWriter writer, int? contentLength = null)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             contentLength ??= GetContentLength(account);
 
-            rlpStream.StartSequence(contentLength.Value);
-            rlpStream.Encode(account.Nonce);
-            rlpStream.Encode(account.Balance);
+            writer.StartSequence(contentLength.Value);
+            writer.Encode(account.Nonce);
+            writer.Encode(account.Balance);
 
             if (_slimFormat && !account.HasStorage)
             {
-                rlpStream.EncodeEmptyByteArray();
+                writer.EncodeEmptyByteArray();
             }
             else
             {
-                rlpStream.Encode(account.StorageRoot);
+                writer.Encode(account.StorageRoot);
             }
 
             if (_slimFormat && !account.HasCode)
             {
-                rlpStream.EncodeEmptyByteArray();
+                writer.EncodeEmptyByteArray();
             }
             else
             {
-                rlpStream.Encode(account.CodeHash);
+                writer.Encode(account.CodeHash);
             }
+        }
+
+        /// <summary>
+        /// Encodes a non-null <paramref name="account"/> into a freshly allocated <see cref="byte"/> array.
+        /// </summary>
+        /// <remarks>
+        /// Computes the content length once and reuses it for both sizing the buffer and writing the
+        /// sequence header, avoiding the double <see cref="GetContentLength"/> pass that the generic
+        /// <see cref="RlpDecoder{T}.EncodeAsBytes"/> incurs. The buffer is allocated uninitialized
+        /// because encoding fills it completely.
+        /// </remarks>
+        public byte[] EncodeAsBytes(Account account)
+        {
+            int contentLength = GetContentLength(account);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(bytes);
+            Encode(account, ref writer, contentLength);
+            return bytes;
         }
 
         public int GetLength(Account[] accounts)
@@ -138,7 +158,7 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        protected override Account? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Account? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)
@@ -146,7 +166,7 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            UInt256 nonce = decoderContext.DecodeUInt256();
+            ulong nonce = decoderContext.DecodeULong();
             UInt256 balance = decoderContext.DecodeUInt256();
             Hash256 storageRoot = DecodeStorageRoot(ref decoderContext);
             Hash256 codeHash = DecodeCodeHash(ref decoderContext);
@@ -158,71 +178,71 @@ namespace Nethermind.Serialization.Rlp
             return new(nonce, balance, storageRoot, codeHash);
         }
 
-        private Hash256 DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)
+        private Hash256 DecodeStorageRoot(ref RlpReader reader)
         {
             Hash256 storageRoot;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
+            if (_slimFormat && reader.IsNextItemEmptyByteArray())
             {
-                rlpStream.ReadByte();
+                reader.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash;
             }
             else
             {
-                storageRoot = rlpStream.DecodeKeccak();
+                storageRoot = reader.DecodeKeccak();
             }
 
             return storageRoot;
         }
 
-        private Hash256 DecodeCodeHash(ref Rlp.ValueDecoderContext rlpStream)
+        private Hash256 DecodeCodeHash(ref RlpReader reader)
         {
             Hash256 codeHash;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
+            if (_slimFormat && reader.IsNextItemEmptyByteArray())
             {
-                rlpStream.ReadByte();
+                reader.ReadByte();
                 codeHash = Keccak.OfAnEmptyString;
             }
             else
             {
-                codeHash = rlpStream.DecodeKeccak();
+                codeHash = reader.DecodeKeccak();
             }
 
             return codeHash;
         }
 
-        private ValueHash256 DecodeStorageRootStruct(ref Rlp.ValueDecoderContext rlpStream)
+        private ValueHash256 DecodeStorageRootStruct(ref RlpReader reader)
         {
             ValueHash256 storageRoot;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
+            if (_slimFormat && reader.IsNextItemEmptyByteArray())
             {
-                rlpStream.ReadByte();
+                reader.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash.ValueHash256;
             }
             else
             {
-                storageRoot = rlpStream.DecodeValueKeccak()!.Value;
+                storageRoot = reader.DecodeValueKeccak()!.Value;
             }
 
             return storageRoot;
         }
 
-        private ValueHash256 DecodeCodeHashStruct(ref Rlp.ValueDecoderContext rlpStream)
+        private ValueHash256 DecodeCodeHashStruct(ref RlpReader reader)
         {
             ValueHash256 codeHash;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
+            if (_slimFormat && reader.IsNextItemEmptyByteArray())
             {
-                rlpStream.ReadByte();
+                reader.ReadByte();
                 codeHash = Keccak.OfAnEmptyString.ValueHash256;
             }
             else
             {
-                codeHash = rlpStream.DecodeValueKeccak()!.Value;
+                codeHash = reader.DecodeValueKeccak()!.Value;
             }
 
             return codeHash;
         }
 
-        public bool TryDecodeStruct(ref Rlp.ValueDecoderContext decoderContext, out AccountStruct account)
+        public bool TryDecodeStruct(ref RlpReader decoderContext, out AccountStruct account)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)
@@ -231,7 +251,7 @@ namespace Nethermind.Serialization.Rlp
                 return false;
             }
 
-            UInt256 nonce = decoderContext.DecodeUInt256();
+            ulong nonce = decoderContext.DecodeULong();
             UInt256 balance = decoderContext.DecodeUInt256();
             ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
             ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);

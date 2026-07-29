@@ -162,6 +162,15 @@ public class RecoveryTests
         Assert.That(response, Is.Null);
     }
 
+    [Test]
+    public async Task cannot_recover_eth67_hash_mismatch()
+    {
+        _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { new byte[] { 5, 6, 7 } })));
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth67);
+        Assert.That(response, Is.Null);
+    }
+
     private Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(IPathRecovery recovery, params PeerInfo[] peers)
     {
         _syncPeerPool.InitializedPeers.Returns(peers);

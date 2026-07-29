@@ -188,8 +188,8 @@ internal static class GetPayloadDirectResponseWriter
         int length = decoder.GetLength(blockAccessList, RlpBehaviors.None);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
 
-        RlpStream stream = new(buffer);
-        decoder.Encode(stream, blockAccessList);
+        RlpWriter rlpWriter = new(buffer);
+        decoder.Encode(ref rlpWriter, blockAccessList);
         HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
         ArrayPool<byte>.Shared.Return(buffer);
     }
@@ -255,8 +255,8 @@ internal static class GetPayloadDirectResponseWriter
         HexWriter.WriteUlongHexString(writer, value.GetValueOrDefault());
     }
 
-    private static void WriteLongHexString(IBufferWriter<byte> writer, long value) =>
-        HexWriter.WriteUlongHexString(writer, (ulong)value);
+    private static void WriteLongHexString(IBufferWriter<byte> writer, ulong value) =>
+        HexWriter.WriteUlongHexString(writer, value);
 
     private static void WriteHexString(IBufferWriter<byte> writer, ReadOnlySpan<byte> data, bool chunked) =>
         HexWriter.WriteHexString(writer, data, chunked);

@@ -12,7 +12,7 @@ public class AsyncFileWriteQueueTests
     private string _tempDir = null!;
     private AsyncFileWriteQueue _queue = null!;
 
-    private static PerBlockTraceOutput CreateTrace(long blockNumber) => new()
+    private static PerBlockTraceOutput CreateTrace(ulong blockNumber) => new()
     {
         Metadata = new PerBlockMetadata { BlockNumber = blockNumber },
         OpcodeCounts = new Dictionary<byte, long> { [0x00] = 1 }
@@ -52,7 +52,7 @@ public class AsyncFileWriteQueueTests
     [TestCase(50)]
     public async Task PendingWrites_reaches_zero_after_flush(int count)
     {
-        for (int i = 0; i < count; i++) _queue.Enqueue(CreateTrace(i));
+        for (ulong i = 0; i < (ulong)count; i++) _queue.Enqueue(CreateTrace(i));
 
         bool flushed = await _queue.FlushAsync(TimeSpan.FromSeconds(10));
 

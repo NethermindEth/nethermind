@@ -10,7 +10,7 @@ namespace Nethermind.State.Snap
 {
     public class StorageRange : IDisposable
     {
-        public long? BlockNumber { get; set; }
+        public ulong? BlockNumber { get; set; }
 
         /// <summary>
         /// Root hash of the account trie to serve

@@ -9,11 +9,7 @@ using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Processing.CensorshipDetector;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.TxPool;
@@ -22,7 +18,6 @@ using Nethermind.Wallet;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
-        typeof(InitializePlugins),
         typeof(InitializeBlockTree),
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
@@ -49,38 +44,14 @@ namespace Nethermind.Init.Steps
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
-            _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
-
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
             TxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper);
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, _api.NonceManager!, getApi.EthereumEcdsa!);
-            setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
-
-            IBranchProcessor mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
-
-            ICensorshipDetectorConfig censorshipDetectorConfig = _api.Config<ICensorshipDetectorConfig>();
-            if (censorshipDetectorConfig.Enabled)
-            {
-                CensorshipDetector censorshipDetector = new(
-                    _api.BlockTree!,
-                    txPool,
-                    CreateTxPoolTxComparer(),
-                    mainBranchProcessor,
-                    _api.LogManager,
-                    censorshipDetectorConfig
-                );
-                setApi.CensorshipDetector = censorshipDetector;
-                _api.DisposeStack.Push(censorshipDetector);
-            }
 
             return Task.CompletedTask;
         }
-
-        protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
-            new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
         protected virtual ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
         {

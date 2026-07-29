@@ -18,3 +18,5 @@ mkdir -p .agents/skills/<name>
 ln -s ../../.agents/skills/<name> .claude/skills/<name>
 ln -s ../../.agents/skills/<name> .cursor/skills/<name>
 ```
+
+On Windows, symlinks require `git config core.symlinks true` plus Developer Mode (or an elevated shell); otherwise `ln -s` and checkouts silently produce plain text stubs and the skills never load. Verify with `Get-Item` (`LinkType` must be `SymbolicLink`) — the fix procedure is in `.claude/CLAUDE.md`.

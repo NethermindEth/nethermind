@@ -20,8 +20,29 @@ using Nethermind.Int256;
 
 namespace Nethermind.Xdc;
 
-internal class XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider, IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, IBlockhashStore blockHashStore, ILogManager logManager, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor, IBlockAccessListManager balManager) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager)
+internal class XdcBlockProcessor(
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IRewardCalculator rewardCalculator,
+    IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+    IWorldState stateProvider,
+    IReceiptStorage receiptStorage,
+    IBeaconBlockRootHandler beaconBlockRootHandler,
+    IBlockhashStore blockHashStore,
+    ILogManager logManager,
+    IWithdrawalProcessor withdrawalProcessor,
+    IExecutionRequestsProcessor executionRequestsProcessor,
+    IBlockAccessListManager balManager) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager), IBlockProcessor
 {
+    protected override void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
+    {
+        base.PostValidation(suggestedBlock, processedBlock, receipts, options);
+        if (suggestedBlock.Header is XdcBlockHeader suggestedHeader && processedBlock.Header is XdcBlockHeader processedHeader)
+        {
+            suggestedHeader.ProcessedRewards = processedHeader.ProcessedRewards;
+        }
+    }
+
     protected override BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)
     {
         // Match Go's big.Int.Bytes() behavior: zero produces empty bytes, not [0x00].
@@ -41,41 +62,8 @@ internal class XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blo
 
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
     {
-        //TODO find a better way to do this copy
         XdcBlockHeader bh = suggestedBlock.Header as XdcBlockHeader;
-        XdcBlockHeader headerForProcessing = new(
-            bh.ParentHash,
-            bh.UnclesHash,
-            bh.Beneficiary,
-            bh.Difficulty,
-            bh.Number,
-            bh.GasLimit,
-            bh.Timestamp,
-            bh.ExtraData,
-            bh.IsSelfMined
-        )
-        {
-            Bloom = Bloom.Empty,
-            Author = bh.Author,
-            Hash = bh.Hash,
-            MixHash = bh.MixHash,
-            Nonce = bh.Nonce,
-            TxRoot = bh.TxRoot,
-            TotalDifficulty = bh.TotalDifficulty,
-            AuRaStep = bh.AuRaStep,
-            AuRaSignature = bh.AuRaSignature,
-            ReceiptsRoot = bh.ReceiptsRoot,
-            BaseFeePerGas = bh.BaseFeePerGas,
-            WithdrawalsRoot = bh.WithdrawalsRoot,
-            RequestsHash = bh.RequestsHash,
-            IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            ExcessBlobGas = bh.ExcessBlobGas,
-            BlobGasUsed = bh.BlobGasUsed,
-            Validator = bh.Validator,
-            Validators = bh.Validators,
-            Penalties = bh.Penalties,
-        };
+        XdcBlockHeader headerForProcessing = bh.CreateHeaderForProcessing();
 
         if (!ShouldComputeStateRoot(bh))
         {

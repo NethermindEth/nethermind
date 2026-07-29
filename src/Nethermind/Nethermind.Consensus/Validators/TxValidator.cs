@@ -21,58 +21,59 @@ public sealed class TxValidator : ITxValidator
 
     public TxValidator(ulong chainId)
     {
+        // Sender-independent failures must precede intrinsic gas so malformed transactions cannot
+        // trigger EIP-2780 sender recovery; expensive blob proof validation remains after the gas gate.
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
             NonceCapTxValidator.Instance,
-            IntrinsicGasTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance
         ]));
 
         ExpectedChainIdTxValidator expectedChainIdTxValidator = new(chainId);
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
             NonceCapTxValidator.Instance,
-            IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance
         ]));
         RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
             NonceCapTxValidator.Instance,
-            IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
             NonceCapTxValidator.Instance,
-            IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
-            MempoolBlobTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance,
+            MempoolBlobTxValidator.Instance
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
             NonceCapTxValidator.Instance,
-            IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
@@ -80,7 +81,8 @@ public sealed class TxValidator : ITxValidator
             NonBlobFieldsTxValidator.Instance,
             NoContractCreationTxValidator.Instance,
             AuthorizationListTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance
         ]));
     }
 
@@ -98,7 +100,7 @@ public sealed class TxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
             ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
@@ -109,7 +111,7 @@ public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidat
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
         foreach (ITxValidator validator in validators)
         {
@@ -132,20 +134,20 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit)
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
-        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out long regular, out long floor))
+        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong regular, out ulong floor))
         {
-            return TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap);
+            return IntrinsicGasError(TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap));
         }
 
-        // Implicit conversion combines Standard + StateReservoir (EIP-8037) before max'ing with FloorGas.
-        EthereumIntrinsicGas combined = intrinsicGas;
-        return transaction.GasLimit < combined.MinimalGas
-            ? TxErrorMessages.IntrinsicGasTooLow
+        return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
+            ? IntrinsicGasError(TxErrorMessages.IntrinsicGasTooLow)
             : ValidationResult.Success;
     }
+
+    private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
 }
 
 public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool> validate) : ITxValidator
@@ -401,7 +403,7 @@ public sealed class GasLimitCapTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long gasLimitCap = releaseSpec.GetTxGasLimitCap();
+        ulong gasLimitCap = releaseSpec.GetTxGasLimitCap();
         return transaction.GasLimit > gasLimitCap ?
             TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }

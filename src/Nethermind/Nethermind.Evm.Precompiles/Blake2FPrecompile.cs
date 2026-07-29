@@ -27,7 +27,7 @@ public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 
     public static string Name => "BLAKE2F";
 
-    public long BaseGasCost(IReleaseSpec _) => 0;
+    public ulong BaseGasCost(IReleaseSpec _) => 0UL;
 
     public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
     {
@@ -36,15 +36,15 @@ public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
         return inputData;
     }
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         if (inputData.Length != RequiredInputLength)
-            return 0;
+            return 0UL;
 
         byte finalBlock = inputData.Span[212];
 
         if (finalBlock != 0 && finalBlock != 1)
-            return 0;
+            return 0UL;
 
         uint rounds = BinaryPrimitives.ReadUInt32BigEndian(inputData[..4].Span);
 

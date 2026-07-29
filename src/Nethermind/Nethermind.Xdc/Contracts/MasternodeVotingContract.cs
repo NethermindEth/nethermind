@@ -32,7 +32,8 @@ internal class MasternodeVotingContract(
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
     {
         CallInfo callInfo = new(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
-        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
+        IConstantContract constant = GetConstant(source);
         object[] result = constant.Call(callInfo);
         if (result.Length != 1)
             throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
@@ -40,10 +41,21 @@ internal class MasternodeVotingContract(
         return (UInt256)result[0]!;
     }
 
+    public UInt256 GetCandidateStake(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
+    {
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidateCap", GenerateTransaction<Transaction>(ContractAddress, "getCandidateCap", Address.SystemUser, candidate), true);
+        object[] decoded = DecodeReturnData("getCandidateCap", result);
+        if (decoded.Length != 1)
+            throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
+
+        return (UInt256)decoded[0]!;
+    }
+
     public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
     {
         CallInfo callInfo = new(blockHeader, "getCandidateOwner", Address.SystemUser, candidate);
-        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
+        IConstantContract constant = GetConstant(source);
         object[] result = constant.Call(callInfo);
         if (result.Length != 1)
             throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
@@ -84,9 +96,17 @@ internal class MasternodeVotingContract(
     public Address[] GetCandidates(BlockHeader blockHeader)
     {
         CallInfo callInfo = new(blockHeader, "getCandidates", Address.SystemUser);
-        IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
+        using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
+        IConstantContract constant = GetConstant(source);
         object[] result = constant.Call(callInfo);
         return (Address[])result[0]!;
+    }
+
+    public Address[] GetCandidates(ITransactionProcessor transactionProcessor, BlockHeader blockHeader)
+    {
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidates", GenerateTransaction<Transaction>(ContractAddress, "getCandidates", Address.SystemUser), true);
+        object[] decoded = DecodeReturnData("getCandidates", result);
+        return (Address[])decoded[0]!;
     }
 
     /// <summary>
@@ -99,7 +119,7 @@ internal class MasternodeVotingContract(
         CandidateContractSlots variableSlot = CandidateContractSlots.Candidates;
         Span<byte> input = [(byte)variableSlot];
         UInt256 slot = new(Keccak.Compute(input).Bytes);
-        IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
+        using IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
         using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
         IWorldState worldState = source.WorldState;
         ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));

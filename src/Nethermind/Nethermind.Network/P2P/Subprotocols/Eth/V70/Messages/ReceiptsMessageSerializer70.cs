@@ -16,13 +16,13 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, ReceiptsMessage70 message)
     {
-        NettyRlpStream stream = new(byteBuffer);
-        stream.Encode(message.LastBlockIncomplete ? 1 : 0);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.Encode(message.LastBlockIncomplete ? 1 : 0);
         ReceiptsInnerMessage69 inner = new(message.TxReceipts);
         _receiptsSerializer.Serialize(byteBuffer, inner);
     }
 
-    protected override ReceiptsMessage70 DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId)
+    protected override ReceiptsMessage70 DeserializeInternal(ref RlpReader ctx, long requestId)
     {
         ulong lastBlockIncomplete = ctx.DecodeULong();
 

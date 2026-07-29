@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
@@ -25,7 +26,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return 0;
             }
 
-            return 100UL + (ulong)(tx.Data.Length);
+            // Exact encoded length so access/authorization lists aren't under-counted.
+            return (ulong)TxDecoder.Instance.GetLength(tx, RlpBehaviors.None);
         }
 
         public static ulong EstimateSize(Block? block)

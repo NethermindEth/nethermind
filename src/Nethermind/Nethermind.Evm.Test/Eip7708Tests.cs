@@ -52,7 +52,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
@@ -73,7 +73,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Contract that calls another address with value
         Address targetAddress = TestItem.AddressC;
@@ -119,7 +119,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Contract that self-destructs to a different address (inheritor)
         Address inheritor = TestItem.AddressC;
@@ -166,7 +166,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         // is a complete no-op — no destruction, no ETH movement, no log.
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Calculate contract address first - we need it for the selfdestruct target
         Address contractAddress = ContractAddress.From(TestItem.AddressA, senderNonce);
@@ -211,7 +211,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Contract A: self-destructs to inheritor only when called with zero value.
         // When called with value, it just accepts the ETH without self-destructing again.

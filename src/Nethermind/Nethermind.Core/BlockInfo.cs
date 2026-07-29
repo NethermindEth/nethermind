@@ -68,7 +68,7 @@ namespace Nethermind.Core
         /// <summary>
         /// This property is not serialized
         /// </summary>
-        public long BlockNumber { get; set; }
+        public ulong BlockNumber { get; set; }
 
         public override string ToString() => BlockHash.ToString();
 

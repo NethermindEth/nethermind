@@ -381,16 +381,16 @@ namespace Nethermind.Network.P2P
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
-            bool ShouldDisconnectStaticNode() => ethDisconnectReason switch
+            bool ShouldDisconnectPrivilegedNode() => ethDisconnectReason switch
             {
                 EthDisconnectReason.DisconnectRequested or EthDisconnectReason.TcpSubSystemError or EthDisconnectReason.UselessPeer or EthDisconnectReason.TooManyPeers or EthDisconnectReason.Other => false,
                 EthDisconnectReason.ReceiveMessageTimeout or EthDisconnectReason.BreachOfProtocol or EthDisconnectReason.AlreadyConnected or EthDisconnectReason.IncompatibleP2PVersion or EthDisconnectReason.NullNodeIdentityReceived or EthDisconnectReason.ClientQuitting or EthDisconnectReason.UnexpectedIdentity or EthDisconnectReason.IdentitySameAsSelf => true,
                 _ => true,
             };
 
-            if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
+            if ((Node?.IsStatic == true || Node?.IsTrusted == true) && !ShouldDisconnectPrivilegedNode())
             {
-                if (_logger.IsTrace) TraceStaticPeerNotDisconnecting(disconnectReason, details);
+                if (_logger.IsTrace) TracePrivilegedPeerNotDisconnecting(disconnectReason, details);
                 return;
             }
 
@@ -435,8 +435,8 @@ namespace Nethermind.Network.P2P
             MarkDisconnected(disconnectReason, DisconnectType.Local, details);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceStaticPeerNotDisconnecting(DisconnectReason reason, string? det)
-                => _logger.Trace($"{this} not disconnecting for static peer on {reason} ({det})");
+            void TracePrivilegedPeerNotDisconnecting(DisconnectReason reason, string? det)
+                => _logger.Trace($"{this} not disconnecting for static/trusted peer on {reason} ({det})");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugInitiatingDisconnect(DisconnectReason reason, string? det)

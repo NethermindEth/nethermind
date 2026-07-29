@@ -9,7 +9,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class GetAccountRangeMessageSerializer : SnapSerializerBase<GetAccountRangeMessage>
     {
-        protected override GetAccountRangeMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        protected override GetAccountRangeMessage Deserialize(ref RlpReader ctx)
         {
             GetAccountRangeMessage message = new();
             ctx.ReadSequenceLength();
@@ -23,14 +23,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public override void Serialize(IByteBuffer byteBuffer, GetAccountRangeMessage message)
         {
-            NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
+            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
 
-            rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(message.AccountRange.RootHash);
-            rlpStream.Encode(message.AccountRange.StartingHash);
+            writer.Encode(message.RequestId);
+            writer.Encode(message.AccountRange.RootHash);
+            writer.Encode(message.AccountRange.StartingHash);
 
-            rlpStream.Encode(message.AccountRange.LimitHash ?? Keccak.MaxValue);
-            rlpStream.Encode(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
+            writer.Encode(message.AccountRange.LimitHash ?? Keccak.MaxValue);
+            writer.Encode(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
         }
 
         public override int GetLength(GetAccountRangeMessage message, out int contentLength)
@@ -38,8 +38,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.AccountRange.RootHash);
             contentLength += Rlp.LengthOf(message.AccountRange.StartingHash);
-            contentLength += Rlp.LengthOf(message.AccountRange.LimitHash);
-            contentLength += Rlp.LengthOf(message.ResponseBytes);
+            contentLength += Rlp.LengthOf(message.AccountRange.LimitHash ?? Keccak.MaxValue);
+            contentLength += Rlp.LengthOf(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
 
             return Rlp.LengthOfSequence(contentLength);
         }

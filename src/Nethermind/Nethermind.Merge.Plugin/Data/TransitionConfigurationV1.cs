@@ -26,5 +26,5 @@ public class TransitionConfigurationV1
     /// <summary>
     /// Maps on TERMINAL_BLOCK_NUMBER parameter of EIP-3675
     /// </summary>
-    public long TerminalBlockNumber { get; set; }
+    public ulong TerminalBlockNumber { get; set; }
 }

@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -38,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ExampleResponse = "{\"proof\":{\"address\":\"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\",\"balance\":\"0x18232098799834c9a9e2b\",\"codeHash\":\"0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23\",\"nonce\":\"0x1\",\"storageHash\":\"0x...\",\"accountProof\":[\"0x...\"],\"storageProof\":[]},\"meta\":{\"nodeLookups\":\"0x6e\",\"cacheHits\":\"0x6e\",\"maxDepth\":8}}")]
         ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(
             [JsonRpcParameter(ExampleValue = "\"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2\"")] Address accountAddress,
-            [JsonRpcParameter(ExampleValue = "[]", Description = "Storage keys to include in the proof; duplicates are deduplicated.")] HashSet<UInt256> storageKeys,
+            [JsonRpcParameter(ExampleValue = "[]", Description = "Storage keys to include in the proof; duplicates are deduplicated.")] StorageKeys storageKeys,
             [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter? blockParameter);
     }
 }

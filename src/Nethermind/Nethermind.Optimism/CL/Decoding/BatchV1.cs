@@ -90,7 +90,7 @@ public sealed class BatchV1
                 ChainId = chainId,
                 Type = Txs.Types[(int)txIdx],
                 Nonce = Txs.Nonces[(int)txIdx],
-                GasLimit = (long)Txs.Gases[(int)txIdx],
+                GasLimit = Txs.Gases[(int)txIdx],
             };
             bool contractCreationBit = ((Txs.ContractCreationBits >> (int)txIdx) & 1) == 1;
             if (!contractCreationBit)
@@ -148,36 +148,24 @@ public sealed class BatchV1
     private (UInt256 Value, UInt256 GasPrice, byte[] Data) DecodeLegacyTransaction(ReadOnlySpan<byte> encoded)
     {
         // rlp_encode(value, gasPrice, data)
-        Rlp.ValueDecoderContext decoder = new(encoded);
-        int length = decoder.ReadSequenceLength();
-        UInt256 value = decoder.DecodeUInt256();
-        UInt256 gasPrice = decoder.DecodeUInt256();
-        byte[] data = decoder.DecodeByteArray();
-        return (value, gasPrice, data);
+        RlpReader decoder = new(encoded);
+        decoder.ReadSequenceLength();
+        return (decoder.DecodeUInt256(), decoder.DecodeUInt256(), decoder.DecodeByteArray());
     }
 
     private (UInt256 Value, UInt256 GasPrice, byte[] Data, AccessList? AccessList) DecodeAccessListTransaction(ReadOnlySpan<byte> encoded)
     {
         // 0x01 ++ rlp_encode(value, gasPrice, data, accessList)
-        Rlp.ValueDecoderContext decoder = new(encoded);
-        int length = decoder.ReadSequenceLength();
-        UInt256 value = decoder.DecodeUInt256();
-        UInt256 gasPrice = decoder.DecodeUInt256();
-        byte[] data = decoder.DecodeByteArray();
-        AccessList? accessList = AccessListDecoder.Instance.Decode(ref decoder);
-        return (value, gasPrice, data, accessList);
+        RlpReader decoder = new(encoded);
+        decoder.ReadSequenceLength();
+        return (decoder.DecodeUInt256(), decoder.DecodeUInt256(), decoder.DecodeByteArray(), AccessListDecoder.Instance.Decode(ref decoder));
     }
 
     private (UInt256 Value, UInt256 MaxPriorityFeePerGas, UInt256 MaxFeePerGas, byte[] Data, AccessList? AccessList) DecodeEip1559Transaction(ReadOnlySpan<byte> encoded)
     {
         // 0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)
-        Rlp.ValueDecoderContext decoder = new(encoded);
-        int length = decoder.ReadSequenceLength();
-        UInt256 value = decoder.DecodeUInt256();
-        UInt256 maxPriorityFeePerGas = decoder.DecodeUInt256();
-        UInt256 maxFeePerGas = decoder.DecodeUInt256();
-        byte[] data = decoder.DecodeByteArray();
-        AccessList? accessList = AccessListDecoder.Instance.Decode(ref decoder);
-        return (value, maxPriorityFeePerGas, maxFeePerGas, data, accessList);
+        RlpReader decoder = new(encoded);
+        decoder.ReadSequenceLength();
+        return (decoder.DecodeUInt256(), decoder.DecodeUInt256(), decoder.DecodeUInt256(), decoder.DecodeByteArray(), AccessListDecoder.Instance.Decode(ref decoder));
     }
 }

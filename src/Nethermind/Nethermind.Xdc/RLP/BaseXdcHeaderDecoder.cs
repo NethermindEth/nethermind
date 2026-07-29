@@ -9,9 +9,24 @@ using System;
 
 namespace Nethermind.Xdc.RLP;
 
+/// <remarks>
+/// The plain-header fallback (see <see cref="FallbackDecoder"/>) is encode-only.
+/// Distinguishing a foreign header from an XDC one after <c>mixHash</c>/<c>nonce</c> would require
+/// telling XDC's required <c>Validators</c>/<c>Penalties</c> fields apart from Ethereum's optional
+/// post-merge fields (<c>BaseFeePerGas</c>, <c>WithdrawalsRoot</c>, etc.) — both just look like "more
+/// RLP content" at that point, so no reliable byte-shape check exists. This is safe because XDC nodes
+/// only ever decode XDC-shaped chain data through the global registry; it is not safe to decode
+/// arbitrary foreign headers once this decoder is registered as the process-wide default.
+/// </remarks>
 public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeaderDecoder where TH : XdcBlockHeader
 {
     private const int NonceLength = 8;
+
+    // Encodes headers that aren't TH (e.g. plain BlockHeader test fixtures) using the base Ethereum
+    // shape, mirroring AuRaHeaderDecoder's seal-only fallback. Needed once this decoder is registered
+    // as the process-wide Rlp default (see XdcHeaderModule), so foreign headers still encode correctly
+    // instead of throwing.
+    private static readonly HeaderDecoder FallbackDecoder = new();
 
     protected static bool IsForSealing(RlpBehaviors beh)
         => (beh & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
@@ -21,16 +36,17 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         Hash256? unclesHash,
         Address? beneficiary,
         UInt256 difficulty,
-        long number,
-        long gasLimit,
+        ulong number,
+        ulong gasLimit,
         ulong timestamp,
         byte[]? extraData);
 
-    protected abstract void DecodeHeaderSpecificFields(ref Rlp.ValueDecoderContext decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
-    protected abstract void EncodeHeaderSpecificFields(RlpStream rlpStream, TH header, RlpBehaviors rlpBehaviors);
+    protected abstract void DecodeHeaderSpecificFields(ref RlpReader decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
+    protected abstract void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, TH header, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
     protected abstract int GetHeaderSpecificContentLength(TH header, RlpBehaviors rlpBehaviors);
 
-    protected override BlockHeader? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -51,9 +67,9 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         Hash256? receiptsRoot = decoderContext.DecodeKeccak();
         Bloom? bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
-        long number = decoderContext.DecodeLong();
-        long gasLimit = decoderContext.DecodeLong();
-        long gasUsed = decoderContext.DecodeLong();
+        ulong number = decoderContext.DecodeULong();
+        ulong gasLimit = decoderContext.DecodeULong();
+        ulong gasUsed = decoderContext.DecodeULong();
         ulong timestamp = decoderContext.DecodeULong();
         byte[]? extraData = decoderContext.DecodeByteArray();
 
@@ -81,37 +97,41 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         return header;
     }
 
-    public override void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
-            rlpStream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
         if (header is not TH h)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(header));
+        {
+            EnsurePlainFallbackAllowed(header);
+            FallbackDecoder.Encode(ref writer, header, rlpBehaviors);
+            return;
+        }
 
-        rlpStream.StartSequence(GetContentLength(h, rlpBehaviors));
+        writer.StartSequence(GetContentLength(h, rlpBehaviors));
 
         // Common fields
-        rlpStream.Encode(h.ParentHash);
-        rlpStream.Encode(h.UnclesHash);
-        rlpStream.Encode(h.Beneficiary);
-        rlpStream.Encode(h.StateRoot);
-        rlpStream.Encode(h.TxRoot);
-        rlpStream.Encode(h.ReceiptsRoot);
-        rlpStream.Encode(h.Bloom);
-        rlpStream.Encode(h.Difficulty);
-        rlpStream.Encode(h.Number);
-        rlpStream.Encode(h.GasLimit);
-        rlpStream.Encode(h.GasUsed);
-        rlpStream.Encode(h.Timestamp);
-        rlpStream.Encode(h.ExtraData);
-        rlpStream.Encode(h.MixHash);
-        rlpStream.Encode(h.Nonce, NonceLength);
+        writer.Encode(h.ParentHash);
+        writer.Encode(h.UnclesHash);
+        writer.Encode(h.Beneficiary);
+        writer.Encode(h.StateRoot);
+        writer.Encode(h.TxRoot);
+        writer.Encode(h.ReceiptsRoot);
+        writer.Encode(h.Bloom);
+        writer.Encode(h.Difficulty);
+        writer.Encode(h.Number);
+        writer.Encode(h.GasLimit);
+        writer.Encode(h.GasUsed);
+        writer.Encode(h.Timestamp);
+        writer.Encode(h.ExtraData);
+        writer.Encode(h.MixHash);
+        writer.Encode(h.Nonce, NonceLength);
 
-        EncodeHeaderSpecificFields(rlpStream, h, rlpBehaviors);
+        EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
     }
 
     public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -122,19 +142,37 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         }
 
         if (item is not TH header)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
+        {
+            EnsurePlainFallbackAllowed(item);
+            return FallbackDecoder.Encode(item, rlpBehaviors);
+        }
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new Rlp(bytes);
     }
 
     public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
     {
         if (item is not TH header)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
+        {
+            EnsurePlainFallbackAllowed(item);
+            return FallbackDecoder.GetLength(item, rlpBehaviors);
+        }
 
         return Rlp.LengthOfSequence(GetContentLength(header, rlpBehaviors));
+    }
+
+    // Only a genuine base BlockHeader may take the plain-shape fallback. Any other BlockHeader subtype
+    // that isn't TH (notably a different XdcBlockHeader subtype) would lose its XDC fields, so fail loudly.
+    private void EnsurePlainFallbackAllowed(BlockHeader header)
+    {
+        if (header.GetType() != typeof(BlockHeader))
+        {
+            throw new InvalidOperationException(
+                $"{GetType().Name} can only encode {typeof(TH).Name} or a plain {nameof(BlockHeader)}, but got {header.GetType().Name}.");
+        }
     }
 
     private int GetContentLength(TH header, RlpBehaviors rlpBehaviors)

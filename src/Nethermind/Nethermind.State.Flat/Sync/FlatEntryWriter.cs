@@ -31,7 +31,7 @@ internal static class FlatEntryWriter
             try
             {
                 path.AppendMut(node.Key);
-                Rlp.ValueDecoderContext context = ((ReadOnlySpan<byte>)node.Value).AsRlpValueContext();
+                RlpReader context = new(node.Value.AsSpan());
                 Account account = AccountDecoder.Instance.Decode(ref context)!;
                 writeBatch.SetAccountRaw(path.Path, account);
             }
@@ -47,7 +47,7 @@ internal static class FlatEntryWriter
             BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                Rlp.ValueDecoderContext context = enumerator.CurrentValue.AsRlpValueContext();
+                RlpReader context = new(enumerator.CurrentValue);
                 Account account = AccountDecoder.Instance.Decode(ref context)!;
                 writeBatch.SetAccountRaw(enumerator.CurrentPath, account);
             }
@@ -131,7 +131,7 @@ internal static class FlatEntryWriter
             _currentRlp = default;
 
             // Skip list prefix to position at first child
-            Rlp.ValueDecoderContext ctx = new(_rlp);
+            RlpReader ctx = new(_rlp);
             ctx.SkipLength();
             _rlpPosition = ctx.Position;
         }
@@ -157,7 +157,7 @@ internal static class FlatEntryWriter
         public bool MoveNext()
         {
             _path.TruncateMut(_originalPathLength);
-            Rlp.ValueDecoderContext ctx = new(_rlp) { Position = _rlpPosition };
+            RlpReader ctx = new(_rlp) { Position = _rlpPosition };
 
             while (++_index < 16)
             {
@@ -202,7 +202,7 @@ internal static class FlatEntryWriter
         out ReadOnlySpan<byte> key,
         out ReadOnlySpan<byte> value)
     {
-        Rlp.ValueDecoderContext ctx = new(nodeRlp);
+        RlpReader ctx = new(nodeRlp);
         ctx.ReadSequenceLength();
 
         ReadOnlySpan<byte> keySpan = ctx.DecodeByteArraySpan();

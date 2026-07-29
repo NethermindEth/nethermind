@@ -218,4 +218,16 @@ class ShutterCryptoTests
 
         Assert.That(chunk[0], Is.EqualTo(UInt256.Zero));
     }
+
+    [Test]
+    // IndexOutOfRangeException escapes ShutterTxLoader's catch list — too-short input must surface as ShutterCryptoException.
+    public void DecodeEncryptedMessage_throws_ShutterCryptoException_on_too_short_input(
+        [Values(0, 1, 97, 128)] int length)
+    {
+        byte[] tooShort = new byte[length];
+        if (length > 0) tooShort[0] = 0x03;
+
+        Assert.That(() => ShutterCrypto.DecodeEncryptedMessage(tooShort),
+            Throws.TypeOf<ShutterCrypto.ShutterCryptoException>());
+    }
 }

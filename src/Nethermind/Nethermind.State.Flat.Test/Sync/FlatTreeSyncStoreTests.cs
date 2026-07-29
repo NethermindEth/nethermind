@@ -49,7 +49,7 @@ public class FlatTreeSyncStoreTests
         slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
         addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
 
-        storageDb.Set(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros().ToArray());
+        storageDb.PutSpan(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros());
     }
 
     private bool HasStorageEntries(Address address)

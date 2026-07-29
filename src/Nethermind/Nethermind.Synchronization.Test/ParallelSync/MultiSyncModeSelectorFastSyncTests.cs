@@ -50,6 +50,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.Full);
 
         [Test]
+        public void State_ahead_of_headers_after_unclean_shutdown_does_not_throw_and_continues_full_sync() =>
+            Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeRecoveredWithStateAheadOfHeaders()
+                .AndGoodPeersAreKnown()
+                .WhenFullArchiveSyncIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.Full);
+
+        [Test]
         public void Simple_fast_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState.FinishedHeaders)
                 .AndGoodPeersAreKnown()
@@ -175,7 +183,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
         [Test]
         public void Finished_fast_sync_but_not_snap_ranges_IsFarFromHead() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeJustFinishedFastBlocksAndFastSync(bestHeader: Scenario.ChainHead.Number - 1000)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync(bestHeader: Scenario.ChainHead.Number - 1000UL)
                 .AndGoodPeersAreKnown()
                 .WhenSnapSyncIsConfigured()
                 .WhenHeaderIsFarFromHead()

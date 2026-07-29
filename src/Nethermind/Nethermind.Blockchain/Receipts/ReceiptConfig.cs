@@ -11,6 +11,8 @@ public class ReceiptConfig : IReceiptConfig
     public bool ForceReceiptsMigration { get; set; } = false;
     public bool CompactReceiptStore { get; set; } = true;
     public bool CompactTxIndex { get; set; } = true;
-    public long? TxLookupLimit { get; set; } = 2350000;
-    public int MaxBlockDepth { get; set; } = 10000;
+    public ulong? TxLookupLimit { get; set; } = 2350000ul;
+    public bool DeferredPersistence { get; set; } = true;
+    public int MaxDeferredWrites { get; set; } = 128;
+    public int MaxBlockDepth { get; set; } = 1000;
 }

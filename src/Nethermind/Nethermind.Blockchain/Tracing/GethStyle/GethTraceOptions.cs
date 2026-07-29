@@ -20,6 +20,8 @@ public record GethTraceOptions
 
     public bool EnableMemory { get; init; }
 
+    public bool EnableReturnData { get; init; }
+
     public bool DisableStack { get; init; }
 
     [JsonConverter(typeof(CustomTimeDurationConverter))]

@@ -10,20 +10,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public override void Serialize(IByteBuffer byteBuffer, GetByteCodesMessage message)
         {
-            NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
+            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
 
-            rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(message.Hashes);
-            rlpStream.Encode(message.Bytes);
+            writer.Encode(message.RequestId);
+            writer.Encode(message.Hashes);
+            writer.Encode(message.Bytes);
         }
 
-        protected override GetByteCodesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        protected override GetByteCodesMessage Deserialize(ref RlpReader ctx)
         {
             GetByteCodesMessage message = new();
             ctx.ReadSequenceLength();
 
             message.RequestId = ctx.DecodeLong();
-            message.Hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeValueKeccak() ?? default, limit: SnapMessageLimits.GetByteCodesHashesRlpLimit);
+            message.Hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeValueKeccak() ?? default, limit: SnapMessageLimits.GetByteCodesHashesRlpLimit);
             message.Bytes = ctx.DecodeLong();
 
             return message;

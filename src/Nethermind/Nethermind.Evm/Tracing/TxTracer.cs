@@ -22,6 +22,7 @@ public abstract class TxTracer : ITxTracer
                               || IsTracingMemory
                               || IsTracingInstructions
                               || IsTracingRefunds
+                              || IsTracingReturnData
                               || IsTracingCode
                               || IsTracingStack
                               || IsTracingBlockHash
@@ -38,6 +39,7 @@ public abstract class TxTracer : ITxTracer
     public virtual bool IsTracingMemory { get; protected set; }
     public virtual bool IsTracingInstructions { get; protected set; }
     public virtual bool IsTracingRefunds { get; protected set; }
+    public virtual bool IsTracingReturnData { get; protected set; }
     public virtual bool IsTracingCode { get; protected set; }
     public virtual bool IsTracingStack { get; protected set; }
     public virtual bool IsTracingBlockHash { get; protected set; }
@@ -54,30 +56,31 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportStorageRead(in StorageCell storageCell) { }
     public virtual void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
     public virtual void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) { }
-    public virtual void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) { }
+    public virtual void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) { }
     public virtual void ReportOperationError(EvmExceptionType error) { }
-    public virtual void ReportOperationRemainingGas(long gas) { }
+    public virtual void ReportOperationRemainingGas(ulong gas) { }
     public virtual void ReportLog(LogEntry log) { }
     public virtual void SetOperationStack(TraceStack stack) { }
     public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
     public virtual void SetOperationMemory(TraceMemory memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }
+    public virtual void SetOperationReturnData(ReadOnlyMemory<byte> returnData) { }
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
     public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
     public virtual void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
     public virtual void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
     public virtual void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
-    public virtual void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
-    public virtual void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }
+    public virtual void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
+    public virtual void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) { }
     public virtual void ReportActionError(EvmExceptionType evmExceptionType) { }
-    public virtual void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
-    public virtual void ReportActionRevert(long gas, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
+    public virtual void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
+    public virtual void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
     public virtual void ReportBlockHash(Hash256 blockHash) { }
     public virtual void ReportByteCode(ReadOnlyMemory<byte> byteCode) { }
-    public virtual void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
+    public virtual void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) { }
     public virtual void ReportRefund(long refund) { }
-    public virtual void ReportExtraGasPressure(long extraGasPressure) { }
+    public virtual void ReportExtraGasPressure(ulong extraGasPressure) { }
     public virtual void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
     public virtual void Dispose() { }

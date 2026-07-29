@@ -25,17 +25,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
             byte[] fnSignature,
             UInt256 value,
 TxPriorityContract.DestinationSource source = TxPriorityContract.DestinationSource.Contract,
-            long blockNumber = 0) : IEqualityComparer<Destination>
+            ulong blockNumber = 0) : IEqualityComparer<Destination>
         {
             public static byte[] FnSignatureEmpty = new byte[4];
 
             public Address Target { get; set; } = target;
             public byte[] FnSignature { get; set; } = fnSignature;
             public UInt256 Value { get; set; } = value;
-            public long BlockNumber { get; set; } = blockNumber;
+            public ulong BlockNumber { get; set; } = blockNumber;
             public DestinationSource Source { get; set; } = source;
 
-            public static Destination FromAbiTuple(DestinationTuple tuple, long blockNumber) =>
+            public static Destination FromAbiTuple(DestinationTuple tuple, ulong blockNumber) =>
                 new(tuple.Item1, tuple.Item2, tuple.Item3, DestinationSource.Contract, blockNumber);
 
             public static implicit operator DestinationTuple(Destination destination) =>

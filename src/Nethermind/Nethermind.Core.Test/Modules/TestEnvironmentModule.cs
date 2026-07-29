@@ -106,6 +106,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             .AddDecorator<IBlocksConfig>((_, blocksConfig) =>
             {
                 blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
+                blocksConfig.PreWarming = PreWarmMode.Block;
                 return blocksConfig;
             })
             .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = SeqlockCache<StorageCell, byte[]>.DefaultSetsBits })

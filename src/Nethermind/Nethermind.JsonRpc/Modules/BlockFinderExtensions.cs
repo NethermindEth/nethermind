@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
-            long? requestedBlock = blockParameter.BlockNumber;
+            ulong? requestedBlock = blockParameter.BlockNumber;
             if (requestedBlock is null)
             {
                 SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules
                 if (blockFinder.IsBlockPruned(blockParameter))
                 {
                     return new SearchResult<Block>(
-                        $"pruned history unavailable for block {blockParameter}",
+                        $"{ErrorMessages.PrunedHistoryUnavailable} for block {blockParameter}",
                         ErrorCodes.PrunedHistoryUnavailable);
                 }
 
@@ -109,14 +109,14 @@ namespace Nethermind.JsonRpc.Modules
                 else
                 {
                     yield return startingBlock;
-                    long startingBlockNumber = startingBlock.Object.Number;
-                    long finalBlockNumber = finalBlockHeader.Object.Number;
+                    ulong startingBlockNumber = startingBlock.Object.Number;
+                    ulong finalBlockNumber = finalBlockHeader.Object.Number;
                     if (startingBlockNumber > finalBlockNumber)
                     {
                         yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
                     }
 
-                    for (long i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
+                    for (ulong i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
                     {
                         yield return SearchForBlock(blockFinder, new BlockParameter(i));
                     }

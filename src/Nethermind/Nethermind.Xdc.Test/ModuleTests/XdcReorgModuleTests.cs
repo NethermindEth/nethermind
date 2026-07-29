@@ -96,7 +96,7 @@ internal class XdcReorgModuleTests
         blockChain.ChangeReleaseSpec(spec => { spec.EpochLength = 10; spec.Gap = 5; });
         await blockChain.AddBlocks(3);
 
-        const long gapBlockNumber = 5;
+        const ulong gapBlockNumber = 5;
 
 
         XdcBlockHeader originalChainGapBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(gapBlockNumber)!;

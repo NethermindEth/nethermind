@@ -16,35 +16,13 @@ public static class Int32SszBasicTypeConverter
 
     public static int FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadInt32LittleEndian(span);
 
-    public static void FromSpan(ReadOnlySpan<byte> span, Span<int> values)
-    {
-        if (BitConverter.IsLittleEndian)
-        {
-            MemoryMarshal.Cast<byte, int>(span).CopyTo(values);
-            return;
-        }
-
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = FromSpan(span.Slice(i * Length, Length));
-        }
-    }
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<int> values) =>
+        MemoryMarshal.Cast<byte, int>(span).CopyTo(values);
 
     public static void ToSpan(Span<byte> span, int value) => BinaryPrimitives.WriteInt32LittleEndian(span, value);
 
-    public static void ToSpan(Span<byte> span, ReadOnlySpan<int> values)
-    {
-        if (BitConverter.IsLittleEndian)
-        {
-            MemoryMarshal.AsBytes(values).CopyTo(span);
-            return;
-        }
-
-        for (int i = 0; i < values.Length; i++)
-        {
-            ToSpan(span.Slice(i * Length, Length), values[i]);
-        }
-    }
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<int> values) =>
+        MemoryMarshal.AsBytes(values).CopyTo(span);
 
     public static void Feed(ref Merkleizer merkleizer, int value) =>
         merkleizer.Feed(new UInt256(unchecked((uint)value)));

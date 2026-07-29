@@ -43,7 +43,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
     public static string Name => "MODEXP";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-2565" />
@@ -55,7 +55,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     /// <param name="inputData"></param>
     /// <param name="releaseSpec"></param>
     /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (!releaseSpec.IsEip2565Enabled)
         {
@@ -73,7 +73,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
         catch (OverflowException)
         {
-            return long.MaxValue;
+            return ulong.MaxValue;
         }
     }
 
@@ -87,14 +87,14 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         if (baseLength == uint.MaxValue || modulusLength == uint.MaxValue || (baseLength == 0 && modulusLength == 0))
             return inputData[..LengthsLengths];
 
-        ulong end = (ulong)LengthsLengths + baseLength + expLength + modulusLength;
-        return end < (ulong)inputData.Length ? inputData[..(int)end] : inputData;
+        long end = (long)LengthsLengths + baseLength + expLength + modulusLength;
+        return end < inputData.Length ? inputData[..(int)end] : inputData;
     }
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static long DataGasCostShortInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
+    private static ulong DataGasCostShortInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {
         Debug.Assert(inputData.Length < LengthsLengths);
 
@@ -104,7 +104,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return DataGasCostInternal(extendedInput, releaseSpec);
     }
 
-    private static long DataGasCostInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
+    private static ulong DataGasCostInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {
         (uint baseLength, uint expLength, uint modulusLength) = GetInputLengths(inputData);
         ulong complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
@@ -129,9 +129,9 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
             result /= 3;
         }
 
-        return result > long.MaxValue || overflow
-            ? long.MaxValue
-            : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
+        return result > ulong.MaxValue || overflow
+            ? ulong.MaxValue
+            : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (ulong)result);
     }
 
     /// <summary>
@@ -148,7 +148,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         // Compute ceil(max/8) via a single add + shift
         // (max + 7) >> 3  ==  (max + 7) / 8, rounding up
-        ulong words = ((ulong)max + 7u) >> 3;
+        ulong words = (max + 7UL) >> 3;
 
         // Square it once
         ulong sq = words * words;

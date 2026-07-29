@@ -65,8 +65,6 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [TestCase("StateGasSpill", "stateGasSpill")]
-        [TestCase("StateGasSpillBurned", "stateGasSpillBurned")]
-        [TestCase("StateGasSpillReclassified", "stateGasSpillReclassified")]
         [TestCase("StateGasSpillRefunded", "stateGasSpillRefunded")]
         public void Diagnostic_receipt_surface_does_not_include_internal_spill_counters(string clrPropertyName, string jsonPropertyName)
         {

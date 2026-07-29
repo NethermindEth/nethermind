@@ -88,7 +88,7 @@ namespace Nethermind.TxPool
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs) => 0;
 
-        public UInt256 GetLatestPendingNonce(Address address) => 0;
+        public ulong GetLatestPendingNonce(Address address) => 0;
 
         public AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
 

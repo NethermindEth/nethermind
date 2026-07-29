@@ -11,12 +11,12 @@ namespace Nethermind.Specs;
 
 public class GnosisSpecProvider : ForkScheduleSpecProvider
 {
-    public const long ConstantinopleBlockNumber = 1_604_400;
-    public const long ConstantinopleFixBlockNumber = 2_508_800;
-    public const long IstanbulBlockNumber = 7_298_030;
-    public const long PosdaoTransitionBlockNumber = 9_186_425; // does not alter EVM specs, fork-id boundary only
-    public const long BerlinBlockNumber = 16_101_500;
-    public const long LondonBlockNumber = 19_040_000;
+    public const ulong ConstantinopleBlockNumber = 1_604_400;
+    public const ulong ConstantinopleFixBlockNumber = 2_508_800;
+    public const ulong IstanbulBlockNumber = 7_298_030;
+    public const ulong PosdaoTransitionBlockNumber = 9_186_425; // does not alter EVM specs, fork-id boundary only
+    public const ulong BerlinBlockNumber = 16_101_500;
+    public const ulong LondonBlockNumber = 19_040_000;
     public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
@@ -63,7 +63,7 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Gnosis;
     public override ulong ChainId => BlockchainIds.Gnosis;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public override long? DaoBlockNumber => null;
+    public override ulong? DaoBlockNumber => null;
     public string SealEngine => SealEngineType.AuRa;
 
     public static GnosisSpecProvider Instance { get; } = new();

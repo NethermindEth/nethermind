@@ -5,7 +5,11 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.State.Flat.Sync;
 
-public class FlatFullStateFinder(PersistenceManager persistenceManager) : IFullStateFinder
+public class FlatFullStateFinder(IPersistenceManager persistenceManager) : IFullStateFinder
 {
-    public long FindBestFullState() => Math.Max(0, persistenceManager.GetCurrentPersistedStateId().BlockNumber);
+    public ulong FindBestFullState()
+    {
+        StateId stateId = persistenceManager.GetCurrentPersistedStateId();
+        return stateId == StateId.PreGenesis ? 0UL : stateId.BlockNumber;
+    }
 }

@@ -8,7 +8,7 @@ namespace Nethermind.RpcTests.Monitor;
 internal static class ResponseComparer
 {
     // attempts to match Erigon rpc-tests comparison
-    public static bool Compare(JsonNode actual, JsonNode expected, bool isStatic)
+    public static bool Compare(JsonNode actual, JsonNode expected, IReadOnlyList<JsonPath> ignorePaths, bool isStatic)
     {
         if (actual is not JsonObject actualObj || expected is not JsonObject expectedObj)
             return false;
@@ -31,6 +31,12 @@ internal static class ResponseComparer
             // only "jsonrpc" & "id" → don't care about response content
             if (!expectedHasResult && !expectedHasError && expectedObj.Count == 2)
                 return true;
+        }
+
+        foreach (JsonPath path in ignorePaths)
+        {
+            actualObj.RemoveAt(path);
+            expectedObj.RemoveAt(path);
         }
 
         return JsonNode.DeepEquals(actual, expected);

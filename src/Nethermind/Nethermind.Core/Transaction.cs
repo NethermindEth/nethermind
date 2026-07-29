@@ -22,7 +22,7 @@ namespace Nethermind.Core
     public class Transaction
     {
         public const byte MaxTxType = 0x7F;
-        public const int BaseTxGasCost = 21000;
+        public const uint BaseTxGasCost = 21000;
 
         public ulong? ChainId { get; set; }
 
@@ -43,7 +43,7 @@ namespace Nethermind.Core
         public bool IsOPSystemTransaction { get; set; }
 
         private UInt256 _gasPrice;
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
         public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
@@ -54,17 +54,17 @@ namespace Nethermind.Core
         public bool Supports1559 => Type.Supports1559();
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
-        public long GasLimit { get; set; }
-        private long _spentGas;
-        private long _blockGasUsed;
+        public ulong GasLimit { get; set; }
+        private ulong _spentGas;
+        private ulong _blockGasUsed;
         [JsonIgnore]
-        public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+        public ulong SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
         /// <summary>
         /// Gas used for block accounting (pre-refund when EIP-7778 is enabled).
         /// Defaults to <see cref="GasLimit"/> when unknown.
         /// </summary>
         [JsonIgnore]
-        public long BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
+        public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
         public Address? To { get; set; }
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
@@ -82,6 +82,9 @@ namespace Nethermind.Core
             Type == TxType.SetCode &&
             AuthorizationList is not null &&
             AuthorizationList.Length > 0;
+
+        [JsonIgnore]
+        public IIntrinsicGasMemo? IntrinsicGasMemo;
 
         private Hash256? _hash;
 
@@ -121,6 +124,7 @@ namespace Nethermind.Core
                 lock (this)
                 {
                     ClearPreHash();
+                    IntrinsicGasMemo = null;
                     _hash = value;
                 }
             }
@@ -141,6 +145,7 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
+            IntrinsicGasMemo = null;
 
             int size = transactionSequence.Length;
             _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(size);
@@ -152,6 +157,7 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
+            IntrinsicGasMemo = null;
             _preHash = transactionSequence;
             _preHashMemoryOwner = preHashMemoryOwner;
         }
@@ -283,6 +289,7 @@ namespace Nethermind.Core
                     return false;
 
                 obj.ClearPreHash();
+                obj.IntrinsicGasMemo = null;
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
@@ -361,7 +368,7 @@ namespace Nethermind.Core
     /// </summary>
     public sealed class SystemTransaction : Transaction
     {
-        private new const long GasLimit = 30_000_000L;
+        private new const ulong GasLimit = 30_000_000UL;
     }
 
     /// <summary>

@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
-    private const int DefaultMaxEntriesPerKind = 131072;
+    private const int DefaultMaxEntriesPerKind = 262144;
 
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
@@ -76,9 +76,13 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void TryCacheAccount(Address address, Account? account, long readerGeneration)
     {
+        // Another reader can fill the same base miss while this reader is doing I/O.
+        // The cache is best-effort, so a racing removal only loses a hint.
+        if (_accounts.ContainsKey(address)) return;
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
+            if (_accounts.ContainsKey(address)) return;
             if (_accountCount >= _maxEntriesPerKind)
             {
                 _accounts.Clear();
@@ -90,9 +94,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void TryCacheSlot(in (Address, UInt256) key, in CachedSlot slot, long readerGeneration)
     {
+        if (_slots.ContainsKey(key)) return;
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
+            if (_slots.ContainsKey(key)) return;
             if (_slotCount >= _maxEntriesPerKind)
             {
                 _slots.Clear();
@@ -237,8 +243,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) => inner.DeleteStateTrieNodeRange(fromPath, toPath);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) => inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
 
         public void Dispose()
         {
