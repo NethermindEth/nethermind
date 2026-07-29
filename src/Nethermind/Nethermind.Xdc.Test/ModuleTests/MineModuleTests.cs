@@ -268,6 +268,42 @@ internal class MineModuleTests
     }
 
     [Test]
+    public async Task TestNewRoundDoesNotArmTimeoutTimerOncePeersAnnounceBlocksBeyondGenesis()
+    {
+        // A peer's SyncInfo advances the round before HighestQC leaves genesis, because CommitCertificate
+        // throws on the not-yet-synced block it points at. An announced header beyond genesis is the
+        // earlier signal that there is a real chain here, so it alone must disqualify bootstrap.
+        ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton(timeoutTimer));
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader genesis = (XdcBlockHeader)tree.Head!.Header;
+        blockchain.StartHotStuffModule();
+        timeoutTimer.ClearReceivedCalls();
+
+        // Enough blocks to exceed MaxSyncDistanceForConsensus, so the node is unambiguously behind and
+        // IsSynced() is false - otherwise the sync tolerance alone would let the round through.
+        Hash256 parentHash = genesis.Hash!;
+        for (ulong number = genesis.Number + 1; number <= genesis.Number + XdcConstants.MaxSyncDistanceForConsensus + 1; number++)
+        {
+            XdcBlockHeader announced = Build.A.XdcBlockHeader().WithNumber(number).WithParentHash(parentHash)
+                .WithGeneratedExtraConsensusData().TestObject;
+            tree.SuggestBlock(new Block(announced), BlockTreeSuggestOptions.None);
+            parentHash = announced.Hash!;
+        }
+
+        Assert.That(tree.Head!.Number, Is.EqualTo(genesis.Number), "the announced blocks must stay unprocessed");
+        Assert.That(tree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing, Is.True);
+        Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Hash, Is.EqualTo(genesis.Hash),
+            "HighestQC must still be the genesis QC, otherwise this exercises the same path as the SyncInfo test");
+
+        blockchain.XdcContext.SetNewRound(2);
+
+        timeoutTimer.DidNotReceive().Reset(Arg.Any<TimeSpan>());
+    }
+
+    [Test]
     public async Task TestSameRoundRestartDuringMineWaitStillProposes()
     {
         using XdcTestBlockchain blockchain = await CreateChainWithClockSignal();

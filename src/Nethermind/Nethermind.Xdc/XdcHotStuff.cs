@@ -497,6 +497,10 @@ namespace Nethermind.Xdc
             if (_blockTree.Head?.Header is not XdcBlockHeader head)
                 return false;
 
+            (_, ulong headNumber, ulong bestSuggested) = _blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus);
+            if (headNumber != 0 || bestSuggested != 0)
+                return false;
+
             BlockRoundInfo qc = _xdcContext.HighestQC.ProposedBlockInfo;
             if (qc.Round != 0 || qc.BlockNumber != head.Number || qc.Hash != head.Hash)
                 return false;
