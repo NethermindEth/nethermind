@@ -104,7 +104,7 @@ public class InstructionStreamTests
     }
 
     [Test]
-    public void TryBuild_Jumpdest_GetsItsOwnSoloBlock()
+    public void TryBuild_Jumpdest_StartsBlockContainingFollowingStaticOps()
     {
         byte[] code =
         [
@@ -117,10 +117,11 @@ public class InstructionStreamTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.BlockGas, Has.Length.EqualTo(2),
-                "a fused PUSH2+JUMP lands one past the JUMPDEST, so the ops after it need a separately charged block");
-            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.JumpDest));
-            Assert.That(stream.BlockGas[1], Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Base));
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.JumpDest + GasCostOf.VeryLow + GasCostOf.Base));
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst));
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.InBlock));
+            Assert.That(stream.Ops[2].Kind, Is.EqualTo(StreamOpKind.InBlock));
         }
     }
 
