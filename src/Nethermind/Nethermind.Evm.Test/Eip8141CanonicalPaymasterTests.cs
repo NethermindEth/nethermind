@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -69,6 +70,12 @@ public class Eip8141CanonicalPaymasterTests
     private static readonly Address NonSigner = TestItem.PrivateKeyC.Address;
     private static readonly PrivateKey NonSignerKey = TestItem.PrivateKeyC;
     private static readonly Address NewSigner = TestItem.AddressF;
+    private static readonly Address RevertingReceiver = Address.FromNumber(0x7141);
+    private static readonly Address ReentrantSigner = Address.FromNumber(0x8141);
+
+    // A codeless-equivalent contract that unconditionally reverts on any call (PUSH0 PUSH0 REVERT),
+    // used as a withdrawal target that rejects the incoming value.
+    private static readonly byte[] RevertOnCallCode = [0x5f, 0x5f, 0xfd];
 
     private static readonly TxFrame OnlyVerifyFrame =
         new(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, default);
@@ -312,6 +319,167 @@ public class Eip8141CanonicalPaymasterTests
         Assert.That(validationGas, Is.LessThan(15_000UL), "well under the recommended pay-frame gas bound");
     }
 
+    // 12. Audit finding F1: the empty-msg gate is a value check (SIGPARAM(msg, 1) != 0), not a length
+    // check. A 32-byte all-zero msg is non-empty, yet SIGPARAM pushes its value (zero), so it passes
+    // the gate. With the signature resolved over the explicit zero digest (msg is non-empty), the
+    // resolved signer still equals slot 0, so payment is approved and the transaction succeeds. This
+    // pins the current != 0 behavior; a strict len(msg) == 0 fix would reject the non-empty msg and
+    // flip this case to invalid. Factual scope: the signature must still come from the real signer, so
+    // this is not a signer-bypass — it decouples the authorization from the canonical sig hash.
+    [Test]
+    public void AllZeroMsgAtIndex1_PassesValueGate_ApprovesPayment()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        DeployPaymaster(PaymasterCode, Signer, 1.Ether);
+        Transaction tx = SponsoredTx(0);
+        SignEntries(tx, [(SenderKey, null, []), (SignerKey, Signer, new byte[32])]);
+
+        TxReceipt receipt = ProcessBlock(BlockTimestamp, tx)[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "a 32-byte zero msg passes the != 0 value gate");
+        Assert.That(receipt.Payer, Is.EqualTo(Paymaster), "payment is approved because the signer resolves to slot 0");
+    }
+
+    // 13. A matured withdrawal whose value-bearing CALL to the signer fails reverts the whole finalize
+    // and preserves the pending slots, so finalize can be retried. Case: the pending amount exceeds the
+    // paymaster balance, so the CALL fails on the value transfer.
+    [Test]
+    public void MaturedFinalize_AmountExceedsBalance_RevertsAndPreservesPending()
+    {
+        Fund(ThirdParty);
+        DeployPaymaster(PaymasterCode, Signer, 1.Ether);
+        UInt256 amount = 2.Ether;
+        SetPending(amount, BlockTimestamp);
+
+        AssertFinalizeRevertsAndPreservesPending(BlockTimestamp, amount, BlockTimestamp);
+    }
+
+    // 14. Same revert-and-preserve guarantee when the signer is a contract that reverts on receiving
+    // the withdrawal value: the CALL returns failure and the finalize rolls back its slot clearing.
+    [Test]
+    public void MaturedFinalize_SignerRejectsValue_RevertsAndPreservesPending()
+    {
+        Fund(ThirdParty);
+        DeployContract(RevertingReceiver, RevertOnCallCode, UInt256.Zero);
+        DeployPaymaster(PaymasterCode, RevertingReceiver, 1.Ether);
+        UInt256 amount = 100;
+        SetPending(amount, BlockTimestamp);
+
+        AssertFinalizeRevertsAndPreservesPending(BlockTimestamp, amount, BlockTimestamp);
+    }
+
+    // 15. Reentrancy during the withdrawal CALL is safe: the signer is a contract that re-enters the
+    // paymaster while receiving the value. Checks-effects clears slots 1 and 2 before the CALL, so a
+    // re-entrant finalize hits the cleared timelock and reverts (no double spend), and a re-entrant
+    // initiate — authorized because CALLER equals slot 0 — only opens a fresh timelocked pending (no
+    // drain). Either way the signer is paid exactly once.
+    [TestCaseSource(nameof(ReentrancyCases))]
+    public void FinalizeReentrancy_NoDoubleSpendOrDrain(byte[] reentryCalldata, UInt256 expectedSlot1, UInt256 expectedSlot2)
+    {
+        Fund(ThirdParty);
+        DeployContract(ReentrantSigner, BuildReentrantCaller(reentryCalldata), UInt256.Zero);
+        DeployPaymaster(PaymasterCode, ReentrantSigner, 1.Ether);
+        UInt256 amount = 500;
+        SetPending(amount, BlockTimestamp);
+        UInt256 paymasterBefore = _stateProvider.GetBalance(Paymaster);
+
+        TxReceipt receipt = ProcessBlock(BlockTimestamp, AdminTx(ThirdPartyKey, 0, FinalizeCall()))[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "the outer withdrawal completes once");
+        Assert.That(_stateProvider.GetBalance(ReentrantSigner), Is.EqualTo(amount), "the signer is paid exactly once");
+        Assert.That(paymasterBefore - _stateProvider.GetBalance(Paymaster), Is.EqualTo(amount), "the paymaster is drained by one withdrawal only");
+        Assert.That(Slot(1), Is.EqualTo(expectedSlot1));
+        Assert.That(Slot(2), Is.EqualTo(expectedSlot2));
+    }
+
+    private static IEnumerable<TestCaseData> ReentrancyCases()
+    {
+        yield return new TestCaseData(FinalizeCall(), UInt256.Zero, UInt256.Zero)
+            .SetName("re-entrant finalize hits the cleared timelock and leaves no pending");
+        yield return new TestCaseData(WithdrawalCall(200), (UInt256)200, (UInt256)(BlockTimestamp + Delay))
+            .SetName("re-entrant initiate opens a fresh timelocked pending without draining");
+    }
+
+    // 16. Admin authorization through the frame-tx signature route (authorized() = signer-signed entry
+    // at index 1: scheme != ARBITRARY, resolved_signer == slot 0, empty msg). The sender self-sponsors
+    // via index 0, leaving index 1 free to carry the admin authorization, and a SENDER frame targeting
+    // the paymaster with initiate-withdrawal calldata is authorized purely by the signature.
+    [Test]
+    public void AdminViaSignatureRoute_SignerAtIndex1_InitiatesWithdrawal()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        DeployPaymaster(PaymasterCode, Signer, 1.Ether);
+        UInt256 amount = 500;
+        Transaction tx = AdminFrameTx(0, amount);
+        SignEntries(tx, [(SenderKey, null, []), (SignerKey, Signer, [])]);
+
+        TxReceipt receipt = ProcessBlock(BlockTimestamp, tx)[0];
+
+        Assert.That(receipt.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess), "the signature route authorizes the admin op");
+        Assert.That(Slot(1), Is.EqualTo(amount), "the withdrawal is opened");
+        Assert.That(Slot(2), Is.EqualTo((UInt256)(BlockTimestamp + Delay)));
+    }
+
+    // 17. The signature route does not authorize when the index-1 entry is a non-signer, an ARBITRARY
+    // scheme, an entry at the wrong index (signer at index 2, not 1), or a signer over a non-empty msg.
+    // The admin frame reverts and opens no withdrawal.
+    [TestCase(AdminSigCase.NonSigner)]
+    [TestCase(AdminSigCase.Arbitrary)]
+    [TestCase(AdminSigCase.WrongIndex)]
+    [TestCase(AdminSigCase.NonEmptyMsg)]
+    public void AdminViaSignatureRoute_RejectsUnauthorizedIndex1(AdminSigCase sigCase)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        DeployPaymaster(PaymasterCode, Signer, 1.Ether);
+        Transaction tx = AdminFrameTx(0, 500);
+        switch (sigCase)
+        {
+            case AdminSigCase.NonSigner:
+                SignEntries(tx, [(SenderKey, null, []), (NonSignerKey, NonSigner, [])]);
+                break;
+            case AdminSigCase.WrongIndex:
+                SignEntries(tx, [(SenderKey, null, []), (NonSignerKey, NonSigner, []), (SignerKey, Signer, [])]);
+                break;
+            case AdminSigCase.NonEmptyMsg:
+                ValueHash256 bespoke = Keccak.Compute("bespoke");
+                SignEntries(tx, [(SenderKey, null, []), (SignerKey, Signer, bespoke.ToByteArray())]);
+                break;
+            case AdminSigCase.Arbitrary:
+                SignSenderWithArbitraryAtIndex1(tx);
+                break;
+        }
+
+        TxReceipt receipt = ProcessBlock(BlockTimestamp, tx)[0];
+
+        Assert.That(receipt.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure), "an unauthorized signature reverts the admin frame");
+        Assert.That(Slot(1), Is.EqualTo(UInt256.Zero), "no withdrawal is opened");
+        Assert.That(Slot(2), Is.EqualTo(UInt256.Zero));
+    }
+
+    // 18. finalize (op byte 0x04) carrying value hits the value check first (CALLVALUE), routing to the
+    // non-payable deposit guard, which reverts on any calldata — the value + calldata combination is
+    // rejected before the op byte is ever dispatched, and no value moves.
+    [Test]
+    public void Finalize_WithValue_RoutesToDepositGuardAndReverts()
+    {
+        DeployPaymaster(PaymasterCode, Signer, 1.Ether);
+        Fund(ThirdParty);
+        UInt256 paymasterBefore = _stateProvider.GetBalance(Paymaster);
+
+        TxReceipt receipt = ProcessBlock(BlockTimestamp, AdminTx(ThirdPartyKey, 0, FinalizeCall(), value: 1_000))[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure), "value with calldata is non-payable and reverts");
+        Assert.That(_stateProvider.GetBalance(Paymaster), Is.EqualTo(paymasterBefore), "no value is transferred");
+    }
+
+    public enum AdminSigCase
+    {
+        NonSigner,
+        Arbitrary,
+        WrongIndex,
+        NonEmptyMsg,
+    }
+
     private static Transaction SponsoredTx(ulong nonce) =>
         new()
         {
@@ -327,21 +495,30 @@ public class Eip8141CanonicalPaymasterTests
 
     private void SignEntries(Transaction tx, (PrivateKey Key, Address? Signer, byte[] Msg)[] specs)
     {
-        TxFrameSignature[] placeholders = new TxFrameSignature[specs.Length];
-        for (int i = 0; i < specs.Length; i++)
-        {
-            placeholders[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, specs[i].Signer, specs[i].Msg, default);
-        }
-        tx.FrameSignatures = placeholders;
-
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-
+        // Explicit-digest (non-empty msg) entries sign their own digest independently of the sig hash,
+        // and their raw signature bytes are part of the sig-hash preimage (only empty-msg entries are
+        // elided). So finalize those entries before computing the hash; the empty-msg entries, which
+        // sign the canonical sig hash and are elided from it, are filled in afterwards.
         TxFrameSignature[] signed = new TxFrameSignature[specs.Length];
         for (int i = 0; i < specs.Length; i++)
         {
-            ValueHash256 digest = specs[i].Msg.Length == 0 ? sigHash : new ValueHash256(specs[i].Msg);
-            Signature signature = _ecdsa.Sign(specs[i].Key, in digest);
-            signed[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, specs[i].Signer, specs[i].Msg, ToVrs(signature));
+            ReadOnlyMemory<byte> signatureBytes = default;
+            if (specs[i].Msg.Length != 0)
+            {
+                ValueHash256 explicitDigest = new(specs[i].Msg);
+                signatureBytes = ToVrs(_ecdsa.Sign(specs[i].Key, in explicitDigest));
+            }
+            signed[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, specs[i].Signer, specs[i].Msg, signatureBytes);
+        }
+        tx.FrameSignatures = signed;
+
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        for (int i = 0; i < specs.Length; i++)
+        {
+            if (specs[i].Msg.Length == 0)
+            {
+                signed[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, specs[i].Signer, specs[i].Msg, ToVrs(_ecdsa.Sign(specs[i].Key, in sigHash)));
+            }
         }
         tx.FrameSignatures = signed;
     }
@@ -399,6 +576,105 @@ public class Eip8141CanonicalPaymasterTests
 
     private UInt256 Slot(int slot) =>
         new(_stateProvider.Get(new StorageCell(Paymaster, (UInt256)slot)), isBigEndian: true);
+
+    private Transaction AdminFrameTx(ulong nonce, UInt256 amount)
+    {
+        // Frame 0: the sender self-sponsors (execution + payment) via signature index 0, freeing
+        // index 1 for the admin authorization. Frame 1: a SENDER frame calls the paymaster with
+        // initiate-withdrawal calldata, reaching the admin path.
+        TxFrame sponsorFrame =
+            new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
+        TxFrame adminFrame =
+            new(TxFrame.ModeSender, 0, Paymaster, gasLimit: 1_000_000, UInt256.Zero, WithdrawalCall(amount));
+        return new Transaction
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = nonce,
+            SenderAddress = Sender,
+            Frames = [sponsorFrame, adminFrame],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+    }
+
+    private void SignSenderWithArbitraryAtIndex1(Transaction tx)
+    {
+        // Index 0: the sender's canonical-hash SECP256K1 self-sponsor. Index 1: an ARBITRARY entry,
+        // which the paymaster rejects because SIGPARAM(scheme, 1) is zero. ARBITRARY signature bytes
+        // are elided from the sig hash, so the digest depends only on index 0's scheme/signer/msg.
+        TxFrameSignature arbitrary = new(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0x01 });
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default),
+            arbitrary,
+        ];
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature senderSignature = _ecdsa.Sign(SenderKey, in sigHash);
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, ToVrs(senderSignature)),
+            arbitrary,
+        ];
+    }
+
+    private void DeployContract(Address address, byte[] code, UInt256 balance)
+    {
+        _stateProvider.CreateAccount(address, balance);
+        _stateProvider.InsertCode(address, code, Spec);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+    }
+
+    private void SetPending(UInt256 amount, ulong unlockTime)
+    {
+        StoreSlot(1, amount);
+        StoreSlot(2, unlockTime);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+    }
+
+    private void StoreSlot(int slot, UInt256 value) =>
+        _stateProvider.Set(new StorageCell(Paymaster, (UInt256)slot), value.ToBigEndian().WithoutLeadingZeros().ToArray());
+
+    private void AssertFinalizeRevertsAndPreservesPending(ulong finalizeTimestamp, UInt256 amount, ulong unlockTime)
+    {
+        TxReceipt receipt = ProcessBlock(finalizeTimestamp, AdminTx(ThirdPartyKey, 0, FinalizeCall()))[0];
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure), "a failed withdrawal CALL reverts the finalize");
+        Assert.That(Slot(1), Is.EqualTo(amount), "the pending amount survives so finalize can be retried");
+        Assert.That(Slot(2), Is.EqualTo((UInt256)unlockTime), "the maturity time survives the revert");
+    }
+
+    private static byte[] BuildReentrantCaller(byte[] payload)
+    {
+        // Runtime that copies the appended payload into memory and re-enters the paymaster with it,
+        // discarding the inner call result (POP). Models a malicious signer re-entering during the
+        // withdrawal CALL. The prelude is a fixed 37 bytes (single-byte pushes plus one PUSH20), so
+        // the payload is appended at offset 37.
+        const byte payloadOffset = 37;
+        byte length = (byte)payload.Length;
+        List<byte> code =
+        [
+            0x60, length,          // PUSH1 length
+            0x60, payloadOffset,   // PUSH1 payloadOffset
+            0x5f,                  // PUSH0 destOffset
+            0x39,                  // CODECOPY
+            0x5f,                  // PUSH0 retLength
+            0x5f,                  // PUSH0 retOffset
+            0x60, length,          // PUSH1 argsLength
+            0x5f,                  // PUSH0 argsOffset
+            0x5f,                  // PUSH0 value
+            0x73,                  // PUSH20 paymaster
+        ];
+        code.AddRange(Paymaster.Bytes);
+        code.Add(0x5a);            // GAS
+        code.Add(0xf1);            // CALL
+        code.Add(0x50);            // POP
+        code.Add(0x00);            // STOP
+        code.AddRange(payload);
+        return code.ToArray();
+    }
 
     private TransactionResult ExecuteInvalid(Transaction tx, ulong timestamp) =>
         _transactionProcessor.Execute(tx, new BlockExecutionContext(BuildBlock(timestamp, tx).Header, Spec), NullTxTracer.Instance);
