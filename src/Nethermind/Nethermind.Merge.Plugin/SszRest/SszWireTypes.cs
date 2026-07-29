@@ -236,7 +236,9 @@ public partial struct NewPayloadV6RequestWire
     public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
-    [SszList(Eip7805Constants.MaxTransactionsPerInclusionList)] public SszTransaction[]? InclusionListTransactions { get; set; }
+    // newPayloadV6 carries the flattened aggregate, so bound by the aggregate entry count (not the
+    // per-member MaxTransactionsPerInclusionList) — otherwise SSZ rejects aggregates the JSON path accepts.
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
 }
 
 // EIP-7805 (FOCIL): response of engine_getInclusionListV1 — the pending inclusion-list transactions.

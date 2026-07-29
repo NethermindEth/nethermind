@@ -92,6 +92,26 @@ public class PayloadAttributesValidateTests
         Assert.That(error, Is.Null);
     }
 
+    [Test]
+    public void Validate_rejects_V4_fcu_at_Bogota_as_unsupported_fork()
+    {
+        // EIP-7805: the null-IL V4→V5 leniency applies only to FCUv5 itself; engine_forkchoiceUpdatedV4
+        // at a Bogota timestamp must report UnsupportedFork (-38005), not InvalidPayloadAttributes (-38003).
+        ISpecProvider sp = Substitute.For<ISpecProvider>();
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip7805Enabled.Returns(true);
+        spec.IsEip7843Enabled.Returns(true);
+        spec.IsEip4844Enabled.Returns(true);
+        spec.WithdrawalsEnabled.Returns(true);
+        sp.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        PayloadAttributes attrs = BuildAttrs(withSlotNumber: true);
+
+        PayloadAttributesValidationResult result = attrs.Validate(sp, PayloadAttributesVersions.V4, out _);
+
+        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.UnsupportedFork));
+    }
+
     [TestCase(false, PayloadAttributesVersions.V1)]
     [TestCase(true, PayloadAttributesVersions.V4)]
     public void GetVersion_infers_correct_version_from_present_fields(

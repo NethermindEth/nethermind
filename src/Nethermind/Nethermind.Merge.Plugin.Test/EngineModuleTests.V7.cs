@@ -223,6 +223,14 @@ public partial class EngineModuleTests
             [new byte[Eip7805Constants.MaxAggregateInclusionListBytes + 1]]);
         Assert.That(overLimit.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.That(overLimit.Result.Error, Does.Contain("exceeds the maximum aggregate size"));
+
+        // Entry count is bounded independently of bytes — empty entries cost no bytes but still allocate.
+        byte[][] tooManyEmpty = new byte[Eip7805Constants.MaxAggregateInclusionListTransactions + 1][];
+        for (int i = 0; i < tooManyEmpty.Length; i++) tooManyEmpty[i] = [];
+        ResultWrapper<PayloadStatusV2> tooManyEntries = await rpc.engine_newPayloadV6(
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, tooManyEmpty);
+        Assert.That(tooManyEntries.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(tooManyEntries.Result.Error, Does.Contain("maximum number of transactions"));
     }
 
     [Test]

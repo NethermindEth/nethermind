@@ -67,14 +67,22 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (payloadAttributes?.InclusionListTransactions is { } ilTxs)
         {
             IReleaseSpec spec = _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp));
-            // An unparsable IL is a no-op, not a protocol error.
-            try
+            // Bound the aggregate before the (expensive) RLP decode + sender recovery, matching the
+            // newPayloadV6 input cap. An oversized or unparsable IL is a no-op, not a protocol error.
+            if (ExceedsAggregateInclusionListBound(ilTxs))
             {
-                inclusionListTxSource.Set(ilTxs, spec);
+                if (_logger.IsDebug) _logger.Debug($"engine_forkchoiceUpdatedV5: discarding oversized inclusion list ({ilTxs.Length} entries)");
             }
-            catch (Exception ex) when (ex is RlpException or ArgumentException)
+            else
             {
-                if (_logger.IsDebug) _logger.Debug($"engine_forkchoiceUpdatedV5: discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message})");
+                try
+                {
+                    inclusionListTxSource.Set(ilTxs, spec);
+                }
+                catch (Exception ex) when (ex is RlpException or ArgumentException)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"engine_forkchoiceUpdatedV5: discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message})");
+                }
             }
         }
 
@@ -90,5 +98,18 @@ public partial class EngineRpcModule : IEngineRpcModule
             : null;
 
         return ResultWrapper<ForkchoiceUpdatedV2Result>.Success(ForkchoiceUpdatedV2Result.From(result.Data, inclusionListSatisfied));
+    }
+
+    // Mirrors the newPayloadV6 aggregate bound (IExecutionPayloadParams.ValidateInitialParams).
+    private static bool ExceedsAggregateInclusionListBound(byte[][] inclusionListTransactions)
+    {
+        if (inclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions) return true;
+        long totalBytes = 0;
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            totalBytes += inclusionListTransactions[i]?.Length ?? 0;
+            if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes) return true;
+        }
+        return false;
     }
 }

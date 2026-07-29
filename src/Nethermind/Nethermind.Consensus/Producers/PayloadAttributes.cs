@@ -228,8 +228,11 @@ public class PayloadAttributes
         int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
 
         // EIP-7805: V5's only new field (inclusionListTransactions) is optional, so a null-IL attrs is
-        // shape-identical to V4. Treat it as V5 under a Bogota timestamp so the initial FCUv5 build isn't rejected.
-        if (timestampVersion == PayloadAttributesVersions.V5 && actualVersion == PayloadAttributesVersions.V4)
+        // shape-identical to V4. Treat it as V5 under a Bogota timestamp so the initial FCUv5 build isn't
+        // rejected — but only for FCUv5 itself, so FCUv3/V4 still report UnsupportedFork (-38005).
+        if (timestampVersion == PayloadAttributesVersions.V5
+            && actualVersion == PayloadAttributesVersions.V4
+            && fcuVersion == EngineApiVersions.Fcu.V5)
             actualVersion = PayloadAttributesVersions.V5;
 
         // When attrs are below the timestamp-implied version and the FCU doesn't accept this

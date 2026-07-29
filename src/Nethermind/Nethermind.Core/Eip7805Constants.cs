@@ -14,4 +14,6 @@ public static class Eip7805Constants
     public const int InclusionListCommitteeSize = 16;
     // Upper bound on the flattened aggregate handed to newPayloadV6 (committee members × per-member byte cap).
     public const int MaxAggregateInclusionListBytes = InclusionListCommitteeSize * MaxBytesPerInclusionList;
+    // Corresponding entry-count bound: empty entries cost no bytes but still allocate a slot downstream.
+    public const int MaxAggregateInclusionListTransactions = MaxAggregateInclusionListBytes / MinTransactionSizeBytes;
 }

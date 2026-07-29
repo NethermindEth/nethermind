@@ -78,8 +78,15 @@ public class ExecutionPayloadParams(
             }
 
             // The flattened aggregate spans up to IL_COMMITTEE_SIZE members, each bounded by
-            // MAX_BYTES_PER_INCLUSION_LIST. Bound the raw byte total so an authenticated-but-faulty CL
-            // cannot force decode/recover work far beyond any valid FOCIL input.
+            // MAX_BYTES_PER_INCLUSION_LIST. Bound both the entry count and the raw byte total so an
+            // authenticated-but-faulty CL cannot force decode/recover work far beyond any valid FOCIL
+            // input (empty entries cost no bytes but still allocate a slot per entry downstream).
+            if (InclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions)
+            {
+                error = "Inclusion list exceeds the maximum number of transactions";
+                return ValidationResult.Fail;
+            }
+
             long totalBytes = 0;
             for (int i = 0; i < InclusionListTransactions.Length; i++)
             {
