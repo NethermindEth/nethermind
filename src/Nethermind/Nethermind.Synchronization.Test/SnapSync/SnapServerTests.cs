@@ -46,7 +46,11 @@ public class SnapServerTests
 
     private void GivenBlock(Hash256 hash, ulong number, byte[]? bal)
     {
-        _blockTree.FindHeader(hash).Returns(Build.A.BlockHeader.WithNumber(number).TestObject);
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(number)
+            .WithBlockAccessListHash(TestItem.KeccakA)
+            .TestObject;
+        _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
         _balStore.GetRlp(number, hash).Returns(ArrayMemoryManager.From(bal));
     }
 
@@ -123,7 +127,7 @@ public class SnapServerTests
         byte[] bal = [1, 2, 3];
         GivenBlock(TestItem.KeccakA, 1, bal);
         // KeccakB resolves to no header, so the store is never queried for it.
-        _blockTree.FindHeader(TestItem.KeccakB).Returns((BlockHeader?)null);
+        _blockTree.FindHeader(TestItem.KeccakB, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns((BlockHeader?)null);
 
         using IByteArrayList result = _server.GetBlockAccessLists(
             [TestItem.KeccakB.ValueHash256, TestItem.KeccakA.ValueHash256], long.MaxValue, CancellationToken.None);
@@ -147,6 +151,20 @@ public class SnapServerTests
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0].Length, Is.EqualTo(0));
         Assert.That(result[1].ToArray(), Is.EqualTo(bal));
+    }
+
+    [Test]
+    public void GetBlockAccessLists_returns_empty_entry_for_block_predating_access_lists()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithBlockAccessListHash(null).TestObject;
+        _blockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
+
+        using IByteArrayList result = _server.GetBlockAccessLists(
+            [TestItem.KeccakA.ValueHash256], long.MaxValue, CancellationToken.None);
+
+        Assert.That(result.Count, Is.EqualTo(1));
+        Assert.That(result[0].Length, Is.EqualTo(0));
+        _balStore.DidNotReceiveWithAnyArgs().GetRlp(default, default!);
     }
 
     [Test]
