@@ -58,60 +58,28 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount - 2, 1)
+            ? Math.Max(Environment.ProcessorCount * 3 / 4, 1)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
         _processors = new Processor[workerCount];
         for (int i = 0; i < _processors.Length; i++)
         {
-            _processors[i] = new Processor(this, i);
+            _processors[i] = new Processor(this);
         }
     }
 
-    /// <remarks>
-    /// Runs on a dedicated low-priority thread rather than the shared thread pool: warm-up must
-    /// overlap execution to be useful, but must never displace it. A large worker count is safe
-    /// because the OS scheduler lets workers use execution's I/O-wait and merge-stall gaps and
-    /// deprioritizes them while execution is runnable.
-    /// </remarks>
-    private sealed class Processor : IDisposable
+    private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
     {
-        private readonly TrieWarmer _owner;
-        private readonly AutoResetEvent _wake = new(false);
-        private volatile bool _stop;
-        private int _scheduled;
-
-        public Processor(TrieWarmer owner, int index)
-        {
-            _owner = owner;
-            Thread thread = new(Run)
-            {
-                IsBackground = true,
-                Name = $"TrieWarmer{index}",
-                Priority = ThreadPriority.BelowNormal
-            };
-            thread.Start();
-        }
-
-        private void Run()
-        {
-            TryLowerOsThreadPriority();
-            while (true)
-            {
-                _wake.WaitOne();
-                if (_stop) break;
-                _owner.Execute(this);
-            }
-            _wake.Dispose();
-        }
+        private readonly TrieWarmer _owner = owner;
+        private int _scheduled = 0;
 
         public bool TrySchedule()
         {
             if (Interlocked.CompareExchange(ref _scheduled, 1, 0) != 0) return false;
 
             _owner.OnProcessorScheduled();
-            _wake.Set();
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
             return true;
         }
 
@@ -119,39 +87,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         public bool TryReacquireAfterEmptyCheck() => Interlocked.Exchange(ref _scheduled, 1) == 0;
 
-        public void Dispose()
-        {
-            _stop = true;
-            try { _wake.Set(); }
-            catch (ObjectDisposedException) { }
-        }
-    }
-
-    private const int WarmerNiceness = 10;
-    private const int PrioProcess = 0;
-
-    [System.Runtime.InteropServices.DllImport("libc")]
-    private static extern int gettid();
-
-    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
-    private static extern int setpriority(int which, int who, int prio);
-
-    /// <remarks>
-    /// <see cref="Thread.Priority"/> is not mapped to the OS scheduler on Linux, but a thread may
-    /// lower its own niceness without privileges. Nice +10 leaves idle capacity usable while
-    /// sharply reducing a warmer's share of a contended core.
-    /// </remarks>
-    private static void TryLowerOsThreadPriority()
-    {
-        if (!OperatingSystem.IsLinux()) return;
-        try
-        {
-            setpriority(PrioProcess, gettid(), WarmerNiceness);
-        }
-        catch (Exception)
-        {
-            // Best-effort for platforms whose libc does not expose gettid.
-        }
+        void IThreadPoolWorkItem.Execute() => _owner.Execute(this);
     }
 
     private bool HasReadyWork() => _slotJobBuffer.HasReadyItem || _jobBufferMultiThreaded.HasReadyItem;
@@ -356,11 +292,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         if (!processorsStoppedBeforeTimeout && _logger.IsWarn)
         {
             _logger.Warn($"TrieWarmer processors ({Volatile.Read(ref _activeProcessors)}) did not stop within {DisposeTimeoutMilliseconds}ms during dispose");
-        }
-
-        foreach (Processor processor in _processors)
-        {
-            processor.Dispose();
         }
     }
 
