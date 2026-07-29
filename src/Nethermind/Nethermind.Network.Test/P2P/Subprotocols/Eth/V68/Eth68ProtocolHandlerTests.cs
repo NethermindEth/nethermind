@@ -70,19 +70,7 @@ public class Eth68ProtocolHandlerTests
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
-        _handler = new Eth68ProtocolHandler(
-            _session,
-            _svc,
-            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
-            _syncManager,
-            RunImmediatelyScheduler.Instance,
-            _transactionPool,
-            _gossipPolicy,
-            new ForkInfo(_specProvider, _syncManager),
-            LimboLogs.Instance,
-            Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>(),
-            _txGossipPolicy);
+        _handler = CreateHandler(Substitute.For<ITxPoolConfig>());
         _handler.Init();
     }
 
@@ -181,6 +169,32 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_disconnect_if_unrequested_tx_violates_announced_shape()
+    {
+        ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
+        txPoolConfig.MaxTxSize.Returns(128 * MemorySizes.KiB);
+        ReplaceHandler(txPoolConfig);
+
+        Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved()
+            .WithData(new byte[200_000]).WithHash(TestItem.KeccakC).TestObject;
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)TxType.EIP1559 },
+            new ArrayPoolList<int>(1) { tx.GetLength() },
+            new ArrayPoolList<Hash256>(1) { tx.Hash });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
     public void Should_process_huge_transaction()
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * MemorySizes.MiB])
@@ -254,19 +268,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void should_divide_GetPooledTransactionsMessage_if_max_message_size_is_exceeded([Values(0, 1, 100, 10_000)] int numberOfTransactions, [Values(97, TransactionsMessage.MaxPacketSize)] int sizeOfOneTx)
     {
-        _handler = new Eth68ProtocolHandler(
-            _session,
-            _svc,
-            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
-            _syncManager,
-            RunImmediatelyScheduler.Instance,
-            _transactionPool,
-            _gossipPolicy,
-            new ForkInfo(_specProvider, _syncManager),
-            LimboLogs.Instance,
-            Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>(),
-            _txGossipPolicy);
+        ReplaceHandler(Substitute.For<ITxPoolConfig>());
 
         int maxNumberOfTxsInOneMsg = int.Min(sizeOfOneTx <= TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 256, 256);
         int messagesCount = numberOfTransactions / maxNumberOfTxsInOneMsg + (numberOfTransactions % maxNumberOfTxsInOneMsg == 0 ? 0 : 1);
@@ -399,7 +401,7 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_request_oversized_announced_transactions_separately()
+    public void Should_request_oversized_announced_transactions_in_one_message()
     {
         using ArrayPoolList<byte> types = new(3) { 0, 0, 0 };
         using ArrayPoolList<int> sizes = new(3) { 200_000, 200_000, 200_000 };
@@ -414,12 +416,12 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
-            m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakA));
-        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
-            m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakB));
-        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
-            m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakC));
+        _session.Received(1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        _session.Received().DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
+            m.EthMessage.Hashes.Count == 3 &&
+            m.EthMessage.Hashes[0] == TestItem.KeccakA &&
+            m.EthMessage.Hashes[1] == TestItem.KeccakB &&
+            m.EthMessage.Hashes[2] == TestItem.KeccakC));
     }
 
     [Test]
@@ -498,6 +500,29 @@ public class Eth68ProtocolHandlerTests
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+    }
+
+    private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig) =>
+        new(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            RunImmediatelyScheduler.Instance,
+            _transactionPool,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager),
+            LimboLogs.Instance,
+            txPoolConfig,
+            Substitute.For<ISpecProvider>(),
+            _txGossipPolicy);
+
+    private void ReplaceHandler(ITxPoolConfig txPoolConfig)
+    {
+        HandleIncomingStatusMessage();
+        _handler.Dispose();
+        _handler = CreateHandler(txPoolConfig);
+        _handler.Init();
     }
 
     private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
