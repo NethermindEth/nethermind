@@ -27,6 +27,19 @@ JSONRPC_MODULES="${JSONRPC_MODULES:-Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Pa
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
 DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 
+# Diagnostic: enumerate nethermind snapshots on the runner (path, size, provenance) and exit — no node start.
+if [[ "${SNAP_LIST_ONLY:-}" == "1" ]]; then
+  echo "=== /mnt/sda ==="; ls -la /mnt/sda/ 2>/dev/null
+  for d in /mnt/sda/nethermind* /mnt/sda/*snapshot* /mnt/sda/expb-data/nethermind*; do
+    [[ -d "$d" ]] || continue
+    echo "--- $d ($(du -sh "$d" 2>/dev/null | cut -f1)) ---"
+    [[ -f "$d/_snapshot_metadata.json" ]] && { echo "[metadata]"; cat "$d/_snapshot_metadata.json"; echo; }
+    ls "$d" 2>/dev/null | head -20
+  done
+  df -h /mnt/sda 2>/dev/null || true
+  exit 0
+fi
+
 default_image() {
   case "$1" in
     geth) echo "ethereum/client-go:stable" ;;
@@ -37,7 +50,8 @@ default_image() {
 }
 snap_path() {
   if [[ "$1" == "nethermind" ]]; then
-    if [[ "$STATE_LAYOUT" == "flat" ]]; then echo "/mnt/sda/nethermind-flat-${SNAPSHOT_BLOCK}"
+    if [[ -n "${NM_SNAPSHOT_PATH:-}" ]]; then echo "$NM_SNAPSHOT_PATH"   # explicit override (e.g. an older-format flat snapshot)
+    elif [[ "$STATE_LAYOUT" == "flat" ]]; then echo "/mnt/sda/nethermind-flat-${SNAPSHOT_BLOCK}"
     else echo "/mnt/sda/nethermind-${SNAPSHOT_BLOCK}"; fi
   else echo "/mnt/sda/$1-${SNAPSHOT_BLOCK}"; fi
 }

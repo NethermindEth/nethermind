@@ -658,6 +658,8 @@ jobs:
           export JB_DURATION="$(get '.duration')";         [[ -z "${JB_DURATION}" ]] && export JB_DURATION="60s"
           export ISO_CONFIGS="$(get '.iso_configs')"
           export ISO_DURATION="$(get '.iso_duration')";    [[ -z "${ISO_DURATION}" ]] && export ISO_DURATION="20s"
+          export SNAP_LIST_ONLY="$(get '.snap_list_only')"     # "1" = list runner snapshots and exit
+          export NM_SNAPSHOT_PATH="$(get '.nm_snapshot_path')" # explicit nethermind snapshot path override
           export STATE_ROOT="${STATE_DIR}/sweep"
           ./scripts/rpc-bench/run-rpc-sweep.sh
 
