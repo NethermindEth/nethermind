@@ -150,6 +150,16 @@ public class RpcModuleProviderTests
         }
     }
 
+    [TestCase(nameof(IEthRpcModule.eth_call))]
+    [TestCase(nameof(IEthRpcModule.eth_estimateGas))]
+    [TestCase(nameof(IEthRpcModule.eth_createAccessList))]
+    public void Evm_call_methods_use_exclusive_module_queue(string methodName)
+    {
+        _moduleProvider.Register(new TestModulePool<IEthRpcModule>(Substitute.For<IEthRpcModule>()));
+
+        Assert.That(_moduleProvider.Resolve(methodName)!.ReadOnly, Is.False);
+    }
+
     [Test]
     public async Task Hot_method_cache_updates_after_module_replacement()
     {

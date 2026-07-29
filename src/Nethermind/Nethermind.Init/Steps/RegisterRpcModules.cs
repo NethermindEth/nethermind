@@ -51,8 +51,6 @@ public class RegisterRpcModules(
         ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
 
         RpcLimits.Init(jsonRpcConfig.RequestQueueLimit, jsonRpcConfig.MaxConcurrentSharedRequests);
-        RpcLimits.InitEvmExecutionLimit(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount);
-
         // Register the standard subscription types in the dictionary
         subscriptionFactory.RegisterStandardSubscriptions(
             blockTree,
