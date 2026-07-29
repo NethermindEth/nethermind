@@ -39,7 +39,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
     private static byte[] CreateValueCode() =>
         Prepare.EvmCode.Create(Prepare.EvmCode.STOP().Done, InnerValue).STOP().Done;
 
-    public sealed record TransferLogScenario(byte[]? RecipientCode, bool HasInner, string? Config = WithLog);
+    public sealed record TransferLogScenario(byte[]? RecipientCode, bool ExpectsChildFrame, string? Config = WithLog);
 
     [TestCaseSource(nameof(TransferLogCases))]
     public void ValueTransfer_WithLog_AddsLogsToCorrectFrames(TransferLogScenario scenario)
@@ -56,10 +56,10 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer());
-            Assert.That(topFrame.Calls, Has.Count.EqualTo(scenario.HasInner ? 1 : 0));
+            Assert.That(topFrame.Calls, Has.Count.EqualTo(scenario.ExpectsChildFrame ? 1 : 0));
         }
 
-        if (scenario.HasInner)
+        if (scenario.ExpectsChildFrame)
         {
             NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
             NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 0UL);
