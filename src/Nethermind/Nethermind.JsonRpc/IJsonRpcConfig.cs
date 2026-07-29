@@ -22,6 +22,9 @@ public interface IJsonRpcConfig : IConfig
         Description = """
             The max number of concurrent requests waiting in the exclusive (non-sharable) queue for:
 
+            - `eth_call`
+            - `eth_createAccessList`
+            - `eth_estimateGas`
             - `eth_getLogs`
             - `eth_newFilter`
             - `eth_newBlockFilter`
@@ -146,18 +149,15 @@ public interface IJsonRpcConfig : IConfig
         Description = """
             The number of concurrent instances for non-sharable calls:
 
-            - `eth_call`
-            - `eth_createAccessList`
-            - `eth_estimateGas`
             - `eth_getLogs`
             - `eth_newBlockFilter`
             - `eth_newFilter`
             - `eth_newPendingTransactionFilter`
             - `eth_uninstallFilter`
 
-            This limits the load on the CPU and I/O to reasonable levels. Calls beyond this
-            concurrency are queued up to `RequestQueueLimit` and wait up to `Timeout` for an
-            instance. Defaults to the number of logical processors.
+            This also limits active `eth_call`, `eth_estimateGas`, and `eth_createAccessList`
+            executions on the sharable module. Additional EVM calls wait asynchronously and
+            count toward `RequestQueueLimit`. Defaults to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 

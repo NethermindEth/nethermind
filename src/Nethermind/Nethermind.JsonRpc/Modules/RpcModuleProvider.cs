@@ -439,6 +439,8 @@ namespace Nethermind.JsonRpc.Modules
 
                 ExpectedParameters = expectedParameters;
                 ReadOnly = readOnly;
+                IsEvmExecution = moduleType == Nethermind.JsonRpc.Modules.ModuleType.Eth
+                    && methodInfo.Name is "eth_call" or "eth_estimateGas" or "eth_createAccessList";
                 Availability = availability;
                 IsTaskWrapped = TryGetTaskResultType(methodInfo.ReturnType, out Type? taskResultType);
                 ResultWrapperType = IsTaskWrapped ? taskResultType : methodInfo.ReturnType;
@@ -474,6 +476,7 @@ namespace Nethermind.JsonRpc.Modules
             public Func<IRpcModule, object?[], object?>? DirectParameterInvoker { get; }
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
+            internal bool IsEvmExecution { get; }
             public RpcEndpoint Availability { get; }
             internal Type? ResultWrapperType { get; }
             internal Type? SuccessPayloadType { get; }

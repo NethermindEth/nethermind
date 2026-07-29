@@ -93,6 +93,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
+        using RpcLimits.EvmExecutionSlot executionSlot =
+            await RpcLimits.AcquireEvmExecutionSlot(method.IsEvmExecution);
         JsonRpcErrorResponse? value = PrepareParameters(
             request,
             methodName,

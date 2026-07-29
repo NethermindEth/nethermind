@@ -8,9 +8,10 @@ using Nethermind.JsonRpc.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    // Two independent counters:
+    // Independent counters:
     //   _queuedCalls: SlowPath waiters, bounded by RequestQueueLimit.
     //   _sharedCalls: SharedPath in-flight, bounded by MaxConcurrentSharedRequests.
+    //   _evmExecutionSemaphore: active eth_call-family executions, bounded by EthModuleConcurrentInstances.
     public static class RpcLimits
     {
         public static void Init(int queuedLimit, int sharedLimit)
@@ -19,12 +20,16 @@ namespace Nethermind.JsonRpc.Modules
             SharedLimit = sharedLimit;
         }
 
+        public static void InitEvmExecutionLimit(int limit) =>
+            Volatile.Write(ref _evmExecutionSemaphore, limit > 0 ? new SemaphoreSlim(limit, limit) : null);
+
         private static int QueuedLimit { get; set; }
         private static int SharedLimit { get; set; }
         private static bool QueuedLimitEnabled => QueuedLimit > 0;
         private static bool SharedLimitEnabled => SharedLimit > 0;
         private static int _queuedCalls;
         private static int _sharedCalls;
+        private static SemaphoreSlim? _evmExecutionSemaphore;
 
         public static void AcquireQueuedSlot()
         {
@@ -60,6 +65,36 @@ namespace Nethermind.JsonRpc.Modules
                 Interlocked.Decrement(ref _sharedCalls);
         }
 
+        internal static ValueTask<EvmExecutionSlot> AcquireEvmExecutionSlot(bool required)
+        {
+            SemaphoreSlim? semaphore = Volatile.Read(ref _evmExecutionSemaphore);
+            if (!required || semaphore is null)
+                return ValueTask.FromResult(default(EvmExecutionSlot));
+
+            if (semaphore.Wait(0))
+                return ValueTask.FromResult(new EvmExecutionSlot(semaphore));
+
+            AcquireQueuedSlot();
+            return WaitForEvmExecutionSlot(semaphore);
+        }
+
+        private static async ValueTask<EvmExecutionSlot> WaitForEvmExecutionSlot(SemaphoreSlim semaphore)
+        {
+            try
+            {
+                await semaphore.WaitAsync();
+                return new EvmExecutionSlot(semaphore);
+            }
+            finally
+            {
+                DecrementQueuedCalls();
+            }
+        }
+
+        internal readonly struct EvmExecutionSlot(SemaphoreSlim? semaphore) : System.IDisposable
+        {
+            public void Dispose() => semaphore?.Release();
+        }
     }
 
     public class BoundedModulePool<T> : IRpcModulePool<T> where T : IRpcModule
