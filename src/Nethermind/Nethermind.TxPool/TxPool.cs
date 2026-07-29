@@ -475,10 +475,13 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <remarks>
         /// An expired frame tx can never be included (the expiry-verifier predeploy reverts once
-        /// <c>block.timestamp &gt; deadline</c>), so it is evicted rather than re-propagated. The predicate matches
-        /// that revert condition exactly (not <c>&gt;=</c>) so the pool never drops a tx the predeploy would accept.
+        /// <c>block.timestamp &gt; deadline</c>), so it is evicted rather than re-propagated
+        /// (ethereum/EIPs#12007, "Revalidation"). The predicate matches that revert condition exactly (not
+        /// <c>&gt;=</c>) so the pool never drops a tx the predeploy would accept.
         /// The count guard skips the pool walk when no expiring frame tx is present.
-        /// EIP8141: a deadline-ordered index (evict without scanning) is deferred to the scalable eviction layer.
+        /// EIP8141: a deadline-ordered index (evict without scanning) is deferred to the scalable eviction layer;
+        /// so is sweeping expired frame txs held only in the broadcaster's persistent-broadcast pool (locally
+        /// submitted, then cheap-evicted from <see cref="_transactions"/>), which this pass does not yet reach.
         /// </remarks>
         private void RemoveExpiredFrameTransactions(Block block)
         {

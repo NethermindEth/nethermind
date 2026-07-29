@@ -2137,7 +2137,32 @@ namespace Nethermind.TxPool.Test
                 "the expiry pass must only ever touch frame transactions carrying a deadline");
         }
 
-        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline)
+        // Symmetry of _expiringFrameTxCount across the replacement path: replacing A with B fires Removed(A) and
+        // Inserted(B) inside a single DistinctValueSortedPool.InsertCore call. If those ever netted the count to
+        // zero the expiry pass would be skipped and B would silently survive past its deadline; assert it is evicted.
+        [Test]
+        public async Task Replaced_expiring_frame_transaction_is_still_evicted_on_new_head()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction a = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_000);
+            Assert.That(_txPool.SubmitTx(a, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "the original expiring frame transaction must first enter the pool");
+
+            // Same sender + nonce + deadline, both fees bumped well past the 10% replacement threshold.
+            Transaction b = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_000, maxPriorityFeePerGas: 2.GWei, maxFeePerGas: 2.GWei);
+            Assert.That(_txPool.SubmitTx(b, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "the fee-bumped replacement must be accepted");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the replacement must displace the original");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0),
+                "the replacement inherits the deadline and must still be evicted by the expiry pass");
+        }
+
+        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null)
         {
             List<TxFrame> frames =
             [
@@ -2160,8 +2185,8 @@ namespace Nethermind.TxPool.Test
                 Frames = [.. frames],
                 FrameSignatures = [],
                 GasLimit = 1_000_000,
-                GasPrice = 1.GWei,
-                DecodedMaxFeePerGas = 1.GWei,
+                GasPrice = maxPriorityFeePerGas ?? 1.GWei,
+                DecodedMaxFeePerGas = maxFeePerGas ?? 1.GWei,
             };
             tx.Hash = tx.CalculateHash();
             return tx;

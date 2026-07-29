@@ -178,9 +178,10 @@ public static class FrameTxValidation
     /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.
     /// </summary>
     /// <remarks>
-    /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data. Must be called only on well-formed
-    /// frame txs: <see cref="IsWellFormed"/> already enforces the <see cref="Eip8141Constants.ExpiryDataLength"/>
-    /// length, so it is not re-checked here.
+    /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; a tx whose deadline has passed can
+    /// never be included and is dropped from the mempool (ethereum/EIPs#12007, "Revalidation"). Must be called only
+    /// on well-formed frame txs: <see cref="IsWellFormed"/> already enforces the
+    /// <see cref="Eip8141Constants.ExpiryDataLength"/> length, so it is not re-checked here.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
     /// <param name="deadline">The expiry deadline in Unix seconds when an expiry-verifier frame is present.</param>
