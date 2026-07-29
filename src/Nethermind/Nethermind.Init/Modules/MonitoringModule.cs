@@ -16,6 +16,7 @@ using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -31,7 +32,6 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
                     PrepareProductInfoMetrics)
 
                 .AddSingleton<AllocatorMetricsUpdater>()
-                .AddSingleton<Synchronization.SyncTimeInModeTracker>()
                 .Intercept<IMonitoringService>(ConfigureDefaultMetrics)
 
                 .Intercept<IEthSyncingInfo>((syncInfo, ctx) =>
@@ -40,6 +40,15 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
                     {
                         Synchronization.Metrics.SyncTimeSeconds = (long)syncInfo.UpdateAndGetSyncTime().TotalSeconds;
                     });
+                })
+
+                // Attached via the sync-mode selector (not resolved during IMonitoringService
+                // construction) to avoid a container cycle: IMonitoringService -> tracker ->
+                // ISyncModeSelector -> ... -> IMonitoringService.
+                .Intercept<ISyncModeSelector>((syncModeSelector, ctx) =>
+                {
+                    Synchronization.SyncTimeInModeTracker tracker = new(syncModeSelector);
+                    ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(tracker.UpdateMetrics);
                 })
 
                 ;
@@ -81,7 +90,6 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
         // Note: Do not add dependencies outside of monitoring module.
         AllocatorMetricsUpdater allocatorMetricsUpdater = ctx.Resolve<AllocatorMetricsUpdater>();
         monitoringService.AddMetricsUpdateAction(() => allocatorMetricsUpdater.UpdateAllocatorMetrics());
-        monitoringService.AddMetricsUpdateAction(ctx.Resolve<Synchronization.SyncTimeInModeTracker>().UpdateMetrics);
     }
 
     private class AllocatorMetricsUpdater(ILogManager logManager)
