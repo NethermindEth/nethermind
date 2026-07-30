@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
@@ -128,7 +129,7 @@ namespace Nethermind.Facade.Find
                         // without this a multi-block range answers a generic internal error while a single-block
                         // range answers correctly. Several partitions faulting at once (the normal shape for a wide
                         // unavailable range) and nested aggregates both must unwrap, hence Flatten.
-                        throw mappable;
+                        ExceptionDispatchInfo.Capture(mappable).Throw();
                     }
 
                     yield return enumerator.Current;
@@ -149,13 +150,25 @@ namespace Nethermind.Facade.Find
         {
             // Unavailability wins over transient shapes on purpose: if any block in the range is genuinely
             // unanswerable, that stays true after a retry, so it is the accurate answer for the whole range.
+            // An unexpected fault wins over both — the aggregate then falls through to the generic handler,
+            // the only site that logs the real error; unwrapping a transient over it would hide a genuine bug.
+            ResourceNotFoundException? notFound = null;
             Exception? transient = null;
             foreach (Exception inner in e.Flatten().InnerExceptions)
             {
-                if (inner is ResourceNotFoundException notFound) return notFound;
-                transient ??= inner is ConcurrencyLimitReachedException or OperationCanceledException ? inner : null;
+                switch (inner)
+                {
+                    case ResourceNotFoundException r:
+                        notFound ??= r;
+                        break;
+                    case ConcurrencyLimitReachedException or OperationCanceledException:
+                        transient ??= inner;
+                        break;
+                    default:
+                        return null;
+                }
             }
-            return transient;
+            return (Exception?)notFound ?? transient;
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)

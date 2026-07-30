@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -421,6 +422,43 @@ public class LogFinderTests
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
+
+    // The transient shapes the regenerator lets escape must survive the same PLINQ wrapping: an exhausted env pool
+    // must answer "too many requests", not a generic internal error.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
+    public void throw_unwrapped_concurrency_limit_on_the_parallel_path()
+    {
+        int chainLength = Math.Max(64, Environment.ProcessorCount + 2);
+        SetUp(allowReceiptIterator: true, chainLength: chainLength);
+
+        OverloadedReceiptFinder overloaded = new();
+        LogFinder logFinder = new(_blockTree, overloaded, _receiptStorage, LimboLogs.Instance,
+            _receiptsRecovery, new ReceiptConfig { DeriveFromState = true });
+
+        Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
+            Throws.TypeOf<ConcurrencyLimitReachedException>());
+        Assert.That(overloaded.SawParallelScanSlotHeld, Is.True,
+            "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
+    }
+
+    private sealed class OverloadedReceiptFinder : IReceiptFinder
+    {
+        public bool SawParallelScanSlotHeld { get; private set; }
+
+        public Hash256? FindBlockHash(Hash256 txHash) => null;
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => throw Overloaded();
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => throw Overloaded();
+        public bool CanGetReceiptsByHash(ulong blockNumber) => true;
+
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        {
+            SawParallelScanSlotHeld |= LogFinder.IsParallelScanSlotHeld;
+            throw Overloaded();
+        }
+
+        private static ConcurrencyLimitReachedException Overloaded() => new("regeneration environment pool exhausted");
+    }
 
     // NSubstitute cannot stub a method with a ref-struct out parameter, so the unavailable finder is hand-rolled.
     private sealed class UnavailableReceiptFinder : IReceiptFinder
