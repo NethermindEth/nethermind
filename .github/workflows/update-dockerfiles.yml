@@ -45,6 +45,8 @@ jobs:
             "Dockerfile"
             "Dockerfile.chiseled"
             "tools/PgoTrim/Dockerfile.pgo"
+            "tools/PgoTrim/Dockerfile.pgo-sampling"
+            "tools/PgoTrim/Dockerfile.lttng-coreclr"
             "scripts/build/Dockerfile"
           )
 

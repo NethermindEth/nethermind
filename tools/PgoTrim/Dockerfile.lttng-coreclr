@@ -13,7 +13,7 @@
 #     -t nethermindeth/nethermind:lttng-coreclr-10.0.5 \
 #     --push .
 
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0.302-resolute@sha256:45401dde65ffc706a65841120ffdf827805eefe16852d6de1086a876c421de2e
 
 ARG DOTNET_RUNTIME_VERSION=10.0.5
 
