@@ -186,6 +186,10 @@ public static class FrameTxValidation
     /// <param name="transaction">The frame transaction to inspect.</param>
     /// <param name="deadline">The expiry deadline in Unix seconds when an expiry-verifier frame is present.</param>
     /// <returns><c>true</c> if an expiry-verifier frame is present and its deadline was read; otherwise <c>false</c>.</returns>
+    /// <exception cref="System.ArgumentOutOfRangeException">
+    /// The expiry frame carries fewer than <see cref="Eip8141Constants.ExpiryDataLength"/> bytes, i.e. the
+    /// <see cref="IsWellFormed"/> precondition was not met.
+    /// </exception>
     public static bool TryGetExpiryDeadline(Transaction transaction, out ulong deadline)
     {
         deadline = 0;

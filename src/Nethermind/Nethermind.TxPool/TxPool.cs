@@ -170,6 +170,7 @@ namespace Nethermind.TxPool
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new MalformedTxFilter(_specProvider, validator, ecdsa, _logger),
+                new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
@@ -502,6 +503,10 @@ namespace Nethermind.TxPool
                 {
                     if (RemoveTransaction(tx.Hash))
                     {
+                        // Surface as a genuine drop to eth_subscribe("droppedPendingTransactions"): an expired
+                        // frame tx can never be included. Unlike a capacity eviction it is deliberately left in
+                        // _hashCache (RemoveTransaction does not touch it) so it cannot re-enter the pool.
+                        EvictedPending?.Invoke(this, new TxEventArgs(tx));
                         Metrics.PendingTransactionsEvicted++;
                         if (_logger.IsTrace) _logger.Trace($"Evicted expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
                     }

@@ -2162,6 +2162,43 @@ namespace Nethermind.TxPool.Test
                 "the replacement inherits the deadline and must still be evicted by the expiry pass");
         }
 
+        // EIP-8141: a frame tx whose expiry deadline is already behind the current head must be rejected at submit —
+        // never pooled, never broadcast — mirroring the on-head eviction predicate. deadline == head timestamp is the
+        // boundary the expiry-verifier predeploy still accepts (strict >), so it must be admitted.
+        [TestCase(1_000UL, 1_500UL, false, TestName = "already-expired frame tx is rejected at ingress")]
+        [TestCase(2_000UL, 1_500UL, true, TestName = "not-yet-expired frame tx is accepted at ingress")]
+        [TestCase(1_500UL, 1_500UL, true, TestName = "boundary deadline equal to head timestamp is accepted at ingress")]
+        public async Task Expired_frame_transaction_is_rejected_at_ingress(ulong deadline, ulong headTimestamp, bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(peer);
+
+            // Advance the head so the ingress filter has a current timestamp to compare the deadline against.
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expectedAccepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxExpired));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0),
+                    "an already-expired frame transaction must not enter the pool");
+            }
+
+            if (expectedAccepted)
+            {
+                peer.Received().SendNewTransaction(frameTx);
+            }
+            else
+            {
+                peer.DidNotReceive().SendNewTransaction(frameTx);
+            }
+        }
+
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null)
         {
             List<TxFrame> frames =
