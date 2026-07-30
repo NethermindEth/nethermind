@@ -433,9 +433,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
-        // Once the commit starts, outstanding warmups race the commit for the same paths and
-        // steal cores from the root-hash parallelism; Commit() re-enables the prewarmer.
-        _pausePrewarmer = true;
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
@@ -573,9 +570,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _dirtyAccounts.Clear();
 
                 Interlocked.Increment(ref scope._hintSequenceId);
-                // Balances the pause in StartWriteBatch; scopes that never reach Commit
-                // (read-only processing) must not leave the prewarmer off for later blocks.
-                scope._pausePrewarmer = false;
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
