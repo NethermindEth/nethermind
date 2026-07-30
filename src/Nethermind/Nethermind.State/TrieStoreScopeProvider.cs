@@ -364,7 +364,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;
             int bulkCount = 0;
-            bool rootHashUpdated = false;
             if (_bulkWrite is not null)
             {
                 if (_hasSelfDestruct)
@@ -374,15 +373,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
                 bulkCount = _bulkWrite.Count;
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
-                if (bulkCount >= PatriciaTree.MinEntriesToParallelizeThreshold)
-                {
-                    storageTree.BulkSetAndUpdateStorageRootHash(asRef);
-                    rootHashUpdated = true;
-                }
-                else
-                {
-                    storageTree.BulkSet(asRef);
-                }
+                storageTree.BulkSet(asRef);
             }
 
             if (hasSet)
@@ -393,10 +384,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 }
                 else
                 {
-                    if (!rootHashUpdated)
-                    {
-                        storageTree.UpdateRootHash(bulkCount > 64);
-                    }
+                    storageTree.UpdateRootHash(bulkCount > 64);
                 }
                 onRootUpdated(address, storageTree.RootHash);
             }

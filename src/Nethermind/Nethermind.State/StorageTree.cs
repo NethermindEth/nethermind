@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -82,9 +81,6 @@ namespace Nethermind.State
 
         public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value) =>
             new(in key, value.IsZero() ? [] : EncodeNonZeroValue(value));
-
-        internal void BulkSetAndUpdateStorageRootHash(in ArrayPoolListRef<BulkSetEntry> entries) =>
-            BulkSetAndUpdateRootHash(in entries);
 
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
