@@ -202,7 +202,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Enable storage range split, which downloads large contract storages in parallel ranges at the cost of extra healing for the unstitched range boundaries.", DefaultValue = "true", HiddenFromDocs = true)]
     bool EnableSnapSyncStorageRangeSplit { get; set; }
 
     [ConfigItem(Description = "_Technical._ Enable double write check during snap sync for debugging.", DefaultValue = "false", HiddenFromDocs = true)]
