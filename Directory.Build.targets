@@ -15,10 +15,10 @@
     <!-- Split methods into hot/cold sections using SPGO block counts from .mibc.
          Cold basic blocks (error paths, rare branches) go to .text.cold section,
          keeping the hot working set smaller and improving I-cache density. -->
-    <!-- PettisHansen method layout from CallWeights in the .mibc. The richer
-         --callchain-profile:nethermind.callchain.json + --method-layout:callfrequency pair crashes
+    <!-- PettisHansen method layout from CallWeights in the .mibc. The richer pair of
+         "callchain-profile:nethermind.callchain.json" with "method-layout:callfrequency" crashes
          crossgen2 (TypeLoadException in CallChainProfile.ResolveMethodName on truncated method-name
-         entries) — do not re-enable until the profile is regenerated with fixed name formatting. -->
+         entries); do not re-enable until the profile is regenerated with fixed name formatting. -->
     <!-- Match file layout to method ordering so hot methods are on adjacent pages on disk. -->
     <!-- The SDK forwards $(PublishReadyToRunCrossgen2ExtraArgs) to crossgen2; the task-internal
          Crossgen2ExtraCommandLineArgs name is not user-settable. -->
