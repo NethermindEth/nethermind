@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -32,6 +34,7 @@ namespace Nethermind.Consensus.Processing;
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IBlockFinder blockFinder,
+    ISpecProvider specProvider,
     ILogManager logManager) : IFrameTxPrefixSimulator, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FrameTxPrefixSimulator>();
@@ -39,8 +42,10 @@ public sealed class FrameTxPrefixSimulator(
     private IReadOnlyTxProcessorSource? _source;
     private bool _disposed;
 
-    public FrameTxSimulationResult Simulate(Transaction tx)
+    public FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default)
     {
+        token.ThrowIfCancellationRequested();
+
         if (tx.SenderAddress is null)
         {
             return FrameTxSimulationResult.Reject("sender not recovered");
@@ -66,7 +71,8 @@ public sealed class FrameTxPrefixSimulator(
                 ITransactionProcessor processor = scope.TransactionProcessor;
                 processor.SetBlockExecutionContext(head);
 
-                FrameTxValidationTracer tracer = new(tx.SenderAddress, Eip8141Constants.ExpiryVerifierAddress);
+                IReleaseSpec spec = specProvider.GetSpec(head);
+                FrameTxValidationTracer tracer = new(tx.SenderAddress, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec);
                 TransactionResult result = processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
 
                 if (tracer.Violated)
@@ -80,6 +86,11 @@ public sealed class FrameTxPrefixSimulator(
                 }
 
                 return FrameTxSimulationResult.Accept(tracer.Payer);
+            }
+            catch (OperationCanceledException)
+            {
+                // Cooperative shutdown/scheduler cancel: propagate rather than masking it as a rejection.
+                throw;
             }
             catch (Exception e)
             {

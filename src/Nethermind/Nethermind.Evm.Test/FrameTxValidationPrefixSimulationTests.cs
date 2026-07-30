@@ -139,10 +139,11 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_PrefixExceedsMaxVerifyGas_Rejected()
+    public void Simulate_PrefixExceedsMaxVerifyGas_RejectedAsOverBudget()
     {
-        // An unbounded loop consumes more than MAX_VERIFY_GAS; the gas cap forces an out-of-gas
-        // revert before any APPROVE, so the prefix is rejected rather than run to completion.
+        // A frame declaring far more than MAX_VERIFY_GAS is capped to the remaining budget; an unbounded
+        // loop then exhausts that cap. The rejection must be reported as over-budget, distinct from a
+        // plain revert of a within-budget frame.
         byte[] code = Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done;
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
@@ -153,7 +154,47 @@ public class FrameTxValidationPrefixSimulationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("MAX_VERIFY_GAS"));
             Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Simulate_PrefixCallsCodelessTarget_RecordsViolation()
+    {
+        // CALL*/EXTCODE* to an address that is neither an existing contract nor a precompile is banned:
+        // its validity would depend on the target staying codeless — an unindexed mempool dependency
+        // (EIP-8141 §Validation Trace Rules, L816). AddressC is never deployed, so it is codeless.
+        byte[] code = Prepare.EvmCode
+            .StaticCall(TestItem.AddressC, 50_000)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    [Test]
+    public void Simulate_PrefixCallsExistingContract_Allowed()
+    {
+        // CALL*/EXTCODE* to an existing (non-delegated) contract is permitted — helper contracts and
+        // libraries may be used during validation (EIP-8141 §Validation Trace Rules, L853).
+        DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        byte[] code = Prepare.EvmCode
+            .StaticCall(TestItem.AddressC, 50_000)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
         }
     }
 
@@ -163,7 +204,7 @@ public class FrameTxValidationPrefixSimulationTests
             .WithBaseFeePerGas(0)
             .WithTransactions(tx)
             .WithGasLimit(30_000_000).TestObject;
-        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress);
+        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
         TransactionResult result = _transactionProcessor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
         return (result, tracer);
