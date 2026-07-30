@@ -13,11 +13,12 @@ namespace Nethermind.Core.Test.Modules;
 
 public class PseudoNethermindModuleTests
 {
-    // Regeneration re-executes a block, so it must stay unreachable from peer-facing serving, which any peer can
-    // drive. The keyed registration is what keeps it out of the decorator chain.
+    // Regeneration re-executes a block, so it must stay unreachable from everything that is not a read-only query:
+    // peer-facing serving, and consensus components that read receipts while processing (AuRa validator contract,
+    // Shutter). Those resolve the unkeyed registration, which must therefore never become the regenerating one.
     [TestCase(true)]
     [TestCase(false)]
-    public void Peer_facing_receipt_finder_is_never_the_regenerating_one(bool deriveFromState)
+    public void Default_receipt_finder_is_never_the_regenerating_one(bool deriveFromState)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(
@@ -27,10 +28,9 @@ public class PseudoNethermindModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(container.Resolve<IReceiptFinder>(),
+            Assert.That(container.Resolve<IReceiptFinder>(), Is.InstanceOf<FullInfoReceiptFinder>());
+            Assert.That(container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
                 deriveFromState ? Is.InstanceOf<RegeneratingReceiptFinder>() : Is.InstanceOf<FullInfoReceiptFinder>());
-            Assert.That(container.ResolveKeyed<IReceiptFinder>(FullInfoReceiptFinder.StoredOnlyKey),
-                Is.InstanceOf<FullInfoReceiptFinder>());
         }
     }
 

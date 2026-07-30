@@ -28,20 +28,13 @@ public static class PersistedSnapshotScanner
 }
 
 /// <summary>
-/// The <see cref="PersistedSnapshotScanner{TSource,TReader,TPin}"/> instantiation over a
-/// <see cref="WholeReadSession"/>, named so consumers don't need a fully-qualified generic alias.
-/// </summary>
-public sealed class WholeReadScanner(WholeReadSession session, PersistedSnapshot snapshot)
-    : PersistedSnapshotScanner<WholeReadSession, WholeReadSessionReader, NoOpPin>(session, snapshot);
-
-/// <summary>
 /// Streaming scan over a persisted snapshot's single-level <see cref="SortedTable"/>, surfacing the
 /// same per-address / state-node / storage-node views the prior columnar scanner did. Each view does a full
 /// forward pass over the table, skipping the columns it does not own (the columns are contiguous in
 /// sorted order). Generic over the byte-reader source so the traversal isn't bound to a specific
 /// reader; the caller guarantees the underlying region stays valid for the scanner's lifetime.
 /// </summary>
-public class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource source, PersistedSnapshot snapshot)
+public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource source, PersistedSnapshot snapshot)
     where TSource : IByteReaderSource<TReader, TPin>
     where TReader : IByteReader<TPin>, allows ref struct
     where TPin : struct, IBufferPin, allows ref struct

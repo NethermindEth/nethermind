@@ -32,13 +32,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private Task? _cleanupTask = null;
         private readonly ConcurrentDictionary<Hash256AsKey, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
         private readonly IBlockTree _blockTree;
-        private readonly IReceiptFinder _receiptFinder;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
 
-        public FeeHistoryOracle(IBlockTree blockTree, IReceiptFinder receiptFinder, ISpecProvider specProvider, ulong? maxDistanceFromHead = null)
+        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, ulong? maxDistanceFromHead = null)
         {
             _blockTree = blockTree;
-            _receiptFinder = receiptFinder;
+            _receiptStorage = receiptStorage;
             _specProvider = specProvider;
             _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount + 4;
             blockTree.BlockAddedToMain += OnBlockAddedToMain;
@@ -267,7 +267,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 }
             }
 
-            TxReceipt[] receipts = _receiptFinder.Get(block, false);
+            TxReceipt[] receipts = _receiptStorage.Get(block, false);
             Transaction[] txs = block.Transactions;
             using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
                 ? CalculateGasUsed(receipts)

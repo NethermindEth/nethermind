@@ -44,7 +44,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             )
             .AddSingleton<FullInfoReceiptFinder>()
             .Bind<IReceiptFinder, FullInfoReceiptFinder>()
-            .AddKeyedSingleton<IReceiptFinder>(FullInfoReceiptFinder.StoredOnlyKey, ctx => ctx.Resolve<FullInfoReceiptFinder>())
+            .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => ctx.Resolve<FullInfoReceiptFinder>())
             .AddSingleton<IHistoryPruner, HistoryPruner>()
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()

@@ -147,7 +147,7 @@ public class ReceiptsRegenerationTests
 
         // Resolving the production graph with the flag on must yield the decorator, proving the module composes:
         // the env-source factory, the pooled source, the regenerator, and the IReceiptFinder decoration all resolve.
-        Assert.That(chain.Container.Resolve<IReceiptFinder>(), Is.InstanceOf<RegeneratingReceiptFinder>());
+        Assert.That(chain.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey), Is.InstanceOf<RegeneratingReceiptFinder>());
     }
 
     // End to end through the production graph: the body is never persisted, yet a query still answers with the real

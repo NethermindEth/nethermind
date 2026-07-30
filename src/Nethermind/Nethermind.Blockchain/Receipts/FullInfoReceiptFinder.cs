@@ -10,13 +10,6 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class FullInfoReceiptFinder(IReceiptStorage receiptStorage, IReceiptsRecovery receiptsRecovery, IBlockFinder blockFinder) : IReceiptFinder
     {
-        /// <summary>
-        /// Registration key for a receipt finder outside any <see cref="IReceiptFinder"/> decorator, so resolving it
-        /// cannot reach receipt regeneration. Peer-facing serving uses it: an inbound request must never cost a
-        /// block execution.
-        /// </summary>
-        public const string StoredOnlyKey = "stored-only-receipts";
-
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));

@@ -13,12 +13,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade.Find
 {
     public class LogFinder(
         IBlockFinder? blockFinder,
-        IReceiptFinder? receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder? receiptFinder,
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
         IReceiptsRecovery? receiptsRecovery,

@@ -15,6 +15,7 @@ using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -28,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IStateReader stateReader,
         IBlockchainBridgeFactory blockchainBridgeFactory,
         ISpecProvider specProvider,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,

@@ -21,9 +21,11 @@ namespace Nethermind.Init.Modules;
 /// in the block-execution stack. Composing it here keeps that dependency off the storage module and confined to nodes
 /// that opt in.
 /// <para>
-/// Registered as an override of <see cref="IReceiptFinder"/> rather than as a decorator: an Autofac decorator also
-/// applies to keyed registrations of the same service, which would pull peer-facing serving — resolving
-/// <see cref="FullInfoReceiptFinder.StoredOnlyKey"/> — into regeneration and let any peer drive a block execution.
+/// Overrides only <see cref="IReceiptFinder.RegenerableKey"/>, never the unkeyed registration. Regeneration costs a
+/// block execution, so it must stay unreachable from anything that is not a read-only query: peer-facing serving,
+/// which any peer can drive, and consensus components that read receipts on the processing path (the AuRa validator
+/// contract, Shutter) — the latter also tolerate absent receipts, which this decorator deliberately does not.
+/// A decorator would not do: an Autofac decorator applies to keyed registrations of the same service too.
 /// </para>
 /// </remarks>
 public class ReceiptRegenerationModule : Module
@@ -36,7 +38,7 @@ public class ReceiptRegenerationModule : Module
             ctx.Resolve<RegeneratingReceiptsEnvSourceFactory>()
                .Create(ctx.Resolve<IJsonRpcConfig>().EthModuleConcurrentInstances ?? Environment.ProcessorCount))
         .AddSingleton<ReceiptsRegenerator>()
-        .AddSingleton<IReceiptFinder>(ctx => new RegeneratingReceiptFinder(
+        .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => new RegeneratingReceiptFinder(
             ctx.Resolve<FullInfoReceiptFinder>(),
             ctx.Resolve<IReceiptStorage>(),
             ctx.Resolve<IBlockFinder>(),
