@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -22,9 +21,8 @@ public class MainProcessingModuleTests
             .AddModule(new TestNethermindModule())
             .Build();
 
-        (ctx.Resolve<IMainProcessingContext>() as MainProcessingContext)
+        Assert.That((ctx.Resolve<IMainProcessingContext>() as MainProcessingContext)
             .LifetimeScope
-            .Resolve<ICodeInfoRepository>()
-            .Should().BeOfType<PrecompileCachedCodeInfoRepository>();
+            .Resolve<ICodeInfoRepository>(), Is.TypeOf<PrecompileCachedCodeInfoRepository>());
     }
 }

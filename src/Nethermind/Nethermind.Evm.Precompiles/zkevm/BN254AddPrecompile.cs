@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -10,9 +11,9 @@ public partial class BN254AddPrecompile
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool Add(ReadOnlySpan<byte> input, byte[] output) =>
-        ZiskBindings.Crypto.bn254_g1_add_c(
+        Accelerators.BN254G1Add(
             input[..(InputLength / 2)],
             input[(InputLength / 2)..],
             output
-        ) == 0;
+        ) == Accelerators.Status.OK;
 }

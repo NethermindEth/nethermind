@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
+using Autofac.Builder;
 using Autofac.Core;
 
 namespace Nethermind.Core.Container;
@@ -55,7 +56,7 @@ public static class OrderedComponentsContainerBuilderExtensions
     /// <c>T[]</c> from <see cref="OrderedComponents{T}"/>. It also relaxes the ordered components
     /// safety check to allow this single <typeparamref name="T"/> registration.
     /// </summary>
-    public static ContainerBuilder AddCompositeOrderedComponents<T, TComposite>(this ContainerBuilder builder) where T : class where TComposite : class, T
+    public static ContainerBuilder AddCompositeOrderedComponents<T, TComposite>(this ContainerBuilder builder, bool singleInstance = false) where T : class where TComposite : class, T
     {
         builder.EnsureOrderedComponents<T>();
 
@@ -63,12 +64,34 @@ public static class OrderedComponentsContainerBuilderExtensions
         if (!builder.Properties.TryAdd(compositeMarker, null))
             return builder;
 
-        builder.RegisterType<TComposite>()
+        IRegistrationBuilder<TComposite, ConcreteReflectionActivatorData, SingleRegistrationStyle> registration = builder.RegisterType<TComposite>()
             .As<T>()
             .AsSelf();
 
+        if (singleInstance)
+        {
+            registration = registration.SingleInstance();
+        }
+
         return builder;
     }
+
+    /// <summary>
+    /// Remove all previously registered ordered components of type <typeparamref name="TImpl"/> for <typeparamref name="T"/>.
+    /// Useful when a plugin replaces a default component instead of layering on top of it
+    /// (e.g., XDC dropping the default eth/68 capability resolver).
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="ClearOrderedComponents{T}"/>, this relies on the removing decorator being registered
+    /// after the component it targets, which holds when a plugin module loads after the core module that
+    /// registered the default.
+    /// </remarks>
+    public static ContainerBuilder RemoveOrderedComponents<T, TImpl>(this ContainerBuilder builder) where TImpl : T =>
+        builder.AddDecorator<OrderedComponents<T>>((_, orderedComponents) =>
+        {
+            orderedComponents.RemoveAll(static item => item is TImpl);
+            return orderedComponents;
+        });
 
     /// <summary>
     /// Clear all previously registered ordered components for <typeparamref name="T"/>.

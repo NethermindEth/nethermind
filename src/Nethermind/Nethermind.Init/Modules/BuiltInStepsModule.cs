@@ -5,7 +5,7 @@ using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Init.Steps;
 
-namespace Nethermind.Runner.Ethereum.Modules;
+namespace Nethermind.Init.Modules;
 
 public class BuiltInStepsModule : Module
 {
@@ -15,20 +15,16 @@ public class BuiltInStepsModule : Module
         typeof(DatabaseMigrations),
         typeof(EraEStep),
         typeof(EraStep),
-        typeof(InitDatabase),
         typeof(InitializeBlockchain),
         typeof(EvmWarmer),
         typeof(InitializeBlockProducer),
         typeof(InitializeBlockTree),
         typeof(InitializeNetwork),
-        typeof(InitializePlugins),
         typeof(InitializePrecompiles),
         typeof(InitTxTypesAndRlp),
         typeof(LoadGenesisBlock),
         typeof(LogHardwareInfo),
-        typeof(RegisterPluginRpcModules),
         typeof(RegisterRpcModules),
-        typeof(ResolveIps),
         typeof(ReviewBlockTree),
         typeof(SetupKeyStore),
         typeof(StartBlockProcessor),

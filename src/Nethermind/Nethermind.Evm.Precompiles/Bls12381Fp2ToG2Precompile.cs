@@ -12,7 +12,7 @@ namespace Nethermind.Evm.Precompiles;
 /// </summary>
 public partial class Bls12381Fp2ToG2Precompile : IPrecompile<Bls12381Fp2ToG2Precompile>
 {
-    public static readonly Bls12381Fp2ToG2Precompile Instance = new();
+    public static Bls12381Fp2ToG2Precompile Instance { get; } = new();
 
     private Bls12381Fp2ToG2Precompile() { }
 
@@ -20,9 +20,9 @@ public partial class Bls12381Fp2ToG2Precompile : IPrecompile<Bls12381Fp2ToG2Prec
 
     public static string Name => "BLS12_MAP_FP2_TO_G2";
 
-    public long BaseGasCost(IReleaseSpec _) => 23800L;
+    public ulong BaseGasCost(IReleaseSpec _) => 23800UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

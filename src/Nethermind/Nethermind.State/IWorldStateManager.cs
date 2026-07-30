@@ -23,8 +23,6 @@ public interface IWorldStateManager
     /// <returns></returns>
     IWorldStateScopeProvider CreateResettableWorldState();
 
-    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
     IOverridableWorldScope CreateOverridableWorldScope();
 
     /// <summary>

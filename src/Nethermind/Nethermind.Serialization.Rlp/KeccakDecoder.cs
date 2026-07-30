@@ -7,14 +7,14 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(KeccakDecoder))]
-    public sealed class KeccakDecoder() : RlpValueDecoder<Hash256>
+    public sealed class KeccakDecoder() : RlpDecoder<Hash256>
     {
         public static readonly KeccakDecoder Instance = new();
 
-        protected override Hash256? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
+        protected override Hash256? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
 
         public override int GetLength(Hash256 item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
 
-        public override void Encode(RlpStream stream, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
+        public override void Encode<TWriter>(ref TWriter writer, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => writer.Encode(item);
     }
 }

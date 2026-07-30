@@ -4,7 +4,6 @@
 [![Follow us on X](https://img.shields.io/twitter/follow/nethermind?style=social&label=Follow%20us)](https://x.com/nethermind)
 [![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)][discord]
 [![GitHub Discussions](https://img.shields.io/github/discussions/nethermindeth/nethermind?style=social)][discussions]
-[![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/7c077f6c-4a62-42e2-9ef1-abc580bb2413" alt="Nethermind client" width="100%">
@@ -18,7 +17,7 @@ Runs on Linux, Windows, and macOS.
 
 ### Supported networks
 
-**Ethereum** · **Gnosis** · **Optimism** · **Base** · **Taiko** · **World Chain** · **Linea** · **Energy Web**
+**Ethereum** · **Gnosis** · **Optimism** · **Taiko** · **World Chain** · **Linea** · **Energy Web**
 
 ### Documentation
 
@@ -110,7 +109,7 @@ For more info, see [Building Docker image](https://docs.nethermind.io/developers
 
 **Prerequisites**
 
-Install [.NET SDK](https://aka.ms/dotnet/download) 10 or later.
+Install [.NET SDK](https://get.dot.net) 10 or later.
 
 **Clone the repository**
 

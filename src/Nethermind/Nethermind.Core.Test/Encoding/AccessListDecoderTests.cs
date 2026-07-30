@@ -1,8 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -88,39 +88,63 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((string TestName, AccessList? AccessList) testCase)
         {
-            RlpStream rlpStream = new(10000);
-            _decoder.Encode(rlpStream, testCase.AccessList);
-            Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+            byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
+            RlpWriter writer = new(bytes);
+            _decoder.Encode(ref writer, testCase.AccessList);
+            RlpReader ctx = new(bytes);
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
-                decoded.Should().BeNull();
+                Assert.That(decoded, Is.Null);
             }
             else
             {
-                decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
+                Assert.That(decoded, Is.EqualTo(testCase.AccessList), testCase.TestName);
             }
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_value((string TestName, AccessList? AccessList) testCase)
         {
-            RlpStream rlpStream = new(10000);
-            _decoder.Encode(rlpStream, testCase.AccessList);
-            rlpStream.Position = 0;
-            Rlp.ValueDecoderContext ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
+            byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
+            RlpWriter writer = new(bytes);
+            _decoder.Encode(ref writer, testCase.AccessList);
+            RlpReader ctx = new(bytes.AsSpan());
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
-                decoded.Should().BeNull();
+                Assert.That(decoded, Is.Null);
             }
             else
             {
-                decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
+                Assert.That(decoded, Is.EqualTo(testCase.AccessList), testCase.TestName);
             }
         }
 
         [Test]
-        public void Get_length_returns_1_for_null() => _decoder.GetLength(null, RlpBehaviors.None).Should().Be(1);
+        public void Get_length_returns_1_for_null() => Assert.That(_decoder.GetLength((AccessList?)null, RlpBehaviors.None), Is.EqualTo(1));
+
+        [Test]
+        public void Rejects_entry_missing_storage_keys_array()
+        {
+            const string error = "storage keys";
+            byte[] invalid = Convert.FromHexString("d6d5940000000000000000000000000000000000000000");
+
+            void DecodeStream()
+            {
+                RlpReader ctx = new(invalid.AsSpan());
+                _decoder.Decode(ref ctx);
+            }
+
+            Assert.That(DecodeStream, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+
+            void DecodeContext()
+            {
+                RlpReader ctx = new(invalid.AsSpan());
+                _decoder.Decode(ref ctx);
+            }
+
+            Assert.That(DecodeContext, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+        }
     }
 }

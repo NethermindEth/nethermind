@@ -46,12 +46,6 @@ public class MergeOperatorTests
     )]
     [TestCase(
         "1, 2",
-        new[] { "3, 4", "Reorg:4", "Reorg:3", "5, 6" },
-        "1, 2, 5, 6",
-        Ignore = "Subsequent reverse reorgs are not supported."
-    )]
-    [TestCase(
-        "1, 2",
         new[] { "3, 4", "Reorg:3", "5, 6", "Reorg:5", "6, 7" },
         "1, 2, 6, 7"
     )]

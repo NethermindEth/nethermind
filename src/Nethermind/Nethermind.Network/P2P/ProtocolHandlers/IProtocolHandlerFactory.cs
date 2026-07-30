@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers;
 public interface IProtocolHandlerFactory
 {
     /// <summary>
-    /// The protocol code this factory creates handlers for (e.g., "snap", "nodedata", "eth").
+    /// The protocol code this factory creates handlers for (e.g., "snap", "eth").
     /// </summary>
     string ProtocolCode { get; }
 

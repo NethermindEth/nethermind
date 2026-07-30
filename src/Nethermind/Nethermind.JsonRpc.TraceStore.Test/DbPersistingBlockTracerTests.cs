@@ -5,8 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -14,9 +14,11 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
-namespace Nethermind.JsonRpc.TraceStore.Tests;
+namespace Nethermind.JsonRpc.TraceStore.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class DbPersistingBlockTracerTests
@@ -62,8 +64,9 @@ public class DbPersistingBlockTracerTests
             }
         );
 
-        traces.Should().BeEquivalentTo(new ParityLikeTxTrace[]
-        {
+        EthereumJsonSerializer serializer = new();
+        ParityLikeTxTrace[] expected =
+        [
             new()
             {
                 BlockHash = hash,
@@ -77,7 +80,7 @@ public class DbPersistingBlockTracerTests
                     Input = TestItem.RandomDataA,
                     Result = new ParityTraceResult { GasUsed = 50, Output = TestItem.RandomDataB },
                     To = TestItem.AddressB,
-                    TraceAddress = [],
+                    TraceAddress = CappedArray<int>.Empty,
                     Type = "call",
                     Value = 50,
                     Subtraces =
@@ -90,9 +93,9 @@ public class DbPersistingBlockTracerTests
                             IncludeInTrace = true,
                             Input = TestItem.RandomDataC,
                             Result = new ParityTraceResult { GasUsed = 20, Output = TestItem.RandomDataD },
-                            Subtraces = new List<ParityTraceAction>(),
+                            Subtraces = [],
                             To = TestItem.AddressC,
-                            TraceAddress = [0],
+                            TraceAddress = new int[] { 0 },
                             CreationMethod = "create",
                             Type = "create",
                             Value = 20
@@ -100,7 +103,9 @@ public class DbPersistingBlockTracerTests
                     ]
                 }
             }
-        });
+        ];
+
+        Assert.That(JToken.Parse(serializer.Serialize(traces)), Is.EqualTo(JToken.Parse(serializer.Serialize(expected))).Using(JToken.EqualityComparer));
     }
 
     [TestCase(510)]
@@ -138,13 +143,13 @@ public class DbPersistingBlockTracerTests
                     action = action.Subtraces.FirstOrDefault();
                 }
 
-                checkedDepth.Should().Be(depth);
+                Assert.That(checkedDepth, Is.EqualTo(depth));
             }
             catch (Exception ex)
             {
                 caught = ex;
             }
-        }, maxStackSize: 4 * 1024 * 1024);
+        }, maxStackSize: 4 * MemorySizes.MiB);
         thread.Start();
         thread.Join();
         if (caught is not null) throw caught;

@@ -11,38 +11,27 @@ using Nethermind.Tools.Kute.AsyncProcessor;
 
 namespace Nethermind.Tools.Kute;
 
-public sealed class Application
-{
-    private readonly IAsyncProcessor _processor;
-    private readonly IMessageProvider<JsonRpc> _msgProvider;
-    private readonly IJsonRpcSubmitter _submitter;
-    private readonly IJsonRpcValidator _validator;
-    private readonly IResponseTracer _responseTracer;
-    private readonly IMetricsReporter _reporter;
-    private readonly IJsonRpcMethodFilter _methodFilter;
-
-    public Application(
-        IAsyncProcessor processor,
-        IMessageProvider<JsonRpc> msgProvider,
-        IJsonRpcSubmitter submitter,
-        IJsonRpcValidator validator,
-        IResponseTracer responseTracer,
-        IMetricsReporter reporter,
-        IJsonRpcMethodFilter methodFilter
+public sealed class Application(
+    IAsyncProcessor processor,
+    IMessageProvider<JsonRpc> msgProvider,
+    IJsonRpcSubmitter submitter,
+    IJsonRpcValidator validator,
+    IResponseTracer responseTracer,
+    IMetricsReporter reporter,
+    IJsonRpcMethodFilter methodFilter
     )
-    {
-        _processor = processor;
-        _msgProvider = msgProvider;
-        _submitter = submitter;
-        _validator = validator;
-        _responseTracer = responseTracer;
-        _reporter = reporter;
-        _methodFilter = methodFilter;
-    }
+{
+    private readonly IAsyncProcessor _processor = processor;
+    private readonly IMessageProvider<JsonRpc> _msgProvider = msgProvider;
+    private readonly IJsonRpcSubmitter _submitter = submitter;
+    private readonly IJsonRpcValidator _validator = validator;
+    private readonly IResponseTracer _responseTracer = responseTracer;
+    private readonly IMetricsReporter _reporter = reporter;
+    private readonly IJsonRpcMethodFilter _methodFilter = methodFilter;
 
     public async Task Run(CancellationToken token = default)
     {
-        var totalTimer = new Timer();
+        Timer totalTimer = new();
         using (totalTimer.Time())
         {
             await _processor.Process(_msgProvider.Messages(token), async jsonRpc =>
@@ -69,7 +58,7 @@ public sealed class Application
                 {
                     JsonRpc.Response response;
 
-                    var timer = new Timer();
+                    Timer timer = new();
                     using (timer.Time())
                     {
                         response = await _submitter.Submit(batch, token);
@@ -104,7 +93,7 @@ public sealed class Application
 
                     JsonRpc.Response response;
 
-                    var timer = new Timer();
+                    Timer timer = new();
                     using (timer.Time())
                     {
                         response = await _submitter.Submit(single, token);

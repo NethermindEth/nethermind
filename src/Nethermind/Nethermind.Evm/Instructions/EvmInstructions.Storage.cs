@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -37,11 +37,8 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the opcode metric for TLOAD.
-        Metrics.TloadOpcode++;
-
         // Deduct the fixed gas cost for TLOAD.
-        TGasPolicy.Consume(ref gas, GasCostOf.TLoad);
+        TGasPolicy.Consume<TLoadGasCost>(ref gas);
 
         // Attempt to pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -56,9 +53,9 @@ public static partial class EvmInstructions
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
 
         // If storage tracing is enabled, record the operation.
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
-            if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
+            if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
             vm.TxTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
         }
 
@@ -86,16 +83,13 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionTStore<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Increment the opcode metric for TSTORE.
-        Metrics.TstoreOpcode++;
-
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Disallow storage modification during static calls.
         if (vmState.IsStatic) goto StaticCallViolation;
 
         // Deduct the gas cost for TSTORE.
-        TGasPolicy.Consume(ref gas, GasCostOf.TStore);
+        TGasPolicy.Consume<TStoreGasCost>(ref gas);
 
         // Pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -104,15 +98,15 @@ public static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         // Pop the 32-byte value from the stack.
-        Span<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytes)) goto StackUnderflow;
 
         // Store either the actual value (if non-zero) or a predefined zero constant.
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
-            if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
+            if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
             ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
             vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -145,7 +139,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Single bounds check covering both the offset and the word.
         if (!stack.PopUInt256AndWord256(out UInt256 result, out Span<byte> bytes)) goto StackUnderflow;
@@ -153,7 +147,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a 32-byte store; if insufficient gas, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, vmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
         {
             goto OutOfGas;
         }
@@ -192,7 +186,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Pop the memory offset from the stack; if missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -205,7 +199,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, vmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, ref vmState.Memory))
         {
             goto OutOfGas;
         }
@@ -242,7 +236,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Pop the memory offset; if missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -250,7 +244,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update memory cost for a 32-byte load.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, vmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
         {
             goto OutOfGas;
         }
@@ -290,14 +284,12 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the opcode metric for MCOPY.
-        Metrics.MCopyOpcode++;
-
         // Pop destination, source, and length values; if any are missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)) goto StackUnderflow;
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
+        ulong words = EvmCalculations.Div32Ceiling(c, out bool outOfGas);
+        TGasPolicy.ConsumeMemoryCopy(ref gas, words);
         if (outOfGas) goto OutOfGas;
 
         if (c.IsZero)
@@ -308,7 +300,7 @@ public static partial class EvmInstructions
         VmState<TGasPolicy> vmState = vm.VmState;
 
         // Update memory cost for the destination area (largest offset among source and destination) over the specified length.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, UInt256.Max(b, a), c, vmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, UInt256.Max(b, a), c, ref vmState.Memory))
         {
             goto OutOfGas;
         }
@@ -355,8 +347,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the SSTORE opcode metric.
-        Metrics.IncrementSStoreOpcode();
+        vm.MetricsCounters.IncrementSStore();
 
         VmState<TGasPolicy> vmState = vm.VmState;
         // Disallow storage modifications in static calls.
@@ -365,21 +356,22 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost))
+        if (!TGasPolicy.ConsumeSStoreResetGas(ref gas, spec))
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
+        ReadOnlySpan<byte> bytes = bytesSpan;
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        // Detect an all-zero value and strip leading zeros from a single scan.
+        int leadingZeros = bytes.LeadingZerosCount();
+        bool newIsZero = leadingZeros == bytes.Length;
+        bytes = newIsZero ? BytesZero : bytes[leadingZeros..];
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // Charge gas based on whether this is a cold or warm storage access.
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
@@ -391,7 +383,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = spec.GasCosts.SClearRefund;
+        long sClearRefunds = (long)spec.GasCosts.SClearRefund;
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -406,7 +398,7 @@ public static partial class EvmInstructions
         // When setting a non-zero value over an existing zero, apply the difference in gas costs.
         else if (currentIsZero)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.SSet - GasCostOf.SReset))
+            if (!TGasPolicy.ConsumeSSetFromCleanGas(ref gas))
                 goto OutOfGas;
         }
 
@@ -414,6 +406,10 @@ public static partial class EvmInstructions
         if (!newSameAsCurrent)
         {
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            if (newIsZero)
+            {
+                vm.MetricsCounters.IncrementStorageDeleted();
+            }
         }
 
         // Report storage changes for tracing if enabled.
@@ -422,7 +418,7 @@ public static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -459,8 +455,7 @@ public static partial class EvmInstructions
         where TUseNetGasStipendFix : struct, IFlag
         where TEip8037 : struct, IFlag
     {
-        // Increment the SSTORE opcode metric.
-        Metrics.IncrementSStoreOpcode();
+        vm.MetricsCounters.IncrementSStore();
 
         VmState<TGasPolicy> vmState = vm.VmState;
         // Disallow storage modifications in static calls.
@@ -480,20 +475,22 @@ public static partial class EvmInstructions
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
+        ReadOnlySpan<byte> bytes = bytesSpan;
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        // Detect an all-zero value and strip leading zeros from a single scan.
+        int leadingZeros = bytes.LeadingZerosCount();
+        bool newIsZero = leadingZeros == bytes.Length;
+        bytes = newIsZero ? BytesZero : bytes[leadingZeros..];
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // Charge gas based on whether this is a cold or warm storage access.
+        // Charge gas based on whether this is a cold or warm storage access before reading
+        // the slot; BAL records the read only once the access cost is covered.
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
-        // Retrieve the current value from persistent storage.
         ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
         bool currentIsZero = currentValue.IsZero();
 
@@ -501,17 +498,17 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = gasCosts.SClearRefund;
+        long sClearRefunds = (long)gasCosts.SClearRefund;
 
         if (newSameAsCurrent)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, gasCosts.NetMeteredSStoreCost))
+            if (!TGasPolicy.ConsumeNetMeteredSStoreGas(ref gas, spec))
                 goto OutOfGas;
         }
         else
         {
             // Retrieve the original storage value to determine if this is a reversal.
-            Span<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
+            ReadOnlySpan<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
             bool originalIsZero = originalValue.IsZero();
             bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
 
@@ -537,8 +534,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                long netMeteredStoreCost = gasCosts.NetMeteredSStoreCost;
-                if (!TGasPolicy.UpdateGas(ref gas, netMeteredStoreCost))
+                if (!TGasPolicy.ConsumeNetMeteredSStoreGas(ref gas, spec))
                     goto OutOfGas;
 
                 if (!originalIsZero)
@@ -563,7 +559,18 @@ public static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    long refundFromReversal = gasCosts.RefundFromReversal<TEip8037>(originalIsZero);
+                    // EIP-8038: restoring a slot's original value refunds the first-change STORAGE_WRITE;
+                    // a freshly-created slot (original 0) additionally refunds its state gas in-frame.
+                    long refundFromReversal = spec.IsEip8038Enabled
+                        ? (long)Eip8038Constants.StorageWrite
+                        : (long)gasCosts.RefundFromReversal(originalIsZero);
+
+                    if (TEip8037.IsActive && originalIsZero)
+                    {
+                        vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost());
+                        if (!spec.IsEip8038Enabled)
+                            refundFromReversal = (long)(GasCostOf.SSetRegular - GasCostOf.WarmStateRead);
+                    }
 
                     vmState.Refund += refundFromReversal;
                     if (vm.TxTracer.IsTracingRefunds)
@@ -576,6 +583,10 @@ public static partial class EvmInstructions
         if (!newSameAsCurrent)
         {
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            if (newIsZero)
+            {
+                vm.MetricsCounters.IncrementStorageDeleted();
+            }
         }
 
         // Report storage changes for tracing if enabled.
@@ -584,7 +595,7 @@ public static partial class EvmInstructions
             TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
@@ -628,11 +639,10 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
 
-        // Increment the SLOAD opcode metric.
-        Metrics.IncrementSLoadOpcode();
+        vm.MetricsCounters.IncrementSLoad();
 
         // Deduct the gas cost for performing an SLOAD.
-        TGasPolicy.Consume(ref gas, spec.GasCosts.SLoadCost);
+        TGasPolicy.Consume<SLoadGasCost>(ref gas, spec);
 
         // Pop the key from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -645,12 +655,15 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
-        // Retrieve the persistent storage value and push it onto the stack.
+        // Retrieve the persistent storage value and push it onto the stack. Zero slots come back
+        // as a single zero byte; PushZero writes the word directly instead of packing the byte.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
-        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
+        EvmExceptionType pushResult = value.Length == 1 && value[0] == 0
+            ? stack.PushZero<TTracingInst>()
+            : stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
-        if (vm.TxTracer.IsTracingStorage)
+        if (vm.TxTracer.IsTracingOpLevelStorage)
         {
             vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
         }
@@ -673,7 +686,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Pop the offset from which to load call data.
         if (!stack.PopUInt256(out UInt256 result))

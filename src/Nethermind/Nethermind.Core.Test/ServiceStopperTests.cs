@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -26,8 +25,11 @@ public class ServiceStopperTests
         Service2 service2 = container.Resolve<Service2>();
         await container.Resolve<IServiceStopper>().StopAllServices();
 
-        service1.Stopped.Should().BeTrue();
-        service2.Stopped.Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service1.Stopped, Is.True);
+            Assert.That(service2.Stopped, Is.True);
+        }
     }
 
     [Test]
@@ -44,8 +46,11 @@ public class ServiceStopperTests
         Service2 service2 = container.Resolve<Service2>();
         await container.Resolve<IServiceStopper>().StopAllServices();
 
-        service1.Stopped.Should().BeTrue();
-        service2.Stopped.Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service1.Stopped, Is.True);
+            Assert.That(service2.Stopped, Is.False);
+        }
     }
 
     internal class Service1 : IStoppableService

@@ -10,7 +10,6 @@
     <OptimizationPreference>Speed</OptimizationPreference>
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
     <NethermindCallChainProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json</NethermindCallChainProfile>
-    <PublishReadyToRunMibcPaths Condition="Exists('$(NethermindPgoProfile)')">$(NethermindPgoProfile)</PublishReadyToRunMibcPaths>
     <!-- Inline framework methods (Dictionary, Span, Memory, etc.) into Nethermind R2R code.
          Safe because Docker images pin the framework version via base image hash.
          The * wildcard enables inlining from all referenced modules. -->
@@ -20,9 +19,15 @@
     <!-- Use CallFrequency layout when call chain profile is available (directed caller-before-callee
          placement). Falls back to PettisHansen when only .mibc is available. -->
     <!-- Match file layout to method ordering so hot methods are on adjacent pages on disk. -->
-    <Crossgen2ExtraCommandLineArgs>$(Crossgen2ExtraCommandLineArgs);--opt-cross-module:*;--hot-cold-splitting;--file-layout:methodorder</Crossgen2ExtraCommandLineArgs>
-    <Crossgen2ExtraCommandLineArgs Condition="Exists('$(NethermindCallChainProfile)')">$(Crossgen2ExtraCommandLineArgs);--callchain-profile:$(NethermindCallChainProfile);--method-layout:callfrequency</Crossgen2ExtraCommandLineArgs>
-    <Crossgen2ExtraCommandLineArgs Condition="!Exists('$(NethermindCallChainProfile)')">$(Crossgen2ExtraCommandLineArgs);--method-layout:pettishansen</Crossgen2ExtraCommandLineArgs>
+    <!-- The SDK forwards $(PublishReadyToRunCrossgen2ExtraArgs) to crossgen2; the task-internal
+         Crossgen2ExtraCommandLineArgs name is not user-settable. -->
+    <PublishReadyToRunCrossgen2ExtraArgs>$(PublishReadyToRunCrossgen2ExtraArgs);--opt-cross-module:*;--hot-cold-splitting;--file-layout:methodorder</PublishReadyToRunCrossgen2ExtraArgs>
+    <PublishReadyToRunCrossgen2ExtraArgs Condition="Exists('$(NethermindCallChainProfile)')">$(PublishReadyToRunCrossgen2ExtraArgs);--callchain-profile:$(NethermindCallChainProfile);--method-layout:callfrequency</PublishReadyToRunCrossgen2ExtraArgs>
+    <PublishReadyToRunCrossgen2ExtraArgs Condition="!Exists('$(NethermindCallChainProfile)')">$(PublishReadyToRunCrossgen2ExtraArgs);--method-layout:pettishansen</PublishReadyToRunCrossgen2ExtraArgs>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(PublishReadyToRun)' == 'true' and Exists('$(NethermindPgoProfile)')">
+    <PublishReadyToRunPgoFiles Include="$(NethermindPgoProfile)" />
+  </ItemGroup>
 
 </Project>

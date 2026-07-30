@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Nethermind.Trie.Pruning;
 
 public class CompositePersistenceStrategy : IPersistenceStrategy
 {
-    private readonly List<IPersistenceStrategy> _strategies = new();
+    private readonly List<IPersistenceStrategy> _strategies = [];
 
     public CompositePersistenceStrategy(params IPersistenceStrategy[] strategies) => _strategies.AddRange(strategies);
 
@@ -18,5 +17,16 @@ public class CompositePersistenceStrategy : IPersistenceStrategy
         return this;
     }
 
-    public bool ShouldPersist(long blockNumber) => _strategies.Any(strategy => strategy.ShouldPersist(blockNumber));
+    public bool ShouldPersist(ulong blockNumber)
+    {
+        for (int i = 0; i < _strategies.Count; i++)
+        {
+            if (_strategies[i].ShouldPersist(blockNumber))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

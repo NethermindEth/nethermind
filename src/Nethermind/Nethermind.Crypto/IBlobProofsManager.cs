@@ -38,8 +38,11 @@ public interface IBlobProofsBuilder
 
 public interface IBlobProofsVerifier
 {
-
     bool ValidateLengths(ShardBlobNetworkWrapper blobs);
+
+    /// <remarks>
+    /// Expected to be called only if <see cref="ValidateLengths(ShardBlobNetworkWrapper)"/> returns <c>true</c>.
+    /// </remarks>
     public bool ValidateHashes(ShardBlobNetworkWrapper blobs, ReadOnlySpan<byte[]> blobVersionedHashes)
     {
         if (blobs.Blobs.Length != blobVersionedHashes.Length)

@@ -43,24 +43,24 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         // no events loaded initially
         List<Transaction> txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(0));
+        Assert.That(txs.Count, Is.EqualTo(0));
 
         // after timeout they should be loaded
         using CancellationTokenSource cts = new();
         await chain.Api.TxSource.WaitForTransactions(BuildingSlot, cts.Token);
         txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(20));
+        Assert.That(txs.Count, Is.EqualTo(20));
 
         // late block arrives, then next block should contain loaded transactions
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 2, lastPayload, true, null, 5);
         lastPayload = payloads[^1];
-        Block? b = lastPayload.TryGetBlock().Block;
+        Block? b = lastPayload.TryGetBlock().Data;
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
 
 
     [Test]
-    [Retry(3)]
+    [Category("Flaky"), Retry(3)]
     public async Task Can_load_when_block_arrives_before_keys()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
@@ -77,7 +77,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         // no events loaded initially
         List<Transaction> txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(0));
+        Assert.That(txs.Count, Is.EqualTo(0));
 
         chain.Api.AdvanceSlot(20);
 
@@ -85,11 +85,11 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         lastPayload = payloads[0];
 
         txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(20));
+        Assert.That(txs.Count, Is.EqualTo(20));
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
-        Block? b = lastPayload.TryGetBlock().Block;
+        Block? b = lastPayload.TryGetBlock().Data;
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
 

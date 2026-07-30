@@ -16,12 +16,15 @@
     <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
     <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
     <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+    <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
+    <Project Path="Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
     <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
     <Project Path="Nethermind.State/Nethermind.State.csproj" />
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   </Folder>
+  <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
   <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
   <Project Path="Nethermind.Stateless.ZiskGuest/Nethermind.Stateless.ZiskGuest.csproj" />
 </Solution>

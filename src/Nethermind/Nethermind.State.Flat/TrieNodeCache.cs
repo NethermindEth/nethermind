@@ -37,7 +37,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
     {
         _logger = logManager.GetClassLogger<TrieNodeCache>();
 
-        long maxCacheMemoryThreshold = flatDbConfig.TrieCacheMemoryBudget;
+        long maxCacheMemoryThreshold = (long)flatDbConfig.TrieCacheMemoryBudget;
         long totalNodeCount = (maxCacheMemoryThreshold / EstimatedSizePerNode);
 
         int targetBucketSize = (int)((totalNodeCount / UtilRatio) / ShardCount);

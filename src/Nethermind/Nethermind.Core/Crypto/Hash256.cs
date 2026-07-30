@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -65,7 +66,11 @@ namespace Nethermind.Core.Crypto
 
         public long GetHashCode64() => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)));
 
-        public int GetChainedHashCode(uint previousHash) => Bytes.FastHash() ^ (int)previousHash;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetChainedHashCode(uint previousHash) => (int)BitOperations.Crc32C(previousHash, (uint)Bytes.FastHash());
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetChainedHashCode(ulong previousHash) => (int)BitOperations.Crc32C((uint)previousHash, (previousHash & ~(ulong)uint.MaxValue) | (uint)Bytes.FastHash());
 
         public int CompareTo(ValueHash256 other) => Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
 
@@ -130,7 +135,8 @@ namespace Nethermind.Core.Crypto
 
         private readonly ValueHash256 _hash256;
 
-        [ThreadStatic] private static byte[]? _threadStaticBuffer;
+        [ThreadStatic]
+        private static byte[]? _threadStaticBuffer;
 
         public ref readonly ValueHash256 ValueHash256 => ref _hash256;
 

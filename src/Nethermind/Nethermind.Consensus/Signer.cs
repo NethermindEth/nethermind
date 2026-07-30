@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -37,21 +37,25 @@ namespace Nethermind.Consensus
             SetSigner(key);
         }
 
-        public Signature Sign(in ValueHash256 message)
+        public bool TrySign(in ValueHash256 message, [NotNullWhen(true)] out Signature signature)
         {
-            if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
-            return new Signature(rs, v);
+            if (_key is null)
+            {
+                signature = null!;
+                return false;
+            }
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, _key.KeyBytes, out int v);
+            signature = new Signature(rs, v);
+            return true;
         }
 
-        public Signature Sign(BlockHeader header) => Sign(header.Hash);
-
-        public ValueTask Sign(Transaction tx)
+        public bool TrySign(Transaction tx)
         {
-            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
-            tx.Signature = Sign(hash);
-            tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * _chainId : (ulong)(tx.Signature.RecoveryId + 27);
-            return default;
+            ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
+            if (!TrySign(in hash, out Signature sig)) return false;
+            sig.V = tx.Type == TxType.Legacy ? sig.V + 8 + 2 * _chainId : (ulong)(sig.RecoveryId + 27);
+            tx.Signature = sig;
+            return true;
         }
 
         public PrivateKey? Key => _key is null ? null : new PrivateKey(_key.KeyBytes);

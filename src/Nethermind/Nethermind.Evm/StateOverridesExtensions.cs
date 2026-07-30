@@ -15,6 +15,7 @@ namespace Nethermind.Evm;
 
 public static class StateOverridesExtensions
 {
+    private static readonly UInt256 MaxNonce = ulong.MaxValue;
 
     public static void ApplyStateOverridesNoCommit(
         this IWorldState state,
@@ -27,9 +28,15 @@ public static class StateOverridesExtensions
             overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
+                if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
+                    throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
+
                 if (!state.TryGetAccount(address, out AccountStruct account))
                 {
-                    state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? UInt256.Zero);
+                    if (accountOverride.HasStateChanges)
+                    {
+                        state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? 0);
+                    }
                 }
                 else
                 {
@@ -48,10 +55,12 @@ public static class StateOverridesExtensions
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
-        long blockNumber)
+        ulong blockNumber)
     {
+        // EIP-158 must not delete accounts whose code/nonce were zeroed
+        // while storage remains, or EIP-7610 CREATE collision checks will miss it.
+        spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
-
         state.Commit(spec, commitRoots: true);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
@@ -87,7 +96,7 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.MovePrecompileToAddress is not null)
         {
-            if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
+            if (!overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile)
             {
                 throw new ArgumentException($"Account {address} is not a precompile");
             }
@@ -117,13 +126,13 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.Nonce is not null)
         {
-            UInt256 nonce = account.Nonce;
-            UInt256 newNonce = accountOverride.Nonce.Value;
+            ulong nonce = account.Nonce;
+            ulong newNonce = accountOverride.Nonce.Value;
             if (nonce > newNonce)
             {
                 stateProvider.DecrementNonce(address, nonce - newNonce);
             }
-            else if (nonce < accountOverride.Nonce)
+            else if (nonce < newNonce)
             {
                 stateProvider.IncrementNonce(address, newNonce - nonce);
             }
@@ -152,3 +161,4 @@ public static class StateOverridesExtensions
         }
     }
 }
+

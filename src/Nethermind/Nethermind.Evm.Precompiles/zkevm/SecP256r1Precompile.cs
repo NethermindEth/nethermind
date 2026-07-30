@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -13,7 +14,7 @@ public partial class SecP256r1Precompile
     {
         ReadOnlySpan<byte> input = inputData.Span;
 
-        return inputData.Length == 160 && ZiskBindings.Crypto.secp256r1_ecdsa_verify_c(
+        return input.Length == 160 && Accelerators.SecP256r1Verify(
             input[..32], input[32..96], input[96..]
             ) ? _successResult : [];
     }

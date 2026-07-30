@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using NUnit.Framework;
 
@@ -23,6 +22,6 @@ public class CompositeBlockProductionTriggerTests
         trigger1.BuildBlock();
         trigger2.BuildBlock();
 
-        triggered.Should().Be(4);
+        Assert.That(triggered, Is.EqualTo(4));
     }
 }

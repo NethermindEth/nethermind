@@ -7,21 +7,21 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class MainnetSpecProvider : ISpecProvider
+public class MainnetSpecProvider : ForkScheduleSpecProvider
 {
-    public const long HomesteadBlockNumber = 1_150_000;
-    public const long DaoBlockNumberConst = 1_920_000;
-    public const long TangerineWhistleBlockNumber = 2_463_000;
-    public const long SpuriousDragonBlockNumber = 2_675_000;
-    public const long ByzantiumBlockNumber = 4_370_000;
-    public const long ConstantinopleFixBlockNumber = 7_280_000;
-    public const long IstanbulBlockNumber = 9_069_000;
-    public const long MuirGlacierBlockNumber = 9_200_000;
-    public const long BerlinBlockNumber = 12_244_000;
-    public const long LondonBlockNumber = 12_965_000;
-    public const long ArrowGlacierBlockNumber = 13_773_000;
-    public const long GrayGlacierBlockNumber = 15_050_000;
-    public const long ParisBlockNumber = 15_537_393;
+    public const ulong HomesteadBlockNumber = 1_150_000;
+    public const ulong DaoForkBlockNumber = 1_920_000;
+    public const ulong TangerineWhistleBlockNumber = 2_463_000;
+    public const ulong SpuriousDragonBlockNumber = 2_675_000;
+    public const ulong ByzantiumBlockNumber = 4_370_000;
+    public const ulong ConstantinopleFixBlockNumber = 7_280_000;
+    public const ulong IstanbulBlockNumber = 9_069_000;
+    public const ulong MuirGlacierBlockNumber = 9_200_000;
+    public const ulong BerlinBlockNumber = 12_244_000;
+    public const ulong LondonBlockNumber = 12_965_000;
+    public const ulong ArrowGlacierBlockNumber = 13_773_000;
+    public const ulong GrayGlacierBlockNumber = 15_050_000;
+    public const ulong ParisBlockNumber = 15_537_393;
     public const ulong GenesisBlockTimestamp = 0x55ba4215;
     public const ulong BeaconChainGenesisTimestampConst = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
@@ -30,90 +30,52 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong OsakaBlockTimestamp = 0x6930b057;
     public const ulong BPO1BlockTimestamp = 0x69383057;
     public const ulong BPO2BlockTimestamp = 0x695db057;
-    public const ulong BPO3BlockTimestamp = ulong.MaxValue - 3;
-    public const ulong BPO4BlockTimestamp = ulong.MaxValue - 2;
-    public const ulong BPO5BlockTimestamp = ulong.MaxValue - 1;
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue;
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-        forkActivation switch
-        {
-            { BlockNumber: < HomesteadBlockNumber } => Frontier.Instance,
-            { BlockNumber: < DaoBlockNumberConst } => Homestead.Instance,
-            { BlockNumber: < TangerineWhistleBlockNumber } => Dao.Instance,
-            { BlockNumber: < SpuriousDragonBlockNumber } => TangerineWhistle.Instance,
-            { BlockNumber: < ByzantiumBlockNumber } => SpuriousDragon.Instance,
-            { BlockNumber: < ConstantinopleFixBlockNumber } => Byzantium.Instance,
-            { BlockNumber: < IstanbulBlockNumber } => ConstantinopleFix.Instance,
-            { BlockNumber: < MuirGlacierBlockNumber } => Istanbul.Instance,
-            { BlockNumber: < BerlinBlockNumber } => MuirGlacier.Instance,
-            { BlockNumber: < LondonBlockNumber } => Berlin.Instance,
-            { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
-            { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
-            { BlockNumber: < ParisBlockNumber } => GrayGlacier.Instance,
-            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
-            { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
-            { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
-            { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
-            { Timestamp: < BPO1BlockTimestamp } => Osaka.Instance,
-            { Timestamp: < BPO2BlockTimestamp } => BPO1.Instance,
-            { Timestamp: < BPO3BlockTimestamp } => BPO2.Instance,
-            { Timestamp: < BPO4BlockTimestamp } => BPO3.Instance,
-            { Timestamp: < BPO5BlockTimestamp } => BPO4.Instance,
-            { Timestamp: < AmsterdamBlockTimestamp } => BPO5.Instance,
-            _ => Amsterdam.Instance
-        };
-
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-    {
-        if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
-
-        if (terminalTotalDifficulty is not null)
-            TerminalTotalDifficulty = terminalTotalDifficulty;
-    }
-
-    public ulong NetworkId => Core.BlockchainIds.Mainnet;
-    public ulong ChainId => NetworkId;
-    public long? DaoBlockNumber => DaoBlockNumberConst;
-    public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public ForkActivation? MergeBlockNumber { get; private set; } = null;
-    public ulong TimestampFork => ShanghaiBlockTimestamp;
-    // 58750000000000000000000
-    public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(15566869308787654656ul, 3184ul);
-    public IReleaseSpec GenesisSpec => Frontier.Instance;
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
     public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
     public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
     public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
     public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
     public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
-    public static ForkActivation BPO3Activation { get; } = (ParisBlockNumber + 7, BPO3BlockTimestamp);
-    public static ForkActivation BPO4Activation { get; } = (ParisBlockNumber + 8, BPO4BlockTimestamp);
-    public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
-    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
-    public ForkActivation[] TransitionActivations { get; } =
+    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 7, AmsterdamBlockTimestamp);
+
+    public MainnetSpecProvider() : this(new ForkSchedule
     {
-        (ForkActivation)HomesteadBlockNumber,
-        (ForkActivation)DaoBlockNumberConst,
-        (ForkActivation)TangerineWhistleBlockNumber,
-        (ForkActivation)SpuriousDragonBlockNumber,
-        (ForkActivation)ByzantiumBlockNumber,
-        (ForkActivation)ConstantinopleFixBlockNumber,
-        (ForkActivation)IstanbulBlockNumber,
-        (ForkActivation)MuirGlacierBlockNumber,
-        (ForkActivation)BerlinBlockNumber,
-        (ForkActivation)LondonBlockNumber,
-        (ForkActivation)ArrowGlacierBlockNumber,
-        (ForkActivation)GrayGlacierBlockNumber,
-        ShanghaiActivation,
-        CancunActivation,
-        PragueActivation,
-        OsakaActivation,
-        BPO1Activation,
-        BPO2Activation,
-        AmsterdamActivation
-    };
+        [GenesisBlockNumber] = Frontier.Instance,
+        [HomesteadBlockNumber] = Homestead.Instance,
+        [DaoForkBlockNumber] = Dao.Instance,
+        [TangerineWhistleBlockNumber] = TangerineWhistle.Instance,
+        [SpuriousDragonBlockNumber] = SpuriousDragon.Instance,
+        [ByzantiumBlockNumber] = Byzantium.Instance,
+        [ConstantinopleFixBlockNumber] = ConstantinopleFix.Instance,
+        [IstanbulBlockNumber] = Istanbul.Instance,
+        [MuirGlacierBlockNumber] = MuirGlacier.Instance,
+        [BerlinBlockNumber] = Berlin.Instance,
+        [LondonBlockNumber] = London.Instance,
+        [ArrowGlacierBlockNumber] = ArrowGlacier.Instance,
+        [GrayGlacierBlockNumber] = GrayGlacier.Instance,
+        [ParisBlockNumber] = Paris.Instance,
+        [ShanghaiBlockTimestamp] = Shanghai.Instance,
+        [CancunBlockTimestamp] = Cancun.Instance,
+        [PragueBlockTimestamp] = Prague.Instance,
+        [OsakaBlockTimestamp] = Osaka.Instance,
+        [BPO1BlockTimestamp] = BPO1.Instance,
+        [BPO2BlockTimestamp] = BPO2.Instance,
+        [AmsterdamBlockTimestamp] = Amsterdam.Instance,
+    })
+    { }
+
+    private MainnetSpecProvider(ForkSchedule schedule) : base(schedule,
+        terminalTotalDifficulty: new UInt256(15566869308787654656ul, 3184ul)) =>
+        TransitionActivations = schedule.ToTransitionActivations(
+            postMergeBlock: ParisBlockNumber + 1,
+            excludeBlocks: [ParisBlockNumber]);
+
+    public override ulong NetworkId => Core.BlockchainIds.Mainnet;
+    public override ulong? DaoBlockNumber => DaoForkBlockNumber;
+    public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
+    public override ulong TimestampFork => ShanghaiBlockTimestamp;
 
     public static MainnetSpecProvider Instance { get; } = new();
 }

@@ -30,7 +30,7 @@ namespace Nethermind.KeyStore
 
         public static SecureString GetPasswordFromFile(string filePath)
         {
-            List<char> whitespaces = new();
+            List<char> whitespaces = [];
             SecureString secureString = new();
             using (StreamReader stream = new(filePath))
             {

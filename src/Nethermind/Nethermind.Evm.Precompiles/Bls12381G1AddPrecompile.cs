@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,7 +12,7 @@ namespace Nethermind.Evm.Precompiles;
 /// </summary>
 public partial class Bls12381G1AddPrecompile : IPrecompile<Bls12381G1AddPrecompile>
 {
-    public static readonly Bls12381G1AddPrecompile Instance = new();
+    public static Bls12381G1AddPrecompile Instance { get; } = new();
 
     private Bls12381G1AddPrecompile() { }
 
@@ -20,9 +20,9 @@ public partial class Bls12381G1AddPrecompile : IPrecompile<Bls12381G1AddPrecompi
 
     public static string Name => "BLS12_G1ADD";
 
-    public long BaseGasCost(IReleaseSpec _) => 375L;
+    public ulong BaseGasCost(IReleaseSpec _) => 375UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

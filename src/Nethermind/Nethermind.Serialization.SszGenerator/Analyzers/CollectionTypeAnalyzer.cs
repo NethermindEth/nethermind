@@ -14,6 +14,8 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
 
     private static readonly DiagnosticDescriptor Rule = new(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true);
 
+    private const string SszIgnoreAttributeFullName = "Nethermind.Serialization.Ssz.SszIgnoreAttribute";
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];
 
     public override void Initialize(AnalysisContext context)
@@ -46,15 +48,27 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
 
         if (typeSymbol is not null && IsCollectionType(typeSymbol))
         {
-            bool hasRequiredAttribute = propertyDeclaration.AttributeLists
+            bool isIgnored = propertyDeclaration.AttributeLists
                 .SelectMany(attrList => attrList.Attributes)
-                .Any(attr => MatchesAttributeName(attr, SszCollectionAttributeNames));
+                .Any(attr => IsSszIgnoreAttribute(attr, context.SemanticModel));
 
-            if (!hasRequiredAttribute)
+            if (!isIgnored)
             {
-                Diagnostic diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
-                context.ReportDiagnostic(diagnostic);
+                bool hasRequiredAttribute = propertyDeclaration.AttributeLists
+                    .SelectMany(attrList => attrList.Attributes)
+                    .Any(attr => MatchesAttributeName(attr, SszCollectionAttributeNames));
+
+                if (!hasRequiredAttribute)
+                {
+                    Diagnostic diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(),
+                        propertyDeclaration.Identifier.Text);
+                    context.ReportDiagnostic(diagnostic);
+                }
             }
         }
     }
+
+    private static bool IsSszIgnoreAttribute(AttributeSyntax attribute, SemanticModel semanticModel) =>
+        semanticModel.GetSymbolInfo(attribute).Symbol is IMethodSymbol ctor
+        && ctor.ContainingType.ToDisplayString() == SszIgnoreAttributeFullName;
 }

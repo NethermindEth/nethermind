@@ -18,7 +18,7 @@ namespace Nethermind.Network.StaticNodes;
 
 public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : NodesManager(staticNodesPath, logManager.GetClassLogger<StaticNodesManager>()), IStaticNodesManager
 {
-    public IEnumerable<NetworkNode> Nodes => _nodes.Values;
+    public IEnumerable<NetworkNode> Nodes => _nodes.Select(static kvp => kvp.Value);
 
     public async Task InitAsync()
     {
@@ -26,63 +26,52 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
 
         LogNodeList("Static nodes", nodes);
 
-        _nodes = nodes;
+        SetNodes(nodes);
     }
 
-    public async Task<bool> AddAsync(string enode, bool updateFile = true)
+    public async Task<bool> AddAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
-        NetworkNode networkNode = new(enode);
-        if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
+        if (!TryAddNode(networkNode))
         {
-            if (_logger.IsInfo) _logger.Info($"Static node was already added: {enode}");
+            if (_logger.IsInfo) _logger.Info($"Static node was already added: {networkNode}");
             return false;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Static node added: {enode}");
+        if (_logger.IsInfo) _logger.Info($"Static node added: {networkNode}");
 
         Node node = new(networkNode, isStatic: true);
         NodeAdded?.Invoke(this, new NodeEventArgs(node));
 
         if (updateFile)
         {
-            await SaveFileAsync();
+            await SaveFileAsync(cancellationToken);
         }
 
         return true;
     }
 
-    public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
+    public async Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
-        NetworkNode networkNode = new(enode);
-        if (!_nodes.TryRemove(networkNode.NodeId, out _))
+        if (!TryRemoveNode(networkNode.NodeId))
         {
-            if (_logger.IsInfo) _logger.Info($"Static node was not found: {enode}");
+            if (_logger.IsInfo) _logger.Info($"Static node was not found: {networkNode}");
             return false;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
-        Node node = new(networkNode);
-        NodeRemoved?.Invoke(this, new NodeEventArgs(node));
-        if (updateFile)
-        {
-            await SaveFileAsync();
-        }
-
+        if (_logger.IsInfo) _logger.Info($"Static node was removed: {networkNode}");
+        if (updateFile) await SaveFileAsync(cancellationToken);
         return true;
     }
 
-    public bool IsStatic(string enode)
-    {
-        NetworkNode node = new(enode);
-        return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
-            node.Host, StringComparison.OrdinalIgnoreCase);
-    }
+    public bool IsStatic(NetworkNode node) =>
+        _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) &&
+        string.Equals(staticNode.Host, node.Host, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
 
-        foreach (Node node in _nodes.Values.Select(n => new Node(n)))
+        foreach (Node node in _nodes.Select(static kvp => new Node(kvp.Value, isStatic: true)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return node;
@@ -106,6 +95,4 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     }
 
     private event EventHandler<NodeEventArgs>? NodeAdded;
-
-    public event EventHandler<NodeEventArgs>? NodeRemoved;
 }

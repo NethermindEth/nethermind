@@ -28,7 +28,10 @@ public class PayloadAttributes
 
     public ulong? SlotNumber { get; set; }
 
-    public virtual long? GetGasLimit() => null;
+    public ulong? TargetGasLimit { get; set; }
+
+    public virtual ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator)
+        => gasLimitCalculator.GetGasLimit(parent, TargetGasLimit);
 
     public override string ToString() => ToString(string.Empty);
 
@@ -54,6 +57,11 @@ public class PayloadAttributes
             sb.Append($", {nameof(SlotNumber)}: {SlotNumber}");
         }
 
+        if (TargetGasLimit is not null)
+        {
+            sb.Append($", {nameof(TargetGasLimit)}: {TargetGasLimit}");
+        }
+
         sb.Append('}');
 
         return sb.ToString();
@@ -62,7 +70,11 @@ public class PayloadAttributes
 
     private string? _payloadId;
 
-    public string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
+    /// <remarks>
+    /// Should not be called with different <paramref name="parentHeader"/> parameter
+    /// on a single <see cref="PayloadAttributes"/> instance - result is cached once.
+    /// </remarks>
+    public virtual string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
 
     private string ComputePayloadId(BlockHeader parentHeader)
     {
@@ -79,7 +91,8 @@ public class PayloadAttributes
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
-        + (SlotNumber is null ? 0 : sizeof(ulong)); // slot number
+        + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
+        + (TargetGasLimit is null ? 0 : sizeof(ulong)); // target gas limit
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -124,6 +137,12 @@ public class PayloadAttributes
             position += sizeof(ulong);
         }
 
+        if (TargetGasLimit is not null)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), TargetGasLimit.Value);
+            position += sizeof(ulong);
+        }
+
         return position;
     }
 
@@ -154,21 +173,22 @@ public class PayloadAttributes
         string methodName,
         [NotNullWhen(false)] out string? error)
     {
+        // Attributes structure doesn't match what the fork expects (e.g. V3 attrs sent when FCUv3 not yet activated in spec).
+        if (actualVersion != timestampVersion)
+        {
+            error = $"{methodName}{timestampVersion} expected";
+            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2
+                && !IsSupportedFcuForkCombination(fcuVersion, timestampVersion);
+            return unsupportedFork
+                ? PayloadAttributesValidationResult.UnsupportedFork
+                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
         // This FCU version doesn't support this fork at all (e.g. V3 attrs sent to FCUv2).
         if (!IsSupportedFcuForkCombination(fcuVersion, actualVersion))
         {
             error = $"{methodName}{fcuVersion} expected";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-        }
-
-        // Attributes structure doesn't match what the fork expects (e.g. V3 attrs sent to when FCUv3 not yet activated in spec).
-        if (actualVersion != timestampVersion)
-        {
-            error = $"{methodName}{timestampVersion} expected";
-            // FCU also doesn't support this fork → UnsupportedFork (post-Paris only)
-            return fcuVersion != timestampVersion && timestampVersion >= PayloadAttributesVersions.V2
-                ? PayloadAttributesValidationResult.UnsupportedFork
-                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
         error = null;
@@ -181,10 +201,25 @@ public class PayloadAttributes
         [NotNullWhen(false)] out string? error)
     {
         int actualVersion = this.GetVersion();
+        int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
+
+        // When attrs are below the timestamp-implied version and the FCU doesn't accept this
+        // combination (i.e. it's not the V2-accepts-V1 backward-compat case), report the
+        // specific missing field rather than a generic version-mismatch.
+        if (actualVersion < timestampVersion && !IsSupportedFcuForkCombination(fcuVersion, actualVersion))
+        {
+            string? fieldError = ValidateFields(timestampVersion);
+            if (fieldError is not null)
+            {
+                error = fieldError;
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+        }
+
         PayloadAttributesValidationResult result = ValidateVersion(
             fcuVersion,
             actualVersion,
-            timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion(),
+            timestampVersion,
             "PayloadAttributesV",
             out error);
 
@@ -210,6 +245,7 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V2 when Withdrawals is null => $"{nameof(Withdrawals)} must be provided",
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
+            >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
             _ => null
         };
     }
@@ -222,7 +258,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { SlotNumber: not null } => PayloadAttributesVersions.V4,
+            { SlotNumber: not null } or { TargetGasLimit: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
             { Withdrawals: not null } => PayloadAttributesVersions.V2,
             _ => PayloadAttributesVersions.V1

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -234,7 +233,7 @@ public class KeyStoreTests
         byte[] bytes = File.ReadAllBytes(file);
         test.Store.DeleteKey(key.Address);
         string bytesHex = bytes.ToHexString();
-        bytesHex.Should().NotStartWith(bomBytesHex);
-        bytesHex.Should().StartWith(validBytesHex);
+        Assert.That(bytesHex, Does.Not.StartWith(bomBytesHex));
+        Assert.That(bytesHex, Does.StartWith(validBytesHex));
     }
 }

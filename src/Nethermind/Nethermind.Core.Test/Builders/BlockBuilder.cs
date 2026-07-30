@@ -16,6 +16,8 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockBuilder : BuilderBase<Block>
     {
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
         public BlockBuilder()
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
@@ -29,11 +31,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithNumber(long number)
+        public BlockBuilder WithNumber(ulong number)
         {
             TestObjectInternal.Header.Number = number;
             return this;
         }
+
+        public BlockBuilder WithNumber(int number) => WithNumber((ulong)number);
 
         public BlockBuilder WithBaseFeePerGas(UInt256 baseFeePerGas)
         {
@@ -47,7 +51,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithGasLimit(long gasLimit)
+        public BlockBuilder WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.Header.GasLimit = gasLimit;
             return this;
@@ -98,7 +102,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamEncoder<TxReceipt>()!);
+            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, ReceiptDecoder);
             TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }
@@ -133,6 +137,12 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithTotalDifficulty(long difficulty)
         {
             TestObjectInternal.Header.TotalDifficulty = (ulong)difficulty;
+            return this;
+        }
+
+        public BlockBuilder WithTotalDifficulty(ulong difficulty)
+        {
+            TestObjectInternal.Header.TotalDifficulty = difficulty;
             return this;
         }
 
@@ -219,13 +229,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithAura(long step, byte[]? signature = null)
-        {
-            TestObjectInternal.Header.AuRaStep = step;
-            TestObjectInternal.Header.AuRaSignature = signature;
-            return this;
-        }
-
         public BlockBuilder WithAuthor(Address? author)
         {
             TestObjectInternal.Header.Author = author;
@@ -259,7 +262,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithGasUsed(long gasUsed)
+        public BlockBuilder WithGasUsed(ulong gasUsed)
         {
             TestObjectInternal.Header.GasUsed = gasUsed;
             return this;
@@ -311,7 +314,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithBlockAccessList(BlockAccessList? bal)
+        public BlockBuilder WithBlockAccessList(ReadOnlyBlockAccessList? bal)
         {
             TestObjectInternal.BlockAccessList = bal;
             return this;

@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
-    public class ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
+    public class ProgressLogger
     {
         public const int QueuePaddingLength = 8;
         public const int SkippedPaddingLength = 7;
@@ -16,13 +16,32 @@ namespace Nethermind.Core
         public const int BlockPaddingLength = 10;
         public const int PrefixAlignment = -13;
 
-        private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
-        private readonly ILogger _logger = logManager.GetClassLogger<ProgressLogger>();
-        private string _prefix = prefix;
-        private (long, long, long, long) _lastReportState = (0, 0, 0, 0);
+        private readonly ITimestamper _timestamper;
+        private readonly ILogger _logger;
+        private readonly Action<string>? _logAction;
+        private string _prefix;
+        private (ulong, ulong, long, long) _lastReportState = (0UL, 0UL, 0L, 0L);
         private Func<ProgressLogger, string>? _formatter;
 
-        public void Update(long value)
+        public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null, LogLevel logLevel = LogLevel.Info)
+        {
+            _prefix = prefix;
+            _timestamper = timestamper ?? Timestamper.Default;
+            _logger = logManager.GetClassLogger<ProgressLogger>();
+            ILogger logger = _logger;
+            InterfaceLogger underlying = logger.UnderlyingLogger;
+            _logAction = logLevel switch
+            {
+                LogLevel.Info when logger.IsInfo => underlying.Info,
+                LogLevel.Debug when logger.IsDebug => underlying.Debug,
+                LogLevel.Warn when logger.IsWarn => underlying.Warn,
+                LogLevel.Error when logger.IsError => s => underlying.Error(s),
+                LogLevel.Trace when logger.IsTrace => underlying.Trace,
+                _ => null,
+            };
+        }
+
+        public void Update(ulong value)
         {
             UtcEndTime = null;
 
@@ -63,7 +82,7 @@ namespace Nethermind.Core
             }
         }
 
-        public void Reset(long startValue, long total)
+        public void Reset(ulong startValue, ulong total)
         {
             LastMeasurement = UtcEndTime = _timestamper.UtcNow;
             UtcStartTime = _timestamper.UtcNow;
@@ -75,7 +94,7 @@ namespace Nethermind.Core
 
         private long _skipped = -1;
 
-        private long StartValue { get; set; }
+        private ulong StartValue { get; set; }
 
         private DateTime? UtcStartTime { get; set; }
 
@@ -83,10 +102,12 @@ namespace Nethermind.Core
 
         private DateTime? LastMeasurement { get; set; }
 
-        private long LastValue { get; set; }
-        public long TargetValue { get; set; }
+        private ulong LastValue { get; set; }
+        public ulong TargetValue { get; set; }
 
-        public long CurrentValue { get; private set; }
+        public ulong CurrentValue { get; private set; }
+
+        // -1 sentinel = queue tracking disabled.
         public long CurrentQueued { get; set; } = -1;
 
         private TimeSpan Elapsed => (UtcEndTime ?? _timestamper.UtcNow) - (UtcStartTime ?? DateTime.MinValue);
@@ -102,7 +123,7 @@ namespace Nethermind.Core
                     return 0M;
                 }
 
-                return (CurrentValue - StartValue) / timePassed;
+                return ((decimal)CurrentValue - StartValue) / timePassed;
             }
         }
 
@@ -141,7 +162,7 @@ namespace Nethermind.Core
                     return 0M;
                 }
 
-                return (CurrentValue - LastValue) / timePassed;
+                return ((decimal)CurrentValue - LastValue) / timePassed;
             }
         }
 
@@ -149,21 +170,20 @@ namespace Nethermind.Core
 
         public void LogProgress()
         {
-            (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
+            (ulong, ulong, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
             if (reportState != _lastReportState)
             {
-                string reportString = _formatter is not null ? _formatter(this) : DefaultFormatter();
                 _lastReportState = reportState;
-                _logger.Info(reportString);
+                _logAction?.Invoke(_formatter is not null ? _formatter(this) : DefaultFormatter());
             }
             SetMeasuringPoint(resetCompletion: false);
         }
 
         private string DefaultFormatter() => GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
 
-        private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed, decimal skippedPerSecond)
+        private static string GenerateReport(string prefix, ulong current, ulong total, long queue, decimal speed, decimal skippedPerSecond)
         {
-            float percentage = Math.Clamp(current / (float)(Math.Max(total, 1)), 0, 1);
+            float percentage = Math.Clamp(current / (float)Math.Max(total, 1UL), 0, 1);
             string queuedStr = (queue >= 0 ? $" queue {queue,QueuePaddingLength:N0} | " : " ");
             string skippedStr = (skippedPerSecond >= 0 ? $"skipped {skippedPerSecond,SkippedPaddingLength:N0} Blk/s | " : "");
             string speedStr = $"current {speed,SpeedPaddingLength:N0} Blk/s";

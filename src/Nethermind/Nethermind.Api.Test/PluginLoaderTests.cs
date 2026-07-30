@@ -5,10 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
@@ -19,7 +17,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Api.Test;
@@ -39,15 +36,15 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
-        List<Type> expected = new()
-        {
+        List<Type> expected =
+        [
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
             typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(TestPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -67,15 +64,15 @@ public class PluginLoaderTests
             new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
-        List<Type> expected = new()
-        {
+        List<Type> expected =
+        [
             typeof(HivePlugin),
             typeof(TestPlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(CliquePlugin),
             typeof(AuRaPlugin),
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -101,7 +98,7 @@ public class PluginLoaderTests
         ChainSpec chainSpec = new();
         chainSpec.SealEngineType = SealEngineType.AuRa;
 
-        loader.LoadPlugins(configProvider, chainSpec).Should().Throws<InvalidOperationException>();
+        Assert.That(async () => await loader.LoadPlugins(configProvider, chainSpec), Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -115,15 +112,15 @@ public class PluginLoaderTests
             new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
         loader.OrderPlugins(pluginConfig);
 
-        List<Type> expected = new()
-        {
+        List<Type> expected =
+        [
             typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(TestPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -138,14 +135,14 @@ public class PluginLoaderTests
             new PluginConfig();
         loader.OrderPlugins(pluginConfig);
 
-        List<Type> expected = new()
-        {
+        List<Type> expected =
+        [
             typeof(HealthChecksPlugin),
             typeof(EthashPlugin),
             typeof(MergePlugin),
             typeof(HivePlugin),
             typeof(NethDevPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -164,7 +161,9 @@ public class PluginLoaderTests
         chainSpec.ChainId = 999;
 
         IList<INethermindPlugin> loadedPlugins = await loader.LoadPlugins(configProvider, chainSpec);
-        loadedPlugins.Should().BeEquivalentTo([new TestPlugin1(chainSpec, initConfig)]);
+        Assert.That(loadedPlugins, Has.Count.EqualTo(1));
+        Assert.That(loadedPlugins[0], Is.TypeOf<TestPlugin1>());
+        Assert.That(loadedPlugins[0].Enabled, Is.True);
     }
 
     private class TestPlugin1(ChainSpec chainSpec, IInitConfig initConfig) : INethermindPlugin
@@ -192,10 +191,5 @@ public class PluginLoaderTests
         public string Description => "TestPlugin2";
         public string Author => "TestPlugin2";
         public bool Enabled => true;
-
-        public IBlockProducer InitBlockProducer() => throw new NotImplementedException();
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
-            throw new NotImplementedException();
     }
 }

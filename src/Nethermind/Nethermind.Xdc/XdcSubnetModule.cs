@@ -3,11 +3,12 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Xdc.Contracts;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
@@ -17,11 +18,24 @@ public class XdcSubnetModule : XdcModule
     {
         base.Load(builder);
         builder
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider, IPenaltyHandler>(CreateSnapshotManager)
+            .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
+                chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcSubnetChainSpecEngineParameters>())
+            .Add<StartXdcSubnetBlockProducer>()
+            .AddSingleton<XdcSubnetBlockProducerFactory>()
+            .Bind<IBlockProducerFactory, XdcSubnetBlockProducerFactory>() // overrides the base producer binding; runner stays XdcBlockProducerFactory
+            .AddModule(new XdcHeaderModule(new XdcSubnetHeaderDecoder())) // overrides the mainnet decoders registered by XdcModule.Load above
+            .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
+            .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()
+            .Bind<IMasternodesCalculator, ISubnetMasternodesCalculator>()
+            .AddSingleton<ISealValidator, XdcSubnetSealValidator>()
+            .Bind<ISnapshotManager, ISubnetSnapshotManager>()
             .AddSingleton<IPenaltyHandler, SubnetPenaltyHandler>();
 
+        builder.RegisterType<SubnetSnapshotManager>().As<ISubnetSnapshotManager>().WithAttributeFiltering().SingleInstance();
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider, IPenaltyHandler penaltyHandler) =>
-        new SubnetSnapshotManager(db, blockTree, votingContract, specProvider, penaltyHandler);
+    protected override XdcChainSpecLoader CreateChainSpecLoader() => new XdcSubnetChainSpecLoader();
+
+    protected override void RegisterRewardCalculatorSource(ContainerBuilder builder) =>
+        builder.AddDecorator<IRewardCalculatorSource, XdcSubnetRewardCalculatorSource>();
 }

@@ -51,7 +51,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IsImplemented = true,
             IsSharable = false,
             ExampleResponse = "{\"action\":{\"callType\":\"call\",\"from\":\"0x31b98d14007bdee637298086988a0bbd31184523\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0e8cda5d7ebda67606a9b296a9dd4351bca1d263\",\"value\":\"0x1043561a882930000\"},\"blockHash\":\"0x6537c92f1fae55d9ea9b0fb25744262114b09e50ac320d7d839830f8c4d723a0\",\"blockNumber\":8969312,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xf4860fc1dc22404b85db7d666dfae65dec7cdcb196837a67ffa992d709f78b9e\",\"transactionPosition\":11,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x71c95151c960aa3976b462ff41adb328790f110d\",\"gas\":\"0x7205\",\"input\":\"0x095ea7b3000000000000000000000000c5992c0e0a3267c7f75493d0f717201e26be35f7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"to\":\"0x5592ec0cfb4dbc12d3ab100b257153436a1f0fea\",\"value\":\"0x0\"},\"blockHash\":\"0x6537c92f1fae55d9ea9b0fb25744262114b09e50ac320d7d839830f8c4d723a0\",\"blockNumber\":8969312,\"result\":{\"gasUsed\":\"0x5fdd\",\"output\":\"0x0000000000000000000000000000000000000000000000000000000000000001\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xec216ca7e754ea289dd59fc7f9f2c9a5b90668afb5a52d49ee15c3c5fd559b3b\",\"transactionPosition\":12,\"type\":\"call\"}")]
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block([JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter numberOrTag);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(
+            [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter numberOrTag,
+            [JsonRpcParameter(Description = "Optional fork name (e.g. \"Berlin\", \"Cancun\") to re-execute the block under. Must be one of the chain's named forks (see ISpecProvider AvailableForks). Default: the block's natural fork.")] string? fork = null);
 
         [JsonRpcMethod(Description = "Returns trace at given position.",
             IsImplemented = true,
@@ -66,7 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             ExampleResponse = "[{\"action\":{\"callType\":\"call\",\"from\":\"0x3c436c8ec40e0679fe64168545812ac13220f150\",\"gas\":\"0xc118\",\"input\":\"0xd46eb119\",\"to\":\"0x9e00de186f33e9fac9e28d69127f7f637b96c177\",\"value\":\"0xde0b6b3a7640000\"},\"blockHash\":\"0xf40b4c9faaeaf116a50380ce3795297bc02068b062f1797cd507875347c3372e\",\"blockNumber\":8970132,\"result\":{\"gasUsed\":\"0xc118\",\"output\":\"0x\"},\"subtraces\":4,\"traceAddress\":[],\"transactionHash\":\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\",\"transactionPosition\":9,\"type\":\"call\"},(...)]")]
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction([JsonRpcParameter(ExampleValue = "\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\"")] Hash256 txHash, [JsonRpcParameter(Description = "If true, traces the transaction even if it is in a non-canonical block. Default: false.")] bool traceNonCanonical = false);
 
-        [JsonRpcMethod(Description = "Returns parity like traces for simulated blocks", IsImplemented = true, IsSharable = false)]
+        [JsonRpcMethod(Description = "Returns parity like traces for simulated blocks", IsImplemented = true, IsSharable = true)]
         ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null);
     }
 }

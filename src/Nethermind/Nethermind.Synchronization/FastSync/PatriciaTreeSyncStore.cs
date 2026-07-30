@@ -11,7 +11,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class PatriciaTreeSyncStore(INodeStorage nodeStorage, ILogManager logManager) : ITreeSyncStore
+public class PatriciaTreeSyncStore(INodeStorage nodeStorage, IStateBoundaryWriter stateBoundary, ILogManager logManager) : ITreeSyncStore
 {
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) =>
         nodeStorage.KeyExists(address, path, hash);
@@ -21,9 +21,12 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, ILogManager logMana
 
     public void EnsureStorageEmpty(Hash256 address) { }
 
-    public void FinalizeSync(BlockHeader pivotHeader) =>
-        // Patricia trie doesn't need block header info, just flush
+    public void FinalizeSync(BlockHeader pivotHeader)
+    {
         nodeStorage.Flush(onlyWal: false);
+        // Records the floor reported through eth_capabilities.
+        stateBoundary.OldestStateBlock = pivotHeader.Number;
+    }
 
     public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) =>
         new PatriciaVerificationContext(nodeStorage, rootNodeData, logManager);

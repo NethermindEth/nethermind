@@ -359,11 +359,10 @@ public sealed class AssociativeCache<TKey, TValue>
     }
 
     /// <remarks>
-    /// If a concurrent Clear() bumps the epoch again while this scan is in progress,
-    /// entries from our epoch (N+1) that were written between the two bumps will be
-    /// skipped by both scans (neither N+1 nor N+2 matches the other's snapshot).
-    /// Those entries are logically dead (invisible to readers) but remain GC-rooted
-    /// until overwritten by new inserts. This is benign — not a safety issue.
+    /// Only wipes entries strictly older than <paramref name="currentEpoch"/>. A concurrent
+    /// <c>Clear()</c> can publish a newer epoch mid-walk; those future-epoch slots are live
+    /// and must be preserved — wiping them would drop a just-committed <see cref="Set"/> and
+    /// strand its <c>+1</c> in <c>_epochAndCount</c>.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void ClearEntries(long currentEpoch)
@@ -383,9 +382,8 @@ public sealed class AssociativeCache<TKey, TValue>
                     ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
                     long h = Volatile.Read(ref e.Header);
 
-                    // Skip empty entries and entries written after the epoch bump
                     if ((h & OccupiedBit) == 0) continue;
-                    if ((h & EpochMask) == currentEpoch) continue;
+                    if (!IsEpochOlderThan(h & EpochMask, currentEpoch)) continue;
 
                     // Seqlock write: lock → null fields → unlock (clears OccupiedBit)
                     long newSeq = ((h & SeqMask) + SeqInc) & SeqMask;

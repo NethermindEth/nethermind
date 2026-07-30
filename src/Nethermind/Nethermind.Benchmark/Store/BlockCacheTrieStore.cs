@@ -10,7 +10,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 

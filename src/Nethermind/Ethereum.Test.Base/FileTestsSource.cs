@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 
 namespace Ethereum.Test.Base
 {
@@ -26,11 +25,12 @@ namespace Ethereum.Test.Base
                     return [];
                 }
 
-                string json = File.ReadAllText(_fileName, Encoding.Default);
+                byte[] json = File.ReadAllBytes(_fileName);
 
                 return testType switch
                 {
                     TestType.State => JsonToEthereumTest.ConvertStateTest(json),
+                    TestType.Transaction => JsonToEthereumTest.ConvertTransactionTests(json),
                     _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
                 };
             }

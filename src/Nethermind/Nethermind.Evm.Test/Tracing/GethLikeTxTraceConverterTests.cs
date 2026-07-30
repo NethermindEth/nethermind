@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -63,12 +64,22 @@ public class GethLikeTxTraceConverterTests
     {
         GethLikeTxTrace result = _serializer.Deserialize<GethLikeTxTrace>(json);
 
-        result.Should().BeEquivalentTo(expectedTrace);
+        AssertTraceEquivalent(result, expectedTrace);
     }
 
 
     [TestCaseSource(nameof(CustomValueTracerResults))]
     public void Read_custom_tracer_result_throws(object expectedValue, string json) => Assert.Throws<JsonException>(() => _serializer.Deserialize<GethLikeTxTrace>(json));
+
+    private void AssertTraceEquivalent(GethLikeTxTrace actual, GethLikeTxTrace expected)
+    {
+        string actualJson = _serializer.Serialize(actual);
+        string expectedJson = _serializer.Serialize(expected);
+        using JsonDocument actualDocument = JsonDocument.Parse(actualJson);
+        using JsonDocument expectedDocument = JsonDocument.Parse(expectedJson);
+
+        Assert.That(JsonElement.DeepEquals(actualDocument.RootElement, expectedDocument.RootElement), actualJson);
+    }
 
     private static IEnumerable<TestCaseData> TraceAndJsonSource()
     {
@@ -86,21 +97,25 @@ public class GethLikeTxTraceConverterTests
                 [
                     new()
                     {
-                        Storage = new()
+                        Storage = new Dictionary<UInt256, UInt256>
                         {
-                            { "1".PadLeft(64, '0'), "2".PadLeft(64, '0') },
-                            { "3".PadLeft(64, '0'), "4".PadLeft(64, '0') },
+                            { (UInt256)1, (UInt256)2 },
+                            { (UInt256)3, (UInt256)4 },
                         },
-                        Memory =
-                        [
-                            "5".PadLeft(64, '0'),
-                            "6".PadLeft(64, '0')
-                        ],
-                        Stack =
-                        [
-                            "7".PadLeft(64, '0'),
-                            "8".PadLeft(64, '0')
-                        ],
+                        Memory = (ReadOnlyMemory<byte>?)new byte[64]
+                        {
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6
+                        },
+                        Stack = (ReadOnlyMemory<byte>?)new byte[64]
+                        {
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8
+                        },
                         Opcode = "STOP",
                         Gas = 22000,
                         GasCost = 1,
@@ -119,12 +134,11 @@ public class GethLikeTxTraceConverterTests
                 "gas" : 22000,
                 "gasCost" : 1,
                 "depth" : 1,
-                "error" : null,
-                "stack" : [ "0000000000000000000000000000000000000000000000000000000000000007", "0000000000000000000000000000000000000000000000000000000000000008" ],
-                "memory" : [ "0000000000000000000000000000000000000000000000000000000000000005", "0000000000000000000000000000000000000000000000000000000000000006" ],
+                "stack" : [ "0x7", "0x8" ],
+                "memory" : [ "0x0000000000000000000000000000000000000000000000000000000000000005", "0x0000000000000000000000000000000000000000000000000000000000000006" ],
                 "storage" : {
-                  "0000000000000000000000000000000000000000000000000000000000000001" : "0000000000000000000000000000000000000000000000000000000000000002",
-                  "0000000000000000000000000000000000000000000000000000000000000003" : "0000000000000000000000000000000000000000000000000000000000000004"
+                  "0x0000000000000000000000000000000000000000000000000000000000000001" : "0x0000000000000000000000000000000000000000000000000000000000000002",
+                  "0x0000000000000000000000000000000000000000000000000000000000000003" : "0x0000000000000000000000000000000000000000000000000000000000000004"
                 }
               } ]
             }

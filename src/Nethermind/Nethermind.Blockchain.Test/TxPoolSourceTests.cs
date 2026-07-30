@@ -10,6 +10,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using System.Linq;
 using System.Collections.Generic;
 using Nethermind.Config;
@@ -20,7 +21,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.TxPool.Comparison;
-using FluentAssertions;
 
 namespace Nethermind.Consensus.Producers.Test;
 
@@ -48,9 +48,9 @@ public class TxPoolSourceTests
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit });
 
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader(), long.MaxValue);
-        int blobsCount = txs.Sum(tx => tx.GetBlobCount());
+        ulong blobsCount = txs.Aggregate(0UL, (sum, tx) => sum + (ulong)tx.GetBlobCount());
 
-        Assert.That(blobsCount, Is.LessThanOrEqualTo(Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
+        Assert.That(blobsCount, Is.LessThanOrEqualTo((ulong)Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
     }
 
     public static IEnumerable<TestCaseData> BlobTransactionsWithBlobGasLimitPerBlockCombinations()
@@ -79,7 +79,7 @@ public class TxPoolSourceTests
     }
 
     [TestCaseSource(nameof(MaxProductionBlobCountTests))]
-    public int MaxProductionBlobCount_calculation(IReleaseSpec spec, int? customBlobLimit) => spec.MaxProductionBlobCount(customBlobLimit);
+    public ulong MaxProductionBlobCount_calculation(IReleaseSpec spec, int? customBlobLimit) => spec.MaxProductionBlobCount(customBlobLimit);
 
     public static IEnumerable<TestCaseData> MaxProductionBlobCountTests()
     {
@@ -89,8 +89,8 @@ public class TxPoolSourceTests
         yield return new TestCaseData(BPO2.Instance, null).Returns(BPO2.Instance.MaxBlobCount);
 
         yield return new TestCaseData(Prague.Instance, -1).Returns(Prague.Instance.MaxBlobCount);
-        yield return new TestCaseData(Prague.Instance, 0).Returns(0);
-        yield return new TestCaseData(BPO1.Instance, 5).Returns(5);
+        yield return new TestCaseData(Prague.Instance, 0).Returns(0ul);
+        yield return new TestCaseData(BPO1.Instance, 5).Returns(5ul);
         yield return new TestCaseData(BPO2.Instance, 500_000).Returns(BPO2.Instance.MaxBlobCount);
     }
 
@@ -120,7 +120,7 @@ public class TxPoolSourceTests
         IComparer<Transaction> comparer = transactionComparerProvider.GetDefaultProducerComparer(
             new BlockPreparationContext(UInt256.Zero, 1));
         int compareResult = comparer.Compare(highPriorityBlobTx, lowerPriorityRegularTx);
-        compareResult.Should().Be(TxComparisonResult.XFirst, "Higher priority transaction should compare as XFirst (negative)");
+        Assert.That(compareResult, Is.EqualTo(TxComparisonResult.XFirst), "Higher priority transaction should compare as XFirst (negative)");
 
         // Setup mocks
         ITxPool txPool = Substitute.For<ITxPool>();
@@ -148,6 +148,6 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
-        result.Should().BeEquivalentTo([highPriorityBlobTx, lowerPriorityRegularTx], o => o.WithStrictOrdering());
+        Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }).UsingTransactionComparer());
     }
 }

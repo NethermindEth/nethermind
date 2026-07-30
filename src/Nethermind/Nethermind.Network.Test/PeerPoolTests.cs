@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -185,6 +186,49 @@ public class PeerPoolTests
     }
 
     [Test]
+    public async Task PeerPool_ShouldNotThrottleStaticNode_WhenFull()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 1, maxCandidatePeerCount: 1);
+
+        Peer activePeer = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234));
+        pool.ActivePeers[TestItem.PublicKeyA] = activePeer;
+        pool.Start();
+
+        Node staticNode = new(TestItem.PublicKeyB, "1.2.3.5", 1234) { IsStatic = true };
+        nodeSource.AddNode(staticNode);
+
+        try
+        {
+            // Static node bypasses throttling: consumed and registered even though the pool is full.
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(0).After(100, 10));
+            Assert.That(pool.TryGet(staticNode.Id, out _), Is.True);
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [TestCase(true, true)]   // active session → peer kept
+    [TestCase(false, false)] // no session → peer evicted
+    public void PeerPool_DiscoveryEviction(bool hasSession, bool expectPresent)
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        Node node = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
+        Peer peer = pool.GetOrAdd(node);
+        if (hasSession) peer.InSession = Substitute.For<ISession>();
+
+        nodeSource.RemoveNode(node);
+
+        Assert.That(pool.TryGet(node.Id, out _), Is.EqualTo(expectPresent));
+    }
+
+    [Test]
     public void PeerPool_Replace_DoesNotInheritStaticFlag()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
@@ -202,6 +246,20 @@ public class PeerPoolTests
         Peer replacedPeer = pool.Replace(session);
 
         Assert.That(replacedPeer.Node.IsStatic, Is.False);
+    }
+
+    [Test]
+    public void GetOrAdd_NetworkNode_sets_trusted_flag_from_manager()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        string enode = new Enode(TestItem.PublicKeyA, IPAddress.Parse("1.2.3.4"), 30303).ToString();
+        Peer peer = pool.GetOrAdd(new NetworkNode(enode));
+
+        Assert.That(peer.Node.IsTrusted, Is.True, "GetOrAdd(NetworkNode) marks trusted via the manager");
     }
 
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(

@@ -15,7 +15,7 @@ namespace Nethermind.Config
 
         public IConfig GetConfig(Type configType) => _provider.GetConfig(configType);
 
-        public object GetRawValue(string category, string name) => _provider.GetRawValue(category, name);
+        public object? GetRawValue(string category, string name) => _provider.GetRawValue(category, name);
 
         public void AddSource(IConfigSource configSource) => _provider.AddSource(configSource);
 

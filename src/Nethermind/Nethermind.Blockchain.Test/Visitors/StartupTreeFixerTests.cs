@@ -3,10 +3,10 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -60,9 +60,9 @@ public class StartupTreeFixerTests
         tree.SuggestBlock(block4);
         tree.SuggestHeader(block5.Header);
 
-        tree.UpdateMainChain(block0);
-        tree.UpdateMainChain(block1);
-        tree.UpdateMainChain(block2);
+        tree.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
+        tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
+        tree.TryUpdateMainChain(block2.Header, true, preloadedBlocks: new[] { block2 });
 
         blockInfosDb.Delete(3);
 
@@ -71,60 +71,57 @@ public class StartupTreeFixerTests
             .WithDatabaseFrom(builder)
             .TestObject;
 
-        StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance);
+        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        tree.Head!.Header.Should().BeEquivalentTo(block2.Header);
-        tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header);
-        tree.BestSuggestedBody?.Body.Should().BeEquivalentTo(block2.Body);
-        tree.BestKnownNumber.Should().Be(2);
+        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
     }
 
-    [Retry(30)]
     [MaxTime(Timeout.MaxTestTime * 4)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    [TestCase(65)]
-    public async Task Suggesting_blocks_works_correctly_after_processor_restart(int suggestedBlocksAmount)
+    [TestCase(0ul)]
+    [TestCase(1ul)]
+    [TestCase(2ul)]
+    [TestCase(4ul)]
+    [TestCase(5ul)]
+    [TestCase(6ul)]
+    [TestCase(65ul)]
+    public async Task Suggesting_blocks_works_correctly_after_processor_restart(ulong suggestedBlocksAmount)
     {
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev, testTimeout: Timeout.MaxTestTime * 4).Build();
         await testRpc.BlockchainProcessor.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
-        long startingBlockNumber = tree.Head!.Number;
+        ulong startingBlockNumber = tree.Head!.Number;
 
         SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
 
-        await testRpc.RestartBlockchainProcessor();
-
-        Task waitTask = suggestedBlocksAmount != 0
+        Task waitTask = suggestedBlocksAmount != 0ul
             ? testRpc.WaitForNewHeadWhere(b => b.Number == startingBlockNumber + suggestedBlocksAmount)
             : Task.CompletedTask;
-        // fixing after restart
-        StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
+
+        await testRpc.RestartBlockchainProcessor();
+
+        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, NoErrorLimboLogs.Instance, 5);
         await tree.Accept(fixer, CancellationToken.None);
 
-        // waiting for N new heads
         await waitTask;
 
-        // add a new block at the end
         await testRpc.AddBlock();
-        Assert.That(tree.Head!.Number, Is.EqualTo(startingBlockNumber + suggestedBlocksAmount + 1));
+        Assert.That(tree.Head!.Number, Is.EqualTo(startingBlockNumber + suggestedBlocksAmount + 1ul));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(6)]
-    public async Task Fixer_should_not_suggest_block_without_state(int suggestedBlocksAmount)
+    [TestCase(0ul)]
+    [TestCase(1ul)]
+    [TestCase(2ul)]
+    [TestCase(6ul)]
+    public async Task Fixer_should_not_suggest_block_without_state(ulong suggestedBlocksAmount)
     {
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         await testRpc.BlockchainProcessor.StopAsync();
@@ -135,7 +132,7 @@ public class StartupTreeFixerTests
         await testRpc.RestartBlockchainProcessor();
 
         // we create a new empty db for stateDb so we shouldn't suggest new blocks
-        IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance, 5);
+        using IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance, 5);
         BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
@@ -148,20 +145,20 @@ public class StartupTreeFixerTests
         await testRpc.BlockchainProcessor.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
 
-        SuggestNumberOfBlocks(tree, 1);
+        SuggestNumberOfBlocks(tree, 1ul);
 
         await testRpc.RestartBlockchainProcessor();
 
-        IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
+        using IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.StateReader, NoErrorLimboLogs.Instance, 5);
         BlockVisitOutcome result = await fixer.VisitBlock(null!, CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
     }
 
-    private static void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)
+    private static void SuggestNumberOfBlocks(IBlockTree blockTree, ulong blockAmount)
     {
         Block newParent = blockTree.Head!;
-        for (int i = 0; i < blockAmount; ++i)
+        for (ulong i = 0ul; i < blockAmount; ++i)
         {
             Block newBlock = Build.A.Block
                 .WithNumber(newParent.Number + 1)
@@ -197,17 +194,17 @@ public class StartupTreeFixerTests
         tree.SuggestHeader(block4.Header);
         tree.SuggestBlock(block5);
 
-        tree.UpdateMainChain(block2);
+        tree.TryUpdateMainChain(block2.Header, true, preloadedBlocks: new[] { block2 });
 
-        StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance);
+        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(2L), "best known");
-        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header), "head");
-        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block2.Hash), "suggested");
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(2ul), "best known");
+        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
     }
 }

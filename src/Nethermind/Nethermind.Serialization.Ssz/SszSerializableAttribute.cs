@@ -33,9 +33,9 @@ public class SszFieldAttribute(int index) : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class SszListAttribute(int limit) : Attribute
+public class SszListAttribute(ulong limit) : Attribute
 {
-    public int Limit { get; } = limit;
+    public ulong Limit { get; } = limit;
 }
 
 [AttributeUsage(AttributeTargets.Property)]
@@ -52,3 +52,10 @@ public class SszVectorAttribute(int length) : Attribute
 /// </summary>
 [AttributeUsage(AttributeTargets.Property)]
 public class SszProgressiveBitlistAttribute : Attribute;
+
+/// <summary>
+/// Marks a property that the SSZ source generator should skip entirely.
+/// Use this on domain properties whose type the generator cannot handle
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public class SszIgnoreAttribute : Attribute;

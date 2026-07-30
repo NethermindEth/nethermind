@@ -25,9 +25,20 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether to compact receipts transaction index database size at the expense of RPC performance.", DefaultValue = "true")]
     bool CompactTxIndex { get; set; }
 
-    [ConfigItem(Description = "The number of recent blocks to maintain transaction index for. `0` to never remove indices, `-1` to never index.", DefaultValue = "2350000")]
-    long? TxLookupLimit { get; set; }
+    [ConfigItem(Description = "The number of recent blocks to maintain transaction index for. `0` to never remove indices, `18446744073709551615` to never index.", DefaultValue = "2350000")]
+    ulong? TxLookupLimit { get; set; }
 
-    [ConfigItem(Description = "The max number of blocks per `eth_getLogs` request.", DefaultValue = "10000", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Whether receipt, canonical transaction-index, block-body, and block-access-list writes are persisted by a background writer instead of synchronously on the block-processing and engine API paths. Reads are served from an in-memory overlay until flushed, and a state-persistence barrier makes a block's data durable before its state, so an unclean shutdown never leaves persisted state without it.", DefaultValue = "true")]
+    bool DeferredPersistence { get; set; }
+
+    [ConfigItem(Description = "Maximum number of queued deferred block-data writes before block processing backpressures to synchronous. A BAL-enabled block can enqueue up to five writes (body, suggested BAL, receipts, generated BAL, canonical index), although superseded pending writes are coalesced. Bounds the pending-overlay memory.", DefaultValue = "128", HiddenFromDocs = true)]
+    int MaxDeferredWrites { get; set; }
+
+    [ConfigItem(Description =
+        """
+        The maximum block range (toBlock - fromBlock + 1) allowed in a single `eth_getLogs` request.
+        Requests exceeding this range are rejected with an "invalid params" (-32602) error.
+        Set to 0 to disable the limit. Value is ignored (no limits) if log index is enabled.
+        """, DefaultValue = "1000")]
     int MaxBlockDepth { get; set; }
 }

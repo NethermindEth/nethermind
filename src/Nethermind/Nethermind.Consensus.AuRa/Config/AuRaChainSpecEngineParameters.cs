@@ -19,42 +19,42 @@ namespace Nethermind.Consensus.AuRa.Config;
 
 public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public const long TransitionDisabled = long.MaxValue;
+    public const ulong TransitionDisabled = ulong.MaxValue;
     public string? EngineName => "AuthorityRound";
     public string? SealEngineType => Core.SealEngineType.AuRa;
 
     [JsonConverter(typeof(StepDurationJsonConverter))]
-    public SortedDictionary<long, long> StepDuration { get; set; } = new();
+    public SortedDictionary<ulong, long> StepDuration { get; set; } = [];
 
     [JsonConverter(typeof(BlockRewardConverter))]
-    public SortedDictionary<long, UInt256>? BlockReward { get; set; }
+    public SortedDictionary<ulong, UInt256>? BlockReward { get; set; }
 
-    public long? MaximumUncleCountTransition { get; set; }
+    public ulong? MaximumUncleCountTransition { get; set; }
 
-    public long? MaximumUncleCount { get; set; }
+    public ulong? MaximumUncleCount { get; set; }
 
     public Address? BlockRewardContractAddress { get; set; }
 
-    public long? BlockRewardContractTransition { get; set; }
+    public ulong? BlockRewardContractTransition { get; set; }
 
-    public IDictionary<long, Address> BlockRewardContractTransitions { get; set; } = new Dictionary<long, Address>();
+    public IDictionary<ulong, Address> BlockRewardContractTransitions { get; set; } = new Dictionary<ulong, Address>();
 
-    public long ValidateScoreTransition { get; set; }
+    public ulong ValidateScoreTransition { get; set; }
 
-    public long ValidateStepTransition { get; set; }
+    public ulong ValidateStepTransition { get; set; }
 
     [JsonPropertyName("Validators")]
     public AuRaValidatorJson ValidatorsJson { get; set; }
 
-    public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
+    public IDictionary<ulong, Address> RandomnessContractAddress { get; set; } = new Dictionary<ulong, Address>();
 
-    public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();
+    public IDictionary<ulong, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<ulong, Address>();
 
-    public long TwoThirdsMajorityTransition { get; set; } = TransitionDisabled;
+    public ulong TwoThirdsMajorityTransition { get; set; } = TransitionDisabled;
 
-    public long PosdaoTransition { get; set; } = TransitionDisabled;
+    public ulong PosdaoTransition { get; set; } = TransitionDisabled;
 
-    public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
+    public IDictionary<ulong, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<ulong, IDictionary<Address, byte[]>>();
     public IDictionary<ulong, IDictionary<Address, byte[]>> RewriteBytecodeTimestamp { get; set; } = new Dictionary<ulong, IDictionary<Address, byte[]>>();
 
     public IEnumerable<(ulong, Address, byte[])> RewriteBytecodeTimestampParsed
@@ -81,13 +81,13 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         get => _validators ??= LoadValidator(ValidatorsJson);
     }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp)
     {
-        spec.MaximumUncleCount = (int)(startBlock >= (MaximumUncleCountTransition ?? long.MaxValue) ? MaximumUncleCount ?? 2 : 2);
+        spec.MaximumUncleCount = (int)(startBlock >= (MaximumUncleCountTransition ?? ulong.MaxValue) ? MaximumUncleCount ?? 2 : 2);
         spec.Eip158IgnoredAccount = Address.SystemUser;
     }
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps) => timestamps.AddRange(RewriteBytecodeTimestamp.Keys);
+    public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps) => timestamps.AddRange(RewriteBytecodeTimestamp.Keys);
 
     static AuRaParameters.Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
     {
@@ -117,13 +117,13 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         return validator;
     }
 
-    private class StepDurationJsonConverter : JsonConverter<SortedDictionary<long, long>>
+    private class StepDurationJsonConverter : JsonConverter<SortedDictionary<ulong, long>>
     {
-        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, long> value, JsonSerializerOptions options) => throw new NotSupportedException();
+        public override void Write(Utf8JsonWriter writer, SortedDictionary<ulong, long> value, JsonSerializerOptions options) => throw new NotSupportedException();
 
-        public override SortedDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override SortedDictionary<ulong, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            SortedDictionary<long, long> value = new();
+            SortedDictionary<ulong, long> value = [];
             if (reader.TokenType == JsonTokenType.String)
             {
                 value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
@@ -141,7 +141,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
                     {
                         throw new ArgumentException("Cannot deserialize BlockReward.");
                     }
-                    long key = long.Parse(reader.GetString());
+                    ulong key = ulong.Parse(reader.GetString());
                     reader.Read();
                     if (reader.TokenType == JsonTokenType.String)
                     {
@@ -173,7 +173,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         public Address[]? List { get; set; }
         public Address? Contract { get; set; }
         public Address? SafeContract { get; set; }
-        public Dictionary<long, AuRaValidatorJson> Multi { get; set; } = new();
+        public Dictionary<ulong, AuRaValidatorJson> Multi { get; set; } = [];
 
         public AuRaParameters.ValidatorType GetValidatorType()
         {

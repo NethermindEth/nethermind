@@ -102,7 +102,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         }
     }
 
-    public UInt256 ComputeOperatorCost(long gas, BlockHeader header, IWorldState worldState)
+    public UInt256 ComputeOperatorCost(ulong gas, BlockHeader header, IWorldState worldState)
     {
         if (!opSpecHelper.IsIsthmus(header))
             return UInt256.Zero;
@@ -179,12 +179,12 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     {
         byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
-        long zeroCount = encoded.Count(static b => b == 0);
-        long nonZeroCount = encoded.Length - zeroCount;
+        ulong zeroCount = (ulong)encoded.Count(static b => b == 0);
+        ulong nonZeroCount = (ulong)encoded.Length - zeroCount;
         // Add pre-EIP-3529 overhead
-        nonZeroCount += isRegolith ? 0 : OptimismConstants.PreRegolithNonZeroCountOverhead;
+        nonZeroCount += isRegolith ? 0UL : OptimismConstants.PreRegolithNonZeroCountOverhead;
 
-        return (ulong)(zeroCount * GasCostOf.TxDataZero + nonZeroCount * GasCostOf.TxDataNonZeroEip2028);
+        return zeroCount * GasCostOf.TxDataZero + nonZeroCount * GasCostOf.TxDataNonZeroEip2028;
     }
 
     // Fjord L1 formula:

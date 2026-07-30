@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Snap;
@@ -27,9 +26,7 @@ public class SnapMessageLimitsTests
     {
         int maxTheoreticalItems = (int)(SnapMessageLimits.MaxResponseBytes / minEntryBytes);
 
-        limit.Should().BeGreaterThanOrEqualTo(maxTheoreticalItems,
-            "{0} must accommodate the maximum item count that fits in a {1}-byte response at {2} bytes/entry",
-            limitName, SnapMessageLimits.MaxResponseBytes, minEntryBytes);
+        Assert.That(limit, Is.GreaterThanOrEqualTo(maxTheoreticalItems), $"{limitName} must accommodate the maximum item count that fits in a {SnapMessageLimits.MaxResponseBytes}-byte response at {minEntryBytes} bytes/entry");
     }
 
     [Test]
@@ -44,7 +41,7 @@ public class SnapMessageLimitsTests
             accounts.Add(new PathWithAccount(TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject));
         }
 
-        AccountRangeMessage msg = new()
+        using AccountRangeMessage msg = new()
         {
             RequestId = 1,
             PathsWithAccounts = accounts,
@@ -52,9 +49,9 @@ public class SnapMessageLimitsTests
         };
 
         byte[] serialized = serializer.Serialize(msg);
-        AccountRangeMessage deserialized = serializer.Deserialize(serialized);
+        using AccountRangeMessage deserialized = serializer.Deserialize(serialized);
 
-        deserialized.PathsWithAccounts.Count.Should().Be(count);
+        Assert.That(deserialized.PathsWithAccounts.Count, Is.EqualTo(count));
     }
 
     [Test]
@@ -79,6 +76,6 @@ public class SnapMessageLimitsTests
         byte[] serialized = serializer.Serialize(msg);
         using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
 
-        deserialized.Slots[0].Count.Should().Be(slotCount);
+        Assert.That(deserialized.Slots[0].Count, Is.EqualTo(slotCount));
     }
 }

@@ -29,7 +29,7 @@ public static class ProcessExtensions
         }
         else
         {
-            HashSet<int> children = new();
+            HashSet<int> children = [];
             GetAllChildIdsUnix(process.Id, children, timeout);
             foreach (int childId in children)
             {

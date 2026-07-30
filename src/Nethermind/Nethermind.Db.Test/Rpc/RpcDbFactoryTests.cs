@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db.FullPruning;
@@ -25,7 +24,7 @@ namespace Nethermind.Db.Test.Rpc
             {
                 foreach (object db in dbs)
                 {
-                    db.Should().BeAssignableTo<T>();
+                    Assert.That(db, Is.AssignableTo<T>());
                 }
             }
 
@@ -45,7 +44,6 @@ namespace Nethermind.Db.Test.Rpc
 
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.BlocksDb,
-                memDbProvider.BloomDb,
                 memDbProvider.HeadersDb,
                 memDbProvider.BlockInfosDb);
 

@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Logging;

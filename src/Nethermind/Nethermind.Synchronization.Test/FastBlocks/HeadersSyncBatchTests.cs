@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Synchronization.FastBlocks;
 using NUnit.Framework;
 
@@ -18,7 +17,7 @@ public class HeadersSyncBatchTests
             RequestSize = 20,
         };
 
-        batch.EndNumber.Should().Be(29);
-        batch.MinNumber.Should().Be(29);
+        Assert.That(batch.EndNumber, Is.EqualTo(29));
+        Assert.That(batch.MinNumber, Is.EqualTo(29));
     }
 }

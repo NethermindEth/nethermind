@@ -99,13 +99,14 @@ public class CliqueTests
         signer.CanSignHeader.Returns(true);
         signer.CanSign.Returns(true);
         signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));
-        signer.Sign(Arg.Any<BlockHeader>()).Returns(new Signature(new byte[65]));
+        signer.TrySign(Arg.Any<BlockHeader>(), out Arg.Any<Signature>())
+            .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
         CliqueSealer sut = new(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
 
         await sut.SealBlock(block, System.Threading.CancellationToken.None);
 
-        signer.Received().Sign(Arg.Any<BlockHeader>());
+        signer.Received().TrySign(Arg.Any<BlockHeader>(), out Arg.Any<Signature>());
     }
 
     [TestCase(Block4Rlp)]
@@ -114,13 +115,14 @@ public class CliqueTests
         ISigner signer = Substitute.For<ISigner>();
         signer.CanSign.Returns(true);
         signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));
-        signer.Sign(Arg.Any<ValueHash256>()).Returns(new Signature(new byte[65]));
+        signer.TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>())
+            .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
         CliqueSealer sut = new(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
 
         await sut.SealBlock(block, System.Threading.CancellationToken.None);
 
-        signer.Received().Sign(Arg.Any<ValueHash256>());
+        signer.Received().TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>());
     }
 
     public static Block GetGenesis()
@@ -129,8 +131,8 @@ public class CliqueTests
         Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
         Address beneficiary = Address.Zero;
         UInt256 difficulty = new(1);
-        long number = 0L;
-        int gasLimit = 4700000;
+        ulong number = 0;
+        ulong gasLimit = 4700000;
         ulong timestamp = 1492009146UL;
         byte[] extraData = Bytes.FromHexString("52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
         BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
@@ -144,6 +146,6 @@ public class CliqueTests
     private void MineBlock(BlockTree tree, Block block)
     {
         tree.SuggestBlock(block);
-        tree.UpdateMainChain(block);
+        tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
     }
 }

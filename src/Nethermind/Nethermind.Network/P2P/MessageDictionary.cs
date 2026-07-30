@@ -10,13 +10,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using TaskExtensions = Nethermind.Core.Extensions.TaskExtensions;
 
 namespace Nethermind.Network.P2P;
 
-public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null, CancellationToken cancellationToken = default) where T66Msg : IEth66Message
+public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeSpan? oldRequestThreshold = null, CancellationToken cancellationToken = default)
+    where T66Msg : P2PMessage, IEth66Message
 {
     // The limit is largely to prevent unexpected OOM.
     // But the side effect is that if the peer did not respond with the message, eventually it will throw
@@ -50,7 +53,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             Interlocked.Increment(ref _requestCount);
             request.StartMeasuringTime();
-            send(request.Message);
+            handler.Send(request.Message);
 
             if (_cleanOldRequestTask.IsCompleted)
             {
@@ -97,7 +100,8 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
         {
             Interlocked.Decrement(ref _requestCount);
             request.ResponseSize = size;
-            request.CompletionSource.TrySetResult(data);
+            if (!request.CompletionSource.TrySetResult(data))
+                data?.TryDispose();
         }
         else
         {

@@ -27,7 +27,7 @@ public static class Extensions
         {
             AddPrecompile<BN254AddPrecompile>();
             AddPrecompile<BN254MulPrecompile>();
-            AddPrecompile<BN254PairingPrecompile>();
+            AddPrecompile<BN254PairingCheckPrecompile>();
         }
 
         if (spec.BlakeEnabled)

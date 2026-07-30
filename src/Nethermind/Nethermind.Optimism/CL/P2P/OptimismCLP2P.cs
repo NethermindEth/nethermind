@@ -8,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -24,6 +23,7 @@ using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Network;
 using Snappier;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core.Discovery;
@@ -43,7 +43,7 @@ public class OptimismCLP2P : IDisposable
     private readonly IOptimismConfig _config;
     private readonly string _blocksV2TopicId;
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
-    private readonly IPAddress _externalIp;
+    private readonly IIPResolver _ipResolver;
     private readonly Random _random = new();
 
     private PubsubRouter? _router;
@@ -60,7 +60,7 @@ public class OptimismCLP2P : IDisposable
         IOptimismConfig config,
         Address sequencerP2PAddress,
         ITimestamper timestamper,
-        IPAddress externalIp,
+        IIPResolver ipResolver,
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<OptimismCLP2P>();
@@ -68,7 +68,7 @@ public class OptimismCLP2P : IDisposable
         _executionEngineManager = executionEngineManager;
         _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
-        _externalIp = externalIp;
+        _ipResolver = ipResolver;
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
 
@@ -134,7 +134,7 @@ public class OptimismCLP2P : IDisposable
 
                 if (_headNumber is not null)
                 {
-                    List<ExecutionPayloadV3> missingPayloads = new();
+                    List<ExecutionPayloadV3> missingPayloads = [];
                     Hash256 previousParentHash = payload.ParentHash;
                     // Rollback missing payloads
                     for (ulong i = (ulong)payload.BlockNumber - 1; i > _headNumber.Value; i--)
@@ -304,7 +304,7 @@ public class OptimismCLP2P : IDisposable
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        string hostIp = _config.ClP2PHost ?? _externalIp.ToString();
+        string hostIp = _config.ClP2PHost ?? (await _ipResolver.Resolve(token)).ExternalIp.ToString();
         string address = $"/ip4/{hostIp}/tcp/{_config.ClP2PPort}";
         _localPeer = (LocalPeer)peerFactory.Create(new Identity());
 

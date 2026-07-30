@@ -18,11 +18,15 @@ namespace Nethermind.Synchronization
 
         [GaugeMetric]
         [Description("Bodies downloaded in fast blocks stage")]
-        public static long FastBodies;
+        public static ulong FastBodies;
 
         [GaugeMetric]
         [Description("Receipts downloaded in fast blocks stage")]
-        public static long FastReceipts;
+        public static ulong FastReceipts;
+
+        [GaugeMetric]
+        [Description("Access lists downloaded in fast blocks stage")]
+        public static ulong FastBlockAccessLists;
 
         [GaugeMetric]
         [Description("State synced in bytes")]

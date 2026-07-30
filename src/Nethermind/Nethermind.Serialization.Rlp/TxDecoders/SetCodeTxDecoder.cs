@@ -9,21 +9,26 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseEIP1559TxDecoder<T>(TxType.SetCode, transactionFactory) where T : Transaction, new()
 {
-    private readonly AuthorizationTupleDecoder _authTupleDecoder = new();
+    private static RlpLimit AuthorizationListLimit => RlpLimit.For<Transaction>(
+        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.PerAuthBaseCost + 1)),
+        nameof(Transaction.AuthorizationList)
+    );
 
-    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
+    private static readonly AuthorizationTupleDecoder AuthTupleDecoder = AuthorizationTupleDecoder.Instance;
+
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-        transaction.AuthorizationList = decoderContext.DecodeArray(_authTupleDecoder);
+        transaction.AuthorizationList = decoderContext.DecodeArray(AuthTupleDecoder, limit: AuthorizationListLimit);
     }
 
-    protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        base.EncodePayload(transaction, stream, rlpBehaviors);
-        stream.EncodeArray(transaction.AuthorizationList, rlpBehaviors);
+        base.EncodePayload(transaction, ref writer, rlpBehaviors);
+        AuthTupleDecoder.EncodeArray(ref writer, transaction.AuthorizationList, rlpBehaviors);
     }
 
     protected override int GetPayloadLength(Transaction transaction) => base.GetPayloadLength(transaction)
-               + (transaction.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(_authTupleDecoder.GetContentLength(transaction.AuthorizationList, RlpBehaviors.None)));
+               + (transaction.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(AuthTupleDecoder.GetContentLength(transaction.AuthorizationList, RlpBehaviors.None)));
 }

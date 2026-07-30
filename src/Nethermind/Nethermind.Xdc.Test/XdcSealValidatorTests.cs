@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -32,7 +33,7 @@ internal class XdcSealValidatorTests
             return false;
         }
         ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
-        ulong epochStart = extraFields.BlockRound - extraFields.BlockRound % (ulong)spec.EpochLength;
+        ulong epochStart = extraFields.BlockRound - extraFields.BlockRound % spec.EpochLength;
 
         return parentRound < epochStart;
     }
@@ -63,27 +64,39 @@ internal class XdcSealValidatorTests
     {
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
-        yield return new TestCaseData(header, Array.Empty<byte>());
+        yield return new TestCaseData(header, Array.Empty<byte>())
+            .SetName("EmptySignature");
 
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
-        yield return new TestCaseData(header, new byte[65]);
+        yield return new TestCaseData(header, new byte[65])
+            .SetName("ZeroSignature65Bytes");
 
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
-        yield return new TestCaseData(header, new byte[66]);
+        yield return new TestCaseData(header, new byte[66])
+            .SetName("ZeroSignature66Bytes");
 
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
         byte[] extraLongSignature = new byte[66];
         byte[] keyASig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header).BytesWithRecovery;
         keyASig.CopyTo(extraLongSignature, 0);
-        yield return new TestCaseData(header, extraLongSignature);
+        yield return new TestCaseData(header, extraLongSignature)
+            .SetName("ValidSignatureExtraLong");
 
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
         byte[] keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
-        yield return new TestCaseData(header, keyBSig);
+        yield return new TestCaseData(header, keyBSig)
+            .SetName("WrongSignerSignature");
+
+        header = Build.A.XdcBlockHeader().TestObject;
+        header.Beneficiary = TestItem.AddressA;
+        Signature canonicalSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header);
+        byte[] malleableSig = XdcTestHelper.CreateMalleableSignature(canonicalSig).BytesWithRecovery;
+        yield return new TestCaseData(header, malleableSig)
+            .SetName("MalleableHighS");
     }
 
     [TestCaseSource(nameof(InvalidSignatureCases))]
@@ -108,58 +121,70 @@ internal class XdcSealValidatorTests
     {
         (XdcBlockHeaderBuilder headerBuilder, PrivateKey[] masterSigners) = CreateValidEpochSwitchHeader();
         //Base valid control case
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), true);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), true)
+            .SetName("EpochSwitchValidControlCase");
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         headerBuilder.WithExtraData(Array.Empty<byte>());
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false)
+            .SetName("MissingExtraData");
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Current round is same as QC round
         headerBuilder.WithExtraFieldsV2(new ExtraFieldsV2(1, CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), masterSigners, 1)));
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false)
+            .SetName("CurrentRoundSameAsQcRound");
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Invalid nonce for epoch switch
         headerBuilder.WithNonce(1);
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false)
+            .SetName("InvalidEpochSwitchNonce");
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Remove one from validator list
         headerBuilder.WithValidators(masterSigners.Select(m => m.Address).Take(masterSigners.Length - 1).ToArray());
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false)
+            .SetName("ValidatorListMissingOne");
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Remove one from epoch candidates
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address).Take(masterSigners.Length - 1), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address).Take(masterSigners.Length - 1), Array.Empty<Address>(), false)
+            .SetName("EpochCandidatesMissingOne");
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Header penalties not matching epoch snapshot
         headerBuilder.WithPenalties(new[] { Address.Zero });
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false)
+            .SetName("HeaderPenaltiesNotInSnapshot");
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Header penalties not matching epoch snapshot
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), new[] { Address.Zero }, false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), new[] { Address.Zero }, false)
+            .SetName("SnapshotPenaltiesNotInHeader");
 
         (headerBuilder, masterSigners) = CreateValidEpochSwitchHeader();
         //Block sealer is not the leader in this round
         headerBuilder.WithAuthor(masterSigners[1].Address);
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false)
+            .SetName("BlockSealerIsNotLeader");
 
         (headerBuilder, masterSigners) = CreateValidNonEpochSwitchHeader();
         //Non-epoch switch valid control case
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), true);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), true)
+            .SetName("NonEpochSwitchValidControlCase");
 
         (headerBuilder, masterSigners) = CreateValidNonEpochSwitchHeader();
         //Validators is not empty
         headerBuilder.WithValidators([Address.Zero]);
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false)
+            .SetName("NonEpochSwitchValidatorsNotEmpty");
 
         (headerBuilder, masterSigners) = CreateValidNonEpochSwitchHeader();
         //Penalties is not empty
         headerBuilder.WithPenalties([Address.Zero]);
-        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false);
+        yield return new TestCaseData(headerBuilder, masterSigners.Select(m => m.Address), Array.Empty<Address>(), false)
+            .SetName("NonEpochSwitchPenaltiesNotEmpty");
 
 
         (XdcBlockHeaderBuilder headerBuilder, PrivateKey[] masterSigners) CreateValidEpochSwitchHeader()
@@ -205,11 +230,11 @@ internal class XdcSealValidatorTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
-        releaseSpec.EpochLength.Returns(900);
+        releaseSpec.EpochLength.Returns(900UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         IMasternodesCalculator masternodesCalculator = Substitute.For<IMasternodesCalculator>();
-        masternodesCalculator.CalculateNextEpochMasternodes(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
+        masternodesCalculator.CalculateNextEpochMasternodes(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
             .Returns((epochCandidates.ToArray(), penalties.ToArray()));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));

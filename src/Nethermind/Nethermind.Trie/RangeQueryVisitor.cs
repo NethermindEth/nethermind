@@ -112,7 +112,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public ArrayPoolList<byte[]> GetProofs()
     {
-        HashSet<byte[]> proofs = new();
+        HashSet<byte[]> proofs = [];
 
         AddToProof(_leftmostNodes);
         AddToProof(_rightmostNodes);

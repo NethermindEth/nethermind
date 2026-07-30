@@ -7,9 +7,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain;
 
-public class OnUpdateMainChainArgs(IReadOnlyList<Block> blocks, bool wereProcessed) : EventArgs
+public class OnUpdateMainChainArgs(IReadOnlyList<BlockHeader> headers, bool wereProcessed) : EventArgs
 {
-    public IReadOnlyList<Block> Blocks { get; } = blocks;
+    public IReadOnlyList<BlockHeader> Headers { get; } = headers;
 
     public bool WereProcessed { get; } = wereProcessed;
 }

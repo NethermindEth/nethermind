@@ -28,11 +28,14 @@ public class ChainLevelDecoderTests
 
         ChainLevelInfo decoded = valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp);
 
-        Assert.That(decoded.HasBlockOnMainChain, Is.True, "has block on the main chain");
-        Assert.That(decoded.BlockInfos[0].WasProcessed, Is.True, "0 processed");
-        Assert.That(decoded.BlockInfos[1].WasProcessed, Is.False, "1 not processed");
-        Assert.That(decoded.BlockInfos[0].BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
-        Assert.That(decoded.BlockInfos[0].TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.HasBlockOnMainChain, Is.True, "has block on the main chain");
+            Assert.That(decoded.BlockInfos[0].WasProcessed, Is.True, "0 processed");
+            Assert.That(decoded.BlockInfos[1].WasProcessed, Is.False, "1 not processed");
+            Assert.That(decoded.BlockInfos[0].BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.BlockInfos[0].TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        }
     }
 
     [Test]

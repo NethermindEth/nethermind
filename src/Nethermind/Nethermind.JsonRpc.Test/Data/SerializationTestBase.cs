@@ -37,7 +37,7 @@ public class SerializationTestBase
         string result = serializer.Serialize(dictionary);
         Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result);
 
-        Assert.That(deserialized, Is.EquivalentTo(dictionary));
+        Assert.That(deserialized, Is.EqualTo(dictionary));
     }
 
     protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null) => TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);

@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -18,6 +19,7 @@ public class GethGenesisJson
 
     public Dictionary<Address, GethGenesisAllocJson>? Alloc { get; set; }
 
+    [JsonConverter(typeof(ULongConverter))]
     public ulong Nonce { get; set; }
 
     public ulong? Timestamp { get; set; }
@@ -33,11 +35,13 @@ public class GethGenesisJson
 
     public Address? Coinbase { get; set; }
 
-    public ulong? BaseFeePerGas { get; set; }
+    public UInt256? BaseFeePerGas { get; set; }
 
     public ulong? ExcessBlobGas { get; set; }
 
     public ulong? BlobGasUsed { get; set; }
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    public ulong? SlotNumber { get; set; }
 }

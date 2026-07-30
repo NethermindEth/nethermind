@@ -4,13 +4,13 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Xdc.Types;
 using System;
-using System.Threading;
 
 namespace Nethermind.Xdc;
 
 public class XdcConsensusContext : IXdcConsensusContext
 {
     private ulong _currentRound;
+    private readonly object _gate = new();
 
     public XdcConsensusContext()
     {
@@ -26,19 +26,24 @@ public class XdcConsensusContext : IXdcConsensusContext
     public TimeoutCertificate HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }
 
-    public event EventHandler<NewRoundEventArgs> NewRoundSetEvent;
+    public event EventHandler<NewRoundEventArgs>? NewRoundSetEvent;
 
-    public void SetNewRound() => SetNewRound(Interlocked.Increment(ref _currentRound));
+    public void SetNewRound() => SetNewRound(CurrentRound + 1);
     public void SetNewRound(ulong round)
     {
-        int previousTimeoutCounter = TimeoutCounter;
-        ulong last = CurrentRound;
-        CurrentRound = round;
-        TimeoutCounter = 0;
-        DateTime? lastRoundStarted = RoundStarted;
-        RoundStarted = DateTime.UtcNow;
+        NewRoundEventArgs? eventArgs = null;
+        lock (_gate)
+        {
+            if (round <= CurrentRound) return;
 
-        // timer should be reset outside
-        NewRoundSetEvent?.Invoke(this, new NewRoundEventArgs(round, last, previousTimeoutCounter, RoundStarted - lastRoundStarted));
+            int previousTimeoutCounter = TimeoutCounter;
+            ulong last = CurrentRound;
+            CurrentRound = round;
+            TimeoutCounter = 0;
+            DateTime? lastRoundStarted = RoundStarted;
+            RoundStarted = DateTime.UtcNow;
+            eventArgs = new NewRoundEventArgs(round, last, previousTimeoutCounter, RoundStarted - lastRoundStarted);
+        }
+        NewRoundSetEvent?.Invoke(this, eventArgs);
     }
 }

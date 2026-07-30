@@ -17,6 +17,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
+using Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -107,7 +108,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
             .JUMPDEST()
             .PushData(Bytes.ZeroByte)
             .Op(Instruction.DUP1)
-            .PushData(TestItem.AddressB.Bytes)
+            .PushData(TestItem.AddressB)
             .Op(Instruction.SWAP1)
             .Op(Instruction.POP)
             .Op(Instruction.CALLDATASIZE)
@@ -137,7 +138,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
 
         EthRpcSimulateTestsBase.ECRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
 
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         Assert.That(headHash != chain.BlockFinder.Head!.Hash!);

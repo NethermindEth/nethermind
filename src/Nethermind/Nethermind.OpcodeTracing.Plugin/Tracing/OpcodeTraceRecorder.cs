@@ -1,0 +1,493 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
+using Nethermind.OpcodeTracing.Plugin.Output;
+using Nethermind.OpcodeTracing.Plugin.Utilities;
+using Nethermind.Synchronization.ParallelSync;
+
+namespace Nethermind.OpcodeTracing.Plugin.Tracing;
+
+/// <summary>
+/// Orchestrates opcode tracing operations across block ranges.
+/// </summary>
+public sealed class OpcodeTraceRecorder(
+    IOpcodeTracingConfig config,
+    IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    IEthereumEcdsa ethereumEcdsa,
+    ISyncModeSelector syncModeSelector,
+    ILogManager logManager) : IDisposable, IAsyncDisposable
+{
+    private readonly IOpcodeTracingConfig _config = config;
+    private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory = txProcessingEnvFactory;
+    private readonly ILogger _logger = logManager.GetClassLogger<OpcodeTraceRecorder>();
+    private readonly OpcodeCounter _counter = new();
+    private readonly TraceOutputWriter _outputWriter = new(logManager);
+    private readonly string _sessionId = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+
+    private TraceConfiguration? _traceConfig;
+    private OpcodeBlockTracer? _blockTracer;
+    private RealTimeTracer? _realTimeTracer;
+    private TracingProgress? _progress;
+    private Stopwatch? _stopwatch;
+    private CancellationTokenSource? _cts;
+    private Task? _tracingTask;
+    private ulong _lastProcessedBlock;
+    private bool _isComplete;
+    private ISyncModeSelector? _syncModeSelector;
+    private bool _syncModeWarningLogged;
+    private bool _syncCompleteLogged;
+    private bool _waitingForBlockLogged;
+
+    /// <summary>
+    /// Prepares the tracer for operation by validating configuration and initializing resources.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the tracing configuration is invalid; this aborts node startup by design.</exception>
+    public Task PrepareAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Get current chain tip
+            ulong currentChainTip = blockTree.Head?.Number ?? 0UL;
+
+            // Parse mode for validation
+            TracingMode mode = TracingMode.RealTime;
+            if (!string.IsNullOrEmpty(_config.Mode) &&
+                Enum.TryParse<TracingMode>(_config.Mode, ignoreCase: true, out TracingMode parsedMode))
+            {
+                mode = parsedMode;
+            }
+
+            // Validate configuration (mode-aware: Retrospective can wait for blocks during sync)
+            ValidationResult validationResult = BlockRangeValidator.Validate(_config, currentChainTip, mode);
+            if (validationResult.IsError)
+            {
+                if (_logger.IsError)
+                {
+                    _logger.Error($"Configuration validation failed: {validationResult.Message}");
+                }
+                throw new InvalidOperationException($"Invalid configuration: {validationResult.Message}");
+            }
+
+            if (validationResult.IsWarning && _logger.IsWarn)
+            {
+                _logger.Warn($"Configuration warning: {validationResult.Message}");
+            }
+
+            // Create trace configuration
+            _traceConfig = TraceConfiguration.FromConfig(_config, currentChainTip);
+
+            // Log warnings from configuration
+            foreach (string warning in _traceConfig.Warnings)
+            {
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn(warning);
+                }
+            }
+
+            // Validate output directory
+            if (!DirectoryHelper.ValidateWritable(_traceConfig.OutputDirectory, logManager))
+            {
+                throw new InvalidOperationException($"Output directory is not writable: {_traceConfig.OutputDirectory}");
+            }
+
+            // Initialize progress tracker
+            _progress = new TracingProgress(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
+            _lastProcessedBlock = _traceConfig.EffectiveStartBlock.SaturatingSub(1);
+
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Opcode tracing prepared: blocks {_traceConfig.EffectiveStartBlock}-{_traceConfig.EffectiveEndBlock}, mode: {_traceConfig.Mode}");
+            }
+
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error($"Failed to prepare opcode tracing: {ex.Message}", ex);
+            }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Attaches the tracer to the block processing pipeline for real-time mode and returns the live block tracer
+    /// to be contributed to the main processor.
+    /// </summary>
+    /// <returns>The RealTime block tracer.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when called before <see cref="PrepareAsync"/> succeeded, or when attachment fails.</exception>
+    public IBlockTracer AttachRealTime()
+    {
+        if (_traceConfig is null)
+        {
+            throw new InvalidOperationException($"{nameof(AttachRealTime)} called before {nameof(PrepareAsync)} succeeded.");
+        }
+
+        try
+        {
+            // Check and log sync state - RealTime mode only captures blocks processed through the EVM
+            _syncModeSelector = syncModeSelector;
+            LogSyncStateWarning(syncModeSelector.Current);
+            syncModeSelector.Changed += OnSyncModeChanged;
+
+            // For RealTime mode with Blocks parameter, recalculate range based on current chain tip
+            // This ensures we trace the NEXT N blocks from when the tracer attaches, not from init time
+            ulong effectiveStart = _traceConfig.EffectiveStartBlock;
+            ulong effectiveEnd = _traceConfig.EffectiveEndBlock;
+
+            if (_config.RecentBlocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
+            {
+                ulong currentTip = blockTree.Head?.Number ?? 0UL;
+                effectiveStart = currentTip + 1;
+                effectiveEnd = currentTip + _config.RecentBlocks.Value;
+
+                // Update progress tracker and trace config with new range
+                _progress = new TracingProgress(effectiveStart, effectiveEnd);
+                _traceConfig = _traceConfig with
+                {
+                    EffectiveStartBlock = effectiveStart,
+                    EffectiveEndBlock = effectiveEnd
+                };
+
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"RealTime mode with RecentBlocks={_config.RecentBlocks.Value}: recalculated range to {effectiveStart}-{effectiveEnd} (current tip: {currentTip})");
+                }
+            }
+
+            BlockRange range = new(effectiveStart, effectiveEnd);
+            _realTimeTracer = new RealTimeTracer(
+                _counter,
+                range,
+                _traceConfig.OutputDirectory,
+                _sessionId,
+                OnBlockCompletedRealTime,
+                logManager);
+
+            _blockTracer = new OpcodeBlockTracer(_realTimeTracer.OnBlockCompleted);
+
+            _stopwatch = Stopwatch.StartNew();
+
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Opcode tracing attached to block processor (RealTime mode, session={_sessionId})");
+            }
+
+            return _blockTracer;
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error($"Failed to attach tracer: {ex.Message}", ex);
+            }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Logs a warning about sync state if the node is still syncing.
+    /// RealTime mode only captures opcodes from blocks processed through the EVM,
+    /// which doesn't happen during initial sync.
+    /// </summary>
+    private void LogSyncStateWarning(SyncMode syncMode)
+    {
+        if (_syncModeWarningLogged)
+        {
+            return;
+        }
+
+        bool isSyncing = !syncMode.NotSyncing();
+
+        if (isSyncing && _logger.IsWarn)
+        {
+            _logger.Warn(
+                $"RealTime opcode tracing is enabled, but the node is currently syncing (SyncMode={syncMode}). " +
+                "RealTime mode only captures opcodes from NEW blocks processed at the chain tip AFTER sync completes. " +
+                "Blocks downloaded during sync do NOT execute the EVM and will NOT be traced. " +
+                "For tracing historical blocks during sync, use Retrospective mode instead: --OpcodeTracing.Mode Retrospective");
+            _syncModeWarningLogged = true;
+        }
+        else if (!isSyncing && !_syncCompleteLogged && _logger.IsInfo)
+        {
+            _logger.Info($"Node sync complete (SyncMode={syncMode}). RealTime opcode tracing is now active for new blocks.");
+            _syncCompleteLogged = true;
+        }
+    }
+
+    /// <summary>
+    /// Handles sync mode changes to log when RealTime tracing becomes active.
+    /// </summary>
+    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs args)
+    {
+        // Log transition to WaitingForBlock once - this is when RealTime tracing becomes effective
+        if ((args.Current & SyncMode.WaitingForBlock) != 0 && !_waitingForBlockLogged && _logger.IsInfo)
+        {
+            // Use the actual range from the tracer (which may have been recalculated at attach time)
+            BlockRange? range = _realTimeTracer?.Range;
+            _logger.Info(
+                $"Sync state changed to {args.Current}. " +
+                $"RealTime opcode tracing is now waiting for new blocks in range {range?.StartBlock ?? _traceConfig?.EffectiveStartBlock}-{range?.EndBlock ?? _traceConfig?.EffectiveEndBlock}.");
+            _waitingForBlockLogged = true;
+        }
+
+        if (args.Current.NotSyncing() && !_syncCompleteLogged && _logger.IsInfo)
+        {
+            _logger.Info($"Node sync complete (SyncMode={args.Current}). RealTime opcode tracing is now active for new blocks.");
+            _syncCompleteLogged = true;
+        }
+        else if (!args.Current.NotSyncing() && !_syncModeWarningLogged && _logger.IsWarn)
+        {
+            _logger.Warn($"Node entered sync mode (SyncMode={args.Current}). RealTime opcode tracing paused - only new blocks at chain tip are traced.");
+            _syncModeWarningLogged = true;
+        }
+    }
+
+    /// <summary>
+    /// Executes retrospective tracing asynchronously.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public Task ExecuteTracingAsync()
+    {
+        if (_traceConfig is null || _progress is null)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error("Cannot execute tracing: configuration not prepared");
+            }
+            return Task.CompletedTask;
+        }
+
+        if (_traceConfig.Mode != TracingMode.Retrospective && _traceConfig.Mode != TracingMode.RetrospectiveExecution)
+        {
+            if (_logger.IsDebug)
+            {
+                _logger.Debug("Skipping retrospective execution: not in Retrospective or RetrospectiveExecution mode");
+            }
+            return Task.CompletedTask;
+        }
+
+        _cts = new CancellationTokenSource();
+        _stopwatch = Stopwatch.StartNew();
+
+        _tracingTask = Task.Run(async () =>
+        {
+            ulong[]? skippedBlocks = null;
+
+            try
+            {
+                BlockRange range = new(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
+
+                if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
+                {
+                    RetrospectiveExecutionTracer executionTracer = new(
+                        blockTree,
+                        specProvider,
+                        _txProcessingEnvFactory,
+                        ethereumEcdsa,
+                        _counter,
+                        _traceConfig.MaxDegreeOfParallelism,
+                        logManager);
+
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Starting RetrospectiveExecution tracing of {range.Count} blocks");
+                    }
+
+                    await executionTracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
+
+                    ulong[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
+                    if (skippedSnapshot.Length > 0)
+                    {
+                        Array.Sort(skippedSnapshot);
+                        skippedBlocks = skippedSnapshot;
+                        if (_logger.IsWarn)
+                        {
+                            _logger.Warn($"RetrospectiveExecution tracing skipped {skippedBlocks.Length} blocks due to unavailable state");
+                        }
+                    }
+                }
+                else
+                {
+                    // Use RetrospectiveTracer for static bytecode analysis
+                    RetrospectiveTracer tracer = new(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, logManager);
+
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Starting Retrospective tracing of {range.Count} blocks");
+                    }
+
+                    await tracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
+                }
+
+                _isComplete = true;
+                _lastProcessedBlock = _traceConfig.EffectiveEndBlock;
+
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"{_traceConfig.Mode} tracing completed");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _lastProcessedBlock = _progress.CurrentBlock;
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Tracing interrupted at block {_lastProcessedBlock}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _lastProcessedBlock = _progress.CurrentBlock;
+                if (_logger.IsError)
+                {
+                    _logger.Error($"Tracing failed: {ex.Message}", ex);
+                }
+            }
+            finally
+            {
+                await WriteOutputAsync(skippedBlocks).ConfigureAwait(false);
+            }
+        }, _cts.Token);
+
+        return _tracingTask;
+    }
+
+    private void OnBlockCompletedRealTime(ulong blockNumber)
+    {
+        _lastProcessedBlock = blockNumber;
+        _progress?.UpdateProgress(blockNumber);
+
+        if (_progress?.ShouldLogProgress() == true && _logger.IsInfo)
+        {
+            _logger.Info($"Real-time tracing progress: block {blockNumber} ({_progress.PercentComplete:F2}% complete)");
+        }
+
+        // Check if we've reached the end block
+        // Note: RealTimeTracer handles writing the final cumulative file via CumulativeTraceWriter
+        if (_traceConfig is not null && blockNumber >= _traceConfig.EffectiveEndBlock)
+        {
+            _isComplete = true;
+        }
+    }
+
+    private async Task WriteOutputAsync(ulong[]? skippedBlocks = null)
+    {
+        if (_traceConfig is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _stopwatch?.Stop();
+
+            TraceMetadata metadata = new()
+            {
+                StartBlock = _traceConfig.EffectiveStartBlock,
+                EndBlock = _isComplete ? _traceConfig.EffectiveEndBlock : _lastProcessedBlock,
+                Mode = _traceConfig.Mode.ToString(),
+                Timestamp = DateTime.UtcNow,
+                Duration = _stopwatch?.ElapsedMilliseconds,
+                CompletionStatus = _isComplete ? "complete" : "partial",
+                Warnings = _traceConfig.Warnings.Count > 0 ? _traceConfig.Warnings.ToArray() : null,
+                SkippedBlocks = skippedBlocks
+            };
+
+            Dictionary<byte, long> opcodeCounts = _counter.ToOpcodeCountsDictionary();
+            TraceOutput traceOutput = new()
+            {
+                Metadata = metadata,
+                OpcodeCounts = opcodeCounts
+            };
+
+            string? outputPath = await _outputWriter.WriteAsync(_traceConfig.OutputDirectory, traceOutput).ConfigureAwait(false);
+            if (outputPath is not null && _logger.IsInfo)
+            {
+                _logger.Info($"Opcode trace completed and written to: {outputPath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error($"Failed to write trace output: {ex.Message}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Disposes of the tracer resources. Delegates to <see cref="DisposeAsync"/> so the async
+    /// teardown path is the single source of truth.
+    /// </summary>
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+    /// <summary>
+    /// Asynchronously disposes of the tracer resources. Idempotent: each resource is released once and nulled out.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        // Unsubscribe from sync mode changes
+        if (_syncModeSelector is not null)
+        {
+            _syncModeSelector.Changed -= OnSyncModeChanged;
+            _syncModeSelector = null;
+        }
+
+        // Cancel any running tasks
+        if (_cts is not null)
+        {
+            await _cts.CancelAsync().ConfigureAwait(false);
+            if (_tracingTask is not null)
+            {
+                try
+                {
+                    await _tracingTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                }
+                catch (TimeoutException)
+                {
+                    // Task didn't complete in time
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected
+                }
+            }
+            _cts.Dispose();
+            _cts = null;
+        }
+
+        // Finalize RealTime tracer if active
+        if (_realTimeTracer is not null)
+        {
+            try
+            {
+                await _realTimeTracer.FinalizePartialAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError)
+                {
+                    _logger.Error($"Failed to finalize RealTime tracer: {ex.Message}", ex);
+                }
+            }
+
+            await _realTimeTracer.DisposeAsync().ConfigureAwait(false);
+            _realTimeTracer = null;
+        }
+    }
+}

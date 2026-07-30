@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
@@ -71,21 +72,21 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.Contains(address.ToString());
 
-        public Signature Sign(Hash256 message, Address address, SecureString passphrase)
-            => SignCore(message, address, () =>
-            {
-                if (passphrase is null) throw new SecurityException("Passphrase missing when trying to sign a message");
-                return _keyStore.GetKey(address, passphrase).PrivateKey;
-            });
-
-        public Signature Sign(Hash256 message, Address address) => SignCore(message, address, static () => throw new SecurityException("Can only sign without passphrase when account is unlocked."));
-
-        private Signature SignCore(Hash256 message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
         {
             ProtectedPrivateKey protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
-            using PrivateKey key = protectedPrivateKey is not null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            return new Signature(rs, v);
+            if (protectedPrivateKey is null)
+            {
+                signature = null;
+                return false;
+            }
+
+            using PrivateKey key = protectedPrivateKey.Unprotect();
+            signature = WalletSigner.Sign(in message, key);
+            return true;
         }
+
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature) =>
+            WalletSigner.TrySignWithPassphrase(_keyStore, in message, address, passphrase, out signature);
     }
 }

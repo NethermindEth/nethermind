@@ -14,15 +14,19 @@ public partial class SecP256r1Precompile : IPrecompile<SecP256r1Precompile>
 {
     private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
 
-    public static readonly SecP256r1Precompile Instance = new();
+    public static SecP256r1Precompile Instance { get; } = new();
 
     public static Address Address { get; } = Address.FromNumber(0x100);
 
     public static string Name => "P256VERIFY";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip7951Enabled ? 6900L : 3450L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip7951Enabled ? 6900UL : 3450UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
+
+    // should produce empty valid output for all invalid-length inputs
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length == 160 ? inputData : ReadOnlyMemory<byte>.Empty;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 }

@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.RequestSizer;
 
 /// <summary>
 /// Encapsulate pattern of auto adjusting the request size depending on latency and response size.

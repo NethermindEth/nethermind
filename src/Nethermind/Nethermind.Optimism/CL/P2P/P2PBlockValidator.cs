@@ -22,7 +22,7 @@ public class P2PBlockValidator(
     private readonly Address _sequencerP2PAddress = sequencerP2PAddress;
     private readonly ITimestamper _timestamper = timestamper;
     private readonly ILogger _logger = logManager.GetClassLogger<P2PBlockValidator>();
-    private readonly Dictionary<long, long> _numberOfBlocksSeen = [];
+    private readonly Dictionary<ulong, long> _numberOfBlocksSeen = [];
 
     public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
     {
@@ -77,13 +77,13 @@ public class P2PBlockValidator(
     private bool IsBlockHashValid(ExecutionPayloadV3 payload)
     {
         // [REJECT] if the block_hash in the payload is not valid
-        BlockDecodingResult blockDecodingResult = payload.TryGetBlock();
-        Block? block = blockDecodingResult.Block;
-        if (block is null)
+        Result<Block> blockDecodingResult = payload.TryGetBlock();
+        if (blockDecodingResult.IsError)
         {
             if (_logger.IsError) _logger.Error($"Error creating block: {blockDecodingResult.Error}");
             return false;
         }
+        Block block = blockDecodingResult.Data;
 
         Hash256 calculatedHash = block.Header.CalculateHash();
         if (payload.BlockHash != calculatedHash)

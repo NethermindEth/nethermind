@@ -93,7 +93,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         return this;
     }
 
-    public new XdcBlockHeaderBuilder WithNumber(long blockNumber)
+    public new XdcBlockHeaderBuilder WithNumber(ulong blockNumber)
     {
         TestObjectInternal.Number = blockNumber;
         return this;
@@ -102,6 +102,18 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     public new XdcBlockHeaderBuilder WithHash(Hash256 hash256)
     {
         TestObjectInternal.Hash = hash256;
+        return this;
+    }
+
+    public new XdcBlockHeaderBuilder WithStateRoot(Hash256 stateRoot)
+    {
+        TestObjectInternal.StateRoot = stateRoot;
+        return this;
+    }
+
+    public new XdcBlockHeaderBuilder WithTimestamp(ulong timestamp)
+    {
+        TestObjectInternal.Timestamp = timestamp;
         return this;
     }
 
@@ -117,7 +129,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     }
     public XdcBlockHeaderBuilder WithValidators(Address[] validators)
     {
-        XdcTestObjectInternal.Validators = validators.SelectMany(a => a.Bytes).ToArray();
+        XdcTestObjectInternal.Validators = validators.SelectMany(a => a.Bytes.ToArray()).ToArray();
         return this;
     }
     public XdcBlockHeaderBuilder WithValidators(byte[] validators)
@@ -127,7 +139,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     }
     public XdcBlockHeaderBuilder WithPenalties(Address[] penalties)
     {
-        XdcTestObjectInternal.Penalties = penalties.SelectMany(a => a.Bytes).ToArray();
+        XdcTestObjectInternal.Penalties = penalties.SelectMany(a => a.Bytes.ToArray()).ToArray();
         return this;
     }
     public XdcBlockHeaderBuilder WithPenalties(byte[] penalties)

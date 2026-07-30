@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -43,20 +42,20 @@ public partial class ForwardHeaderProviderTests
     private const int SyncBatchSizeMax = 128;
 
     [TestCase(1L, 0, 64, 0, 1)]
-    [TestCase(1L, 32, 64, 0, 0)]
+    [TestCase(1L, 32, 64, null, null)]
     [TestCase(2L, 0, 64, 0, 2)]
-    [TestCase(2L, 32, 64, 0, 0)]
+    [TestCase(2L, 32, 64, null, null)]
     [TestCase(32L, 0, 64, 0, 32)]
-    [TestCase(32L, 32, 64, 0, 0)]
+    [TestCase(32L, 32, 64, null, null)]
     [TestCase(32L, 16, 64, 0, 16)]
     [TestCase(32L, 0, 16, 0, 15)]
     [TestCase(3L, 0, 64, 0, 3)]
-    [TestCase(3L, 32, 64, 0, 0)]
+    [TestCase(3L, 32, 64, null, null)]
     [TestCase(SyncBatchSizeMax * 8, 0, 64, 0, 63)]
     [TestCase(SyncBatchSizeMax * 8, 0, 64, 0, 63)]
     [TestCase(SyncBatchSizeMax * 8, 32, 64, 0, 63)]
     [TestCase(SyncBatchSizeMax * 8, 32, 64, 0, 63)]
-    public async Task Happy_path(long headNumber, int skipLastN, int maxHeader, int expectedStartNumber, int expectedEndNumber)
+    public async Task Happy_path(long headNumber, int skipLastN, int maxHeader, long? expectedStartNumber, long? expectedEndNumber)
     {
         long chainLength = headNumber + 1;
         SyncPeerMock syncPeer = new(chainLength, false, Response.AllCorrect);
@@ -69,9 +68,9 @@ public partial class ForwardHeaderProviderTests
 
         int maxNHeader = Math.Min(maxHeader, peerInfo!.MaxHeadersPerRequest());
 
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(skipLastN, maxNHeader, CancellationToken.None);
-        headers?[0]?.Number.Should().Be(expectedStartNumber);
-        headers?[^1]?.Number.Should().Be(expectedEndNumber);
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders((ulong)skipLastN, (ulong)maxNHeader, CancellationToken.None);
+        Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
+        Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
     }
 
     [Test]
@@ -94,21 +93,21 @@ public partial class ForwardHeaderProviderTests
         ctx.BlockTree.SuggestBlock(block1025);
         ctx.BlockTree.SuggestBlock(block1026);
 
-        for (int i = 0; i < 1023; i++)
+        for (uint i = 0; i < 1023; i++)
         {
             Assert.That(syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(ctx.BlockTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash), i.ToString());
         }
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        headers?[0]?.Number.Should().Be(1019);
-        headers?[^1]?.Number.Should().Be(1146);
+        Assert.That(headers?[0]?.Number, Is.EqualTo(1019));
+        Assert.That(headers?[^1]?.Number, Is.EqualTo(1146));
     }
 
     [Test]
     public async Task Ancestor_lookup_with_sync_pivot()
     {
         SyncPeerMock syncPeer = new(1024, false, Response.AllCorrect);
-        int pivotNumber = 500;
+        uint pivotNumber = 500;
         BlockHeader syncPivot = syncPeer.BlockTree.FindHeader(pivotNumber, BlockTreeLookupOptions.None)!;
 
         await using IContainer node = CreateNode(builder =>
@@ -121,14 +120,14 @@ public partial class ForwardHeaderProviderTests
 
         // Simulate fast header adding the pivot.
         Context ctx = node.Resolve<Context>();
-        ctx.BlockTree.Insert(syncPivot).Should().Be(AddBlockResult.Added);
+        Assert.That(ctx.BlockTree.Insert(syncPivot), Is.EqualTo(AddBlockResult.Added));
         ctx.ConfigureBestPeer(syncPeer);
         syncPeer.HeadNumber = 700;
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
 
-        headers?[0]?.Number.Should().Be(pivotNumber);
+        Assert.That(headers?[0]?.Number, Is.EqualTo(pivotNumber));
     }
 
     [Test]
@@ -143,20 +142,20 @@ public partial class ForwardHeaderProviderTests
         SyncPeerMock syncPeer = new(2072 + 1, true, responseOptions);
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
-        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Null);
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
-    [TestCase(33L)]
-    [TestCase(65L)]
-    public async Task Peer_only_advertise_some_header(long headNumber)
+    [TestCase(33UL)]
+    [TestCase(65UL)]
+    public async Task Peer_only_advertise_some_header(ulong headNumber)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(_ => ctx.ResponseBuilder.BuildHeaderResponse(0, (int)(headNumber + 1), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
@@ -166,8 +165,8 @@ public partial class ForwardHeaderProviderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        headers?[0]?.Number.Should().Be(0);
-        headers?[^1]?.Number.Should().Be(headNumber);
+        Assert.That(headers?[0]?.Number, Is.EqualTo(0));
+        Assert.That(headers?[^1]?.Number, Is.EqualTo(headNumber));
     }
 
     [Test]
@@ -176,16 +175,16 @@ public partial class ForwardHeaderProviderTests
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns(1024);
+        syncPeer.HeadNumber.Returns(1024UL);
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Null);
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
@@ -197,15 +196,15 @@ public partial class ForwardHeaderProviderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.HeadNumber.Returns(1000UL);
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Null);
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
@@ -217,30 +216,30 @@ public partial class ForwardHeaderProviderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.HeadNumber.Returns(1000UL);
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().NotBeNull();
-        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().NotBeNull();
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Not.Null);
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Not.Null);
 
-        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
 
         ISyncPeer newSyncPeer = Substitute.For<ISyncPeer>();
         newSyncPeer.HeadHash.Returns(TestItem.KeccakB);
-        newSyncPeer.HeadNumber.Returns(1000);
+        newSyncPeer.HeadNumber.Returns(1000UL);
         newSyncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        newSyncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+        newSyncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
         ctx.ConfigureBestPeer(new PeerInfo(newSyncPeer));
 
-        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().NotBeNull();
-        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
-        await newSyncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Not.Null);
+        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await newSyncPeer.Received(1).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -251,21 +250,21 @@ public partial class ForwardHeaderProviderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.HeadNumber.Returns(1000UL);
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
 
         using IOwnedReadOnlyList<BlockHeader?>? headers1 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        headers1.Should().NotBeNull();
+        Assert.That(headers1, Is.Not.Null);
         using IOwnedReadOnlyList<BlockHeader?>? headers2 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        headers2.Should().NotBeNull();
+        Assert.That(headers2, Is.Not.Null);
 
-        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     private class SlowSealValidator : ISealValidator
@@ -284,22 +283,21 @@ public partial class ForwardHeaderProviderTests
     }
 
     [Test, MaxTime(7000)]
-    [Ignore("Fails OneLoggerLogManager Travis only")]
     public async Task Can_cancel_seal_validation()
     {
         await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(new SlowSealValidator()));
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.HeadNumber.Returns(1000UL);
 
         CancellationTokenSource cancellation = new();
         cancellation.CancelAfter(100);
@@ -308,7 +306,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, cancellation.Token);
-        await headerTask.Should().ThrowAsync<OperationCanceledException>();
+        Assert.That(async () => await headerTask(), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
@@ -323,11 +321,11 @@ public partial class ForwardHeaderProviderTests
         BlockHeader[] blockHeadersCopy = blockHeaders?.ToArray() ?? [];
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(blockHeaders);
 
         PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(511);
+        syncPeer.HeadNumber.Returns(511UL);
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
@@ -338,7 +336,7 @@ public partial class ForwardHeaderProviderTests
         sealValidator.Received().ValidateSeal(blockHeadersCopy![^1], true);
     }
 
-    private class ThrowingPeer(long number, UInt256? totalDiff, Hash256? headHash = null) : ISyncPeer
+    private class ThrowingPeer(ulong number, UInt256? totalDiff, Hash256? headHash = null) : ISyncPeer
     {
         public string Name => "Throwing";
         public string ClientId => "EX peer";
@@ -346,7 +344,7 @@ public partial class ForwardHeaderProviderTests
         public string ProtocolCode { get; } = null!;
         public byte ProtocolVersion { get; } = default;
         public Hash256 HeadHash { get; set; } = headHash ?? Keccak.Zero;
-        public long HeadNumber { get; set; } = number;
+        public ulong HeadNumber { get; set; } = number;
         public UInt256? TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -360,7 +358,7 @@ public partial class ForwardHeaderProviderTests
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token) =>
             throw new NotImplementedException();
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token) =>
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token) =>
             throw new InvalidOperationException();
 
         public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) =>
@@ -398,7 +396,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, default);
-        await headerTask.Should().ThrowAsync<InvalidOperationException>();
+        Assert.That(async () => await headerTask(), Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -409,15 +407,15 @@ public partial class ForwardHeaderProviderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns(1000);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        syncPeer.HeadNumber.Returns(1000UL);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns<Task<IOwnedReadOnlyList<BlockHeader>?>>(x => throw new OperationCanceledException());
 
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Null);
         ctx.PeerPool.Received().ReportWeakPeer(peerInfo, AllocationContexts.ForwardHeader);
     }
 
@@ -432,15 +430,15 @@ public partial class ForwardHeaderProviderTests
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.HeadNumber.Returns(1000);
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        syncPeer.HeadNumber.Returns(1000UL);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns<Task<IOwnedReadOnlyList<BlockHeader>?>>(x => throw new OperationCanceledException());
 
         ctx.ConfigureBestPeer(syncPeer);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> act = () => forwardHeader.GetBlockHeaders(0, 128, cts.Token);
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        Assert.That(async () => await act(), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Flags]
@@ -473,7 +471,7 @@ public partial class ForwardHeaderProviderTests
                 return tree;
             })
 
-            .AddSingleton<Dictionary<long, Hash256>, IBlockTree>((blockTree) => new Dictionary<long, Hash256>()
+            .AddSingleton<Dictionary<ulong, Hash256>, IBlockTree>((blockTree) => new Dictionary<ulong, Hash256>()
             {
                 {
                     0, blockTree.Genesis!.Hash!
@@ -564,7 +562,7 @@ public partial class ForwardHeaderProviderTests
         public string ProtocolCode { get; } = null!;
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -583,7 +581,7 @@ public partial class ForwardHeaderProviderTests
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
 
-        public async Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        public async Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             bool justFirst = _flags.HasFlag(Response.JustFirst);
             bool timeoutOnFullBatch = _flags.HasFlag(Response.TimeoutOnFullBatch);
@@ -596,7 +594,7 @@ public partial class ForwardHeaderProviderTests
             BlockHeader[] headers = new BlockHeader[maxBlocks];
             for (int i = 0; i < (justFirst ? 1 : maxBlocks); i++)
             {
-                headers[i] = BlockTree.FindHeader(number + i, BlockTreeLookupOptions.None)!;
+                headers[i] = BlockTree.FindHeader(number + (ulong)i, BlockTreeLookupOptions.None)!;
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
@@ -645,12 +643,12 @@ public partial class ForwardHeaderProviderTests
             throw new NotImplementedException();
     }
 
-    private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
+    private class ResponseBuilder(IBlockTree blockTree, Dictionary<ulong, Hash256> testHeaderMapping)
     {
         private readonly IBlockTree _blockTree = blockTree;
-        private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
+        private readonly Dictionary<ulong, Hash256> _testHeaderMapping = testHeaderMapping;
 
-        public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
+        public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(ulong startNumber, int number, Response flags)
         {
             bool consistent = flags.HasFlag(Response.Consistent);
             bool justFirst = flags.HasFlag(Response.JustFirst);
@@ -689,7 +687,7 @@ public partial class ForwardHeaderProviderTests
                         _blockTree.SuggestHeader(headers[i]);
                     }
 
-                    _testHeaderMapping[startNumber + i] = headers[i].Hash!;
+                    _testHeaderMapping[startNumber + (ulong)i] = headers[i].Hash!;
                 }
             }
 
@@ -706,8 +704,8 @@ public partial class ForwardHeaderProviderTests
         private readonly BlockHeadersMessageSerializer _headersSerializer = new();
         private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
         private readonly ReceiptsMessageSerializer _receiptsSerializer = new(MainnetSpecProvider.Instance);
-        private readonly Dictionary<Hash256, BlockHeader> _headers = new();
-        private readonly Dictionary<Hash256, BlockBody> _bodies = new();
+        private readonly Dictionary<Hash256, BlockHeader> _headers = [];
+        private readonly Dictionary<Hash256, BlockBody> _bodies = [];
 
         public async Task<OwnedBlockBodies> BuildBlocksResponse(IList<Hash256> blockHashes, Response flags)
         {
@@ -754,7 +752,7 @@ public partial class ForwardHeaderProviderTests
                         ? _headers[blockHashes[i]]
                         : Build.A.BlockHeader.WithNumber(blockHeaders[i - 1].Number + 1).WithHash(blockHashes[i]).TestObject;
 
-                    _testHeaderMapping[startHeader.Number + i] = blockHeaders[i].Hash!;
+                    _testHeaderMapping[startHeader.Number + (ulong)i] = blockHeaders[i].Hash!;
 
                     BlockHeader header = consistent
                         ? blockHeaders[i]

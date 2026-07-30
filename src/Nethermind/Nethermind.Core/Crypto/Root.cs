@@ -69,10 +69,7 @@ public class Root : IEquatable<Root>, IComparable<Root>
 
     public static explicit operator ReadOnlySpan<byte>(Root value) => value.AsSpan();
 
-    public static bool operator !=(Root left, Root right)
-    {
-        return !(left == right);
-    }
+    public static bool operator !=(Root left, Root right) => !(left == right);
 
     public override string ToString() => Bytes.ToHexString(true);
 

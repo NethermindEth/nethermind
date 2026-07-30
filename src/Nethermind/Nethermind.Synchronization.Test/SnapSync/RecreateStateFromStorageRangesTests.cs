@@ -6,7 +6,6 @@
 using System;
 using System.Linq;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -195,9 +194,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
                     Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e"),
                 }));
 
-            result.Should().Be(AddRangeResult.OK);
-            moreChildrenToRight.Should().BeFalse();
-            helper.TrieNodeWritesCount.Should().Be(1);
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(moreChildrenToRight, Is.False);
+            Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -219,8 +218,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
                 null,
                 proofs: null);
 
-            result.Should().Be(AddRangeResult.EmptyRange);
-            helper.TrieNodeWritesCount.Should().Be(0); // No writes should happen
+            Assert.That(result, Is.EqualTo(AddRangeResult.EmptyRange));
+            Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(0)); // No writes should happen
         }
 
         private static StorageRange PrepareStorageRequest(ValueHash256 accountPath, Hash256 storageRoot, ValueHash256 startingHash) =>

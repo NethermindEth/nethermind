@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test
 
             LogEntry[] testEntries = testedEntries(entries);
             IEnumerable<bool> results = testEntries.Select(e => bloom.Matches(e));
-            results.Should().AllBeEquivalentTo(isMatchExpectation);
+            Assert.That(results, Is.All.EqualTo(isMatchExpectation));
         }
 
         [TestCase(1, 1, "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000002000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000400000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")]
@@ -65,7 +65,18 @@ namespace Nethermind.Core.Test
             Bloom bloom = new();
             bloom.Add(GetLogEntries(count, topicMax));
 
-            bloom.ToString().Should().Be(expectedValue);
+            Assert.That(bloom.ToString(), Is.EqualTo(expectedValue));
+        }
+
+        [Test]
+        [SuppressMessage("ReSharper", "SuspiciousTypeConversion.Global")]
+        public void Equals_object_returns_true_for_equal_bloom()
+        {
+            Bloom bloom = new();
+            bloom.Set(Keccak.OfAnEmptyString.Bytes);
+            BloomStructRef bloomStructRef = new(bloom.Bytes);
+
+            Assert.That(bloomStructRef.Equals((object)bloom), Is.True);
         }
 
         private static LogEntry[] GetLogEntries(int count, int topicsMax, int start = 0)

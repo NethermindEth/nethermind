@@ -3,20 +3,18 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -29,16 +27,15 @@ using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class RlpxHost : IRlpxHost
+    public class RlpxHost : IRlpxHost, ISessionActivityObserver
     {
         private IChannel? _bootstrapChannel;
         private IEventLoopGroup? _bossGroup;
         private IEventLoopGroup? _workerGroup;
 
         private bool _isInitialized;
-        public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
-        private string? LocalIp { get; }
+        private readonly IPAddress _localIp;
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -55,6 +52,7 @@ namespace Nethermind.Network.Rlpx
         private readonly Action<Task, object?> _onChannelCloseCompleted;
         private readonly Action<Task, object?> _markDisconnectedAfterCloseDelay;
         private readonly NodeFilter _nodeFilter;
+        private readonly IPrivilegedIpProvider _privilegedIpProvider;
         private readonly ConcurrentDictionary<Guid, SessionActivitySubscription> _sessionActivitySubscriptions = new();
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
@@ -62,16 +60,16 @@ namespace Nethermind.Network.Rlpx
 
         public RlpxHost(
             IMessageSerializationService serializationService,
-            [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             INetworkConfig networkConfig,
+            IIPResolver ipResolver,
+            IPrivilegedIpProvider privilegedIpProvider,
             ILogManager logManager,
             IChannelFactory? channelFactory = null)
         {
             ArgumentNullException.ThrowIfNull(serializationService);
-            ArgumentNullException.ThrowIfNull(nodeKey);
             ArgumentNullException.ThrowIfNull(handshakeService);
             ArgumentNullException.ThrowIfNull(sessionMonitor);
             ArgumentNullException.ThrowIfNull(disconnectsAnalyzer);
@@ -93,9 +91,11 @@ namespace Nethermind.Network.Rlpx
             _sessionMonitor = sessionMonitor;
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _handshakeService = handshakeService;
-            LocalNodeId = nodeKey.PublicKey;
             LocalPort = networkConfig.P2PPort;
-            LocalIp = networkConfig.LocalIp;
+            // RlpxHost is injected as Lazy<> into InitializeNetwork, whose async Initialize() runs after its
+            // SetupKeyStore dependency has awaited Resolve() and warmed the cache, so this does not block.
+            IIPResolver.NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
+            _localIp = ips.LocalIp;
             _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
             _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
             _channelFactory = channelFactory;
@@ -106,11 +106,13 @@ namespace Nethermind.Network.Rlpx
             _markDisconnectedAfterCloseDelay = MarkDisconnectedAfterCloseDelay;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
-            IPAddress? currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? ip) ? ip : null;
-            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, currentIp);
+            _privilegedIpProvider = privilegedIpProvider;
+            _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
         }
 
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);
+        // Privileged addresses (static and trusted nodes) bypass the recent-IP filter so they can always connect.
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false)
+            => _privilegedIpProvider.IsPrivileged(ip) || _nodeFilter.TryAccept(ip, exactOnly);
 
         public async Task Init()
         {
@@ -138,16 +140,13 @@ namespace Nethermind.Network.Rlpx
                     .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                     .Option(ChannelOption.SoBacklog, 100)
                     .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                    .ChildOption(ChannelOption.TcpNodelay, true)
-                    .ChildOption(ChannelOption.SoKeepalive, true)
                     .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
                     .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new InboundChannelInitializer(this));
 
-                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(() => LocalIp is null
-                        ? bootstrap.BindAsync(LocalPort)
-                        : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort),
+                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(
+                    () => bootstrap.BindAsync(_localIp, LocalPort),
                     LocalPort);
 
                 _bootstrapChannel = await openTask.ContinueWith(t =>
@@ -203,8 +202,6 @@ namespace Nethermind.Network.Rlpx
                 .Group(_workerGroup)
                 .ChannelFactory(_createClientChannel)
                 .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                .Option(ChannelOption.TcpNodelay, true)
-                .Option(ChannelOption.SoKeepalive, true)
                 .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
                 .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                 .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
@@ -246,6 +243,7 @@ namespace Nethermind.Network.Rlpx
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated;
+        public event SessionDisconnectedEventHandler SessionDisconnected;
 
         internal SessionActivitySubscription TrackSessionActivity(ISession session)
         {
@@ -270,6 +268,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (session.Direction == ConnectionDirection.In
                 && channel.RemoteAddress is IPEndPoint remoteEndpoint
+                && !_privilegedIpProvider.IsPrivileged(remoteEndpoint.Address)
                 && !_nodeFilter.TryAccept(remoteEndpoint.Address))
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteEndpoint.Address}");
@@ -298,9 +297,10 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
-            SessionActivitySubscription sessionActivitySubscription = TrackSessionActivity(session);
+            SetTcpSocketOptions(channel);
+
+            TrackSessionActivity(session);
             _sessionMonitor.AddSession(session);
-            sessionActivitySubscription.AttachDisconnected();
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
@@ -319,6 +319,27 @@ namespace Nethermind.Network.Rlpx
                 TaskScheduler.Default);
         }
 
+        private void SetTcpSocketOptions(IChannel channel)
+        {
+            SetChannelOption(channel, ChannelOption.TcpNodelay, true);
+            SetChannelOption(channel, ChannelOption.SoKeepalive, true);
+        }
+
+        private void SetChannelOption<T>(IChannel channel, ChannelOption<T> option, T value)
+        {
+            try
+            {
+                if (!channel.Configuration.SetOption(option, value) && _logger.IsWarn)
+                {
+                    _logger.Warn($"Failed to set channel option {option}");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to set channel option {option}: {ex.Message}");
+            }
+        }
+
         private void DisconnectConnectedChannel(Task<IChannel> connectTask, object? _)
         {
             if (!connectTask.IsCompletedSuccessfully)
@@ -329,7 +350,13 @@ namespace Nethermind.Network.Rlpx
             _ = connectTask.Result.DisconnectAsync();
         }
 
-        private void OnChannelCloseCompleted(Task _, object? state) =>
+        private void OnChannelCloseCompleted(Task _, object? state)
+        {
+            if (state is Session session)
+            {
+                session.MarkChannelClosed();
+            }
+
             // The close completion is completed before actual closing or remaining packet is processed.
             // So usually, we do get a disconnect reason from peer, we just receive it after this. So we need to
             // add some delay to account for whatever is holding the network pipeline.
@@ -339,6 +366,7 @@ namespace Nethermind.Network.Rlpx
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
+        }
 
         private void MarkDisconnectedAfterCloseDelay(Task _, object? state)
         {
@@ -381,9 +409,9 @@ namespace Nethermind.Network.Rlpx
 
             // Detach subscriptions and dispose any sessions that weren't disconnected during shutdown.
             // Sessions whose Disconnected event fired are already disposed via OnDisconnected.
-            foreach (SessionActivitySubscription subscription in _sessionActivitySubscriptions.Values)
+            foreach (KeyValuePair<Guid, SessionActivitySubscription> kvp in _sessionActivitySubscriptions)
             {
-                subscription.DetachAndDispose();
+                kvp.Value.DisconnectAndDispose();
             }
 
             _sessionActivitySubscriptions.Clear();
@@ -395,40 +423,60 @@ namespace Nethermind.Network.Rlpx
         {
             private readonly RlpxHost _rlpxHost;
             private readonly ISession _session;
-            private readonly EventHandler<DisconnectEventArgs> _onDisconnected;
-            private readonly EventHandler<PeerEventArgs> _refreshNodeFilter;
+            private readonly Session? _concreteSession;
+            private readonly EventHandler<DisconnectEventArgs>? _onDisconnected;
+            private readonly EventHandler<PeerEventArgs>? _refreshNodeFilter;
 
             public SessionActivitySubscription(RlpxHost rlpxHost, ISession session)
             {
                 _rlpxHost = rlpxHost;
                 _session = session;
-                _onDisconnected = OnDisconnected;
-                _refreshNodeFilter = RefreshNodeFilter;
+                _concreteSession = session as Session;
+                if (_concreteSession is null)
+                {
+                    _refreshNodeFilter = RefreshNodeFilter;
+                    _onDisconnected = OnDisconnected;
+                }
             }
 
             public void Attach()
             {
-                _session.MsgReceived += _refreshNodeFilter;
-                _session.MsgDelivered += _refreshNodeFilter;
-            }
+                if (_concreteSession is not null)
+                {
+                    _concreteSession.SetActivityObserver(_rlpxHost);
+                    return;
+                }
 
-            public void AttachDisconnected() => _session.Disconnected += _onDisconnected;
+                _session.MsgReceived += _refreshNodeFilter!;
+                _session.MsgDelivered += _refreshNodeFilter!;
+                _session.Disconnected += _onDisconnected!;
+            }
 
             public void Detach()
             {
-                _session.MsgReceived -= _refreshNodeFilter;
-                _session.MsgDelivered -= _refreshNodeFilter;
-                _session.Disconnected -= _onDisconnected;
+                DetachSession();
                 _rlpxHost._sessionActivitySubscriptions.TryRemove(_session.SessionId, out _);
             }
 
-            public void DetachAndDispose()
+            public void DetachSession()
             {
-                Detach();
+                if (_concreteSession is not null)
+                {
+                    _concreteSession.SetActivityObserver(null);
+                }
+                else
+                {
+                    _session.MsgReceived -= _refreshNodeFilter!;
+                    _session.MsgDelivered -= _refreshNodeFilter!;
+                    _session.Disconnected -= _onDisconnected!;
+                }
+            }
+
+            public void DisconnectAndDispose()
+            {
                 try
                 {
                     _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
-                    _session.Dispose();
                 }
                 catch (InvalidOperationException)
                 {
@@ -442,10 +490,34 @@ namespace Nethermind.Network.Rlpx
                 _rlpxHost._nodeFilter.Touch(remoteNode.Address.Address, remoteNode.IsStatic || remoteNode.IsBootnode);
             }
 
-            public void OnDisconnected(object? _, DisconnectEventArgs __)
+            private void OnDisconnected(object? _, DisconnectEventArgs args) => _rlpxHost.OnSessionDisconnected(_session, args);
+        }
+
+        void ISessionActivityObserver.OnSessionActivity(Session session)
+        {
+            Node remoteNode = session.Node;
+            _nodeFilter.Touch(remoteNode.Address.Address, remoteNode.IsStatic || remoteNode.IsBootnode);
+        }
+
+        void ISessionActivityObserver.OnSessionDisconnected(Session session, DisconnectEventArgs args) =>
+            OnSessionDisconnected(session, args);
+
+        private void OnSessionDisconnected(ISession session, DisconnectEventArgs args)
+        {
+            if (!_sessionActivitySubscriptions.TryRemove(session.SessionId, out SessionActivitySubscription? subscription))
             {
-                Detach();
-                _session.Dispose();
+                return;
+            }
+
+            subscription.DetachSession();
+            _sessionMonitor.RemoveSession(session);
+            try
+            {
+                SessionDisconnected?.Invoke(this, session, args);
+            }
+            finally
+            {
+                session.Dispose();
             }
         }
 

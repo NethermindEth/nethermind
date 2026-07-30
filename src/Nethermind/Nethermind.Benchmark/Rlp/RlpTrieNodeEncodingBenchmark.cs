@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using BenchmarkDotNet.Attributes;
-using FluentAssertions;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Rlp;
 
@@ -39,7 +39,7 @@ public class RlpTrieNodeEncodingBenchmark
         TrieNode extension = tree.Root;
 
         _extension = extension;
-        _extension.NodeType.Should().Be(NodeType.Extension);
+        Assert.That(_extension.NodeType, Is.EqualTo(NodeType.Extension));
 
         TreePath path = default;
 
@@ -47,11 +47,11 @@ public class RlpTrieNodeEncodingBenchmark
 
         path.AppendMut(0);
         _branch.TryResolveNode(_store, ref path);
-        _branch.NodeType.Should().Be(NodeType.Branch);
+        Assert.That(_branch.NodeType, Is.EqualTo(NodeType.Branch));
 
         _leaf = _branch.GetChild(_store, ref path, 0);
         _leaf.TryResolveNode(_store, ref path);
-        _leaf.NodeType.Should().Be(NodeType.Leaf);
+        Assert.That(_leaf.NodeType, Is.EqualTo(NodeType.Leaf));
     }
 
     [Benchmark]

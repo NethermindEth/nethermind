@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 // Test data from https://csrc.nist.gov/Projects/Cryptographic-Algorithm-Validation-Program/Secure-Hashing
-public class Sha256PrecompileTests
+public class Sha256PrecompileTests : PrecompileTests<Sha256Precompile, Sha256PrecompileTests>
 {
     [TestCase("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", true)]
     [TestCase("d3", "28969cdfa74a12c82f3bad960b0b000aca2ac329deea5c2328ebc6f2ba9802c1", true)]
@@ -35,15 +33,5 @@ public class Sha256PrecompileTests
         "2916d4595a3ede77f4165357977cf3529c672dcf4c39e76ec3aa848dba6ff4f6",
         true
     )]
-    public void Test(string input, string output, bool status)
-    {
-        byte[] inputData = Convert.FromHexString(input);
-        (byte[] outputData, bool outcome) = Sha256Precompile.Instance.Run(inputData, MuirGlacier.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
-        }
-    }
+    public void Test(string input, string output, bool status) => RunTest(input, output, status);
 }

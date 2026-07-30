@@ -14,7 +14,7 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 {
     private const int PairSize = 384;
 
-    public static readonly Bls12381PairingCheckPrecompile Instance = new();
+    public static Bls12381PairingCheckPrecompile Instance { get; } = new();
 
     private Bls12381PairingCheckPrecompile() { }
 
@@ -22,9 +22,9 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 
     public static string Name => "BLS12_PAIRING_CHECK";
 
-    public long BaseGasCost(IReleaseSpec _) => 37700L;
+    public ulong BaseGasCost(IReleaseSpec _) => 37700UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 32600L * (inputData.Length / PairSize);
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 32600UL * (ulong)(inputData.Length / PairSize);
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

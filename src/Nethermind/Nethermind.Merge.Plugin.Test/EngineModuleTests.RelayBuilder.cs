@@ -7,7 +7,6 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -27,6 +26,7 @@ using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 using RichardSzalay.MockHttp;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -82,11 +82,11 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
-        executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
-        executionPayloadV1.GasLimit.Should().Be(10_000_000L);
-        executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block, o => o.IgnoringCyclicReferences());
-        sentItem.Profit.Should().Be(0);
+        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+        Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
+        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(sentItem!.Block))).Using(JToken.EqualityComparer));
+        Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
     }
 
     [TestCase(
@@ -113,9 +113,9 @@ public partial class EngineModuleTests
         string expected_receiptsRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421";
         string expected_logsBloom = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
         string expected_prevRandao = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
-        int expected_blockNumber = 1;
-        long expected_gasLimit = 0x3d0900L;
-        int expected_gasUsed = 0;
+        uint expected_blockNumber = 1;
+        ulong expected_gasLimit = 0x3d0900L;
+        uint expected_gasUsed = 0;
         ulong expected_timestamp = 0x3e9UL;
         string expected_extraData = "0x4e65746865726d696e64"; // Nethermind
         UInt256 expected_baseFeePerGas = (UInt256)0;
@@ -181,8 +181,8 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
-        executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
+        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
 
         mockHttp.VerifyNoOutstandingExpectation();
     }
@@ -227,6 +227,6 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        executionPayloadV1.GasLimit.Should().Be(4_000_000L);
+        Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(4_000_000L));
     }
 }

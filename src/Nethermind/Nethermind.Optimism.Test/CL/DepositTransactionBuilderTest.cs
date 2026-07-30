@@ -4,10 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
@@ -42,7 +42,7 @@ public class DepositTransactionBuilderTest
         ReceiptForRpc[] receipts = [];
         Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Length.Should().Be(0);
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
     }
 
     [Test]
@@ -66,7 +66,7 @@ public class DepositTransactionBuilderTest
         ];
         Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Length.Should().Be(0);
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
     }
 
 
@@ -159,7 +159,7 @@ public class DepositTransactionBuilderTest
             },
         ];
         Action build = () => _builder.BuildUserDepositTransactions(receipts).ToArray();
-        build.Should().Throw<ArgumentException>();
+        Assert.That(build, Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -207,7 +207,7 @@ public class DepositTransactionBuilderTest
         ];
         Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Length.Should().Be(0);
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
     }
 
     [Test]
@@ -260,7 +260,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(to)
             .WithValue(depositLogEventV0.Value)
-            .WithGasLimit((long)depositLogEventV0.Gas) // WARNING: dangerous cast
+            .WithGasLimit(depositLogEventV0.Gas)
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -269,10 +269,8 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(1);
-        // NOTE: Check if we can simplify this assertion
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
+        Assert.That(depositTransactions.Length, Is.EqualTo(1));
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
     }
 
     [Test]
@@ -324,7 +322,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(null)
             .WithValue(depositLogEventV0.Value)
-            .WithGasLimit((long)depositLogEventV0.Gas) // WARNING: dangerous cast
+            .WithGasLimit(depositLogEventV0.Gas)
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -333,10 +331,9 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(1);
+        Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
     }
 
     [Test]
@@ -412,7 +409,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(to)
             .WithValue(depositLogEventV0.Value)
-            .WithGasLimit((long)depositLogEventV0.Gas) // WARNING: dangerous cast
+            .WithGasLimit(depositLogEventV0.Gas)
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -421,10 +418,9 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(1);
+        Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
     }
 
     [Test]
@@ -501,7 +497,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(to)
             .WithValue(depositLogEventV0_0.Value)
-            .WithGasLimit((long)depositLogEventV0_0.Gas) // WARNING: dangerous cast
+            .WithGasLimit(depositLogEventV0_0.Gas)
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -515,7 +511,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from)
             .WithTo(null)
             .WithValue(depositLogEventV0_1.Value)
-            .WithGasLimit((long)depositLogEventV0_1.Gas) // WARNING: dangerous cast
+            .WithGasLimit(depositLogEventV0_1.Gas)
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -524,12 +520,10 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0_1.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(2);
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data.ToArray());
+        Assert.That(depositTransactions.Length, Is.EqualTo(2));
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
 
-        depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
-        depositTransactions[1].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data.ToArray());
+        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
     }
 
     [Test]
@@ -601,7 +595,7 @@ public class DepositTransactionBuilderTest
         ];
         Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Length.Should().Be(0);
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
     }
 
     [Test]
@@ -689,7 +683,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from_0)
             .WithTo(to_0)
             .WithValue(depositLogEventV0_0.Value)
-            .WithGasLimit((long)depositLogEventV0_0.Gas) // WARNING: dangerous cast
+            .WithGasLimit(depositLogEventV0_0.Gas)
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -703,7 +697,7 @@ public class DepositTransactionBuilderTest
             .WithSenderAddress(from_1)
             .WithTo(to_1)
             .WithValue(depositLogEventV0_1.Value)
-            .WithGasLimit((long)depositLogEventV0_1.Gas) // WARNING: dangerous cast
+            .WithGasLimit(depositLogEventV0_1.Gas)
             .WithGasPrice(0)
             .WithMaxPriorityFeePerGas(0)
             .WithMaxFeePerGas(0)
@@ -712,11 +706,9 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0_1.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(2);
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data.ToArray());
+        Assert.That(depositTransactions.Length, Is.EqualTo(2));
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
 
-        depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
-        depositTransactions[1].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data.ToArray());
+        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
     }
 }

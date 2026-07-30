@@ -9,7 +9,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class InMemoryReceiptStorage : IReceiptStorage
+    public class InMemoryReceiptStorage : IReceiptMigrationStore
     {
         private readonly bool _allowReceiptIterator;
         private readonly IBlockTree? _blockTree;
@@ -47,8 +47,8 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) =>
             _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : [];
 
-        public bool CanGetReceiptsByHash(long blockNumber) => true;
-        public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        public bool CanGetReceiptsByHash(ulong blockNumber) => true;
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
             if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out TxReceipt[] receipts))
             {
@@ -64,10 +64,10 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
             => Insert(block, txReceipts, null, ensureCanonical, writeFlags, lastBlockNumber);
 
-        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
             if (ensureCanonical)
@@ -78,7 +78,9 @@ namespace Nethermind.Blockchain.Receipts
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
-        public bool HasBlock(long blockNumber, Hash256 hash)
+        public void InsertForMigration(Block block, TxReceipt[] receipts) => Insert(block, receipts);
+
+        public bool HasBlock(ulong blockNumber, Hash256 hash)
             => _receipts.ContainsKey(hash);
 
         public void EnsureCanonical(Block block)
@@ -101,7 +103,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public long MigratedBlockNumber { get; set; }
+        public ulong MigratedBlockNumber { get; set; }
 
         public int Count => _transactions.Count;
     }

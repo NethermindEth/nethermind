@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Ethereum.Test.Base;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
@@ -29,10 +28,22 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
         }
 
-        IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
-            ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
-            : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        return testDirs.SelectMany(td => TestLoadStrategy.LoadTestsFromDirectory(td, wildcard, testType));
+        string rootDir = !string.IsNullOrEmpty(testsDir)
+            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
+            : testsDirectoryName;
+
+        // Skip absent fork fixtures instead of throwing
+        if (!Directory.Exists(rootDir))
+            return [];
+
+        IEnumerable<string> directories = Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true });
+        List<string> testDirs = [];
+        foreach (string testDir in directories)
+        {
+            testDirs.Add(testDir);
+        }
+
+        return TestLoadStrategy.LoadTestsFromDirectories(testDirs, wildcard, testType);
     }
 
     private static string ResolveTestsDirectory(string testsDirectoryName, string testsDir)

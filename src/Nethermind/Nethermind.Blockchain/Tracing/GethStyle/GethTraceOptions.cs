@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -19,9 +20,12 @@ public record GethTraceOptions
 
     public bool EnableMemory { get; init; }
 
+    public bool EnableReturnData { get; init; }
+
     public bool DisableStack { get; init; }
 
-    public string Timeout { get; init; }
+    [JsonConverter(typeof(CustomTimeDurationConverter))]
+    public TimeSpan? Timeout { get; init; }
 
     public string Tracer { get; init; }
 
@@ -32,6 +36,11 @@ public record GethTraceOptions
     public Dictionary<Address, AccountOverride>? StateOverrides { get; init; }
 
     public BlockOverride? BlockOverrides { get; set; }
+
+    /// <summary>
+    /// When set, overrides <c>JsonRpc.EnableTracingStreamMode</c> for this single call.
+    /// </summary>
+    public bool? StreamMode { get; init; }
 
     public static GethTraceOptions Default { get; } = new();
 }

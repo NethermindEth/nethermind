@@ -83,25 +83,34 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     [TestCase((NumberConversion)99)]
     public void Undefined_not_supported(NumberConversion notSupportedConversion)
     {
-        ForcedNumberConversion.ForcedConversion.Value = notSupportedConversion;
-
-        UInt256Converter converter = new();
-        Assert.Throws<NotSupportedException>(
-            () => TestConverter(int.MaxValue, Equals, converter));
-        Assert.Throws<NotSupportedException>(
-            () => TestConverter(UInt256.One, Equals, converter));
-
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+        ForcedNumberConversion.Value = notSupportedConversion;
+        try
+        {
+            UInt256Converter converter = new();
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(int.MaxValue, Equals, converter));
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(UInt256.One, Equals, converter));
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [Test]
     public void Raw_works_with_zero_and_this_is_ok()
     {
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
-        UInt256Converter converter = new();
-        TestConverter(0, Equals, converter);
-
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+        ForcedNumberConversion.Value = NumberConversion.Raw;
+        try
+        {
+            UInt256Converter converter = new();
+            TestConverter(0, Equals, converter);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [TestCase("\"0xa00000\"", "10485760")]
@@ -125,6 +134,54 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     [Test]
     public void Throws_on_null() => Assert.Throws<JsonException>(
             static () => JsonSerializer.Deserialize<UInt256>("null", options));
+
+    [TestCase("\"0x0b\"")]
+    [TestCase("\"0x00\"")]
+    [TestCase("\"0x0ff\"")]
+    public void StrictQuantity_rejects_leading_zero(string json)
+    {
+        JsonSerializerOptions strictOpts = new() { Converters = { new UInt256Converter(strictQuantity: true) } };
+        Assert.That(() => JsonSerializer.Deserialize<UInt256>(json, strictOpts), Throws.InstanceOf<FormatException>());
+    }
+
+    [Test]
+    public void StrictQuantity_rejects_json_number() =>
+        Assert.That(
+            () => JsonSerializer.Deserialize<UInt256>("11", new JsonSerializerOptions { Converters = { new UInt256Converter(strictQuantity: true) } }),
+            Throws.InstanceOf<JsonException>());
+
+    [TestCase("\"0x0\"", 0ul)]
+    [TestCase("\"0xb\"", 11ul)]
+    [TestCase("\"0xff\"", 255ul)]
+    public void StrictQuantity_accepts_valid_quantity(string json, ulong expected)
+    {
+        JsonSerializerOptions strictOpts = new() { Converters = { new UInt256Converter(strictQuantity: true) } };
+        UInt256 result = JsonSerializer.Deserialize<UInt256>(json, strictOpts);
+        Assert.That(result, Is.EqualTo((UInt256)expected));
+    }
+
+    [TestCase("\"0x0000\"")]
+    [TestCase("\"0x0b\"")]
+    public void Lenient_accepts_leading_zero(string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<UInt256>(json, options), Throws.Nothing);
+
+    // "0x" with no hex digits is not a valid QUANTITY in any mode
+    [Test]
+    public void Rejects_bare_0x_prefix() =>
+        Assert.That(() => JsonSerializer.Deserialize<UInt256>("\"0x\"", options), Throws.InstanceOf<JsonException>());
+
+    // hex values wider than 256 bits must be rejected cleanly, not crash with ArgumentOutOfRangeException
+    [Test]
+    public void Rejects_hex_wider_than_256_bits()
+    {
+        // 65 hex chars after "0x" → 33 bytes > 32; total length 67 is under ReadInternal's 78-char guard
+        string json65 = "\"0x" + new string('f', 65) + "\"";
+        Assert.That(() => JsonSerializer.Deserialize<UInt256>(json65, options), Throws.InstanceOf<JsonException>());
+
+        // 76 hex chars after "0x" → 38 bytes > 32; total length 78 is exactly at ReadInternal's limit
+        string json76 = "\"0x" + new string('f', 76) + "\"";
+        Assert.That(() => JsonSerializer.Deserialize<UInt256>(json76, options), Throws.InstanceOf<JsonException>());
+    }
 
     [TestCase(0ul, 0ul, 0ul, 0ul, "\"0x0\"")]
     [TestCase(1ul, 0ul, 0ul, 0ul, "\"0x1\"")]
@@ -170,7 +227,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     [Test]
     public void Writes_zero_padded_hex()
     {
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+        ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
         try
         {
             string result = JsonSerializer.Serialize(UInt256.One, options);
@@ -184,14 +241,14 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
         }
     }
 
     [Test]
     public void Writes_zero_padded_hex_roundtrip()
     {
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+        ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
         try
         {
             UInt256 value = new(0xdeadbeef, 0xcafebabe, 0x12345678, 0x9abcdef0);
@@ -201,7 +258,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
         }
     }
 
@@ -210,7 +267,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     [TestCase(1UL, "\"0x0000000000000000000000000000000000000000000000000000000000000001\"", NumberConversion.ZeroPaddedHex)]
     public void Writes_property_name(ulong value, string expectedKey, NumberConversion conversion)
     {
-        ForcedNumberConversion.ForcedConversion.Value = conversion;
+        ForcedNumberConversion.Value = conversion;
         try
         {
             using System.IO.MemoryStream stream = new();
@@ -227,7 +284,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
         }
     }
 }

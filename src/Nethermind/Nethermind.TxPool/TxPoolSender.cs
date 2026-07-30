@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
@@ -39,7 +38,7 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 reservedNonce);
+            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out ulong reservedNonce);
             txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             tx.Nonce = reservedNonce;
             return SubmitTx(locker, tx, txHandlingOptions);
@@ -47,7 +46,9 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTx(NonceLocker locker, Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            _sealer.Seal(tx, txHandlingOptions);
+            if (!_sealer.TrySeal(tx, txHandlingOptions))
+                return AcceptTxResult.SignFailed;
+
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
 
             if (result == AcceptTxResult.Accepted)

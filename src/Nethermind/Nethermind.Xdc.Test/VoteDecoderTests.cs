@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System.Collections;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test;
 
@@ -23,55 +22,33 @@ public class VoteDecoderTests
                     new BlockRoundInfo(Hash256.Zero, 1, 1),
                     0,
                     new Signature(new byte[64], 0)
-                ),
-                true
-            );
+                )
+            ).SetName("BasicVote");
 
             yield return new TestCaseData(
                 new Vote(
                     new BlockRoundInfo(Hash256.Zero, ulong.MaxValue, long.MaxValue),
                     ulong.MaxValue,
                     new Signature(new byte[64], 0)
-                ),
-                true
-            );
-
-            yield return new TestCaseData(
-                new Vote(
-                    new BlockRoundInfo(Hash256.Zero, 1, 1),
-                    0,
-                    new Signature(new byte[64], 0)
-                ),
-                false
-            );
+                )
+            ).SetName("MaxValues");
         }
     }
 
     [TestCaseSource(nameof(VoteCases))]
-    public void EncodeDecode_RoundTrip_Matches_AllFields(Vote vote, bool useRlpStream)
+    public void EncodeDecode_RoundTrip_Matches_AllFields(Vote vote)
     {
         VoteDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(vote);
-        RlpStream stream = new(encoded.Bytes);
-        Vote decoded;
+        RlpReader decoderContext = new(encoded.Bytes);
+        Vote decoded = decoder.Decode(ref decoderContext);
 
-        if (useRlpStream)
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-        else
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-
-        decoded.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
+        Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
     }
 
     [Test]
-    public void Encode_UseBothRlpStreamAndValueDecoderContext_IsEquivalentAfterReencoding()
+    public void EncodeToStream_RoundTrip_Matches_AllFields()
     {
         Vote vote = new(
             new BlockRoundInfo(Hash256.Zero, 1, 1),
@@ -80,19 +57,14 @@ public class VoteDecoderTests
         );
 
         VoteDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(vote));
-        decoder.Encode(stream, vote);
-        stream.Position = 0;
+        byte[] bytes = new byte[decoder.GetLength(vote, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, vote);
 
-        Rlp.ValueDecoderContext streamCtx = new(stream.Data.AsSpan());
-        Vote decodedStream = decoder.Decode(ref streamCtx);
+        RlpReader decoderContext = new(bytes);
+        Vote decoded = decoder.Decode(ref decoderContext);
 
-        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-        Vote decodedContext = decoder.Decode(ref decoderContext);
-
-        decodedStream.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
-        decodedContext.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
-        decodedStream.Should().BeEquivalentTo(decodedContext);
+        Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
     }
 
     [Test]
@@ -130,7 +102,8 @@ public class VoteDecoderTests
         Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)sealingEncoded.Bytes, RlpBehaviors.ForSealing);
+        RlpReader context = new(sealingEncoded.Bytes);
+        Vote decoded = decoder.Decode(ref context, RlpBehaviors.ForSealing);
 
         Assert.That(decoded.Signature, Is.Null,
             "ForSealing decoding should not contain Signature field.");
@@ -143,7 +116,7 @@ public class VoteDecoderTests
     {
         VoteDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode(null!);
+        Rlp encoded = decoder.Encode((Vote)null!);
 
         Assert.That(encoded, Is.EqualTo(Rlp.OfEmptyList));
     }
@@ -152,16 +125,17 @@ public class VoteDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
+        RlpReader context = new(Rlp.OfEmptyList.Bytes);
+        Vote decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }
 
     [Test]
-    public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
+    public void Decode_EmptyByteArray_RlpReader_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        Rlp.ValueDecoderContext decoderContext = new(Rlp.OfEmptyList.Bytes);
+        RlpReader decoderContext = new(Rlp.OfEmptyList.Bytes);
 
         Vote decoded = decoder.Decode(ref decoderContext);
 
@@ -200,4 +174,5 @@ public class VoteDecoderTests
         Assert.That(round, Is.EqualTo(1UL));
         Assert.That(hash, Is.Not.EqualTo(Hash256.Zero)); // Should be computed hash
     }
+
 }

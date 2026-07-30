@@ -17,7 +17,7 @@ namespace Nethermind.Core.Collections
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
     public sealed class JournalCollection<T> : IToArrayCollection<T>, ICollection<T>, IJournal<int>
     {
-        private readonly List<T> _list = new();
+        private readonly List<T> _list = [];
         public int TakeSnapshot() => Count - 1;
 
         public void Restore(int snapshot)

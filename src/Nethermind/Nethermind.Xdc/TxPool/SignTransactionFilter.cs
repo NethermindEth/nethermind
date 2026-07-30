@@ -1,30 +1,22 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;
+using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System.Linq;
+using System;
 
 namespace Nethermind.Xdc.TxPool;
 
 internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IBlockTree blockTree, ISpecProvider specProvider) : IIncomingTxFilter
 {
-    private (long, IXdcReleaseSpec) GetSpecAndHeader()
-    {
-        XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
-        long currentHeaderNumber = header.Number + 1;
-        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(currentHeaderNumber);
-
-        return (currentHeaderNumber, xdcSpec);
-    }
-
-    private AcceptTxResult ValidateSignTransaction(Transaction tx, long headerNumber, IXdcReleaseSpec xdcSpec)
+    private AcceptTxResult ValidateSignTransaction(Transaction tx, ulong headerNumber, IXdcReleaseSpec xdcSpec)
     {
         if (tx.Data.Length < XdcConstants.SignTransactionDataLength)
         {
@@ -32,7 +24,11 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         }
 
         UInt256 blkNumber = new(tx.Data.Span.Slice(4, 32), true);
-        if (blkNumber > headerNumber || blkNumber <= (headerNumber - (xdcSpec.EpochLength * 2)))
+
+        ulong epochWindow = xdcSpec.EpochLength * 2;
+        UInt256 lowerBound = headerNumber.SaturatingSub(epochWindow);
+
+        if (blkNumber > headerNumber || blkNumber <= lowerBound)
         {
             // Invalid block number in special transaction data
             return AcceptTxResult.Invalid.WithMessage("Sign transaction block number is out of range");
@@ -43,13 +39,17 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        (long headerNumber, IXdcReleaseSpec spec) = GetSpecAndHeader();
+        if (blockTree.Head is null)
+            return AcceptTxResult.Syncing;
+
+        XdcBlockHeader header = (XdcBlockHeader)blockTree.Head.Header;
+        ulong headerNumber = header.Number + 1;
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(headerNumber);
 
         if (!tx.IsSpecialTransaction(spec))
         {
             return AcceptTxResult.Accepted;
         }
-
         if (tx.IsSignTransaction(spec))
         {
             AcceptTxResult result = ValidateSignTransaction(tx, headerNumber, spec);
@@ -66,10 +66,12 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
             return AcceptTxResult.Invalid.WithMessage("Special transaction sender is not an epoch candidate");
         }
 
+        tx.IsServiceTransaction = true;
+
         return AcceptTxResult.Accepted;
     }
 
     private static bool IsEpochCandidate(Snapshot? snapshot, Address? senderAddress) =>
         snapshot is not null && senderAddress is not null &&
-        snapshot.NextEpochCandidates.Contains(senderAddress);
+        snapshot.NextEpochCandidates.AsSpan().IndexOf(senderAddress) != -1;
 }

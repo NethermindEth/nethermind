@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 {
                     if (_logger.IsTrace) _logger.Trace($"Created client's subscriptions bag and added client's first subscription {subscription.Id} to it.");
                     subscription.JsonRpcDuplexClient.Closed += OnJsonRpcDuplexClientClosed;
-                    return new HashSet<Subscription>() { subscription };
+                    return [subscription];
                 },
                 (k, b) =>
                 {

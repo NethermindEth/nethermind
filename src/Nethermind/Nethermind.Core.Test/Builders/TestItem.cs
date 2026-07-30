@@ -114,12 +114,16 @@ namespace Nethermind.Core.Test.Builders
         public static TestExecutionRequest ExecutionRequestA = new() { RequestType = 0, RequestDataParts = [PublicKeyA.Bytes.Slice(0, 48), KeccakA.Bytes.ToArray(), BitConverter.GetBytes((ulong)1_000_000_000), SignatureBytes, BitConverter.GetBytes((ulong)1)] };
         public static TestExecutionRequest ExecutionRequestB = new() { RequestType = 0, RequestDataParts = [PublicKeyB.Bytes.Slice(0, 48), KeccakB.Bytes.ToArray(), BitConverter.GetBytes((ulong)2_000_000_000), SignatureBytes, BitConverter.GetBytes((ulong)2)] };
         public static TestExecutionRequest ExecutionRequestC = new() { RequestType = 0, RequestDataParts = [PublicKeyC.Bytes.Slice(0, 48), KeccakC.Bytes.ToArray(), BitConverter.GetBytes((ulong)3_000_000_000), SignatureBytes, BitConverter.GetBytes((ulong)3)] };
-        public static TestExecutionRequest ExecutionRequestD = new() { RequestType = 1, RequestDataParts = [AddressA.Bytes, PublicKeyA.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)1_000_000_000)] };
-        public static TestExecutionRequest ExecutionRequestE = new() { RequestType = 1, RequestDataParts = [AddressB.Bytes, PublicKeyB.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)2_000_000_000)] };
-        public static TestExecutionRequest ExecutionRequestF = new() { RequestType = 1, RequestDataParts = [AddressC.Bytes, PublicKeyC.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)3_000_000_000)] };
-        public static TestExecutionRequest ExecutionRequestG = new() { RequestType = 2, RequestDataParts = [AddressA.Bytes, PublicKeyA.Bytes.Slice(0, 48), PublicKeyB.Bytes.Slice(0, 48)] };
-        public static TestExecutionRequest ExecutionRequestH = new() { RequestType = 2, RequestDataParts = [AddressB.Bytes, PublicKeyB.Bytes.Slice(0, 48), PublicKeyC.Bytes.Slice(0, 48)] };
-        public static TestExecutionRequest ExecutionRequestI = new() { RequestType = 2, RequestDataParts = [AddressC.Bytes, PublicKeyC.Bytes.Slice(0, 48), PublicKeyA.Bytes.Slice(0, 48)] };
+        public static TestExecutionRequest ExecutionRequestD = new() { RequestType = 1, RequestDataParts = [AddressA.Bytes.ToArray(), PublicKeyA.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)1_000_000_000)] };
+        public static TestExecutionRequest ExecutionRequestE = new() { RequestType = 1, RequestDataParts = [AddressB.Bytes.ToArray(), PublicKeyB.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)2_000_000_000)] };
+        public static TestExecutionRequest ExecutionRequestF = new() { RequestType = 1, RequestDataParts = [AddressC.Bytes.ToArray(), PublicKeyC.Bytes.Slice(0, 48), BitConverter.GetBytes((ulong)3_000_000_000)] };
+        public static TestExecutionRequest ExecutionRequestG = new() { RequestType = 2, RequestDataParts = [AddressA.Bytes.ToArray(), PublicKeyA.Bytes.Slice(0, 48), PublicKeyB.Bytes.Slice(0, 48)] };
+        public static TestExecutionRequest ExecutionRequestH = new() { RequestType = 2, RequestDataParts = [AddressB.Bytes.ToArray(), PublicKeyB.Bytes.Slice(0, 48), PublicKeyC.Bytes.Slice(0, 48)] };
+        public static TestExecutionRequest ExecutionRequestI = new() { RequestType = 2, RequestDataParts = [AddressC.Bytes.ToArray(), PublicKeyC.Bytes.Slice(0, 48), PublicKeyA.Bytes.Slice(0, 48)] };
+        public static TestExecutionRequest ExecutionRequestJ = new() { RequestType = 3, RequestDataParts = [PublicKeyA.Bytes.Slice(0, 48), KeccakA.Bytes.ToArray(), BitConverter.GetBytes((ulong)1_000_000_000), SignatureBytes] };
+        public static TestExecutionRequest ExecutionRequestK = new() { RequestType = 3, RequestDataParts = [PublicKeyB.Bytes.Slice(0, 48), KeccakB.Bytes.ToArray(), BitConverter.GetBytes((ulong)2_000_000_000), SignatureBytes] };
+        public static TestExecutionRequest ExecutionRequestL = new() { RequestType = 4, RequestDataParts = [AddressA.Bytes.ToArray(), PublicKeyA.Bytes.Slice(0, 48)] };
+        public static TestExecutionRequest ExecutionRequestM = new() { RequestType = 4, RequestDataParts = [AddressB.Bytes.ToArray(), PublicKeyB.Bytes.Slice(0, 48)] };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
@@ -156,8 +160,8 @@ namespace Nethermind.Core.Test.Builders
             random ??= Random;
 
             Account account = new(
-                (UInt256)random.Next(1000),
-                (UInt256)random.Next(1000),
+                (ulong)random.Next(1000),
+                (ulong)random.Next(1000),
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 
@@ -168,15 +172,16 @@ namespace Nethermind.Core.Test.Builders
         {
             accountDecoder ??= _accountDecoder;
             Account account = GenerateRandomAccount();
-            byte[] value = accountDecoder.Encode(account).Bytes;
+            IRlpDecoder<Account?> encoder = accountDecoder;
+            byte[] value = encoder.Encode(account).Bytes;
             return value;
         }
 
         public static Account GenerateIndexedAccount(int index)
         {
             Account account = new(
-                (UInt256)index,
-                (UInt256)index);
+                (ulong)index,
+                (ulong)index);
 
             return account;
         }
@@ -186,7 +191,8 @@ namespace Nethermind.Core.Test.Builders
             accountDecoder ??= _accountDecoder;
 
             Account account = GenerateIndexedAccount(index);
-            byte[] value = accountDecoder.Encode(account).Bytes;
+            IRlpDecoder<Account?> encoder = accountDecoder;
+            byte[] value = encoder.Encode(account).Bytes;
             return value;
         }
 

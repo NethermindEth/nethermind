@@ -23,6 +23,8 @@ namespace Nethermind.Db
     {
         DbMetric GatherMetric() => new();
 
+        long EstimatedCount => 0;
+
         void Flush(bool onlyWal = false);
         void Clear() { }
         void Compact() { }

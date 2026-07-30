@@ -26,13 +26,16 @@
   "Metrics": {
     "NodeName": "Gnosis Archive"
   },
-  "Bloom": {
-    "IndexLevelBucketSizes": [ 16, 16, 16 ]
-  },
   "Pruning": {
     "Mode": "None"
   },
   "Merge": {
     "FinalTotalDifficulty": "8626000110427538733349499292577475819600160930"
+  },
+  "Db": {
+    "SkipCheckingSstFileSizesOnDbOpen": true
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

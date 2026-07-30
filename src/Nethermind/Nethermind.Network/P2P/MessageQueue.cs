@@ -1,16 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Network.P2P
 {
-    public class MessageQueue<TMsg, TData>(Action<TMsg> send)
-        where TMsg : MessageBase
+    public class MessageQueue<TMsg, TData>(ProtocolHandlerBase handler)
+        where TMsg : P2PMessage
     {
         private bool _isClosed;
         private Request<TMsg, TData>? _currentRequest;
@@ -33,7 +34,7 @@ namespace Nethermind.Network.P2P
                 {
                     _currentRequest = request;
                     _currentRequest.StartMeasuringTime();
-                    send(_currentRequest.Message);
+                    handler.Send(_currentRequest.Message);
                 }
                 else
                 {
@@ -60,7 +61,7 @@ namespace Nethermind.Network.P2P
                 if (_requestQueue.TryDequeue(out _currentRequest))
                 {
                     _currentRequest!.StartMeasuringTime();
-                    send(_currentRequest.Message);
+                    handler.Send(_currentRequest.Message);
                 }
             }
         }

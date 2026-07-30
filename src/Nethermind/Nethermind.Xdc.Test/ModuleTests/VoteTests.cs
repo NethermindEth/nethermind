@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
@@ -15,7 +15,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 public class VoteTests
 {
@@ -50,9 +50,12 @@ public class VoteTests
             await votesManager.HandleVote(newVote);
         }
         // Check same values as before: qc has not yet been processed, so there should be no changes
-        ctx.LockQC.Should().BeEquivalentTo(initialLockQc);
-        Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
-        ctx.HighestQC.Should().BeEquivalentTo(initialHighestQc);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LockQC, Is.EqualTo(initialLockQc).UsingXdcComparer());
+            Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
+            Assert.That(ctx.HighestQC, Is.EqualTo(initialHighestQc).UsingXdcComparer());
+        }
 
         // Create another vote which is signed by someone not from the master node list
         PrivateKey randomKey = blockchain.RandomKeys.First();
@@ -60,9 +63,12 @@ public class VoteTests
         await votesManager.HandleVote(randomVote);
 
         // Again same check: vote is not valid so threshold is not yet reached
-        ctx.LockQC.Should().BeEquivalentTo(initialLockQc);
-        Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
-        ctx.HighestQC.Should().BeEquivalentTo(initialHighestQc);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LockQC, Is.EqualTo(initialLockQc).UsingXdcComparer());
+            Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
+            Assert.That(ctx.HighestQC, Is.EqualTo(initialHighestQc).UsingXdcComparer());
+        }
 
         // Create a vote message that should trigger qc processing and increment the round
         Vote lastVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys.Last());
@@ -73,7 +79,7 @@ public class VoteTests
         Assert.That(ctx.LockQC, Is.Not.Null);
         Assert.That(ctx.LockQC.ProposedBlockInfo.Round, Is.EqualTo(initialRound - 1));
         // The highestQC proposedBlockInfo shall be the same as the one from its votes
-        ctx.HighestQC.ProposedBlockInfo.Should().BeEquivalentTo(blockInfo);
+        Assert.That(ctx.HighestQC.ProposedBlockInfo, Is.EqualTo(blockInfo).UsingXdcComparer());
     }
 
     private VotesManager CreateVotesManager(XdcTestBlockchain blockchain) =>
@@ -86,5 +92,6 @@ public class VoteTests
             blockchain.QuorumCertificateManager,
             blockchain.SpecProvider,
             blockchain.Signer,
-            Substitute.For<IForensicsProcessor>());
+            Substitute.For<IForensicsProcessor>(),
+            NullLogManager.Instance);
 }

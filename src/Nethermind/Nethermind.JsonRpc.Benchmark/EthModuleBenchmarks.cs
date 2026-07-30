@@ -6,7 +6,11 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.History;
+using Nethermind.Synchronization;
+using NSubstitute;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -34,6 +38,7 @@ namespace Nethermind.JsonRpc.Benchmark
     {
         private EthRpcModule _ethModule;
         private IContainer _container;
+        private HeadBlockSignal _headBlockSignal;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -65,9 +70,11 @@ namespace Nethermind.JsonRpc.Benchmark
             ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
             FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
 
+            _headBlockSignal = new HeadBlockSignal(blockTree);
             _ethModule = new EthRpcModule(
                 _container.Resolve<IJsonRpcConfig>(),
                 bridge,
+                blockTree,
                 blockTree,
                 _container.Resolve<IReceiptFinder>(),
                 _container.Resolve<IStateReader>(),
@@ -82,11 +89,25 @@ namespace Nethermind.JsonRpc.Benchmark
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
                 new LogIndexConfig(),
-                new BlocksConfig().SecondsPerSlot);
+                new ReceiptConfig(),
+                new BlocksConfig().SecondsPerSlot,
+                _headBlockSignal,
+                new EthCapabilitiesProvider(
+                    blockTree.AsReadOnly(),
+                    _container.Resolve<IStateBoundary>(),
+                    _container.Resolve<ISyncConfig>(),
+                    Substitute.For<ISyncPointers>(),
+                    Substitute.For<IHistoryConfig>(),
+                    Substitute.For<IHistoryPruner>()),
+                new BlockForRpcFactory());
         }
 
         [GlobalCleanup]
-        public void TearDown() => _container.Dispose();
+        public void TearDown()
+        {
+            _headBlockSignal.Dispose();
+            _container.Dispose();
+        }
 
         [Benchmark]
         public void Current()

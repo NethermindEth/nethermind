@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Runtime.Intrinsics.X86;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto.Blake2;
 using NUnit.Framework;
@@ -27,7 +26,7 @@ namespace Nethermind.Core.Test
             byte[] blake2Result = new byte[64];
             _blake2Compression.Compress(Bytes.FromHexString(input), blake2Result);
             string? result = blake2Result.ToHexString();
-            result.Should().BeEquivalentTo(output);
+            Assert.That(result, Is.EqualTo(output));
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -60,7 +59,7 @@ namespace Nethermind.Core.Test
             byte[] blake2Result = new byte[64];
             _blake2Compression.Compress(Bytes.FromHexString(input), blake2Result, method);
             string result = blake2Result.ToHexString();
-            result.Should().BeEquivalentTo(output);
+            Assert.That(result, Is.EqualTo(output));
         }
 
         public static IEnumerable<(int, string)> TestCaseSource()

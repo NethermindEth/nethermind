@@ -4,13 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
+    public class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
@@ -36,10 +35,24 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            using McsLock.Disposable lockRelease = _lock.Acquire();
+            TValue[]? evictedValues = null;
+            using (McsLock.Disposable lockRelease = _lock.Acquire())
+            {
+                if (_cacheMap.Count != 0)
+                {
+                    int i = 0;
+                    evictedValues = new TValue[_cacheMap.Count];
+                    foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+                    {
+                        evictedValues[i++] = kvp.Value.Value.Value;
+                    }
+                }
 
-            _leastRecentlyUsed = null;
-            _cacheMap.Clear();
+                _leastRecentlyUsed = null;
+                _cacheMap.Clear();
+            }
+
+            NotifyEvictedValues(evictedValues);
         }
 
         public TValue Get(TKey key)
@@ -71,53 +84,154 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
+        /// <summary>
+        /// Sets a missing cached value or atomically returns the existing one for the specified key.
+        /// </summary>
+        /// <param name="key">The cache key.</param>
+        /// <param name="state">State passed to <paramref name="valueFactory"/> without requiring a closure.</param>
+        /// <param name="valueFactory">Factory used to create the value when the key is missing.</param>
+        /// <typeparam name="TState">Type of the factory state.</typeparam>
+        /// <returns>The existing value, or the value created by <paramref name="valueFactory"/>.</returns>
+        public TValue SetOrGet<TState>(TKey key, TState state, Func<TKey, TState, TValue> valueFactory)
+        {
+            ArgumentNullException.ThrowIfNull(valueFactory);
+
+            TValue evictedValue = default!;
+            bool notifyEviction = false;
+            TValue result;
+            using (McsLock.Disposable lockRelease = _lock.Acquire())
+            {
+                if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+                {
+                    TValue value = node.Value.Value;
+                    LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                    return value;
+                }
+
+                TValue newValue = valueFactory(key, state);
+                if (newValue is null)
+                {
+                    return newValue;
+                }
+
+                if (_cacheMap.Count >= _maxCapacity)
+                {
+                    evictedValue = Replace(key, newValue);
+                    notifyEviction = true;
+                }
+                else
+                {
+                    LinkedListNode<LruCacheItem> newNode = new(new(key, newValue));
+                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    _cacheMap.Add(key, newNode);
+                }
+
+                result = newValue;
+            }
+
+            if (notifyEviction)
+            {
+                NotifyEvicted(evictedValue);
+            }
+
+            return result;
+        }
+
         public bool Set(TKey key, TValue val)
         {
-            using McsLock.Disposable lockRelease = _lock.Acquire();
-
-            if (val is null)
+            TValue evictedValue = default!;
+            bool notifyEviction = false;
+            bool added;
+            using (McsLock.Disposable lockRelease = _lock.Acquire())
             {
-                return DeleteNoLock(key);
+                if (val is null)
+                {
+                    added = DeleteNoLock(key, out evictedValue);
+                    notifyEviction = added;
+                }
+                else if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+                {
+                    evictedValue = node.Value.Value;
+                    notifyEviction = true;
+                    node.Value.Value = val;
+                    LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                    added = false;
+                }
+                else if (_cacheMap.Count >= _maxCapacity)
+                {
+                    evictedValue = Replace(key, val);
+                    notifyEviction = true;
+                    added = true;
+                }
+                else
+                {
+                    LinkedListNode<LruCacheItem> newNode = new(new(key, val));
+                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    _cacheMap.Add(key, newNode);
+                    added = true;
+                }
             }
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (notifyEviction)
             {
-                node.Value.Value = val;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
-                return false;
+                NotifyEvicted(evictedValue);
             }
 
-            if (_cacheMap.Count >= _maxCapacity)
-            {
-                Replace(key, val);
-            }
-            else
-            {
-                LinkedListNode<LruCacheItem> newNode = new(new(key, val));
-                LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
-                _cacheMap.Add(key, newNode);
-            }
-
-            return true;
+            return added;
         }
 
         public bool Delete(TKey key)
         {
-            using McsLock.Disposable lockRelease = _lock.Acquire();
+            TValue evictedValue = default!;
+            bool removed;
+            using (McsLock.Disposable lockRelease = _lock.Acquire())
+            {
+                removed = DeleteNoLock(key, out evictedValue);
+            }
 
-            return DeleteNoLock(key);
+            if (removed)
+            {
+                NotifyEvicted(evictedValue);
+            }
+
+            return removed;
         }
 
-        private bool DeleteNoLock(TKey key)
+        /// <summary>
+        /// Deletes a cached value and returns it when the key is present.
+        /// </summary>
+        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value)
         {
+            using McsLock.Disposable lockRelease = _lock.Acquire();
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
+                value = node.Value.Value;
+                RemoveNoLock(key, node);
                 return true;
             }
 
+            value = default;
             return false;
+        }
+
+        private bool DeleteNoLock(TKey key, out TValue evictedValue)
+        {
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            {
+                evictedValue = node.Value.Value;
+                RemoveNoLock(key, node);
+                return true;
+            }
+
+            evictedValue = default!;
+            return false;
+        }
+
+        private void RemoveNoLock(TKey key, LinkedListNode<LruCacheItem> node)
+        {
+            LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
+            _cacheMap.Remove(key);
         }
 
         public bool Contains(TKey key)
@@ -141,9 +255,10 @@ namespace Nethermind.Core.Caching
             return array;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetValues()
         {
+            using McsLock.Disposable lockRelease = _lock.Acquire();
+
             int i = 0;
             TValue[] array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
@@ -156,7 +271,11 @@ namespace Nethermind.Core.Caching
 
         public int Count => _cacheMap.Count;
 
-        private void Replace(TKey key, TValue value)
+        protected virtual void Evict(TValue value)
+        {
+        }
+
+        private TValue Replace(TKey key, TValue value)
         {
             LinkedListNode<LruCacheItem>? node = _leastRecentlyUsed;
             if (node is null)
@@ -164,15 +283,38 @@ namespace Nethermind.Core.Caching
                 ThrowInvalidOperationException();
             }
 
-            _cacheMap.Remove(node!.Value.Key);
+            TValue evictedValue = node!.Value.Value;
+            _cacheMap.Remove(node.Value.Key);
 
             node.Value = new(key, value);
             LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
             _cacheMap.Add(key, node);
+            return evictedValue;
 
             [DoesNotReturn]
             static void ThrowInvalidOperationException() => throw new InvalidOperationException(
                     $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
+        }
+
+        private void NotifyEvictedValues(TValue[]? evictedValues)
+        {
+            if (evictedValues is null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < evictedValues.Length; i++)
+            {
+                NotifyEvicted(evictedValues[i]);
+            }
+        }
+
+        private void NotifyEvicted(TValue value)
+        {
+            if (value is not null)
+            {
+                Evict(value);
+            }
         }
 
         private struct LruCacheItem(TKey k, TValue v)

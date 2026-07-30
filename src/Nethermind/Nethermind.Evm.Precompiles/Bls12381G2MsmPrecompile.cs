@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,7 +14,7 @@ public partial class Bls12381G2MsmPrecompile : IPrecompile<Bls12381G2MsmPrecompi
 {
     public const int ItemSize = 288;
 
-    public static readonly Bls12381G2MsmPrecompile Instance = new();
+    public static Bls12381G2MsmPrecompile Instance { get; } = new();
 
     private Bls12381G2MsmPrecompile() { }
 
@@ -22,12 +22,12 @@ public partial class Bls12381G2MsmPrecompile : IPrecompile<Bls12381G2MsmPrecompi
 
     public static string Name => "BLS12_G2MSM";
 
-    public long BaseGasCost(IReleaseSpec _) => 0L;
+    public ulong BaseGasCost(IReleaseSpec _) => 0UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        int k = inputData.Length / ItemSize;
-        return 22500L * k * Eip2537.DiscountForG2(k) / 1000;
+        ulong k = (ulong)(inputData.Length / ItemSize);
+        return 22500UL * k * Eip2537.DiscountForG2(k) / 1000UL;
     }
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);

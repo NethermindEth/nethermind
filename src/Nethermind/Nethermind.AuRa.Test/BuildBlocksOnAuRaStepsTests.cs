@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -18,10 +18,10 @@ namespace Nethermind.AuRa.Test
     public class BuildBlocksOnAuRaStepsTests
     {
         [Test]
-        [Retry(3)]
         public async Task should_cancel_block_production_trigger_on_next_step_if_not_finished_yet()
         {
-            List<BlockProductionEventArgs> args = new();
+            List<BlockProductionEventArgs> args = [];
+            using SemaphoreSlim eventReceived = new(0);
             await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance))
             {
                 buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
@@ -29,61 +29,64 @@ namespace Nethermind.AuRa.Test
                     args.Add(e);
                     e.BlockProductionTask = TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan * 10, e.CancellationToken)
                         .ContinueWith(t => (Block?)null, e.CancellationToken);
+                    eventReceived.Release();
                 };
 
-                while (args.Count < 4)
+                for (int i = 0; i < 4; i++)
                 {
-                    await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
+                    Assert.That(await eventReceived.WaitAsync(TimeSpan.FromSeconds(30)), Is.True, $"Trigger event #{i + 1} did not arrive within 30s");
                 }
             }
 
             bool[] allButLastCancellations = args.Skip(1).SkipLast(1).Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
-            allButLastCancellations.Should().AllBeEquivalentTo(true);
-            allButLastCancellations.Should().HaveCountGreaterThanOrEqualTo(2);
+            Assert.That(allButLastCancellations, Is.All.EqualTo(true));
+            Assert.That(allButLastCancellations.Length, Is.GreaterThanOrEqualTo(2));
         }
 
         [Test]
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
         {
-            List<BlockProductionEventArgs> args = new();
+            List<BlockProductionEventArgs> args = [];
+            using SemaphoreSlim eventReceived = new(0);
 
             BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance);
             buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
             {
                 args.Add(e);
+                eventReceived.Release();
             };
 
-            while (args.Count < 2)
+            for (int i = 0; i < 2; i++)
             {
-                await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
+                Assert.That(await eventReceived.WaitAsync(TimeSpan.FromSeconds(30)), Is.True);
             }
 
             IEnumerable<bool> enumerable = args.Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
-            enumerable.Should().AllBeEquivalentTo(false);
+            Assert.That(enumerable, Is.All.EqualTo(false));
 
             await buildBlocksOnAuRaSteps.DisposeAsync();
         }
 
         private class TestAuRaStepCalculator : IAuRaStepCalculator
         {
-            public const long StepDuration = 10;
+            public const ulong StepDuration = 10;
             public static readonly TimeSpan StepDurationTimeSpan = TimeSpan.FromMilliseconds(StepDuration);
 
-            public long CurrentStep => UnixTime.MillisecondsLong / StepDuration;
+            public ulong CurrentStep => UnixTime.Milliseconds / StepDuration;
 
             public TimeSpan TimeToNextStep
             {
                 get
                 {
-                    long milliseconds = UnixTime.MillisecondsLong;
+                    ulong milliseconds = UnixTime.Milliseconds;
                     return TimeSpan.FromMilliseconds(((milliseconds / StepDuration) + 1) * StepDuration - milliseconds);
                 }
             }
 
-            public TimeSpan TimeToStep(long step) =>
+            public TimeSpan TimeToStep(ulong step) =>
                 throw new NotImplementedException();
 
-            public long CurrentStepDuration => throw new NotImplementedException();
+            public ulong CurrentStepDuration => throw new NotImplementedException();
 
             private UnixTime UnixTime => new(DateTimeOffset.UtcNow);
         }

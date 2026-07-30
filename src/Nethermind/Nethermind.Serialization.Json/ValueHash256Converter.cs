@@ -14,18 +14,32 @@ public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter
 {
     private readonly bool _strictHexFormat = strictHexFormat;
 
+    [SkipLocalsInit]
     public override ValueHash256 Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        return bytes is null ? null : new ValueHash256(bytes);
+        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        {
+            return new ValueHash256(bytes);
+        }
+
+        byte[] bytesArray = ByteArrayConverter.ConvertData(ref reader, _strictHexFormat)
+            ?? throw new JsonException($"Cannot deserialize null into non-nullable {nameof(ValueHash256)}.");
+        if (bytesArray.Length != ValueHash256.MemorySize)
+        {
+            throw new JsonException(
+                $"Invalid {nameof(ValueHash256)} length: expected {ValueHash256.MemorySize} bytes, got {bytesArray.Length}.");
+        }
+
+        return new ValueHash256(bytesArray);
     }
 
     [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         ValueHash256 keccak,
-        JsonSerializerOptions options) => Hash256Converter.WriteHashHex(writer, in keccak);
+        JsonSerializerOptions options) => HexWriter.WriteFixed32HexRawValue(writer, keccak.Bytes);
 }

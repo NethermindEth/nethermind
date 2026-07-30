@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -12,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -107,7 +107,7 @@ namespace Nethermind.Store.Test
                 stateTree.Commit(skipRoot);
             }
 
-            fullTrieStore.HasRoot(stateRoot).Should().Be(hasRoot);
+            Assert.That(fullTrieStore.HasRoot(stateRoot), Is.EqualTo(hasRoot));
         }
 
 
@@ -126,7 +126,27 @@ namespace Nethermind.Store.Test
             tree.Set(new ValueHash256("2222222222222222222222222222222222222222222222222222222222222222").BytesAsSpan, [2]);
             tree.UpdateRootHash();
 
-            tree.RootHash.Should().NotBe(rootHash);
+            Assert.That(tree.RootHash, Is.Not.EqualTo(rootHash));
+        }
+
+        [Test]
+        public void Accept_with_nonexistent_storage([Values] bool isFullDbScan)
+        {
+            using ITrieStore trieStore = CreateTrieStore();
+            StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+            {
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+                stateTree.Set(TestItem.AddressA, new Account(1));
+                stateTree.Commit();
+            }
+
+            ITreeVisitor<EmptyContext> visitor = Substitute.For<ITreeVisitor<EmptyContext>>();
+            {
+                visitor.IsFullDbScan.Returns(isFullDbScan);
+            }
+
+            stateTree.Accept(visitor, stateTree.RootHash, storageAddr: TestItem.KeccakA);
+            visitor.Received(1).VisitTree(Arg.Any<EmptyContext>(), Keccak.EmptyTreeHash);
         }
 
         private ITrieStore CreateTrieStore(IDb db = null)

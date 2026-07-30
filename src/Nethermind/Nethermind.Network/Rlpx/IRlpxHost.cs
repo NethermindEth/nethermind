@@ -4,17 +4,25 @@
 using System;
 using System.Net;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {
+    /// <summary>
+    /// Handles a disconnected RLPx session.
+    /// </summary>
+    /// <param name="sender">The host that observed the disconnect.</param>
+    /// <param name="session">The disconnected session.</param>
+    /// <param name="args">The disconnect details.</param>
+    public delegate void SessionDisconnectedEventHandler(object sender, ISession session, DisconnectEventArgs args);
+
     public interface IRlpxHost
     {
         Task Init();
         Task<bool> ConnectAsync(Node node);
         Task Shutdown();
-        PublicKey LocalNodeId { get; }
         int LocalPort { get; }
 
         /// <summary>
@@ -33,6 +41,11 @@ namespace Nethermind.Network.Rlpx
         bool ShouldContact(IPAddress ip, bool exactOnly = false);
 
         event EventHandler<SessionEventArgs> SessionCreated;
+
+        /// <summary>
+        /// Raised when a tracked session disconnects.
+        /// </summary>
+        event SessionDisconnectedEventHandler SessionDisconnected;
 
         ISessionMonitor SessionMonitor { get; }
     }

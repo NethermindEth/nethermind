@@ -57,6 +57,12 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
+        public static byte[] WithValueAt(this byte[] bytes, int index, byte value)
+        {
+            bytes[index] = value;
+            return bytes;
+        }
+
         public static ReadOnlySpan<byte> SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, int startIndex, int length)
         {
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);

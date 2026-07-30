@@ -8,6 +8,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -16,26 +17,29 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
     public class AuRaBlockProcessor : BlockProcessor
     {
-        private readonly IWorldState _stateProvider;
-        private readonly ISpecProvider _specProvider;
         private readonly IBlockFinder _blockTree;
         private readonly AuRaContractGasLimitOverride? _gasLimitOverride;
         private readonly ContractRewriter? _contractRewriter;
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
+        private readonly Address _withdrawalContractAddress;
 
         public AuRaBlockProcessor(ISpecProvider specProvider,
+            AuRaChainSpecEngineParameters chainSpecEngineParameters,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
@@ -46,6 +50,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
             IExecutionRequestsProcessor executionRequestsProcessor,
+            IBlockAccessListManager blockAccessListManager,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
@@ -61,15 +66,15 @@ namespace Nethermind.Consensus.AuRa
                 new BlockhashStore(stateProvider),
                 logManager,
                 withdrawalProcessor,
-                executionRequestsProcessor)
+                executionRequestsProcessor,
+                blockAccessListManager)
         {
-            _stateProvider = stateProvider;
-            _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;
             _gasLimitOverride = gasLimitOverride;
             _contractRewriter = contractRewriter;
+            _withdrawalContractAddress = chainSpecEngineParameters.WithdrawalContractAddress;
             AuRaValidator = auRaValidator ?? new NullAuRaValidator();
             if (blockTransactionsExecutor is IBlockProductionTransactionsExecutor produceBlockTransactionsStrategy)
             {
@@ -86,7 +91,7 @@ namespace Nethermind.Consensus.AuRa
             AuRaValidator.OnBlockProcessingStart(block, options);
             TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
-            Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
+            Metrics.AuRaStep = block.Header.GetAuRaStepOrZero();
             return receipts;
         }
 
@@ -109,7 +114,22 @@ namespace Nethermind.Consensus.AuRa
         protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             RewriteContracts(block, spec);
+            ApplyAuRaPreprocessingChanges(spec);
             return base.ProcessBlock(block, blockTracer, options, spec, token);
+        }
+
+        // BAL-era preprocessing for AuRa+Merge: materialise the system-user and withdrawal-contract
+        // accounts on the raw worldstate so subsequent block processing can see them. Skipped when
+        // BAL is off — pre-EIP-7928 chains continue to rely on the EVM's lazy account creation.
+        // Done BEFORE base.ProcessBlock so the BAL parent-snapshot in parallel mode reflects the
+        // materialised accounts.
+        private void ApplyAuRaPreprocessingChanges(IReleaseSpec spec)
+        {
+            if (!_balManager.Enabled) return;
+
+            _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, 0);
+            _stateProvider.CreateAccount(_withdrawalContractAddress, UInt256.Zero, 0);
+            _stateProvider.Commit(spec.ForSystemTransaction(isGenesis: false), commitRoots: false);
         }
 
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
@@ -128,7 +148,7 @@ namespace Nethermind.Consensus.AuRa
         private void ValidateGasLimit(Block block)
         {
             BlockHeader parentHeader = GetParentHeader(block);
-            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out long? expectedGasLimit) == false)
+            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out ulong? expectedGasLimit) == false)
             {
                 string reason = $"Invalid gas limit, expected value from contract {expectedGasLimit}, but found {block.GasLimit}";
                 if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {reason}.");

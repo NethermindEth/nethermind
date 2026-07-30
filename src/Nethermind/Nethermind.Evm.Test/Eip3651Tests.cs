@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
@@ -15,7 +14,7 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class Eip3651Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         [Test]
@@ -27,7 +26,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.POP)
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
+            Assert.That(result.StatusCode, Is.EqualTo(1));
             AssertGas(result, GasCostOf.Transaction + 105);
         }
 
@@ -41,7 +40,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.POP)
                 .Done;
             TestAllTracerWithOutput result = Execute((BlockNumber, Timestamp - 1), 100000, code);
-            result.StatusCode.Should().Be(1);
+            Assert.That(result.StatusCode, Is.EqualTo(1));
             AssertGas(result, GasCostOf.Transaction + 2605);
         }
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using NSubstitute;
@@ -22,7 +21,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             source.GetTransactions(blockHeader, 0).Returns(new Transaction[5]);
 
             ITxSource oneByOne = source.ServeTxsOneByOne();
-            oneByOne.GetTransactions(blockHeader, 0).Count().Should().Be(1);
+            Assert.That(oneByOne.GetTransactions(blockHeader, 0).Count(), Is.EqualTo(1));
 
         }
     }

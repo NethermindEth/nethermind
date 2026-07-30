@@ -5,23 +5,18 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Tools.Kute.MessageProvider;
 
-public sealed class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc>
+public sealed class UnwrapBatchJsonRpcMessageProvider(IMessageProvider<JsonRpc> provider) : IMessageProvider<JsonRpc>
 {
-    private readonly IMessageProvider<JsonRpc> _provider;
-
-    public UnwrapBatchJsonRpcMessageProvider(IMessageProvider<JsonRpc> provider)
-    {
-        _provider = provider;
-    }
+    private readonly IMessageProvider<JsonRpc> _provider = provider;
 
     public async IAsyncEnumerable<JsonRpc> Messages([EnumeratorCancellation] CancellationToken token = default)
     {
-        await foreach (var jsonRpc in _provider.Messages(token))
+        await foreach (JsonRpc jsonRpc in _provider.Messages(token))
         {
             switch (jsonRpc)
             {
                 case JsonRpc.Request.Batch batch:
-                    foreach (var single in batch.Items())
+                    foreach (JsonRpc.Request.Single? single in batch.Items())
                     {
                         if (single is not null)
                         {

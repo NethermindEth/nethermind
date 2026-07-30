@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip145Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => 1;
+        protected override ulong BlockNumber => 1;
 
         protected override ISpecProvider SpecProvider => new CustomSpecProvider(
             ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)1, Constantinople.Instance));
@@ -27,8 +27,8 @@ namespace Nethermind.Evm.Test
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
         }
 
-        private const long ZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SStoreNetMeteredEip1283;
-        private const long NonZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet;
+        private const ulong ZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SStoreNetMeteredEip1283;
+        private const ulong NonZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet;
 
         // SHL test cases
         [TestCase(Instruction.SHL, "0x0000000000000000000000000000000000000000000000000000000000000001", "0x00", "0x0000000000000000000000000000000000000000000000000000000000000001")]

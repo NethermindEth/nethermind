@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class BPO2() : NamedReleaseSpec<BPO2>(BPO1.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "bpo2";
         spec.MaxBlobCount = 21;

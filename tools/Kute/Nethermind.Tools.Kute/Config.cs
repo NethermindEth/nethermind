@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using Nethermind.Tools.Kute.Metrics;
 
 namespace Nethermind.Tools.Kute;
@@ -94,11 +95,11 @@ public static class Config
 
     public static Option<Dictionary<string, string>> Labels { get; } = new("--labels", "-l")
     {
-        DefaultValueFactory = _ => new Dictionary<string, string>(),
+        DefaultValueFactory = _ => [],
         CustomParser = r =>
         {
-            var labels = new Dictionary<string, string>();
-            foreach (var token in r.Tokens)
+            Dictionary<string, string> labels = [];
+            foreach (Token token in r.Tokens)
             {
                 foreach (string pair in token.Value.Split(','))
                 {

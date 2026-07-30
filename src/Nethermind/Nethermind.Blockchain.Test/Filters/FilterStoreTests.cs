@@ -6,9 +6,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -103,10 +102,13 @@ public class FilterStoreTests
     {
         get
         {
-            yield return new TestCaseData(null, AddressFilter.AnyAddress);
-            yield return new TestCaseData(new HashSet<AddressAsKey> { new(TestItem.AddressA) }, new AddressFilter(TestItem.AddressA));
+            yield return new TestCaseData(null, AddressFilter.AnyAddress)
+                .SetName("Correctly_creates_address_filter_any_address");
+            yield return new TestCaseData(new HashSet<AddressAsKey> { new(TestItem.AddressA) }, new AddressFilter(TestItem.AddressA))
+                .SetName("Correctly_creates_address_filter_single_address");
             yield return new TestCaseData(new HashSet<AddressAsKey> { new(TestItem.AddressA), new(TestItem.AddressB) },
-                new AddressFilter([TestItem.AddressA, TestItem.AddressB]));
+                new AddressFilter([TestItem.AddressA, TestItem.AddressB]))
+                .SetName("Correctly_creates_address_filter_multiple_addresses");
         }
     }
 
@@ -117,29 +119,34 @@ public class FilterStoreTests
         BlockParameter to = new(BlockParameterType.Latest);
         FilterStore store = new(new TimerFactory());
         LogFilter filter = store.CreateLogFilter(from, to, address);
-        filter.AddressFilter.Should().BeEquivalentTo(expected);
+        Assert.That(filter.AddressFilter.Addresses, Is.EquivalentTo(expected.Addresses));
     }
 
     public static IEnumerable CorrectlyCreatesTopicsFilterTestCases
     {
         get
         {
-            yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
+            yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic)
+                .SetName("Correctly_creates_topics_filter_any_topic");
 
             yield return new TestCaseData(new[] { new[] { TestItem.KeccakA } },
-                new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
+                new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)))
+                .SetName("Correctly_creates_topics_filter_single_topic");
 
             yield return new TestCaseData(new[] { new[] { TestItem.KeccakA }, new[] { TestItem.KeccakB } },
-                new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
+                new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)))
+                .SetName("Correctly_creates_topics_filter_topic_sequence");
 
             yield return new TestCaseData(new[] { null, new[] { TestItem.KeccakB } },
-                new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
+                new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)))
+                .SetName("Correctly_creates_topics_filter_any_then_specific");
 
             yield return new TestCaseData(
                 new[] { new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC }, new[] { TestItem.KeccakD } },
                 new SequenceTopicsFilter(
                     new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB),
-                        new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
+                        new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)))
+                .SetName("Correctly_creates_topics_filter_or_then_specific");
         }
     }
 
@@ -150,14 +157,26 @@ public class FilterStoreTests
         BlockParameter to = new(BlockParameterType.Latest);
         FilterStore store = new(new TimerFactory());
         LogFilter filter = store.CreateLogFilter(from, to, null, topics);
-        filter.TopicsFilter.Should().BeEquivalentTo(expected, static c => c.ComparingByValue<TopicsFilter>());
+        Assert.That(filter.TopicsFilter, Is.EqualTo(expected).Using<TopicsFilter>(TopicsFiltersEqual));
+    }
+
+    private static bool TopicsFiltersEqual(TopicsFilter? actual, TopicsFilter? expected)
+    {
+        if (actual is null || expected is null)
+        {
+            return actual is null && expected is null;
+        }
+
+        return actual.GetType() == expected.GetType()
+            && actual.AcceptsAnyBlock == expected.AcceptsAnyBlock
+            && actual.Expressions.SequenceEqual(expected.Expressions);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [Parallelizable(ParallelScope.None)]
     public async Task CleanUps_filters()
     {
-        List<int> removedFilterIds = new();
+        List<int> removedFilterIds = [];
         FilterStore store = new(new TimerFactory(), 500, 100);
         store.FilterRemoved += (_, e) => removedFilterIds.Add(e.FilterId);
         store.SaveFilter(store.CreateBlockFilter());
@@ -173,6 +192,6 @@ public class FilterStoreTests
         Assert.That(() => store.FilterExists(2), Is.False.After(300, 10), "filter 2 doesn't exist");
         Assert.That(() => store.FilterExists(3), Is.False.After(300, 10), "filter 3 doesn't exist");
         store.RefreshFilter(0);
-        Assert.That(() => removedFilterIds, Is.EquivalentTo([1, 2, 3]).After(300, 10));
+        Assert.That(() => removedFilterIds, Is.EqualTo([1, 2, 3]).After(300, 10));
     }
 }

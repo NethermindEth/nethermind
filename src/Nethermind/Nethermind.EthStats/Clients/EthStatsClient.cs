@@ -21,6 +21,7 @@ namespace Nethermind.EthStats.Clients
         ILogManager? logManager) : IEthStatsClient, IDisposable
     {
         private const string ServerPingMessage = "primus::ping::";
+        private const int ReconnectTimeoutMultiplier = 6;
         private readonly string _urlFromConfig = urlFromConfig ?? throw new ArgumentNullException(nameof(urlFromConfig));
         private readonly int _reconnectionInterval = reconnectionInterval;
         private readonly IMessageSender _messageSender = messageSender ?? throw new ArgumentNullException(nameof(messageSender));
@@ -72,7 +73,7 @@ namespace Nethermind.EthStats.Clients
             _client = new WebsocketClient(url)
             {
                 ErrorReconnectTimeout = TimeSpan.FromMilliseconds(_reconnectionInterval),
-                ReconnectTimeout = null
+                ReconnectTimeout = TimeSpan.FromMilliseconds(_reconnectionInterval * ReconnectTimeoutMultiplier)
             };
 
             _client.MessageReceived.Subscribe(async message =>

@@ -8,6 +8,10 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public interface ISnapTrieFactory
 {
+    // Called once at the start/end of a snap-sync run from SnapSyncRunner.Run — sequential, no concurrent invocations.
+    void EnsureInitialize() { }
+    void FinalizeSync() { }
+
     ISnapTree<PathWithAccount> CreateStateTree();
     ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath);
 }

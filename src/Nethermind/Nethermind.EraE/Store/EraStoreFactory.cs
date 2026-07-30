@@ -6,7 +6,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Config;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Logging;
 
@@ -55,6 +55,15 @@ public sealed class EraStoreFactory(
             : src;
 
         fileSystem.Directory.CreateDirectory(downloadDir);
-        return new RemoteEraStoreDecorator(localStore, remoteClient, downloadDir, eraConfig.MaxEraSize);
+        return new RemoteEraStoreDecorator(
+            localStore,
+            remoteClient,
+            downloadDir,
+            eraConfig.MaxEraSize,
+            specProvider,
+            blockValidator,
+            trustedAccumulators,
+            eraConfig.Concurrency,
+            validator);
     }
 }

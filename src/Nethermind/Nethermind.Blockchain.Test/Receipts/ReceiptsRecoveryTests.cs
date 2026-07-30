@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -50,7 +49,7 @@ public class ReceiptsRecoveryTests
             receipts[i] = Build.A.Receipt.WithBlockHash(block.Hash).TestObject;
         }
 
-        _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender).Should().Be(expected);
+        Assert.That(_receiptsRecovery.TryRecover(block, receipts, forceRecoverSender), Is.EqualTo(expected));
     }
 
     [Test]
@@ -60,12 +59,12 @@ public class ReceiptsRecoveryTests
         Block block = Build.A.Block.WithTransactions(tx).TestObject;
         TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
 
-        tx.SenderAddress.Should().BeNull();
-        receipt.ContractAddress.Should().BeNull();
+        Assert.That(tx.SenderAddress, Is.Null);
+        Assert.That(receipt.ContractAddress, Is.Null);
 
         ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, new[] { receipt });
 
-        result.Should().Be(ReceiptsRecoveryResult.NeedReinsert);
-        receipt.ContractAddress.Should().Be(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b"));
+        Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
+        Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
     }
 }

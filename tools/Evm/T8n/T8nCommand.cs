@@ -32,7 +32,7 @@ public static class T8nCommand
 
         cmd.SetAction(parseResult =>
         {
-            var arguments = T8nCommandArguments.FromParseResult(parseResult);
+            T8nCommandArguments arguments = T8nCommandArguments.FromParseResult(parseResult);
 
             T8nOutput t8nOutput = new();
             try

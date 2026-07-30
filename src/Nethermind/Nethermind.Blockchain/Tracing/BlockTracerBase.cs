@@ -14,12 +14,12 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
 {
     private readonly Hash256? _txHash;
 
-    protected BlockTracerBase() => TxTraces = new DisposableResettableList<TTrace>();
+    protected BlockTracerBase() => TxTraces = [];
 
     protected BlockTracerBase(Hash256? txHash)
     {
         _txHash = txHash;
-        TxTraces = new DisposableResettableList<TTrace>();
+        TxTraces = [];
     }
 
     private TTracer? CurrentTxTracer { get; set; }

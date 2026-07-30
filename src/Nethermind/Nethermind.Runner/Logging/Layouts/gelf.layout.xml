@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GELF 1.1 layout for —logging-format=gelf. `timestamp` must be numeric seconds-since-epoch.
+     See https://go2docs.graylog.org/current/getting_in_log_data/gelf.html -->
+<nlog xmlns="http://www.nlog-project.org/schemas/NLog.xsd"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <targets>
+    <target name="json-console" xsi:type="Console">
+      <layout xsi:type="JsonLayout" suppressSpaces="true">
+        <attribute name="version" layout="1.1" />
+        <attribute name="host" layout="${machinename}" />
+        <attribute name="short_message" layout="${replace:searchFor=\x1B\[[0-9;]*m:replaceWith=:regex=true:inner=${message}}" />
+        <attribute name="full_message" layout="${onexception:inner=${replace:searchFor=\x1B\[[0-9;]*m:replaceWith=:regex=true:inner=${message}}\n${exception:format=tostring}}" includeEmptyValue="false" />
+        <attribute name="timestamp" layout="${gelf-timestamp}" encode="false" />
+        <attribute name="level" layout="${gelf-level}" encode="false" />
+        <!-- _logger and _thread are GELF user-defined string fields; keep default encode=true so they quote. -->
+        <attribute name="_logger" layout="${logger}" />
+        <attribute name="_thread" layout="${threadid}" />
+      </layout>
+    </target>
+  </targets>
+  <rules>
+    <logger name="*" minlevel="Trace" writeTo="json-console" />
+  </rules>
+</nlog>

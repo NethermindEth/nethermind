@@ -6,10 +6,10 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
+internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
 {
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
-    protected override ExtraFieldsV2 DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override ExtraFieldsV2 DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -28,27 +28,28 @@ internal sealed class ExtraConsensusDataDecoder : RlpValueDecoder<ExtraFieldsV2>
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    public Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.BlockRound);
-        _quorumCertificateDecoder.Encode(stream, item.QuorumCert, rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.Encode(item.BlockRound);
+        _quorumCertificateDecoder.Encode(ref writer, item.QuorumCert, rlpBehaviors);
     }
 
     public override int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

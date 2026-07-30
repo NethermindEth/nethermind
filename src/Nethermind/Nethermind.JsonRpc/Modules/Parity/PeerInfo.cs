@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             ISession session = peer.InSession ?? peer.OutSession;
             PeerNetworkInfo peerNetworkInfo = new();
             EthProtocolInfo ethProtocolInfo = new();
-            Caps = new List<string>();
+            Caps = [];
 
             if (peer.Node is not null)
             {

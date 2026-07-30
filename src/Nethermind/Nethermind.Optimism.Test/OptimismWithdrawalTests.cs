@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -56,11 +55,11 @@ public class OptimismWithdrawalTests
 
         if (withdrawalHash is null)
         {
-            block.WithdrawalsRoot.Should().BeNull();
+            Assert.That(block.WithdrawalsRoot, Is.Null);
         }
         else
         {
-            block.WithdrawalsRoot.Should().Be(withdrawalHash);
+            Assert.That(block.WithdrawalsRoot, Is.EqualTo(withdrawalHash));
         }
     }
 
@@ -99,7 +98,7 @@ public class OptimismWithdrawalTests
             .TestObject;
 
         processor.ProcessWithdrawals(blockA, releaseSpec);
-        blockA.WithdrawalsRoot.Should().Be(new("0xe11ca0cf3ff4b6b4f02b42f419c244e0ed4fffac24c14999b2b5bc978c21e652"));
+        Assert.That(blockA.WithdrawalsRoot, Is.EqualTo(new Hash256("0xe11ca0cf3ff4b6b4f02b42f419c244e0ed4fffac24c14999b2b5bc978c21e652")));
 
         // Modify the storage root
         state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [20]);
@@ -119,6 +118,6 @@ public class OptimismWithdrawalTests
             .TestObject;
 
         processor.ProcessWithdrawals(blockB, releaseSpec);
-        blockB.WithdrawalsRoot.Should().Be(new("0x69b9a1b510f62bae4a767b9030b74cacd8e5bef0e5af497f961c642405f5fb62"));
+        Assert.That(blockB.WithdrawalsRoot, Is.EqualTo(new Hash256("0x69b9a1b510f62bae4a767b9030b74cacd8e5bef0e5af497f961c642405f5fb62")));
     }
 }

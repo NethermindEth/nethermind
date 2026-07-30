@@ -30,7 +30,7 @@ public interface IMergeConfig : IConfig
     public string? TerminalBlockHash { get; set; }
 
     [ConfigItem(Description = "The terminal PoW block number used for the transition.")]
-    public long? TerminalBlockNumber { get; set; }
+    public ulong? TerminalBlockNumber { get; set; }
 
     [ConfigItem(Description = "Deprecated since v1.14.7. Use `Blocks.SecondsPerSlot` instead.", DefaultValue = "12", HiddenFromDocs = true)]
     public ulong SecondsPerSlot { get; set; }
@@ -65,7 +65,7 @@ public interface IMergeConfig : IConfig
     public int CollectionsPerDecommit { get; set; }
 
     [ConfigItem(Description = "The timeout, in milliseconds, for the `engine_newPayload` method.", DefaultValue = "7000", HiddenFromDocs = true)]
-    public int NewPayloadBlockProcessingTimeout { get; }
+    public int NewPayloadBlockProcessingTimeout { get; set; }
 
     [ConfigItem(Description = "Cache NewPayload valid or invalid results", DefaultValue = "50", HiddenFromDocs = true)]
     public int NewPayloadCacheSize { get; }

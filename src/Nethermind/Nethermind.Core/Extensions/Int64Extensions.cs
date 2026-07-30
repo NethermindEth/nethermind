@@ -17,7 +17,7 @@ public static class Int64Extensions
         // Min 7 bytes as we still want a byte if the value is 0.
         int start = Math.Min(BitOperations.LeadingZeroCount((ulong)value) / sizeof(long), sizeof(long) - 1);
         // We create the span over the out value to ensure the span stack space remains valid.
-        buffer = BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
+        buffer = BinaryPrimitives.ReverseEndianness(value);
         ReadOnlySpan<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref buffer, 1));
         return span[start..];
     }
@@ -28,11 +28,7 @@ public static class Int64Extensions
     public static byte[] ToBigEndianByteArray(this ulong value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(bytes);
-        }
-
+        Array.Reverse(bytes);
         return bytes;
     }
 
@@ -88,21 +84,12 @@ public static class Int64Extensions
         return bytes.ToHexString(true, skipLeadingZeros, false);
     }
 
-    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)
-    {
-        if (bytes is null)
-        {
-            return 0L;
-        }
+    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this ReadOnlySpan<byte> bytes) =>
+        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
 
-        long value = 0;
-        int length = bytes.Length;
+    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this Span<byte> bytes) =>
+        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
 
-        for (int i = 0; i < length; i++)
-        {
-            value += (long)bytes[length - 1 - i] << 8 * i;
-        }
-
-        return value;
-    }
+    public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes) =>
+        (long)UInt64Extensions.ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes);
 }

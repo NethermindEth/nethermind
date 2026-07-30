@@ -78,7 +78,7 @@ namespace Nethermind.Core
         MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             byte[]? data = Get(key, flags);
-            return data is null or { Length: 0 } ? null : new ArrayMemoryManager(data);
+            return data is null or { Length: 0 } ? null : ArrayMemoryManager.From(data);
         }
     }
 

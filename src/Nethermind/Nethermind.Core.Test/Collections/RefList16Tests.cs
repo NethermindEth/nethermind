@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -17,21 +16,27 @@ public class RefList16Tests
     {
         RefList16<Hash256> pool = new();
 
-        pool.Count.Should().Be(0);
+        Assert.That(pool.Count, Is.EqualTo(0));
 
         pool.Add(TestItem.KeccakA);
-        pool.Count.Should().Be(1);
+        Assert.That(pool.Count, Is.EqualTo(1));
 
         pool.Add(TestItem.KeccakB);
-        pool.Count.Should().Be(2);
+        Assert.That(pool.Count, Is.EqualTo(2));
 
-        pool[0].Should().Be(TestItem.KeccakA);
-        pool[1].Should().Be(TestItem.KeccakB);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool[0], Is.EqualTo(TestItem.KeccakA));
+            Assert.That(pool[1], Is.EqualTo(TestItem.KeccakB));
+        }
 
         Span<Hash256> span = pool.AsSpan();
-        span.Length.Should().Be(2);
-        span[0].Should().Be(TestItem.KeccakA);
-        span[1].Should().Be(TestItem.KeccakB);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(span.Length, Is.EqualTo(2));
+            Assert.That(span[0], Is.EqualTo(TestItem.KeccakA));
+            Assert.That(span[1], Is.EqualTo(TestItem.KeccakB));
+        }
     }
 
     [Test]
@@ -43,12 +48,75 @@ public class RefList16Tests
         {
             pool.Add(Hash256.Zero);
         }
-        pool.Count.Should().Be(16);
+        Assert.That(pool.Count, Is.EqualTo(16));
 
         try
         {
             pool.Add(TestItem.KeccakA);
             Assert.Fail("Should throw `IndexOutOfRangeException`");
+        }
+        catch (IndexOutOfRangeException)
+        {
+        }
+    }
+
+    [TestCase(-1, TestName = "negative")]
+    [TestCase(17, TestName = "above capacity")]
+    [TestCase(int.MinValue, TestName = "int.MinValue")]
+    [TestCase(int.MaxValue, TestName = "int.MaxValue")]
+    public void Constructor_WithInvalidInitialSize_ThrowsArgumentOutOfRange(int initialSize) => Assert.That(() => { _ = new RefList16<Hash256>(initialSize); }, Throws.InstanceOf<ArgumentOutOfRangeException>());
+
+    [Test]
+    public void Constructor_WithMaxInitialSize_IsAllowedAndSpansExactlyCapacity()
+    {
+        RefList16<Hash256> pool = new(16);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.Count, Is.EqualTo(16), "16 is the maximum valid initial size");
+            Assert.That(pool.AsSpan().Length, Is.EqualTo(16), "the span must cover exactly the inline storage, never past it");
+        }
+    }
+
+    [Test]
+    public void Add_WhenAtCapacity_ThrowsAndLeavesCountUnchanged()
+    {
+        RefList16<Hash256> pool = new(16);
+        Assert.That(pool.Count, Is.EqualTo(16), "precondition: the list is constructed full");
+
+        try
+        {
+            pool.Add(TestItem.KeccakA);
+            Assert.Fail("adding past capacity must throw IndexOutOfRangeException");
+        }
+        catch (IndexOutOfRangeException)
+        {
+        }
+
+        Assert.That(pool.Count, Is.EqualTo(16), "a rejected Add must not modify Count");
+    }
+
+    [Test]
+    public void Indexer_WhenIndexOutsideCount_ThrowsIndexOutOfRange()
+    {
+        RefList16<Hash256> pool = new();
+        pool.Add(TestItem.KeccakA);
+
+        Assert.That(pool[0], Is.EqualTo(TestItem.KeccakA), "an index within Count returns the stored item");
+
+        try
+        {
+            _ = pool[1];
+            Assert.Fail("indexing at Count must throw IndexOutOfRangeException");
+        }
+        catch (IndexOutOfRangeException)
+        {
+        }
+
+        try
+        {
+            _ = pool[-1];
+            Assert.Fail("a negative index must throw IndexOutOfRangeException");
         }
         catch (IndexOutOfRangeException)
         {

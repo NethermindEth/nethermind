@@ -5,10 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Bytes = Nethermind.Core.Extensions.Bytes;
+using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
@@ -17,10 +17,10 @@ namespace Nethermind.Core.Test;
 /// </summary>
 public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
 {
-    private readonly List<(byte[], ReadFlags)> _readKeys = new();
-    private readonly List<((byte[], byte[]?), WriteFlags)> _writes = new();
-    private readonly List<byte[]> _removedKeys = new();
-    private readonly List<ITunableDb.TuneType> _tuneTypes = new();
+    private readonly List<(byte[], ReadFlags)> _readKeys = [];
+    private readonly List<((byte[], byte[]?), WriteFlags)> _writes = [];
+    private readonly List<byte[]> _removedKeys = [];
+    private readonly List<ITunableDb.TuneType> _tuneTypes = [];
 
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Func<byte[], byte[]?, bool>? WriteFunc { get; set; }
@@ -55,21 +55,21 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     public bool WasTunedWith(ITunableDb.TuneType type) => _tuneTypes.Contains(type);
 
     public void KeyWasRead(byte[] key, int times = 1) =>
-        _readKeys.Count(it => Bytes.AreEqual(it.Item1, key)).Should().Be(times);
+        Assert.That(_readKeys.Count(it => Bytes.AreEqual(it.Item1, key)), Is.EqualTo(times));
 
     public void KeyWasReadWithFlags(byte[] key, ReadFlags flags, int times = 1) =>
-        _readKeys.Count(it => Bytes.AreEqual(it.Item1, key) && it.Item2 == flags).Should().Be(times);
+        Assert.That(_readKeys.Count(it => Bytes.AreEqual(it.Item1, key) && it.Item2 == flags), Is.EqualTo(times));
 
     public void KeyWasWritten(byte[] key, int times = 1) =>
-        _writes.Count(it => Bytes.AreEqual(it.Item1.Item1, key)).Should().Be(times);
+        Assert.That(_writes.Count(it => Bytes.AreEqual(it.Item1.Item1, key)), Is.EqualTo(times));
 
     public void KeyWasWritten(Func<(byte[], byte[]?), bool> cond, int times = 1) =>
-        _writes.Count(it => cond.Invoke(it.Item1)).Should().Be(times);
+        Assert.That(_writes.Count(it => cond.Invoke(it.Item1)), Is.EqualTo(times));
 
     public void KeyWasWrittenWithFlags(byte[] key, WriteFlags flags, int times = 1) =>
-        _writes.Count(it => Bytes.AreEqual(it.Item1.Item1, key) && it.Item2 == flags).Should().Be(times);
+        Assert.That(_writes.Count(it => Bytes.AreEqual(it.Item1.Item1, key) && it.Item2 == flags), Is.EqualTo(times));
 
-    public void KeyWasRemoved(Func<byte[], bool> cond, int times = 1) => _removedKeys.Count(cond).Should().Be(times);
+    public void KeyWasRemoved(Func<byte[], bool> cond, int times = 1) => Assert.That(_removedKeys.Count(cond), Is.EqualTo(times));
     public override IWriteBatch StartWriteBatch() => new InMemoryWriteBatch(this);
     public override void Flush(bool onlyWal) => FlushCount++;
 

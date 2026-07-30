@@ -23,7 +23,6 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockProcessor : BlockProcessor
 {
-    private readonly IWorldState _stateProvider;
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly Create2DeployerContractRewriter? _contractRewriter;
     private readonly ICostHelper _costHelper;
@@ -42,6 +41,7 @@ public class OptimismBlockProcessor : BlockProcessor
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor withdrawalProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
+        IBlockAccessListManager balManager,
         ICostHelper costHelper)
         : base(
             specProvider,
@@ -54,10 +54,10 @@ public class OptimismBlockProcessor : BlockProcessor
             blockhashStore,
             logManager,
             withdrawalProcessor,
-            executionRequestsProcessor)
+            executionRequestsProcessor,
+            balManager)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
-        _stateProvider = stateProvider;
         _opSpecHelper = opSpecHelper;
         _contractRewriter = contractRewriter;
         _costHelper = costHelper;

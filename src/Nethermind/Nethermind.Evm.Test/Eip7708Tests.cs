@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -38,7 +37,12 @@ public class Eip7708Tests(bool eip7708Enabled)
     private void AssertLogs(TxReceipt[] receipts, LogEntry[] expectedLogs, bool logCondition = true)
     {
         LogEntry[][] expected = [eip7708Enabled && logCondition ? expectedLogs : []];
-        receipts.Select(r => r.Logs).Should().BeEquivalentTo(expected);
+        Assert.That(receipts, Has.Length.EqualTo(expected.Length));
+
+        for (int i = 0; i < expected.Length; i++)
+        {
+            (receipts[i].Logs ?? []).AssertEquivalentTo(expected[i]);
+        }
     }
 
     [TestCase(1_000_000ul, 1, TestName = "transfer value > 0")]
@@ -48,7 +52,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
@@ -69,7 +73,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Contract that calls another address with value
         Address targetAddress = TestItem.AddressC;
@@ -115,7 +119,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Contract that self-destructs to a different address (inheritor)
         Address inheritor = TestItem.AddressC;
@@ -162,7 +166,7 @@ public class Eip7708Tests(bool eip7708Enabled)
         // is a complete no-op — no destruction, no ETH movement, no log.
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Calculate contract address first - we need it for the selfdestruct target
         Address contractAddress = ContractAddress.From(TestItem.AddressA, senderNonce);
@@ -207,7 +211,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         BasicTestBlockchain chain = await CreateChain();
 
-        UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         // Contract A: self-destructs to inheritor only when called with zero value.
         // When called with value, it just accepts the ETH without self-destructing again.

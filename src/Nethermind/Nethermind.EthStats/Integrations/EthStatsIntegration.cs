@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Timers;
@@ -18,9 +18,11 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.TxPool;
 using Websocket.Client;
-using Block = Nethermind.Core.Block;
+using CoreBlock = Nethermind.Core.Block;
+using CoreTransaction = Nethermind.Core.Transaction;
 using Timer = System.Timers.Timer;
-using Transaction = Nethermind.EthStats.Messages.Models.Transaction;
+using EthStatsBlock = Nethermind.EthStats.Messages.Models.Block;
+using EthStatsTransaction = Nethermind.EthStats.Messages.Models.Transaction;
 
 namespace Nethermind.EthStats.Integrations
 {
@@ -74,6 +76,8 @@ namespace Nethermind.EthStats.Integrations
         private long _lastBlockProcessedTimestamp;
         private Timer? _timer;
         private const int ThrottlingThreshold = 250;
+        private const int MaxHistoryBlocks = 64;
+        private IDisposable? _messageSubscription;
 
         public async Task InitAsync()
         {
@@ -81,11 +85,13 @@ namespace Nethermind.EthStats.Integrations
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _websocketClient = await _ethStatsClient.InitAsync();
+
+            // Subscribe to incoming messages before the explicit initial hello; reconnect events only cover later reconnects.
+            Run(_timer);
+
             if (_logger.IsInfo) _logger.Info("Initial connection, sending 'hello' message...");
             await SendHelloAsync();
             _connected = true;
-
-            Run(_timer);
         }
 
         private void Run(Timer timer)
@@ -96,12 +102,7 @@ namespace Nethermind.EthStats.Integrations
                 return;
             }
 
-            _websocketClient.ReconnectionHappened.Subscribe(async _ =>
-            {
-                if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
-                await SendHelloAsync();
-                _connected = true;
-            });
+            _websocketClient.ReconnectionHappened.Subscribe(_ => OnReconnectionHappened());
 
             _websocketClient.DisconnectionHappened.Subscribe(reason =>
             {
@@ -109,6 +110,7 @@ namespace Nethermind.EthStats.Integrations
                 if (_logger.IsInfo) _logger.Info($"ETH Stats disconnected, reason: {reason}");
             });
 
+            _messageSubscription = _websocketClient.MessageReceived.Subscribe(message => _ = HandleIncomingMessageAsync(message.Text));
             timer.Start();
         }
 
@@ -118,12 +120,13 @@ namespace Nethermind.EthStats.Integrations
                 return;
             if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
             _ = SendStatsAsync();
-            SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
+            _ = SendNodePingAsync();
+            _ = SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            Block? block = e.Block;
+            CoreBlock? block = e.Block;
 
             if (!_connected)
             {
@@ -144,7 +147,7 @@ namespace Nethermind.EthStats.Integrations
 
             if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block', 'pending' messages...");
             _lastBlockProcessedTimestamp = timestamp;
-            SendBlockAsync(block);
+            _ = SendBlockAsync(block);
         }
 
         public void Dispose()
@@ -159,6 +162,7 @@ namespace Nethermind.EthStats.Integrations
                 timer.Dispose();
             }
 
+            _messageSubscription?.Dispose();
             _websocketClient?.Dispose();
         }
 
@@ -169,22 +173,169 @@ namespace Nethermind.EthStats.Integrations
                 _contact, _canUpdateHistory)));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
-        private Task SendBlockAsync(Block block)
-            => _sender.SendAsync(_websocketClient!, new BlockMessage(
-                new Messages.Models.Block(
-                    block.Number,
-                    (block.Hash ?? Keccak.Zero).ToString(),
-                    (block.ParentHash ?? Keccak.Zero).ToString(),
-                    (long)block.Timestamp,
-                    (block.Author ?? block.Beneficiary ?? Address.Zero).ToString(),
-                    block.GasUsed,
-                    block.GasLimit,
-                    block.Difficulty.ToString(),
-                    (block.TotalDifficulty ?? 0).ToString(),
-                    block.Transactions.Select(static t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
-                    (block.TxRoot ?? Keccak.Zero).ToString(),
-                    (block.StateRoot ?? Keccak.Zero).ToString(),
-                    block.Uncles.Select(static _ => new Uncle()))));
+        private Task SendBlockAsync(CoreBlock block)
+            => _sender.SendAsync(_websocketClient!, new BlockMessage(CreateBlockModel(block)));
+
+        private void OnReconnectionHappened()
+            => _ = ReconnectHelloAsync();
+
+        private async Task ReconnectHelloAsync()
+        {
+            try
+            {
+                if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
+                await SendHelloAsync();
+                _connected = true;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ETH Stats hello failed after reconnect: {e}");
+            }
+        }
+
+        private Task SendHistoryAsync(EthStatsHistoryRequest request)
+        {
+            NormalizeHistoryRange(request, out ulong min, out ulong max);
+
+            List<EthStatsBlock> history = new((int)(max - min + 1));
+            for (ulong blockNumber = min; blockNumber <= max; blockNumber++)
+            {
+                CoreBlock? block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+                if (block is not null)
+                {
+                    history.Add(CreateBlockModel(block));
+                }
+
+                // Prevent ulong.MaxValue + 1 overflow on the for-loop increment.
+                if (blockNumber == max)
+                {
+                    break;
+                }
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"ETH Stats sending 'history' message for range {min}-{max}.");
+            return _sender.SendAsync(_websocketClient!, new HistoryMessage(history));
+        }
+
+        private Task SendNodePingAsync()
+        {
+            if (_websocketClient is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            long clientTime = Timestamper.Default.UnixTime.MillisecondsLong;
+            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'node-ping' message...");
+            return _sender.SendAsync(_websocketClient, new NodePingMessage(clientTime), "node-ping");
+        }
+
+        internal async Task HandleIncomingMessageAsync(string? message)
+        {
+            if (!EthStatsMessageParser.TryParse(message, out EthStatsIncomingMessage incomingMessage))
+            {
+                return;
+            }
+
+            try
+            {
+                Task handleTask = incomingMessage.MessageType switch
+                {
+                    EthStatsIncomingMessageType.History when incomingMessage.HistoryRequest is not null =>
+                        SendHistoryAsync(incomingMessage.HistoryRequest.Value),
+                    EthStatsIncomingMessageType.NodePing =>
+                        SendNodePongAsync(incomingMessage.NodeTiming?.ClientTime),
+                    EthStatsIncomingMessageType.NodePong =>
+                        SendLatencyFromNodePongAsync(incomingMessage.NodeTiming),
+                    _ => HandleUnknownMessageAsync(incomingMessage.EventTypeName)
+                };
+
+                await handleTask;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to handle ETH Stats message '{incomingMessage.EventTypeName}': {e}");
+            }
+        }
+
+        private Task SendNodePongAsync(long? clientTime)
+        {
+            if (_websocketClient is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            long serverTime = Timestamper.Default.UnixTime.MillisecondsLong;
+            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'node-pong' message...");
+            return _sender.SendAsync(_websocketClient, new NodePongMessage(clientTime, serverTime), "node-pong");
+        }
+
+        private Task SendLatencyFromNodePongAsync(EthStatsNodeTiming? nodeTiming)
+        {
+            if (_websocketClient is null || nodeTiming?.ClientTime is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            long clientTime = nodeTiming.Value.ClientTime.Value;
+            long now = Timestamper.Default.UnixTime.MillisecondsLong;
+            if (now < clientTime)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Ignoring ETH Stats 'node-pong' latency with future clientTime {clientTime}.");
+                return Task.CompletedTask;
+            }
+
+            long latency = now - clientTime;
+
+            if (_logger.IsDebug) _logger.Debug($"ETH Stats sending 'latency' message after 'node-pong': {latency} ms.");
+            return _sender.SendAsync(_websocketClient, new LatencyMessage(latency));
+        }
+
+        private Task HandleUnknownMessageAsync(string eventType)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Ignoring unsupported ETH Stats message '{eventType}'.");
+            return Task.CompletedTask;
+        }
+
+        internal static void NormalizeHistoryRange(EthStatsHistoryRequest request, out ulong min, out ulong max)
+        {
+            min = Math.Min(request.Min, request.Max);
+            max = Math.Max(request.Min, request.Max);
+
+            if (max - min >= MaxHistoryBlocks)
+            {
+                min = max - MaxHistoryBlocks + 1;
+            }
+        }
+
+        private static EthStatsBlock CreateBlockModel(CoreBlock block)
+        {
+            List<EthStatsTransaction> transactions = new(block.Transactions.Length);
+            foreach (CoreTransaction transaction in block.Transactions)
+            {
+                transactions.Add(new EthStatsTransaction((transaction.Hash ?? Keccak.Zero).ToString()));
+            }
+
+            List<Uncle> uncles = new(block.Uncles.Length);
+            foreach (BlockHeader _ in block.Uncles)
+            {
+                uncles.Add(new Uncle());
+            }
+
+            return new EthStatsBlock(
+                block.Number,
+                (block.Hash ?? Keccak.Zero).ToString(),
+                (block.ParentHash ?? Keccak.Zero).ToString(),
+                (long)block.Timestamp,
+                (block.Author ?? block.Beneficiary ?? Address.Zero).ToString(),
+                block.GasUsed,
+                block.GasLimit,
+                block.Difficulty.ToString(),
+                (block.TotalDifficulty ?? 0).ToString(),
+                transactions,
+                (block.TxRoot ?? Keccak.Zero).ToString(),
+                (block.StateRoot ?? Keccak.Zero).ToString(),
+                uncles);
+        }
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendPendingAsync(int pending)

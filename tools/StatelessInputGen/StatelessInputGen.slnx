@@ -12,6 +12,8 @@
     <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.History/Nethermind.History.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.JsonRpc.SourceGenerator.Build/Nethermind.JsonRpc.SourceGenerator.Build.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.JsonRpc.SourceGenerator/Nethermind.JsonRpc.SourceGenerator.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj" />
@@ -22,6 +24,8 @@
     <Project Path="../../src/Nethermind/Nethermind.Network/Nethermind.Network.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Sockets/Nethermind.Sockets.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.State/Nethermind.State.csproj" />

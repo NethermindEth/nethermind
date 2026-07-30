@@ -1,0 +1,266 @@
+# Gas Benchmark Pipeline — Claude Code
+#
+# Full end-to-end pipeline: build Docker image, trigger repricing workflow on
+# gas-benchmarks, wait for completion, and analyze results (logs, timings,
+# dotTrace). Posts the report as a PR comment.
+#
+# Trigger modes:
+#   1. PR comment — `@claude-bench [options]` (NethermindEth/core team only).
+#   2. Manual — workflow_dispatch with explicit parameters.
+#   3. Repository dispatch — called from gas-benchmarks repo.
+#
+# Comment syntax:
+#   @claude-bench                                → full run, PR branch, all tests, dotTrace
+#   @claude-bench --filter sstore_bloated        → full run with test filter
+#   @claude-bench --no-dottrace                  → full run without dotTrace profiling
+#   @claude-bench --image nethermindeth/nethermind:some-tag  → skip build, use existing image
+#   @claude-bench --analyze-run 12345            → analyze-only (skip build + trigger)
+#   @claude-bench --analyze-run 12345 --compare 67890       → compare two existing runs
+
+name: Gas Benchmark Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Nethermind branch to build from (default: master)"
+        required: false
+        default: ""
+      image:
+        description: "Pre-built Docker image (skip build if set)"
+        required: false
+        default: ""
+      filter:
+        description: "Test filter pattern (e.g., sstore_bloated)"
+        required: false
+        default: ""
+      network:
+        description: "Network name"
+        required: false
+        default: "perf-devnet-3"
+      dottrace:
+        description: "Enable dotTrace profiling"
+        required: false
+        type: boolean
+        default: true
+      analyze_run:
+        description: "Analyze-only: existing run ID (skips build + trigger)"
+        required: false
+        default: ""
+      compare_run:
+        description: "Compare against this run ID (requires analyze_run)"
+        required: false
+        default: ""
+      pr_number:
+        description: "PR number to post results as a comment"
+        required: false
+        default: ""
+
+  issue_comment:
+    types: [created]
+
+  repository_dispatch:
+    types: [gas-benchmark-analysis]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  # Gate: verify the commenter is a member of the NethermindEth/core team.
+  # The job-level `if` does a cheap author_association pre-filter; the team check
+  # step does the real authorization. This prevents any org member outside `core`
+  # from burning Claude API credits or posting on PRs via @claude-bench.
+  authorize:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'repository_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@claude-bench') &&
+        contains(fromJSON('["MEMBER","COLLABORATOR","OWNER"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.check.outputs.authorized }}
+    steps:
+      - name: Authenticate App
+        if: github.event_name == 'issue_comment'
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: NethermindEth
+
+      - name: Check team membership
+        id: check
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token || github.token }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "${EVENT_NAME}" != "issue_comment" ]]; then
+            echo "authorized=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # Check if the commenter is a member of NethermindEth/core.
+          # The API returns 204 for members, 404 for non-members.
+          if gh api "orgs/NethermindEth/teams/core/memberships/${COMMENT_AUTHOR}" --silent 2>/dev/null; then
+            echo "authorized=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::@${COMMENT_AUTHOR} is not a member of NethermindEth/core — skipping."
+            echo "authorized=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+  run:
+    needs: [authorize]
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Resolve parameters
+        id: params
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          # workflow_dispatch inputs
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_IMAGE: ${{ inputs.image }}
+          INPUT_FILTER: ${{ inputs.filter }}
+          INPUT_NETWORK: ${{ inputs.network }}
+          INPUT_DOTTRACE: ${{ inputs.dottrace }}
+          INPUT_ANALYZE_RUN: ${{ inputs.analyze_run }}
+          INPUT_COMPARE_RUN: ${{ inputs.compare_run }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          # repository_dispatch payload
+          RD_RUN_ID: ${{ github.event.client_payload.run_id }}
+          RD_COMPARE: ${{ github.event.client_payload.compare_run_id }}
+          RD_PR: ${{ github.event.client_payload.pr_number }}
+          RD_BRANCH: ${{ github.event.client_payload.branch }}
+          RD_IMAGE: ${{ github.event.client_payload.image }}
+          RD_FILTER: ${{ github.event.client_payload.filter }}
+        run: |
+          set -euo pipefail
+
+          # Defaults
+          mode="full"
+          branch=""
+          image=""
+          filter=""
+          network="perf-devnet-3"
+          dottrace="true"
+          analyze_run=""
+          compare_run=""
+          pr_number=""
+
+          case "${EVENT_NAME}" in
+            workflow_dispatch)
+              branch="${INPUT_BRANCH:-}"
+              image="${INPUT_IMAGE:-}"
+              filter="${INPUT_FILTER:-}"
+              network="${INPUT_NETWORK:-perf-devnet-3}"
+              dottrace="${INPUT_DOTTRACE:-true}"
+              analyze_run="${INPUT_ANALYZE_RUN:-}"
+              compare_run="${INPUT_COMPARE_RUN:-}"
+              pr_number="${INPUT_PR_NUMBER:-}"
+              ;;
+            repository_dispatch)
+              analyze_run="${RD_RUN_ID:-}"
+              compare_run="${RD_COMPARE:-}"
+              pr_number="${RD_PR:-}"
+              branch="${RD_BRANCH:-}"
+              image="${RD_IMAGE:-}"
+              filter="${RD_FILTER:-}"
+              ;;
+            issue_comment)
+              pr_number="${{ github.event.issue.number }}"
+              # Parse flags from comment body. Each flag is optional.
+              filter=$(echo "${COMMENT_BODY}" | sed -n 's/.*--filter[[:space:]]\+\([^[:space:]]\+\).*/\1/p')
+              image=$(echo "${COMMENT_BODY}" | sed -n 's/.*--image[[:space:]]\+\([^[:space:]]\+\).*/\1/p')
+              analyze_run=$(echo "${COMMENT_BODY}" | sed -n 's/.*--analyze-run[[:space:]]\+\([0-9]\+\).*/\1/p')
+              compare_run=$(echo "${COMMENT_BODY}" | sed -n 's/.*--compare[[:space:]]\+\([0-9]\+\).*/\1/p')
+              # --no-dottrace flag
+              if echo "${COMMENT_BODY}" | grep -q -- '--no-dottrace'; then
+                dottrace="false"
+              fi
+              # Resolve PR branch for the full run
+              if [[ -z "${analyze_run}" ]]; then
+                branch=$(gh pr view "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --json headRefName --jq .headRefName)
+              fi
+              ;;
+          esac
+
+          # Determine mode
+          if [[ -n "${analyze_run}" ]]; then
+            mode="analyze"
+          fi
+
+          {
+            echo "mode=${mode}"
+            echo "branch=${branch}"
+            echo "image=${image}"
+            echo "filter=${filter}"
+            echo "network=${network}"
+            echo "dottrace=${dottrace}"
+            echo "analyze_run=${analyze_run}"
+            echo "compare_run=${compare_run}"
+            echo "pr_number=${pr_number}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are running in CI. Execute the /gas-benchmark skill with the parameters below.
+            Post the final report as a PR comment when done (if a PR number is available).
+
+            MODE: ${{ steps.params.outputs.mode }}
+
+            PARAMETERS:
+            - branch: ${{ steps.params.outputs.branch || '(auto-detect)' }}
+            - image: ${{ steps.params.outputs.image || '(build from branch)' }}
+            - filter: ${{ steps.params.outputs.filter || '(all tests)' }}
+            - network: ${{ steps.params.outputs.network }}
+            - dottrace: ${{ steps.params.outputs.dottrace }}
+            - analyze_run: ${{ steps.params.outputs.analyze_run || '(none — full run)' }}
+            - compare_run: ${{ steps.params.outputs.compare_run || '(none)' }}
+            - pr_number: ${{ steps.params.outputs.pr_number || '(none)' }}
+
+            If MODE is "full", run the complete pipeline:
+              /gas-benchmark --branch ${{ steps.params.outputs.branch }} \
+                ${{ steps.params.outputs.image != '' && format('--image {0}', steps.params.outputs.image) || '' }} \
+                ${{ steps.params.outputs.filter != '' && format('--filter {0}', steps.params.outputs.filter) || '' }} \
+                --network ${{ steps.params.outputs.network }} \
+                ${{ steps.params.outputs.dottrace == 'true' && '--dottrace' || '' }}
+
+              This will: discover the latest release and gas-benchmarks branch, build a Docker
+              image from the specified branch, trigger the repricing workflow, wait for it to
+              complete, and run the full analysis (exceptions, block phase classification,
+              timing percentiles, dotTrace hotspots).
+
+              Do NOT ask the user any interactive questions — use the parameters above.
+              For any parameter marked "(auto-detect)" or "(build from branch)", use the
+              skill's default discovery logic.
+
+            If MODE is "analyze", run analysis only:
+              /gas-benchmark --analyze-run ${{ steps.params.outputs.analyze_run }} \
+                ${{ steps.params.outputs.compare_run != '' && format('--compare {0}', steps.params.outputs.compare_run) || '' }}
+
+            POSTING RESULTS:
+            After the skill completes, post the full report as a PR comment:
+              gh pr comment ${{ steps.params.outputs.pr_number }} \
+                --repo ${{ github.repository }} \
+                --body "<the full markdown report>"
+
+            If no PR number is available, just output the report — it will appear in the
+            workflow step summary.
+          claude_args: |
+            --allowedTools "Bash(gh:*),Bash(sed:*),Bash(grep:*),Bash(awk:*),Bash(sort:*),Bash(wc:*),Bash(head:*),Bash(tail:*),Bash(cat:*),Bash(tar:*),Bash(find:*),Bash(date:*),Bash(mkdir:*),Bash(bash:*),Bash(sleep:*),Bash(unzip:*),Bash(tr:*),Bash(xargs:*),Bash(base64:*),Bash(echo:*),Bash(printf:*),Bash(git branch:*),Bash(MSYS_NO_PATHCONV:*),Read,Grep,Glob"

@@ -9,10 +9,7 @@ public abstract class JsonRpc
 {
     private readonly JsonNode _node;
 
-    private JsonRpc(JsonNode node)
-    {
-        _node = node;
-    }
+    private JsonRpc(JsonNode node) => _node = node;
 
     public string ToJsonString() => _node.ToJsonString();
     public JsonNode Json => _node;
@@ -61,28 +58,16 @@ public abstract class JsonRpc
 
             public string? Id { get => _id.Value; }
 
-            public Batch(JsonNode node) : base(node)
-            {
-                _id = new(() =>
-                {
-                    if (Items().Any())
-                    {
-                        string? first = Items().First()?.Id;
-                        string? last = Items().Last()?.Id;
-
-                        if (first is not null && last is not null)
-                        {
-                            return $"{first}:{last}";
-                        }
-                    }
-
-                    return null;
-                });
-            }
+            public Batch(JsonNode node) : base(node) => _id = new(() =>
+                _node.AsArray() is { Count: > 0 } arr
+                    && arr[0]?["id"] is { } firstId
+                    && arr[^1]?["id"] is { } lastId
+                        ? $"{(Int64)firstId}:{(Int64)lastId}"
+                        : null);
 
             public IEnumerable<Single?> Items()
             {
-                foreach (var node in _node.AsArray())
+                foreach (JsonNode? node in _node.AsArray())
                 {
                     yield return node is null ? null : new Single(node);
                 }
@@ -98,23 +83,13 @@ public abstract class JsonRpc
 
         public string? Id { get => _id.Value; }
 
-        public Response(JsonNode node) : base(node)
-        {
-            _id = new(() =>
-            {
-                if (_node["id"] is { } id)
-                {
-                    return ((Int64)id).ToString();
-                }
-
-                return null;
-            });
-        }
+        public Response(JsonNode node) : base(node) => _id = new(() =>
+            _node["id"] is { } id ? ((Int64)id).ToString() : null);
 
         public static async Task<Response> FromHttpResponseAsync(HttpResponseMessage response, CancellationToken token = default)
         {
-            var content = await response.Content.ReadAsStreamAsync(token);
-            var node = await JsonNode.ParseAsync(content, cancellationToken: token);
+            Stream content = await response.Content.ReadAsStreamAsync(token);
+            JsonNode? node = await JsonNode.ParseAsync(content, cancellationToken: token);
 
             return new Response(node!);
         }

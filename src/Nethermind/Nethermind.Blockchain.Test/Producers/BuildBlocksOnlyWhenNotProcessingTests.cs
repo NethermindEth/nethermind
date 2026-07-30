@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -24,8 +23,8 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         Context context = new();
         context.BlockProcessingQueue.IsEmpty.Returns(true);
         Block block = (await context.MainBlockProductionTrigger.BuildBlock())!;
-        block.Should().Be(context.DefaultBlock);
-        context.TriggeredCount.Should().Be(1);
+        Assert.That(block, Is.EqualTo(context.DefaultBlock));
+        Assert.That(context.TriggeredCount, Is.EqualTo(1));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -39,8 +38,8 @@ public class BuildBlocksOnlyWhenNotProcessingTests
 
         context.BlockProcessingQueue.IsEmpty.Returns(true);
         Block? block = await buildTask;
-        block.Should().Be(context.DefaultBlock);
-        context.TriggeredCount.Should().Be(1);
+        Assert.That(block, Is.EqualTo(context.DefaultBlock));
+        Assert.That(context.TriggeredCount, Is.EqualTo(1));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -56,7 +55,7 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         cancellationTokenSource.Cancel();
 
         Func<Task> f = async () => { await buildTask; };
-        await f.Should().ThrowAsync<OperationCanceledException>();
+        Assert.That(async () => await f(), Throws.InstanceOf<OperationCanceledException>());
     }
 
     private class Context

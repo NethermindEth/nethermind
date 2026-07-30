@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google Cloud Logging structured-log layout for —logging-format=gcp.
+     See https://cloud.google.com/logging/docs/structured-logging -->
+<nlog xmlns="http://www.nlog-project.org/schemas/NLog.xsd"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <targets>
+    <target name="json-console" xsi:type="Console">
+      <layout xsi:type="JsonLayout" suppressSpaces="true">
+        <attribute name="severity" layout="${gcp-severity}" />
+        <attribute name="time" layout="${date:universalTime=true:format=yyyy-MM-ddTHH\:mm\:ss.fffffffZ}" />
+        <attribute name="message" layout="${replace:searchFor=\x1B\[[0-9;]*m:replaceWith=:regex=true:inner=${message}}${onexception:inner=\: ${exception:format=tostring}}" />
+        <attribute name="logger" layout="${logger}" />
+        <attribute name="thread" layout="${threadid}" encode="false" />
+      </layout>
+    </target>
+  </targets>
+  <rules>
+    <logger name="*" minlevel="Trace" writeTo="json-console" />
+  </rules>
+</nlog>

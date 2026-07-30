@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO;
-using FluentAssertions;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -30,23 +29,24 @@ public class ChainSpecLoaderTest
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/gnosis.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(100), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("GnosisChain"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
-
-        int berlinGnosisBlockNumber = 16101500;
-        chainSpec.Parameters.Eip2565Transition.Should().Be(berlinGnosisBlockNumber);
-        chainSpec.Parameters.Eip2929Transition.Should().Be(berlinGnosisBlockNumber);
-        chainSpec.Parameters.Eip2930Transition.Should().Be(berlinGnosisBlockNumber);
-
-        chainSpec.Parameters.TerminalTotalDifficulty.ToString()
-            .Should().Be("8626000000000000000000058750000000000000000000");
-
         AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        int berlinGnosisBlockNumber = 16101500;
 
-        auraParams.WithdrawalContractAddress.ToString(true)
-            .Should().Be("0x0B98057eA310F4d31F2a452B414647007d1645d9");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(100), $"{nameof(chainSpec.NetworkId)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("GnosisChain"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
+
+            Assert.That(chainSpec.Parameters.Eip2565Transition, Is.EqualTo(berlinGnosisBlockNumber));
+            Assert.That(chainSpec.Parameters.Eip2929Transition, Is.EqualTo(berlinGnosisBlockNumber));
+            Assert.That(chainSpec.Parameters.Eip2930Transition, Is.EqualTo(berlinGnosisBlockNumber));
+
+            Assert.That(chainSpec.Parameters.TerminalTotalDifficulty.ToString(), Is.EqualTo("8626000000000000000000058750000000000000000000"));
+
+            Assert.That(auraParams.WithdrawalContractAddress.ToString(true), Is.EqualTo("0x0B98057eA310F4d31F2a452B414647007d1645d9"));
+        }
     }
 
     [Test]
@@ -55,21 +55,22 @@ public class ChainSpecLoaderTest
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/chiado.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(10200), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("chiado"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
-
-        chainSpec.Parameters.TerminalTotalDifficulty.ToString()
-            .Should().Be("231707791542740786049188744689299064356246512");
-
         AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
-        auraParams.WithdrawalContractAddress.ToString(true)
-            .Should().Be("0xb97036A26259B7147018913bD58a774cf91acf25");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(10200), $"{nameof(chainSpec.NetworkId)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("chiado"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
 
-        chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.ShanghaiTimestamp);
-        chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.Instance.TimestampFork);
+            Assert.That(chainSpec.Parameters.TerminalTotalDifficulty.ToString(), Is.EqualTo("231707791542740786049188744689299064356246512"));
+
+            Assert.That(auraParams.WithdrawalContractAddress.ToString(true), Is.EqualTo("0xb97036A26259B7147018913bD58a774cf91acf25"));
+
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(ChiadoSpecProvider.ShanghaiTimestamp));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(ChiadoSpecProvider.Instance.TimestampFork));
+        }
     }
 
     [Test]
@@ -77,10 +78,10 @@ public class ChainSpecLoaderTest
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
         ChainSpec chainSpec = LoadChainSpec(path);
-        IDictionary<long, IDictionary<Address, byte[]>> expected = new Dictionary<long, IDictionary<Address, byte[]>>
+        IDictionary<ulong, IDictionary<Address, byte[]>> expected = new Dictionary<ulong, IDictionary<Address, byte[]>>
         {
             {
-                21300000, new Dictionary<Address, byte[]>()
+                21300000UL, new Dictionary<Address, byte[]>()
                 {
                     {new Address("0x1234000000000000000000000000000000000001"), Bytes.FromHexString("0x111")},
                     {new Address("0x1234000000000000000000000000000000000002"), Bytes.FromHexString("0x222")},
@@ -89,11 +90,14 @@ public class ChainSpecLoaderTest
         };
 
         AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        auraParams.RewriteBytecode.Should().BeEquivalentTo(expected);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(auraParams.RewriteBytecode, Is.EqualTo(expected));
 
-        // posdao.json uses old modexp pricing format (divisor: 20) without modexp2565 transition
-        // Therefore Eip2565Transition should be null
-        chainSpec.Parameters.Eip2565Transition.Should().BeNull();
+            // posdao.json uses old modexp pricing format (divisor: 20) without modexp2565 transition
+            // Therefore Eip2565Transition should be null
+            Assert.That(chainSpec.Parameters.Eip2565Transition, Is.Null);
+        }
     }
 
     [Test]
@@ -113,6 +117,6 @@ public class ChainSpecLoaderTest
 
         AuRaChainSpecEngineParameters auraParams = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
-        auraParams.RewriteBytecodeTimestamp.Should().BeEquivalentTo(expected);
+        Assert.That(auraParams.RewriteBytecodeTimestamp, Is.EqualTo(expected));
     }
 }

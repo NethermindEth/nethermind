@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Security;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -62,6 +63,51 @@ namespace Nethermind.JsonRpc.Test.Modules
             Address[] accountsNow = _wallet.GetAccounts();
             Assert.That(accountsNow.Length, Is.EqualTo(accountsBefore + 1), "length");
             Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\",\"id\":67}}"));
+        }
+
+        [Test]
+        public async Task Personal_sign_with_passphrase_does_not_unlock_account()
+        {
+            string passphrase = "testPass";
+            Address address = _wallet.NewAccount(passphrase.Secure());
+            _wallet.LockAccount(address);
+            Assert.That(_wallet.IsUnlocked(address), Is.False, "precondition: account starts locked");
+
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
+
+            string signed = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), passphrase);
+            Assert.That(signed, Does.Contain("\"result\""));
+            Assert.That(_wallet.IsUnlocked(address), Is.False, "passphrase sign must not persistently unlock the account");
+
+            string withoutPassphrase = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString());
+            Assert.That(withoutPassphrase, Does.Contain("\"error\""));
+        }
+
+        [Test]
+        public async Task Personal_sign_with_passphrase_on_keystore_wallet_preserves_lock_and_rejects_wrong_passphrase()
+        {
+            const string privateKeyHex = "a8fceb14d53045b1c8baedf7bc1f38b2540ce132ac28b1ec8b93b8113165abc0";
+            const string correctPassphrase = "correct";
+            Address address = new PrivateKey(privateKeyHex).Address;
+
+            IKeyStore keyStore = Substitute.For<IKeyStore>();
+            keyStore.GetKey(address, Arg.Any<SecureString>())
+                .Returns<(PrivateKey, Result)>(ci => ci.Arg<SecureString>().Unsecure() == correctPassphrase
+                    ? (new PrivateKey(privateKeyHex), Result.Success)
+                    : (null!, Result.Fail("authentication failed")));
+
+            DevKeyStoreWallet wallet = new(keyStore, LimboLogs.Instance, createTestAccounts: false);
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, wallet, keyStore);
+
+            string signed = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), correctPassphrase);
+            Assert.That(signed, Does.Contain("\"result\""));
+            Assert.That(wallet.IsUnlocked(address), Is.False, "passphrase sign must not unlock the keystore account");
+
+            string wrongPassphrase = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), "wrong");
+            Assert.That(wrongPassphrase, Does.Contain("\"error\""));
+
+            string withoutPassphrase = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString());
+            Assert.That(withoutPassphrase, Does.Contain("\"error\""));
         }
 
         [Test]

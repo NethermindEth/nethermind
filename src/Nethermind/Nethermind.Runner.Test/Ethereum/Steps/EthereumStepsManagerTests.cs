@@ -8,8 +8,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
-using FluentAssertions.Execution;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -41,7 +39,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        [Retry(3)]
         public async Task With_steps_from_here_AuRa()
         {
             await using IContainer container = CreateAuraApi(
@@ -51,16 +48,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
-            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
-
-            try
-            {
-                await stepsManager.InitializeAll(source.Token);
-            }
-            catch (Exception e)
-            {
-                e.Should().BeOfType<TestException>();
-            }
+            Assert.That(async () => await stepsManager.InitializeAll(CancellationToken.None),
+                Throws.TypeOf<TestException>());
         }
 
         [Test]
@@ -80,7 +69,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             {
                 if (!(e is OperationCanceledException))
                 {
-                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}. Received {e}");
+                    Assert.Fail($"Exception should be {nameof(OperationCanceledException)}. Received {e}");
                 }
             }
         }
@@ -96,7 +85,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
 
             Func<Task> act = () => stepsManager.InitializeAll(source.Token);
-            await act.Should().ThrowAsync<InvalidConfigurationException>();
+            Assert.That(async () => await act(), Throws.TypeOf<InvalidConfigurationException>());
         }
 
         [Test]
@@ -110,7 +99,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
 
-            container.Resolve<StepWithLogManagerInConstructor>().WasExecuted.Should().BeTrue();
+            Assert.That(container.Resolve<StepWithLogManagerInConstructor>().WasExecuted, Is.True);
         }
 
         [Test]
@@ -124,7 +113,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
             using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
             Func<Task> act = async () => await stepsManager.InitializeAll(source.Token);
-            await act.Should().ThrowAsync<StepDependencyException>();
+            Assert.That(async () => await act(), Throws.TypeOf<StepDependencyException>());
         }
 
         [Test]
@@ -140,13 +129,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
             Task initTask = stepsManager.InitializeAll(cancellationToken);
             await Task.Delay(100, cancellationToken);
-            initTask.IsCompleted.Should().BeFalse();
+            Assert.That(initTask.IsCompleted, Is.False);
 
-            container.Resolve<StepB>().WasExecuted.Should().BeFalse();
+            Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
             container.Resolve<StepE>().Waiter.SetResult();
             await initTask;
 
-            container.Resolve<StepB>().WasExecuted.Should().BeTrue();
+            Assert.That(container.Resolve<StepB>().WasExecuted, Is.True);
         }
 
         private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos)
@@ -278,7 +267,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
     public class StepE : IStep
     {
-        public TaskCompletionSource Waiter = new();
+        public TaskCompletionSource Waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public virtual Task Execute(CancellationToken cancellationToken) => Waiter.Task;
     }

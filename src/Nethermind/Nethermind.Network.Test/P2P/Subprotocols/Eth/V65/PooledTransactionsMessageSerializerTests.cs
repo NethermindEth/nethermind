@@ -85,10 +85,7 @@ public class PooledTransactionsMessageSerializerTests
     {
         SerializerTester.TestZero(
             new PooledTransactionsMessageSerializer(),
-            transactionsMessage,
-            additionallyExcluding: static (o) =>
-                o.For(static msg => msg.Transactions)
-                    .Exclude(static tx => tx.SenderAddress));
+            transactionsMessage);
         transactionsMessage.Dispose();
     }
 

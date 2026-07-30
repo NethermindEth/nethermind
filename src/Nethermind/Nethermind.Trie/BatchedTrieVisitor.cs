@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -232,7 +233,7 @@ public class BatchedTrieVisitor<TNodeContext>
             // Sort by level
             if (_activeJobs > _targetCurrentItems)
             {
-                preSort.AsSpan().Sort(static (item1, item2) => item1.Context.Level.CompareTo(item2.Context.Level) * -1);
+                preSort.Sort<JobByLevelDescendingComparer>(default);
             }
 
             int endIdx = Math.Min(_maxBatchSize, preSort.Count);
@@ -330,10 +331,11 @@ public class BatchedTrieVisitor<TNodeContext>
 
                     // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
                     // take about 0.1% of the time, so not very cpu intensive in this case.
+                    // Safe: resolveOrdering only contains indices in [0, currentBatch.Count) (populated in the loop
+                    // above), and currentBatch is not mutated for the duration of the sort, so the backing array
+                    // reference is stable and every lookup stays in-bounds.
                     resolveOrdering
-                        .AsSpan()
-                        .Sort((item1, item2) =>
-                            currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
+                        .Sort(new BatchKeccakAscendingComparer(currentBatch.UnsafeGetInternalArray()));
 
                     ReadFlags flags = ReadFlags.None;
                     if (resolveOrdering.Count > _readAheadThreshold)
@@ -450,7 +452,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     {
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
-                        Rlp.ValueDecoderContext decoderContext = new(node.Value.AsSpan());
+                        RlpReader decoderContext = new(node.Value.AsSpan());
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");
@@ -490,6 +492,22 @@ public class BatchedTrieVisitor<TNodeContext>
         public readonly ValueHash256 Key = key;
         public readonly TNodeContext NodeContext = nodeContext;
         public readonly SmallTrieVisitContext Context = context;
+    }
+
+    private readonly struct JobByLevelDescendingComparer : IComparer<Job>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(Job item1, Job item2) => item2.Context.Level.CompareTo(item1.Context.Level);
+    }
+
+    private readonly struct BatchKeccakAscendingComparer(
+        (TrieNode, TNodeContext, SmallTrieVisitContext)[] items) : IComparer<int>
+    {
+        private readonly (TrieNode, TNodeContext, SmallTrieVisitContext)[] _items = items;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(int item1, int item2) =>
+            _items[item1].Item1.Keccak.CompareTo(_items[item2].Item1.Keccak);
     }
 }
 

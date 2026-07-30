@@ -9,7 +9,6 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -31,7 +30,7 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class PeerManagerFilteringIntegrationTests
 {
-    [Test, Retry(3)]
+    [Test]
     public async Task PeerManager_CallsShouldContactBeforeConnectAsync()
     {
         CallOrderTrackingMock trackingMock = new();
@@ -45,14 +44,14 @@ public class PeerManagerFilteringIntegrationTests
             MaxOutgoingConnectPerSec = 1000000
         };
 
-        NodesLoader nodesLoader = new(networkConfig, stats, storage, trackingMock, LimboLogs.Instance);
+        NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         staticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
         TestNodeSource testNodeSource = new();
         CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), staticNodesManager, testNodeSource);
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         IPeerPool peerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
-        PeerManager peerManager = new(trackingMock, peerPool, stats, networkConfig, LimboLogs.Instance);
+        PeerManager peerManager = new(trackingMock, peerPool, stats, networkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
 
         try
         {
@@ -61,13 +60,10 @@ public class PeerManagerFilteringIntegrationTests
 
             testNodeSource.AddNode(new Node(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.1", 30303));
 
-            Assert.That(
-                () => trackingMock.CallsToConnectAsync.Count,
-                Is.GreaterThanOrEqualTo(1).After(2000, 50),
-                "PeerManager should trigger ConnectAsync for the discovered peer");
+            await trackingMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-            trackingMock.CallsToShouldContact.Should().NotBeEmpty(
-                "ShouldContact should have been called before ConnectAsync");
+            Assert.That(trackingMock.CallsToConnectAsync, Is.Not.Empty);
+            Assert.That(trackingMock.CallsToShouldContact, Is.Not.Empty, "ShouldContact should have been called before ConnectAsync");
         }
         finally
         {
@@ -78,7 +74,6 @@ public class PeerManagerFilteringIntegrationTests
 
     [TestCase(true, false, Description = "Static peer bypasses subnet filter")]
     [TestCase(false, true, Description = "Bootnode peer bypasses subnet filter")]
-    [Retry(3)]
     public async Task PrivilegedPeer_BypassesSubnetFilter(bool isStatic, bool isBootnode)
     {
         await using Context ctx = new();
@@ -93,31 +88,31 @@ public class PeerManagerFilteringIntegrationTests
         ctx.PeerPool.Start();
         ctx.PeerManager.Start();
 
-        Assert.That(
-            () => ctx.RlpxMock.ConnectedNodeIds.Count,
-            Is.GreaterThanOrEqualTo(1).After(2000, 50),
-            "Privileged peer should bypass the subnet filter and trigger ConnectAsync");
+        await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Is.Not.Empty, "Privileged peer should bypass the subnet filter and trigger ConnectAsync");
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task RegularPeer_BlockedByIpFilter()
     {
         await using Context ctx = new();
         Node regularNode = new(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.3", 30303);
+        Node staticBeacon = new(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.99", 30303) { IsStatic = true };
 
+        ctx.StaticNodesManager
+            .DiscoverNodes(Arg.Any<CancellationToken>())
+            .Returns(new[] { staticBeacon }.ToAsyncEnumerable());
         ctx.TestNodeSource.AddNode(regularNode);
 
         ctx.PeerPool.Start();
         ctx.PeerManager.Start();
 
-        // Give it time — the peer should NOT be connected
-        await Task.Delay(1000);
+        await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        ctx.RlpxMock.ConnectedNodeIds.Should().BeEmpty(
-            "Regular peer should be blocked by the IP filter");
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task StaticAndRegularPeers_OnlyStaticBypasses()
     {
         await using Context ctx = new();
@@ -132,13 +127,9 @@ public class PeerManagerFilteringIntegrationTests
         ctx.PeerPool.Start();
         ctx.PeerManager.Start();
 
-        Assert.That(
-            () => ctx.RlpxMock.ConnectedNodeIds,
-            Has.Member(staticNode.Id).After(2000, 50),
-            "Static peer should be connected");
-
-        ctx.RlpxMock.ConnectedNodeIds.Should().NotContain(regularNode.Id,
-            "Regular peer should be blocked by the IP filter");
+        Node connected = await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(connected.Id, Is.EqualTo(staticNode.Id), "First peer connected should be the static one");
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
     }
 
     private class Context : IAsyncDisposable
@@ -162,14 +153,14 @@ public class PeerManagerFilteringIntegrationTests
                 MaxOutgoingConnectPerSec = 1000000
             };
 
-            NodesLoader nodesLoader = new(networkConfig, stats, storage, RlpxMock, LimboLogs.Instance);
+            NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
             StaticNodesManager = Substitute.For<IStaticNodesManager>();
             StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
             TestNodeSource = new TestNodeSource();
             CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), StaticNodesManager, TestNodeSource);
             ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
             PeerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
-            PeerManager = new PeerManager(RlpxMock, PeerPool, stats, networkConfig, LimboLogs.Instance);
+            PeerManager = new PeerManager(RlpxMock, PeerPool, stats, networkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
         }
 
         public async ValueTask DisposeAsync()
@@ -186,13 +177,15 @@ public class PeerManagerFilteringIntegrationTests
     /// </summary>
     private class FilterRejectingRlpxMock : IRlpxHost
     {
-        public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = new();
+        public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = [];
+        public TaskCompletionSource<Node> FirstConnect { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false) => exactOnly;
 
         public Task<bool> ConnectAsync(Node node)
         {
             ConnectedNodeIds.Add(node.Id);
+            FirstConnect.TrySetResult(node);
 
             Session session = new(30303, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
@@ -201,16 +194,17 @@ public class PeerManagerFilteringIntegrationTests
 
         public Task Init() => Task.CompletedTask;
         public Task Shutdown() => Task.CompletedTask;
-        public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated;
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
     private class CallOrderTrackingMock : IRlpxHost
     {
-        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = new();
-        public ConcurrentBag<Node> CallsToConnectAsync { get; } = new();
+        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = [];
+        public ConcurrentBag<Node> CallsToConnectAsync { get; } = [];
+        public TaskCompletionSource<Node> FirstConnect { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false)
         {
@@ -221,14 +215,15 @@ public class PeerManagerFilteringIntegrationTests
         public Task<bool> ConnectAsync(Node node)
         {
             CallsToConnectAsync.Add(node);
+            FirstConnect.TrySetResult(node);
             return Task.FromResult(true);
         }
 
         public Task Init() => Task.CompletedTask;
         public Task Shutdown() => Task.CompletedTask;
-        public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated { add { } remove { } }
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
@@ -237,7 +232,7 @@ public class PeerManagerFilteringIntegrationTests
         private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
         private bool _pendingChanges;
 
-        public NetworkNode[] GetPersistedNodes() => _nodes.Values.ToArray();
+        public NetworkNode[] GetPersistedNodes() => _nodes.Select(static kvp => kvp.Value).ToArray();
         public int PersistedNodesCount => _nodes.Count;
 
         public void UpdateNode(NetworkNode node)

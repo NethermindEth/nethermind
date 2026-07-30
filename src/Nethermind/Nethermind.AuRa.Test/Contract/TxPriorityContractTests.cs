@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -37,7 +36,7 @@ public class TxPriorityContractTests
     {
         using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
         IEnumerable<Address> whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
-        whiteList.Should().BeEmpty();
+        Assert.That(whiteList, Is.Empty);
     }
 
     [Test]
@@ -45,7 +44,7 @@ public class TxPriorityContractTests
     {
         using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
         IEnumerable<TxPriorityContract.Destination> priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
-        priorities.Should().BeEmpty();
+        Assert.That(priorities, Is.Empty);
     }
 
     [Test]
@@ -53,19 +52,18 @@ public class TxPriorityContractTests
     {
         using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
         IEnumerable<TxPriorityContract.Destination> minGas = chain.TxPriorityContract.MinGasPrices.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
-        minGas.Should().BeEmpty();
+        Assert.That(minGas, Is.Empty);
     }
 
     [Test]
-    [Retry(3)]
     public async Task whitelist_should_return_correctly()
     {
         using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
         IEnumerable<Address> whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
         IEnumerable<Address> whiteListInContract = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
         object[] expected = { TestItem.AddressA, TestItem.AddressC };
-        whiteList.Should().BeEquivalentTo(expected);
-        whiteListInContract.Should().BeEquivalentTo(expected);
+        Assert.That(whiteList, Is.EquivalentTo(expected));
+        Assert.That(whiteListInContract, Is.EquivalentTo(expected));
     }
 
     [Test]
@@ -81,13 +79,13 @@ public class TxPriorityContractTests
             new(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
         };
 
-        priorities.Should().BeEquivalentTo(expected, static o => o.ComparingByMembers<TxPriorityContract.Destination>()
-            .Excluding(static su => su.BlockNumber));
-        prioritiesInContract.Should().BeEquivalentTo(expected, static o => o.ComparingByMembers<TxPriorityContract.Destination>());
+        Assert.That(priorities, Is.EquivalentTo(expected)
+            .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                static options => options.Excluding(static destination => destination.BlockNumber)));
+        Assert.That(prioritiesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
     }
 
     [Test]
-    [Retry(3)]
     public async Task mingas_should_return_correctly()
     {
         using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
@@ -99,14 +97,14 @@ public class TxPriorityContractTests
             new(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
         };
 
-        minGasPrices.Should().BeEquivalentTo(expected, static o => o.ComparingByMembers<TxPriorityContract.Destination>()
-            .Excluding(static su => su.BlockNumber));
+        Assert.That(minGasPrices, Is.EquivalentTo(expected)
+            .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                static options => options.Excluding(static destination => destination.BlockNumber)));
 
-        minGasPricesInContract.Should().BeEquivalentTo(expected, static o => o.ComparingByMembers<TxPriorityContract.Destination>());
+        Assert.That(minGasPricesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
     }
 
     [Test]
-    [Retry(3)]
     [Explicit]
     public async Task whitelist_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
@@ -120,7 +118,7 @@ public class TxPriorityContractTests
             TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
             if (localData is not null)
             {
-                localData.Whitelist.Should().BeEquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB });
+                Assert.That(localData.Whitelist, Is.EquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB }));
                 semaphoreSlim.Release();
             }
         };
@@ -141,11 +139,10 @@ public class TxPriorityContractTests
         object[] expected = { TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC };
 
         IEnumerable<Address> whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        whiteList.Should().BeEquivalentTo(expected);
+        Assert.That(whiteList, Is.EquivalentTo(expected));
     }
 
     [Test]
-    [Retry(3)]
     [Explicit]
     public async Task priority_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
@@ -167,9 +164,8 @@ public class TxPriorityContractTests
             TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
             if (localData is not null)
             {
-                chain.LocalDataSource.Data.Priorities.Should().BeEquivalentTo(
-                    expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local),
-                    o => o.ComparingByMembers<TxPriorityContract.Destination>());
+                Assert.That(chain.LocalDataSource.Data.Priorities,
+                    Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local)).UsingPropertiesComparer());
                 semaphoreSlim.Release();
             }
         };
@@ -188,11 +184,10 @@ public class TxPriorityContractTests
         }
 
         IEnumerable<TxPriorityContract.Destination> priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
+        Assert.That(priorities, Is.EquivalentTo(expected).UsingPropertiesComparer());
     }
 
     [Test]
-    [Retry(3)]
     [Explicit]
     public async Task mingas_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
@@ -213,9 +208,8 @@ public class TxPriorityContractTests
             TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
             if (localData is not null)
             {
-                chain.LocalDataSource.Data.MinGasPrices.Should().BeEquivalentTo(
-                    expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local),
-                    o => o.ComparingByMembers<TxPriorityContract.Destination>());
+                Assert.That(chain.LocalDataSource.Data.MinGasPrices,
+                    Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local)).UsingPropertiesComparer());
                 semaphoreSlim.Release();
             }
         };
@@ -234,7 +228,7 @@ public class TxPriorityContractTests
         }
 
         IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
+        Assert.That(minGasPrices, Is.EquivalentTo(expected).UsingPropertiesComparer());
     }
 
     public class TxPermissionContractBlockchain : TestContractBlockchain
@@ -318,17 +312,21 @@ public class TxPriorityContractTests
         {
             Block b = await base.AddBlock(transactions);
 
-            // ContractDataStore track item from block async.
-            await Task.Delay(100);
+            // ContractDataStore tracks items from blocks asynchronously off the NewHeadBlock event.
+            // Awaiting the latest refresh for each store eliminates the time-based race.
+            await Task.WhenAll(
+                Priorities.ContractDataStore.LatestRefreshTask,
+                MinGasPrices.ContractDataStore.LatestRefreshTask,
+                SendersWhitelist.LatestRefreshTask);
             return b;
         }
 
-        private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, UInt256 baseNonce, params Transaction[] transactions)
+        private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, ulong baseNonce, params Transaction[] transactions)
         {
-            for (int index = 0; index < transactions.Length; index++)
+            for (uint index = 0; index < transactions.Length; index++)
             {
                 Transaction transaction = transactions[index];
-                transaction.Nonce = (UInt256)index + baseNonce;
+                transaction.Nonce = index + baseNonce;
                 ecdsa.Sign(key, transaction, true);
                 transaction.SenderAddress = key.Address;
                 transaction.Hash = transaction.CalculateHash();

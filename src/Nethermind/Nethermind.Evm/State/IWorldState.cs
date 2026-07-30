@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -23,26 +26,20 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     const BlockHeader? PreGenesis = null;
 
     IDisposable BeginScope(BlockHeader? baseBlock);
+    Task HintBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
-
-    /// <summary>
-    /// Gets a read-only view of this world state that avoids wrapper-specific tracking side effects.
-    /// This is intended for speculative reads that must observe the current mutable state without
-    /// contributing to generated block-level access lists.
-    /// </summary>
-    IReadOnlyStateProvider GetUntrackedReader() => this;
-
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
-    /// Return the original persistent storage value from the storage cell
+    /// Return the original persistent storage value from the storage cell.
+    /// Span is valid until the next call on this <see cref="IWorldState"/> instance.
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    byte[] GetOriginal(in StorageCell storageCell);
+    ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell
@@ -90,7 +87,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
 
-    void WarmUp(AccessList? accessList);
+    void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default);
 
     void WarmUp(Address address);
 
@@ -100,12 +97,17 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
 
+    /// <summary>Only valid where no revert can follow AND the round is committed before any further
+    /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
+    void MarkStorageDestroyed(Address address) => ClearStorage(address);
+
     void RecalculateStateRoot();
 
     void DeleteAccount(Address address);
 
-    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
-    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default);
+    // used by Arbitrum
     void CreateEmptyAccountIfDeleted(Address address);
 
     /// <summary>
@@ -127,13 +129,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce);
+    void IncrementNonce(Address address, ulong delta, out ulong oldNonce);
 
-    void DecrementNonce(Address address, UInt256 delta);
+    void DecrementNonce(Address address, ulong delta);
 
-    void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
+    void DecrementNonce(Address address) => DecrementNonce(address, 1);
 
-    void SetNonce(Address address, in UInt256 nonce);
+    void SetNonce(Address address, in ulong nonce);
 
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
@@ -142,18 +144,27 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Persist the underlying changes to the storage at the specified block number. This also recalculate state root.
     /// </summary>
     /// <param name="blockNumber"></param>
-    void CommitTree(long blockNumber);
+    void CommitTree(ulong blockNumber);
+
+    void CommitTree(int blockNumber) => CommitTree((ulong)blockNumber);
 
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
     void ResetTransient();
+
+    public void AddAccountRead(Address address) { }
+
+    public void RecordAccountAccess(Address address) { }
+
+    public void RecordBytecodeAccess(Address address) { }
+
+    public IDisposable? BeginSystemAccountReadSuppression() => null;
 
     // See https://eips.ethereum.org/EIPS/eip-7610
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {
         accountExists = AccountExists(address);
         return accountExists
-            && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
+            && (IsContract(address) || !(GetNonce(address) == 0) || !IsStorageEmpty(address));
     }
-
 }

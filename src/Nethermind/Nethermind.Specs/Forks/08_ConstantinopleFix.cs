@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class ConstantinopleFix() : NamedReleaseSpec<ConstantinopleFix>(Constantinople.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Constantinople Fix";
         spec.IsEip1283Enabled = false;

@@ -49,7 +49,7 @@ public class ApplicationTests
 
     private static IMessageProvider<string> LinesProvider(string lines)
     {
-        var stringProvider = Substitute.For<IMessageProvider<string>>();
+        IMessageProvider<string> stringProvider = Substitute.For<IMessageProvider<string>>();
         stringProvider.Messages().Returns(lines.Split('\n').ToAsyncEnumerable());
 
         return stringProvider;
@@ -57,11 +57,11 @@ public class ApplicationTests
 
     private static IJsonRpcSubmitter ConstantSubmitter(string jsonResponse)
     {
-        var submitter = Substitute.For<IJsonRpcSubmitter>();
+        IJsonRpcSubmitter submitter = Substitute.For<IJsonRpcSubmitter>();
         submitter.Submit(Arg.Any<JsonRpc.Request>()).Returns(async (_) =>
         {
-            var content = new StringContent(jsonResponse, System.Text.Encoding.UTF8, "application/json");
-            var httpResponse = new HttpResponseMessage { Content = content };
+            StringContent content = new(jsonResponse, System.Text.Encoding.UTF8, "application/json");
+            HttpResponseMessage httpResponse = new() { Content = content };
             return await JsonRpc.Response.FromHttpResponseAsync(httpResponse);
         });
 
@@ -70,7 +70,7 @@ public class ApplicationTests
 
     private static IJsonRpcMethodFilter ConstantFilter(bool shouldSubmit)
     {
-        var filter = Substitute.For<IJsonRpcMethodFilter>();
+        IJsonRpcMethodFilter filter = Substitute.For<IJsonRpcMethodFilter>();
         filter.ShouldSubmit(Arg.Any<string>()).Returns(shouldSubmit);
         return filter;
     }
@@ -84,14 +84,14 @@ public class ApplicationTests
     [TestCaseSource(nameof(Processors))]
     public async Task NoFiltering(IAsyncProcessor processor)
     {
-        var messageProvider = new JsonRpcMessageProvider(LinesProvider(TestInput));
-        var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
-        var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
-        var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = Substitute.For<IMetricsReporter>();
-        var filter = ConstantFilter(shouldSubmit: true);
+        JsonRpcMessageProvider messageProvider = new(LinesProvider(TestInput));
+        IJsonRpcSubmitter jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
+        ComposedJsonRpcValidator validator = new([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+        IResponseTracer responseTracer = Substitute.For<IResponseTracer>();
+        IMetricsReporter reporter = Substitute.For<IMetricsReporter>();
+        IJsonRpcMethodFilter filter = ConstantFilter(shouldSubmit: true);
 
-        var app = new Application(
+        Application app = new(
             processor,
             messageProvider,
             jsonRpcSubmitter,
@@ -113,14 +113,14 @@ public class ApplicationTests
     [TestCaseSource(nameof(Processors))]
     public async Task NoFiltering_UnwrapBatches(IAsyncProcessor processor)
     {
-        var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider(TestInput)));
-        var jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
-        var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
-        var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = Substitute.For<IMetricsReporter>();
-        var filter = ConstantFilter(shouldSubmit: true);
+        UnwrapBatchJsonRpcMessageProvider messageProvider = new(new JsonRpcMessageProvider(LinesProvider(TestInput)));
+        IJsonRpcSubmitter jsonRpcSubmitter = ConstantSubmitter(ResponseOK);
+        ComposedJsonRpcValidator validator = new([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+        IResponseTracer responseTracer = Substitute.For<IResponseTracer>();
+        IMetricsReporter reporter = Substitute.For<IMetricsReporter>();
+        IJsonRpcMethodFilter filter = ConstantFilter(shouldSubmit: true);
 
-        var app = new Application(
+        Application app = new(
             processor,
             messageProvider,
             jsonRpcSubmitter,
@@ -148,14 +148,14 @@ public class ApplicationTests
         [{"method": "eth_getBlockByNumber"}, {"method": "engine_exchangeCapabilities"}]
         """;
 
-        var messageProvider = new JsonRpcMessageProvider(LinesProvider(lines));
-        var jsonRpcSubmitter = ConstantSubmitter(ResponseError);
-        var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
-        var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = Substitute.For<IMetricsReporter>();
-        var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("eth_.*")]);
+        JsonRpcMessageProvider messageProvider = new(LinesProvider(lines));
+        IJsonRpcSubmitter jsonRpcSubmitter = ConstantSubmitter(ResponseError);
+        ComposedJsonRpcValidator validator = new([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+        IResponseTracer responseTracer = Substitute.For<IResponseTracer>();
+        IMetricsReporter reporter = Substitute.For<IMetricsReporter>();
+        ComposedJsonRpcMethodFilter filter = new([new PatternJsonRpcMethodFilter("eth_.*")]);
 
-        var app = new Application(
+        Application app = new(
             processor,
             messageProvider,
             jsonRpcSubmitter,
@@ -182,14 +182,14 @@ public class ApplicationTests
         [{"method": "eth_getBlockByNumber"}, {"method": "engine_exchangeCapabilities"}]
         """;
 
-        var messageProvider = new UnwrapBatchJsonRpcMessageProvider(new JsonRpcMessageProvider(LinesProvider(lines)));
-        var jsonRpcSubmitter = ConstantSubmitter(ResponseError);
-        var validator = new ComposedJsonRpcValidator([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
-        var responseTracer = Substitute.For<IResponseTracer>();
-        var reporter = Substitute.For<IMetricsReporter>();
-        var filter = new ComposedJsonRpcMethodFilter([new PatternJsonRpcMethodFilter("engine_.*")]);
+        UnwrapBatchJsonRpcMessageProvider messageProvider = new(new JsonRpcMessageProvider(LinesProvider(lines)));
+        IJsonRpcSubmitter jsonRpcSubmitter = ConstantSubmitter(ResponseError);
+        ComposedJsonRpcValidator validator = new([new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator()]);
+        IResponseTracer responseTracer = Substitute.For<IResponseTracer>();
+        IMetricsReporter reporter = Substitute.For<IMetricsReporter>();
+        ComposedJsonRpcMethodFilter filter = new([new PatternJsonRpcMethodFilter("engine_.*")]);
 
-        var app = new Application(
+        Application app = new(
             processor,
             messageProvider,
             jsonRpcSubmitter,

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -88,7 +88,7 @@ public class TxBroadcasterTests
             _broadcaster.Broadcast(transactions[i], true);
         });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
         peer.Id.Returns(TestItem.PublicKeyA);
@@ -139,21 +139,21 @@ public class TxBroadcasterTests
             _broadcaster.Broadcast(transactions[i], true);
         });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
-        pickedTxs.Count.Should().Be(expectedCount);
+        Assert.That(pickedTxs.Count, Is.EqualTo(expectedCount));
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [Test]
@@ -167,11 +167,11 @@ public class TxBroadcasterTests
             .SignedAndResolved().TestObject;
 
         _broadcaster.Broadcast(tx, true);
-        _broadcaster.GetSnapshot().Length.Should().Be(1);
-        _broadcaster.GetSnapshot().FirstOrDefault().Should().BeEquivalentTo(isBlob ? new LightTransaction(tx) : tx);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(isBlob ? new LightTransaction(tx) : tx).UsingTransactionComparer());
 
-        _broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx).Should().Be(!isBlob);
-        returnedTx.Should().BeEquivalentTo(isBlob ? null : tx);
+        Assert.That(_broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx), Is.EqualTo(!isBlob));
+        Assert.That(returnedTx, Is.EqualTo(isBlob ? null : tx).UsingTransactionComparer());
     }
 
     [Test]
@@ -186,12 +186,12 @@ public class TxBroadcasterTests
         Transaction lightTx = new LightTransaction(tx);
 
         int size = tx.GetLength();
-        size.Should().Be(131320);
-        lightTx.GetLength().Should().Be(size);
+        Assert.That(size, Is.EqualTo(131320));
+        Assert.That(lightTx.GetLength(), Is.EqualTo(size));
 
         _broadcaster.Broadcast(tx, true);
-        _broadcaster.GetSnapshot().Length.Should().Be(1);
-        _broadcaster.GetSnapshot().FirstOrDefault().Should().BeEquivalentTo(lightTx);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(lightTx).UsingTransactionComparer());
 
         ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
         peer.Id.Returns(TestItem.PublicKeyA);
@@ -237,7 +237,7 @@ public class TxBroadcasterTests
             _broadcaster.Broadcast(transactions[i], true);
         });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         // count numbers of expected hashes and full transactions
         int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
@@ -255,8 +255,8 @@ public class TxBroadcasterTests
         CheckCorrectness(pickedHashes, expectedCountOfHashes);
 
         // check if full transactions and hashes returned by broadcaster are as expected
-        expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
+        Assert.That(pickedFullTxs, Is.EquivalentTo(expectedFullTxs).UsingTransactionComparer());
+        Assert.That(expectedHashes, Is.EquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray()));
     }
 
     [Test]
@@ -286,21 +286,21 @@ public class TxBroadcasterTests
             _broadcaster.Broadcast(transactions[i], true);
         });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
-        pickedTxs.Count.Should().Be(expectedCount);
+        Assert.That(pickedTxs.Count, Is.EqualTo(expectedCount));
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [TestCase(0, false)]
@@ -330,7 +330,7 @@ public class TxBroadcasterTests
         peer.Received(shouldBroadcast ? 1 : 0).SendNewTransaction(Arg.Any<Transaction>());
 
         // tx should only be added to persistent collection, if it is above the fee restriction
-        _broadcaster.GetSnapshot().Length.Should().Be(shouldBroadcast ? 1 : 0);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(shouldBroadcast ? 1 : 0));
     }
 
     [Test]
@@ -361,21 +361,21 @@ public class TxBroadcasterTests
             _broadcaster.Broadcast(transactions[i], true);
         });
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
-        pickedTxs.Count.Should().Be(expectedCount);
+        Assert.That(pickedTxs.Count, Is.EqualTo(expectedCount));
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Should().BeEquivalentTo(pickedTxs, static o => o.Excluding(static transaction => transaction.MaxFeePerGas));
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer(nameof(Transaction.MaxFeePerGas)));
     }
 
     [Test]
@@ -405,13 +405,13 @@ public class TxBroadcasterTests
             _broadcaster.Broadcast(transactions[i], true);
         }
 
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         // count number of expected hashes to broadcast
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentFeePerBlobGas);
 
         // prepare list of expected hashes to broadcast
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
@@ -421,10 +421,10 @@ public class TxBroadcasterTests
         IList<Transaction> pickedHashes = _broadcaster.GetPersistentTxsToSend().HashesToSend;
 
         // check if number of hashes to broadcast is correct
-        pickedHashes.Count.Should().Be(expectedCount);
+        Assert.That(pickedHashes.Count, Is.EqualTo(expectedCount));
 
         // check if number of hashes to broadcast (with MaxFeePerBlobGas >= current) is correct
-        expectedTxs.Count(static t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas).Should().Be(expectedCount);
+        Assert.That(expectedTxs.Count(static t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas), Is.EqualTo(expectedCount));
     }
 
     [Test]
@@ -440,20 +440,20 @@ public class TxBroadcasterTests
         Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
 
             _broadcaster.Broadcast(transactions[i], true);
         });
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
-        pickedTxs.Count.Should().Be(1);
+        Assert.That(pickedTxs.Count, Is.EqualTo(1));
 
-        List<Transaction> expectedTxs = new() { transactions[0] };
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
+        List<Transaction> expectedTxs = [transactions[0]];
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [Test]
@@ -589,7 +589,7 @@ public class TxBroadcasterTests
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
         }
-        localTx.GetLength().Should().Be(txSize);
+        Assert.That(localTx.GetLength(), Is.EqualTo(txSize));
 
         _broadcaster.AddPeer(eth68Handler);
         _broadcaster.Broadcast(localTx, true);
@@ -653,17 +653,17 @@ public class TxBroadcasterTests
         Parallel.For(0, _txPoolConfig.Size, i =>
         {
             Transaction tx = Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             _broadcaster.Broadcast(tx, true);
         });
 
         Transaction[] pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend.ToArray();
-        pickedTxs.Length.Should().Be(shouldBroadcastAll ? 100 : 1);
+        Assert.That(pickedTxs.Length, Is.EqualTo(shouldBroadcastAll ? 100 : 1));
 
         for (int i = 0; i < pickedTxs.Length; i++)
         {
-            pickedTxs[i].Nonce.Should().Be((UInt256)i);
+            Assert.That(pickedTxs[i].Nonce, Is.EqualTo((ulong)i));
         }
     }
 
@@ -679,7 +679,7 @@ public class TxBroadcasterTests
     {
         _headInfo.CurrentBaseFee = (UInt256)baseFee;
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _broadcaster.CalculateBaseFeeThreshold().Should().Be((UInt256)expectedThreshold);
+        Assert.That(_broadcaster.CalculateBaseFeeThreshold(), Is.EqualTo((UInt256)expectedThreshold));
     }
 
     [Test]
@@ -694,10 +694,9 @@ public class TxBroadcasterTests
         UInt256.Divide(baseFee, 100, out UInt256 onePercentOfBaseFee);
         bool overflow = UInt256.MultiplyOverflow(onePercentOfBaseFee, (UInt256)threshold, out UInt256 lessAccurateBaseFeeThreshold);
 
-        _broadcaster.CalculateBaseFeeThreshold().Should().Be(
-            UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
+        Assert.That(_broadcaster.CalculateBaseFeeThreshold(), Is.EqualTo(UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
                 ? overflow ? UInt256.MaxValue : lessAccurateBaseFeeThreshold
-                : baseFeeThreshold);
+                : baseFeeThreshold));
     }
 
     [Test]
@@ -722,13 +721,79 @@ public class TxBroadcasterTests
         bool result = gossipPolicy.ShouldGossipTransaction(lightTransaction);
 
         // Assert
-        result.Should().Be(versionMatches, "LightTransaction from blob transaction should be gossiped when proof version matches.");
+        Assert.That(result, Is.EqualTo(versionMatches), "LightTransaction from blob transaction should be gossiped when proof version matches.");
+    }
+
+    [Test]
+    public async Task Should_not_send_null_tx_when_adding_concurrently_with_timer_swap()
+    {
+        // Regression for the gossip NRE seen on gnosis+Flat: BroadcastOnce used to lock on the
+        // _accumulatedTemporaryTxs instance while the timer swapped that field by reference without taking the same
+        // lock. A concurrent Add could then mutate the swapped-out List<T> and leave a null hole, later dereferenced
+        // while gossiping (NullReferenceException in CompositeTxGossipPolicy.ShouldGossipTransaction).
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, _headInfo, _logManager);
+
+        RecordingPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+
+        const int txCount = 30_000;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).TestObject;
+        }
+
+        using System.Threading.CancellationTokenSource cts = new();
+
+        // Keep firing the timer so NotifyPeers repeatedly swaps and flushes the accumulator while transactions are
+        // still being added from other threads - this is the window the old lock failed to guard.
+        Task ticker = Task.Run(() =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+                System.Threading.Thread.Yield();
+            }
+        });
+
+        Parallel.For(0, txCount, i => _broadcaster.Broadcast(transactions[i], isPersistent: false));
+
+        cts.Cancel();
+        await ticker;
+        // Final flush of whatever was still accumulated after the adders finished.
+        timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+
+        Assert.That(peer.SawNull, Is.False, "A null transaction reached the peer - the accumulated tx list was corrupted by a data race.");
+        Assert.That(peer.Sent.Count, Is.EqualTo(txCount), "Every broadcast transaction should be sent exactly once.");
+        Assert.That(peer.Sent.Distinct().Count(), Is.EqualTo(txCount), "No transaction should be sent more than once.");
+    }
+
+    private sealed class RecordingPeer(PublicKey id) : ITxPoolPeer
+    {
+        private readonly ConcurrentBag<Transaction> _sent = [];
+        public PublicKey Id => id;
+        public ulong HeadNumber { get; set; }
+        public bool SawNull { get; private set; }
+        public IReadOnlyCollection<Transaction> Sent => _sent;
+
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+        {
+            foreach (Transaction tx in txs)
+            {
+                if (tx is null) SawNull = true;
+                else _sent.Add(tx);
+            }
+        }
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
     {
-        List<Transaction> expectedTxs = new();
-        List<Hash256> expectedHashes = new();
+        List<Transaction> expectedTxs = [];
+        List<Hash256> expectedHashes = [];
 
         for (int i = 0; i < expectedCountTotal; i++)
         {
@@ -751,11 +816,11 @@ public class TxBroadcasterTests
     {
         if (expectedCount > 0)
         {
-            pickedTxs.Count.Should().Be(expectedCount);
+            Assert.That(pickedTxs.Count, Is.EqualTo(expectedCount));
         }
         else
         {
-            pickedTxs.Should().BeNull();
+            Assert.That(pickedTxs, Is.Null);
         }
     }
 }

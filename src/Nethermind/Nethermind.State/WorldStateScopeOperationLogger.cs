@@ -3,7 +3,9 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -20,14 +22,18 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         long scopeId = Interlocked.Increment(ref _currentScopeId);
-        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock), scopeId, _logger);
+        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
     }
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
     {
+        public void HintWarmAccount(in ValueAddress address) => innerScope.HintWarmAccount(in address);
+
+        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => innerScope.HintWarmSlot(in address, in index);
+
         public void Dispose()
         {
             innerScope.Dispose();
@@ -51,6 +57,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void HintGet(Address address, Account? account) => innerScope.HintGet(address, account);
 
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+            => innerScope.HintBal(bal, sink);
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
@@ -59,7 +68,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
             new WriteBatchWrapper(innerScope.StartWriteBatch(estimatedAccountNum), scopeId, logger);
 
-        public void Commit(long blockNumber) => innerScope.Commit(blockNumber);
+        public void Commit(ulong blockNumber) => innerScope.Commit(blockNumber);
     }
 
     private class StorageTreeWrapper(IWorldStateScopeProvider.IStorageTree storageTree, Address address, long scopeId, ILogger logger) : IWorldStateScopeProvider.IStorageTree
@@ -73,14 +82,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             return bytes;
         }
 
-        public void HintGet(in UInt256 index, byte[]? value) => storageTree.HintGet(in index, value);
-
-        public byte[] Get(in ValueHash256 hash)
-        {
-            byte[]? bytes = storageTree.Get(in hash);
-            logger.Trace($"{scopeId}: S:{address} Get slot via hash {hash}, got {bytes?.ToHexString()}");
-            return bytes;
-        }
+        public void HintSet(in UInt256 index, byte[]? value) => storageTree.HintSet(in index, value);
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

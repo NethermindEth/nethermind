@@ -67,14 +67,14 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             pathPool[i] = keccak;
         }
 
-        int blockJumps = 5;
+        ulong blockJumps = 5;
 
         // Store accounts snapshot at each block number
         SortedDictionary<Hash256, Account>[] accountsAtBlock = new SortedDictionary<Hash256, Account>[blockJumps + 1];
         Hash256[] rootHashAtBlock = new Hash256[blockJumps + 1];
 
         // Initialize accounts
-        SortedDictionary<Hash256, Account> accounts = new();
+        SortedDictionary<Hash256, Account> accounts = [];
 
         // Generate initial Remote Tree (block 0)
         for (int accountIndex = 0; accountIndex < 10000; accountIndex++)
@@ -89,7 +89,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         remote.StateTree.Commit();
 
         // Pre-build all blocks and store state at each block
-        for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
+        for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Store snapshot of accounts and root hash at this block
             accountsAtBlock[blockNumber] = new SortedDictionary<Hash256, Account>(accounts);
@@ -135,7 +135,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         int endHashIndex;
 
         // Now process account ranges using stored snapshots
-        for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
+        for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Set remote tree to the state at this block number
             remote.StateTree.RootHash = rootHashAtBlock[blockNumber];
@@ -181,7 +181,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Assert.That(data.RequestedNodesCount, Is.LessThan(accounts.Count / 2));
     }
 
-    private static void ProcessAccountRange(StateTree remoteStateTree, ISnapTrieFactory snapTrieFactory, int blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
+    private static void ProcessAccountRange(StateTree remoteStateTree, ISnapTrieFactory snapTrieFactory, ulong blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
     {
         ValueHash256 startingHash = accounts.First().Path;
         ValueHash256 endHash = accounts.Last().Path;

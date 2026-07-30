@@ -11,7 +11,7 @@ public interface ILogManager
 
     ILogger GetLogger(string loggerName);
 
-    void SetGlobalVariable(string name, object value) { }
+    void SetGlobalVariable(string name, object? value) { }
 
     static string GetLoggerName(Type type) => (type.FullName ?? type.Name).Replace("Nethermind.", string.Empty);
 }

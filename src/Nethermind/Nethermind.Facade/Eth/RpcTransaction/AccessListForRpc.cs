@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using System.Text.Json.Serialization;
-using System.Text.Json;
-using System;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -69,7 +70,7 @@ public class AccessListForRpc
             const int maxStorageKeysPerItem = 1000;
             const int maxStorageKeys = 10000;
 
-            List<Item> items = new();
+            List<Item> items = [];
             int itemCount = 0;
             int totalItemStorageItemsCount = 0;
 
@@ -111,7 +112,7 @@ public class AccessListForRpc
                         }
                         else if (reader.TokenType == JsonTokenType.StartArray)
                         {
-                            storageKeys = new List<UInt256>();
+                            storageKeys = [];
                             int currentItemStorageItemsCount = 0;
 
                             while (reader.Read())
@@ -125,7 +126,9 @@ public class AccessListForRpc
                                 if (totalItemStorageItemsCount >= maxStorageKeys)
                                     throw new JsonException($"Access List cannot have more than {maxStorageKeys} storage keys.");
 
-                                UInt256 key = JsonSerializer.Deserialize<UInt256>(ref reader, options);
+                                // Storage keys are 32-byte DATA fields (EIP-2930), not QUANTITY — use lenient read.
+                                ReadOnlySpan<byte> keySpan = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+                                UInt256 key = UInt256Converter.ReadHex(keySpan);
                                 storageKeys.Add(key);
                                 currentItemStorageItemsCount++;
                                 totalItemStorageItemsCount++;

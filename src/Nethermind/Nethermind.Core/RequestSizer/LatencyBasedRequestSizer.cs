@@ -5,7 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.RequestSizer;
 
 public class LatencyBasedRequestSizer(
     int minRequestLimit,

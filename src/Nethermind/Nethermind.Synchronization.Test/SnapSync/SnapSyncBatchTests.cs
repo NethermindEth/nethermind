@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -23,7 +22,7 @@ public class SnapSyncBatchTests
             AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.MaxValue, Keccak.Compute("abc"), 999)
         };
 
-        batch.ToString().Should().Be("AccountRange: (999, 0x0000000000000000000000000000000000000000000000000000000000000000, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45)");
+        Assert.That(batch.ToString(), Is.EqualTo("AccountRange: (999, 0x0000000000000000000000000000000000000000000000000000000000000000, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45)"));
     }
 
     [Test]
@@ -41,7 +40,7 @@ public class SnapSyncBatchTests
             }
         };
 
-        batch.ToString().Should().Be("StorageRange: (123, 0x0000000000000000000000000000000000000000000000000000000000000000, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45)");
+        Assert.That(batch.ToString(), Is.EqualTo("StorageRange: (123, 0x0000000000000000000000000000000000000000000000000000000000000000, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45)"));
     }
 
     [Test]
@@ -52,7 +51,7 @@ public class SnapSyncBatchTests
             CodesRequest = new ArrayPoolList<ValueHash256>(9, Enumerable.Repeat(TestItem.KeccakA.ValueHash256, 9)),
         };
 
-        batch.ToString().Should().Be("CodesRequest: (9)");
+        Assert.That(batch.ToString(), Is.EqualTo("CodesRequest: (9)"));
     }
 
     [Test]
@@ -67,6 +66,6 @@ public class SnapSyncBatchTests
             }
         };
 
-        batch.ToString().Should().Be("AccountsToRefreshRequest: (0x0000000000000000000000000000000000000000000000000000000000000000, 9)");
+        Assert.That(batch.ToString(), Is.EqualTo("AccountsToRefreshRequest: (0x0000000000000000000000000000000000000000000000000000000000000000, 9)"));
     }
 }

@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Specs;
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -63,32 +64,16 @@ public partial class Bls12381PairingCheckPrecompile
             dstOffset += Eip2537.LenG2Trimmed;
         }
 
-        byte result = ZiskBindings.Crypto.bls12_381_pairing_check_c(decoded, (nuint)pairCount);
+        Accelerators.Status status = Accelerators.Bls12381Pairing(decoded, (nuint)pairCount, out bool verified);
 
-        if (result <= 1) // success
+        if (status == Accelerators.Status.OK)
         {
             byte[] output = new byte[32];
 
-            if (result == 0)
+            if (verified)
                 output[31] = 1;
 
             return output;
-        }
-        else if (result == 2)
-        {
-            return Errors.G1NotOnCurve;
-        }
-        else if (result == 3 && !Eip2537.DisableSubgroupChecks)
-        {
-            return Errors.G1PointSubgroup;
-        }
-        else if (result == 4)
-        {
-            return Errors.G2NotOnCurve;
-        }
-        else if (result == 5 && !Eip2537.DisableSubgroupChecks)
-        {
-            return Errors.G2PointSubgroup;
         }
 
         return Errors.Failed;

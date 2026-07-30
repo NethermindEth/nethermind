@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class GrayGlacier() : NamedReleaseSpec<GrayGlacier>(ArrowGlacier.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Gray Glacier";
         spec.DifficultyBombDelay = 11400000L;

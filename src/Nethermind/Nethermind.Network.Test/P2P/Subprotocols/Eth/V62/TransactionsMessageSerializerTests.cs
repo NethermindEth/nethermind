@@ -84,10 +84,7 @@ public class TransactionsMessageSerializerTests
     {
         SerializerTester.TestZero(
             new TransactionsMessageSerializer(),
-            transactionsMessage,
-            additionallyExcluding: static (o) =>
-                o.For(static msg => msg.Transactions)
-                    .Exclude(static tx => tx.SenderAddress));
+            transactionsMessage);
         transactionsMessage.Dispose();
     }
 

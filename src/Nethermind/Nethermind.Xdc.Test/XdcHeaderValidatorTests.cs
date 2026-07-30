@@ -18,7 +18,7 @@ using System.Collections.Generic;
 namespace Nethermind.Xdc.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class Tests
+public class XdcHeaderValidatorTests
 {
     [Test]
     public void Validate_NotAnXdcHeader_ThrowsArgumentException()
@@ -92,7 +92,7 @@ public class Tests
         sealValidator.ValidateParams(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
-        releaseSpec.GasLimitBoundDivisor.Returns(1);
+        releaseSpec.GasLimitBoundDivisor.Returns(1UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);

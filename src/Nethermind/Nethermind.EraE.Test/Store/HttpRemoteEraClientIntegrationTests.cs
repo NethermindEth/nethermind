@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
-using FluentAssertions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.IO;
 using Nethermind.EraE.Store;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test.Store;
@@ -24,7 +25,7 @@ public class HttpRemoteEraClientIntegrationTests
 
     // Epoch 0 is the smallest file (~3.5 MB) and its filename is immutable (historical data).
     private const string Epoch0Filename = "sepolia-00000-8e3e7dc9.erae";
-    private const int Epoch0 = 0;
+    private const uint Epoch0 = 0;
     private const int MaxEraSize = 8192;
 
     private TempPath _downloadDir = null!;
@@ -47,45 +48,42 @@ public class HttpRemoteEraClientIntegrationTests
     [Test]
     public async Task FetchManifest_WithSepoliaServer_ParsesAllEntries()
     {
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
+        IReadOnlyDictionary<uint, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
 
-        manifest.Should().NotBeEmpty();
-        manifest.Keys.Min().Should().Be(0, "epoch 0 must be the first entry");
-        manifest.Keys.Should().OnlyContain(epoch => epoch >= 0);
+        Assert.That(manifest, Is.Not.Empty);
+        Assert.That(manifest.Keys.Min(), Is.EqualTo(0u), "epoch 0 must be the first entry");
 
-        manifest.Should().ContainKey(Epoch0)
-            .WhoseValue.Filename.Should().Be(Epoch0Filename,
-                "epoch 0 filename is immutable — if this fails the server format has changed");
+        Assert.That(manifest.ContainsKey(Epoch0), Is.True);
+        Assert.That(manifest[Epoch0].Filename, Is.EqualTo(Epoch0Filename), "epoch 0 filename is immutable — if this fails the server format has changed");
 
-        manifest.Values.Should().OnlyContain(entry =>
-            entry.Sha256Hash.Length == 32, "every entry must carry a full 32-byte SHA-256 hash");
+        Assert.That(manifest.Values.All(entry =>
+            entry.Sha256Hash.Length == 32), Is.True, "every entry must carry a full 32-byte SHA-256 hash");
 
-        manifest.Values.Should().OnlyContain(entry =>
-            entry.Filename.EndsWith(".erae"), "every entry filename must use the .erae extension");
+        Assert.That(manifest.Values.All(entry =>
+            entry.Filename.EndsWith(".erae")), Is.True, "every entry filename must use the .erae extension");
     }
 
     [Test]
     public async Task DownloadEpochZero_WithSepoliaServer_PassesSha256Verification()
     {
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
+        IReadOnlyDictionary<uint, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
         RemoteEraEntry epoch0Entry = manifest[Epoch0];
 
         string destinationPath = Path.Join(_downloadDir.Path, epoch0Entry.Filename);
         await _client.DownloadFileAsync(epoch0Entry.Filename, destinationPath);
 
-        File.Exists(destinationPath).Should().BeTrue();
-        new FileInfo(destinationPath).Length.Should().BeGreaterThan(0);
+        Assert.That(File.Exists(destinationPath), Is.True);
+        Assert.That(new FileInfo(destinationPath).Length, Is.GreaterThan(0));
 
         using FileStream fs = new(destinationPath, FileMode.Open, FileAccess.Read, FileShare.Read);
         byte[] actualHash = SHA256.HashData(fs);
-        actualHash.Should().Equal(epoch0Entry.Sha256Hash,
-            "SHA-256 of the downloaded file must match the server manifest — file integrity is intact");
+        Assert.That(actualHash, Is.EqualTo(epoch0Entry.Sha256Hash), "SHA-256 of the downloaded file must match the server manifest — file integrity is intact");
     }
 
     [Test]
     public async Task FindBlockAndReceipts_WithRealSepoliaEpochZero_ReturnsCorrectBlock()
     {
-        IReadOnlyDictionary<int, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
+        IReadOnlyDictionary<uint, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
         RemoteEraEntry epoch0Entry = manifest[Epoch0];
 
         // Pre-download so the decorator serves from cache (avoids double download in this test)
@@ -96,15 +94,17 @@ public class HttpRemoteEraClientIntegrationTests
             localStore: null,
             _client,
             _downloadDir.Path,
-            MaxEraSize);
+            MaxEraSize,
+            SepoliaSpecProvider.Instance,
+            Always.Valid);
 
         // Block 1 is the first non-genesis block — epoch 0 must contain it
         (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(1, ensureValidated: false);
 
-        block.Should().NotBeNull();
-        receipts.Should().NotBeNull();
-        block!.Number.Should().Be(1);
-        block.Hash.Should().NotBeNull("a real downloaded block must have a computed hash");
-        block.ParentHash.Should().NotBeNull();
+        Assert.That(block, Is.Not.Null);
+        Assert.That(receipts, Is.Not.Null);
+        Assert.That(block!.Number, Is.EqualTo(1));
+        Assert.That(block.Hash, Is.Not.Null, "a real downloaded block must have a computed hash");
+        Assert.That(block.ParentHash, Is.Not.Null);
     }
 }

@@ -17,19 +17,44 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
 {
     private readonly ILogger _logger = logManager?.GetClassLogger<IPResolver>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-    private readonly ILogManager _logManager = logManager;
 
-    public async Task Initialize(CancellationToken cancellationToken = default)
+    private readonly Lock _lock = new();
+    private Task<IIPResolver.NethermindIp>? _resolveTask;
+
+    public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default)
     {
+        Task<IIPResolver.NethermindIp>? task = Volatile.Read(ref _resolveTask);
+        if (task is null)
+        {
+            lock (_lock)
+            {
+                // Resolve with CancellationToken.None so the cached, shared resolution is never bound to
+                // (and faulted by) a single caller's token. Per-call cancellation is honored via WaitAsync below.
+                task = _resolveTask ??= ResolveCore(CancellationToken.None);
+            }
+        }
+
+        return new ValueTask<IIPResolver.NethermindIp>(task.WaitAsync(cancellationToken));
+    }
+
+    private async Task<IIPResolver.NethermindIp> ResolveCore(CancellationToken cancellationToken)
+    {
+        IPAddress localIp;
         try
         {
-            LocalIp = await InitializeLocalIp();
+            localIp = await InitializeLocalIp();
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            LocalIp = IPAddress.Loopback;
+            if (_logger.IsWarn) _logger.Warn($"Could not resolve local IP, falling back to loopback: {e.Message}");
+            localIp = IPAddress.Loopback;
         }
 
+        return new IIPResolver.NethermindIp(localIp, await ResolveExternalIp(cancellationToken));
+    }
+
+    private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)
+    {
         const int maxAttempts = 5;
         const int delaySeconds = 2;
 
@@ -43,10 +68,10 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
 
             try
             {
-                ExternalIp = await InitializeExternalIp();
-                if (!Equals(ExternalIp, IPAddress.Any) && !Equals(ExternalIp, IPAddress.None))
+                IPAddress externalIp = await InitializeExternalIp();
+                if (!Equals(externalIp, IPAddress.Any) && !Equals(externalIp, IPAddress.None))
                 {
-                    return;
+                    return externalIp;
                 }
             }
             catch (Exception)
@@ -55,24 +80,20 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             }
         }
 
-        ExternalIp = IPAddress.None;
         if (_logger.IsWarn) _logger.Warn("External IP could not be resolved after all retries. Peers will not be able to connect.");
+        return IPAddress.None;
     }
-
-    public IPAddress LocalIp { get; private set; }
-
-    public IPAddress ExternalIp { get; private set; }
 
     private async Task<IPAddress> InitializeExternalIp()
     {
         IEnumerable<IIPSource> GetIPSources()
         {
-            yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
-            yield return new WebIPSource("http://ipv4.icanhazip.com", _logManager);
-            yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", _logManager);
-            yield return new WebIPSource("http://checkip.amazonaws.com", _logManager);
-            yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
-            yield return new WebIPSource("http://api.ipify.org", _logManager);
+            yield return new NetworkConfigExternalIPSource(_networkConfig, logManager);
+            yield return new WebIPSource("http://ipv4.icanhazip.com", logManager);
+            yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", logManager);
+            yield return new WebIPSource("http://checkip.amazonaws.com", logManager);
+            yield return new WebIPSource("http://ipinfo.io/ip", logManager);
+            yield return new WebIPSource("http://api.ipify.org", logManager);
         }
 
         try
@@ -99,7 +120,7 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     {
         IEnumerable<IIPSource> GetIPSources()
         {
-            yield return new NetworkConfigLocalIPSource(_networkConfig, _logManager);
+            yield return new NetworkConfigLocalIPSource(_networkConfig, logManager);
         }
 
         try

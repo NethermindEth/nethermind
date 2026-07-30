@@ -228,7 +228,7 @@ namespace Nethermind.Db.LogIndex
             {
                 Enabled = config.Enabled;
 
-                _maxReorgDepth = config.MaxReorgDepth!.Value;
+                _maxReorgDepth = (int)config.MaxReorgDepth!.Value;
 
                 _logger = logManager.GetClassLogger<LogIndexStorage>();
 
@@ -524,7 +524,7 @@ namespace Nethermind.Db.LogIndex
         public string GetDbSize() => _rootDb.GatherMetric().Size.SizeToString(useSi: true, addSpace: true);
 
         public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
-            GetEnumerator(null, address.Bytes, from, to);
+            GetEnumerator(null, address.Bytes.ToArray(), from, to);
 
         public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
             GetEnumerator(topicIndex, topic.BytesToArray(), from, to);
@@ -872,16 +872,8 @@ namespace Nethermind.Db.LogIndex
             if (buffer.Length < source.Length / BlockNumberSize)
                 throw new ArgumentException($"Buffer is too small to hold {source.Length / BlockNumberSize} block numbers.", nameof(buffer));
 
-            if (BitConverter.IsLittleEndian)
-            {
-                ReadOnlySpan<int> sourceInt = MemoryMarshal.Cast<byte, int>(source);
-                sourceInt.CopyTo(buffer);
-            }
-            else
-            {
-                for (int i = 0; i < source.Length; i += BlockNumberSize)
-                    buffer[i / BlockNumberSize] = ReadBlockNumber(source[i..]);
-            }
+            ReadOnlySpan<int> sourceInt = MemoryMarshal.Cast<byte, int>(source);
+            sourceInt.CopyTo(buffer);
         }
 
         private static byte[] CreateDbValue(List<int> numbers)

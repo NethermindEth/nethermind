@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Db.FullPruning;
 using Nethermind.Trie.Pruning;
@@ -36,7 +35,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             _basePruningStrategy.DeleteObsoleteKeys.Returns(true);
             _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
-            _strategy.DeleteObsoleteKeys.Should().BeFalse();
+            Assert.That(_strategy.DeleteObsoleteKeys, Is.False);
         }
 
         [Test]
@@ -45,7 +44,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             _basePruningStrategy.DeleteObsoleteKeys.Returns(true);
             _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
             _fullPruningDb.PruningFinished += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
-            _strategy.DeleteObsoleteKeys.Should().BeTrue();
+            Assert.That(_strategy.DeleteObsoleteKeys, Is.True);
         }
 
         [Test]
@@ -54,7 +53,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             TrieStoreState state = new(100, 200, 300, 250); // LatestCommittedBlock - LastPersistedBlock = 50 > 32
             _basePruningStrategy.ShouldPruneDirtyNode(state).Returns(false);
             _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
-            _strategy.ShouldPruneDirtyNode(state).Should().BeTrue();
+            Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.True);
         }
     }
 }

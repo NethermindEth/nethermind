@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Clique
             BlockHeader header = block.Header;
 
             // Sealing the genesis block is not supported
-            long number = header.Number;
+            ulong number = header.Number;
             if (number == 0) throw new InvalidOperationException("Can't sign genesis block");
 
             // For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
@@ -64,16 +64,23 @@ namespace Nethermind.Consensus.Clique
             // Sign all the things!
             ValueHash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature;
+            bool signed;
             if (_signer is IHeaderSigner headerSigner)
             {
                 BlockHeader clone = header.Clone();
                 clone.ExtraData = SnapshotManager.SliceExtraSealFromExtraData(clone.ExtraData);
                 clone.Hash = new Hash256(headerHash);
-                signature = headerSigner.Sign(clone);
+                signed = headerSigner.TrySign(clone, out signature);
             }
             else
             {
-                signature = _signer.Sign(headerHash);
+                signed = _signer.TrySign(in headerHash, out signature);
+            }
+
+            if (!signed)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Clique signer {_signer.Address} could not sign block {block.Number} — skipping seal.");
+                return null;
             }
 
             // Copy signature bytes (R and S)
@@ -86,7 +93,7 @@ namespace Nethermind.Consensus.Clique
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash)
+        public bool CanSeal(ulong blockNumber, Hash256 parentHash)
         {
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
             if (!_signer.CanSign)

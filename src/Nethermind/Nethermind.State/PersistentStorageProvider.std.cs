@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 
@@ -27,17 +28,26 @@ internal sealed partial class PersistentStorageProvider
         using ArrayPoolList<(
             AddressAsKey Key, PerContractState ContractState,
             IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
-            )> storages = _storages
-                // Only consider contracts that actually have pending changes
-                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-                // Schedule larger changes first to help balance the work
-                .OrderByDescending(kv => kv.Value.EstimatedChanges)
-                .Select((kv) => (
-                    kv.Key,
-                    kv.Value,
-                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
-                ))
-                .ToPooledList(_storages.Count);
+            )> storages = new(_toUpdateRoots.Count);
+
+        foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
+        {
+            if (!kv.Value) continue;
+            if (!_storages.TryGetValue(kv.Key, out PerContractState contractState))
+            {
+                Debug.Fail($"Storage root marked changed for {kv.Key} but no contract state is present");
+                continue;
+            }
+            storages.Add((
+                kv.Key,
+                contractState,
+                writeBatch.CreateStorageWriteBatch(kv.Key, contractState.EstimatedChanges)));
+        }
+
+        if (storages.Count == 0) return;
+
+        // Schedule larger changes first to help balance the work
+        storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
         ParallelUnbalancedWork.For(
             0,

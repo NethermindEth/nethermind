@@ -55,29 +55,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             ISnapServer snapServer)
             : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
         {
-            _getAccountRangeRequests = new(Send);
-            _getStorageRangeRequests = new(Send);
-            _getByteCodesRequests = new(Send);
-            _getTrieNodesRequests = new(Send);
+            _getAccountRangeRequests = new(this);
+            _getStorageRangeRequests = new(this);
+            _getByteCodesRequests = new(this);
+            _getTrieNodesRequests = new(this);
             SyncServer = snapServer;
             CanServe = snapServer.CanServe;
             SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
         }
 
-        public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-        public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested
-        {
-            add { }
-            remove { }
-        }
+        public override void Init() => NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
 
-        public override void Init() => ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
+        public override void Dispose() => ClearProtocolEvents();
 
-        public override void Dispose() =>
-            // Clear Events if set
-            ProtocolInitialized = null;
-
-        protected override void HandleMessageCore(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -86,39 +77,41 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetAccountRange:
                     if (ShouldServeSnap())
                         HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
-                    break;
+                    return true;
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
                     ReportIn(accountRangeMessage, size);
                     Handle(accountRangeMessage, size);
-                    break;
+                    return true;
                 case SnapMessageCode.GetStorageRanges:
                     if (ShouldServeSnap())
                         HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
-                    break;
+                    return true;
                 case SnapMessageCode.StorageRanges:
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
                     ReportIn(storageRangesMessage, size);
                     Handle(storageRangesMessage, size);
-                    break;
+                    return true;
                 case SnapMessageCode.GetByteCodes:
                     if (ShouldServeSnap())
                         HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
-                    break;
+                    return true;
                 case SnapMessageCode.ByteCodes:
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
                     ReportIn(byteCodesMessage, size);
                     Handle(byteCodesMessage, size);
-                    break;
+                    return true;
                 case SnapMessageCode.GetTrieNodes:
                     if (ShouldServeSnap())
                         HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
-                    break;
+                    return true;
                 case SnapMessageCode.TrieNodes:
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
                     ReportIn(trieNodesMessage, size);
                     Handle(trieNodesMessage, size);
-                    break;
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -179,7 +172,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
-            IByteArrayList? trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
+            IByteArrayList? trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, getTrieNodesMessage.Bytes, cancellationToken);
             return new TrieNodesMessage(trieNodes);
         }
 
@@ -267,9 +260,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             using DeferredRlpItemList.Builder builder = new();
             DeferredRlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
-            for (int i = 0; i < request.Paths.Count; i++)
+            ReadOnlySpan<AccountWithStorageStartingHash> paths = request.Paths.AsSpan();
+            for (int i = 0; i < paths.Length; i++)
             {
-                AccountWithStorageStartingHash path = request.Paths[i];
+                AccountWithStorageStartingHash path = paths[i];
                 using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
                 groupWriter.WriteValue(path.PathAndAccount.Path.Bytes);
                 groupWriter.WriteValue(_emptyBytes);

@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -360,13 +359,12 @@ public class TrieNodeTests
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
         Account account = new(100);
-        AccountDecoder decoder = new();
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
+        Assert.That(visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())], Is.EqualTo(1));
     }
 
     [Test]
@@ -375,13 +373,12 @@ public class TrieNodeTests
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
-        AccountDecoder decoder = new();
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
+        Assert.That(visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())], Is.EqualTo(1));
     }
 
     [Test]
@@ -390,13 +387,12 @@ public class TrieNodeTests
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
-        AccountDecoder decoder = new();
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
+        Assert.That(visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())], Is.EqualTo(1));
     }
 
     [Test]
@@ -405,13 +401,12 @@ public class TrieNodeTests
         TreeVisitorMock visitor = new();
         TrieVisitContext context = new();
         Account account = new(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
-        AccountDecoder decoder = new();
-        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
+        TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), Rlp.Encode(account).Bytes);
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())].Should().Be(1);
+        Assert.That(visitor.VisitLeafReceived[(TreePath.Empty, node, node.Value.ToArray())], Is.EqualTo(1));
     }
 
     [Test]
@@ -425,8 +420,8 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitExtensionReceived[(TreePath.Empty, node)].Should().Be(1);
-        visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+        Assert.That(visitor.VisitExtensionReceived[(TreePath.Empty, node)], Is.EqualTo(1));
+        Assert.That(visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())], Is.EqualTo(1));
     }
 
     [Test]
@@ -445,11 +440,11 @@ public class TrieNodeTests
         node.ResolveKey(NullTrieStore.Instance, ref emptyPath);
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        visitor.VisitBranchReceived[(TreePath.Empty, node)].Should().Be(1);
+        Assert.That(visitor.VisitBranchReceived[(TreePath.Empty, node)], Is.EqualTo(1));
         for (byte i = 0; i < 16; i++)
         {
             string hex = "0x" + i.ToString("x2")[1] + "000000000000000000000000000000000000000000000000000000000000000";
-            visitor.VisitLeafReceived[(new(new(Bytes.FromHexString(hex)), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+            Assert.That(visitor.VisitLeafReceived[(new(new(Bytes.FromHexString(hex)), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())], Is.EqualTo(1));
         }
     }
 
@@ -551,14 +546,14 @@ public class TrieNodeTests
     public void Size_of_a_heavy_leaf_is_correct()
     {
         Context ctx = new();
-        ctx.HeavyLeaf.GetMemorySize(false).Should().Be(208);
+        Assert.That(ctx.HeavyLeaf.GetMemorySize(false), Is.EqualTo(208));
     }
 
     [Test]
     public void Size_of_a_tiny_leaf_is_correct()
     {
         Context ctx = new();
-        ctx.TiniestLeaf.GetMemorySize(false).Should().Be(136);
+        Assert.That(ctx.TiniestLeaf.GetMemorySize(false), Is.EqualTo(136));
     }
 
     [Test]
@@ -571,8 +566,8 @@ public class TrieNodeTests
             node.SetChild(i, ctx.AccountLeaf);
         }
 
-        node.GetMemorySize(true).Should().Be(3376);
-        node.GetMemorySize(false).Should().Be(176);
+        Assert.That(node.GetMemorySize(true), Is.EqualTo(3376));
+        Assert.That(node.GetMemorySize(false), Is.EqualTo(176));
     }
 
     [Test]
@@ -594,22 +589,22 @@ public class TrieNodeTests
         trieNode.Key = new byte[] { 1 };
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
-        trieNode.GetMemorySize(true).Should().Be(232);
-        trieNode.GetMemorySize(false).Should().Be(96);
+        Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(232));
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
     }
 
     [Test]
     public void Size_of_an_unknown_empty_node_is_correct()
     {
         TrieNode trieNode = new(NodeType.Unknown);
-        trieNode.GetMemorySize(false).Should().Be(48);
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(48));
     }
 
     [Test]
     public void Size_of_an_unknown_node_with_keccak_is_correct()
     {
         TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
-        trieNode.GetMemorySize(false).Should().Be(96);
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
     }
 
     [Test]
@@ -617,7 +612,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Extension);
         trieNode.SetChild(0, null);
-        trieNode.GetMemorySize(false).Should().Be(64);
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(64));
     }
 
     [Test]
@@ -625,7 +620,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Branch);
         trieNode.SetChild(0, null);
-        trieNode.GetMemorySize(false).Should().Be(176);
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(176));
     }
 
     [Test]
@@ -633,45 +628,31 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Leaf);
         trieNode.Value = new byte[7];
-        trieNode.GetMemorySize(false).Should().Be(104);
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(104));
     }
 
     [Test]
     public void Size_of_an_unknown_node_with_full_rlp_is_correct()
     {
         TrieNode trieNode = new(NodeType.Unknown, new byte[7]);
-        trieNode.GetMemorySize(false).Should().Be(80);
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(80));
     }
 
     [Test]
-    public void Size_of_keccak_is_correct() => Hash256.MemorySize.Should().Be(48);
-
-    [Test]
-    public void Size_of_rlp_stream_is_correct()
-    {
-        RlpStream rlpStream = new(100);
-        rlpStream.MemorySize.Should().Be(160);
-    }
-
-    [Test]
-    public void Size_of_rlp_stream_7_is_correct()
-    {
-        RlpStream rlpStream = new(7);
-        rlpStream.MemorySize.Should().Be(64);
-    }
+    public void Size_of_keccak_is_correct() => Assert.That(Hash256.MemorySize, Is.EqualTo(48));
 
     [Test]
     public void Size_of_rlp_unaligned_is_correct()
     {
         Rlp rlp = new(new byte[1]);
-        rlp.MemorySize.Should().Be(56);
+        Assert.That(rlp.MemorySize, Is.EqualTo(56));
     }
 
     [Test]
     public void Size_of_rlp_aligned_is_correct()
     {
         Rlp rlp = new(new byte[8]);
-        rlp.MemorySize.Should().Be(56);
+        Assert.That(rlp.MemorySize, Is.EqualTo(56));
     }
 
     [Test]
@@ -726,7 +707,7 @@ public class TrieNodeTests
 
         trieNode.PrunePersistedRecursively(1);
         TreePath emptyPath = TreePath.Empty;
-        trieNode.GetChild(NullTrieStore.Instance, ref emptyPath, 0).Should().BeOfType<TrieNode>();
+        Assert.That(trieNode.GetChild(NullTrieStore.Instance, ref emptyPath, 0), Is.TypeOf<TrieNode>());
     }
 
     [Test]
@@ -737,7 +718,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, child);
 
         trieNode.PrunePersistedRecursively(1);
-        trieNode.GetMemorySize(false).Should().Be(112);
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(112));
     }
 
     [Test]
@@ -750,7 +731,7 @@ public class TrieNodeTests
         trieNode.PrunePersistedRecursively(1);
         TrieNode cloned = trieNode.Clone();
 
-        cloned.GetMemorySize(false).Should().Be(112);
+        Assert.That(cloned.GetMemorySize(false), Is.EqualTo(112));
     }
 
     [Test]
@@ -784,7 +765,7 @@ public class TrieNodeTests
         trieNode.ResolveKey(NullTrieStore.Instance, ref emptyPath);
 
         trieNode.PrunePersistedRecursively(2);
-        trieNode.GetChild(NullTrieStore.Instance, ref emptyPath, 0).Should().Be(child);
+        Assert.That(trieNode.GetChild(NullTrieStore.Instance, ref emptyPath, 0), Is.EqualTo(child));
     }
 
     [Test]
@@ -795,7 +776,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, child);
 
         trieNode.PrunePersistedRecursively(1);
-        trieNode.TryGetDirtyChild(0, out TrieNode? dirtyChild).Should().Be(false);
+        Assert.That(trieNode.TryGetDirtyChild(0, out TrieNode? dirtyChild), Is.EqualTo(false));
     }
 
     [TestCase(true)]
@@ -810,7 +791,7 @@ public class TrieNodeTests
         int count = 0;
         TreePath emptyPath = TreePath.Empty;
         trieNode.CallRecursively((n, s, p) => count++, null, ref emptyPath, NullTrieStore.Instance, skipPersisted, LimboTraceLogger.Instance);
-        count.Should().Be(1);
+        Assert.That(count, Is.EqualTo(1));
     }
 
     [Test]
@@ -838,9 +819,9 @@ public class TrieNodeTests
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
         trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
-        trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
-        trieNode.GetChild(trieStore, ref emptyPath, 1).Should().BeNull();
-        trieNode.GetChild(trieStore, ref emptyPath, 4).Should().Be(child);
+        Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 0), Is.EqualTo(child));
+        Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 1), Is.Null);
+        Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 4), Is.EqualTo(child));
     }
 
     [Test]
@@ -854,7 +835,7 @@ public class TrieNodeTests
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
         trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
-        trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
+        Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 0), Is.EqualTo(child));
     }
 
     [Test]
@@ -898,11 +879,11 @@ public class TrieNodeTests
         {
             for (int i = 0; i < 16 * 10; i++)
             {
-                trieNode.GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
+                Assert.That(trieNode.GetChildHash(i % 16), Is.EqualTo(TestItem.Keccaks[i % 16]), i.ToString());
             }
         }
 
-        List<Task> tasks = new();
+        List<Task> tasks = [];
         for (int i = 0; i < 4; i++)
         {
             Task task = new(CheckChildren);
@@ -936,11 +917,9 @@ public class TrieNodeTests
 
         using (IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0))
         {
-            using (ICommitter? committer = trieStore.BeginCommit(leaf2))
-            {
-                committer.CommitNode(ref path, leaf1);
-                committer.CommitNode(ref path, leaf2);
-            }
+            using ICommitter? committer = trieStore.BeginCommit(leaf2);
+            committer.CommitNode(ref path, leaf1);
+            committer.CommitNode(ref path, leaf2);
         }
 
         TrieNode trieNode = new(NodeType.Branch);
@@ -953,9 +932,9 @@ public class TrieNodeTests
 
         TrieNode clone = restoredBranch.Clone();
         TrieNode restoredLeaf1 = clone.GetChild(trieStore, ref emptyPath, 1);
-        restoredLeaf1.Should().NotBeNull();
+        Assert.That(restoredLeaf1, Is.Not.Null);
         restoredLeaf1.ResolveNode(trieStore, TreePath.Empty);
-        restoredLeaf1.Value.ToArray().Should().BeEquivalentTo(leaf1.Value.ToArray());
+        Assert.That(restoredLeaf1.Value.ToArray(), Is.EqualTo(leaf1.Value.ToArray()));
     }
 
     [Test]
@@ -1056,17 +1035,16 @@ public class TrieNodeTests
             HeavyLeaf.Value = Bytes.Concat(Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes);
 
             Account account = new(100);
-            AccountDecoder decoder = new();
             AccountLeaf = TrieNodeFactory.CreateLeaf(
                 Bytes.FromHexString("bbb"),
-                decoder.Encode(account).Bytes);
+                Rlp.Encode(account).Bytes);
         }
     }
 
     private class TreeVisitorMock : ITreeVisitor<TreePathContext>
     {
-        public readonly Dictionary<(TreePath path, TrieNode), int> VisitExtensionReceived = new();
-        public readonly Dictionary<(TreePath path, TrieNode), int> VisitBranchReceived = new();
+        public readonly Dictionary<(TreePath path, TrieNode), int> VisitExtensionReceived = [];
+        public readonly Dictionary<(TreePath path, TrieNode), int> VisitBranchReceived = [];
         public readonly Dictionary<(TreePath path, TrieNode, byte[]), int> VisitLeafReceived = new(new LeafComparer());
 
         public bool IsFullDbScan => false;
@@ -1149,7 +1127,7 @@ public class TrieNodeTests
             }
         );
 
-        failed.Should().BeFalse("a torn read was detected: length > array.Length");
+        Assert.That(failed, Is.False, "a torn read was detected: length > array.Length");
     }
 
     [Test]
@@ -1159,9 +1137,9 @@ public class TrieNodeTests
         TrieNode node = new(NodeType.Leaf, new CappedArray<byte>(small));
 
         CappedArray<byte> result = node.FullRlp;
-        result.IsNotNull.Should().BeTrue();
-        result.Length.Should().Be(10);
-        result.UnderlyingArray.Should().BeSameAs(small);
+        Assert.That(result.IsNotNull, Is.True);
+        Assert.That(result.Length, Is.EqualTo(10));
+        Assert.That(result.UnderlyingArray, Is.SameAs(small));
     }
 
     [Test]
@@ -1206,6 +1184,6 @@ public class TrieNodeTests
             }
         );
 
-        failed.Should().BeFalse("seqlock corruption detected: invalid length or torn read");
+        Assert.That(failed, Is.False, "seqlock corruption detected: invalid length or torn read");
     }
 }

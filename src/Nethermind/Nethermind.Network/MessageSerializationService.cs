@@ -30,7 +30,7 @@ public class MessageSerializationService : IMessageSerializationService
                 ThrowInvalidSerializer(Serializer, expectedInterface);
             }
 
-            _zeroSerializers.TryAdd(MessageType.TypeHandle, Serializer);
+            _zeroSerializers[MessageType.TypeHandle] = Serializer;
         }
 
         [DoesNotReturn, StackTraceHidden]

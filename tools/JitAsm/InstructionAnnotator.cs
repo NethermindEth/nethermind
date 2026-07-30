@@ -93,7 +93,7 @@ internal static partial class InstructionAnnotator
 
     public static string Annotate(string disassembly, InstructionDb db)
     {
-        var sb = new StringBuilder();
+        StringBuilder sb = new();
         List<string> lines = JoinContinuationLines(disassembly.Split('\n'));
 
         foreach (string rawLine in lines)
@@ -123,7 +123,7 @@ internal static partial class InstructionAnnotator
                 string pattern = ClassifyOperands(operandsRaw, mnemonic);
 
                 // Try the original mnemonic first, then any alias
-                string lookupMnemonic = MnemonicAliases.TryGetValue(mnemonic, out var alias)
+                string lookupMnemonic = MnemonicAliases.TryGetValue(mnemonic, out string? alias)
                     ? alias : mnemonic;
                 InstructionInfo? info = db.Lookup(mnemonic, pattern)
                     ?? (lookupMnemonic != mnemonic ? db.Lookup(lookupMnemonic, pattern) : null);
@@ -150,7 +150,7 @@ internal static partial class InstructionAnnotator
                 string mnemonic = zeroMatch.Groups["mnemonic"].Value.ToLowerInvariant();
                 if (!ShouldSkipAnnotation(mnemonic, ""))
                 {
-                    string zeroLookup = MnemonicAliases.TryGetValue(mnemonic, out var zAlias)
+                    string zeroLookup = MnemonicAliases.TryGetValue(mnemonic, out string? zAlias)
                         ? zAlias : mnemonic;
                     InstructionInfo? info = db.Lookup(mnemonic, "")
                         ?? (zeroLookup != mnemonic ? db.Lookup(zeroLookup, "") : null);
@@ -179,7 +179,7 @@ internal static partial class InstructionAnnotator
     /// </summary>
     private static List<string> JoinContinuationLines(string[] rawLines)
     {
-        var result = new List<string>(rawLines.Length);
+        List<string> result = new(rawLines.Length);
         for (int i = 0; i < rawLines.Length; i++)
         {
             string line = rawLines[i].TrimEnd('\r');
@@ -281,7 +281,7 @@ internal static partial class InstructionAnnotator
 
         // Split operands by comma, but respect brackets for memory operands
         List<string> operands = SplitOperands(operandsRaw);
-        var parts = new List<string>();
+        List<string> parts = [];
 
         for (int i = 0; i < operands.Count; i++)
         {
@@ -305,7 +305,7 @@ internal static partial class InstructionAnnotator
 
     private static List<string> SplitOperands(string operands)
     {
-        var result = new List<string>();
+        List<string> result = [];
         int depth = 0;
         int start = 0;
 
@@ -426,7 +426,7 @@ internal static partial class InstructionAnnotator
 
     private static string FormatAnnotation(InstructionInfo info)
     {
-        var sb = new StringBuilder();
+        StringBuilder sb = new();
         sb.Append("; [");
         sb.Append($"TP:{info.Throughput:F2}");
         sb.Append($" | Lat:{info.Latency,2}");

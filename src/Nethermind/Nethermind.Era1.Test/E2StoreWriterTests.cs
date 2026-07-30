@@ -76,7 +76,7 @@ internal class E2StoreWriterTests
         await sut.WriteEntry(EntryTypes.CompressedHeader, TestBytes);
         byte[] result = stream.ToArray();
 
-        Assert.That(new ArraySegment<byte>(result, E2StoreWriter.HeaderSize, TestBytes.Length), Is.EquivalentTo(TestBytes));
+        Assert.That(new ArraySegment<byte>(result, E2StoreWriter.HeaderSize, TestBytes.Length), Is.EqualTo(TestBytes));
     }
 
     [Test]
@@ -114,7 +114,7 @@ internal class E2StoreWriterTests
 
         using E2StoreReader reader = new(tmpFile);
         _ = reader.ReadEntryAndDecode(0, buf => buf.ToArray(), EntryTypes.Accumulator, out byte[] readBytes);
-        Assert.That(readBytes, Is.EquivalentTo(TestBytes));
+        Assert.That(readBytes, Is.EqualTo(TestBytes));
         Assert.That(readBytes.Length, Is.EqualTo(TestBytes.Length));
     }
 
@@ -133,6 +133,6 @@ internal class E2StoreWriterTests
 
         using E2StoreReader reader = new(tmpFile);
         (byte[]? readBytes, _) = await reader.ReadSnappyCompressedEntryAndDecode<byte[]>(position, buf => buf.ToArray(), EntryTypes.CompressedHeader, default);
-        Assert.That(readBytes, Is.EquivalentTo(TestBytes));
+        Assert.That(readBytes, Is.EqualTo(TestBytes));
     }
 }

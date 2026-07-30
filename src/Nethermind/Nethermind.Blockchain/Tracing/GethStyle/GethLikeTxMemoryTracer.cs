@@ -16,10 +16,15 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
+    private long _refund;
+    private readonly Stack<long> _refundCheckpoints = new();
+
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
     {
         _transaction = transaction;
         IsTracingMemory = IsTracingFullMemory;
+        IsTracingRefunds = true;
+        IsTracingActions = true;
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -38,45 +43,77 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         Trace.Gas = gasSpent.SpentGas;
     }
 
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        base.LoadOperationStorage(address, storageIndex, value);
+
+        RecordStorageSnapshot(address, storageIndex, value);
+    }
+
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
         base.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-        byte[] bigEndian = new byte[32];
-
-        storageIndex.ToBigEndian(bigEndian);
-
-        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
-            .ToArray()
-            .ToHexString(false);
+        RecordStorageSnapshot(address, storageIndex, newValue);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    private void RecordStorageSnapshot(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
-        int previousDepth = CurrentTraceEntry?.Depth ?? 0;
+        if (CurrentTraceEntry is null)
+            return;
 
+        CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
+    }
+
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+    {
         base.StartOperation(pc, opcode, gas, env);
+        CurrentTraceEntry.Refund = _refund != 0 ? _refund : null;
+    }
 
-        if (CurrentTraceEntry.Depth > previousDepth)
-        {
-            CurrentTraceEntry.Storage = new Dictionary<string, string>();
+    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
+    }
 
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? new() : previousTraceEntry.Storage);
-        }
-        else if (CurrentTraceEntry.Depth < previousDepth)
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
+    public override void ReportRefund(long refund) => _refund += refund;
 
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
-        }
-        else
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on continuation.");
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    {
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        _refundCheckpoints.Push(_refund);
+    }
 
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-        }
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionEnd(gas, output);
+        _refundCheckpoints.TryPop(out _);
+    }
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        _refundCheckpoints.TryPop(out _);
+    }
+
+    public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionRevert(gasLeft, output);
+        RestoreRefundCheckpoint();
+    }
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        base.ReportActionError(evmExceptionType);
+        RestoreRefundCheckpoint();
+    }
+
+    // A reverted or aborted frame rolls back every refund accrued within it (and its successful
+    // children), mirroring go-ethereum's journaled refund counter.
+    private void RestoreRefundCheckpoint()
+    {
+        if (_refundCheckpoints.TryPop(out long checkpoint))
+            _refund = checkpoint;
     }
 }

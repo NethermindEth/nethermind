@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -111,12 +110,12 @@ public class HealingTreeTests
         Action action = () => trie.Get(fullPath.Bytes, _key);
         if (successfullyRecovered)
         {
-            action.Should().NotThrow();
+            Assert.That(action, Throws.Nothing);
             db.KeyWasWritten(NodeStorage.GetHalfPathNodeStoragePath(address, path, ValueKeccak.Compute(_rlp)));
         }
         else
         {
-            action.Should().Throw<MissingTrieNodeException>();
+            Assert.That(action, Throws.TypeOf<MissingTrieNodeException>());
         }
     }
 
@@ -142,6 +141,8 @@ public class HealingTreeTests
         IContainer CreateNode()
         {
             ConfigProvider configProvider = new();
+            // Trie node healing is a patricia state-sync repair mechanism with no flat equivalent.
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
             configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.Full;
             configProvider.GetConfig<IInitConfig>().StateDbKeyScheme = keyScheme;
             return new ContainerBuilder()
@@ -158,10 +159,10 @@ public class HealingTreeTests
 
             using IDisposable _ = mainWorldState.BeginScope(blockTree.Head?.Header);
 
-            for (int i = 0; i < 100; i++)
+            for (ulong i = 0; i < 100; i++)
             {
                 Address address = new(Keccak.Compute(i.ToString()));
-                mainWorldState.CreateAccount(address, (UInt256)i, (UInt256)i);
+                mainWorldState.CreateAccount(address, (UInt256)i, i);
             }
 
             Address storageAddress = new(Keccak.Compute("storage"));
@@ -179,8 +180,8 @@ public class HealingTreeTests
 
             Block block = Build.A.Block.WithStateRoot(mainWorldState.StateRoot).WithParent(blockTree.Head!).TestObject;
 
-            blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
-            blockTree.UpdateMainChain([block], true);
+            Assert.That(blockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
+            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
 
             return block.Header;
         }
@@ -210,19 +211,19 @@ public class HealingTreeTests
             IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
             using IDisposable _ = mainWorldState.BeginScope(baseBlock);
 
-            for (int i = 0; i < 100; i++)
+            for (ulong i = 0; i < 100; i++)
             {
                 Address address = new(Keccak.Compute(i.ToString()));
-                mainWorldState.GetBalance(address).Should().Be((UInt256)i);
-                mainWorldState.GetNonce(address).Should().Be((UInt256)i);
+                Assert.That(mainWorldState.GetBalance(address), Is.EqualTo((UInt256)i));
+                Assert.That(mainWorldState.GetNonce(address), Is.EqualTo(i));
             }
 
             Address storageAddress = new(Keccak.Compute("storage"));
-            mainWorldState.GetBalance(storageAddress).Should().Be((UInt256)100);
-            mainWorldState.GetNonce(storageAddress).Should().Be((UInt256)100);
+            Assert.That(mainWorldState.GetBalance(storageAddress), Is.EqualTo((UInt256)100));
+            Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo(100ul));
             for (int i = 1; i < 100; i++)
             {
-                mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray().Should().BeEquivalentTo(i.ToBigEndianByteArray());
+                Assert.That(mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray(), Is.EqualTo(i.ToBigEndianByteArray()));
             }
         }
     }

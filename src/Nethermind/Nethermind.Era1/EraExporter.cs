@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 
@@ -21,25 +22,25 @@ public class EraExporter(
     ILogManager logManager)
     : IEraExporter
 {
-    private readonly string _networkName = (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+    private readonly string _networkName = string.IsNullOrWhiteSpace(eraConfig.NetworkName)
         ? throw new ArgumentException("Cannot be null or whitespace.", nameof(eraConfig.NetworkName))
         : eraConfig.NetworkName.Trim().ToLower();
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
-    private readonly int _era1Size = eraConfig.MaxEra1Size;
+    private readonly ulong _era1Size = eraConfig.MaxEra1Size;
 
     public const string AccumulatorFileName = "accumulators.txt";
     public const string ChecksumsFileName = "checksums.txt";
 
     public Task Export(
         string destinationPath,
-        long from,
-        long to,
+        ulong from,
+        ulong to,
         CancellationToken cancellation = default)
     {
         if (fileSystem.File.Exists(destinationPath)) throw new ArgumentException($"Destination already exist as a file.", nameof(destinationPath));
-        if (to == 0) to = blockTree.Head?.Number ?? 0;
-        if (to > (blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0}.");
+        if (to == 0) to = blockTree.Head?.Number ?? 0UL;
+        if (to > (blockTree.Head?.Number ?? 0UL)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0UL}.");
         if (from > to) throw new ArgumentException($"Start block ({from}) must be before end ({to}) block");
 
         return DoExport(destinationPath, from, to, cancellation: cancellation);
@@ -47,8 +48,8 @@ public class EraExporter(
 
     private async Task DoExport(
         string destinationPath,
-        long from,
-        long to,
+        ulong from,
+        ulong to,
         CancellationToken cancellation = default)
     {
         if (_logger.IsInfo) _logger.Info($"Exporting from block {from} to block {to} as Era files to {destinationPath}");
@@ -57,14 +58,15 @@ public class EraExporter(
             fileSystem.Directory.CreateDirectory(destinationPath);
         }
 
-        ProgressLogger progress = new("Era export", logManager);
-        progress.Reset(0, to - from + 1);
-        int totalProcessed = 0;
+        using ProgressReporter progress = new("Era export", logManager, to - from + 1);
+        ulong totalProcessed = 0;
 
-        long startEpoch = from / _era1Size;
-        long epochCount = (long)Math.Ceiling((to - from + 1) / (decimal)_era1Size);
-        using ArrayPoolList<long> epochIdxs = new((int)epochCount);
-        for (long i = 0; i < epochCount; i++)
+        ulong era1Size = _era1Size;
+        ulong startEpoch = from / era1Size;
+        ulong epochCount = (to - from + era1Size) / era1Size;
+
+        using ArrayPoolList<ulong> epochIdxs = new((int)epochCount);
+        for (ulong i = 0; i < epochCount; i++)
         {
             epochIdxs.Add(i);
         }
@@ -92,16 +94,14 @@ public class EraExporter(
         fileSystem.File.Delete(checksumPath);
         await WriteFileAsync(checksumPath, checksums, fileNames, cancellation);
 
-        progress.LogProgress();
-
         if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
 
-        async Task WriteEpoch(long epochIdx)
+        async Task WriteEpoch(ulong epochIdx)
         {
             // Yes, it offset a bit so a block that is at the end of an epoch would be at the start of another epoch
-            // if the start is not of module _era1Size. This seems to match geth's behaviour.
-            long epoch = startEpoch + epochIdx;
-            long startingIndex = from + epochIdx * _era1Size;
+            // if the start is not a multiple of _era1Size. This seems to match geth's behaviour.
+            ulong epoch = startEpoch + epochIdx;
+            ulong startingIndex = from + epochIdx * era1Size;
 
             string filePath = Path.Combine(
                 destinationPath,
@@ -113,13 +113,10 @@ public class EraExporter(
             // Scoped using so the writer is disposed before File.Move — Windows locks open files.
             using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
             {
-                for (long y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
+                for (ulong y = startingIndex; y < startingIndex + era1Size && y <= to; y++)
                 {
-                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-                    if (block is null)
-                    {
-                        throw new EraException($"Could not find a block with number {y}.");
-                    }
+                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+                        ?? throw new EraException($"Could not find a block with number {y}.");
 
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
@@ -133,13 +130,7 @@ public class EraExporter(
                     }
 
                     await eraWriter.Add(block, receipts, cancellation);
-
-                    bool shouldLog = (Interlocked.Increment(ref totalProcessed) % 10000) == 0;
-                    if (shouldLog)
-                    {
-                        progress.Update(totalProcessed);
-                        progress.LogProgress();
-                    }
+                    progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancellation);

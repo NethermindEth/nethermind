@@ -27,6 +27,11 @@ jobs:
           pip install requests
           pip install setuptools
           pip install emoji
+      - name: Remove existing Chainspec and config files
+        run: |
+          rm -f ./src/Nethermind/Chains/*.zst
+          rm -f ./src/Nethermind/Chains/dictionary
+          find src/Nethermind/Nethermind.Runner/configs -maxdepth 1 -name '*.json' ! -name '*_archive.json' -exec grep -l '"Optimism"' {} \; | xargs rm
       - name: Generate Chainspec and config files
         run: python3 scripts/superchain.py -v -o /tmp/superchain
       - name: Copy generated files

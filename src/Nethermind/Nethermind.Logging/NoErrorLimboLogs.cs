@@ -14,7 +14,7 @@ namespace Nethermind.Logging
         {
         }
 
-        private static NoErrorLimboLogs _instance;
+        private static NoErrorLimboLogs? _instance;
 
         public static NoErrorLimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, static () => new NoErrorLimboLogs());
 

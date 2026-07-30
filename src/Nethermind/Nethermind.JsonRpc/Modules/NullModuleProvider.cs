@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules
     public class NullModuleProvider : IRpcModuleProvider
     {
         public static NullModuleProvider Instance = new();
-        private static readonly Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
+        private static readonly ValueTask<IRpcModule> Null = ValueTask.FromResult<IRpcModule>(null!);
 
         private NullModuleProvider()
         {
@@ -30,18 +30,21 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<string> All => Array.Empty<string>();
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module, out ResolvedMethodInfo? method)
         {
             module = null;
+            method = null;
             return ModuleResolution.Unknown;
         }
 
         public ResolvedMethodInfo Resolve(string methodName) => new();
 
-        public Task<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
+        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
+
+        public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method) => Null;
 
         public void Return(string methodName, IRpcModule rpcModule) { }
 
-        public IRpcModulePool? GetPoolForMethod(string moduleType) => null;
+        public void Return(ResolvedMethodInfo method, IRpcModule rpcModule) { }
     }
 }

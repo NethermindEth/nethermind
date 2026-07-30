@@ -17,6 +17,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string Host { get; set; } = "127.0.0.1";
     public int Timeout { get; set; } = 20000;
     public int RequestQueueLimit { get; set; } = 500;
+    public int MaxConcurrentSharedRequests { get; set; } = 10000;
     public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt";
 
     public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.None;
@@ -31,6 +32,8 @@ public class JsonRpcConfig : IJsonRpcConfig
 
     public string? IpcUnixDomainSocketPath { get; set; } = null;
 
+    public bool RestrictIpcSocketPermissions { get; set; } = true;
+
     public string[] EnabledModules
     {
         get => _enabledModules;
@@ -41,12 +44,16 @@ public class JsonRpcConfig : IJsonRpcConfig
     }
 
     public string[] AdditionalRpcUrls { get; set; } = [];
-    public long? GasCap { get; set; } = 100000000;
+    public ulong? GasCap { get; set; } = 100000000;
     public int ReportIntervalSeconds { get; set; } = 300;
     public bool BufferResponses { get; set; }
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
+    public bool EnableTracingStreamMode { get; set; } = true;
+    public bool EnableLogsStreamMode { get; set; } = false;
+    public long? MaxLogsResponseBodySize { get; set; } = null;
+    public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
@@ -58,7 +65,8 @@ public class JsonRpcConfig : IJsonRpcConfig
         "engine_newPayloadV3",
         "engine_forkchoiceUpdatedV1",
         "engine_forkchoiceUpdatedV2",
-        "flashbots_validateBuilderSubmissionV3"
+        "flashbots_validateBuilderSubmissionV3",
+        "eth_signTransaction"
     };
     public string EngineHost { get; set; } = "127.0.0.1";
     public int? EnginePort { get; set; } = null;
@@ -68,11 +76,16 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxBatchResponseBodySize { get; set; } = 32.MiB;
     public long? MaxSimulateBlocksCap { get; set; } = 256;
     public int EstimateErrorMargin { get; set; } = 150;
+    public ulong RpcTxFeeCap { get; set; } = (ulong)1.Ether;
+    public bool EnableEthSignTransaction { get; set; }
     public string[] CorsOrigins { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 1;
     public int IpcProcessingConcurrency { get; set; } = 1;
-    public bool EnablePerMethodMetrics { get; set; } = false;
+    public bool EnablePerMethodMetrics { get; set; } = true;
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }
     public bool StrictHexFormat { get; set; } = true;
+    public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
+    public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
+    public string[] AdditionalTrustedNetworks { get; set; } = [];
 };

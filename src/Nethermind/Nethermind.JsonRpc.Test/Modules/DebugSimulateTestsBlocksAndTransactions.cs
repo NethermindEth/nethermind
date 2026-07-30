@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -21,8 +20,10 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Modules.Simulate;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.JsonRpc.Test.Modules.Eth;
+using Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules;
 
 public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<GethLikeTxTrace>
 {
@@ -30,49 +31,28 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default);
 
     protected override void AssertSerializationBlockResult(SimulateBlockResult<GethLikeTxTrace> blockResult) =>
-        Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EquivalentTo(new[] { false, false }));
+        Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EqualTo(new[] { false, false }));
 
-    [Test]
-    public async Task Test_debug_simulate_caps_gas_to_gas_cap()
+    [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
+    public async Task Test_debug_simulate_respects_gas_cap(ulong gasCap, ulong? requestGas, bool expectCapped)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        long gasCap = 50_000;
         chain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns remaining gas
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = contractAddress,
-                            Gas = 100_000,
-                            GasPrice = 0
-                        }
-                    ]
-                }
-            ]
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(
+            EthRpcSimulateTestsBase.CreateGasProbePayload(requestGas),
+            BlockParameter.Latest);
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         GethLikeTxTrace trace = result.Data.First().Traces.First();
         Assert.That(trace.Failed, Is.False);
 
         UInt256 gasAvailable = new(trace.ReturnValue, isBigEndian: true);
-        Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        if (expectCapped)
+        {
+            Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        }
+
         Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
     }
 
@@ -92,9 +72,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_simulateV1", payload!, "latest");
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
-        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = (IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>)successResponse.Result!;
+        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>(response);
         Assert.That(data.First().Traces.First().TxHash, Is.EqualTo(new Core.Crypto.Hash256("0xe690a6e09e13d163bc8b92c725202e9633770b14c8541a0ee48794ae014351f0")));
     }
 

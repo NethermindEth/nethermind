@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -37,7 +41,12 @@ public class ResourcePoolTests
         SnapshotContent content1 = _resourcePool.GetSnapshotContent(usage);
 
         content1.Accounts[new Address("0x1234567890123456789012345678901234567890")] = new Account(1, 2);
-        Assert.That(content1.Accounts, Is.Not.Empty);
+        content1.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(content1.Accounts, Is.Not.Empty);
+            Assert.That(content1.StorageNodes, Is.Not.Empty);
+        }
 
         _resourcePool.ReturnSnapshotContent(usage, content1);
 
@@ -46,7 +55,11 @@ public class ResourcePoolTests
         // Should be the same instance (LIFO)
         Assert.That(content2, Is.SameAs(content1));
         // Should have been reset
-        Assert.That(content2.Accounts, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(content2.Accounts, Is.Empty);
+            Assert.That(content2.StorageNodes, Is.Empty);
+        }
     }
 
     [Test]
@@ -54,8 +67,8 @@ public class ResourcePoolTests
     {
         // For MainBlockProcessing: capacity = config.CompactSize + 8 = 2 + 8 = 10
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
-        int capacity = _config.CompactSize + 8;
-        List<SnapshotContent> items = new();
+        int capacity = (int)_config.CompactSize + 8;
+        List<SnapshotContent> items = [];
 
         for (int i = 0; i < capacity + 5; i++)
         {
@@ -86,6 +99,19 @@ public class ResourcePoolTests
         Assert.That(resource, Is.Not.Null);
         Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
         Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ShouldPrewarm_AddressOverloadsUseSameHash(bool includeSlot)
+    {
+        using TransientResource resource = new(new TransientResource.Size(1024, 1));
+        Address address = new("0x1234567890123456789012345678901234567890");
+        ValueAddress valueAddress = new(address.Bytes);
+        UInt256? slot = includeSlot ? (UInt256)1 : null;
+
+        Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
+        Assert.That(resource.ShouldPrewarm(in valueAddress, slot), Is.False);
     }
 
     [Test]
@@ -144,6 +170,28 @@ public class ResourcePoolTests
         SnapshotContent recycledContent = _resourcePool.GetSnapshotContent(usage);
         Assert.That(recycledContent, Is.SameAs(content));
     }
+
+    [TestCase(1UL, ResourcePool.Usage.Compact2)]
+    [TestCase(2UL, ResourcePool.Usage.Compact2)]
+    [TestCase(4UL, ResourcePool.Usage.Compact4)]
+    [TestCase(8UL, ResourcePool.Usage.Compact8)]
+    [TestCase(16UL, ResourcePool.Usage.Compact16)]
+    [TestCase(32UL, ResourcePool.Usage.Compact32)]
+    [TestCase(64UL, ResourcePool.Usage.Compact64)]
+    [TestCase(128UL, ResourcePool.Usage.Compact128)]
+    [TestCase(256UL, ResourcePool.Usage.Compact256)]
+    [TestCase(512UL, ResourcePool.Usage.Compact512)]
+    [TestCase(1024UL, ResourcePool.Usage.Compact1024)]
+    [TestCase(2048UL, ResourcePool.Usage.Compact2048)]
+    [TestCase(4096UL, ResourcePool.Usage.Compact2048)]
+    public void Test_CompactUsage_MapsCompactSizeToUsage(ulong compactSize, ResourcePool.Usage expected) =>
+        Assert.That(ResourcePool.CompactUsage(compactSize), Is.EqualTo(expected));
+
+    [TestCase(3UL)]
+    [TestCase(5UL)]
+    [TestCase(2047UL)]
+    public void Test_CompactUsage_ThrowsOnInvalidSize(ulong compactSize) =>
+        Assert.That(() => ResourcePool.CompactUsage(compactSize), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]
     public void Test_DifferentUsages_HaveIndependentPools()

@@ -27,7 +27,7 @@ public class AdminEraServiceTests
     public void ThrowsWhenExistingImportIsRunning()
     {
         IEraImporter importer = Substitute.For<IEraImporter>();
-        TaskCompletionSource importTcs = new();
+        TaskCompletionSource importTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         importer.Import("somewhere", 99, 999, null).Returns(importTcs.Task);
         AdminEraService adminEraService = new(
             importer,
@@ -41,8 +41,9 @@ public class AdminEraServiceTests
 
         importTcs.TrySetResult();
 
-        // Not throw
-        adminEraService.ImportHistory("somewhere", 99, 999, null);
+        // Not throw — wait for fire-and-forget continuation to release the in-progress lock
+        Assert.That(() => adminEraService.ImportHistory("somewhere", 99, 999, null),
+            Throws.Nothing.After(5000, 50));
     }
 
     [Test]
@@ -63,7 +64,7 @@ public class AdminEraServiceTests
     public void ThrowsWhenExistingExportIsRunning()
     {
         IEraExporter exporter = Substitute.For<IEraExporter>();
-        TaskCompletionSource importTcs = new();
+        TaskCompletionSource importTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         exporter.Export("somewhere", 99, 999).Returns(importTcs.Task);
         AdminEraService adminEraService = new(
             Substitute.For<IEraImporter>(),
@@ -77,7 +78,8 @@ public class AdminEraServiceTests
 
         importTcs.TrySetResult();
 
-        // Not throw
-        adminEraService.ExportHistory("somewhere", 99, 999);
+        // Not throw — wait for fire-and-forget continuation to release the in-progress lock
+        Assert.That(() => adminEraService.ExportHistory("somewhere", 99, 999),
+            Throws.Nothing.After(5000, 50));
     }
 }

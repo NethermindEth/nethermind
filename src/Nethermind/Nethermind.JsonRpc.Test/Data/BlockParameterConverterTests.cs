@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -11,19 +10,32 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
-    [Parallelizable(ParallelScope.Self)]
+    [NonParallelizable]
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
-        [TestCase("0", 0)]
-        [TestCase("100", 100)]
-        [TestCase("\"0x0\"", 0)]
-        [TestCase("\"0xA\"", 10)]
-        [TestCase("\"0xa\"", 10)]
-        [TestCase("\"0\"", 0)]
-        [TestCase("\"100\"", 100)]
-        [TestCase("{ \"blockNumber\": \"0xa\" }", 10)]
-        public void Can_read_block_number(string input, long output)
+        private bool _previousStrictHexFormat;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+            EthereumJsonSerializer.StrictHexFormat = false;
+        }
+
+        [TearDown]
+        public void TearDown() =>
+            EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
+
+        [TestCase("0", 0UL)]
+        [TestCase("100", 100UL)]
+        [TestCase("\"0x0\"", 0UL)]
+        [TestCase("\"0xA\"", 10UL)]
+        [TestCase("\"0xa\"", 10UL)]
+        [TestCase("\"0\"", 0UL)]
+        [TestCase("\"100\"", 100UL)]
+        [TestCase("{ \"blockNumber\": \"0xa\" }", 10UL)]
+        public void Can_read_block_number(string input, ulong output)
         {
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
@@ -34,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         [TestCase("0", true)]
         [TestCase("100", true)]
-        [TestCase("\"0x\"", false)]
+        [TestCase("\"0x\"", true)]
         [TestCase("\"0x0\"", false)]
         [TestCase("\"0xA\"", false)]
         [TestCase("\"0xa\"", false)]
@@ -53,9 +65,9 @@ namespace Nethermind.JsonRpc.Test.Data
                 Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
 
                 if (throws)
-                    action.Should().Throw<FormatException>();
+                    Assert.That(action, Throws.InstanceOf<FormatException>());
                 else
-                    action.Should().NotThrow();
+                    Assert.That(action, Throws.Nothing);
             }
             finally
             {
@@ -108,6 +120,20 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(blockParameter.RequireCanonical, Is.EqualTo(requireCanonical));
         }
 
+        [Test]
+        public void Cannot_read_object_with_both_block_hash_and_block_number()
+        {
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+
+            Action action = () => serializer.Deserialize<BlockParameter>(
+                """{ "blockNumber": "0xa", "blockHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3" }""");
+
+            Assert.That(
+                action,
+                Throws.InstanceOf<FormatException>()
+                    .With.Message.EqualTo("cannot specify both BlockHash and BlockNumber, choose one or the other"));
+        }
+
         [TestCase("\"latest\"", BlockParameterType.Latest)]
         [TestCase("\"earliest\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
@@ -124,9 +150,9 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(result, Is.EqualTo(output));
         }
 
-        [TestCase("\"0x0\"", 0)]
-        [TestCase("\"0xa\"", 10)]
-        public void Can_write_number(string output, long input)
+        [TestCase("\"0x0\"", 0UL)]
+        [TestCase("\"0xa\"", 10UL)]
+        public void Can_write_number(string output, ulong input)
         {
             BlockParameter blockParameter = new(input);
 
@@ -145,8 +171,8 @@ namespace Nethermind.JsonRpc.Test.Data
             TestRoundtrip(BlockParameter.Earliest, "earliest");
             TestRoundtrip(BlockParameter.Finalized, "finalized");
             TestRoundtrip(BlockParameter.Safe, "safe");
-            TestRoundtrip(new BlockParameter(0L), "zero");
-            TestRoundtrip(new BlockParameter(long.MaxValue), "max");
+            TestRoundtrip(new BlockParameter(0UL), "zero");
+            TestRoundtrip(new BlockParameter(ulong.MaxValue), "max");
             TestRoundtrip(new BlockParameter(TestItem.KeccakA), "hash");
             TestRoundtrip(new BlockParameter(TestItem.KeccakA, true), "hash with canonical");
         }

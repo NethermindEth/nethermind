@@ -17,7 +17,7 @@ public readonly record struct TransactionForRpcContext
 {
     public ulong? ChainId { get; }
     public Hash256? BlockHash { get; }
-    public long? BlockNumber { get; }
+    public ulong? BlockNumber { get; }
     public ulong? BlockTimestamp { get; }
     public int? TxIndex { get; }
     public UInt256? BaseFee { get; }
@@ -37,7 +37,7 @@ public readonly record struct TransactionForRpcContext
     public TransactionForRpcContext(
         ulong chainId,
         Hash256 blockHash,
-        long blockNumber,
+        ulong blockNumber,
         int txIndex,
         ulong blockTimestamp,
         UInt256 baseFee,

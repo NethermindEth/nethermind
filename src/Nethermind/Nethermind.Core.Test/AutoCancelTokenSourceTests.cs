@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using NUnit.Framework;
@@ -16,13 +15,13 @@ public class AutoCancelTokenSourceTests
     [Test]
     public void AutoCancelOnExitClosure()
     {
-        CancellationToken TaskWithInnerCancellation(CancellationToken token)
+        static CancellationToken TaskWithInnerCancellation(CancellationToken token)
         {
             using AutoCancelTokenSource cts = token.CreateChildTokenSource();
             return cts.Token;
         }
 
-        TaskWithInnerCancellation(default).IsCancellationRequested.Should().BeTrue();
+        Assert.That(TaskWithInnerCancellation(default).IsCancellationRequested, Is.True);
     }
 
     [Test]
@@ -32,11 +31,11 @@ public class AutoCancelTokenSourceTests
 
         using AutoCancelTokenSource acts = cts.Token.CreateChildTokenSource();
 
-        acts.Token.IsCancellationRequested.Should().BeFalse();
+        Assert.That(acts.Token.IsCancellationRequested, Is.False);
 
         cts.Cancel();
 
-        acts.Token.IsCancellationRequested.Should().BeTrue();
+        Assert.That(acts.Token.IsCancellationRequested, Is.True);
     }
 
     [Test]
@@ -61,6 +60,6 @@ public class AutoCancelTokenSourceTests
         });
 
         Func<Task> act = () => cts.WhenAllSucceed(failedTask, okTask, operationCancelledTask);
-        act.Should().ThrowAsync<InvalidOperationException>();
+        Assert.That(async () => await act(), Throws.TypeOf<InvalidOperationException>());
     }
 }

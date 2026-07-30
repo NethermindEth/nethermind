@@ -21,8 +21,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         ILogManager logManager,
         UInt256? minGasPrice = null) : IGasPriceOracle
     {
-        private static readonly IComparer<UInt256> UInt256Comparer = Comparer<UInt256>.Default;
-
         protected readonly IBlockFinder _blockFinder = blockFinder;
         protected readonly ILogger _logger = logManager.GetClassLogger<GasPriceOracle>();
         protected readonly UInt256 _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
@@ -56,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return ValueTask.FromResult(gasPriceEstimate!);
         }
 
-        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber) =>
+        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
 
@@ -88,16 +86,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         private delegate UInt256 CalculateGas(Transaction transaction, bool eip1559, UInt256 baseFee);
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
         {
-            IEnumerable<Block> GetBlocks(long currentBlockNumber)
+            IEnumerable<Block> GetBlocks(ulong currentBlockNumber)
             {
-                while (currentBlockNumber >= 0)
+                do
                 {
                     if (_logger.IsTrace) _logger.Trace($"GasPriceOracle - searching for block number {currentBlockNumber}");
                     yield return _blockFinder.FindBlock(currentBlockNumber)!;
-                    currentBlockNumber--;
-                }
+                } while (currentBlockNumber-- != 0);
             }
 
             return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction);
@@ -180,7 +177,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
                 // Deterministic pivot for stable perf/repro (median-of-range).
                 int pivotIndex = left + ((right - left) >> 1);
-                pivotIndex = Partition(list, left, right, pivotIndex, UInt256Comparer);
+                pivotIndex = Partition(list, left, right, pivotIndex, GenericComparer<UInt256>.Default);
 
                 if (k == pivotIndex)
                 {

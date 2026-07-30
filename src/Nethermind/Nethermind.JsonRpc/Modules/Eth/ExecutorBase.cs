@@ -38,7 +38,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>(
         Result<TProcessing> prepareResult = Prepare(call, header);
         return !prepareResult.Success(out TProcessing? data, out string? error)
             ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
-            : Execute(header.Clone(), data, stateOverride, timeout.Token);
+            : Execute(header, data, stateOverride, timeout.Token);
     }
 
     protected abstract Result<TProcessing> Prepare(TRequest call, BlockHeader header);

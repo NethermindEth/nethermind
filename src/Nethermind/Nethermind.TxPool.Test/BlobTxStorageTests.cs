@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -22,7 +22,7 @@ public class BlobTxStorageTests
         BlobTxStorage blobTxStorage = new();
 
         Action act = () => blobTxStorage.Add(null);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
@@ -34,7 +34,7 @@ public class BlobTxStorageTests
         tx.Hash = null;
 
         Action act = () => blobTxStorage.Add(tx);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
@@ -44,7 +44,7 @@ public class BlobTxStorageTests
         Transaction[] results = Array.Empty<Transaction>();
 
         int found = blobTxStorage.TryGetMany([], 0, results);
-        found.Should().Be(0);
+        Assert.That(found, Is.EqualTo(0));
     }
 
     [Test]
@@ -62,7 +62,7 @@ public class BlobTxStorageTests
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 
             blobTxStorage.Add(txs[i]);
@@ -72,12 +72,10 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[3];
         int found = blobTxStorage.TryGetMany(keys, 3, results);
 
-        found.Should().Be(3);
+        Assert.That(found, Is.EqualTo(3));
         for (int i = 0; i < 3; i++)
         {
-            results[i].Should().BeEquivalentTo(txs[i], static options => options
-                .Excluding(static t => t.GasBottleneck)
-                .Excluding(static t => t.PoolIndex));
+            Assert.That(results[i], Is.EqualTo(txs[i]).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
         }
     }
 
@@ -94,7 +92,7 @@ public class BlobTxStorageTests
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 
             blobTxStorage.Add(txs[i]);
@@ -108,10 +106,10 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[3];
         int found = blobTxStorage.TryGetMany(keys, 3, results);
 
-        found.Should().Be(2);
-        results[0].Should().NotBeNull();
-        results[1].Should().NotBeNull();
-        results[2].Should().BeNull();
+        Assert.That(found, Is.EqualTo(2));
+        Assert.That(results[0], Is.Not.Null);
+        Assert.That(results[1], Is.Not.Null);
+        Assert.That(results[2], Is.Null);
     }
 
     [Test]
@@ -128,8 +126,8 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[2];
         int found = blobTxStorage.TryGetMany(keys, 2, results);
 
-        found.Should().Be(0);
-        results[0].Should().BeNull();
-        results[1].Should().BeNull();
+        Assert.That(found, Is.EqualTo(0));
+        Assert.That(results[0], Is.Null);
+        Assert.That(results[1], Is.Null);
     }
 }

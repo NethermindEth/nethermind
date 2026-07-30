@@ -5,13 +5,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using System;
-using System.Linq;
 
 namespace Nethermind.Xdc.RLP;
 
-public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertificate>
+public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
 {
-    protected override TimeoutCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TimeoutCertificate DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -23,9 +22,7 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
 
         ulong round = decoderContext.DecodeULong();
 
-        byte[][]? signatureBytes = decoderContext.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in timeout certificate.");
+        byte[][]? signatureBytes = decoderContext.DecodeByteArrays(innerSize: Signature.Size);
         Signature[]? signatures = null;
         if (signatureBytes is not null)
         {
@@ -46,43 +43,44 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    public Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
 
-        return new Rlp(rlpStream.Data.ToArray());
+        return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
 
-        stream.Encode(item.Round);
+        writer.Encode(item.Round);
 
         if (item.Signatures is null)
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
         else
         {
-            stream.StartSequence(SignaturesLength(item));
+            writer.StartSequence(SignaturesLength(item));
             Span<byte> sigBuffer = stackalloc byte[Signature.Size];
             foreach (Signature sig in item.Signatures)
             {
                 sig.WriteBytesWithRecoveryTo(sigBuffer);
-                stream.Encode(sigBuffer);
+                writer.Encode(sigBuffer);
             }
         }
 
-        stream.Encode(item.GapNumber);
+        writer.Encode(item.GapNumber);
     }
 
     public override int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

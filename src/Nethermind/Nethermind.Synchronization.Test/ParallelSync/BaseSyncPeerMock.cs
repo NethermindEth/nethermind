@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync;
 public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
 {
     public virtual PublicKey Id { get; } = null!;
-    public long HeadNumber { get; set; }
+    public ulong HeadNumber { get; set; }
     public virtual string ClientId { get; set; } = null!;
     public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
         throw new System.NotImplementedException();
@@ -44,7 +44,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
     public virtual Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
         throw new System.NotImplementedException();
 
-    public virtual Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token) =>
+    public virtual Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token) =>
         throw new System.NotImplementedException();
 
     public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>

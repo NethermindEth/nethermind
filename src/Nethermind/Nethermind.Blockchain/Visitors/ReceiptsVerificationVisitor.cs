@@ -16,27 +16,29 @@ namespace Nethermind.Blockchain.Visitors
     {
         private readonly IReceiptStorage _receiptStorage;
         protected readonly ILogger _logger;
+        private readonly ProgressReporter _progress;
         private int _good = 0;
         private int _bad = 0;
         private ChainLevelInfo _currentLevel;
-        private long _checked = 0;
-        private readonly long _toCheck;
+        private ulong _checked = 0;
+        private readonly ulong _toCheck;
 
-        public ReceiptsVerificationVisitor(long startLevel, long endLevel, IReceiptStorage receiptStorage, ILogManager logManager)
+        public ReceiptsVerificationVisitor(ulong startLevel, ulong endLevel, IReceiptStorage receiptStorage, ILogManager logManager)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager?.GetClassLogger<ReceiptsVerificationVisitor>() ?? throw new ArgumentNullException(nameof(logManager));
             EndLevelExclusive = endLevel;
             StartLevelInclusive = startLevel; // we should start post-pivot
             _toCheck = EndLevelExclusive - StartLevelInclusive;
+            _progress = new ProgressReporter("Receipts verify", logManager, _toCheck);
         }
 
         public bool PreventsAcceptingNewBlocks => false;
-        public long StartLevelInclusive { get; }
+        public ulong StartLevelInclusive { get; }
 
-        public long EndLevelExclusive { get; }
+        public ulong EndLevelExclusive { get; }
 
-        public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
+        public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             _currentLevel = chainLevelInfo;
             return Task.FromResult(LevelVisitOutcome.None);
@@ -108,14 +110,13 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
+        public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             _checked++;
-            if (_checked % 1000 == 0)
-            {
-                if (_logger.IsInfo) _logger.Info($"Checking receipts {_checked}/{_toCheck}");
-            }
+            _progress.Update(_checked);
             return Task.FromResult(LevelVisitOutcome.None);
         }
+
+        public virtual void Dispose() => _progress.Dispose();
     }
 }

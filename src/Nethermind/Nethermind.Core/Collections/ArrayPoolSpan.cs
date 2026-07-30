@@ -27,6 +27,12 @@ public readonly struct ArrayPoolSpan<T>(ArrayPool<T> arrayPool, int length) : ID
     public static implicit operator Span<T>(ArrayPoolSpan<T> arrayPoolSpan) => arrayPoolSpan._array.AsSpan(0, arrayPoolSpan._length);
     public static implicit operator ReadOnlySpan<T>(ArrayPoolSpan<T> arrayPoolSpan) => arrayPoolSpan._array.AsSpan(0, arrayPoolSpan._length);
 
+    /// <summary>Returns a <see cref="Memory{T}"/> view over the live portion of the rented array.</summary>
+    public Memory<T> AsMemory() => _array.AsMemory(0, _length);
+
+    /// <summary>Returns a <see cref="ReadOnlyMemory{T}"/> view over the live portion of the rented array.</summary>
+    public ReadOnlyMemory<T> AsReadOnlyMemory() => _array.AsMemory(0, _length);
+
     public Span<T> Slice(int start, int length)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(start + length, _length, nameof(length));

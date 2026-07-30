@@ -21,7 +21,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
-using FluentAssertions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Core.Crypto;
 using System;
@@ -34,13 +33,13 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip6780Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
         private byte[] _selfDestructCode;
         private Address _contractAddress;
         private byte[] _initCode;
-        private readonly long _gasLimit = 1000000;
+        private readonly ulong _gasLimit = 1000000;
         private readonly EthereumEcdsa _ecdsa = new(1);
 
         [SetUp]
@@ -76,7 +75,7 @@ namespace Nethermind.Evm.Test
             UInt256 contractBalanceAfterInit = TestState.GetBalance(_contractAddress);
             _processor.Execute(tx1, blCtx, NullTxTracer.Instance);
 
-            contractBalanceAfterInit.Should().Be(99.Ether);
+            Assert.That(contractBalanceAfterInit, Is.EqualTo(99.Ether));
             AssertSendAll();
             if (onlyOnSameTransaction)
                 AssertNotDestroyed();
@@ -108,11 +107,11 @@ namespace Nethermind.Evm.Test
             UInt256 contractBalanceAfterInit = TestState.GetBalance(_contractAddress);
             _processor.Execute(tx1, blCtx, NullTxTracer.Instance);
 
-            contractBalanceAfterInit.Should().Be(99.Ether);
+            Assert.That(contractBalanceAfterInit, Is.EqualTo(99.Ether));
             if (onlyOnSameTransaction)
-                TestState.GetBalance(_contractAddress).Should().Be(99.Ether); // not burnt
+                Assert.That(TestState.GetBalance(_contractAddress), Is.EqualTo(99.Ether)); // not burnt
             else
-                TestState.GetBalance(_contractAddress).Should().Be(0); // burnt
+                Assert.That(TestState.GetBalance(_contractAddress), Is.EqualTo(UInt256.Zero)); // burnt
             if (onlyOnSameTransaction)
                 AssertNotDestroyed();
             else
@@ -180,12 +179,12 @@ namespace Nethermind.Evm.Test
 
         private void AssertNotDestroyed() => AssertCodeHash(_contractAddress, Keccak.Compute(_selfDestructCode.AsSpan()));
 
-        private void AssertDestroyed(Address address = null) => TestState.AccountExists(address ?? _contractAddress).Should().BeFalse();
+        private void AssertDestroyed(Address address = null) => Assert.That(TestState.AccountExists(address ?? _contractAddress), Is.False);
 
         private void AssertSendAll()
         {
-            TestState.GetBalance(_contractAddress).Should().Be(0);
-            TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether);
+            Assert.That(TestState.GetBalance(_contractAddress), Is.EqualTo(UInt256.Zero));
+            Assert.That(TestState.GetBalance(TestItem.PrivateKeyB.Address), Is.EqualTo(99.Ether));
         }
 
     }

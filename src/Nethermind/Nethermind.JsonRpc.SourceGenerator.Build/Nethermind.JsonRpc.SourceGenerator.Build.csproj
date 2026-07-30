@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateRpcJsonContext>false</GenerateRpcJsonContext>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <Compile Include="..\Nethermind.JsonRpc.SourceGenerator\RpcJsonTypeDiscovery.cs" Link="RpcJsonTypeDiscovery.cs" />
+  </ItemGroup>
+
+</Project>

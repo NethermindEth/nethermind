@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Blockchain;
@@ -49,13 +48,13 @@ public class TxPermissionFilterTest
 
     public static IEnumerable<TestCaseData> V1Tests()
     {
-        IList<Test> tests = new List<Test>()
-        {
+        IList<Test> tests =
+        [
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All},
             new() {SenderKey = GetPrivateKey(2), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call},
             new() {SenderKey = GetPrivateKey(3), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, To = _contractAddress},
             new() {SenderKey = GetPrivateKey(4), ContractPermissions = ITransactionPermissionContract.TxPermissions.None},
-        };
+        ];
 
         return GetTestCases(tests, nameof(V1), CreateV1Transaction);
     }
@@ -84,8 +83,8 @@ public class TxPermissionFilterTest
 
     public static IEnumerable<TestCaseData> V2Tests()
     {
-        IList<Test> tests = new List<Test>()
-        {
+        IList<Test> tests =
+        [
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = true},
             new() {SenderKey = GetPrivateKey(2), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = true},
             new() {SenderKey = GetPrivateKey(3), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic, Cache = true, To = _contractAddress},
@@ -101,7 +100,7 @@ public class TxPermissionFilterTest
             new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, Value = 0},
             new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = true, ToKey = GetPrivateKey(6)},
             new() {SenderKey = GetPrivateKey(7), ContractPermissions = ITransactionPermissionContract.TxPermissions.Basic | ITransactionPermissionContract.TxPermissions.Call, Cache = false, ToKey = GetPrivateKey(6), Value = 0},
-        };
+        ];
 
         return GetTestCases(tests, nameof(V2), CreateV2Transaction);
     }
@@ -150,13 +149,13 @@ public class TxPermissionFilterTest
 
     public static IEnumerable<TestCaseData> V3Tests()
     {
-        IList<Test> tests = new List<Test>()
-        {
+        IList<Test> tests =
+        [
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
-        };
+        ];
 
         return GetTestCases(tests, nameof(V3), CreateV3Transaction);
     }
@@ -186,15 +185,15 @@ public class TxPermissionFilterTest
     }
     public static IEnumerable<TestCaseData> V4Tests()
     {
-        IList<Test> tests = new List<Test>()
-        {
+        IList<Test> tests =
+        [
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.None, Cache = false},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, FeeCap = 1, TxType = TxType.EIP1559},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1, TxType = TxType.Legacy},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, FeeCap = 5, TxType = TxType.EIP1559, Data = new byte[]{0, 2, 3}},
             new() {SenderKey = GetPrivateKey(1), ContractPermissions = ITransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, TxType = TxType.Legacy, Data = new byte[]{0, 2, 3}},
-        };
+        ];
 
         return GetTestCases(tests, nameof(V4), CreateV4Transaction);
     }
@@ -205,7 +204,7 @@ public class TxPermissionFilterTest
         using TestTxPermissionsBlockchain chain = await chainFactory();
         Block? head = chain.BlockTree.Head;
         AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header, chain.SpecProvider.GetSpec(head.Header));
-        chain.TransactionPermissionContractVersions.Get(head.Header.Hash).Should().Be(version);
+        Assert.That(chain.TransactionPermissionContractVersions.Get(head.Header.Hash), Is.EqualTo(version));
         return (isAllowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
     }
 
@@ -243,9 +242,9 @@ public class TxPermissionFilterTest
 
     private static PrivateKey GetPrivateKey(int key) => new(key.ToString("X64"));
 
-    [TestCase(1, ExpectedResult = true)]
-    [TestCase(3, ExpectedResult = true)]
-    public bool allows_transactions_before_transitions(long blockNumber)
+    [TestCase(1UL, ExpectedResult = true)]
+    [TestCase(3UL, ExpectedResult = true)]
+    public bool allows_transactions_before_transitions(ulong blockNumber)
     {
         VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance,
             TestItem.AddressA,

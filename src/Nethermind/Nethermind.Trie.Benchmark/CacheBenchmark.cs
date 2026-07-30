@@ -1,6 +1,7 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -47,7 +48,7 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache Pre_init_trie_cache_160()
         {
             MemCountingCache memCountingCache
-                = new(1024 * 1024, string.Empty);
+                = new(MemorySizes.MiB, string.Empty);
             return memCountingCache;
         }
 
@@ -55,7 +56,7 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache Post_init_trie_cache_with_item_400()
         {
             MemCountingCache cache
-                = new(1024 * 1024, string.Empty);
+                = new(MemorySizes.MiB, string.Empty);
             cache.Set(Keccak.Zero, Array.Empty<byte>());
             return cache;
         }
@@ -64,7 +65,7 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache With_2_items_cache_504()
         {
             MemCountingCache cache
-                = new(1024 * 1024, string.Empty);
+                = new(MemorySizes.MiB, string.Empty);
             cache.Set(TestItem.KeccakA, Array.Empty<byte>());
             cache.Set(TestItem.KeccakB, Array.Empty<byte>());
             return cache;
@@ -74,7 +75,7 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache With_3_items_cache_608()
         {
             MemCountingCache cache
-                = new(1024 * 1024, string.Empty);
+                = new(MemorySizes.MiB, string.Empty);
             cache.Set(TestItem.KeccakA, Array.Empty<byte>());
             cache.Set(TestItem.KeccakB, Array.Empty<byte>());
             cache.Set(TestItem.KeccakC, Array.Empty<byte>());
@@ -85,7 +86,7 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache Post_dictionary_growth_cache_824_and_136_lost()
         {
             MemCountingCache cache
-                = new(1024 * 1024, string.Empty);
+                = new(MemorySizes.MiB, string.Empty);
             cache.Set(TestItem.KeccakA, Array.Empty<byte>());
             cache.Set(TestItem.KeccakB, Array.Empty<byte>());
             cache.Set(TestItem.KeccakC, Array.Empty<byte>());

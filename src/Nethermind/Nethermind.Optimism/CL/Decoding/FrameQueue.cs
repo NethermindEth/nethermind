@@ -49,13 +49,19 @@ public class FrameQueue(ILogManager logManager) : IFrameQueue
             ReadOnlyMemory<byte> decodedChannel = ChannelDecoder.DecodeChannel(_frameData.ToArray());
             _frameData.Clear();
 
-            Rlp.ValueDecoderContext rlp = new(decodedChannel.Span);
-            Memory<byte> batchData = rlp.DecodeByteArrayMemory();
+            RlpReader rlp = new(decodedChannel.Span);
+            ReadOnlySpan<byte> batchDataSpan = rlp.DecodeByteArraySpan();
+            ReadOnlyMemory<byte> batchData = decodedChannel.Slice(rlp.Position - batchDataSpan.Length, batchDataSpan.Length);
             BatchV1[] batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
             return batches;
         }
 
         return null;
     }
-    public void Clear() => _latestFrame = null;
+
+    public void Clear()
+    {
+        _frameData.Clear();
+        _latestFrame = null;
+    }
 }

@@ -20,7 +20,7 @@ namespace Nethermind.State.Proofs
         {
             if (proof.Length == 0)
             {
-                return default(CappedArray<byte>);
+                return default;
             }
 
             for (int i = proof.Length; i > 0; i--)

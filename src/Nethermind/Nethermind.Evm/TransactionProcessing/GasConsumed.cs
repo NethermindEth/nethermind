@@ -11,19 +11,19 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// <param name="BlockGas">EIP-7778/EIP-8037 regular gas for block accounting (pre-refund). When 0 without state gas, use SpentGas.</param>
 /// <param name="BlockStateGas">EIP-8037: State gas for block accounting. Block gasUsed = max(sum_regular, sum_state).</param>
 /// <param name="MaxUsedGas">Maximum gas consumed before refunds; if 0, use SpentGas.</param>
-public readonly record struct GasConsumed(long SpentGas, long OperationGas, long BlockGas = 0, long BlockStateGas = 0, long MaxUsedGas = 0)
+public readonly record struct GasConsumed(ulong SpentGas, ulong OperationGas, ulong BlockGas = 0, ulong BlockStateGas = 0, ulong MaxUsedGas = 0)
 {
     /// <summary>
     /// Gets the effective regular gas for block accounting. When EIP-7778 is enabled,
     /// this returns BlockGas (pre-refund), otherwise returns SpentGas. EIP-8037 can explicitly report zero regular gas when state gas is nonzero.
     /// </summary>
-    public long EffectiveBlockGas => BlockGas > 0 || BlockStateGas > 0 ? BlockGas : SpentGas;
+    public ulong EffectiveBlockGas => BlockGas > 0 || BlockStateGas > 0 ? BlockGas : SpentGas;
 
     /// <summary>
     /// Gets gas consumed before refunds (and floor adjusted), used by eth_simulate maxUsedGas.
     /// </summary>
-    public long EffectiveMaxUsedGas => MaxUsedGas > 0 ? MaxUsedGas : SpentGas;
+    public ulong EffectiveMaxUsedGas => MaxUsedGas > 0 ? MaxUsedGas : SpentGas;
 
-    public static implicit operator long(GasConsumed gas) => gas.SpentGas;
-    public static implicit operator GasConsumed(long spentGas) => new(spentGas, spentGas, 0, 0, spentGas);
+    public static implicit operator ulong(GasConsumed gas) => gas.SpentGas;
+    public static implicit operator GasConsumed(ulong spentGas) => new(spentGas, spentGas, 0, 0, spentGas);
 }

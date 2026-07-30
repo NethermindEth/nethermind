@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -25,8 +24,8 @@ namespace Nethermind.Xdc.Test.ModuleTests
 
             IRocksDbConfig config = custom.GetForDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName, null);
 
-            config.Should().NotBeNull();
-            config.RocksDbOptions.Should().NotBeNull();
+            Assert.That(config, Is.Not.Null);
+            Assert.That(config.RocksDbOptions, Is.Not.Null);
         }
     }
 }

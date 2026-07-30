@@ -5,15 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -27,6 +26,7 @@ public class FilterManagerTests
     private FilterStore _filterStore = null!;
     private TestMainProcessingContext _mainProcessingContext = null!;
     private ITxPool _txPool = null!;
+    private IReceiptMonitor _receiptMonitor = null!;
     private ILogManager _logManager = null!;
     private FilterManager _filterManager = null!;
 
@@ -39,19 +39,24 @@ public class FilterManagerTests
         _filterStore = new FilterStore(new TimerFactory(), 400, 100);
         _mainProcessingContext = new TestMainProcessingContext();
         _txPool = Substitute.For<ITxPool>();
+        _receiptMonitor = Substitute.For<IReceiptMonitor>();
         _logManager = LimboLogs.Instance;
     }
 
     [TearDown]
-    public void TearDown() => _filterStore.Dispose();
+    public void TearDown()
+    {
+        _filterStore.Dispose();
+        _receiptMonitor.Dispose();
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task removing_filter_removes_data()
     {
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
-        _filterManager.GetLogs(0).Should().NotBeEmpty();
+        Assert.That(_filterManager.GetLogs(0), Is.Not.Empty);
         await Task.Delay(600);
-        _filterManager.GetLogs(0).Should().BeEmpty();
+        Assert.That(_filterManager.GetLogs(0), Is.Empty);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -257,7 +262,7 @@ public class FilterManagerTests
     {
         const int txCount = 10;
 
-        Assert(
+        AssertFilterLogs(
             filterBuilder: (builder, _) => builder
                 .FromBlock(1L)
                 .ToBlock(10L)
@@ -275,7 +280,7 @@ public class FilterManagerTests
                         .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject
                 ).ToArray()),
             receiptCount: txCount,
-            logsAssertion: logs => logs.Select(l => l.LogIndex).Should().BeEquivalentTo(Enumerable.Range(0, txCount * logsPerTx))
+            logsAssertion: logs => Assert.That(logs.Select(l => l.LogIndex), Is.EqualTo(Enumerable.Range(0, txCount * logsPerTx)))
         );
     }
 
@@ -285,7 +290,7 @@ public class FilterManagerTests
     {
         BlockFilter blockFilter = new(_currentFilterId++);
         _filterStore.SaveFilter(blockFilter);
-        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
         Block block = Build.A.Block.TestObject;
 
@@ -323,7 +328,35 @@ public class FilterManagerTests
         allTasks.Add(consumer);
         await Task.WhenAll(allTasks);
 
-        totalPolled.Should().Be(blockCount);
+        Assert.That(totalPolled, Is.EqualTo(blockCount));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void reorg_removed_logs_are_polled_as_removed(bool explicitNumericRange)
+    {
+        Action<FilterBuilder> filterShape = explicitNumericRange
+            ? f => f.FromBlock(1L).ToBlock(10L)
+            : f => f.FromBlock(1L);
+        LogFilter filter = BuildFilter(filterShape);
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        Block block = Build.A.Block.TestObject;
+        TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(2L));
+
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
+        _mainProcessingContext.RaiseTransactionProcessed(new TxProcessedEventArgs(1, Build.A.Transaction.TestObject, block.Header, receipt));
+
+        _receiptMonitor.ReceiptsInserted += Raise.EventWith(_receiptMonitor, new ReceiptsEventArgs(block.Header, [receipt], wasRemoved: true));
+
+        FilterLog[] logs = _filterManager.PollLogs(filter.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(logs.Any(static l => l.Removed), Is.True);
+            Assert.That(logs.Any(static l => !l.Removed), Is.True);
+        });
     }
 
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
@@ -333,26 +366,26 @@ public class FilterManagerTests
         => LogsShouldBeEmpty([filterBuilder], [receiptBuilder]);
 
     private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().NotBeEmpty());
+        => AssertFilterLogs(filterBuilders, receiptBuilders, static logs => Assert.That(logs, Is.Not.Empty));
 
     private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().BeEmpty());
+        => AssertFilterLogs(filterBuilders, receiptBuilders, static logs => Assert.That(logs, Is.Empty));
 
-    private void Assert(Action<FilterBuilder, int> filterBuilder, int filterCount,
+    private void AssertFilterLogs(Action<FilterBuilder, int> filterBuilder, int filterCount,
         Action<ReceiptBuilder, int> receiptBuilder, int receiptCount,
         Action<IEnumerable<FilterLog>> logsAssertion)
-        => Assert(
+        => AssertFilterLogs(
             Enumerable.Range(0, filterCount).Select<int, Action<FilterBuilder>>(i => builder => filterBuilder(builder, i)),
             Enumerable.Range(0, receiptCount).Select<int, Action<ReceiptBuilder>>(i => builder => receiptBuilder(builder, i)),
             logsAssertion
         );
 
-    private void Assert(IEnumerable<Action<FilterBuilder>> filterBuilders,
+    private void AssertFilterLogs(IEnumerable<Action<FilterBuilder>> filterBuilders,
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
         Action<IEnumerable<FilterLog>> logsAssertion)
     {
-        List<FilterBase> filters = new();
-        List<TxReceipt> receipts = new();
+        List<FilterBase> filters = [];
+        List<TxReceipt> receipts = [];
         foreach (Action<FilterBuilder> filterBuilder in filterBuilders)
         {
             filters.Add(BuildFilter(filterBuilder));
@@ -370,7 +403,7 @@ public class FilterManagerTests
 
         _filterStore.SaveFilters(filters.OfType<LogFilter>());
         _filterStore.SaveFilters(filters.OfType<BlockFilter>());
-        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
         _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
 
@@ -382,7 +415,7 @@ public class FilterManagerTests
             index++;
         }
 
-        NUnit.Framework.Assert.Multiple(() =>
+        Assert.Multiple(() =>
         {
             foreach (LogFilter filter in filters.OfType<LogFilter>())
             {
@@ -391,7 +424,7 @@ public class FilterManagerTests
             }
 
             Hash256[] hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
-            NUnit.Framework.Assert.That(hashes.Length, Is.EqualTo(1));
+            Assert.That(hashes.Length, Is.EqualTo(1));
         });
     }
 

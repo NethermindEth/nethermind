@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -61,11 +62,11 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
             inner.SetStorage(addr, slot, value);
         }
 
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue) => inner.SetStateTrieNode(path, tnValue);
+        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value)
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
         {
             byte[]? addrPreimage = preimageDb.Get(addrHash.Bytes[..PreimageLookupSize]);
             byte[]? slotPreimage = preimageDb.Get(slotHash.Bytes[..PreimageLookupSize]);
@@ -73,11 +74,12 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
             {
                 Address addr = new(addrPreimage);
                 UInt256 slot = new(slotPreimage, isBigEndian: true);
-                inner.SetStorage(addr, slot, value);
+                RlpReader ctx = new(rlpValue);
+                inner.SetStorage(addr, slot, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
             }
             else
             {
-                inner.SetStorageRaw(addrHash, slotHash, value);
+                inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
             }
         }
 
@@ -114,10 +116,10 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
 
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
-            inner.DeleteStateTrieNodeRange(fromPath, toPath);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
+            inner.DeleteStateTrieNodeRange(from, to);
 
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
-            inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
+            inner.DeleteStorageTrieNodeRange(addressHash, from, to);
     }
 }

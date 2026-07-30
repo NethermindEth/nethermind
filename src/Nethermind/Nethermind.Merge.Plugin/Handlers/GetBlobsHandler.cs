@@ -11,21 +11,21 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpecProvider) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>
+public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpecProvider) : IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>
 {
     private const int MaxRequest = 128;
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> HandleAsync(byte[][] request)
+    public Task<ResultWrapper<IReadOnlyList<BlobAndProofV1?>>> HandleAsync(byte[][] request)
     {
         if (chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7594Enabled)
         {
-            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
+            return ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
         }
 
         if (request.Length > MaxRequest)
         {
             string error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
         bool allBlobsAvailable = true;
@@ -57,7 +57,7 @@ public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpe
                 Metrics.GetBlobsRequestsFailureTotal++;
             }
 
-            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(new BlobsV1DirectResponse(response));
+            return ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Success(new BlobsV1DirectResponse(response));
         }
         catch
         {

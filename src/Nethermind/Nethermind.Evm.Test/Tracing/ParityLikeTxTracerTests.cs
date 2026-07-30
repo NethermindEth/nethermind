@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
@@ -38,16 +37,19 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        Assert.That(trace.Action.From, Is.EqualTo(tx.SenderAddress), "from");
-        Assert.That(trace.Action.To, Is.EqualTo(tx.To), "to");
-        Assert.That(trace.BlockHash, Is.EqualTo(block.Hash), "hash");
-        Assert.That(trace.BlockNumber, Is.EqualTo(block.Number), "number");
-        Assert.That(trace.TransactionPosition, Is.EqualTo(0), "tx index");
-        Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
-        Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
-        Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
-        Assert.That(trace.Action.Input, Is.EqualTo(tx.Data.AsArray()), "input");
-        Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()), "trace address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.From, Is.EqualTo(tx.SenderAddress), "from");
+            Assert.That(trace.Action.To, Is.EqualTo(tx.To), "to");
+            Assert.That(trace.BlockHash, Is.EqualTo(block.Hash), "hash");
+            Assert.That(trace.BlockNumber, Is.EqualTo(block.Number), "number");
+            Assert.That(trace.TransactionPosition, Is.EqualTo(0), "tx index");
+            Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
+            Assert.That(trace.Action.Gas, Is.EqualTo(tx.GasLimit - 21000), "gas");
+            Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
+            Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(tx.Data.AsArray()), "input");
+            Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()), "trace address");
+        }
     }
 
     [Test]
@@ -78,7 +80,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .PushData(SampleHexData1)
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()));
+        Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()));
     }
 
     [Test]
@@ -163,7 +165,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         byte[] input = Bytes.FromHexString(SampleHexData2);
         UInt256 value = 1.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(input, value, code);
-        Assert.That(trace.Action.Input, Is.EqualTo(input));
+        Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(input));
     }
 
     [Test]
@@ -233,11 +235,14 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             1, // STOP
         };
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "root subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0 }), "[0] address");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "root subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        }
     }
 
     [Test]
@@ -332,7 +337,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         ParityLikeTxTrace trace = ExecuteAndTraceParityCall(code).trace;
-        trace.Action!.Error.Should().BeNullOrEmpty();
+        Assert.That(trace.Action!.Error, Is.Null.Or.Empty);
 
     }
 
@@ -359,9 +364,12 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(0), "subtraces count");
-        Assert.That(trace.VmTrace.Operations.Last().Cost, Is.EqualTo(59700));
-        Assert.That(trace.VmTrace.Operations.Last().Used, Is.EqualTo(71579));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(0), "subtraces count");
+            Assert.That(trace.VmTrace.Operations.Last().Cost, Is.EqualTo(59700));
+            Assert.That(trace.VmTrace.Operations.Last().Used, Is.EqualTo(71579));
+        }
     }
 
     [Test]
@@ -379,8 +387,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         ParityMemoryChangeTrace memory = trace.VmTrace.Operations[2].Memory;
-        Assert.That(memory.Data.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(dataHex));
-        Assert.That(memory.Offset, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.Data.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(dataHex));
+            Assert.That(memory.Offset, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -408,8 +419,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         byte[][] push1 = trace.VmTrace.Operations[0].Push;
         byte[][] push2 = trace.VmTrace.Operations[1].Push;
-        Assert.That(push1[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
-        Assert.That(push2[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(push1[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+            Assert.That(push2[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        }
     }
 
     [Test]
@@ -426,8 +440,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         byte[][] dup = trace.VmTrace.Operations[2].Push;
-        Assert.That(dup[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
-        Assert.That(dup[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dup[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+            Assert.That(dup[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        }
     }
 
     [Test]
@@ -444,8 +461,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         byte[][] swap = trace.VmTrace.Operations[2].Push;
-        Assert.That(swap[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-        Assert.That(swap[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(swap[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+            Assert.That(swap[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        }
     }
 
     [Test]
@@ -462,8 +482,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         ParityStorageChangeTrace sstore = trace.VmTrace.Operations[2].Store;
-        Assert.That(sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-        Assert.That(sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+            Assert.That(sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        }
     }
 
     [Test]
@@ -511,8 +534,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         UInt256 value = 2.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code, value);
-        Assert.That(trace.VmTrace, Is.Null);
-        Assert.That(trace.Action.Value, Is.EqualTo(value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.VmTrace, Is.Null);
+            Assert.That(trace.Action.Value, Is.EqualTo(value));
+        }
     }
 
     [Test]
@@ -587,18 +613,21 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        // call to AddressC and should ignore precompile
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
-        Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
+        using (Assert.EnterMultipleScope())
+        {
+            // call to AddressC and should ignore precompile
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
+            Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-        // AddressC call - only one call
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
-        Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
+            // AddressC call - only one call
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
 
-        // Check the 2nd subtrace - a precompile call with value - must be included
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
+            // Check the 2nd subtrace - a precompile call with value - must be included
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
+        }
     }
 
     [Test]
@@ -635,24 +664,27 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             1, // STOP
         };
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(2), "[] subtraces");
-        Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(2), "[] subtraces");
+            Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0 }), "[0] address");
-        Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
+            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
 
-        Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
-        Assert.That(trace.Action.Subtraces[1].TraceAddress, Is.EqualTo(new[] { 1 }), "[1] address");
-        Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
+            Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            Assert.That(trace.Action.Subtraces[1].TraceAddress.ToArray(), Is.EqualTo(new[] { 1 }), "[1] address");
+            Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
 
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[0, 0] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[0, 0] type");
 
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[1, 0] type");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[1, 0] type");
+        }
     }
 
     [Test]
@@ -682,15 +714,18 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "address c");
-        Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
-        Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
-        Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
-        Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
-        Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "address c");
+            Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+        }
     }
 
     [Test]
@@ -720,13 +755,16 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "call target");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Contract].Code.Before, Is.EqualTo(null), "code before");
-        Assert.That(trace.StateChanges[Contract].Code.After, Is.EqualTo(deployedCode), "code after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "call target");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Contract].Code.Before, Is.EqualTo(null), "code before");
+            Assert.That(trace.StateChanges[Contract].Code.After, Is.EqualTo(deployedCode), "code after");
+        }
     }
 
     [Test]
@@ -737,16 +775,19 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Sender].Balance.Before, Is.EqualTo(100.Ether), "sender before");
-        Assert.That(trace.StateChanges[Sender].Balance.After, Is.EqualTo(100.Ether - 21001), "sender after");
-        Assert.That(trace.StateChanges[Recipient].Balance.Before, Is.EqualTo(100.Ether), "recipient before");
-        Assert.That(trace.StateChanges[Recipient].Balance.After, Is.EqualTo(100.Ether + 1), "recipient after");
-        Assert.That(trace.StateChanges[Miner].Balance.Before, Is.EqualTo(null), "miner before");
-        Assert.That(trace.StateChanges[Miner].Balance.After, Is.EqualTo((UInt256)21000), "miner after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Sender].Balance.Before, Is.EqualTo(100.Ether), "sender before");
+            Assert.That(trace.StateChanges[Sender].Balance.After, Is.EqualTo(100.Ether - 21001), "sender after");
+            Assert.That(trace.StateChanges[Recipient].Balance.Before, Is.EqualTo(100.Ether), "recipient before");
+            Assert.That(trace.StateChanges[Recipient].Balance.After, Is.EqualTo(100.Ether + 1), "recipient after");
+            Assert.That(trace.StateChanges[Miner].Balance.Before, Is.EqualTo(null), "miner before");
+            Assert.That(trace.StateChanges[Miner].Balance.After, Is.EqualTo((UInt256)21000), "miner after");
+        }
     }
 
     [Test]
@@ -758,12 +799,15 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Sender].Nonce.Before, Is.EqualTo(UInt256.Zero), "sender before");
-        Assert.That(trace.StateChanges[Sender].Nonce.After, Is.EqualTo(UInt256.One), "sender after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Sender].Nonce.Before, Is.EqualTo(UInt256.Zero), "sender before");
+            Assert.That(trace.StateChanges[Sender].Nonce.After, Is.EqualTo(UInt256.One), "sender after");
+        }
     }
 
     [Test]
@@ -780,6 +824,28 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
         tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
         Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, [], []));
+    }
+
+    [Test]
+    public void Mark_as_success_without_report_action_creates_synthetic_root_action()
+    {
+        Block block = Build.A.Block.TestObject;
+        Transaction tx = Build.A.Transaction.TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
+        byte[] output = [1, 2, 3];
+
+        Assert.DoesNotThrow(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, output, []));
+
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action, Is.Not.Null);
+            Assert.That(trace.Action!.From, Is.EqualTo(tx.SenderAddress));
+            Assert.That(trace.Action.To, Is.EqualTo(tx.To));
+            Assert.That(trace.Action.Value, Is.EqualTo(tx.Value));
+            Assert.That(trace.Action.Result!.Output, Is.EqualTo(output));
+            Assert.That(trace.Output, Is.EqualTo(output));
+        }
     }
 
     [Test]

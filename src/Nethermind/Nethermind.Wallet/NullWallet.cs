@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Security;
 using System.Threading;
 using Nethermind.Core;
@@ -40,12 +41,14 @@ namespace Nethermind.Wallet
             return true;
         }
 
-        public Signature Sign(Hash256 message, Address address, SecureString passphrase) => null;
-
         public Address[] GetAccounts() => [];
 
         public bool IsUnlocked(Address address) => true;
 
-        public Signature Sign(Hash256 message, Address address) => null;
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
+        {
+            signature = null;
+            return false;
+        }
     }
 }

@@ -7,7 +7,7 @@ namespace Nethermind.Taiko.Config;
 
 public interface ISurgeConfig : IConfig
 {
-    [ConfigItem(Description = "The URL of the L1 execution node JSON-RPC API.", DefaultValue = "null")]
+    [ConfigItem(Description = "The URL of the L1 execution node JSON-RPC API.", DefaultValue = "null", IsSensitive = true)]
     string? L1EthApiEndpoint { get; set; }
 
     [ConfigItem(Description = "Number of L2 blocks per batch.", DefaultValue = "1800")]
@@ -29,10 +29,10 @@ public interface ISurgeConfig : IConfig
     ulong FixedProvingGas { get; set; }
 
     [ConfigItem(Description = "Number of blocks to consider for computing the L1 average base fee.", DefaultValue = "200")]
-    int FeeHistoryBlockCount { get; set; }
+    ulong FeeHistoryBlockCount { get; set; }
 
     [ConfigItem(Description = "Number of recent L2 blocks to consider for computing the moving average of gas usage.", DefaultValue = "20")]
-    int L2GasUsageWindowSize { get; set; }
+    ulong L2GasUsageWindowSize { get; set; }
 
     [ConfigItem(Description = "Estimated offchain proving cost per batch in wei (~$5.5 @ $3000/ETH).", DefaultValue = "1833333333333333")]
     ulong EstimatedOffchainProvingCost { get; set; }
@@ -53,7 +53,7 @@ public interface ISurgeConfig : IConfig
     int GasPriceRefreshTimeoutSeconds { get; set; }
 
     [ConfigItem(Description = "Filter transactions exceeding the max allowed ratio of gas limit to the actual gas used (e.g. 1, 2 etc.). Set to 0 to disable.", DefaultValue = "0")]
-    int MaxGasLimitRatio { get; set; }
+    ulong MaxGasLimitRatio { get; set; }
 
     [ConfigItem(Description = "Enable TDX attestation support.", DefaultValue = "false")]
     bool TdxEnabled { get; set; }

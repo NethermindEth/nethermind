@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -49,7 +49,7 @@ namespace Nethermind.Config
         }
 
         public bool Enabled { get; set; }
-        public long? TargetBlockGasLimit { get; set; } = null;
+        public ulong? TargetBlockGasLimit { get; set; } = null;
 
         public UInt256 MinGasPrice { get; set; } = 1.Wei;
 
@@ -57,16 +57,21 @@ namespace Nethermind.Config
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
-        public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+        public PreWarmMode PreWarming { get; set; } = PreWarmMode.BlockAndMempool;
 
         public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
 
         public int PreWarmStateConcurrency { get; set; } = 0;
 
+        public int MempoolPreWarmConcurrency { get; set; } = 0;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
+
+        public bool ParallelExecution { get; set; } = true;
+        public bool ParallelExecutionBatchRead { get; set; } = true;
 
         public string ExtraData
         {
@@ -77,7 +82,7 @@ namespace Nethermind.Config
             set
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(value);
-                if (bytes is not null && bytes.Length > 32)
+                if (bytes.Length > 32)
                 {
                     throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {_extraDataString}",
                         ExitCodes.TooLongExtraData);
@@ -100,5 +105,11 @@ namespace Nethermind.Config
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
 
         public int? BlockProductionBlobLimit { get; set; }
+
+        public long SlowBlockThresholdMs { get; set; } = -1;
+
+        public long SlowBlockPerTxThresholdMs { get; set; } = -1;
+
+        public ulong MaxGasLimit { get; set; } = 1_000_000_000;
     }
 }
