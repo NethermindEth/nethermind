@@ -496,6 +496,11 @@ public class Eip8141CanonicalPaymasterTests
         TransactionResult result = ExecuteInvalid(tx, BlockTimestamp);
 
         Assert.That(result.TransactionExecuted, Is.False);
+        // Pin the specific gate: APPROVE's balance check reverts the pay (VERIFY) frame, giving
+        // "VERIFY frame reverted". The charge-time gate (TransactionProcessorBase.FrameTx.cs) would
+        // instead leave the payer unset and fail with "frame transaction never set a payer", so this
+        // assertion distinguishes the two solvency gates rather than accepting either.
+        Assert.That(result.ErrorDescription, Is.EqualTo("VERIFY frame reverted"));
     }
 
     // 20. The mirror of test 19, giving the deposit path (test 5) an end-to-end purpose: a plain-value
@@ -518,6 +523,34 @@ public class Eip8141CanonicalPaymasterTests
 
         Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "the funded instance clears the solvency gate");
         Assert.That(receipt.Payer, Is.EqualTo(Paymaster), "the deposit-backed instance is the payer");
+    }
+
+    // 21. The initiate guards reject a zero argument: an initiate-withdrawal of 0 (its DUP1 ISZERO
+    // JUMPI FAIL) and an initiate-rotation to address(0) (its mirror guard) both revert, so a rotation
+    // that would brick the instance never opens a pending action. An unrecognised op byte falls through
+    // the dispatch to the shared FAIL and reverts likewise. Either way the pending slots stay clear.
+    [TestCaseSource(nameof(InitiateGuardRejectionCases))]
+    public void AdminInitiate_RejectsZeroArgumentAndUnknownOp(byte[] call)
+    {
+        Fund(Signer);
+        DeployPaymaster(PaymasterCode, Signer, 1.Ether);
+
+        TxReceipt receipt = ProcessBlock(BlockTimestamp, AdminTx(SignerKey, 0, call))[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure), "the guard reverts");
+        Assert.That(Slot(1), Is.EqualTo(UInt256.Zero), "no pending amount is written");
+        Assert.That(Slot(2), Is.EqualTo(UInt256.Zero), "no pending action is opened");
+        Assert.That(Slot(3), Is.EqualTo(UInt256.Zero), "no pending signer is written");
+    }
+
+    private static IEnumerable<TestCaseData> InitiateGuardRejectionCases()
+    {
+        yield return new TestCaseData(WithdrawalCall(UInt256.Zero))
+            .SetName("initiate withdrawal of zero amount reverts");
+        yield return new TestCaseData(RotationCall(Address.Zero))
+            .SetName("initiate rotation to address(0) reverts");
+        yield return new TestCaseData(new byte[] { 0x05 })
+            .SetName("an unrecognised op byte reverts");
     }
 
     public enum AdminSigCase
