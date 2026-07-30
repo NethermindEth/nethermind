@@ -152,14 +152,14 @@ namespace Nethermind.Facade.Find
             // unanswerable, that stays true after a retry, so it is the accurate answer for the whole range.
             // An unexpected fault wins over both — the aggregate then falls through to the generic handler,
             // the only site that logs the real error; unwrapping a transient over it would hide a genuine bug.
-            ResourceNotFoundException? notFound = null;
+            Exception? notFound = null;
             Exception? transient = null;
             foreach (Exception inner in e.Flatten().InnerExceptions)
             {
                 switch (inner)
                 {
-                    case ResourceNotFoundException r:
-                        notFound ??= r;
+                    case ResourceNotFoundException:
+                        notFound ??= inner;
                         break;
                     case ConcurrencyLimitReachedException or OperationCanceledException:
                         transient ??= inner;
@@ -168,7 +168,7 @@ namespace Nethermind.Facade.Find
                         return null;
                 }
             }
-            return (Exception?)notFound ?? transient;
+            return notFound ?? transient;
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
