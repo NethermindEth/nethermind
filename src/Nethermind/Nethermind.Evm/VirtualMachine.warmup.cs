@@ -182,6 +182,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         UInt256 a = new(0x1234567890ABCDEF, 0xFEDCBA0987654321, 0x1111111111111111, 0x2222222222222222);
         UInt256 b = new(0x42, 0, 0, 0); // small but > 1
         UInt256 c = new(0xDEADBEEFCAFEBABE, 0x0123456789ABCDEF, 0x3333333333333333, 0x4444444444444444);
+        // Small in-range operand for the second pass: a valid jump destination inside the
+        // 64-byte all-JUMPDEST code and a cheap memory offset, so memory and jump opcodes
+        // also profile their success paths (with c on top they only see the failure branch).
+        UInt256 s = new(0x2A, 0, 0, 0);
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
         {
@@ -193,28 +197,41 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 if (StateOpcodes.Contains(i))
                     continue;
 
-                // Push representative values so arithmetic opcodes take common paths:
-                // a / b → multi-word division (not by 0 or 1)
-                // a % c → remainder with c > result (common case)
-                // a * b % c → mulmod where modulus > product (common case)
-                stack.PushUInt256<TTracingInst>(in a);
-                stack.PushUInt256<TTracingInst>(in b);
-                stack.PushUInt256<TTracingInst>(in c);
-                stack.PushUInt256<TTracingInst>(in a);
-                stack.PushUInt256<TTracingInst>(in b);
-                stack.PushUInt256<TTracingInst>(in c);
-
-                opcodes[i](vm, ref stack, ref gas, ref pc);
-                if (vm.ReturnData is VmState<TGasPolicy> returnState)
+                for (int pass = 0; pass < 2; pass++)
                 {
-                    returnState.Dispose();
-                    vm.ReturnData = null!;
-                }
+                    if (pass == 0)
+                    {
+                        // Representative values so arithmetic opcodes take common paths:
+                        // a / b → multi-word division (not by 0 or 1)
+                        // a % c → remainder with c > result (common case)
+                        // a * b % c → mulmod where modulus > product (common case)
+                        stack.PushUInt256<TTracingInst>(in a);
+                        stack.PushUInt256<TTracingInst>(in b);
+                        stack.PushUInt256<TTracingInst>(in c);
+                        stack.PushUInt256<TTracingInst>(in a);
+                        stack.PushUInt256<TTracingInst>(in b);
+                        stack.PushUInt256<TTracingInst>(in c);
+                    }
+                    else
+                    {
+                        for (int j = 0; j < 6; j++)
+                        {
+                            stack.PushUInt256<TTracingInst>(in s);
+                        }
+                    }
 
-                state.Reset(resetBlockChanges: true);
-                stack.Head = 0;
-                gas = TGasPolicy.FromULong(ulong.MaxValue);
-                pc = 0;
+                    opcodes[i](vm, ref stack, ref gas, ref pc);
+                    if (vm.ReturnData is VmState<TGasPolicy> returnState)
+                    {
+                        returnState.Dispose();
+                        vm.ReturnData = null!;
+                    }
+
+                    state.Reset(resetBlockChanges: true);
+                    stack.Head = 0;
+                    gas = TGasPolicy.FromULong(ulong.MaxValue);
+                    pc = 0;
+                }
             }
         }
     }

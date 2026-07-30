@@ -15,14 +15,15 @@
     <!-- Split methods into hot/cold sections using SPGO block counts from .mibc.
          Cold basic blocks (error paths, rare branches) go to .text.cold section,
          keeping the hot working set smaller and improving I-cache density. -->
-    <!-- PettisHansen method layout from CallWeights in the .mibc. The richer pair of
-         "callchain-profile:nethermind.callchain.json" with "method-layout:callfrequency" crashes
-         crossgen2 (TypeLoadException in CallChainProfile.ResolveMethodName on truncated method-name
-         entries); do not re-enable until the profile is regenerated with fixed name formatting. -->
+    <!-- No method-layout flag: the committed profiles cannot drive one yet. The callchain profile
+         crashes crossgen2's CallChainProfile parser (its names lack the "Type!Method" format), and
+         the committed .mibc carries no call-graph data, so PettisHansen would silently no-op.
+         Re-enable "callchain-profile" plus "method-layout:callfrequency" once the profile is
+         regenerated with the fixed PgoTrim name formatting. -->
     <!-- Match file layout to method ordering so hot methods are on adjacent pages on disk. -->
     <!-- The SDK forwards $(PublishReadyToRunCrossgen2ExtraArgs) to crossgen2; the task-internal
          Crossgen2ExtraCommandLineArgs name is not user-settable. -->
-    <PublishReadyToRunCrossgen2ExtraArgs>$(PublishReadyToRunCrossgen2ExtraArgs);--opt-cross-module:*;--hot-cold-splitting;--file-layout:methodorder;--method-layout:pettishansen</PublishReadyToRunCrossgen2ExtraArgs>
+    <PublishReadyToRunCrossgen2ExtraArgs>$(PublishReadyToRunCrossgen2ExtraArgs);--opt-cross-module:*;--hot-cold-splitting;--file-layout:methodorder</PublishReadyToRunCrossgen2ExtraArgs>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(PublishReadyToRun)' == 'true' and Exists('$(NethermindPgoProfile)')">

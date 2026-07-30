@@ -51,11 +51,11 @@ static class CallChainGenerator
                 foreach (MethodLoadUnloadVerboseTraceData evt in
                     process.EventsInProcess.ByEventType<MethodLoadUnloadVerboseTraceData>())
                 {
-                    string name = FormatMethodName(evt);
+                    string? name = FormatMethodName(evt);
                     ulong start = evt.MethodStartAddress;
                     int size = evt.MethodSize;
 
-                    if (start == 0 || size == 0)
+                    if (name is null || start == 0 || size == 0)
                         continue;
 
                     // Register all IPs in this method's range
@@ -222,17 +222,29 @@ static class CallChainGenerator
         return null;
     }
 
-    static string FormatMethodName(MethodLoadUnloadVerboseTraceData evt)
+    static string? FormatMethodName(MethodLoadUnloadVerboseTraceData evt)
     {
-        // Format: Namespace.Type.Method(ArgTypes)
-        // crossgen2's CallChainProfile resolves by matching against MethodDesc.ToString()
+        // crossgen2's CallChainProfile splits each name on '!' and expects exactly two parts,
+        // "Namespace.Type!Method", with no signature. Generic instantiations in the type portion
+        // ("Type`1[Arg]") fail its TypeName parser with a fatal TypeLoadException, so strip to the
+        // open generic type. IL stubs and dynamic methods are unresolvable — return null so their
+        // samples are counted as unresolved edges instead of crashing crossgen2.
         string ns = evt.MethodNamespace;
         string name = evt.MethodName;
-        string sig = evt.MethodSignature;
 
-        if (!string.IsNullOrEmpty(ns))
-            return $"{ns}.{name}({sig})";
-        return $"{name}({sig})";
+        if (string.IsNullOrEmpty(ns)
+            || ns.StartsWith("dynamicClass", StringComparison.Ordinal)
+            || name.Contains("IL_STUB", StringComparison.Ordinal)
+            || name.Contains('!'))
+        {
+            return null;
+        }
+
+        int instantiation = ns.IndexOf('[');
+        if (instantiation >= 0)
+            ns = ns[..instantiation];
+
+        return $"{ns}!{name}";
     }
 
     record MethodInfo(string Name, ulong Start, int Size);

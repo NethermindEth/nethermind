@@ -44,7 +44,7 @@ jobs:
           dockerfiles=(
             "Dockerfile"
             "Dockerfile.chiseled"
-            "Dockerfile.pgo"
+            "tools/PgoTrim/Dockerfile.pgo"
             "scripts/build/Dockerfile"
           )
 
@@ -54,7 +54,7 @@ jobs:
 
           runtime_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
 
-          for file in "Dockerfile" "Dockerfile.pgo"; do
+          for file in "Dockerfile" "tools/PgoTrim/Dockerfile.pgo"; do
             sed -i "s|${runtime_pattern}|\1${runtime_tag}@${runtime_digest}|" "$file"
           done
 
