@@ -28,5 +28,6 @@ public static class TxPoolErrorMessages
     public const string DelegationNonceGap = "delegation nonce gap";
     public const string DelegationAuthorityHasPendingTx = "delegation authority has pending transaction";
     public const string PayerExposureExceeded = "payer exposure exceeds balance";
+    public const string VerifyGasExceeded = "validation prefix exceeds MAX_VERIFY_GAS";
     public const string NodeIsSyncing = "node is syncing";
 }

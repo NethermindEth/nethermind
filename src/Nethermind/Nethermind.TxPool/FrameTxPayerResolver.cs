@@ -134,6 +134,76 @@ internal static class FrameTxPayerResolver
     }
 
     /// <summary>
+    /// Computes the EIP-8141 validation-prefix verification gas of <paramref name="tx"/> — the sum of
+    /// <c>gas_limit</c> across the validation-prefix frames plus the intrinsic cost of validating
+    /// <c>tx.signatures</c> — which admission bounds by <see cref="Eip8141Constants.MaxVerifyGas"/>.
+    /// </summary>
+    /// <remarks>
+    /// State-free structural analysis: the prefix span depends only on frame shapes, so it applies to
+    /// the recognized shapes whether or not the payer resolves natively. This is the Direct Evaluation
+    /// form of the bound (ethereum/EIPs#12007 "Direct evaluation MUST apply the same limits as
+    /// simulation"); no EVM execution is needed. Returns <c>false</c> when the prefix is not one of the
+    /// recognized shapes (bound not computable here; structural-match gate deferred). Arithmetic
+    /// overflow is reported as <see cref="ulong.MaxValue"/> so the caller treats it as over budget.
+    /// <c>deploy</c>-prefixed shapes are not analyzed here (deferred with the simulation layer).
+    /// </remarks>
+    /// <returns><c>true</c> with <paramref name="verifyGas"/> set for a recognized prefix; otherwise <c>false</c>.</returns>
+    public static bool TryGetValidationPrefixVerifyGas(Transaction tx, out ulong verifyGas)
+    {
+        verifyGas = 0;
+        TxFrame[]? frames = tx.Frames;
+        Address? sender = tx.SenderAddress;
+        if (frames is null || frames.Length == 0 || sender is null)
+        {
+            return false;
+        }
+
+        // A leading expiry_verify frame is skipped for shape matching but counts toward the prefix gas.
+        int index = IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
+        if (index >= frames.Length)
+        {
+            return false;
+        }
+
+        int prefixLength;
+        TxFrame verifyFrame = frames[index];
+        if (IsSelfVerify(verifyFrame, sender))
+        {
+            prefixLength = index + 1;
+        }
+        else if (IsOnlyVerify(verifyFrame, sender) && index + 1 < frames.Length && IsPay(frames[index + 1]))
+        {
+            prefixLength = index + 2;
+        }
+        else
+        {
+            return false;
+        }
+
+        ulong prefixGas = 0;
+        for (int i = 0; i < prefixLength; i++)
+        {
+            ulong next = prefixGas + frames[i].GasLimit;
+            if (next < prefixGas)
+            {
+                verifyGas = ulong.MaxValue;
+                return true;
+            }
+            prefixGas = next;
+        }
+
+        ulong signatureCost = 0;
+        foreach (TxFrameSignature signature in tx.FrameSignatures ?? [])
+        {
+            signatureCost += Eip8141Constants.SignatureVerificationGasCost(signature.Scheme);
+        }
+
+        ulong total = prefixGas + signatureCost;
+        verifyGas = total < prefixGas ? ulong.MaxValue : total;
+        return true;
+    }
+
+    /// <summary>
     /// Mirrors the execution default-code VERIFY approval check for a self_verify prefix: an index-0
     /// canonical-hash (empty <c>msg</c>) secp256k1 signature whose resolved signer is the sender.
     /// Cryptographic verification is a separate deferred gate; this checks only the structural conditions.

@@ -184,6 +184,10 @@ namespace Nethermind.TxPool
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
+            // EIP-8141: bound the validation-prefix verify gas by MAX_VERIFY_GAS; a state-free
+            // structural DoS gate, so it runs before payer resolution and exposure accounting.
+            postHashFilters.Add(new FrameTxVerifyGasFilter(_logger));
+
             // EIP-8141: resolve and record the frame-tx payer for downstream mempool policy, and reject
             // provably-payerless prefixes. Runs last so only otherwise-admissible frame txs (sender
             // already recovered) are resolved. The earlier balance filters gate on the sender balance, so
