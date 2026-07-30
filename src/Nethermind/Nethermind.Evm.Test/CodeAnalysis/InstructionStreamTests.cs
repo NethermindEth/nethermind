@@ -38,12 +38,11 @@ public class InstructionStreamTests
             Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.VeryLow),
                 "two pushes and an add are one block charged as a single sum");
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst), "the first op of a block carries its charge");
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
-            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock),
-                "PUSH1 2; ADD folds into a single const-op entry");
-            Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.Add), "the pair runs under its virtual opcode");
-            Assert.That(stream.Constants[(int)stream.Ops[1].Operand], Is.EqualTo((Nethermind.Int256.UInt256)2),
-                "the pushed constant survives in the pool as the pair's operand");
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo((byte)Instruction.PUSH32),
+                "two constant pushes feeding an operator fold at analysis into one pooled push");
+            Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)3),
+                "the folded value is computed with the operation the executor would have dispatched");
+            Assert.That(stream.Ops, Has.Length.EqualTo(2), "the folded push and the STOP boundary");
             Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
                 "STOP is not a static-cost op and must run the standard handler");
         }
@@ -114,8 +113,8 @@ public class InstructionStreamTests
         {
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.StaticJump),
                 "an analysis-validated PUSH2+JUMP pair jumps straight to its target entry");
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5]),
-                "the operand is the pre-resolved target entry index");
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5] + 1),
+                "the jump charges the JUMPDEST itself, so the operand points one entry past the solo marker");
             Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
         }
     }
@@ -460,6 +459,30 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "out-of-gas status must match the bytecode loop");
             Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas spent on out-of-gas must match the bytecode loop");
         }
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(5)]
+    public void ElisionBisect(int counter)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(counter)
+            .Op(Instruction.JUMPDEST)
+            .PushData(1).Op(Instruction.SWAP1).Op(Instruction.SUB)
+            .Op(Instruction.DUP1)
+            .PushData(2).Op(Instruction.JUMPI)
+            .Op(Instruction.STOP)
+            .Done;
+
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+        System.Console.WriteLine($"BISECT counter={counter} baseline={baseline.GasSpent} streamed={streamed.GasSpent} delta={(long)streamed.GasSpent - (long)baseline.GasSpent}");
+        Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+            "gas must match per taken-jump count: a landing that re-charges the JUMPDEST scales the error with the jump count");
     }
 
     private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream, ulong gasLimit = 8_000_000)

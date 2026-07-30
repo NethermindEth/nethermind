@@ -58,11 +58,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         StreamOp[] ops = stream.Ops;
         ulong[] blockGas = stream.BlockGas;
+        ushort[] blockOpCount = stream.BlockOpCount;
         Int256.UInt256[] constants = stream.Constants;
         byte[] constantBytes = stream.ConstantBytes;
         ushort[] pcToEntry = stream.PcToEntry;
         int callDepth = VmState.Env.CallDepth;
         int opCodeCount = 0;
+        int nextCancellationCheck = CancellationCheckMask + 1;
         bool metered = false;
 
         // Resume pcs land one past code end at most; the bound guards a truncated trailing PUSH.
@@ -80,7 +82,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     if (entry.Kind <= StreamOpKind.FusedBlockFirst)
                     {
-                        metered = !TGasPolicy.TryConsume(ref gas, blockGas[entry.BlockIndex]);
+                        if (TGasPolicy.TryConsume(ref gas, blockGas[entry.BlockIndex]))
+                        {
+                            metered = false;
+                            opCodeCount += blockOpCount[entry.BlockIndex];
+                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                            {
+                                nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
+                                if (_txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                            }
+                        }
+                        else
+                        {
+                            metered = true;
+                        }
                     }
 
                     if (metered)
@@ -103,47 +119,43 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         break;
                     }
 
-                    if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
-                        ThrowStreamOperationCanceledException();
-
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
-                    opCodeCount += 1 + ((byte)entry.Kind & 1);
 
-                    // Gas already charged at the block entry, so the cores are gas-free. Must stay inline (JIT).
+                    // Gas already charged at the block entry, so the cores are gas-free.
                     switch (instruction)
                     {
                         case (Instruction)FusedOpcode.Add:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAdd>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAdd>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Sub:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Mul:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Div:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.SDiv:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Mod:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.SMod:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Lt:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Gt:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.SLt:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.SGt:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Eq:
                             exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
@@ -158,10 +170,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.Shl:
-                            exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Shr:
-                            exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.PopPop:
+                            exceptionType = EvmInstructions.FusedPopPopCore(ref stack);
+                            break;
+                        case (Instruction)FusedOpcode.Push1Push1:
+                            exceptionType = EvmInstructions.FusedPush1Push1Core(ref stack, entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.SwapPop:
+                            exceptionType = stack.SwapPop((int)entry.Operand);
+                            break;
+                        case (Instruction)FusedOpcode.AndIsZero:
+                            exceptionType = stack.AndIsZero();
                             break;
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
@@ -185,16 +209,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
                             break;
                         case Instruction.LT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpLt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpLtBytes>(ref stack);
                             break;
                         case Instruction.GT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpGt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpGtBytes>(ref stack);
                             break;
                         case Instruction.SLT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSLt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpSLtBytes>(ref stack);
                             break;
                         case Instruction.SGT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSGt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpSGtBytes>(ref stack);
                             break;
                         case Instruction.EQ:
                             exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack);
@@ -243,6 +267,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.JUMPDEST:
                             exceptionType = EvmExceptionType.None;
                             break;
+                        case (Instruction)FusedOpcode.StaticJumpINot:
+                            // ISZERO + PUSH2 + JUMPI: jump when the condition is zero. The inverter's
+                            // gas sits in its block; this op self-charges exactly what PUSH2+JUMPI would.
+                            if (stack.Head >= EvmStack.MaxStackSize - 1)
+                            {
+                                exceptionType = EvmExceptionType.StackOverflow;
+                                break;
+                            }
+
+                            if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.JumpI))
+                            {
+                                TGasPolicy.SetOutOfGas(ref gas);
+                                OpCodeCount += opCodeCount;
+                                goto OutOfGas;
+                            }
+
+                            if (!EvmInstructions.TestJumpCondition(ref stack, out bool invertedUnderflow))
+                            {
+                                if (invertedUnderflow)
+                                {
+                                    exceptionType = EvmExceptionType.StackUnderflow;
+                                    break;
+                                }
+
+                                if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
+                                {
+                                    TGasPolicy.SetOutOfGas(ref gas);
+                                    OpCodeCount += opCodeCount;
+                                    goto OutOfGas;
+                                }
+
+                                entryIndex = (int)entry.Operand - 1;
+                            }
+
+                            break;
                         case (Instruction)FusedOpcode.StaticJump:
                             // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
                             // Mirror the unfused PUSH2: at a full stack the PUSH2 overflows before the JUMP would
@@ -252,7 +311,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 exceptionType = EvmExceptionType.StackOverflow;
                                 break;
                             }
-                            if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump))
+                            if (!TGasPolicy.TryConsume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump + GasCostOf.JumpDest))
                             {
                                 TGasPolicy.SetOutOfGas(ref gas);
                                 OpCodeCount += opCodeCount;
@@ -260,8 +319,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             }
 
                             opCodeCount++;
-                            // Set entryIndex to dest-1; the shared loop-tail entryIndex++ lands it on dest.
-                            // programCounter is transiently stale until the next entry sets it — fine, nothing reads it here.
+                            // The operand entry sits one past the JUMPDEST, whose gas this op already charged;
+                            // the shared loop-tail entryIndex++ lands there. programCounter is transiently
+                            // stale until the next entry sets it — fine, nothing reads it here.
                             entryIndex = (int)entry.Operand - 1;
                             break;
                         case (Instruction)FusedOpcode.StaticJumpI:
@@ -281,6 +341,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
                             {
+                                if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
+                                {
+                                    TGasPolicy.SetOutOfGas(ref gas);
+                                    OpCodeCount += opCodeCount;
+                                    goto OutOfGas;
+                                }
+
                                 entryIndex = (int)entry.Operand - 1;
                             }
                             else if (conditionUnderflow)
@@ -304,11 +371,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
-                // Fast path for single-byte, dynamic-gas memory ops: they never redirect control flow,
-                // so direct dispatch (no table calli) + sequential advance (no pcToEntry landing
-                // recompute). The general boundary epilogue below is pure overhead for these cheap ops
-                // and dominated them — a boundary op always resets the open block, so metered stays off.
-                if (instruction is Instruction.MSTORE or Instruction.MLOAD or Instruction.MCOPY)
+                // Linear boundary: a self-charging table op that always falls through on success, so
+                // the open block continues across it - table dispatch + sequential advance, no landing
+                // recompute and no block reset. The general epilogue below is for ops that redirect.
+                if (entry.Kind == StreamOpKind.BoundaryLinear)
                 {
                     if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                         ThrowStreamOperationCanceledException();
@@ -317,12 +383,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     opCodeCount++;
 
                     int mpc = entry.Pc + 1;
-                    exceptionType = instruction switch
-                    {
-                        Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
-                        Instruction.MLOAD => EvmInstructions.InstructionMLoad<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
-                        _ => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
-                    };
+                    exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref mpc);
 
                     if (TGasPolicy.IsOutOfGas(in gas))
                     {
@@ -333,7 +394,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     TGasPolicy.OnAfterInstructionTrace(in gas);
                     if (exceptionType != EvmExceptionType.None) break;
 
-                    metered = false;
                     programCounter = entry.Pc + entry.Advance;
                     entryIndex++;
                     continue;
