@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
@@ -171,5 +172,45 @@ public static class FrameTxValidation
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.
+    /// </summary>
+    /// <remarks>
+    /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; a tx whose deadline has passed can
+    /// never be included and is dropped from the mempool (ethereum/EIPs#12007, "Revalidation"). Must be called only
+    /// on well-formed frame txs: <see cref="IsWellFormed"/> already enforces the
+    /// <see cref="Eip8141Constants.ExpiryDataLength"/> length, so it is not re-checked here.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to inspect.</param>
+    /// <param name="deadline">The expiry deadline in Unix seconds when an expiry-verifier frame is present.</param>
+    /// <returns><c>true</c> if an expiry-verifier frame is present and its deadline was read; otherwise <c>false</c>.</returns>
+    /// <exception cref="System.ArgumentOutOfRangeException">
+    /// The expiry frame carries fewer than <see cref="Eip8141Constants.ExpiryDataLength"/> bytes, i.e. the
+    /// <see cref="IsWellFormed"/> precondition was not met.
+    /// </exception>
+    public static bool TryGetExpiryDeadline(Transaction transaction, out ulong deadline)
+    {
+        deadline = 0;
+
+        TxFrame[]? frames = transaction.Frames;
+        if (frames is null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < frames.Length; i++)
+        {
+            TxFrame frame = frames[i];
+            if (frame.Mode == TxFrame.ModeVerify
+                && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
+            {
+                deadline = BinaryPrimitives.ReadUInt64BigEndian(frame.Data.Span);
+                return true;
+            }
+        }
+
+        return false;
     }
 }
