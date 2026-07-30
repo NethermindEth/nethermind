@@ -218,8 +218,7 @@ internal sealed class InstructionStream
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
             }
-            else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length
-                && !(instruction == Instruction.PUSH2 && pc + 3 < code.Length && (Instruction)code[pc + 3] is Instruction.JUMP or Instruction.JUMPI))
+            else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
                     && TryFoldConstantPair(ops, constants, pcToEntry, instruction, pc, (byte)size))
@@ -394,7 +393,8 @@ internal sealed class InstructionStream
         Instruction.ADD or Instruction.SUB or Instruction.LT or Instruction.GT or Instruction.SLT
             or Instruction.SGT or Instruction.EQ or Instruction.AND or Instruction.OR or Instruction.XOR
             or Instruction.ISZERO or Instruction.NOT or Instruction.SHL or Instruction.SHR
-            or (>= Instruction.PUSH1 and <= Instruction.PUSH32)
+            or Instruction.PUSH1
+            or (>= Instruction.PUSH3 and <= Instruction.PUSH32)
             or (>= Instruction.DUP1 and <= Instruction.DUP8)
             or (>= Instruction.SWAP1 and <= Instruction.SWAP8) => GasCostOf.VeryLow,
         Instruction.MUL or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD => GasCostOf.Low,
@@ -504,7 +504,7 @@ internal sealed class InstructionStream
             return false;
 
         Instruction opcode = (Instruction)entry.Opcode;
-        if (opcode >= Instruction.PUSH1 && opcode <= Instruction.PUSH8)
+        if (opcode == Instruction.PUSH1 || (opcode >= Instruction.PUSH3 && opcode <= Instruction.PUSH8))
         {
             value = entry.Operand;
             return true;
@@ -600,7 +600,7 @@ internal sealed class InstructionStream
         StreamOp last = ops[^1];
         if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
             return false;
-        if ((Instruction)last.Opcode is not (>= Instruction.PUSH1 and <= Instruction.PUSH32))
+        if ((Instruction)last.Opcode is not (Instruction.PUSH1 or >= Instruction.PUSH3 and <= Instruction.PUSH32))
             return false;
 
         push = last;
