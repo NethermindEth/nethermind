@@ -92,6 +92,10 @@ public sealed class TxValidator : ITxValidator
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
+            // Frame-blob support is not enabled: reject any blob fields so the per-payer exposure
+            // bound (which counts gas cost only) cannot be bypassed by a blob-carrying frame tx
+            // (EIP8141-GAP, see MEMPOOL-RULES-DESIGN.md).
+            NonBlobFieldsTxValidator.Instance,
             FrameTxFieldsTxValidator.Instance
         ]));
     }

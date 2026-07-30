@@ -15,9 +15,10 @@ namespace Nethermind.TxPool.Filters;
 /// <remarks>
 /// Runs after <see cref="FrameTxPayerFilter"/> has recorded <see cref="Transaction.PayerAddress"/>.
 /// Only natively-resolved payers are gated; unresolved frame txs (payer <c>null</c>) and non-frame
-/// txs pass through. Reservation is accounted from the pool insert/remove events into
-/// <see cref="PayerExposureCache"/> (ethereum/EIPs#12007, "a node MUST NOT hold pending frame
-/// transactions whose summed maximum costs exceed the payer's balance").
+/// txs pass through. The reservation is taken here atomically at admission and released when the
+/// transaction leaves the pool (or fails to insert), so concurrent submissions for one payer cannot
+/// each pass a stale check (ethereum/EIPs#12007, "a node MUST NOT hold pending frame transactions
+/// whose summed maximum costs exceed the payer's balance").
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 internal sealed class FrameTxPayerExposureFilter(
@@ -33,20 +34,24 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // Max cost approximates TXPARAM(0x06); the signature-verification add-on lands with the
-        // deferred MAX_VERIFY_GAS slice (see MEMPOOL-RULES-DESIGN.md).
+        // Max cost approximates TXPARAM(0x06). For a frame tx this is gas-only (MaxFeePerGas·GasLimit):
+        // the top-level Value is always zero (frame value lives on TxFrame.Value) and blob fields are
+        // rejected at validation while frame-blob support is off. The signature-verification add-on
+        // lands with the deferred MAX_VERIFY_GAS slice (see MEMPOOL-RULES-DESIGN.md).
         if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
         {
             return AcceptTxResult.Int256Overflow;
         }
 
         UInt256 balance = stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
-        UInt256 reserved = exposure.GetReserved(payer);
 
-        if (UInt256.AddOverflow(reserved, maxCost, out UInt256 required) || required > balance)
+        // Reserve atomically so N concurrent submissions for the same payer cannot each observe a
+        // pre-reservation total and all pass. Released on the pool Removed event, or on the
+        // non-insert path in TxPool.AddCore.
+        if (!exposure.TryReserve(payer, maxCost, balance))
         {
             if (logger.IsTrace)
-                logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} exposure {reserved} + {maxCost} exceeds balance {balance}.");
+                logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} exposure {exposure.GetReserved(payer)} + {maxCost} exceeds balance {balance}.");
             return AcceptTxResult.PayerExposureExceeded;
         }
 

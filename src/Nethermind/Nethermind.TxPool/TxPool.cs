@@ -259,14 +259,13 @@ namespace Nethermind.TxPool
         {
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
-            UpdatePayerExposure(args.Value, add: true);
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
-            UpdatePayerExposure(args.Value, add: false);
+            ReleasePayerExposure(args.Value);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
@@ -733,6 +732,9 @@ namespace Nethermind.TxPool
             {
                 // it means it failed on adding to the pool - it is possible when new tx has the same sender
                 // and nonce as already existent tx and is not good enough to replace it
+                // The exposure filter reserved this frame tx's max cost; release it, since the tx did
+                // not enter the pool and so no Removed event will fire for it.
+                ReleasePayerExposure(tx);
                 Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
                 return AcceptTxResult.ReplacementNotAllowed;
             }
@@ -803,18 +805,17 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>
-        /// Adds or releases a resolved frame-tx payer's pending exposure as the transaction enters or
-        /// leaves the pool (covering eviction, replacement, inclusion, and reorg removal, which all
-        /// funnel through the pool <c>Removed</c> event). EIP-8141 (ethereum/EIPs#12007).
+        /// Releases the pending exposure a resolved frame-tx payer reserved at admission
+        /// (<see cref="FrameTxPayerExposureFilter"/>) once the transaction leaves the pool — covering
+        /// eviction, replacement, inclusion, and reorg removal, which all funnel through the pool
+        /// <c>Removed</c> event, plus the replacement-rejected path that never inserts. A no-op for
+        /// non-frame txs and unresolved payers. EIP-8141 (ethereum/EIPs#12007).
         /// </summary>
-        private void UpdatePayerExposure(Transaction tx, bool add)
+        private void ReleasePayerExposure(Transaction tx)
         {
             if (tx.SupportsFrames && tx.PayerAddress is not null && !tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
             {
-                if (add)
-                    _payerExposure.Add(tx.PayerAddress, maxCost);
-                else
-                    _payerExposure.Subtract(tx.PayerAddress, maxCost);
+                _payerExposure.Subtract(tx.PayerAddress, maxCost);
             }
         }
 
