@@ -19,7 +19,10 @@ internal enum FrameTxPayerOutcome
     /// <summary>A legible validation prefix that provably never sets a payer (an invalid transaction).</summary>
     NoPayer,
 
-    /// <summary>The prefix reaches deployed code the pool cannot evaluate natively; deferred to a later simulation layer.</summary>
+    /// <summary>
+    /// The prefix reaches deployed code the pool cannot evaluate natively, or names a third party the
+    /// pool cannot yet authenticate (an unverified signature shape); deferred to a later simulation layer.
+    /// </summary>
     RequiresSimulation,
 }
 
@@ -31,6 +34,10 @@ internal enum FrameTxPayerOutcome
 /// <remarks>
 /// Captured so a later revalidation layer can re-check admission on head changes without
 /// re-execution. Indexing pending transactions by this set is deferred; the fields are recorded now.
+/// In this foundational slice the only natively-resolved prefix is default-code <c>self_verify</c>,
+/// so <see cref="Payer"/>, <see cref="PayerCodeHash"/> and <see cref="PayerBalance"/> currently mirror
+/// the sender; they gain independent values once third-party (sponsored) resolution lands with
+/// signature verification.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 internal readonly struct FrameTxDependencySet(

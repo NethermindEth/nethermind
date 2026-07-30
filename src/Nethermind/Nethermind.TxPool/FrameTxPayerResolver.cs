@@ -16,16 +16,19 @@ namespace Nethermind.TxPool;
 /// (<c>code hash</c>, <c>nonce</c>, <c>balance</c>) with no deployed code to run.
 /// </summary>
 /// <remarks>
-/// Foundational slice: only the default-code <c>self_verify</c> and <c>only_verify | pay</c> prefixes
-/// (optionally preceded by an <c>expiry_verify</c> frame) are resolved natively; anything reaching
-/// deployed code — a deployed/delegated sender, a deploy-factory frame, a canonical (code hash
-/// unpinned) or non-canonical paymaster — yields <see cref="FrameTxPayerOutcome.RequiresSimulation"/>
-/// and is left to a later simulation layer. Native resolution mirrors the execution loop's
-/// default-code approval conditions for the legible prefixes (<c>TransactionProcessorBase.FrameTx.cs</c>);
+/// Foundational slice: only the default-code <c>self_verify</c> prefix (optionally preceded by an
+/// <c>expiry_verify</c> frame) is resolved natively. Anything else yields
+/// <see cref="FrameTxPayerOutcome.RequiresSimulation"/> and is left to a later simulation layer — a
+/// deployed/delegated sender, a deploy-factory frame, or an <c>only_verify | pay</c> prefix naming a
+/// third-party payer (an EOA sponsor or a canonical/non-canonical paymaster) the pool cannot yet
+/// authenticate. A prefix with no payment-approving frame at all is a structural
+/// <see cref="FrameTxPayerOutcome.NoPayer"/>. Native resolution mirrors the execution loop's
+/// default-code approval conditions for the legible prefix (<c>TransactionProcessorBase.FrameTx.cs</c>);
 /// it identifies who the structural payer is, not that execution will set one. Solvency/exposure,
 /// the <c>MAX_VERIFY_GAS</c> budget, and cryptographic-signature verification are separate deferred
 /// gates (ethereum/EIPs#12007); until the signature gate lands a third-party payer is never named
-/// natively (see the sponsored branch), so a forged signature cannot resolve to an arbitrary victim.
+/// natively (the <c>only_verify | pay</c> prefix yields <see cref="FrameTxPayerOutcome.RequiresSimulation"/>),
+/// so a forged signature cannot resolve to an arbitrary victim.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 internal static class FrameTxPayerResolver
@@ -99,13 +102,17 @@ internal static class FrameTxPayerResolver
             }
 
             // Execution's default code approves only when index-0 is a canonical-hash secp256k1
-            // signature resolving to the sender; otherwise the VERIFY frame reverts (invalid tx).
-            return DefaultCodeApproves(signatures, sigIndex: 0, expectedSigner: sender, sender)
+            // signature resolving to the sender. A non-matching signature shape is not a native proof
+            // of invalidity — the hoisted-list vs VERIFY-frame-data signature placement is an open
+            // cross-client question (TransactionProcessorBase.FrameTx.cs) — so defer the verdict to
+            // execution rather than dropping the tx at admission.
+            return DefaultCodeApproves(signatures, sender)
                 ? ResolvedTo(sender, in senderCodeHash, senderAccount.Balance)
-                : Unresolved(FrameTxPayerOutcome.NoPayer);
+                : Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
-        // Canonical paymaster relay: only_verify approves the sender, then a pay frame sets the payer.
+        // Canonical paymaster relay: only_verify approves execution but not payment; a following pay
+        // frame sets the payer.
         if (IsOnlyVerify(verifyFrame, sender))
         {
             if (senderHasCode)
@@ -113,25 +120,15 @@ internal static class FrameTxPayerResolver
                 return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
             }
 
-            if (!DefaultCodeApproves(signatures, sigIndex: 0, expectedSigner: sender, sender))
-            {
-                return Unresolved(FrameTxPayerOutcome.NoPayer);
-            }
-
-            // only_verify approves execution but not payment; a pay frame must follow to set the payer.
-            if (index + 1 >= frames.Length || !IsPay(frames[index + 1]))
-            {
-                return Unresolved(index + 1 < frames.Length
-                    ? FrameTxPayerOutcome.RequiresSimulation
-                    : FrameTxPayerOutcome.NoPayer);
-            }
-
-            // The pay frame names a third party (an EOA sponsor or a paymaster) as the payer, and its
-            // pay-frame signature is not cryptographically verified at admission. Naming that payer on
-            // an unverified signature is a griefing vector — a forged signature could charge an
-            // arbitrary victim's exposure budget — so it is deferred to the signature-verification /
-            // simulation layer rather than resolved natively (ethereum/EIPs#12007).
-            return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
+            // With no following frame the prefix has no payment-approving frame at all, so it provably
+            // never sets a payer regardless of any signature — a structural NoPayer. A following frame
+            // names a third-party payer (an EOA sponsor or a paymaster) the pool cannot authenticate
+            // natively (its pay-frame signature is unverified at admission, and naming a payer on a
+            // forged signature is a griefing vector), so that case is deferred to the
+            // signature-verification / simulation layer (ethereum/EIPs#12007) rather than resolved here.
+            return Unresolved(index + 1 >= frames.Length
+                ? FrameTxPayerOutcome.NoPayer
+                : FrameTxPayerOutcome.RequiresSimulation);
         }
 
         // Not a recognized legible prefix (e.g. a deploy frame, or an unrecognized VERIFY shape).
@@ -139,21 +136,25 @@ internal static class FrameTxPayerResolver
     }
 
     /// <summary>
-    /// Mirrors the execution default-code VERIFY approval check: a canonical-hash (empty <c>msg</c>)
-    /// secp256k1 signature at <paramref name="sigIndex"/> whose resolved signer is <paramref name="expectedSigner"/>.
+    /// Mirrors the execution default-code VERIFY approval check for a self_verify prefix: an index-0
+    /// canonical-hash (empty <c>msg</c>) secp256k1 signature whose resolved signer is the sender.
     /// Cryptographic verification is a separate deferred gate; this checks only the structural conditions.
     /// </summary>
-    private static bool DefaultCodeApproves(TxFrameSignature[] signatures, int sigIndex, Address expectedSigner, Address sender)
+    /// <remarks>
+    /// The sponsored index-1 / third-party-signer generality was removed with the native sponsored
+    /// branch; that path (restored with the signature-verification slice) is deferred to simulation.
+    /// </remarks>
+    private static bool DefaultCodeApproves(TxFrameSignature[] signatures, Address sender)
     {
-        if (signatures.Length <= sigIndex)
+        if (signatures.Length == 0)
         {
             return false;
         }
 
-        TxFrameSignature signature = signatures[sigIndex];
+        TxFrameSignature signature = signatures[0];
         return signature.Scheme == TxFrameSignature.SchemeSecp256k1
                && signature.Msg.IsEmpty
-               && (signature.Signer ?? sender) == expectedSigner;
+               && (signature.Signer ?? sender) == sender;
     }
 
     private static bool IsExpiryVerifyFrame(TxFrame frame) =>
@@ -172,8 +173,4 @@ internal static class FrameTxPayerResolver
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == TxFrame.ApproveExecution
         && (frame.Target is null || frame.Target == sender);
-
-    private static bool IsPay(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeVerify
-        && frame.Flags == TxFrame.ApprovePayment;
 }
