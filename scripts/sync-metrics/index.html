@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nethermind Sync Validation Timings</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+        integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"
+        crossorigin="anonymous"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; background: #0d1117; color: #e6edf3; }
+  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+  .sub { color: #8b949e; font-size: .85rem; margin-bottom: 1rem; }
+  .controls { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; margin-bottom: 1rem;
+              background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: .6rem 1rem; }
+  .controls .group { display: flex; gap: .8rem; align-items: center; }
+  .controls .group > span { color: #8b949e; font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
+  label { font-size: .85rem; cursor: pointer; user-select: none; display: flex; align-items: center; gap: .3rem; }
+  #chart-wrap { position: relative; height: 62vh; min-height: 340px; background: #161b22;
+                border: 1px solid #30363d; border-radius: 8px; padding: .75rem; }
+  .hint { color: #8b949e; font-size: .75rem; margin-top: .6rem; }
+</style>
+</head>
+<body>
+<h1>Nethermind Sync Validation Timings</h1>
+<div class="sub" id="meta">Loading…</div>
+<div class="controls">
+  <div class="group"><span>Mode</span>
+    <label><input type="radio" name="mode" value="Flat" checked>Flat</label>
+    <label><input type="radio" name="mode" value="HalfPath">HalfPath</label>
+  </div>
+  <div class="group"><span>Network</span>
+    <label><input type="checkbox" class="net" value="mainnet" checked>mainnet</label>
+    <label><input type="checkbox" class="net" value="gnosis" checked>gnosis</label>
+  </div>
+  <div class="group"><span>Metric</span>
+    <label><input type="checkbox" class="metric" value="job_min" checked>job total</label>
+    <label><input type="checkbox" class="metric" value="verify_min">verify</label>
+    <label><input type="checkbox" class="metric" value="snap_min">snap</label>
+  </div>
+  <div class="group">
+    <label><input type="checkbox" id="experimental">include experimental (manual-dispatch) runs</label>
+  </div>
+</div>
+<div id="chart-wrap"><canvas id="chart"></canvas></div>
+<div class="hint">Flat job total = snap sync + state healing + full flat&harr;trie verification. Click a point to open the
+workflow run. Data: <a href="https://github.com/NethermindEth/nethermind/tree/sync-metrics" style="color:#58a6ff">sync-metrics branch</a>,
+appended by each Sync&nbsp;Master&nbsp;Validation run (history before 2026-07-30 backfilled from retained runs; stage metrics
+partially available there).</div>
+
+<script>
+"use strict";
+
+const COLORS = { mainnet: "#4493f8", gnosis: "#3fb950" };
+const METRIC_STYLE = {
+  job_min: { label: "job total", dash: [], width: 2 },
+  verify_min: { label: "verify", dash: [6, 4], width: 1.5 },
+  snap_min: { label: "snap", dash: [2, 3], width: 1.5 },
+};
+
+let records = [];
+let chart;
+
+function isExperimental(r) {
+  return r.event === "workflow_dispatch" || (r.image && r.image !== "nethermindeth/nethermind:master");
+}
+
+function buildDatasets() {
+  const mode = document.querySelector("input[name=mode]:checked").value;
+  const nets = [...document.querySelectorAll(".net:checked")].map(e => e.value);
+  const metrics = [...document.querySelectorAll(".metric:checked")].map(e => e.value);
+  const experimental = document.getElementById("experimental").checked;
+
+  const datasets = [];
+  for (const net of nets) {
+    const rows = records.filter(r => r.mode === mode && r.network === net && (experimental || !isExperimental(r)));
+    for (const metric of metrics) {
+      const style = METRIC_STYLE[metric];
+      const points = rows.filter(r => r[metric] !== undefined).map(r => ({
+        x: Date.parse(r.date), y: r[metric], rec: r,
+      }));
+      if (points.length === 0) continue;
+      datasets.push({
+        label: `${net} ${style.label}`,
+        data: points,
+        borderColor: COLORS[net],
+        backgroundColor: COLORS[net],
+        borderDash: style.dash,
+        borderWidth: style.width,
+        pointRadius: ctx => isExperimental(ctx.raw?.rec) ? 4 : 1.5,
+        pointStyle: ctx => isExperimental(ctx.raw?.rec) ? "triangle" : "circle",
+        pointHoverRadius: 5,
+        showLine: true,
+        tension: 0,
+      });
+    }
+  }
+  return datasets;
+}
+
+function refresh() {
+  chart.data.datasets = buildDatasets();
+  chart.update();
+}
+
+async function init() {
+  const text = await (await fetch("history.jsonl", { cache: "no-store" })).text();
+  records = text.trim().split("\n").map(l => JSON.parse(l));
+  records.sort((a, b) => a.date < b.date ? -1 : 1);
+
+  const last = records[records.length - 1];
+  document.getElementById("meta").textContent =
+    `${records.length} records · latest: ${last.date.replace("T", " ").replace("Z", " UTC")} (run ${last.run_id})`;
+
+  chart = new Chart(document.getElementById("chart"), {
+    type: "scatter",
+    data: { datasets: buildDatasets() },
+    options: {
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "nearest", intersect: false },
+      scales: {
+        x: {
+          type: "linear",
+          ticks: {
+            color: "#8b949e", maxTicksLimit: 14,
+            callback: v => new Date(v).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          },
+          grid: { color: "#21262d" },
+        },
+        y: {
+          title: { display: true, text: "minutes", color: "#8b949e" },
+          ticks: { color: "#8b949e" },
+          grid: { color: "#21262d" },
+          beginAtZero: true,
+        },
+      },
+      plugins: {
+        legend: { labels: { color: "#e6edf3", usePointStyle: false } },
+        tooltip: {
+          callbacks: {
+            title: items => new Date(items[0].raw.x).toUTCString().replace(":00 GMT", " UTC"),
+            label: item => {
+              const r = item.raw.rec;
+              const extra = isExperimental(r) ? ` · ${r.image ?? "manual dispatch"}` : ` · ${r.commit}`;
+              return `${item.dataset.label}: ${item.raw.y} min${extra}`;
+            },
+          },
+        },
+      },
+      onClick: (_, elements) => {
+        if (elements.length > 0) {
+          const rec = chart.data.datasets[elements[0].datasetIndex].data[elements[0].index].rec;
+          window.open(`https://github.com/NethermindEth/nethermind/actions/runs/${rec.run_id}`, "_blank");
+        }
+      },
+    },
+  });
+
+  for (const input of document.querySelectorAll("input")) input.addEventListener("change", refresh);
+}
+
+init();
+</script>
+</body>
+</html>
