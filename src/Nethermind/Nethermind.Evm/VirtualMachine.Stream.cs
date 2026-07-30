@@ -131,17 +131,44 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.Sub:
                             exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, in constants[(int)entry.Operand]);
                             break;
+                        case (Instruction)FusedOpcode.Mul:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, in constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Div:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, in constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.SDiv:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, in constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.Mod:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, in constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.SMod:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, in constants[(int)entry.Operand]);
+                            break;
                         case (Instruction)FusedOpcode.Lt:
                             exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Gt:
                             exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, in constants[(int)entry.Operand]);
                             break;
+                        case (Instruction)FusedOpcode.SLt:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, in constants[(int)entry.Operand]);
+                            break;
+                        case (Instruction)FusedOpcode.SGt:
+                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, in constants[(int)entry.Operand]);
+                            break;
                         case (Instruction)FusedOpcode.Eq:
                             exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.And:
                             exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            break;
+                        case (Instruction)FusedOpcode.Or:
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            break;
+                        case (Instruction)FusedOpcode.Xor:
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.Shl:
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, in constants[(int)entry.Operand]);
@@ -167,11 +194,32 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.SUB:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSub, OffFlag>(ref stack);
                             break;
+                        case Instruction.MUL:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMul, OffFlag>(ref stack);
+                            break;
+                        case Instruction.DIV:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpDiv, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SDIV:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSDiv, OffFlag>(ref stack);
+                            break;
+                        case Instruction.MOD:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMod, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SMOD:
+                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
+                            break;
                         case Instruction.LT:
                             exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpLtBytes>(ref stack);
                             break;
                         case Instruction.GT:
                             exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpGtBytes>(ref stack);
+                            break;
+                        case Instruction.SLT:
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpSLtBytes>(ref stack);
+                            break;
+                        case Instruction.SGT:
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpSGtBytes>(ref stack);
                             break;
                         case Instruction.EQ:
                             exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack);
@@ -179,8 +227,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.AND:
                             exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack);
                             break;
+                        case Instruction.OR:
+                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack);
+                            break;
+                        case Instruction.XOR:
+                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack);
+                            break;
                         case Instruction.ISZERO:
                             exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpIsZero>(ref stack);
+                            break;
+                        case Instruction.NOT:
+                            exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpNot>(ref stack);
+                            break;
+                        case Instruction.SHL:
+                            exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShl, OffFlag>(ref stack);
+                            break;
+                        case Instruction.SHR:
+                            exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShr, OffFlag>(ref stack);
                             break;
                         case Instruction.POP:
                             exceptionType = stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
@@ -295,12 +358,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         default:
-                            // Rare in-block ops live out of line: the hot loop's size is what the JIT and
-                            // the instruction cache pay for on every dispatch, and two attempts at growing
-                            // this switch measured as regressions. An opcode that reaches neither the cases
-                            // above nor the cold set is a stream/analyzer disagreement, and the cold path
-                            // fails closed on it rather than mis-dispatching a precharged op.
-                            exceptionType = ExecuteRareInBlock(ref stack, instruction, entry.Operand, constants, constantBytes);
+                            // Unreachable: every in-block opcode has a case above. Fail closed rather than
+                            // mis-dispatch a precharged op and corrupt gas.
+                            exceptionType = EvmExceptionType.BadInstruction;
                             break;
                     }
 
@@ -436,42 +496,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [DoesNotReturn]
         static void ThrowStreamOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
     }
-
-    /// <summary>
-    /// In-block opcodes too rare to keep in the hot switch, dispatched out of line so the loop body
-    /// stays small. Gas is already charged by the block entry, exactly as for the inline cases.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static EvmExceptionType ExecuteRareInBlock(
-        ref EvmStack stack,
-        Instruction instruction,
-        ulong operand,
-        Int256.UInt256[] constants,
-        byte[] constantBytes) => instruction switch
-    {
-        Instruction.MUL => EvmInstructions.Math2ParamCore<EvmInstructions.OpMul, OffFlag>(ref stack),
-        Instruction.DIV => EvmInstructions.Math2ParamCore<EvmInstructions.OpDiv, OffFlag>(ref stack),
-        Instruction.SDIV => EvmInstructions.Math2ParamCore<EvmInstructions.OpSDiv, OffFlag>(ref stack),
-        Instruction.MOD => EvmInstructions.Math2ParamCore<EvmInstructions.OpMod, OffFlag>(ref stack),
-        Instruction.SMOD => EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack),
-        Instruction.SLT => EvmInstructions.CompareCore<EvmInstructions.OpSLtBytes>(ref stack),
-        Instruction.SGT => EvmInstructions.CompareCore<EvmInstructions.OpSGtBytes>(ref stack),
-        Instruction.OR => EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack),
-        Instruction.XOR => EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack),
-        Instruction.NOT => EvmInstructions.Math1ParamCore<EvmInstructions.OpNot>(ref stack),
-        Instruction.SHL => EvmInstructions.ShiftCore<EvmInstructions.OpShl, OffFlag>(ref stack),
-        Instruction.SHR => EvmInstructions.ShiftCore<EvmInstructions.OpShr, OffFlag>(ref stack),
-        (Instruction)FusedOpcode.Mul => EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, in constants[(int)operand]),
-        (Instruction)FusedOpcode.Div => EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, in constants[(int)operand]),
-        (Instruction)FusedOpcode.SDiv => EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, in constants[(int)operand]),
-        (Instruction)FusedOpcode.Mod => EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, in constants[(int)operand]),
-        (Instruction)FusedOpcode.SMod => EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, in constants[(int)operand]),
-        (Instruction)FusedOpcode.SLt => EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, in constants[(int)operand]),
-        (Instruction)FusedOpcode.SGt => EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, in constants[(int)operand]),
-        (Instruction)FusedOpcode.Or => EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, ref constantBytes[(int)operand * 32]),
-        (Instruction)FusedOpcode.Xor => EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)operand * 32]),
-        _ => EvmExceptionType.BadInstruction,
-    };
 
     private enum MeteredOutcome : byte
     {
