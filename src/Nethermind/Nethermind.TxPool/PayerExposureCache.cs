@@ -30,6 +30,10 @@ internal sealed class PayerExposureCache
     /// Atomically reserves <paramref name="cost"/> for <paramref name="key"/> if and only if the
     /// resulting summed reservation stays within <paramref name="balance"/>.
     /// </summary>
+    /// <param name="reserved">
+    /// On failure, the reservation observed for <paramref name="key"/> at the point the decision was
+    /// made (so a trace can report the total the check actually saw); zero on success.
+    /// </param>
     /// <returns>
     /// <c>true</c> if the cost was reserved; <c>false</c> (reserving nothing) if the bound would be
     /// exceeded or the addition would overflow.
@@ -38,23 +42,35 @@ internal sealed class PayerExposureCache
     /// The compare-and-set loop makes the read of the current reservation and the reservation itself
     /// a single atomic step, closing the check-then-act gap between concurrent admissions.
     /// </remarks>
-    public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance)
+    public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance, out UInt256 reserved)
     {
         while (true)
         {
             if (_reserved.TryGetValue(key, out UInt256 existing))
             {
                 if (UInt256.AddOverflow(existing, cost, out UInt256 updated) || updated > balance)
+                {
+                    reserved = existing;
                     return false;
+                }
                 if (_reserved.TryUpdate(key, updated, existing))
+                {
+                    reserved = UInt256.Zero;
                     return true;
+                }
             }
             else
             {
                 if (cost > balance)
+                {
+                    reserved = UInt256.Zero;
                     return false;
+                }
                 if (_reserved.TryAdd(key, cost))
+                {
+                    reserved = UInt256.Zero;
                     return true;
+                }
             }
         }
     }

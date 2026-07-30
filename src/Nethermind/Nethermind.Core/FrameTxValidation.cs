@@ -38,6 +38,7 @@ public static class FrameTxValidation
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
+    public const string BlobHashesNotSupported = "frame transactions must not carry blob versioned hashes";
 
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {
@@ -210,8 +211,17 @@ public static class FrameTxValidation
             }
         }
 
-        bool hasBlobs = transaction.BlobVersionedHashes is { Length: > 0 };
-        if (!hasBlobs && transaction.MaxFeePerBlobGas is { IsZero: false })
+        // Frame-blob support is off. The decoder always populates both blob fields, so these must be
+        // value checks, not presence checks: reject a blob-carrying frame tx (non-empty hash list) so
+        // the gas-only per-payer exposure bound cannot be bypassed, and reject a blob fee with no
+        // hashes. Admits only the no-hashes, zero-fee shape (EIP8141-GAP).
+        if (transaction.BlobVersionedHashes is { Length: > 0 })
+        {
+            error = BlobHashesNotSupported;
+            return false;
+        }
+
+        if (transaction.MaxFeePerBlobGas is { IsZero: false })
         {
             error = BlobFeeWithoutBlobs;
             return false;

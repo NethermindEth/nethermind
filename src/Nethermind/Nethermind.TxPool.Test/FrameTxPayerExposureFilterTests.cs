@@ -33,7 +33,7 @@ public class FrameTxPayerExposureFilterTests
         TestReadOnlyStateProvider state = StateWithPayerBalance(balance);
         PayerExposureCache cache = new();
         // Pre-seed a prior payer reservation (as an earlier admitted frame tx would have taken).
-        if (reserved > 0) cache.TryReserve(Payer, (UInt256)reserved, UInt256.MaxValue);
+        if (reserved > 0) cache.TryReserve(Payer, (UInt256)reserved, UInt256.MaxValue, out _);
 
         AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(1000));
 
@@ -88,9 +88,9 @@ public class FrameTxPayerExposureFilterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.TryReserve(Payer, 1000, balance: 1500), Is.True);
-            Assert.That(cache.TryReserve(Payer, 500, balance: 1500), Is.True, "reserved 1000 + 500 == balance is admitted");
-            Assert.That(cache.TryReserve(Payer, 1, balance: 1500), Is.False, "one wei over the balance is rejected");
+            Assert.That(cache.TryReserve(Payer, 1000, balance: 1500, out _), Is.True);
+            Assert.That(cache.TryReserve(Payer, 500, balance: 1500, out _), Is.True, "reserved 1000 + 500 == balance is admitted");
+            Assert.That(cache.TryReserve(Payer, 1, balance: 1500, out _), Is.False, "one wei over the balance is rejected");
             Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)1500), "a rejected reservation adds nothing");
         }
 

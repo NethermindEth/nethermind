@@ -565,6 +565,47 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
+    // Regression (EIP-8141): FrameTxDecoder always populates max_fee_per_blob_gas and
+    // blob_versioned_hashes, so the presence-based NonBlobFieldsTxValidator rejected every frame tx
+    // that came off the wire. The composite must accept a normal (no-blob) frame tx by value, and
+    // reject only a blob-carrying one.
+    [TestCase(false, null, TestName = "IsWellFormed_DecodedNonBlobFrameTx_Accepted")]
+    [TestCase(true, FrameTxValidation.BlobHashesNotSupported, TestName = "IsWellFormed_DecodedBlobCarryingFrameTx_Rejected")]
+    public void IsWellFormed_DecodedFrameTx_GatesOnBlobFieldsByValue(bool carriesBlobs, string? expectedError)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            GasPrice = 1,               // max_priority_fee_per_gas
+            DecodedMaxFeePerGas = 100,  // max_fee_per_gas
+            MaxFeePerBlobGas = carriesBlobs ? (UInt256)1 : UInt256.Zero,
+            BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
+        };
+
+        // Round-trip through the decoder so the validated instance has the exact field shape a
+        // gossiped frame tx has (non-null MaxFeePerBlobGas, empty-not-null BlobVersionedHashes).
+        TxDecoder decoder = TxDecoder.Instance;
+        byte[] bytes = new byte[decoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, tx);
+        RlpReader reader = new(bytes);
+        Transaction decoded = decoder.Decode(ref reader)!;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(decoded, Eip8141Prototype.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.EqualTo(expectedError is null), result.Error);
+            Assert.That(result.Error, Is.EqualTo(expectedError));
+        }
+    }
+
     [Test]
     public void IsWellFormed_TransactionWithGasLimitExceedingEip7825Cap_ReturnsFalse()
     {
