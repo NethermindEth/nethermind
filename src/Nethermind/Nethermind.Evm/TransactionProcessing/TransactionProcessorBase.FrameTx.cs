@@ -343,14 +343,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (total == 0) return [];
 
         LogEntry[] logs = new LogEntry[total];
-        int written = 0;
+        int offset = 0;
         foreach (TxFrameReceipt frameReceipt in frameReceipts)
         {
             LogEntry[] frameLogs = frameReceipt.Logs;
-            for (int j = 0; j < frameLogs.Length; j++)
-            {
-                logs[written++] = frameLogs[j];
-            }
+            frameLogs.CopyTo(logs, offset);
+            offset += frameLogs.Length;
         }
 
         return logs;

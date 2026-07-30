@@ -313,6 +313,69 @@ public class Eip8141ScenarioTests
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
+    // Two batches in one transaction, the load-bearing multi-batch case the single-batch fixtures
+    // can't reach: per-batch bounds depend on batchStartIndex being re-seeded when batch B opens,
+    // which rests on inBatch being reset once batch A closes (unroll path here). A lost reset would
+    // leave batch B reusing batch A's start index, so batch B's unroll would clear back through the
+    // committed "between" frame and under-fill the bloom.
+    // Batch A always unrolls (its log discarded); a committed "between" frame follows; batch B then
+    // either commits (secondBatchReverts=false: its log survives) or unrolls (its log discarded).
+    // Either way the pre-, between-, and post-batch committed logs must survive in frame order — the
+    // guard bites in the revert case, where a stale batch start would wipe the between frame's log.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TwoBatches_EachClearsOnlyItsOwnFrames_CommittedLogsBetweenSurvive(bool secondBatchReverts)
+    {
+        Address logger = TestItem.AddressD;
+        Address tokenA = TestItem.AddressE;
+        Address dexRevert = TestItem.AddressF;
+        Address tokenB = Sponsor;
+        Address dexB = Recipient;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        // Emits a log and commits — used for the pre-, between-, and post-batch frames.
+        DeployContract(logger, Prepare.EvmCode.Log(0, 0).Op(Instruction.STOP).Done);
+        byte[] recordAllowanceAndLog = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .Log(0, 0)
+            .Op(Instruction.STOP).Done;
+        DeployContract(tokenA, recordAllowanceAndLog);
+        DeployContract(tokenB, recordAllowanceAndLog);
+        DeployContract(dexRevert, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(dexB, secondBatchReverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),                                    // 0
+            SenderFrame(logger),                                 // 1: pre-batch log survives
+            SenderFrame(tokenA, flags: TxFrame.AtomicBatchFlag), // 2: batch A, log discarded
+            SenderFrame(dexRevert),                              // 3: batch A unrolls
+            SenderFrame(logger),                                 // 4: between batches, log survives
+            SenderFrame(tokenB, flags: TxFrame.AtomicBatchFlag), // 5: batch B
+            SenderFrame(dexB),                                   // 6: batch B commits or unrolls
+            SenderFrame(logger));                                // 7: post-batch log survives
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        {
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+            TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+            secondBatchReverts ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess,
+            TxFrameReceipt.StatusSuccess,
+        }));
+        Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the pre-batch log survives both batches");
+        Assert.That(receipt.FrameReceipts[2].Logs, Is.Empty, "batch A unrolled — its log is discarded");
+        Assert.That(receipt.FrameReceipts[4].Logs, Has.Length.EqualTo(1),
+            "the committed between-batch log survives — batch B must clear only its own frames, not back through batch A");
+        Assert.That(receipt.FrameReceipts[5].Logs, Has.Length.EqualTo(secondBatchReverts ? 0 : 1),
+            secondBatchReverts ? "batch B unrolled — its log is discarded" : "batch B committed — its log survives");
+        Assert.That(receipt.FrameReceipts[7].Logs, Has.Length.EqualTo(1), "the post-batch log survives both batches");
+        Assert.That(receipt.Logs, Has.Length.EqualTo(secondBatchReverts ? 3 : 4),
+            "exactly the surviving committed frame logs land in the tx log set");
+        AssertBloomAndReceiptLogsAgree(receipt);
+    }
+
     // Asserts the tx log set equals the frame-order concatenation of the surviving frame logs, and
     // that a wire round-trip yields the same bloom — i.e. the header logsBloom and the receipts-root
     // logs agree.
@@ -322,6 +385,8 @@ public class Eip8141ScenarioTests
         // Same LogEntry references, so reference equality is enough to pin contents and order.
         Assert.That(receipt.Logs, Is.EqualTo(frameOrderConcatenation),
             "the tx log set must be the frame-order concatenation of the surviving frame logs");
+        Assert.That(receipt.Bloom, Is.EqualTo(new Bloom(frameOrderConcatenation)),
+            "the producer header bloom must reflect exactly the surviving frame logs");
 
         ReceiptMessageDecoder decoder = new();
         byte[] encoded = decoder.EncodeNew(receipt, RlpBehaviors.None);
