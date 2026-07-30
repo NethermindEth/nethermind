@@ -185,7 +185,7 @@ public partial class BlockProcessor(
         {
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
-                CalculateBlooms(receipts);
+                CalculateBlooms(receipts, s_backgroundBloomOptions);
                 return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
             });
         }
@@ -298,8 +298,14 @@ public partial class BlockProcessor(
         return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
     }
 
+    // The background blooms computation runs concurrently with the whole state-commit phase;
+    // full-width parallelism there starves the storage/state root hashing of cores, costing more
+    // than the bloom time it hides. Four workers keep it inside the commit window while leaving
+    // the rest of the machine to the commit.
+    private static readonly ParallelOptions s_backgroundBloomOptions = new() { MaxDegreeOfParallelism = 4 };
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CalculateBlooms(TxReceipt[] receipts)
+    private static void CalculateBlooms(TxReceipt[] receipts, ParallelOptions? parallelOptions = null)
     {
         using MetricsTimer<BloomsTimeSink> _ = new();
 
@@ -317,7 +323,7 @@ public partial class BlockProcessor(
         ParallelUnbalancedWork.For(
             0,
             receipts.Length,
-            ParallelUnbalancedWork.DefaultOptions,
+            parallelOptions ?? ParallelUnbalancedWork.DefaultOptions,
             receipts,
             static (i, receipts) =>
             {
