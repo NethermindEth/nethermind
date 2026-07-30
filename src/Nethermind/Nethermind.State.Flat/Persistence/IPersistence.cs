@@ -79,6 +79,10 @@ public interface IPersistence
     /// <summary>
     /// Iterator for iterating over flat storage key-value pairs. This is mainly used in verifytrie.
     /// </summary>
+    /// <remarks>
+    /// <see cref="CurrentValue"/> may point into the underlying store's buffer and is only valid
+    /// until the next <see cref="MoveNext"/> or <see cref="IDisposable.Dispose"/> call.
+    /// </remarks>
     public interface IFlatIterator : IDisposable
     {
         bool MoveNext();
