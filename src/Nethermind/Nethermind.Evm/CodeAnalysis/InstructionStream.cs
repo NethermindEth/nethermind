@@ -19,13 +19,15 @@ internal enum StreamOpKind : byte
     FusedBlockFirst = 1,
     InBlock = 2,
     FusedInBlock = 3,
-    StaticJump = 4,
-    StaticJumpI = 5,
-    Boundary = 6,
+    /// <summary>A coalesced run of pure permutation ops (DUP/SWAP/POP) replayed from a plan.</summary>
+    Shuffle = 4,
+    StaticJump = 5,
+    StaticJumpI = 6,
+    Boundary = 7,
     /// <summary>Self-charging table op that neither redirects control nor ends the frame, so the
     /// open block continues across it: the executor advances sequentially with no landing
     /// recompute, and the ops after it keep their precharge in the same block.</summary>
-    BoundaryLinear = 7,
+    BoundaryLinear = 8,
 }
 
 /// <summary>
@@ -134,6 +136,13 @@ internal sealed class InstructionStream
     public readonly ushort[] BlockOpCount;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
     public readonly UInt256[] Constants;
+    /// <summary>
+    /// Plans for coalesced permutation runs, addressed by a <see cref="StreamOpKind.Shuffle"/>
+    /// entry's operand: <c>[reads, writes, source0 .. source(writes-1)]</c>. The run consumes the top
+    /// <c>reads</c> words and replaces them with <c>writes</c> words, where result word <c>j</c> is
+    /// the source that sat <c>source_j</c> below the original top; deeper words are untouched.
+    /// </summary>
+    public readonly byte[] ShufflePlans;
     /// <summary>The same pool in stack representation (32 big-endian bytes per constant), so
     /// fused bitwise ops run as straight vector loads with no limb conversion.</summary>
     public readonly byte[] ConstantBytes;
@@ -146,11 +155,13 @@ internal sealed class InstructionStream
         + BlockGas.Length * sizeof(ulong)
         + BlockOpCount.Length * sizeof(ushort)
         + Constants.Length * Unsafe.SizeOf<UInt256>()
+        + ShufflePlans.Length
         + ConstantBytes.Length
         + PcToEntry.Length * sizeof(ushort);
 
-    private InstructionStream(StreamOp[] ops, ulong[] blockGas, ushort[] blockOpCount, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
+    private InstructionStream(StreamOp[] ops, ulong[] blockGas, ushort[] blockOpCount, UInt256[] constants, byte[] shufflePlans, ushort[] pcToEntry, bool buildConstantBytes)
     {
+        ShufflePlans = shufflePlans;
         Ops = ops;
         BlockGas = blockGas;
         BlockOpCount = blockOpCount;
@@ -180,6 +191,12 @@ internal sealed class InstructionStream
 
         List<StreamOp> ops = new(code.Length / 2);
         List<ushort> blockOpCount = new(64);
+        List<byte> shufflePlans = new(64);
+        // The permutation run currently open: the entry carrying it, its symbolic stack over source
+        // indices, and how far down it has reached into the original words.
+        int shuffleEntry = -1;
+        List<int> shuffleState = new(MaxShuffleWindow);
+        int shuffleReads = 0;
         List<ulong> blockGas = new(code.Length / 16);
         List<UInt256> constants = new(code.Length / 32);
         ushort[] pcToEntry = new ushort[code.Length + 1];
@@ -215,6 +232,7 @@ internal sealed class InstructionStream
                 // so the following ops must sit in their own separately charged block.
                 blockGas.Add(GasCostOf.JumpDest);
                 blockOpCount.Add(1);
+                shuffleEntry = -1;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
             }
@@ -223,6 +241,8 @@ internal sealed class InstructionStream
                 if (openBlock >= 0
                     && TryFoldConstantPair(ops, constants, pcToEntry, instruction, pc, (byte)size))
                 {
+                    // The fold rewrote the entry a run may have been tracking.
+                    shuffleEntry = -1;
                     // Entry surgery happened inside; the original ops' gas and count stay in the block
                     // so the charge and the executed-op metric keep matching the bytecode loop.
                     blockGas[openBlock] += cost;
@@ -231,6 +251,10 @@ internal sealed class InstructionStream
                 else if (openBlock >= 0
                     && TryFuseGluePair(code, ops, instruction, pc, out StreamOp glued))
                 {
+                    // A glue pair also rewrites ops[^1] - the SWAPn POP and POP POP forms are exactly
+                    // the permutation ops a run collects, so a run tracking that entry would go on to
+                    // overwrite the fused pair with a plan that omits the op just fused away.
+                    shuffleEntry = -1;
                     blockGas[openBlock] += cost;
                     blockOpCount[openBlock]++;
                     pcToEntry[pc] = InvalidEntry;
@@ -242,6 +266,7 @@ internal sealed class InstructionStream
                 {
                     // Pair becomes one entry: constant goes to the pool (one indexed load, no
                     // per-width branching) and the pc map forgets this start (nothing lands in a pair).
+                    shuffleEntry = -1;
                     anyBitwiseFusion |= fusedOpcode is >= FusedOpcode.Eq and <= FusedOpcode.Xor;
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
@@ -286,6 +311,29 @@ internal sealed class InstructionStream
 
                     blockGas[openBlock] += cost;
                     blockOpCount[openBlock]++;
+
+                    // Permutation ops compute nothing, so a run of them has one combined effect the
+                    // analyzer can solve now and the executor can apply in a single pass.
+                    if (kind == StreamOpKind.InBlock && IsShuffleOp(instruction))
+                    {
+                        if (shuffleEntry >= 0 && TryExtendShuffle(instruction, shuffleState, ref shuffleReads))
+                        {
+                            EmitShufflePlan(ops, shufflePlans, shuffleEntry, shuffleState, shuffleReads, (byte)size);
+                            pcToEntry[pc] = InvalidEntry;
+                            pc += size;
+                            continue;
+                        }
+
+                        ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
+                        shuffleEntry = ops.Count - 1;
+                        shuffleState.Clear();
+                        shuffleReads = 0;
+                        TryExtendShuffle(instruction, shuffleState, ref shuffleReads);
+                        pc += size;
+                        continue;
+                    }
+
+                    shuffleEntry = -1;
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
                 }
             }
@@ -297,6 +345,7 @@ internal sealed class InstructionStream
                 // PUSH2 const + JUMP/JUMPI to a validated JUMPDEST: one entry, target resolved to an
                 // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
                 // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
+                shuffleEntry = -1;
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
 
                 // An ISZERO feeding a static JUMPI inverts into the jump: its gas is already in its
@@ -335,6 +384,7 @@ internal sealed class InstructionStream
             else
             {
                 // Dynamic JUMP/JUMPI/PUSH2 and trailing truncated PUSHes.
+                shuffleEntry = -1;
                 openBlock = -1;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, 0));
             }
@@ -367,7 +417,7 @@ internal sealed class InstructionStream
             }
         }
 
-        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), blockOpCount.ToArray(), constants.ToArray(), pcToEntry, anyBitwiseFusion);
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), blockOpCount.ToArray(), constants.ToArray(), shufflePlans.ToArray(), pcToEntry, anyBitwiseFusion);
     }
 
     /// <summary>
@@ -376,6 +426,64 @@ internal sealed class InstructionStream
     /// excluded to keep the switch within the size the JIT inlines.
     /// </summary>
     public const ulong NotInBlock = ulong.MaxValue;
+
+    private const int MaxShuffleWindow = 16;
+
+    private static bool IsShuffleOp(Instruction instruction) =>
+        instruction is Instruction.POP or (>= Instruction.DUP1 and <= Instruction.DUP8) or (>= Instruction.SWAP1 and <= Instruction.SWAP8);
+
+    /// <summary>
+    /// Applies one permutation op to the symbolic stack, whose entries name the word that sat that
+    /// many places below the original top, extending the read window as ops reach deeper. Refuses to
+    /// grow past the window the executor buffers.
+    /// </summary>
+    private static bool TryExtendShuffle(Instruction instruction, List<int> state, ref int reads)
+    {
+        int depth = instruction == Instruction.POP ? 1
+            : instruction <= Instruction.DUP8 ? instruction - Instruction.DUP1 + 1
+            : instruction - Instruction.SWAP1 + 2;
+
+        while (state.Count < depth)
+        {
+            if (reads >= MaxShuffleWindow) return false;
+            state.Add(reads++);
+        }
+
+        if (instruction == Instruction.POP)
+        {
+            state.RemoveAt(0);
+        }
+        else if (instruction <= Instruction.DUP8)
+        {
+            if (state.Count >= MaxShuffleWindow) return false;
+            state.Insert(0, state[depth - 1]);
+        }
+        else
+        {
+            (state[0], state[depth - 1]) = (state[depth - 1], state[0]);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Publishes the run's effect so far as a fresh plan and repoints its entry. Superseded
+    /// revisions stay in the buffer unreferenced, which trades a few bytes of analysis output for a
+    /// single-pass emission.
+    /// </summary>
+    private static void EmitShufflePlan(List<StreamOp> ops, List<byte> plans, int entryIndex, List<int> state, int reads, byte extraAdvance)
+    {
+        int offset = plans.Count;
+        plans.Add((byte)reads);
+        plans.Add((byte)state.Count);
+        for (int i = 0; i < state.Count; i++)
+        {
+            plans.Add((byte)state[i]);
+        }
+
+        StreamOp entry = ops[entryIndex];
+        ops[entryIndex] = new StreamOp(entry.Opcode, StreamOpKind.Shuffle, entry.Pc, entry.BlockIndex, (byte)(entry.Advance + extraAdvance), (ulong)offset);
+    }
 
     /// <summary>Dynamic-gas ops that always fall through on success: no control redirect, no frame
     /// end, and no observation of remaining gas (which excludes GAS, the CALL family and CREATE:
