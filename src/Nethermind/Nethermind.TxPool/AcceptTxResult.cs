@@ -119,6 +119,11 @@ namespace Nethermind.TxPool
         // Message field with ErrorCodes.AccountLocked (-32020), so the Code string never reaches RPC callers.
         public static readonly AcceptTxResult SignFailed = new(19, nameof(SignFailed), "authentication needed: password or unlock");
 
+        /// <summary>
+        /// An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.
+        /// </summary>
+        public static readonly AcceptTxResult PayerExposureExceeded = new(20, TxPoolErrorMessages.PayerExposureExceeded);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;
