@@ -235,8 +235,16 @@ def keccak256(data: bytes) -> bytes:
     return bytes(out[:32])
 
 
+# Pinned output. Must equal PaymasterRuntimeHex/CanonicalCodeHash in Eip8141CanonicalPaymasterTests.cs;
+# asserted below so editing PROGRAM without re-pasting the hex fails loudly instead of drifting silently.
+EXPECTED_LENGTH = 355
+EXPECTED_CODEHASH = '0xda42f0d11838c4c0c3129b8b8e93e9718127ad6b315e517e1088125707c4d45c'
+
 if __name__ == '__main__':
     code = assemble()
+    codehash = '0x' + keccak256(code).hex()
+    assert len(code) == EXPECTED_LENGTH, f'length drifted: {len(code)} != {EXPECTED_LENGTH}'
+    assert codehash == EXPECTED_CODEHASH, f'code hash drifted: {codehash} != {EXPECTED_CODEHASH}'
     print("length:", len(code), "bytes")
     print("bytecode:", "0x" + code.hex())
-    print("codehash:", "0x" + keccak256(code).hex())
+    print("codehash:", codehash)

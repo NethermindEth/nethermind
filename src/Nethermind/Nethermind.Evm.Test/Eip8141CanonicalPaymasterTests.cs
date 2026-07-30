@@ -52,6 +52,10 @@ public class Eip8141CanonicalPaymasterTests
     private const ulong BlockTimestamp = 1_000_000;
     private const ulong Delay = 86_400;
 
+    // Below MaxCost for the sponsored tx (frame gas limits sum to 315,000 at 1 wei/gas), so an
+    // instance deployed with this balance cannot back the sponsorship until a deposit tops it up.
+    private static readonly UInt256 UnderfundedBalance = 1_000;
+
     // Measured pay-frame validation gas under the prototype fork. Higher than the design doc §5a
     // ~2,150 estimate because this fork carries the EIP-8037/8038 state-gas repricing, which raises
     // the single cold SLOAD; still far under the 15,000 pay-frame bound.
@@ -350,32 +354,28 @@ public class Eip8141CanonicalPaymasterTests
         Assert.That(receipt.Payer, Is.EqualTo(Paymaster));
     }
 
-    // 13. A matured withdrawal whose value-bearing CALL to the signer fails reverts the whole finalize
-    // and preserves the pending slots, so finalize can be retried. Case: the pending amount exceeds the
-    // paymaster balance, so the CALL fails on the value transfer.
-    [Test]
-    public void MaturedFinalize_AmountExceedsBalance_RevertsAndPreservesPending()
+    // 13/14. A matured withdrawal whose value-bearing CALL to the signer fails reverts the whole
+    // finalize and preserves the pending slots, so finalize can be retried. Two failure modes: the
+    // pending amount exceeds the paymaster balance, and the signer is a contract that reverts on
+    // receiving the value.
+    [TestCaseSource(nameof(FinalizeRevertCases))]
+    public void MaturedFinalize_FailedWithdrawalCall_RevertsAndPreservesPending(bool signerRejectsValue, UInt256 amount)
     {
         Fund(ThirdParty);
-        DeployPaymaster(PaymasterCode, Signer, 1.Ether);
-        UInt256 amount = 2.Ether;
+        Address signer = signerRejectsValue ? RevertingReceiver : Signer;
+        if (signerRejectsValue) DeployContract(RevertingReceiver, RevertOnCallCode, UInt256.Zero);
+        DeployPaymaster(PaymasterCode, signer, 1.Ether);
         SetPending(amount, BlockTimestamp);
 
-        AssertFinalizeRevertsAndPreservesPending(BlockTimestamp, amount, BlockTimestamp);
+        AssertFinalizeRevertsAndPreservesPending(BlockTimestamp, amount);
     }
 
-    // 14. Same revert-and-preserve guarantee when the signer is a contract that reverts on receiving
-    // the withdrawal value: the CALL returns failure and the finalize rolls back its slot clearing.
-    [Test]
-    public void MaturedFinalize_SignerRejectsValue_RevertsAndPreservesPending()
+    private static IEnumerable<TestCaseData> FinalizeRevertCases()
     {
-        Fund(ThirdParty);
-        DeployContract(RevertingReceiver, RevertOnCallCode, UInt256.Zero);
-        DeployPaymaster(PaymasterCode, RevertingReceiver, 1.Ether);
-        UInt256 amount = 100;
-        SetPending(amount, BlockTimestamp);
-
-        AssertFinalizeRevertsAndPreservesPending(BlockTimestamp, amount, BlockTimestamp);
+        yield return new TestCaseData(false, 2.Ether)
+            .SetName("the pending amount exceeds the paymaster balance");
+        yield return new TestCaseData(true, (UInt256)100)
+            .SetName("the signer contract reverts on receiving the value");
     }
 
     // 15. Reentrancy during the withdrawal CALL is safe: the signer is a contract that re-enters the
@@ -480,6 +480,44 @@ public class Eip8141CanonicalPaymasterTests
 
         Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure), "value with calldata is non-payable and reverts");
         Assert.That(_stateProvider.GetBalance(Paymaster), Is.EqualTo(paymasterBefore), "no value is transferred");
+    }
+
+    // 19. The pay frame's solvency gate backs the sponsorship with the paymaster's own balance:
+    // APPROVE reverts when the instance holds less than MaxCost (EvmInstructions.FrameTx.cs), so an
+    // underfunded instance cannot sponsor and the reverting pay frame invalidates the whole tx.
+    [Test]
+    public void UnderfundedPaymaster_PayFrameReverts_TxInvalid()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        DeployPaymaster(PaymasterCode, Signer, UnderfundedBalance);
+        Transaction tx = SponsoredTx(0);
+        SignEntries(tx, [(SenderKey, null, []), (SignerKey, Signer, [])]);
+
+        TransactionResult result = ExecuteInvalid(tx, BlockTimestamp);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+    }
+
+    // 20. The mirror of test 19, giving the deposit path (test 5) an end-to-end purpose: a plain-value
+    // deposit lifts the same underfunded instance above MaxCost, so the identical sponsored tx now
+    // clears the solvency gate, validates, and is charged as the payer.
+    [Test]
+    public void DepositLiftsPaymasterAboveMaxCost_SponsoredTxBecomesValid()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        DeployPaymaster(PaymasterCode, Signer, UnderfundedBalance);
+        Fund(ThirdParty);
+
+        // 1,000,000 wei clears the 315,000-wei sum of the frame gas limits with ample margin.
+        ProcessBlock(BlockTimestamp, AdminTx(ThirdPartyKey, 0, [], value: 1_000_000));
+        Assert.That(_stateProvider.GetBalance(Paymaster), Is.EqualTo(UnderfundedBalance + 1_000_000), "the deposit is credited");
+
+        Transaction tx = SponsoredTx(0);
+        SignEntries(tx, [(SenderKey, null, []), (SignerKey, Signer, [])]);
+        TxReceipt receipt = ProcessBlock(BlockTimestamp, tx)[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "the funded instance clears the solvency gate");
+        Assert.That(receipt.Payer, Is.EqualTo(Paymaster), "the deposit-backed instance is the payer");
     }
 
     public enum AdminSigCase
@@ -648,12 +686,14 @@ public class Eip8141CanonicalPaymasterTests
     private void StoreSlot(int slot, UInt256 value) =>
         _stateProvider.Set(new StorageCell(Paymaster, (UInt256)slot), value.ToBigEndian().WithoutLeadingZeros().ToArray());
 
-    private void AssertFinalizeRevertsAndPreservesPending(ulong finalizeTimestamp, UInt256 amount, ulong unlockTime)
+    // Finalizes exactly at maturity (the pending was set to unlock at the same timestamp), so the
+    // revert is driven by the failing withdrawal CALL rather than the timelock.
+    private void AssertFinalizeRevertsAndPreservesPending(ulong timestamp, UInt256 amount)
     {
-        TxReceipt receipt = ProcessBlock(finalizeTimestamp, AdminTx(ThirdPartyKey, 0, FinalizeCall()))[0];
+        TxReceipt receipt = ProcessBlock(timestamp, AdminTx(ThirdPartyKey, 0, FinalizeCall()))[0];
         Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure), "a failed withdrawal CALL reverts the finalize");
         Assert.That(Slot(1), Is.EqualTo(amount), "the pending amount survives so finalize can be retried");
-        Assert.That(Slot(2), Is.EqualTo((UInt256)unlockTime), "the maturity time survives the revert");
+        Assert.That(Slot(2), Is.EqualTo((UInt256)timestamp), "the maturity time survives the revert");
     }
 
     private static byte[] BuildReentrantCaller(byte[] payload)
