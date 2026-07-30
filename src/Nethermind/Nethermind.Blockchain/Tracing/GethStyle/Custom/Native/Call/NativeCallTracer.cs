@@ -279,6 +279,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         bool failed = callFrame.Error is not null || parentFailed;
         if (failed)
         {
+            callFrame.Logs?.Dispose();
             callFrame.Logs = null;
         }
 
