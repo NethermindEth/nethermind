@@ -84,12 +84,10 @@ public class Eip8141ScenarioTests
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
     }
 
-    // EIP-7708: a codeless SENDER frame's value transfer runs through default code, bypassing the
-    // VM, so the transfer log must still reach the SENDER frame receipt and the transaction log
-    // union, with the SYSTEM_ADDRESS emitter, Transfer topics, and 32-byte big-endian value data.
-    // The recipient does not exist beforehand, so this exercises the dead-recipient path, where
-    // default code (no gas metering) always emits the log, unlike the VM path, which suppresses
-    // it when the EIP-8037 NEW_ACCOUNT state gas is unaffordable.
+    // EIP-7708: a codeless SENDER frame transfers through default code, not the VM, so the log must
+    // still reach the frame receipt and the transaction log union. Recipient is fresh, exercising
+    // the dead-recipient path where default code always logs (the VM path suppresses it when the
+    // EIP-8037 NEW_ACCOUNT gas is unaffordable).
     [Test]
     public void CodelessSenderFrameTransfer_EmitsEip7708TransferLog()
     {

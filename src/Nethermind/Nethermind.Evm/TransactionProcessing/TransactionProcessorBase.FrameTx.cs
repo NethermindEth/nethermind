@@ -443,11 +443,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
     /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
     /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
-    /// EIP8141: default-code gas metering is pending; the sig verification cost is already charged
-    /// in the intrinsic, so no gas is charged here yet. Two consequences for the transfer log: the
-    /// EIP-8037 NEW_ACCOUNT charge that suppresses it on the VM path never applies, so a transfer
-    /// to a dead recipient always logs; and nothing can fail after the transfer, so the log needs
-    /// no frame-journal snapshot. Adding a gas charge here requires revisiting both.
+    /// EIP8141: default-code gas metering is pending, so the transfer to a dead recipient always
+    /// logs (the EIP-8037 NEW_ACCOUNT charge that suppresses it on the VM path never applies) and
+    /// needs no frame-journal snapshot. A gas charge here would revisit both.
     /// </summary>
     /// <param name="accessTracker">Cross-frame log/warm journal; the transfer log is appended to
     /// its log list so it reaches the frame receipt and the transaction log union.</param>
