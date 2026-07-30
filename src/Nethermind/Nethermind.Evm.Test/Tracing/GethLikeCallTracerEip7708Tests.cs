@@ -74,7 +74,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         }
     }
 
-    [Test]
+    [Test(Description = "Recipient forwards value to C which reverts - C's transfer log must be cleared")]
     public void RevertInnerValueTransfer_WithLog_DoesNotLeavePhantomLog()
     {
         TestState.CreateAccount(TestItem.AddressC, 0);
@@ -98,6 +98,38 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer(), "successful parent frame must keep its log");
             Assert.That(childFrame.Error, Is.EqualTo("execution reverted"), "inner call must have reverted");
             Assert.That(childFrame.Logs, Is.Null, "phantom transfer log on a reverted frame must be cleared");
+        }
+    }
+
+    [Test(Description = "C forwards value to D (succeeds, emits a transfer log) then reverts - D's log must be cleared")]
+    public void RevertInnerValueTransfer_WithLog_DoesNotLeavePhantomLog_OnDescendant()
+    {
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, Code.ForwardValueAndRevert(TestItem.AddressD), Spec);
+        TestState.CreateAccount(TestItem.AddressD, 0);
+
+        byte[] recipientCode = Code.ForwardValue(TestItem.AddressC);
+        (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, recipientCode, value: TopValue);
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
+
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        Assert.That(topFrame.Calls, Has.Count.EqualTo(1));
+        NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
+        Assert.That(childFrame.Calls, Has.Count.EqualTo(1));
+        NativeCallTracerCallFrame grandchildFrame = childFrame.Calls[0];
+
+        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer(), "successful top frame must keep its log");
+            Assert.That(childFrame.Error, Is.EqualTo("execution reverted"), "inner call must have reverted");
+            Assert.That(childFrame.Logs, Is.Null, "reverted frame's transfer log must be cleared");
+            Assert.That(grandchildFrame.Error, Is.Null, "descendant call itself succeeded");
+            Assert.That(grandchildFrame.Logs, Is.Null, "log on a successful frame under a reverted ancestor must also be cleared");
         }
     }
 
