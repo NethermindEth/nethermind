@@ -53,30 +53,36 @@ of it.
 ## Chosen slice: per-payer exposure accounting (rule 1)
 
 Rule 1 is the primary consumer of the payer this branch already resolves, is self-contained, and
-needs no simulation, no upstream-pinned constant, and no new pool-lock coordination — it reuses
-the exact `DelegationCache` event-counter precedent (as PR #12603 did for pending delegations).
-It is the smallest slice that turns the annotation into an actual admission gate.
+needs no simulation, no upstream-pinned constant, and no new pool-lock coordination — the reservation
+is made atomic with a per-key compare-and-set in the cache rather than a pool lock. It is the
+smallest slice that turns the annotation into an actual admission gate.
 
-### Mechanism (mirrors `DelegationCache` / `DelegatedAccountFilter`)
+### Mechanism
 
 - **`PayerExposureCache`** (new, internal) — a `ConcurrentDictionary<AddressAsKey, UInt256>`
-  summing the pending max-cost reserved per resolved payer. `GetReserved`, `Add`, `Subtract`
-  with the same thread-safe remove-when-zero idiom as `DelegationCache`.
-- **Event-driven accounting** — reuse the existing `TxDistinctSortedPool.Inserted` / `Removed`
-  handlers (`OnInsertedTx` / `OnRemovedTx`) already wired for pending delegations. On insert of a
-  frame tx with a non-null `PayerAddress`, `Add(payer, maxCost)`; on removal, `Subtract`. This
-  single subscription already covers eviction, replacement, inclusion, and reorg removal (they
-  all funnel through pool `Removed`), so no separate decrement plumbing is needed.
-- **`FrameTxPayerExposureFilter`** (new `IIncomingTxFilter`) — placed in the post-hash pipeline
-  *after* `FrameTxPayerFilter` (which sets `PayerAddress`). For a frame tx with a resolved payer
-  it reads the payer's head balance, computes `reserved = cache.GetReserved(payer)` and the tx's
-  max cost, and rejects when `reserved + maxCost > balance`. Non-frame txs and unresolved
-  (`RequiresSimulation` / `NoPayer`, i.e. `PayerAddress is null`) frame txs pass through
-  untouched — enforcement is scoped to natively-resolved payers.
-- **Max cost** = the pool's existing `Transaction.IsOverflowInTxCostAndValue(out cost)`
-  (`MaxFeePerGas·GasLimit + Value + blobCost`). This is the established pool max-cost and a sound
-  proxy for `TXPARAM(0x06)`; it omits the signature-verification intrinsic add-on, which lands
-  with the `MAX_VERIFY_GAS` slice. On overflow the tx is rejected (`Int256Overflow`).
+  summing the pending max-cost reserved per resolved payer. `GetReserved`, `TryReserve` (atomic
+  conditional reserve), and `Subtract` (release, with the same thread-safe remove-when-zero idiom
+  as `DelegationCache`).
+- **`FrameTxPayerExposureFilter`** (new `IIncomingTxFilter`) — placed *last* in the post-hash
+  pipeline, after `FrameTxPayerFilter` (which sets `PayerAddress`). For a frame tx with a resolved
+  payer it reads the payer's head balance and calls `TryReserve(payer, maxCost, balance)`, which
+  atomically reserves the cost iff `reserved + maxCost ≤ balance`, rejecting (`PayerExposureExceeded`)
+  otherwise. Reserving inside the admission check — rather than reading the total and reserving later
+  — closes the check-then-act race whereby N concurrent same-payer submissions (P2P + RPC threads run
+  `SubmitTx` under a *shared* read lock) could all observe a pre-reservation total and all pass.
+  Non-frame txs and unresolved (`RequiresSimulation` / `NoPayer`, i.e. `PayerAddress is null`) frame
+  txs pass through untouched — enforcement is scoped to natively-resolved payers.
+- **Release** — the reservation is released via the existing `TxDistinctSortedPool.Removed` handler
+  (`OnRemovedTx`), which covers eviction, replacement, inclusion, and reorg removal (they all funnel
+  through pool `Removed`), plus the one admission path that reserves but never inserts
+  (`ReplacementNotAllowed` in `AddCore`, which raises no event), compensated explicitly there.
+- **Max cost** = the pool's existing `Transaction.IsOverflowInTxCostAndValue(out cost)`. For a frame
+  tx this reduces to **gas only** (`MaxFeePerGas·GasLimit`): the top-level `Value` is always zero
+  (frame value lives on `TxFrame.Value`, the frame-tx decoder has no top-level `value` field) and the
+  blob term never contributes because blob fields are rejected at validation while frame-blob support
+  is off (see the blob note below). This is a sound proxy for `TXPARAM(0x06)`; it omits the
+  signature-verification intrinsic add-on, which lands with the `MAX_VERIFY_GAS` slice. On overflow
+  the tx is rejected (`Int256Overflow`).
 
 ### Why not fold it into `FrameTxPayerFilter`
 
@@ -91,9 +97,12 @@ the resolver stays reusable by the deferred simulation layer unchanged.
   `reserved` — the check is conservative (may reject a valid replacement that switches to/keeps a
   near-cap payer). Atomic release/take is **rule 4**, explicitly deferred. Documented as an
   `EIP8141:` follow-up.
-- **Blob-carrying frame txs.** Accounting hooks only the standard-pool `Inserted`/`Removed`
-  events (matching the existing delegation accounting); frame blob support is a separate deferred
-  track.
+- **Blob-carrying frame txs.** Frame-blob support is a separate deferred track, so the frame-tx
+  validator now includes `NonBlobFieldsTxValidator`, rejecting any frame tx that carries
+  `max_fee_per_blob_gas` or `blob_versioned_hashes`. This keeps the gas-only max-cost proxy exact:
+  a blob-carrying frame tx can no longer reserve ≈ gas-only exposure while smuggling an unbounded
+  blob term past the gate. When frame-blob support lands, the blob term must be added to the
+  reserved max cost (option (b)) at the same time the validator gate is relaxed.
 - **Balance freshness.** The filter reads head balance at admission; keeping `reserved` correct
   as balances move on head changes is **rule 6** (revalidation/indexing), deferred. This slice
   bounds exposure at admission time, which is the spec's admission-side MUST.
