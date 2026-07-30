@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -184,6 +185,19 @@ public interface IWorldStateScopeProvider
         void Set(Address key, Account? account);
 
         IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries);
+
+        /// <summary>
+        /// Flushes already-<see cref="Set"/> accounts that are not in <paramref name="pendingStorageRoots"/>
+        /// into the state tree ahead of <see cref="IDisposable.Dispose"/>.
+        /// </summary>
+        /// <remarks>
+        /// Lets the caller overlap the state-tree bulk set with a concurrent storage-root computation:
+        /// accounts without a pending storage-root update are final once set, so they can be written
+        /// while the storage roots of the remaining accounts are still being computed. Implementations
+        /// that do not support the split may ignore the call — <see cref="IDisposable.Dispose"/> then
+        /// writes every account as usual.
+        /// </remarks>
+        void FlushAccountsWithoutPendingRoots(IReadOnlySet<AddressAsKey> pendingStorageRoots) { }
     }
 
     public class AccountUpdated(Address Address, Account? Account) : EventArgs

@@ -259,6 +259,27 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots.Clear();
     }
 
+    /// <summary>
+    /// Addresses whose storage roots are still pending recomputation by <see cref="FlushToTree"/>,
+    /// or <c>null</c> when there are none.
+    /// </summary>
+    /// <remarks>
+    /// Returns a copy: <see cref="FlushToTree"/> workers mark entries processed concurrently, so the
+    /// live dictionary must not be read while it runs. Call before starting the flush.
+    /// </remarks>
+    internal HashSet<AddressAsKey>? GetPendingRootAddresses()
+    {
+        if (_toUpdateRoots.Count == 0) return null;
+
+        HashSet<AddressAsKey> pending = new(_toUpdateRoots.Count);
+        foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
+        {
+            pending.Add(kvp.Key);
+        }
+
+        return pending;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch);
 

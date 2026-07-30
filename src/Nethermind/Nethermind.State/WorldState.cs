@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -358,8 +359,34 @@ namespace Nethermind.State
             {
                 using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
                 writeBatch.OnAccountUpdated += _onAccountUpdated;
-                _persistentStorageProvider.FlushToTree(writeBatch);
+
+                // Filling the batch first (side effects incl. self-destruct clears run serially here)
+                // lets the storage-root fan-out overlap with bulk-setting the storage-independent
+                // accounts, which are final once set. Destroyed contracts never reach the fan-out
+                // (removed from the pending set during Commit), so the two sides touch disjoint tries.
                 _stateProvider.FlushToTree(writeBatch);
+
+                HashSet<AddressAsKey>? pendingRoots = _persistentStorageProvider.GetPendingRootAddresses();
+                if (pendingRoots is null)
+                {
+                    _persistentStorageProvider.FlushToTree(writeBatch);
+                }
+                else
+                {
+                    Task storageRootsTask = Task.Run(() => _persistentStorageProvider.FlushToTree(writeBatch));
+                    try
+                    {
+                        writeBatch.FlushAccountsWithoutPendingRoots(pendingRoots);
+                    }
+                    catch
+                    {
+                        // Observe the background flush without letting its failure mask the inline one.
+                        try { storageRootsTask.GetAwaiter().GetResult(); } catch { }
+                        throw;
+                    }
+
+                    storageRootsTask.GetAwaiter().GetResult();
+                }
             }
 
             // Fold this scope's accumulated counters into the global metrics. Runs per-tx commit and

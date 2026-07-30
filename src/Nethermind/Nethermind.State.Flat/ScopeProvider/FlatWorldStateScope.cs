@@ -479,6 +479,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
 
+        // Non-null once the storage-independent accounts were bulk-set early; Dispose then only
+        // writes accounts from this set (the ones whose storage roots were still being computed).
+        private IReadOnlySet<AddressAsKey>? _earlyFlushedPendingRoots;
+
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
         public void Set(Address key, Account? account)
@@ -503,6 +507,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Runs on the committing thread while the storage-root fan-out executes concurrently; it only
+        /// touches the state tree and this batch's account dictionary, which the fan-out never mutates.
+        /// </remarks>
+        public void FlushAccountsWithoutPendingRoots(IReadOnlySet<AddressAsKey> pendingStorageRoots)
+        {
+            _earlyFlushedPendingRoots = pendingStorageRoots;
+
+            using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+            {
+                if (!pendingStorageRoots.Contains(kv.Key))
+                {
+                    stateSetter.Set(kv.Key, kv.Value);
+                }
+            }
+        }
 
         public void Dispose()
         {
@@ -531,10 +554,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 OnAccountUpdated = null;
 
-                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                IReadOnlySet<AddressAsKey>? earlyFlushed = _earlyFlushedPendingRoots;
+                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(
+                    earlyFlushed is null ? _dirtyAccounts.Count : earlyFlushed.Count);
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    if (earlyFlushed is null || earlyFlushed.Contains(kv.Key))
+                    {
+                        stateSetter.Set(kv.Key, kv.Value);
+                    }
                 }
             }
             finally
