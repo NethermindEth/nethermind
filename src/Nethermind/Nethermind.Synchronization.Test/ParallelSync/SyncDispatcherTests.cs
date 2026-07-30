@@ -163,11 +163,12 @@ public class SyncDispatcherTests
     {
         TestSyncFeed syncFeed = new();
         TestDownloader downloader = new();
+        await using TestSyncPeerPool peerPool = new();
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig(),
             syncFeed,
             downloader,
-            new TestSyncPeerPool(),
+            peerPool,
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
         Task executorTask = dispatcher.Start(CancellationToken.None);
@@ -189,11 +190,12 @@ public class SyncDispatcherTests
         TestSyncFeed syncFeed = new(isMultiFeed: true);
         syncFeed.LockResponse();
         TestDownloader downloader = new();
+        await using TestSyncPeerPool peerPool = new();
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig(),
             syncFeed,
             downloader,
-            new TestSyncPeerPool(),
+            peerPool,
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
         Task executorTask = dispatcher.Start(cancellationToken);
@@ -219,7 +221,8 @@ public class SyncDispatcherTests
     [Test]
     public async Task DisposeAsync_unsubscribes_StateChanged_handler()
     {
-        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+        await using TestSyncPeerPool peerPool = new();
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher(peerPool);
 
         await dispatcher.DisposeAsync();
 
@@ -234,7 +237,8 @@ public class SyncDispatcherTests
     [Test]
     public async Task DisposeAsync_double_dispose_does_not_throw()
     {
-        (_, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+        await using TestSyncPeerPool peerPool = new();
+        (_, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher(peerPool);
 
         await dispatcher.DisposeAsync();
         await dispatcher.DisposeAsync();
@@ -243,7 +247,8 @@ public class SyncDispatcherTests
     [Test]
     public async Task DisposeAsync_then_StateChanged_does_not_modify_dispatcher()
     {
-        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+        await using TestSyncPeerPool peerPool = new();
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher(peerPool);
 
         await dispatcher.DisposeAsync();
 
@@ -255,14 +260,14 @@ public class SyncDispatcherTests
         // No exception means the handler was properly unsubscribed
     }
 
-    private static (TestSyncFeed Feed, SyncDispatcher<TestBatch> Dispatcher) CreateFeedAndDispatcher()
+    private static (TestSyncFeed Feed, SyncDispatcher<TestBatch> Dispatcher) CreateFeedAndDispatcher(TestSyncPeerPool peerPool)
     {
         TestSyncFeed syncFeed = new();
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig(),
             syncFeed,
             new TestDownloader(),
-            new TestSyncPeerPool(),
+            peerPool,
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
         return (syncFeed, dispatcher);
@@ -279,6 +284,7 @@ public class SyncDispatcherTests
         syncFeed.LockResponse();
 
         TestDownloader downloader = new();
+        await using TestSyncPeerPool peerPool = new(peerCount);
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig()
             {
@@ -286,7 +292,7 @@ public class SyncDispatcherTests
             },
             syncFeed,
             downloader,
-            new TestSyncPeerPool(peerCount),
+            peerPool,
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
 

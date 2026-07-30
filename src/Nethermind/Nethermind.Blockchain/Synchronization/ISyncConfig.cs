@@ -145,7 +145,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = nameof(ITunableDb.TuneType.EnableBlobFiles), HiddenFromDocs = true)]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
-    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
+    [ConfigItem(Description = "The max number of sync responses processed concurrently. `0` to use the number of logical processors. It does not bound in-flight network requests, which are limited by peer availability.", DefaultValue = "0")]
     public int MaxProcessingThreads { get; set; }
 
     [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]
@@ -202,7 +202,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Enable storage range split, which downloads large contract storages in parallel ranges at the cost of extra healing for the unstitched range boundaries.", DefaultValue = "true", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Enable storage range split, which downloads large contract storages in parallel ranges at the cost of extra healing for the unstitched range boundaries. Previously disabled by default due to intermittent snap sync hangs; splits are now limited to large remaining ranges and unstitchable roots are force-healed.", DefaultValue = "true", HiddenFromDocs = true)]
     bool EnableSnapSyncStorageRangeSplit { get; set; }
 
     [ConfigItem(Description = "_Technical._ Enable double write check during snap sync for debugging.", DefaultValue = "false", HiddenFromDocs = true)]

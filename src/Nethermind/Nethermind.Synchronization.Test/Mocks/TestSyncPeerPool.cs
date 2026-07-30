@@ -20,14 +20,27 @@ namespace Nethermind.Synchronization.Test.Mocks;
 /// A minimal <see cref="ISyncPeerPool"/> for dispatcher tests: allocations are limited to
 /// <paramref name="peerCount"/> concurrent peers, and <see cref="Allocate"/> waits until one is freed.
 /// </summary>
+/// <remarks>
+/// Mirrors <see cref="SyncPeerPool.Allocate"/> failure semantics: it never throws, returning
+/// <see cref="SyncPeerAllocation.FailedAllocation"/> on cancellation — and on timeout when
+/// <see cref="HonorAllocationTimeout"/> is set. Timeout-honoring is opt-in because several
+/// dispatcher tests use the indefinitely-blocking wait as a scheduling fence.
+/// </remarks>
 public class TestSyncPeerPool(int peerCount = 1) : ISyncPeerPool
 {
     private readonly SemaphoreSlim _peerSemaphore = new(peerCount, peerCount);
     private readonly Lock _lock = new();
     private int _freedCount;
+    private int _allocatedCount;
 
     /// <summary>Total number of <see cref="Free"/> calls, for asserting that allocations are not leaked.</summary>
     public int FreedCount => Volatile.Read(ref _freedCount);
+
+    /// <summary>Total number of successful allocations, for pairing with <see cref="FreedCount"/>.</summary>
+    public int AllocatedCount => Volatile.Read(ref _allocatedCount);
+
+    /// <summary>When set, <see cref="Allocate"/> fails after <c>timeoutMilliseconds</c> like the real pool instead of waiting indefinitely.</summary>
+    public bool HonorAllocationTimeout { get; init; }
 
     public async Task<SyncPeerAllocation> Allocate(
         IPeerAllocationStrategy peerAllocationStrategy,
@@ -36,7 +49,18 @@ public class TestSyncPeerPool(int peerCount = 1) : ISyncPeerPool
         CancellationToken cancellationToken = default)
     {
         await Task.Yield();
-        await _peerSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            int timeout = HonorAllocationTimeout && timeoutMilliseconds > 0 ? timeoutMilliseconds : Timeout.Infinite;
+            if (!await _peerSemaphore.WaitAsync(timeout, cancellationToken))
+                return SyncPeerAllocation.FailedAllocation;
+        }
+        catch (OperationCanceledException)
+        {
+            return SyncPeerAllocation.FailedAllocation;
+        }
+
+        Interlocked.Increment(ref _allocatedCount);
         ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
         SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
         return allocation;

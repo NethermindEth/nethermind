@@ -25,12 +25,14 @@ namespace Nethermind.Synchronization.ParallelSync;
 /// Concurrency model: <see cref="ISimpleSyncFeed{T}.PrepareRequest"/> is called only from the
 /// single <see cref="Run"/> loop and is never concurrent with itself. The number of in-flight
 /// network requests is bounded by peer availability (<see cref="ISyncPeerPool.Allocate"/>),
-/// not by CPU count; only response processing (<see cref="ISimpleSyncFeed{T}.HandleResponse"/>)
-/// is bounded by <see cref="ISyncConfig.MaxProcessingThreads"/>. A downloaded response holds its
-/// peer allocation until a processing slot is acquired, so unprocessed responses stay bounded
-/// by peer count. <see cref="Run"/> returns only after every in-flight dispatch has completed —
-/// including when cancelled — because callers treat that return as the sole barrier before
-/// resetting or finalizing feed state.
+/// not by CPU count; response processing (<see cref="ISimpleSyncFeed{T}.HandleResponse"/>) is
+/// bounded by <see cref="ISyncConfig.MaxProcessingThreads"/> plus one — a failed allocation is
+/// handled on the loop thread without taking a slot. A downloaded response holds its peer
+/// allocation until a processing slot is acquired, so transient response memory is capped at
+/// roughly peer count (<c>Network.MaxActivePeers</c>) × max response size — not by
+/// <see cref="ISyncConfig.MaxProcessingThreads"/>. <see cref="Run"/> returns only after every
+/// in-flight dispatch has completed — including when cancelled — because callers treat that
+/// return as the sole barrier before resetting or finalizing feed state.
 /// </remarks>
 public class SimpleDispatcher<T>(
     ISimpleSyncFeed<T> feed,
@@ -59,7 +61,7 @@ public class SimpleDispatcher<T>(
 
         void SignalDispatchCompleted()
         {
-            if (Interlocked.Decrement(ref inFlight) == 0) drained.SetResult();
+            if (Interlocked.Decrement(ref inFlight) == 0) drained.TrySetResult();
         }
 
         try
@@ -85,17 +87,28 @@ public class SimpleDispatcher<T>(
                 }
 
                 Interlocked.Increment(ref inFlight);
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
+                    _ = Task.Run(async () =>
                     {
-                        await DoDispatch(request, peer, allocation, processingSemaphore, token);
-                    }
-                    finally
-                    {
-                        SignalDispatchCompleted();
-                    }
-                });
+                        try
+                        {
+                            await DoDispatch(request, peer, allocation, processingSemaphore, token);
+                        }
+                        finally
+                        {
+                            SignalDispatchCompleted();
+                        }
+                    });
+                }
+                catch
+                {
+                    // If Task.Run itself fails the dispatch never runs: undo its in-flight count
+                    // (or the drain below wedges forever) and free the peer it would have freed.
+                    SignalDispatchCompleted();
+                    peerPool.Free(allocation);
+                    throw;
+                }
             }
         }
         finally
@@ -138,10 +151,19 @@ public class SimpleDispatcher<T>(
         Metrics.SyncDispatcherDispatchTimeMicros.Observe(
             Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
 
+        // When already cancelled, free the peer without queueing for a processing slot — on
+        // shutdown a full peer-pool's worth of dispatches would otherwise serialise in batches
+        // of maxThreads behind HandleResponse DB work just to reach Free.
+        if (token.IsCancellationRequested)
+        {
+            peerPool.Free(allocation);
+            return;
+        }
+
         // Acquire a processing slot before freeing the peer so that unprocessed responses stay
         // bounded by peer count. Waiting without the caller token cannot deadlock — slots are
         // held only for the synchronous HandleResponse and always released — and it guarantees
-        // the allocation below is freed even when the caller cancels.
+        // the allocation below is freed even when the caller cancels mid-wait.
         await processingSemaphore.WaitAsync(CancellationToken.None);
         try
         {

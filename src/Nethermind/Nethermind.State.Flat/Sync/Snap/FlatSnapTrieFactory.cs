@@ -51,8 +51,19 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
     /// <remarks>
     /// A snap tree is created once per account per storage response, but its reader is only ever
     /// touched on the proof/boundary-stitching and double-write-check paths — never in the dominant
-    /// proofless path — so creating the snapshot eagerly is wasted work. Not thread-safe, matching
-    /// the single-threaded use of each snap tree. Disposes the inner reader only if it was created.
+    /// proofless path — so creating the snapshot eagerly is wasted work.
+    /// <para>
+    /// Deferral moves the snapshot point from tree creation to the first read, so concurrent
+    /// responses committed in between become visible. This is safe because tree creation was never
+    /// ordered with respect to sibling commits: any state observable through the later snapshot is
+    /// exactly the state an eager snapshot would have observed under a legal alternative scheduling,
+    /// so no reader can depend on the earlier point. One visible consequence: the debug-only
+    /// <see cref="ISyncConfig.EnableSnapDoubleWriteCheck"/> is now more likely to observe a write
+    /// committed by a concurrent sibling range of the same account (benign, but it throws).
+    /// </para>
+    /// Not thread-safe, matching the single-threaded use of each snap tree — a racing first read
+    /// would create two inner readers and leak one native snapshot, not just return a stale value.
+    /// Disposes the inner reader only if it was created.
     /// </remarks>
     private sealed class LazyReader(IPersistence persistence, ReaderFlags readerFlags) : IPersistence.IPersistenceReader
     {
