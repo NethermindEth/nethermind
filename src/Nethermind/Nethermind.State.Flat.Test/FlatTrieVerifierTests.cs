@@ -386,7 +386,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         return slots;
     }
 
-    private Hash256 SetUpLargeStorageAccount(Address address, (UInt256 slot, byte[] value)[] slots, out StateId toState)
+    private Hash256 SetUpLargeStorageAccount(Address address, (UInt256 slot, byte[] value)[] slots)
     {
         StorageTree storageTree = CreateStorageTree(address, slots);
         Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
@@ -395,8 +395,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        toState = new(1, stateRoot);
-        WriteAccountToFlat(address, account, toState);
+        WriteAccountToFlat(address, account, new StateId(1, stateRoot));
         return stateRoot;
     }
 
@@ -416,7 +415,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     {
         Address address = TestItem.AddressA;
         (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
-        Hash256 stateRoot = SetUpLargeStorageAccount(address, slots, out _);
+        Hash256 stateRoot = SetUpLargeStorageAccount(address, slots);
         foreach ((UInt256 slot, byte[] value) in slots)
         {
             WriteStorageDirectToDb(address, slot, value);
@@ -442,7 +441,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     {
         Address address = TestItem.AddressA;
         (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
-        Hash256 stateRoot = SetUpLargeStorageAccount(address, slots, out _);
+        Hash256 stateRoot = SetUpLargeStorageAccount(address, slots);
         // Slot 0 omitted from flat -> missing in flat
         for (int i = 1; i < slots.Length; i++)
         {

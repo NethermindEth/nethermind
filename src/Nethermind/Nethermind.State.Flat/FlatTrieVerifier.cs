@@ -524,6 +524,7 @@ public class FlatTrieVerifier
     {
         Task[]? offloaded = null;
         int offloadedCount = 0;
+        bool completedInline = false;
         try
         {
             for (int partition = 0; partition < PartitionCount; partition++)
@@ -532,6 +533,8 @@ public class FlatTrieVerifier
                 if (TryReserveOffloadSlot())
                 {
                     offloaded ??= new Task[PartitionCount];
+                    // No token on Task.Run: a task canceled before it starts would skip the
+                    // finally and leak the offload slot.
                     offloaded[offloadedCount++] = Task.Run(() =>
                     {
                         try
@@ -549,11 +552,25 @@ public class FlatTrieVerifier
                     VerifyStorageHashedRange(job, reader, storageTrieStore, startKey, endKey, endExclusive: true, cancellationToken);
                 }
             }
+
+            completedInline = true;
         }
         finally
         {
             // Offloaded partitions share this job's reader and stats — never let them outlive this frame.
-            if (offloaded is not null) Task.WaitAll(offloaded.AsSpan(0, offloadedCount));
+            if (offloaded is not null)
+            {
+                try
+                {
+                    Task.WaitAll(offloaded.AsSpan(0, offloadedCount));
+                }
+                catch (Exception ex) when (!completedInline)
+                {
+                    // An inline partition is already unwinding — keep it as the root cause
+                    // instead of letting this wait replace it.
+                    if (_logger.IsWarn) _logger.Warn($"Offloaded storage partition failed: {ex}");
+                }
+            }
         }
     }
 
