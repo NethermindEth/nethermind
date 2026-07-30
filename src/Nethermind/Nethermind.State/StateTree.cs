@@ -94,7 +94,7 @@ namespace Nethermind.State
             /// fusaka A/B showed fusion only wins on write-heavy blocks (top decile, ≥ roughly this many
             /// changed accounts) and costs ~0.5 ms on typical blocks when unconditional.
             /// </remarks>
-            private const int FusedRootHashThreshold = 1024;
+            private const int FusedRootHashThreshold = 2048;
 
             readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
 
