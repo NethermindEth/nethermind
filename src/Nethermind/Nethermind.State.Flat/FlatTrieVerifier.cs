@@ -512,7 +512,9 @@ public class FlatTrieVerifier
     /// the rest of the queue is done. Deciding per partition rather than once per job lets the same job
     /// run sequentially through the busy phase and fan out the moment other workers go idle — the
     /// single-worker tail this targets. <see cref="TryReserveOffloadSlot"/> caps busy workers plus
-    /// offloaded partitions at the worker count, so verification concurrency never exceeds the pool size.
+    /// offloaded partitions at the worker count at reservation time; workers turning busy afterwards can
+    /// transiently push concurrency past the pool size (by at most the partition count), self-correcting
+    /// as offloaded partitions finish.
     /// Unlike the sequential full range, the partitions exclude a slot hashed to exactly 0xFF…FF
     /// (probability 2⁻²⁵⁶) — the same asymmetry the account partitions already have.
     /// </remarks>
@@ -524,7 +526,7 @@ public class FlatTrieVerifier
     {
         Task[]? offloaded = null;
         int offloadedCount = 0;
-        bool completedInline = false;
+        bool loopCompleted = false;
         try
         {
             for (int partition = 0; partition < PartitionCount; partition++)
@@ -553,7 +555,7 @@ public class FlatTrieVerifier
                 }
             }
 
-            completedInline = true;
+            loopCompleted = true;
         }
         finally
         {
@@ -564,11 +566,13 @@ public class FlatTrieVerifier
                 {
                     Task.WaitAll(offloaded.AsSpan(0, offloadedCount));
                 }
-                catch (Exception ex) when (!completedInline)
+                catch (Exception ex) when (!loopCompleted)
                 {
                     // An inline partition is already unwinding — keep it as the root cause
-                    // instead of letting this wait replace it.
-                    if (_logger.IsWarn) _logger.Warn($"Offloaded storage partition failed: {ex}");
+                    // instead of letting this wait replace it. On cancellation both sides
+                    // throw the same thing, so logging it would only add shutdown noise.
+                    if (!cancellationToken.IsCancellationRequested && _logger.IsWarn)
+                        _logger.Warn($"Offloaded storage partition failed: {ex}");
                 }
             }
         }
@@ -1023,6 +1027,11 @@ public class FlatTrieVerifier
     {
         private long _hashMismatchCount;
 
+        /// <remarks>
+        /// Counted per RLP load, not per distinct node: snapshot misses hand out fresh unresolved
+        /// nodes, so re-descents (e.g. the whale split's gate probe plus its partitions) re-verify
+        /// and re-count the same corrupt node.
+        /// </remarks>
         public long HashMismatchCount => Interlocked.Read(ref _hashMismatchCount);
 
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
