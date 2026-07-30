@@ -156,17 +156,21 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     private class ColumnDbSnapshot : IColumnDbSnapshot<T>
     {
+        private readonly ColumnsDb<T> _columnsDb;
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
+        private ReadOptions? _readAheadReadOptions;
         private int _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
         private readonly RocksDbReader[] _readers;
+        private readonly IteratorManager?[] _iteratorManagers;
 
         public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot)
         {
+            _columnsDb = columnsDb;
             _snapshot = snapshot;
 
             // Create two shared ReadOptions for all column readers instead of 2 per reader.
@@ -180,17 +184,13 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             // Note: each GetViewBetween call still creates a new ReadOptions with a finalizer;
             // that is pre-existing behavior not addressed by this PR.
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
+            // Shared by all column iterator managers; the ReadOptions it returns is created lazily
+            // on the first HintReadAhead read, so snapshots that never iterate allocate nothing extra.
+            Func<ReadOptions?> readAheadOptionsFactory = GetOrCreateReadAheadReadOptions;
             T[] keys = CreateKeyCache(columnsDb);
             GetCachedMaxOrdinal(columnsDb, keys);
+            _iteratorManagers = new IteratorManager?[columnsDb._cachedMaxOrdinal + 1];
             _readers = CreateReaders();
-
-            static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
-            {
-                ReadOptions options = new();
-                options.SetVerifyChecksums(columnsDb.VerifyChecksum);
-                options.SetSnapshot(snapshot);
-                return options;
-            }
 
             // Cache column keys and max ordinal on the parent ColumnsDb to avoid per-snapshot
             // recomputation. The race is benign (both threads compute identical results) and
@@ -233,16 +233,58 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                 for (int i = 0; i < keys.Length; i++)
                 {
                     T k = keys[i];
-                    readers[EnumToInt(k)] = new RocksDbReader(
+                    int ordinal = EnumToInt(k);
+                    ColumnFamilyHandle columnFamily = columnsDb._columnDbs[k]._columnFamily;
+                    // Internally lazy — until a HintReadAhead read arrives this is just an object allocation.
+                    IteratorManager iteratorManager = new(columnsDb._db, columnFamily, readAheadOptionsFactory);
+                    _iteratorManagers[ordinal] = iteratorManager;
+                    readers[ordinal] = new RocksDbReader(
                         columnsDb,
                         _sharedReadOptions,
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,
-                        columnFamily: columnsDb._columnDbs[k]._columnFamily);
+                        iteratorManager,
+                        columnFamily);
                 }
 
                 return readers;
             }
+        }
+
+        private static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
+        {
+            ReadOptions options = new();
+            options.SetVerifyChecksums(columnsDb.VerifyChecksum);
+            options.SetSnapshot(snapshot);
+            return options;
+        }
+
+        /// <summary>
+        /// Lazily creates the snapshot-bound <see cref="ReadOptions"/> shared by all column iterator managers.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="DbOnTheRocks._readAheadReadOptions"/> this must not be tailing: tailing iterators
+        /// ignore the snapshot and would observe writes made after it.
+        /// </remarks>
+        private ReadOptions GetOrCreateReadAheadReadOptions()
+        {
+            ReadOptions? options = Volatile.Read(ref _readAheadReadOptions);
+            if (options is not null) return options;
+
+            ReadOptions created = CreateReadOptions(_columnsDb, _snapshot);
+            if (_columnsDb._readAheadSize > 0)
+            {
+                created.SetReadaheadSize(_columnsDb._readAheadSize);
+            }
+
+            options = Interlocked.CompareExchange(ref _readAheadReadOptions, created, null);
+            if (options is not null)
+            {
+                RocksDbReader.DestroyReadOptions(created);
+                return options;
+            }
+
+            return created;
         }
 
         public IReadOnlyKeyValueStore GetColumn(T key)
@@ -262,10 +304,20 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
+            // Iterators pin the snapshot's resources — tear the managers down before releasing anything they read through.
+            foreach (IteratorManager? iteratorManager in _iteratorManagers)
+            {
+                iteratorManager?.Dispose();
+            }
+
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
             RocksDbReader.DestroyReadOptions(_sharedReadOptions);
             RocksDbReader.DestroyReadOptions(_sharedCacheMissReadOptions);
+            if (_readAheadReadOptions is not null)
+            {
+                RocksDbReader.DestroyReadOptions(_readAheadReadOptions);
+            }
 
             _snapshot.Dispose();
         }

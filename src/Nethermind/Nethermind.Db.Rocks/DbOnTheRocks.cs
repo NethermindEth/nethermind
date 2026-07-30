@@ -58,6 +58,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
     internal ReadOptions? _readAheadReadOptions = null;
+    internal ulong _readAheadSize;
 
     internal DbOptions? DbOptions { get; private set; }
     private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
@@ -709,8 +710,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
         if (dbConfig.ReadAheadSize != 0)
         {
+            _readAheadSize = dbConfig.ReadAheadSize ?? 256UL.KiB;
             _readAheadReadOptions = CreateReadOptions();
-            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? 256UL.KiB);
+            _readAheadReadOptions.SetReadaheadSize(_readAheadSize);
             _readAheadReadOptions.SetTailing(true);
         }
         #endregion
@@ -1838,13 +1840,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// </summary>
     public class IteratorManager : IDisposable
     {
-        private readonly ManagedIterators _readaheadIterators = new();
-        private readonly ManagedIterators _readaheadIterators2 = new();
-        private readonly ManagedIterators _readaheadIterators3 = new();
+        private ManagedIterators? _readaheadIterators;
+        private ManagedIterators? _readaheadIterators2;
+        private ManagedIterators? _readaheadIterators3;
         private readonly RocksDb _rocksDb;
         private readonly ColumnFamilyHandle? _cf;
-        private readonly ReadOptions? _readOptions;
-        private readonly Timer _timer;
+        private readonly Func<ReadOptions?>? _readOptionsFactory;
+        private ReadOptions? _readOptions;
+        private readonly Lock _initLock = new();
+        private Timer? _timer;
         private bool _isDisposed;
 
         // This is about once every two second maybe at max throughput.
@@ -1855,30 +1859,48 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _rocksDb = rocksDb;
             _cf = cf;
             _readOptions = readOptions;
+        }
 
-            _timer = new Timer(OnTimer, null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
+        /// <summary>
+        /// Variant that resolves its <see cref="ReadOptions"/> on first rent instead of up front.
+        /// </summary>
+        /// <remarks>
+        /// The factory result is owned by the caller, which must keep it alive until this manager is disposed.
+        /// Used by snapshot-scoped readers so that snapshots that never iterate allocate no native handle.
+        /// </remarks>
+        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, Func<ReadOptions?> readOptionsFactory)
+        {
+            _rocksDb = rocksDb;
+            _cf = cf;
+            _readOptionsFactory = readOptionsFactory;
         }
 
         private void OnTimer(object? state)
         {
             if (_isDisposed) return;
-            _readaheadIterators.ClearIterators();
-            _readaheadIterators2.ClearIterators();
-            _readaheadIterators3.ClearIterators();
+            _readaheadIterators?.ClearIterators();
+            _readaheadIterators2?.ClearIterators();
+            _readaheadIterators3?.ClearIterators();
         }
 
         public void Dispose()
         {
-            if (_isDisposed) return;
-            _isDisposed = true;
-            _timer.Dispose();
-            _readaheadIterators.DisposeAll();
-            _readaheadIterators2.DisposeAll();
-            _readaheadIterators3.DisposeAll();
+            // The lock keeps a concurrent first Rent from initializing the timer after it was disposed here.
+            lock (_initLock)
+            {
+                if (_isDisposed) return;
+                _isDisposed = true;
+                _timer?.Dispose();
+                _readaheadIterators?.DisposeAll();
+                _readaheadIterators2?.DisposeAll();
+                _readaheadIterators3?.DisposeAll();
+            }
         }
 
         public RentWrapper Rent(ReadFlags flags)
         {
+            if (Volatile.Read(ref _timer) is null) Initialize();
+
             ManagedIterators iterators = GetIterators(flags);
             IteratorHolder holder = iterators.Value!;
             // If null, we create a new one.
@@ -1886,11 +1908,30 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             return new RentWrapper(iterator ?? _rocksDb.NewIterator(_cf, _readOptions), flags, this);
         }
 
+        /// <summary>
+        /// Creates the timer and thread-local iterator holders on first rent, so managers on paths that never
+        /// iterate (e.g. per-block snapshots) cost only the object allocation.
+        /// </summary>
+        private void Initialize()
+        {
+            lock (_initLock)
+            {
+                if (_timer is not null) return;
+                ObjectDisposedException.ThrowIf(_isDisposed, this);
+                _readOptions ??= _readOptionsFactory?.Invoke();
+                _readaheadIterators = new ManagedIterators();
+                _readaheadIterators2 = new ManagedIterators();
+                _readaheadIterators3 = new ManagedIterators();
+                // Volatile publish: threads taking the fast path in Rent must observe the fields above.
+                Volatile.Write(ref _timer, new Timer(OnTimer, null, TimeSpan.Zero, TimeSpan.FromSeconds(10)));
+            }
+        }
+
         private ManagedIterators GetIterators(ReadFlags flags) => flags switch
         {
-            _ when (flags & ReadFlags.HintReadAhead2) != 0 => _readaheadIterators2,
-            _ when (flags & ReadFlags.HintReadAhead3) != 0 => _readaheadIterators3,
-            _ => _readaheadIterators
+            _ when (flags & ReadFlags.HintReadAhead2) != 0 => _readaheadIterators2!,
+            _ when (flags & ReadFlags.HintReadAhead3) != 0 => _readaheadIterators3!,
+            _ => _readaheadIterators!
         };
 
         private void Return(Iterator iterator, ReadFlags flags)

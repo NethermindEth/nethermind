@@ -38,6 +38,8 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     private readonly bool _ownsReadOptions;
     private int _disposed;
 
+    internal DbOnTheRocks.IteratorManager? IteratorManager => _iteratorManager;
+
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DbOnTheRocks.IteratorManager? iteratorManager = null,

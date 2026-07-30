@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -122,6 +123,48 @@ public class ColumnsDbTests
 
         Assert.That(snapshot.GetColumn(ReceiptsColumns.Blocks)
             .Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+    }
+
+    [Test]
+    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot()
+    {
+        IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
+
+        byte[][] keys = new byte[32][];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = new byte[4];
+            BinaryPrimitives.WriteInt32BigEndian(keys[i], i);
+            colA.Set(keys[i], [(byte)i, 1]);
+        }
+
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        using (IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot())
+        {
+            // Mutate after the snapshot: overwrite even keys, delete odd keys.
+            for (int i = 0; i < keys.Length; i++)
+            {
+                colA.Set(keys[i], i % 2 == 0 ? [(byte)i, 2] : null);
+            }
+
+            IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
+            Assert.That(((RocksDbReader)snapshotColumn).IteratorManager, Is.Not.Null,
+                "snapshot readers must be wired for the readahead iterator path");
+
+            // Ascending key order exercises the readahead iterator's forward-scan (Next) fast path;
+            // values must still come from the snapshot, not the mutated head state.
+            for (int i = 0; i < keys.Length; i++)
+            {
+                Assert.That(snapshotColumn.Get(keys[i], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { (byte)i, 1 }), $"key {i}");
+            }
+
+            byte[] missingKey = new byte[4];
+            BinaryPrimitives.WriteInt32BigEndian(missingKey, keys.Length);
+            Assert.That(snapshotColumn.Get(missingKey, ReadFlags.HintReadAhead), Is.Null);
+        }
+
+        // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
+        Assert.That(colA.Get(keys[0]), Is.EqualTo(new byte[] { 0, 2 }));
     }
 
     [Test]

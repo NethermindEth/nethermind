@@ -209,7 +209,9 @@ public class FlatTrieVerifier
         (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
 
         using IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator(startKey, endKey);
-        TrieLeafIterator trieIter = new(trieStore, stateRoot, LogTrieNodeException, startKey, endKey);
+        // Trie node keys are path-ordered, so this forward scan benefits from iterator readahead.
+        TrieNodeResolverWithReadFlags readAheadTrieStore = new(trieStore, ReadFlags.HintReadAhead);
+        TrieLeafIterator trieIter = new(readAheadTrieStore, stateRoot, LogTrieNodeException, startKey, endKey);
 
         bool hasFlat = flatIter.MoveNext();
         bool hasTrie = trieIter.MoveNext();
@@ -648,8 +650,10 @@ public class FlatTrieVerifier
         CancellationToken cancellationToken)
     {
         using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, startKey, endKey);
+        // Partitioned (whale) scans are long enough for iterator readahead to win; small tries stay on
+        // point gets since readahead iterator seeks skip the bloom filter.
         TrieLeafIterator trieIter = endExclusive
-            ? new(storageTrieStore, job.StorageRoot, LogTrieNodeException, startKey, endKey)
+            ? new(new TrieNodeResolverWithReadFlags(storageTrieStore, ReadFlags.HintReadAhead), job.StorageRoot, LogTrieNodeException, startKey, endKey)
             : new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
 
         bool hasFlat = MoveNextFlat(flatIter, endExclusive, endKey);
