@@ -366,7 +366,15 @@ namespace Nethermind.State
                 // (removed from the pending set during Commit), so the two sides touch disjoint tries.
                 _stateProvider.FlushToTree(writeBatch);
 
-                HashSet<AddressAsKey>? pendingRoots = _persistentStorageProvider.GetPendingRootAddresses();
+                // Below this many changed accounts the state-tree set is too small to hide behind the
+                // fan-out; the task spawn and core contention cost more than the overlap saves
+                // (per-block fusaka A/B: overlap pays off only from roughly this size upward).
+                const int MinChangedAccountsToOverlapStorageRoots = 1024;
+
+                HashSet<AddressAsKey>? pendingRoots =
+                    _stateProvider.ChangedAccountCount >= MinChangedAccountsToOverlapStorageRoots
+                        ? _persistentStorageProvider.GetPendingRootAddresses()
+                        : null;
                 if (pendingRoots is null)
                 {
                     _persistentStorageProvider.FlushToTree(writeBatch);
