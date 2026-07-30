@@ -29,16 +29,22 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
 
     private static readonly Address Precompile = IdentityPrecompile.Address;
 
+    private static class Code
+    {
+        public static byte[] ForwardValue(Address target) =>
+            Prepare.EvmCode.CallWithValue(target, 50_000, InnerValue).STOP().Done;
+
+        public static byte[] ForwardValueAndRevert(Address target) =>
+            Prepare.EvmCode.CallWithValue(target, 50_000, InnerValue).Revert(0, 0).Done;
+
+        public static byte[] CreateValue() =>
+            Prepare.EvmCode.Create(Prepare.EvmCode.STOP().Done, InnerValue).STOP().Done;
+    }
+
     private static NativeCallTracerLogEntry ExpectedTransferLog(Address from, Address to, byte value, ulong position) => new(
         TransferLog.Sender, data: Hash256.FromBytesWithPadding([value]).BytesToArray(),
         topics: [TransferLog.TransferSignature, new(from.ToHash()), new(to.ToHash())], position
     );
-
-    private static byte[] ForwardValueCode(Address target) =>
-        Prepare.EvmCode.CallWithValue(target, 50_000, InnerValue).STOP().Done;
-
-    private static byte[] CreateValueCode() =>
-        Prepare.EvmCode.Create(Prepare.EvmCode.STOP().Done, InnerValue).STOP().Done;
 
     public sealed record TransferLogScenario(byte[]? RecipientCode, bool ExpectsChildFrame, string? Config = WithLog);
 
@@ -74,7 +80,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, 0);
         TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Revert(0, 0).Done, Spec);
 
-        byte[] recipientCode = ForwardValueCode(TestItem.AddressC);
+        byte[] recipientCode = Code.ForwardValue(TestItem.AddressC);
         (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, recipientCode, value: TopValue);
         using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
 
@@ -90,7 +96,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer(), "successful parent frame must keep its log");
-            Assert.That(childFrame.Error, Is.Not.Null, "inner call must have reverted");
+            Assert.That(childFrame.Error, Is.EqualTo("execution reverted"), "inner call must have reverted");
             Assert.That(childFrame.Logs, Is.Null, "phantom transfer log on a reverted frame must be cleared");
         }
     }
@@ -103,16 +109,16 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         yield return new TestCaseData(new TransferLogScenario(Prepare.EvmCode.STOP().Done, false))
             .SetName("top-level value transfer to contract (EVM path)");
 
-        yield return new TestCaseData(new TransferLogScenario(ForwardValueCode(TestItem.AddressC), true))
+        yield return new TestCaseData(new TransferLogScenario(Code.ForwardValue(TestItem.AddressC), true))
             .SetName("nested value transfer to EOA");
 
-        yield return new TestCaseData(new TransferLogScenario(ForwardValueCode(Precompile), true))
+        yield return new TestCaseData(new TransferLogScenario(Code.ForwardValue(Precompile), true))
             .SetName("nested value transfer to precompile");
 
-        yield return new TestCaseData(new TransferLogScenario(CreateValueCode(), true))
+        yield return new TestCaseData(new TransferLogScenario(Code.CreateValue(), true))
             .SetName("nested value transfer to CREATE");
 
-        yield return new TestCaseData(new TransferLogScenario(ForwardValueCode(TestItem.AddressC), false, WithLogAndOnlyTopCall))
+        yield return new TestCaseData(new TransferLogScenario(Code.ForwardValue(TestItem.AddressC), false, WithLogAndOnlyTopCall))
             .SetName("nested value transfer is not hoisted into top frame under onlyTopCall");
     }
 }
