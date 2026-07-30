@@ -73,14 +73,15 @@ public class FlatTrieVerifier
         ArgumentNullException.ThrowIfNull(_flatDbManager);
 
         StateId stateId = new(stateAtBlock);
-        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.FullScan);
         if (reader.CurrentState != stateId)
         {
             _logger.Warn($"With flat, only the persisted state can be verified. Will use current persisted state: {reader.CurrentState}");
             stateId = reader.CurrentState;
         }
 
-        using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+        // FullScan also on the bundle: the trie nodes are read through its persistence reader, not `reader`.
+        using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(stateId, ReaderFlags.FullScan);
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
 
         return VerifyCore(reader, trieStore, stateId.StateRoot.ToCommitment(), cancellationToken);

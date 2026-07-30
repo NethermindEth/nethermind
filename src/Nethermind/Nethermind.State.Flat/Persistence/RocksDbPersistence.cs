@@ -19,7 +19,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
+        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot((flags & ReaderFlags.FullScan) != 0);
         try
         {
             BaseTriePersistence.Reader trieReader = new(

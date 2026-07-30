@@ -74,6 +74,8 @@ public class PersistenceManager(
 
     public IPersistence.IPersistenceReader LeaseReader() => persistence.CreateReader();
 
+    public IPersistence.IPersistenceReader LeaseReader(ReaderFlags flags) => persistence.CreateReader(flags);
+
     public StateId GetCurrentPersistedStateId()
     {
         StateId current = CurrentPersistedStateId;

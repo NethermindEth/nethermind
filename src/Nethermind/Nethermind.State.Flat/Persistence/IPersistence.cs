@@ -13,6 +13,13 @@ public enum ReaderFlags
 {
     None = 0,
     Sync = 1,
+
+    /// <summary>
+    /// The reader serves long sequential scans (e.g. flat-trie verification): backing snapshots may enable
+    /// readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, and reader caches are bypassed
+    /// so the hint reaches the storage layer.
+    /// </summary>
+    FullScan = 2,
 }
 
 public interface IPersistence

@@ -130,16 +130,20 @@ public class ColumnsDbTests
     {
         IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
 
-        byte[][] keys = new byte[32][];
+        // Realistic flat-layout key shapes: a run of short (8-byte) keys followed by a run of long
+        // (34-byte) keys, ascending overall. Short keys pin the sequential-keys bypass of the
+        // "probably hash db" length guard on the iterator fast path.
+        byte[][] keys = new byte[64][];
         for (int i = 0; i < keys.Length; i++)
         {
-            keys[i] = new byte[4];
-            BinaryPrimitives.WriteInt32BigEndian(keys[i], i);
+            keys[i] = new byte[i < 32 ? 8 : 34];
+            keys[i][0] = i < 32 ? (byte)0x10 : (byte)0x22;
+            BinaryPrimitives.WriteInt32BigEndian(keys[i].AsSpan(keys[i].Length - 4), i);
             colA.Set(keys[i], [(byte)i, 1]);
         }
 
         IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
-        using (IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot())
+        using (IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot(sequentialReadAhead: true))
         {
             // Mutate after the snapshot: overwrite even keys, delete odd keys.
             for (int i = 0; i < keys.Length; i++)
@@ -149,7 +153,7 @@ public class ColumnsDbTests
 
             IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
             Assert.That(((RocksDbReader)snapshotColumn).IteratorManager, Is.Not.Null,
-                "snapshot readers must be wired for the readahead iterator path");
+                "opt-in snapshot readers must be wired for the readahead iterator path");
 
             // Ascending key order exercises the readahead iterator's forward-scan (Next) fast path;
             // values must still come from the snapshot, not the mutated head state.
@@ -158,13 +162,24 @@ public class ColumnsDbTests
                 Assert.That(snapshotColumn.Get(keys[i], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { (byte)i, 1 }), $"key {i}");
             }
 
-            byte[] missingKey = new byte[4];
-            BinaryPrimitives.WriteInt32BigEndian(missingKey, keys.Length);
+            // Probes past the last key (exhausts the iterator) and misses.
+            byte[] missingKey = new byte[34];
+            missingKey[0] = 0x23;
             Assert.That(snapshotColumn.Get(missingKey, ReadFlags.HintReadAhead), Is.Null);
         }
 
         // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
         Assert.That(colA.Get(keys[0]), Is.EqualTo(new byte[] { 0, 2 }));
+    }
+
+    [Test]
+    public void Snapshot_Default_HasNoIteratorManager()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        Assert.That(((RocksDbReader)snapshot.GetColumn(ReceiptsColumns.Blocks)).IteratorManager, Is.Null,
+            "snapshots without the sequential-read-ahead opt-in must keep point-Get behavior for HintReadAhead");
     }
 
     [Test]

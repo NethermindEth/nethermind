@@ -244,11 +244,18 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
     private static readonly StringLabel _depthPersistedLabel = new("persisted");
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
+        GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
+
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags)
     {
         // A linked-list snapshot chain was considered but rejected: the constantly moving chain makes
         // invalidation error-prone.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
+
+        // FullScan bundles hold readahead-capable readers; keep them out of the shared cache so ordinary
+        // consumers never inherit them, and never serve a cached (flagless) bundle for such a request.
+        bool shareable = (readerFlags & ReaderFlags.FullScan) == 0;
 
         if (baseBlock == StateId.PreGenesis)
         {
@@ -261,7 +268,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         while (true)
         {
             // Fastpath: Share a recently created ReadOnlySnapshotBundle
-            if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
+            if (shareable && _readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
 
             if (attempt == 1) sw = Stopwatch.GetTimestamp();
             if (attempt != 0)
@@ -275,7 +282,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 Thread.Sleep(delayMs);
             }
 
-            IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
+            // Parameterless overload for the common case: substituted IPersistenceManager instances
+            // configure LeaseReader() and may not route the default interface method to it.
+            IPersistence.IPersistenceReader persistenceReader = readerFlags == ReaderFlags.None
+                ? _persistenceManager.LeaseReader()
+                : _persistenceManager.LeaseReader(readerFlags);
             AssembledSnapshotResult assembled;
             try
             {
@@ -312,6 +323,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
                 new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
+
+            if (!shareable) return res;
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))

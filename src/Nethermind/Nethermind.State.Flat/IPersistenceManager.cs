@@ -8,6 +8,10 @@ namespace Nethermind.State.Flat;
 public interface IPersistenceManager
 {
     IPersistence.IPersistenceReader LeaseReader();
+
+    /// <inheritdoc cref="LeaseReader()"/>
+    /// <param name="flags">Forwarded to <see cref="IPersistence.CreateReader"/>; implementations may ignore it.</param>
+    IPersistence.IPersistenceReader LeaseReader(ReaderFlags flags) => LeaseReader();
     StateId GetCurrentPersistedStateId();
     Task AddToPersistence(StateId latestSnapshot);
     StateId FlushToPersistence();

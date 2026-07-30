@@ -148,11 +148,11 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
     }
 
-    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot()
-    {
-        Snapshot snapshot = _db.CreateSnapshot();
-        return new ColumnDbSnapshot(this, snapshot);
-    }
+    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot() => CreateSnapshotCore(sequentialReadAhead: false);
+
+    IColumnDbSnapshot<T> IColumnsDb<T>.CreateSnapshot(bool sequentialReadAhead) => CreateSnapshotCore(sequentialReadAhead);
+
+    private ColumnDbSnapshot CreateSnapshotCore(bool sequentialReadAhead) => new(this, _db.CreateSnapshot(), sequentialReadAhead);
 
     private class ColumnDbSnapshot : IColumnDbSnapshot<T>
     {
@@ -166,9 +166,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
         private readonly RocksDbReader[] _readers;
-        private readonly IteratorManager?[] _iteratorManagers;
 
-        public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot)
+        public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot, bool sequentialReadAhead)
         {
             _columnsDb = columnsDb;
             _snapshot = snapshot;
@@ -186,10 +185,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
             // Shared by all column iterator managers; the ReadOptions it returns is created lazily
             // on the first HintReadAhead read, so snapshots that never iterate allocate nothing extra.
-            Func<ReadOptions?> readAheadOptionsFactory = GetOrCreateReadAheadReadOptions;
+            Func<ReadOptions?>? readAheadOptionsFactory = sequentialReadAhead ? GetOrCreateReadAheadReadOptions : null;
             T[] keys = CreateKeyCache(columnsDb);
             GetCachedMaxOrdinal(columnsDb, keys);
-            _iteratorManagers = new IteratorManager?[columnsDb._cachedMaxOrdinal + 1];
             _readers = CreateReaders();
 
             // Cache column keys and max ordinal on the parent ColumnsDb to avoid per-snapshot
@@ -236,8 +234,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                     int ordinal = EnumToInt(k);
                     ColumnFamilyHandle columnFamily = columnsDb._columnDbs[k]._columnFamily;
                     // Internally lazy — until a HintReadAhead read arrives this is just an object allocation.
-                    IteratorManager iteratorManager = new(columnsDb._db, columnFamily, readAheadOptionsFactory);
-                    _iteratorManagers[ordinal] = iteratorManager;
+                    IteratorManager? iteratorManager = readAheadOptionsFactory is null
+                        ? null
+                        : new IteratorManager(columnsDb._db, columnFamily, readAheadOptionsFactory, sequentialKeys: true);
                     readers[ordinal] = new RocksDbReader(
                         columnsDb,
                         _sharedReadOptions,
@@ -305,18 +304,18 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
             // Iterators pin the snapshot's resources — tear the managers down before releasing anything they read through.
-            foreach (IteratorManager? iteratorManager in _iteratorManagers)
+            foreach (RocksDbReader? reader in _readers)
             {
-                iteratorManager?.Dispose();
+                reader?.IteratorManager?.Dispose();
             }
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
             RocksDbReader.DestroyReadOptions(_sharedReadOptions);
             RocksDbReader.DestroyReadOptions(_sharedCacheMissReadOptions);
-            if (_readAheadReadOptions is not null)
+            if (Interlocked.Exchange(ref _readAheadReadOptions, null) is { } readAheadOptions)
             {
-                RocksDbReader.DestroyReadOptions(_readAheadReadOptions);
+                RocksDbReader.DestroyReadOptions(readAheadOptions);
             }
 
             _snapshot.Dispose();

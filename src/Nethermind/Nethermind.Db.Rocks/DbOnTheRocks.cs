@@ -756,7 +756,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
         Iterator iterator = wrapper.Iterator;
 
-        if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
+        if (iterator.Valid() && TryCloseReadAhead(iterator, key, iteratorManager.SequentialKeys, out byte[]? closeRes))
         {
             return closeRes;
         }
@@ -822,16 +822,23 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <param name="key"></param>
     /// <param name="result"></param>
     /// <returns></returns>
-    private bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, out byte[]? result)
+    private bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out byte[]? result)
     {
         // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
-        if (key.Length <= 32)
+        if (!sequentialKeys && key.Length <= 32)
         {
             result = null;
             return false;
         }
 
         iterator.Next();
+        // Next() can exhaust the iterator; key()/Next() on an invalid iterator is undefined per the RocksDB API.
+        if (!iterator.Valid())
+        {
+            result = null;
+            return false;
+        }
+
         ReadOnlySpan<byte> currentKey = iterator.GetKeySpan();
         int compareResult = currentKey.SequenceCompareTo(key);
         if (compareResult == 0)
@@ -850,17 +857,25 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // This is only useful for state as storage have way too different different address range between different
         // contract. That said, there isn't any real good threshold. Threshold is for some reasonably high value
         // above the average distance.
-        ulong currentKeyInt = BinaryPrimitives.ReadUInt64BigEndian(currentKey);
-        ulong requestedKeyInt = BinaryPrimitives.ReadUInt64BigEndian(key);
-        ulong distance = requestedKeyInt - currentKeyInt;
-        if (distance > 1_000_000_000)
+        // Skipped for short keys (e.g. 3-byte StateTopNodes keys): the bounded probe below is enough there.
+        if (currentKey.Length >= sizeof(ulong) && key.Length >= sizeof(ulong))
         {
-            return false;
+            ulong currentKeyInt = BinaryPrimitives.ReadUInt64BigEndian(currentKey);
+            ulong requestedKeyInt = BinaryPrimitives.ReadUInt64BigEndian(key);
+            ulong distance = requestedKeyInt - currentKeyInt;
+            if (distance > 1_000_000_000)
+            {
+                return false;
+            }
         }
 
         for (int i = 0; i < 5 && compareResult < 0; i++)
         {
             iterator.Next();
+            if (!iterator.Valid())
+            {
+                return false;
+            }
             compareResult = iterator.GetKeySpan().SequenceCompareTo(key);
         }
 
@@ -1849,10 +1864,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         private ReadOptions? _readOptions;
         private readonly Lock _initLock = new();
         private Timer? _timer;
-        private bool _isDisposed;
+        private volatile bool _isDisposed;
 
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
+
+        /// <summary>
+        /// Whether <see cref="ReadFlags.HintReadAhead"/> keys arrive in near-sorted order, making the iterator
+        /// close-read-ahead path worthwhile even for keys of 32 bytes or less.
+        /// </summary>
+        internal bool SequentialKeys { get; }
 
         public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions? readOptions)
         {
@@ -1868,19 +1889,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         /// The factory result is owned by the caller, which must keep it alive until this manager is disposed.
         /// Used by snapshot-scoped readers so that snapshots that never iterate allocate no native handle.
         /// </remarks>
-        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, Func<ReadOptions?> readOptionsFactory)
+        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, Func<ReadOptions?> readOptionsFactory, bool sequentialKeys = false)
         {
             _rocksDb = rocksDb;
             _cf = cf;
             _readOptionsFactory = readOptionsFactory;
+            SequentialKeys = sequentialKeys;
         }
 
         private void OnTimer(object? state)
         {
-            if (_isDisposed) return;
-            _readaheadIterators?.ClearIterators();
-            _readaheadIterators2?.ClearIterators();
-            _readaheadIterators3?.ClearIterators();
+            // The lock keeps a clear from racing Dispose's DisposeAll.
+            lock (_initLock)
+            {
+                if (_isDisposed) return;
+                _readaheadIterators?.ClearIterators();
+                _readaheadIterators2?.ClearIterators();
+                _readaheadIterators3?.ClearIterators();
+            }
         }
 
         public void Dispose()
@@ -1899,6 +1925,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         public RentWrapper Rent(ReadFlags flags)
         {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
             if (Volatile.Read(ref _timer) is null) Initialize();
 
             ManagedIterators iterators = GetIterators(flags);
@@ -1923,7 +1950,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 _readaheadIterators2 = new ManagedIterators();
                 _readaheadIterators3 = new ManagedIterators();
                 // Volatile publish: threads taking the fast path in Rent must observe the fields above.
-                Volatile.Write(ref _timer, new Timer(OnTimer, null, TimeSpan.Zero, TimeSpan.FromSeconds(10)));
+                // First tick is delayed so it cannot clear the iterator pool under the rent that created it.
+                Volatile.Write(ref _timer, new Timer(OnTimer, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10)));
             }
         }
 
