@@ -48,6 +48,7 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+NODE_ENV_VARS="${NODE_ENV_VARS:-}"                 # extra docker -e assignments, e.g. "DOTNET_TieredCompilation=0"
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
@@ -259,8 +260,13 @@ docker_args=(
 )
 # No DOTNET_TieredCompilation/GCLatencyLevel pins: the node must run with
 # production-default code generation (tiered compilation + dynamic PGO), or every
-# measurement misrepresents live nodes and any code-gen A/B. Fight warm-up variance
-# with a warm-up phase, not a different compiler mode.
+# measurement misrepresents live nodes and any code-gen A/B. Consequence: JIT
+# warm-up lands inside the measured window — treat a run's first test/rate as
+# warm-up when reading results.
+# Deliberate code-gen experiments (e.g. reproducing an old pinned measurement) go
+# through NODE_ENV_VARS instead of edits here, so the default stays production-like.
+# shellcheck disable=SC2086
+for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
