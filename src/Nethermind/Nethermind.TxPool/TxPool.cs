@@ -166,6 +166,9 @@ namespace Nethermind.TxPool
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new MalformedTxFilter(_specProvider, validator, ecdsa, _logger),
+                // EIP-8141: MAX_VERIFY_GAS is a state-free structural DoS gate, so it runs right after
+                // MalformedTxFilter (sender recovered, frame array well-formed) and before any state read.
+                new FrameTxVerifyGasFilter(_logger),
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
@@ -183,10 +186,6 @@ namespace Nethermind.TxPool
             }
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
-
-            // EIP-8141: bound the validation-prefix verify gas by MAX_VERIFY_GAS; a state-free
-            // structural DoS gate, so it runs before payer resolution and exposure accounting.
-            postHashFilters.Add(new FrameTxVerifyGasFilter(_logger));
 
             // EIP-8141: resolve and record the frame-tx payer for downstream mempool policy, and reject
             // provably-payerless prefixes. Runs last so only otherwise-admissible frame txs (sender
