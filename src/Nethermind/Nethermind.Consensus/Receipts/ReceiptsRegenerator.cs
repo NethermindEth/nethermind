@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -23,8 +24,9 @@ namespace Nethermind.Consensus.Receipts;
 /// reproduces the header's receipts root.
 /// </summary>
 /// <remarks>
-/// Lets an archive drop stored receipt bodies and answer receipt queries out of state history instead. The root
-/// check is exhaustive — the receipts trie covers every consensus field of every receipt — so a fork-rule gap
+/// Lets an archive drop stored receipt bodies and answer receipt queries out of state history instead. On every shipped
+/// chainspec the root check is exhaustive — the receipts trie covers every consensus field of every receipt
+/// (only an unshipped validateReceiptsTransition=false spec would relax it) — so a fork-rule gap
 /// surfaces as a refused regeneration rather than a wrong answer. Blocks before EIP-658 are refused outright:
 /// their receipts carry a post-transaction state root, which a history-backed scope cannot produce.
 /// </remarks>
@@ -85,9 +87,13 @@ public sealed class ReceiptsRegenerator(
             receipts = regenerated;
             return true;
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException
+            and not ConcurrencyLimitReachedException
+            and not ObjectDisposedException)
         {
-            // Missing state history or a pruned trie node means "cannot regenerate", not a failed query.
+            // Missing state history or a pruned trie node means "cannot regenerate", not a failed query. The
+            // transient shapes above must escape: swallowing an exhausted env pool into "false" would surface as
+            // pruned-history-unavailable — a don't-retry signal — for data the node can serve once load drops.
             if (_logger.IsWarn) _logger.Warn($"Could not regenerate receipts for block {block.Number} ({block.Hash}): {e.Message}");
             return false;
         }

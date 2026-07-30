@@ -21,6 +21,11 @@ namespace Nethermind.Runner.Test;
 /// receipts. This test walks every constructor in the shipped assemblies and fails on any
 /// <see cref="IReceiptFinder"/> parameter that is neither keyed nor explicitly claimed below, so adding a consumer
 /// forces a decision instead of defaulting to the wrong finder unnoticed.
+/// <para>
+/// Blind spot: direct resolutions — <c>Resolve&lt;IReceiptFinder&gt;()</c>, <c>GetRequiredService</c>, and the
+/// <c>NethermindApi.ReceiptFinder</c> property — have no constructor parameter to scan and always yield the
+/// stored-only finder; a plugin that wants regeneration must resolve the key explicitly.
+/// </para>
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class ReceiptFinderKeyingTests
@@ -33,9 +38,6 @@ public class ReceiptFinderKeyingTests
     [
         "Nethermind.Synchronization.SyncServer",
         "Nethermind.Runner.Monitoring.DataFeed",
-        // Its web-host registration is consumed only by DataFeed (monitoring), so it must hand out the stored-only
-        // finder — monitoring must never cost a block execution or start throwing where empty was tolerated.
-        "Nethermind.Runner.Ethereum.JsonRpcRunner",
         "Nethermind.Consensus.AuRa.AuRaValidatorFactory",
         "Nethermind.Consensus.AuRa.Validators.ContractBasedValidator",
         "Nethermind.Consensus.AuRa.InitializationSteps.TxAuRaFilterBuilders",
@@ -50,6 +52,9 @@ public class ReceiptFinderKeyingTests
     private static readonly HashSet<string> NotContainerResolved =
     [
         "Nethermind.Consensus.Receipts.RegeneratingReceiptFinder",
+        // Hand-built by StartRpc with NethermindApi.ReceiptFinder; its web-host registration feeds only DataFeed
+        // (monitoring), which must stay stored-only.
+        "Nethermind.Runner.Ethereum.JsonRpcRunner",
         "Nethermind.Blockchain.Receipts.FullInfoReceiptFinder",
         "Nethermind.JsonRpc.Modules.Eth.EthRpcModule",
         "Nethermind.Optimism.Rpc.OptimismEthRpcModule",
@@ -100,7 +105,8 @@ public class ReceiptFinderKeyingTests
                     foreach (ParameterInfo parameter in ctor.GetParameters())
                     {
                         if (parameter.ParameterType != typeof(IReceiptFinder)) continue;
-                        if (parameter.GetCustomAttribute<KeyFilterAttribute>() is not null) continue;
+                        if (parameter.GetCustomAttribute<KeyFilterAttribute>() is { } filter
+                            && Equals(filter.Key, IReceiptFinder.RegenerableKey)) continue;
                         if (StoredOnlyConsumers.Contains(name) || NotContainerResolved.Contains(name)) continue;
 
                         unclaimed.Add($"{name}({parameter.Name})");

@@ -137,11 +137,14 @@ public class LogFinderTests
         int chainLength = Math.Max(64, Environment.ProcessorCount + 2);
         SetUp(allowReceiptIterator: true, chainLength: chainLength);
 
-        LogFinder logFinder = new(_blockTree, new UnavailableReceiptFinder(), _receiptStorage, LimboLogs.Instance,
+        UnavailableReceiptFinder unavailable = new();
+        LogFinder logFinder = new(_blockTree, unavailable, _receiptStorage, LimboLogs.Instance,
             _receiptsRecovery, new ReceiptConfig { DeriveFromState = true });
 
         Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
             Throws.TypeOf<ResourceNotFoundException>());
+        Assert.That(unavailable.SawParallelScanSlotHeld, Is.True,
+            "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -422,11 +425,21 @@ public class LogFinderTests
     // NSubstitute cannot stub a method with a ref-struct out parameter, so the unavailable finder is hand-rolled.
     private sealed class UnavailableReceiptFinder : IReceiptFinder
     {
+        public bool SawParallelScanSlotHeld { get; private set; }
+
         public Hash256? FindBlockHash(Hash256 txHash) => null;
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => throw Unavailable();
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => throw Unavailable();
         public bool CanGetReceiptsByHash(ulong blockNumber) => true;
-        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => throw Unavailable();
+
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        {
+            // Recorded from inside a worker: proves the enumeration really went through the PLINQ path rather than
+            // silently degrading to sequential (where the bare exception propagates without any unwrap).
+            SawParallelScanSlotHeld |= LogFinder.IsParallelScanSlotHeld;
+            throw Unavailable();
+        }
+
         private static ResourceNotFoundException Unavailable() => new("receipts are neither stored nor reproducible");
     }
 
