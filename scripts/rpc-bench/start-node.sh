@@ -57,6 +57,11 @@ if [[ "$ADDITIONAL_FLAGS" == *--OpcodeHistogram=* ]]; then
   OPCODE_HISTOGRAM_PATH="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/.*--OpcodeHistogram=([^ ]*).*/\1/')"
   ADDITIONAL_FLAGS="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/--OpcodeHistogram=[^ ]*//')"
 fi
+SUBCALL_MEMO=""
+if [[ "$ADDITIONAL_FLAGS" == *--SubcallMemo=1* ]]; then
+  SUBCALL_MEMO="1"
+  ADDITIONAL_FLAGS="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/--SubcallMemo=1//')"
+fi
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
@@ -275,6 +280,10 @@ if [[ -n "$OPCODE_HISTOGRAM_PATH" ]]; then
   fi
   docker_args+=(-e "NETHERMIND_OPCODE_HISTOGRAM=$OPCODE_HISTOGRAM_PATH")
   log "Opcode histogram enabled, writing to $OPCODE_HISTOGRAM_PATH inside the container."
+fi
+if [[ -n "$SUBCALL_MEMO" ]]; then
+  docker_args+=(-e "NETHERMIND_SUBCALL_MEMO=1")
+  log "Subcall memo experiment enabled."
 fi
 if [[ "$CLIENT" == "nethermind" ]]; then
   docker_args+=(

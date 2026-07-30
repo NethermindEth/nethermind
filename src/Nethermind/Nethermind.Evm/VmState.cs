@@ -46,6 +46,9 @@ public class VmState<TGasPolicy> : IDisposable
     private bool _canRestore;
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
     public bool IsContinuation { get; set; } // TODO: move to CallEnv
+    internal Nethermind.Core.Crypto.ValueHash256 SubcallMemoKey;
+    internal ulong SubcallMemoGasGiven;
+    internal bool SubcallMemoEligible;
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
     public bool IsCreateStateGasCharged { get; private set; } // TODO: move to CallEnv
 
@@ -172,6 +175,7 @@ public class VmState<TGasPolicy> : IDisposable
         _canRestore = !isTopLevel;
         IsStatic = isStatic;
         IsContinuation = false;
+        SubcallMemoEligible = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
         IsCreateStateGasCharged = isCreateStateGasCharged;
         NewAccountCharged = newAccountCharged;
