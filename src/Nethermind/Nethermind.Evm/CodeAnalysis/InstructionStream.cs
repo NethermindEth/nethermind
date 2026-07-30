@@ -221,7 +221,7 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
-                    && TryFoldConstantPair(ops, constants, pcToEntry, instruction, pc, (byte)size))
+                    && TryFoldConstantPair(ops, constants, pcToEntry, instruction, pc, (byte)size, openBlock))
                 {
                     // Entry surgery happened inside; the original ops' gas and count stay in the block
                     // so the charge and the executed-op metric keep matching the bytecode loop.
@@ -410,7 +410,7 @@ internal sealed class InstructionStream
     /// stream just stops dispatching them. Cascades, because the folded entry is itself a const
     /// push - the (1 &lt;&lt; n) - 1 mask idiom collapses to one entry from five.
     /// </summary>
-    private static bool TryFoldConstantPair(List<StreamOp> ops, List<UInt256> constants, ushort[] pcToEntry, Instruction instruction, int pc, byte size)
+    private static bool TryFoldConstantPair(List<StreamOp> ops, List<UInt256> constants, ushort[] pcToEntry, Instruction instruction, int pc, byte size, int openBlock)
     {
         if (ops.Count == 0)
             return false;
@@ -420,6 +420,7 @@ internal sealed class InstructionStream
         // A fused PUSH1 pair is two known constants in one entry: the whole triple folds into a
         // single pooled push, with the pair's kind carrying any block charge it held.
         if ((Instruction)top.Opcode == (Instruction)FusedOpcode.Push1Push1
+            && top.BlockIndex == openBlock
             && TryComputeFold(instruction, top.Operand >> 8 & 0xFF, top.Operand & 0xFF, out UInt256 pairResult)
             && top.Advance + size <= byte.MaxValue)
         {
@@ -433,12 +434,14 @@ internal sealed class InstructionStream
             return false;
 
         StreamOp under = ops[^2];
-        if (top.BlockIndex != under.BlockIndex)
+        if (top.BlockIndex != under.BlockIndex || top.BlockIndex != openBlock)
             return false;
         if (!TryGetConstPush(in top, constants, out UInt256 a))
             return false;
 
         if ((Instruction)under.Opcode == (Instruction)FusedOpcode.Push1Push1
+            && under.BlockIndex == openBlock
+            && top.BlockIndex == openBlock
             && TryComputeFold(instruction, a, under.Operand >> 8 & 0xFF, out UInt256 splitResult)
             && top.Advance + size <= byte.MaxValue)
         {
