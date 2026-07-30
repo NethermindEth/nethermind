@@ -55,7 +55,24 @@ public partial class PatriciaTree
     /// </summary>
     /// <param name="entries"></param>
     /// <param name="flags"></param>
-    public void BulkSet(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None)
+    public void BulkSet(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None) =>
+        BulkSetCore(in entries, flags, updateRootHash: false);
+
+    /// <summary>
+    /// Applies a bulk update and calculates dirty subtree hashes bottom-up during the same traversal.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="UpdateRootHash"/> finishes the job: its fast path publishes the root keccak the
+    /// traversal already resolved, and it falls back to a regular hash pass when the traversal did
+    /// not reach the root (e.g. an empty batch over a never-hashed tree).
+    /// </remarks>
+    protected void BulkSetAndUpdateRootHash(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None)
+    {
+        BulkSetCore(in entries, flags, updateRootHash: true);
+        UpdateRootHash();
+    }
+
+    private void BulkSetCore(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags, bool updateRootHash)
     {
         if (entries.Count == 0)
             return;
@@ -86,7 +103,8 @@ public partial class PatriciaTree
                 ref path,
                 RootRef,
                 0,
-                flags);
+                flags,
+                updateRootHash);
             RootRef = newRoot;
             _writeBeforeCommit += entries.Count;
             ReturnTraverseStack(traverseStack);
@@ -112,7 +130,8 @@ public partial class PatriciaTree
             ref path,
             RootRef,
             0,
-            flags);
+            flags,
+            updateRootHash);
         RootRef = newRoot2;
 
         _writeBeforeCommit += entries.Count;
@@ -140,12 +159,20 @@ public partial class PatriciaTree
         ref TreePath path,
         TrieNode? node,
         int flipCount,
-        Flags flags)
+        Flags flags,
+        bool updateRootHash)
     {
         TrieNode? originalNode = node;
 
         if (entries.Length == 1)
-            return BulkSetOne(traverseStack, in entries[0], ref path, node);
+        {
+            TrieNode? result = BulkSetOne(traverseStack, in entries[0], ref path, node);
+            if (updateRootHash)
+            {
+                result?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel: false);
+            }
+            return result;
+        }
 
         bool newBranch = false;
 
@@ -207,7 +234,8 @@ public partial class PatriciaTree
                 int nibble,
                 TreePath appendedPath,
                 TrieNode? currentChild,
-                TrieNode? newChild
+                TrieNode? newChild,
+                Hash256? childKeccakBefore
                 )> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
 
             Context closureCtx = ctx;
@@ -227,14 +255,14 @@ public partial class PatriciaTree
 
                 TreePath childPath = path.Append(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
-                jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
+                jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null, child?.Keccak);
             }
 
             Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
                 (i, _, workerTraverseStack) =>
                 {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
+                    (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _, Hash256? keccakBefore) = jobs[i];
 
                     Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
                     Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
@@ -247,9 +275,10 @@ public partial class PatriciaTree
                         ref childPath,
                         child,
                         flipCount,
-                        flags | Flags.DoNotParallelize); // Only parallelize at top level.
+                        flags | Flags.DoNotParallelize,
+                        updateRootHash); // Only parallelize at top level.
 
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+                    jobs[i] = (startIdx, count, nib, childPath, child, newChild, keccakBefore); // Just need the child actually...
 
                     return workerTraverseStack;
                 },
@@ -261,7 +290,7 @@ public partial class PatriciaTree
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
-                if (!ShouldUpdateChild(originalNode, child, newChild)) continue;
+                if (!ShouldUpdateChild(originalNode, child, newChild, updateRootHash, jobs[i].childKeccakBefore)) continue;
 
                 if (newChild is null)
                     hasRemove = true;
@@ -288,6 +317,7 @@ public partial class PatriciaTree
 
                 path.SetLast(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref path, nib);
+                Hash256? childKeccakBefore = child?.Keccak;
 
                 int endRange;
 
@@ -305,10 +335,11 @@ public partial class PatriciaTree
                         ref path,
                         child,
                         flipCount,
-                        flags
+                        flags,
+                        updateRootHash
                     );
 
-                if (!ShouldUpdateChild(originalNode, child, newChild))
+                if (!ShouldUpdateChild(originalNode, child, newChild, updateRootHash, childKeccakBefore))
                     continue;
 
                 if (newChild is null)
@@ -329,7 +360,12 @@ public partial class PatriciaTree
         if (!hasRemove && nonNullChildCount == 0) return originalNode;
 
         if ((hasRemove || newBranch) && nonNullChildCount < 2)
-            node = MaybeCombineNode(ref path, node, originalNode);
+            node = MaybeCombineNode(ref path, node, originalNode, updateRootHash);
+
+        if (updateRootHash)
+        {
+            node?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel: false);
+        }
 
         return node;
     }

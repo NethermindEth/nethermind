@@ -267,6 +267,8 @@ namespace Nethermind.Trie
                 }
 
                 _nodeData = leafData.CloneWithNewValue(value);
+                // An unsealed node can carry a key resolved by a root-hash pass; the new value invalidates it.
+                Keccak = null;
 
                 [DoesNotReturn, StackTraceHidden]
                 void ThrowAlreadySealed() => throw new InvalidOperationException(

@@ -536,6 +536,87 @@ public class PatriciaTreeBulkSetterTests
         Assert.That(CalculateRoot(PatriciaTree.Flags.None), Is.EqualTo(CalculateRoot(PatriciaTree.Flags.DoNotParallelize)));
     }
 
+    // (256, 8) and (512, 16) are regression seeds: in-place-mutated subtrees whose ancestors kept
+    // stale keccaks (ShouldUpdateChild / MaybeCombineNode gaps) when the initial root was hashed
+    // without committing. deletedCount=0 covers the empty-batch epilogue on a never-hashed tree.
+    [TestCase(4096, 0, 3072, false, false, false)]
+    [TestCase(4096, 0, 3072, false, true, false)]
+    [TestCase(4096, 0, 3072, true, false, false)]
+    [TestCase(4096, 0, 3072, false, true, true)]
+    [TestCase(256, 8, 192, false, true, false)]
+    [TestCase(512, 16, 384, false, true, false)]
+    [TestCase(256, 8, 192, false, true, true)]
+    [TestCase(512, 16, 384, false, true, true)]
+    [TestCase(512, 16, 0, false, false, false)]
+    [TestCase(512, 16, 512, false, true, true)]
+    public void BulkSetWithEagerRootHash_MatchesTwoPhaseAndGroundTruth(
+        int existingCount,
+        int seed,
+        int deletedCount,
+        bool commitInitialTree,
+        bool calculateInitialRoot,
+        bool parallel)
+    {
+        PatriciaTree.Flags flags = parallel ? PatriciaTree.Flags.None : PatriciaTree.Flags.DoNotParallelize;
+        List<(Hash256 key, byte[] value)> items = GenRandomOfLength(existingCount, seed);
+
+        Hash256 CalculateRoot(bool eager)
+        {
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestMemDb()));
+            EagerRootPatriciaTree tree = new(trieStore);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> existingEntries = new(existingCount);
+
+            foreach ((Hash256 key, byte[] value) in items)
+            {
+                existingEntries.Add(new PatriciaTree.BulkSetEntry(key, value));
+            }
+
+            tree.BulkSet(existingEntries, flags);
+            if (calculateInitialRoot)
+            {
+                tree.UpdateRootHash();
+            }
+            if (commitInitialTree)
+            {
+                tree.Commit();
+            }
+
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> deletedEntries = new(deletedCount);
+            for (int i = 0; i < deletedCount; i++)
+            {
+                deletedEntries.Add(new PatriciaTree.BulkSetEntry(items[i].key, []));
+            }
+
+            if (eager)
+            {
+                tree.BulkSetAndUpdateRoot(deletedEntries, flags);
+            }
+            else
+            {
+                tree.BulkSet(deletedEntries, flags);
+                tree.UpdateRootHash();
+            }
+
+            return tree.RootHash;
+        }
+
+        Hash256 GroundTruth()
+        {
+            PatriciaTree tree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+            for (int i = deletedCount; i < items.Count; i++)
+            {
+                tree.Set(items[i].key.Bytes, items[i].value);
+            }
+
+            tree.UpdateRootHash();
+            return tree.RootHash;
+        }
+
+        Hash256 truth = GroundTruth();
+        Assert.That(CalculateRoot(eager: false), Is.EqualTo(truth));
+        Assert.That(CalculateRoot(eager: true), Is.EqualTo(truth));
+    }
+
     [Test]
     public void BulkSet_ShouldThrowOnNonUniqueEntries()
     {
@@ -716,6 +797,13 @@ public class PatriciaTreeBulkSetterTests
         yield return GenRandom(0, 10).SetName("rand-0-10");
         yield return GenRandom(1, 10).SetName("rand-1-10");
         yield return GenRandom(1, 100).SetName("rand-1-100");
+    }
+
+    private sealed class EagerRootPatriciaTree(IScopedTrieStore trieStore)
+        : PatriciaTree(trieStore, LimboLogs.Instance)
+    {
+        public void BulkSetAndUpdateRoot(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None) =>
+            BulkSetAndUpdateRootHash(in entries, flags);
     }
 
     [TestCaseSource(nameof(BucketSortTestCase))]

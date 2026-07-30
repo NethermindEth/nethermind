@@ -327,6 +327,12 @@ namespace Nethermind.Trie
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
+            if (RootRef?.Keccak is { } resolvedRoot)
+            {
+                SetRootHash(resolvedRoot, false);
+                return;
+            }
+
             if (canBeParallel && _writeBeforeCommit >= 512)
             {
                 ResolveDirtyRootGrandchildren();
@@ -808,12 +814,32 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
+        /// Child-update decision for bulk set, aware of the eager root-hash mode.
+        /// </summary>
+        /// <remarks>
+        /// The plain overload treats an in-place-mutated child with a non-null Keccak as unchanged,
+        /// which holds in two-phase mode because mutation nulls the Keccak until the later
+        /// <see cref="UpdateRootHash"/> pass. The eager pass rehashes the child before returning,
+        /// so "unchanged" is only provable by the Keccak matching its pre-recursion value;
+        /// anything else must update the parent so its own stale Keccak gets invalidated.
+        /// </remarks>
+        internal bool ShouldUpdateChild(TrieNode? parent, TrieNode? oldChild, TrieNode? newChild, bool eagerRootHash, Hash256? oldChildKeccak)
+        {
+            if (!eagerRootHash) return ShouldUpdateChild(parent, oldChild, newChild);
+
+            if (parent is null) return true;
+            if (oldChild is null && newChild is null) return false;
+            if (!ReferenceEquals(oldChild, newChild)) return true;
+            return newChild.Keccak is null || oldChildKeccak is null || newChild.Keccak != oldChildKeccak;
+        }
+
+        /// <summary>
         /// Tries to make the current node an extension or null if it has only one child left.
         /// </summary>
         /// <param name="path"></param>
         /// <param name="node"></param>
         /// <returns></returns>
-        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, TrieNode? originalNode)
+        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, TrieNode? originalNode, bool eagerRootHash = false)
         {
             int onlyChildIdx = -1;
             for (int i = 0; i < TrieNode.BranchesCount; i++)
@@ -855,7 +881,8 @@ namespace Nethermind.Trie
                     path.AppendMut(onlyChildIdx);
                     TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
                     path.TruncateOne();
-                    if (!ShouldUpdateChild(originalNode, originalChild, onlyChildNode))
+                    // Eager mode has no pre-recursion keccak here, so "unchanged" is unprovable — update conservatively.
+                    if (!ShouldUpdateChild(originalNode, originalChild, onlyChildNode, eagerRootHash, oldChildKeccak: null))
                     {
                         return originalNode;
                     }
@@ -885,7 +912,8 @@ namespace Nethermind.Trie
                         TrieNode? originalChild = originalNode.GetChildWithChildPath(TrieStore, ref path, 0);
                         TrieNode? newChild = onlyChildNode.GetChildWithChildPath(TrieStore, ref path, 0);
                         path.TruncateMut(originalLength);
-                        if (!ShouldUpdateChild(originalNode, originalChild, newChild))
+                        // Eager mode has no pre-recursion keccak here, so "unchanged" is unprovable — update conservatively.
+                        if (!ShouldUpdateChild(originalNode, originalChild, newChild, eagerRootHash, oldChildKeccak: null))
                         {
                             return originalNode;
                         }

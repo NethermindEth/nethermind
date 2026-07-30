@@ -102,7 +102,14 @@ namespace Nethermind.State
             public void Dispose()
             {
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
-                tree.BulkSet(asRef);
+                if (asRef.Count >= MinEntriesToParallelizeThreshold)
+                {
+                    tree.BulkSetAndUpdateRootHash(asRef);
+                }
+                else
+                {
+                    tree.BulkSet(asRef);
+                }
             }
         }
 
