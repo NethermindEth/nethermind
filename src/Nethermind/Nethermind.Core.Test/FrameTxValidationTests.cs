@@ -126,6 +126,11 @@ public class FrameTxValidationTests
         yield return Case("BlobFeeWithoutBlobHashes_BlobFeeWithoutBlobs",
             static tx => tx.MaxFeePerBlobGas = UInt256.One, FrameTxValidation.BlobFeeWithoutBlobs);
 
+        // Frame-blob support is off: a blob-carrying frame tx is rejected by value (the decoder always
+        // populates the field, so this cannot be a presence check). EIP8141-GAP.
+        yield return Case("BlobHashesPresent_BlobHashesNotSupported",
+            static tx => tx.BlobVersionedHashes = [new byte[32]], FrameTxValidation.BlobHashesNotSupported);
+
         // Expiry verifier frame: flags == 0, value == 0, len(data) == EXPIRY_DATA_LENGTH, at most one.
         yield return Case("ExpiryFrameWellFormed_Valid",
             static tx => tx.Frames = [SelfVerifyFrame(), ExpiryFrame()], null);
