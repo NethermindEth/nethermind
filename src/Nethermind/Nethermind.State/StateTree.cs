@@ -84,6 +84,18 @@ namespace Nethermind.State
 
         public class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IDisposable
         {
+            /// <summary>
+            /// Minimum batch size for hashing dirty subtrees during the bulk set traversal.
+            /// </summary>
+            /// <remarks>
+            /// Below this, the separate <see cref="PatriciaTree.UpdateRootHash"/> pass is faster: its
+            /// grandchild frontier work-steals across up to 256 jobs, while fused hashing unwinds
+            /// serially inside the 16 top-level buckets and pays the slowest-bucket imbalance. Per-block
+            /// fusaka A/B showed fusion only wins on write-heavy blocks (top decile, ≥ roughly this many
+            /// changed accounts) and costs ~0.5 ms on typical blocks when unconditional.
+            /// </remarks>
+            private const int FusedRootHashThreshold = 1024;
+
             readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
 
             public void Set(Address key, Account? account)
@@ -102,7 +114,7 @@ namespace Nethermind.State
             public void Dispose()
             {
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
-                if (asRef.Count >= MinEntriesToParallelizeThreshold)
+                if (asRef.Count >= FusedRootHashThreshold)
                 {
                     tree.BulkSetAndUpdateRootHash(asRef);
                 }
