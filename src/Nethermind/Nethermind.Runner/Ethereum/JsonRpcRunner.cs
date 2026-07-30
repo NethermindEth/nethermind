@@ -28,6 +28,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 using WebHost = Nethermind.Runner.JsonRpc.WebHost;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Runner.Ethereum
 {
@@ -41,7 +42,7 @@ namespace Nethermind.Runner.Ethereum
         IJsonRpcServiceConfigurer[] jsonRpcServices,
         ITxPool txPool,
         ISpecProvider specProvider,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IBlockTree blockTree,
         ISyncPeerPool syncPeerPool,
         IMainProcessingContext mainProcessingContext) : IAsyncDisposable

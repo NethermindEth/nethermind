@@ -53,12 +53,20 @@ public sealed class RegeneratingReceiptFinder(
     {
         // The storage answers true with an empty iterator when the body is absent, so it cannot be used to detect
         // that; probe for the body first, or eth_getLogs reports no logs at all for a derived block.
-        if (storage.HasBlock(blockNumber, blockHash)) return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        if (storage.HasBlock(blockNumber, blockHash))
+        {
+            bool got = inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            // The probe answers from the receipts cache too. If the entry is evicted between the probe and the read,
+            // the read falls through to disk and yields the empty iterator the probe exists to rule out — re-probing
+            // detects the eviction (nothing re-inserts a block whose body is deliberately not written).
+            if (got && storage.HasBlock(blockNumber, blockHash)) return true;
+            iterator.Dispose();
+        }
 
         Block? found = FindBlock(blockHash);
         if (!TryRegenerate(found, out TxReceipt[]? regenerated))
         {
-            Unavailable(found, []);
+            ThrowIfUnanswerable(found);
             return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
         }
 
@@ -77,11 +85,18 @@ public sealed class RegeneratingReceiptFinder(
     /// A caller cannot tell an empty result from an unanswerable one, so a block that does have transactions must
     /// fail loudly: silently returning no receipts reads as "no logs here" to an indexer.
     /// </remarks>
-    private static TxReceipt[] Unavailable(Block? block, TxReceipt[] stored) =>
-        block is null || block.Transactions.Length == 0
-            ? stored
-            : throw new ResourceNotFoundException(
-                $"Receipts for block {block.Number} ({block.Hash}) are neither stored nor reproducible from state history.");
+    private static TxReceipt[] Unavailable(Block? block, TxReceipt[] stored)
+    {
+        ThrowIfUnanswerable(block);
+        return stored;
+    }
+
+    private static void ThrowIfUnanswerable(Block? block)
+    {
+        if (block is null || block.Transactions.Length == 0) return;
+        throw new ResourceNotFoundException(
+            $"Receipts for block {block.Number} ({block.Hash}) are neither stored nor reproducible from state history.");
+    }
 
     private Block? FindBlock(Hash256 blockHash) =>
         blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

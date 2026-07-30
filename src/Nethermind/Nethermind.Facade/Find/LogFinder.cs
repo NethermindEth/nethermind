@@ -114,9 +114,22 @@ namespace Nethermind.Facade.Find
                     ? source.AsParallel().AsOrdered().WithDegreeOfParallelism(_rpcConfigGetLogsThreads)
                     : source;
 
-                foreach (FilterLog log in wrapped.SelectMany(worker))
+                using IEnumerator<FilterLog> enumerator = wrapped.SelectMany(worker).GetEnumerator();
+                while (true)
                 {
-                    yield return log;
+                    try
+                    {
+                        if (!enumerator.MoveNext()) break;
+                    }
+                    catch (AggregateException e) when (e.InnerExceptions.Count == 1 && e.InnerException is ResourceNotFoundException notFound)
+                    {
+                        // PLINQ wraps worker exceptions, but callers catch the bare type to map "receipts not
+                        // available" onto its RPC error code — without this a multi-block range answers a generic
+                        // internal error while a single-block range answers correctly.
+                        throw notFound;
+                    }
+
+                    yield return enumerator.Current;
                     cancellationToken.ThrowIfCancellationRequested();
                 }
             }

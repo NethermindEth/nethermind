@@ -24,6 +24,7 @@ namespace Nethermind.Init.Steps;
     dependents: [typeof(InitializeBlockchain)]
 )]
 public class SeedFlatHistoryGenesis(
+    FlatStateActivationPolicy activationPolicy,
     ChainSpec chainSpec,
     IBlockTree blockTree,
     HistoryWriter historyWriter,
@@ -34,6 +35,10 @@ public class SeedFlatHistoryGenesis(
 
     public Task Execute(CancellationToken cancellationToken)
     {
+        // The history stack is registered on IFlatDbConfig.HistoryEnabled alone, but the backend is chosen later from
+        // what is on disk: an existing patricia DB keeps patricia, and then nothing will ever read this history.
+        if (!activationPolicy.ShouldTurnOnFlatDb()) return Task.CompletedTask;
+
         if (historyReader.HasHistoryForBlock(0)) return Task.CompletedTask;
 
         // On a genuinely fresh DB the genesis header does not exist yet — this step is ordered before

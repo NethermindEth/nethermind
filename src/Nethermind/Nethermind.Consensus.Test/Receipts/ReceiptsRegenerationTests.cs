@@ -140,6 +140,30 @@ public class ReceiptsRegenerationTests
         Assert.That(regenerator.TryRegenerate(Build.A.Block.TestObject, out _), Is.False);
     }
 
+    // Round-5 finding: a tx-bearing block whose receipts are neither stored nor reproducible must fail loudly -
+    // an empty answer reads as "no logs here" to an indexer, which is silently wrong rather than unavailable.
+    [Test]
+    public async Task Unanswerable_block_throws_instead_of_answering_empty()
+    {
+        Block block = await AddBlock(BuildTransactions(Scenario.LegacyTransfer));
+
+        // A regenerator that always refuses (pre-EIP-658 rules), paired with an inner finder that has nothing stored.
+        ReceiptsRegenerator refusing = new(
+            Substitute.For<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>>(),
+            Substitute.For<IBlockFinder>(),
+            new TestSpecProvider(Frontier.Instance),
+            Substitute.For<IEthereumEcdsa>(),
+            LimboLogs.Instance);
+        IReceiptFinder inner = Substitute.For<IReceiptFinder>();
+        inner.Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).Returns([]);
+        IReceiptStorage storage = Substitute.For<IReceiptStorage>();
+        storage.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(false);
+        RegeneratingReceiptFinder finder = new(inner, storage, _chain.BlockFinder, refusing);
+
+        Assert.Throws<ResourceNotFoundException>(() => finder.Get(block));
+        Assert.Throws<ResourceNotFoundException>(() => finder.TryGetReceiptsIterator(block.Number, block.Hash!, out _));
+    }
+
     [Test]
     public async Task Wiring_decorates_the_receipt_finder_when_recovery_is_enabled()
     {
