@@ -242,8 +242,8 @@ internal class MineModuleTests
     [Test]
     public async Task TestNewRoundDoesNotArmTimeoutTimerWhileSyncingAnExistingChainFromGenesis()
     {
-        // Regression for the too-broad exemption: a node still at head 0 that has learned about a real
-        // chain via SyncInfo (HighestQC no longer matches genesis) must not be mistaken for a bootstrap
+        // Regression for the too-broad exemption, covering the genesis-QC guard: once HighestQC has
+        // advanced past genesis the node is on a real chain and must not be mistaken for a bootstrap
         // node - it hasn't validated the rounds it would be timing out for.
         ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
         using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
@@ -260,8 +260,7 @@ internal class MineModuleTests
         blockchain.StartHotStuffModule();
         timeoutTimer.ClearReceivedCalls();
 
-        // Simulates a peer's SyncInfo revealing the real chain's highest QC, far beyond genesis.
-        blockchain.XdcContext.HighestQC = new QuorumCertificate(new BlockRoundInfo(TestItem.KeccakA, 500, 500), Array.Empty<Signature>(), 0);
+        blockchain.XdcContext.HighestQC = new QuorumCertificate(new BlockRoundInfo(TestItem.KeccakA, 500, 500), [], 0);
         blockchain.XdcContext.SetNewRound(2);
 
         timeoutTimer.DidNotReceive().Reset(Arg.Any<TimeSpan>());
@@ -294,7 +293,10 @@ internal class MineModuleTests
         }
 
         Assert.That(tree.Head!.Number, Is.EqualTo(genesis.Number), "the announced blocks must stay unprocessed");
-        Assert.That(tree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing, Is.True);
+        // Asserting bestSuggested rather than isSyncing: isSyncing is also true when bestSuggested is 0,
+        // so it would still hold if the suggestions above had silently not taken.
+        Assert.That(tree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).bestSuggested,
+            Is.GreaterThan(genesis.Number + XdcConstants.MaxSyncDistanceForConsensus));
         Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Hash, Is.EqualTo(genesis.Hash),
             "HighestQC must still be the genesis QC, otherwise this exercises the same path as the SyncInfo test");
 
