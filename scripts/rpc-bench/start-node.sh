@@ -257,12 +257,10 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
-if [[ "$CLIENT" == "nethermind" ]]; then
-  docker_args+=(
-    -e "DOTNET_TieredCompilation=0"
-    -e "DOTNET_GCLatencyLevel=0"
-  )
-fi
+# Production-default runtime (diagnostic branch): no TieredCompilation/GCLatencyLevel
+# pins, so tiered compilation and dynamic PGO behave as they do on live nodes.
+# The master harness pins DOTNET_TieredCompilation=0 for determinism, which disables
+# dynamic PGO and misrepresents both the JIT baseline and any R2R/static-PGO candidate.
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
