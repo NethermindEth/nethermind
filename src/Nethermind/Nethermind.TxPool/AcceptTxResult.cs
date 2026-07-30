@@ -124,6 +124,11 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult PayerExposureExceeded = new(20, TxPoolErrorMessages.PayerExposureExceeded);
 
+        /// <summary>
+        /// An EIP-8141 frame transaction whose validation-prefix gas plus signature-validation cost exceeds <c>MAX_VERIFY_GAS</c>.
+        /// </summary>
+        public static readonly AcceptTxResult VerifyGasExceeded = new(21, TxPoolErrorMessages.VerifyGasExceeded);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

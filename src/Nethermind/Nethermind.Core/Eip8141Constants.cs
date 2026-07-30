@@ -19,6 +19,18 @@ public static class Eip8141Constants
     public const ulong P256VerificationGasCost = 6_700;
     public const int ExpiryDataLength = 8;
 
+    /// <summary>Maximum gas a node expends validating signatures and the validation prefix at admission (ethereum/EIPs#12007).</summary>
+    public const ulong MaxVerifyGas = 100_000;
+
+    /// <summary>Per-signature verification gas for <paramref name="scheme"/>, as counted against <see cref="MaxVerifyGas"/>.</summary>
+    public static ulong SignatureVerificationGasCost(byte scheme) => scheme switch
+    {
+        TxFrameSignature.SchemeArbitrary => ArbitraryVerificationGasCost,
+        TxFrameSignature.SchemeSecp256k1 => Secp256k1VerificationGasCost,
+        TxFrameSignature.SchemeP256 => P256VerificationGasCost,
+        _ => 0,
+    };
+
     public static readonly Address EntryPointAddress = new("0x00000000000000000000000000000000000000aa");
     public static readonly Address ExpiryVerifierAddress = new("0x0000000000000000000000000000000000008141");
 
