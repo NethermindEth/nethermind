@@ -257,10 +257,10 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
-# Production-default runtime (diagnostic branch): no TieredCompilation/GCLatencyLevel
-# pins, so tiered compilation and dynamic PGO behave as they do on live nodes.
-# The master harness pins DOTNET_TieredCompilation=0 for determinism, which disables
-# dynamic PGO and misrepresents both the JIT baseline and any R2R/static-PGO candidate.
+# No DOTNET_TieredCompilation/GCLatencyLevel pins: the node must run with
+# production-default code generation (tiered compilation + dynamic PGO), or every
+# measurement misrepresents live nodes and any code-gen A/B. Fight warm-up variance
+# with a warm-up phase, not a different compiler mode.
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
