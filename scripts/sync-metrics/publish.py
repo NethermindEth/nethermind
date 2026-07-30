@@ -22,7 +22,7 @@ def api(path):
             "Accept": "application/vnd.github+json",
         },
     )
-    with urllib.request.urlopen(request) as response:
+    with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
 
 
@@ -32,6 +32,7 @@ def main():
     run_id = int(os.environ["GITHUB_RUN_ID"])
 
     run = api(f"repos/{repo}/actions/runs/{run_id}")
+    # Not paginated: this run has well under 100 jobs (4 sync jobs + fixed overhead)
     jobs = api(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")["jobs"]
     job_min = {}
     for job in jobs:
@@ -57,6 +58,8 @@ def main():
         duration = job_min.get(f"Sync {record['network']} ({record['mode']})")
         if duration is not None:
             record["job_min"] = duration
+        else:
+            print(f"No successful job matched 'Sync {record['network']} ({record['mode']})'; job_min omitted.")
         records.append(record)
 
     if not records:

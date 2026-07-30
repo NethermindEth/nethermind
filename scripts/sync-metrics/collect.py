@@ -62,7 +62,7 @@ def main():
     log_file = os.getenv("LOG_FILE")
     if log_file:
         with open(log_file, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
+            found, counters = parse_log(f)
     else:
         # Same container-name mapping as wait-for-sync.py
         container = "sedge-execution-client"
@@ -75,14 +75,28 @@ def main():
             if network.startswith(prefix):
                 container = name
                 break
-        result = subprocess.run(
+        # Stream rather than buffer: debug-level logs after a multi-hour sync can be GBs,
+        # and this box is still hosting the node. stderr interleaved so marker order is real.
+        with subprocess.Popen(
             ["docker", "logs", "-t", container],
-            capture_output=True, text=True, errors="replace", check=True,
-        )
-        lines = result.stdout.splitlines() + result.stderr.splitlines()
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, errors="replace",
+        ) as process:
+            found, counters = parse_log(process.stdout)
+        if process.returncode != 0:
+            sys.exit(f"docker logs {container} failed with {process.returncode}")
 
-    found, counters = parse_log(lines)
-    verify_end = "verify_end_flat" if sync_mode.lower() == "flat" else "verify_end_halfpath"
+    is_flat = sync_mode.lower() == "flat"
+    verify_end = "verify_end_flat" if is_flat else "verify_end_halfpath"
+
+    mode_markers = dict(MARKERS)
+    del mode_markers["verify_end_halfpath" if is_flat else "verify_end_flat"]
+    if not is_flat:
+        del mode_markers["drain_start"]
+    missing = [key for key in mode_markers if key not in found]
+    if missing:
+        # A silent dashboard gap is indistinguishable from a parse bug — leave a trace in the job log
+        print(f"Markers not found in log: {', '.join(missing)}", file=sys.stderr)
 
     record = {"network": network, "mode": sync_mode}
     image = os.getenv("DOCKER_IMAGE")

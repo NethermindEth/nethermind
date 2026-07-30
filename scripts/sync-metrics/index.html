@@ -63,7 +63,7 @@ let records = [];
 let chart;
 
 function isExperimental(r) {
-  return r.event === "workflow_dispatch" || (r.image && r.image !== "nethermindeth/nethermind:master");
+  return !!r && (r.event === "workflow_dispatch" || (r.image && r.image !== "nethermindeth/nethermind:master"));
 }
 
 function buildDatasets() {
@@ -105,12 +105,24 @@ function refresh() {
 }
 
 async function init() {
-  const text = await (await fetch("history.jsonl", { cache: "no-store" })).text();
-  records = text.trim().split("\n").map(l => JSON.parse(l));
-  records.sort((a, b) => a.date < b.date ? -1 : 1);
+  const meta = document.getElementById("meta");
+  try {
+    const response = await fetch("history.jsonl", { cache: "no-store" });
+    if (!response.ok) throw new Error(`history.jsonl: HTTP ${response.status}`);
+    const text = await response.text();
+    records = text.split("\n").filter(l => l.trim() !== "").map(l => JSON.parse(l));
+  } catch (e) {
+    meta.textContent = `Failed to load data: ${e.message}`;
+    return;
+  }
+  if (records.length === 0) {
+    meta.textContent = "No records yet.";
+    return;
+  }
+  records.sort((a, b) => a.date.localeCompare(b.date));
 
   const last = records[records.length - 1];
-  document.getElementById("meta").textContent =
+  meta.textContent =
     `${records.length} records · latest: ${last.date.replace("T", " ").replace("Z", " UTC")} (run ${last.run_id})`;
 
   chart = new Chart(document.getElementById("chart"), {

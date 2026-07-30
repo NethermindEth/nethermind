@@ -310,7 +310,8 @@ jobs:
           NETWORK: ${{ matrix.config.network }}
           SYNC_MODE: ${{ matrix.config.mode }}
           DOCKER_IMAGE: ${{ needs.setup-matrix.outputs.docker_image }}
-        run: python scripts/sync-metrics/collect.py sync-metrics.json
+        # Filename must be unique across the matrix: publish-metrics merges all artifacts into one directory
+        run: python scripts/sync-metrics/collect.py sync-metrics-${{ matrix.config.network }}-${{ matrix.config.mode }}.json
 
       - name: Upload sync metrics
         if: success()
@@ -318,7 +319,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sync-metrics-${{ matrix.config.network }}-${{ matrix.config.mode }}
-          path: sync-metrics.json
+          if-no-files-found: ignore
+          path: sync-metrics-${{ matrix.config.network }}-${{ matrix.config.mode }}.json
           retention-days: 7
 
       - name: Get Nethermind Debug Logs
@@ -405,8 +407,12 @@ jobs:
 
   publish-metrics:
     needs: [setup-matrix, sync-chain]
-    # Runs whenever any sync job may have produced metrics (partial failures included)
+    # Runs whenever any sync job may have produced metrics (partial failures included).
+    # Metrics must never turn a green sync run red; the timeout also keeps a hang from
+    # holding the concurrency group (and thus blocking every later run) for the 6h default.
     if: ${{ !cancelled() && needs.setup-matrix.result == 'success' }}
+    continue-on-error: true
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -455,20 +461,27 @@ jobs:
           git -C metrics-branch config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # publish.py is idempotent, so on a push race we reset and re-apply
-          for attempt in 1 2 3; do
+          pushed=false
+          for _ in 1 2 3; do
             python scripts/sync-metrics/publish.py metrics metrics-branch/history.jsonl
             git -C metrics-branch add history.jsonl
             if git -C metrics-branch diff --cached --quiet; then
               echo "No new records."
+              pushed=true
               break
             fi
             git -C metrics-branch commit -m "Record sync metrics for run ${GITHUB_RUN_ID}"
             if git -C metrics-branch push origin HEAD:sync-metrics; then
+              pushed=true
               break
             fi
             git -C metrics-branch fetch origin sync-metrics
-            git -C metrics-branch reset --hard origin/sync-metrics
+            git -C metrics-branch reset --hard FETCH_HEAD
           done
+          if [ "$pushed" != true ]; then
+            echo "::error::Failed to push sync metrics after 3 attempts."
+            exit 1
+          fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
 
       - name: Build dashboard site
