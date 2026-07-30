@@ -730,9 +730,10 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 
-    [TestCase(2000ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
-    [TestCase(1999ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, bool shouldThrow)
+    [TestCase(2000ul, 0ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999ul, 0ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    [TestCase(2000ul, 2001ul, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool shouldThrow)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -760,6 +761,7 @@ public class BlockProcessorTests
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
+        balManager.SpendGas(gasSpent);
         // Generated BAL has the account but no storage reads
         BlockAccessListAtIndex generatedAtIndex = new();
         generatedAtIndex.AddAccountRead(TestItem.AddressA);
