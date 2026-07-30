@@ -22,61 +22,40 @@ public class FrameTxPayerExposureFilterTests
 {
     private static readonly Address Payer = TestItem.AddressB;
 
-    [Test]
-    public void Accept_SingleFrameTx_WithinBalance_Accepted()
+    // The bound is inclusive: a tx whose reserved + max_cost exactly equals the balance is admitted,
+    // matching the spec's strict `available < tx.max_cost` rejection condition (ethereum/EIPs#12007).
+    [TestCase(1000, 0, false, TestName = "single tx within balance")]
+    [TestCase(999, 0, true, TestName = "single tx over balance")]
+    [TestCase(1500, 1000, true, TestName = "summed exposure over balance")]
+    [TestCase(2000, 1000, false, TestName = "summed exposure at inclusive boundary")]
+    public void Accept_GatesOnPayerExposure(int balance, int reserved, bool rejected)
     {
-        TestReadOnlyStateProvider state = StateWithPayerBalance(1000);
+        TestReadOnlyStateProvider state = StateWithPayerBalance(balance);
         PayerExposureCache cache = new();
+        // Pre-seed a prior payer reservation (as an earlier admitted frame tx would have taken).
+        if (reserved > 0) cache.TryReserve(Payer, (UInt256)reserved, UInt256.MaxValue);
 
         AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(1000));
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.PayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
     [Test]
-    public void Accept_SingleFrameTx_ExceedingBalance_Rejected()
+    public void Accept_ReservesOnAdmission_SoConcurrentSecondTxSeesIt()
     {
-        TestReadOnlyStateProvider state = StateWithPayerBalance(999);
-        PayerExposureCache cache = new();
-
-        AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(1000));
-
-        Assert.That(result, Is.EqualTo(AcceptTxResult.PayerExposureExceeded));
-    }
-
-    [Test]
-    public void Accept_SecondFrameTx_SummedExposureExceedsBalance_Rejected()
-    {
-        // Each tx costs 1000 and the payer holds 1500: individually affordable, jointly not.
+        // The filter itself reserves on admission (no external accounting is simulated), so a second
+        // frame tx from the same payer sees the first tx's reservation.
         TestReadOnlyStateProvider state = StateWithPayerBalance(1500);
         PayerExposureCache cache = new();
 
         AcceptTxResult first = Accept(state, cache, FrameTxCostingExactly(1000));
-        // The pool would account the accepted tx on insertion; simulate that reservation.
-        cache.Add(Payer, 1000);
         AcceptTxResult second = Accept(state, cache, FrameTxCostingExactly(1000));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(second, Is.EqualTo(AcceptTxResult.PayerExposureExceeded));
-        }
-    }
-
-    [Test]
-    public void Accept_SecondFrameTx_SummedExposureWithinBalance_Accepted()
-    {
-        TestReadOnlyStateProvider state = StateWithPayerBalance(2000);
-        PayerExposureCache cache = new();
-
-        AcceptTxResult first = Accept(state, cache, FrameTxCostingExactly(1000));
-        cache.Add(Payer, 1000);
-        AcceptTxResult second = Accept(state, cache, FrameTxCostingExactly(1000));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(second, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)1000), "only the admitted tx is reserved");
         }
     }
 
@@ -103,16 +82,23 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
-    public void ExposureCache_AddThenSubtract_ReturnsToZero()
+    public void ExposureCache_TryReserveWithinThenReleaseToZero()
     {
         PayerExposureCache cache = new();
-        cache.Add(Payer, 1000);
-        cache.Add(Payer, 500);
-        cache.Subtract(Payer, 1000);
 
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryReserve(Payer, 1000, balance: 1500), Is.True);
+            Assert.That(cache.TryReserve(Payer, 500, balance: 1500), Is.True, "reserved 1000 + 500 == balance is admitted");
+            Assert.That(cache.TryReserve(Payer, 1, balance: 1500), Is.False, "one wei over the balance is rejected");
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)1500), "a rejected reservation adds nothing");
+        }
+
+        cache.Subtract(Payer, 1000);
         Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)500));
 
-        cache.Subtract(Payer, 500);
+        // Over-release clamps at zero rather than wrapping, so the gate can never be disabled.
+        cache.Subtract(Payer, 1000);
         Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
     }
 
@@ -123,13 +109,13 @@ public class FrameTxPayerExposureFilterTests
         return state;
     }
 
-    /// <summary>A frame tx whose max cost (<c>MaxFeePerGas * GasLimit + Value</c>) is exactly <paramref name="cost"/>.</summary>
+    /// <summary>A frame tx whose max cost (gas only, <c>MaxFeePerGas * GasLimit</c>) is exactly <paramref name="cost"/>.</summary>
     private static Transaction FrameTxCostingExactly(int cost) => new()
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
-        GasLimit = 100,
-        DecodedMaxFeePerGas = (UInt256)(cost / 100),
+        GasLimit = 1,
+        DecodedMaxFeePerGas = (UInt256)cost,
         PayerAddress = Payer,
     };
 
