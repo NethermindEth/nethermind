@@ -109,10 +109,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
     private TxExecutionContext _txExecutionContext;
-    internal bool SubcallPrefixClean;
-    internal Nethermind.Core.Crypto.ValueHash256 PendingSubcallMemoKey;
-    internal ulong PendingSubcallMemoGasGiven;
-    internal bool PendingSubcallMemoEligible;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
     /// Transaction context
@@ -152,8 +148,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
-        SubcallPrefixClean = true;
-        PendingSubcallMemoEligible = false;
         _worldState = worldState;
 
         // Reset Parity touch bug state to prevent cross-transaction leakage.
@@ -265,20 +259,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     _currentState.IsContinuation = true;
                     if (SubcallProfile.IsEnabled && _currentState.Env.CallDepth == 0)
                         SubcallProfile.RecordSubcall(previousState.Env.CodeSource, callResult.ShouldRevert);
-
-                    if (_currentState.Env.CallDepth == 0)
-                    {
-                        if (!callResult.ShouldRevert)
-                        {
-                            // A successful sibling may have left effects; every later memo stands down.
-                            SubcallPrefixClean = false;
-                        }
-                        else if (SubcallMemo.IsEnabled && previousState.SubcallMemoEligible)
-                        {
-                            SubcallMemo.Record(previousState.SubcallMemoKey, callResult.Output.ToArray(),
-                                previousState.SubcallMemoGasGiven - TGasPolicy.GetRemainingGas(in previousState.Gas));
-                        }
-                    }
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)

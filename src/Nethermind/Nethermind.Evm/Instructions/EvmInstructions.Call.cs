@@ -275,15 +275,6 @@ public static partial class EvmInstructions
             return inlineResult;
         }
 
-        if (SubcallMemo.IsEnabled
-            && (TOpCall.ExecutionType == ExecutionType.CALL || TOpCall.ExecutionType == ExecutionType.STATICCALL)
-            && TryAnswerSubcallFromMemo<TGasPolicy, TTracingInst>(
-                vm, ref stack, ref gas, in dataOffset, dataLength, in outputOffset, outputLength,
-                target, codeSource, in callValue, gasLimitUl, out EvmExceptionType memoAnswer))
-        {
-            return memoAnswer;
-        }
-
         return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
 
         // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
@@ -358,7 +349,7 @@ public static partial class EvmInstructions
 #endif
 
             // Rent a new call frame for executing the call.
-            VmState<TGasPolicy> childFrame = VmState<TGasPolicy>.RentFrame(
+            vm.ReturnData = VmState<TGasPolicy>.RentFrame(
                 gas: childGas,
                 outputDestination: outputOffset.ToLong(),
                 outputLength: outputLength.ToLong(),
@@ -369,15 +360,6 @@ public static partial class EvmInstructions
                 stateForAccessLists: in vm.VmState.AccessTracker,
                 snapshot: in snapshot,
                 newAccountCharged: newAccountCharged);
-            if (vm.PendingSubcallMemoEligible)
-            {
-                childFrame.SubcallMemoKey = vm.PendingSubcallMemoKey;
-                childFrame.SubcallMemoGasGiven = vm.PendingSubcallMemoGasGiven;
-                childFrame.SubcallMemoEligible = true;
-                vm.PendingSubcallMemoEligible = false;
-            }
-
-            vm.ReturnData = childFrame;
 
             return EvmExceptionType.None;
         }
