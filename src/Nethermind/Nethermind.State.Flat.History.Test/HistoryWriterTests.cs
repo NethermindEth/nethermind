@@ -397,9 +397,8 @@ public class HistoryWriterTests
         Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, LimboLogs.Instance));
     }
 
-    // A pre-finalization force-persist can capture a branch that later reorgs. Connecting on the block number
-    // alone would advance the watermark over the orphaned rows, making them permanently readable as healthy
-    // history - the connect must bind to the captured root and fail closed instead.
+    // A pre-finalization force-persist can capture a branch that later reorgs; a number-only connect would
+    // advance the watermark over the orphaned rows, making them permanently readable as healthy history.
     [Test]
     public void Reorged_capture_at_the_connect_point_refuses_to_advance_the_watermark()
     {
@@ -428,9 +427,8 @@ public class HistoryWriterTests
         }
     }
 
-    // A single capture failure aborts the persist and is retried; the same failure repeating forever must not
-    // stall persistence permanently (the in-memory tier would grow one base per block until OOM) - after the
-    // breaker trips, capture degrades to "no more history" and persistence resumes.
+    // The same capture failure repeating forever must not stall persistence permanently; after the breaker
+    // trips, capture degrades to "no more history" and persistence resumes.
     [Test]
     public void Repeated_capture_failures_trip_the_breaker_and_let_persistence_resume()
     {

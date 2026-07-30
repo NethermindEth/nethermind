@@ -22,10 +22,8 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCaptureStatus
 {
-    // A single failure aborts the persist and is retried (transient I/O); this bounds the pathological case where
-    // the same capture fails forever — persistence would never reach its Phase-2 conversion arms and the in-memory
-    // tier would grow one base per block until OOM. Degrading to "no more history" is fail-closed (the watermark
-    // stops advancing), losing the node is not.
+    // A single failure aborts the persist and is retried; a capture failing forever would stall persistence and
+    // grow the in-memory tier one base per block until OOM. Degrading to "no more history" is fail-closed.
     private const int MaxConsecutiveCaptureFailures = 16;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
@@ -123,9 +121,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (hasWatermark && current.BlockNumber <= watermark)
             {
-                // Connecting on the block number alone is not enough: a pre-finalization force-persist can have
-                // captured a branch that later reorged. Advancing over a root mismatch would strand those rows
-                // under a healthy watermark forever, so bind the connect to the captured root and fail closed.
+                // A pre-finalization force-persist can have captured a branch that later reorged; advancing on the
+                // block number alone would strand those rows under a healthy watermark forever.
                 if (!_availability.Matches(current.BlockNumber, current.StateRoot))
                 {
                     DisableCapture(
@@ -165,9 +162,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (connected)
         {
-            // Publish, then WAL-sync so range + watermark are durable before the caller persists the flat state.
-            // SyncWal (unlike Flush) throws on failure: proceeding on an unsynced WAL would let the caller persist
-            // and prune sources whose capture may not survive a crash.
+            // Publish, then WAL-sync (throwing on failure) so range + watermark are durable before the caller
+            // persists the flat state and prunes the sources.
             _availability.PublishWatermark(target);
             _history.SyncWal();
             Metrics.FlatHistoryWatermark = (long)target;

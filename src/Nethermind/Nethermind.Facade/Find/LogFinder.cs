@@ -125,10 +125,8 @@ namespace Nethermind.Facade.Find
                     }
                     catch (AggregateException e) when (FirstMappable(e) is { } mappable)
                     {
-                        // PLINQ wraps worker exceptions, but the RPC layer maps bare types onto error codes —
-                        // without this a multi-block range answers a generic internal error while a single-block
-                        // range answers correctly. Several partitions faulting at once (the normal shape for a wide
-                        // unavailable range) and nested aggregates both must unwrap, hence Flatten.
+                        // PLINQ wraps worker exceptions, but the RPC layer maps bare types onto error codes — a
+                        // multi-block range must answer the same way a single-block range does.
                         ExceptionDispatchInfo.Capture(mappable).Throw();
                         throw; // unreachable; tells the compiler the catch does not complete
                     }
@@ -149,12 +147,8 @@ namespace Nethermind.Facade.Find
 
         private static Exception? FirstMappable(AggregateException e)
         {
-            // Unavailability wins over transient shapes on purpose: if any block in the range is genuinely
-            // unanswerable, that stays true after a retry, so it is the accurate answer for the whole range.
-            // An unexpected fault wins over both — the aggregate then falls through to the generic handler,
-            // the only site that logs the real error; unwrapping a transient over it would hide a genuine bug.
-            // ObjectDisposedException lands in that arm deliberately: it maps to a generic error on the
-            // sequential path too, so the two paths agree during shutdown.
+            // Unavailability wins over transient shapes (it stays true after a retry); an unexpected fault wins
+            // over both, so the aggregate falls through to the generic handler — the only site that logs it.
             Exception? notFound = null;
             Exception? transient = null;
             foreach (Exception inner in e.Flatten().InnerExceptions)

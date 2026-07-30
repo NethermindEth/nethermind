@@ -128,23 +128,25 @@ public class LogFinderTests
         Assert.That(LogFinder.IsParallelScanSlotHeld, Is.EqualTo(before), "building an unenumerated parallel getLogs result must not acquire the process-wide parallel slot");
     }
 
-    // The finder's "receipts unavailable" signal must survive the PLINQ path: several partitions faulting at once
-    // arrive as one AggregateException (possibly nested), and the RPC handlers catch the bare type to map it onto
-    // its error code. A single-block range takes the sequential path and cannot cover this.
-    [Test, MaxTime(Timeout.MaxTestTime)]
+    // Everything the receipt path lets escape must survive the PLINQ wrapping: several partitions faulting at
+    // once arrive as one AggregateException, and the RPC layer maps the bare types onto error codes. A
+    // single-block range takes the sequential path and cannot cover this.
+    [TestCase(typeof(ResourceNotFoundException))]
+    [TestCase(typeof(ConcurrencyLimitReachedException))]
+    [MaxTime(Timeout.MaxTestTime)]
     [NonParallelizable]
-    public void throw_unwrapped_exception_when_receipts_are_unavailable_on_the_parallel_path()
+    public void throw_unwrapped_exception_on_the_parallel_path(Type exceptionType)
     {
         int chainLength = Math.Max(64, Environment.ProcessorCount + 2);
         SetUp(allowReceiptIterator: true, chainLength: chainLength);
 
-        UnavailableReceiptFinder unavailable = new();
-        LogFinder logFinder = new(_blockTree, unavailable, _receiptStorage, LimboLogs.Instance,
+        ThrowingReceiptFinder throwing = new(exceptionType);
+        LogFinder logFinder = new(_blockTree, throwing, _receiptStorage, LimboLogs.Instance,
             _receiptsRecovery, new ReceiptConfig { DeriveFromState = true });
 
         Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
-            Throws.TypeOf<ResourceNotFoundException>());
-        Assert.That(unavailable.SawParallelScanSlotHeld, Is.True,
+            Throws.TypeOf(exceptionType));
+        Assert.That(throwing.SawParallelScanSlotHeld, Is.True,
             "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
     }
 
@@ -423,51 +425,14 @@ public class LogFinderTests
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
 
-    // The transient shapes the regenerator lets escape must survive the same PLINQ wrapping: an exhausted env pool
-    // must answer "too many requests", not a generic internal error.
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    [NonParallelizable]
-    public void throw_unwrapped_concurrency_limit_on_the_parallel_path()
-    {
-        int chainLength = Math.Max(64, Environment.ProcessorCount + 2);
-        SetUp(allowReceiptIterator: true, chainLength: chainLength);
-
-        OverloadedReceiptFinder overloaded = new();
-        LogFinder logFinder = new(_blockTree, overloaded, _receiptStorage, LimboLogs.Instance,
-            _receiptsRecovery, new ReceiptConfig { DeriveFromState = true });
-
-        Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
-            Throws.TypeOf<ConcurrencyLimitReachedException>());
-        Assert.That(overloaded.SawParallelScanSlotHeld, Is.True,
-            "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
-    }
-
-    private sealed class OverloadedReceiptFinder : IReceiptFinder
+    // NSubstitute cannot stub a method with a ref-struct out parameter, so the throwing finder is hand-rolled.
+    private sealed class ThrowingReceiptFinder(Type exceptionType) : IReceiptFinder
     {
         public bool SawParallelScanSlotHeld { get; private set; }
 
         public Hash256? FindBlockHash(Hash256 txHash) => null;
-        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => throw Overloaded();
-        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => throw Overloaded();
-        public bool CanGetReceiptsByHash(ulong blockNumber) => true;
-
-        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
-        {
-            SawParallelScanSlotHeld |= LogFinder.IsParallelScanSlotHeld;
-            throw Overloaded();
-        }
-
-        private static ConcurrencyLimitReachedException Overloaded() => new("regeneration environment pool exhausted");
-    }
-
-    // NSubstitute cannot stub a method with a ref-struct out parameter, so the unavailable finder is hand-rolled.
-    private sealed class UnavailableReceiptFinder : IReceiptFinder
-    {
-        public bool SawParallelScanSlotHeld { get; private set; }
-
-        public Hash256? FindBlockHash(Hash256 txHash) => null;
-        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => throw Unavailable();
-        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => throw Unavailable();
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => throw Create();
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => throw Create();
         public bool CanGetReceiptsByHash(ulong blockNumber) => true;
 
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
@@ -475,10 +440,10 @@ public class LogFinderTests
             // Recorded from inside a worker: proves the enumeration really went through the PLINQ path rather than
             // silently degrading to sequential (where the bare exception propagates without any unwrap).
             SawParallelScanSlotHeld |= LogFinder.IsParallelScanSlotHeld;
-            throw Unavailable();
+            throw Create();
         }
 
-        private static ResourceNotFoundException Unavailable() => new("receipts are neither stored nor reproducible");
+        private Exception Create() => (Exception)Activator.CreateInstance(exceptionType, "receipts path failure")!;
     }
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>

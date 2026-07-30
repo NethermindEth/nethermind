@@ -148,6 +148,8 @@ public interface IDbConfig : IConfig
 
     string FlatHistoryDbRocksDbOptions { get; set; }
     string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
+    string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; }
+    string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; }
 
     string? PreimageDbRocksDbOptions { get; set; }
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }

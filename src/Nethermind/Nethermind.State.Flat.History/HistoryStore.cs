@@ -81,10 +81,9 @@ internal sealed class HistoryStore
 
         foundAtBlock = ~BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
         ReadOnlySpan<byte> value = view.CurrentValue;
+        // Buffers are sized to the encoders' maxima, so an oversized row can only be corruption.
         if (value.Length > outBuffer.Length)
         {
-            // Buffers are sized to the encoders' maxima, so an oversized row can only be corruption — fail with a
-            // description rather than let CopyTo surface an inscrutable ArgumentException.
             throw new InvalidDataException(
                 $"History value of {value.Length} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
         }

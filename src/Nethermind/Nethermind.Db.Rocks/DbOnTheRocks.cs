@@ -1485,8 +1485,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (RocksDbSharpException e)
         {
-            // Unlike Flush this propagates: the caller's durability ordering depends on the WAL being on disk,
-            // so a swallowed failure would let it proceed as if it were.
             HandleFatalDbError(e);
             throw;
         }

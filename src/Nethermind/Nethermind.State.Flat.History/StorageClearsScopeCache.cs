@@ -10,9 +10,8 @@ namespace Nethermind.State.Flat.History;
 /// Per-scope memo of "does this account have any self-destruct marker at or before the scope's block".
 /// </summary>
 /// <remarks>
-/// Almost no account ever self-destructs, yet every resolved historical slot read must rule a destruct out — an
-/// iterator-backed range probe per slot. A scope is pinned to one block, so one existence probe per address answers
-/// it for every slot the scope touches; only the rare account with markers still pays the exact per-slot range probe.
+/// Almost no account ever self-destructs, yet every resolved historical slot read must rule a destruct out with an
+/// iterator-backed range probe; one existence probe per address answers it for every slot the scope touches.
 /// </remarks>
 internal sealed class StorageClearsScopeCache
 {
@@ -22,8 +21,7 @@ internal sealed class StorageClearsScopeCache
     {
         if (_hasAnyClear.TryGetValue(addrHash, out bool hasAny)) return hasAny;
 
-        // An exclusive lower bound of 0 skips a marker exactly at block 0; genesis cannot self-destruct, so the
-        // full [0, block] range is covered.
+        // The exclusive lower bound of 0 is safe: genesis cannot self-destruct.
         hasAny = clears.HasClearInRange(accountKey, 0, block);
         _hasAnyClear.TryAdd(addrHash, hasAny);
         return hasAny;

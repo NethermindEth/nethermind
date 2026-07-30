@@ -524,27 +524,25 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(BodyIsPersisted(block), Is.True);
     }
 
-    // Capture can self-disable at runtime; from that moment a skipped body is permanently lost once the block
-    // leaves the in-memory tier, so the skip must follow capture health, not the config flag.
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Deriving_from_state_stores_bodies_when_history_capture_is_unhealthy()
+    // A body skipped while capture is unhealthy (or unwired, e.g. a patricia backend) is permanently lost once
+    // the block leaves the in-memory tier, so the skip must follow capture health, not the config flag.
+    [TestCase(false)]
+    [TestCase(null)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_stores_bodies_without_healthy_history_capture(bool? captureHealthy)
     {
         _receiptConfig.DeriveFromState = true;
-        CreateStorage(captureHealthy: false);
-
-        Block block = ProcessBlock();
-
-        Assert.That(BodyIsPersisted(block), Is.True);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Deriving_from_state_stores_bodies_when_no_capture_status_is_wired()
-    {
-        _receiptConfig.DeriveFromState = true;
-        _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
-        _storage = new PersistentReceiptStorage(
-            _receiptsDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
-        { MigratedBlockNumber = 0 };
+        if (captureHealthy is { } health)
+        {
+            CreateStorage(captureHealthy: health);
+        }
+        else
+        {
+            _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
+            _storage = new PersistentReceiptStorage(
+                _receiptsDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
+            { MigratedBlockNumber = 0 };
+        }
 
         Block block = ProcessBlock();
 
