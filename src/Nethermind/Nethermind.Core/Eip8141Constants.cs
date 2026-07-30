@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
@@ -27,4 +28,10 @@ public static class Eip8141Constants
     /// <see cref="ExpiryVerifierAddress"/> when EIP-8141 activates.
     /// </summary>
     public static readonly byte[] ExpiryVerifierCode = Bytes.FromHexString("0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd");
+
+    /// <summary>
+    /// Keccak of <see cref="ExpiryVerifierCode"/>. The <c>TIMESTAMP</c> validation-prefix exemption
+    /// applies only to a frame whose <see cref="ExpiryVerifierAddress"/> code hash matches this value.
+    /// </summary>
+    public static readonly ValueHash256 ExpiryVerifierCodeHash = ValueKeccak.Compute(ExpiryVerifierCode);
 }

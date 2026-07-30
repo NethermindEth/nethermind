@@ -573,9 +573,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // for an opaque prefix whose declared gas_limits were never structurally bounded.
                 ulong remainingVerifyGas = Eip8141Constants.MaxVerifyGas - verifyGasUsed;
                 ulong frameGasLimit = Math.Min(frame.GasLimit, remainingVerifyGas);
-                TxFrame boundedFrame = frameGasLimit == frame.GasLimit
-                    ? frame
-                    : new TxFrame(frame.Mode, frame.Flags, frame.Target, frameGasLimit, frame.Value, frame.Data);
+                // When the frame's declared gas_limit exceeds the remaining budget, cumulative prefix
+                // gas already tops MAX_VERIFY_GAS; running under the cap tells whether that budget is hit.
+                bool capped = frameGasLimit < frame.GasLimit;
+                TxFrame boundedFrame = capped
+                    ? new TxFrame(frame.Mode, frame.Flags, frame.Target, frameGasLimit, frame.Value, frame.Data)
+                    : frame;
 
                 Address resolvedTarget = frame.Target ?? sender;
                 Address caller = Eip8141Constants.EntryPointAddress;
@@ -586,15 +589,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: true, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed);
 
                 verifyGasUsed += frameGasUsed;
-                if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
-                {
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
-                }
 
                 if (substate.ShouldRevert || substate.IsError)
                 {
-                    // A reverting VERIFY frame invalidates the prefix.
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("validation prefix frame reverted");
+                    // A frame capped to the remaining budget that then failed exhausted that cap, so the
+                    // prefix's validation work exceeds MAX_VERIFY_GAS: reject it as over-budget, distinct
+                    // from a genuine revert of a within-budget frame (spec §Structural Rules 6, L812).
+                    return capped
+                        ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS")
+                        : TransactionResult.ErrorType.MalformedTransaction.WithDetail("validation prefix frame reverted");
                 }
 
                 frameContext.MarkFrameSucceeded(i);
