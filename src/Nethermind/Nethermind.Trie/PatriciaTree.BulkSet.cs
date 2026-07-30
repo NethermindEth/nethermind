@@ -80,6 +80,11 @@ public partial class PatriciaTree
         flags |= Flags.DoNotParallelize;
 #endif
 
+        // The eager pass hashes each bucket's subtree serially on its worker, so 16 top-level
+        // buckets pay the slowest-bucket imbalance; one extra split level (bounded at 16x16 jobs)
+        // restores fine-grained balance. Plain bulk set keeps the master single-level behavior.
+        int parallelDepthBudget = updateRootHash ? 2 : 1;
+
         TraverseStack traverseStack = GetTraverseStack();
 
         TreePath path = TreePath.Empty;
@@ -104,7 +109,8 @@ public partial class PatriciaTree
                 RootRef,
                 0,
                 flags,
-                updateRootHash);
+                updateRootHash,
+                parallelDepthBudget);
             RootRef = newRoot;
             _writeBeforeCommit += entries.Count;
             ReturnTraverseStack(traverseStack);
@@ -131,7 +137,8 @@ public partial class PatriciaTree
             RootRef,
             0,
             flags,
-            updateRootHash);
+            updateRootHash,
+            parallelDepthBudget);
         RootRef = newRoot2;
 
         _writeBeforeCommit += entries.Count;
@@ -160,7 +167,8 @@ public partial class PatriciaTree
         TrieNode? node,
         int flipCount,
         Flags flags,
-        bool updateRootHash)
+        bool updateRootHash,
+        int parallelDepthBudget)
     {
         TrieNode? originalNode = node;
 
@@ -226,7 +234,7 @@ public partial class PatriciaTree
         bool hasRemove = false;
         int nonNullChildCount = 0;
 
-        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
+        if (parallelDepthBudget > 0 && entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
             using ArrayPoolList<(
                 int startIdx,
@@ -275,8 +283,9 @@ public partial class PatriciaTree
                         ref childPath,
                         child,
                         flipCount,
-                        flags | Flags.DoNotParallelize,
-                        updateRootHash); // Only parallelize at top level.
+                        flags,
+                        updateRootHash,
+                        parallelDepthBudget - 1); // Each parallel level consumes one budget unit.
 
                     jobs[i] = (startIdx, count, nib, childPath, child, newChild, keccakBefore); // Just need the child actually...
 
@@ -336,7 +345,8 @@ public partial class PatriciaTree
                         child,
                         flipCount,
                         flags,
-                        updateRootHash
+                        updateRootHash,
+                        parallelDepthBudget
                     );
 
                 if (!ShouldUpdateChild(originalNode, child, newChild, updateRootHash, childKeccakBefore))
