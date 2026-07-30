@@ -36,22 +36,22 @@ public class FrameTxReceiptDecoderTests
         AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
     }
 
-    // The storage form appends [payer, [frame_receipt, ...]] after the standard fields, so a
-    // restart round-trips the execution results the block cannot reproduce. The union Logs and the
-    // per-frame logs are stored independently — a rolled-back batch frame keeps its log in the
-    // frame receipt while the union omits it, and storage must preserve exactly that divergence.
+    // Storage persists the union Logs and the per-frame logs as independent fields (unlike the wire
+    // form, which rebuilds the union from the frame logs on decode). The union here is deliberately
+    // NOT the frame-order concatenation, pinning that the decoder reads Logs back verbatim.
     [Test]
     public void StorageRoundtrip_PreservesPayerFrameReceiptsAndUnionLogs(
         [Values(true, false)] bool compactEncoding)
     {
         LogEntry unionLog = Log(0x01);
-        LogEntry rolledBackLog = Log(0x02);
+        LogEntry frameOnlyLog = Log(0x02);
         TxReceipt frameReceipt = CreateReceipt(
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [unionLog]),
-            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [rolledBackLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [frameOnlyLog]),
             new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []));
         frameReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
         frameReceipt.Sender = TestItem.AddressC;
+        // Union omits frameOnlyLog, so it diverges from the frame-order concatenation on purpose.
         frameReceipt.Logs = [unionLog];
         frameReceipt.Bloom = new Bloom(frameReceipt.Logs);
         TxReceipt legacyReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
