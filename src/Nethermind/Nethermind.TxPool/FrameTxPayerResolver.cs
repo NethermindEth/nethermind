@@ -243,4 +243,8 @@ internal static class FrameTxPayerResolver
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == TxFrame.ApproveExecution
         && (frame.Target is null || frame.Target == sender);
+
+    private static bool IsPay(TxFrame frame) =>
+        frame.Mode == TxFrame.ModeVerify
+        && frame.Flags == TxFrame.ApprovePayment;
 }

@@ -2086,9 +2086,14 @@ namespace Nethermind.TxPool.Test
             // Two frame txs from different senders both resolve their payer to one sponsor whose
             // balance covers a single tx: the second is rejected on exposure, and removing the first
             // releases the reservation so a re-submission is admitted (TxPool exposure accounting).
-            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
-
+            // The narrowed native resolver defers the only_verify|pay sponsor prefix to simulation, so
+            // the sponsor payer is resolved via the wired prefix simulator (the composed Phase-2 path).
             Address sponsor = TestItem.AddressD;
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>())
+                .Returns(FrameTxSimulationResult.Accept(sponsor));
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+
             UInt256 maxCost = (UInt256)1.GWei * 1_000_000;
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -2598,7 +2603,8 @@ namespace Nethermind.TxPool.Test
             IIncomingTxFilter incomingTxFilter = null,
             IBlobTxStorage txStorage = null,
             bool thereIsPriorityContract = false,
-            IEthereumEcdsa ethereumEcdsa = null)
+            IEthereumEcdsa ethereumEcdsa = null,
+            IFrameTxPrefixSimulator frameTxPrefixSimulator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -2622,7 +2628,8 @@ namespace Nethermind.TxPool.Test
                 ShouldGossip.Instance,
                 incomingTxFilter,
                 new HeadTxValidator(),
-                thereIsPriorityContract);
+                thereIsPriorityContract,
+                frameTxPrefixSimulator);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

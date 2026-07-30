@@ -39,7 +39,8 @@ internal sealed class FrameTxSimulationFilter(
         // A null payer is either a provably-invalid legible prefix (NoPayer) or an opaque one that
         // needs simulation; only the latter is simulated. Re-resolving is cheap (native, ≤2 reads)
         // and reached only for the rare unresolved frame tx, not the common resolved fast path.
-        if (FrameTxPayerResolver.Resolve(tx, stateProvider).Outcome != FrameTxPayerOutcome.RequiresSimulation)
+        stateProvider.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount);
+        if (FrameTxPayerResolver.Resolve(tx, stateProvider, in senderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
         {
             return AcceptTxResult.Accepted;
         }
