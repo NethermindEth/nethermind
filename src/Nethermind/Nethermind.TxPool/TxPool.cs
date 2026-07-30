@@ -100,6 +100,7 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="headTxValidator"></param>
+        /// <param name="frameTxPrefixSimulator">Optional EIP-8141 opaque-prefix simulator; unwired on chains without frame transactions.</param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -110,7 +111,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -195,8 +197,14 @@ namespace Nethermind.TxPool
             // name a third-party payer) are deferred.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
 
+            // EIP-8141: simulate the validation prefix of opaque (RequiresSimulation) frame txs to
+            // resolve their payer and enforce the trace/opcode rules; runs after FrameTxPayerFilter
+            // so the natively-resolved fast path bypasses it. Optional: when unwired, opaque frame
+            // txs stay deferred as in Phase 1.
+            postHashFilters.Add(new FrameTxSimulationFilter(chainHeadInfoProvider.ReadOnlyStateProvider, frameTxPrefixSimulator, _logger));
+
             // EIP-8141: bound each resolved payer's summed pending exposure to its balance; runs
-            // after FrameTxPayerFilter, which records the payer this gate reads.
+            // after payer resolution/simulation, which records the payer this gate reads.
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
