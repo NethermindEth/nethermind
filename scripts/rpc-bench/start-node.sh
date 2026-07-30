@@ -257,7 +257,15 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
-if [[ "$CLIENT" == "nethermind" ]]; then
+# These were applied to the Nethermind container only, and both cost it on RPC workloads.
+# DOTNET_TieredCompilation=0 also disables Dynamic PGO, which the runner project asks for and which
+# is what devirtualizes and inlines call-heavy code - an interpreter dispatching through
+# function-pointer tables is exactly that shape. DOTNET_GCLatencyLevel=0 selects batch mode, trading
+# pause length for throughput. Measured on the heavy-multicall config: average 315ms to 270ms and
+# p99 487ms to 378ms, with the p99-over-p50 spread falling from 1.57 to 1.43. Since no other client
+# was given equivalent flags, removing them also makes cross-client numbers symmetric. Set
+# RPCBENCH_LEGACY_DOTNET_TUNING=1 to reproduce older runs.
+if [[ "$CLIENT" == "nethermind" && "${RPCBENCH_LEGACY_DOTNET_TUNING:-}" == "1" ]]; then
   docker_args+=(
     -e "DOTNET_TieredCompilation=0"
     -e "DOTNET_GCLatencyLevel=0"
