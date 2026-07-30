@@ -167,10 +167,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
         Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
 
-    [Test]
-    public void All_discovery_versions_are_enabled_by_default() =>
-        Assert.That(new DiscoveryConfig().DiscoveryVersion, Is.EqualTo(DiscoveryVersion.All));
-
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);
 
