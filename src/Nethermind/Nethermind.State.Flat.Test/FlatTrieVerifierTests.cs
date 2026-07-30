@@ -370,14 +370,15 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     }
 
     /// <summary>
-    /// Enough slots that the storage root is a branch with 16 hashed children,
-    /// which triggers the partitioned verification path in hashed mode.
+    /// Enough slots that the storage root and all 16 of its children are full branches,
+    /// which triggers the partitioned verification path in hashed mode
+    /// (pinned by <see cref="ShouldSplitStorage_SplitsOnlyLargeTries"/>).
     /// </summary>
-    private const int LargeStorageSlotCount = 512;
+    private const int LargeStorageSlotCount = 4096;
 
-    private static (UInt256 slot, byte[] value)[] CreateLargeStorageSlots()
+    private static (UInt256 slot, byte[] value)[] CreateLargeStorageSlots(int count = LargeStorageSlotCount)
     {
-        (UInt256 slot, byte[] value)[] slots = new (UInt256, byte[])[LargeStorageSlotCount];
+        (UInt256 slot, byte[] value)[] slots = new (UInt256, byte[])[count];
         for (int i = 0; i < slots.Length; i++)
         {
             slots[i] = ((UInt256)i, [(byte)(i % 255 + 1)]);
@@ -385,11 +386,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         return slots;
     }
 
-    [Test]
-    public void Verify_Storage_LargeTrie_AllMatch()
+    private Hash256 SetUpLargeStorageAccount(Address address, (UInt256 slot, byte[] value)[] slots, out StateId toState)
     {
-        Address address = TestItem.AddressA;
-        (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
         StorageTree storageTree = CreateStorageTree(address, slots);
         Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
 
@@ -397,8 +395,28 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _stateTree.Commit();
         Hash256 stateRoot = _stateTree.RootHash;
 
-        StateId toState = new(1, stateRoot);
+        toState = new(1, stateRoot);
         WriteAccountToFlat(address, account, toState);
+        return stateRoot;
+    }
+
+    [TestCase(4, ExpectedResult = false)]
+    [TestCase(512, ExpectedResult = false)]
+    [TestCase(LargeStorageSlotCount, ExpectedResult = true)]
+    public bool ShouldSplitStorage_SplitsOnlyLargeTries(int slotCount)
+    {
+        Address address = TestItem.AddressA;
+        StorageTree storageTree = CreateStorageTree(address, CreateLargeStorageSlots(slotCount));
+        IScopedTrieStore storageTrieStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(Keccak.Compute(address.Bytes));
+        return FlatTrieVerifier.ShouldSplitStorage(storageTrieStore, storageTree.RootHash);
+    }
+
+    [Test]
+    public void Verify_Storage_LargeTrie_AllMatch()
+    {
+        Address address = TestItem.AddressA;
+        (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
+        Hash256 stateRoot = SetUpLargeStorageAccount(address, slots, out _);
         foreach ((UInt256 slot, byte[] value) in slots)
         {
             WriteStorageDirectToDb(address, slot, value);
@@ -424,22 +442,14 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     {
         Address address = TestItem.AddressA;
         (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
-        StorageTree storageTree = CreateStorageTree(address, slots);
-        Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
-
-        _stateTree.Set(address, account);
-        _stateTree.Commit();
-        Hash256 stateRoot = _stateTree.RootHash;
-
-        StateId toState = new(1, stateRoot);
-        WriteAccountToFlat(address, account, toState);
+        Hash256 stateRoot = SetUpLargeStorageAccount(address, slots, out _);
         // Slot 0 omitted from flat -> missing in flat
         for (int i = 1; i < slots.Length; i++)
         {
             WriteStorageDirectToDb(address, slots[i].slot, slots[i].value);
         }
         WriteStorageDirectToDb(address, slots[1].slot, [0xFF]); // Wrong value -> mismatched
-        WriteStorageDirectToDb(address, 1000, [0xAB]); // Not in trie -> missing in trie
+        WriteStorageDirectToDb(address, LargeStorageSlotCount, [0xAB]); // Not in trie -> missing in trie
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         FlatTrieVerifier verifier = new(_logManager);

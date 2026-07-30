@@ -82,6 +82,8 @@ public interface IPersistence
     /// <remarks>
     /// <see cref="CurrentValue"/> may point into the underlying store's buffer and is only valid
     /// until the next <see cref="MoveNext"/> or <see cref="IDisposable.Dispose"/> call.
+    /// Reading <see cref="CurrentKey"/> or <see cref="CurrentValue"/> before the first
+    /// <see cref="MoveNext"/>, or after one returned <c>false</c>, is undefined.
     /// </remarks>
     public interface IFlatIterator : IDisposable
     {

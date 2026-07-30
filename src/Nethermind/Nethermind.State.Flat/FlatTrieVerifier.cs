@@ -34,12 +34,16 @@ public class FlatTrieVerifier
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
+    private readonly int _storageWorkerCount = Math.Max(1, Environment.ProcessorCount - 1);
+
     private long _accountCount;
     private long _slotCount;
     private long _mismatchedAccount;
     private long _mismatchedSlot;
     private long _missingInFlat;
     private long _missingInTrie;
+    private int _busyStorageWorkers;
+    private int _offloadedPartitions;
 
     public FlatTrieVerifier(IFlatDbManager flatDbManager, IPersistence persistence, ILogManager logManager)
     {
@@ -97,9 +101,8 @@ public class FlatTrieVerifier
                 FullMode = BoundedChannelFullMode.Wait
             });
 
-        int workerCount = Math.Max(1, Environment.ProcessorCount - 1);
-        Task[] workers = new Task[workerCount];
-        for (int i = 0; i < workerCount; i++)
+        Task[] workers = new Task[_storageWorkerCount];
+        for (int i = 0; i < _storageWorkerCount; i++)
         {
             workers[i] = Task.Run(() => ProcessStorageQueue(channel.Reader, reader, verifyingTrieStore, cancellationToken));
         }
@@ -441,13 +444,21 @@ public class FlatTrieVerifier
     {
         await foreach (StorageVerificationJob job in channelReader.ReadAllAsync(cancellationToken))
         {
-            if (job.IsPreimageMode)
+            Interlocked.Increment(ref _busyStorageWorkers);
+            try
             {
-                VerifyStoragePreimage(job, reader, trieStore, cancellationToken);
+                if (job.IsPreimageMode)
+                {
+                    VerifyStoragePreimage(job, reader, trieStore, cancellationToken);
+                }
+                else
+                {
+                    VerifyStorageHashed(job, reader, trieStore, cancellationToken);
+                }
             }
-            else
+            finally
             {
-                VerifyStorageHashed(job, reader, trieStore, cancellationToken);
+                Interlocked.Decrement(ref _busyStorageWorkers);
             }
         }
     }
@@ -484,16 +495,7 @@ public class FlatTrieVerifier
         // co-iteration across the same key-space partitions used for accounts.
         if (ShouldSplitStorage(storageTrieStore, job.StorageRoot))
         {
-            ParallelOptions parallelOptions = new()
-            {
-                MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2),
-                CancellationToken = cancellationToken
-            };
-            Parallel.For(0, PartitionCount, parallelOptions, partition =>
-            {
-                (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
-                VerifyStorageHashedRange(job, reader, storageTrieStore, startKey, endKey, endExclusive: true, cancellationToken);
-            });
+            VerifyStorageHashedPartitioned(job, reader, storageTrieStore, cancellationToken);
         }
         else
         {
@@ -502,35 +504,119 @@ public class FlatTrieVerifier
     }
 
     /// <summary>
-    /// Decides whether a storage trie is large enough to verify partitioned in parallel.
+    /// Verifies a large storage trie partition by partition, offloading partitions to spare threads
+    /// only while other storage workers are idle.
     /// </summary>
     /// <remarks>
-    /// A root that is a branch with all 16 children stored by hash implies a trie of at least a few
-    /// hundred slots, where partitioning pays off; smaller tries stay on the cheaper sequential path.
-    /// Splitting is range-based and correct regardless of the root shape — this is only a size heuristic.
+    /// A whale job is usually dequeued while every worker is still busy, yet keeps draining long after
+    /// the rest of the queue is done. Deciding per partition rather than once per job lets the same job
+    /// run sequentially through the busy phase and fan out the moment other workers go idle — the
+    /// single-worker tail this targets. <see cref="TryReserveOffloadSlot"/> caps busy workers plus
+    /// offloaded partitions at the worker count, so verification concurrency never exceeds the pool size.
+    /// Unlike the sequential full range, the partitions exclude a slot hashed to exactly 0xFF…FF
+    /// (probability 2⁻²⁵⁶) — the same asymmetry the account partitions already have.
     /// </remarks>
-    private static bool ShouldSplitStorage(IScopedTrieStore storageTrieStore, Hash256 storageRoot)
+    private void VerifyStorageHashedPartitioned(
+        StorageVerificationJob job,
+        IPersistence.IPersistenceReader reader,
+        IScopedTrieStore storageTrieStore,
+        CancellationToken cancellationToken)
     {
-        TreePath emptyPath = TreePath.Empty;
-        TrieNode root = storageTrieStore.FindCachedOrUnknown(emptyPath, storageRoot);
+        Task[]? offloaded = null;
+        int offloadedCount = 0;
         try
         {
-            root.ResolveNode(storageTrieStore, emptyPath);
+            for (int partition = 0; partition < PartitionCount; partition++)
+            {
+                (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
+                if (TryReserveOffloadSlot())
+                {
+                    offloaded ??= new Task[PartitionCount];
+                    offloaded[offloadedCount++] = Task.Run(() =>
+                    {
+                        try
+                        {
+                            VerifyStorageHashedRange(job, reader, storageTrieStore, startKey, endKey, endExclusive: true, cancellationToken);
+                        }
+                        finally
+                        {
+                            Interlocked.Decrement(ref _offloadedPartitions);
+                        }
+                    });
+                }
+                else
+                {
+                    VerifyStorageHashedRange(job, reader, storageTrieStore, startKey, endKey, endExclusive: true, cancellationToken);
+                }
+            }
         }
-        catch (TrieNodeException)
+        finally
         {
+            // Offloaded partitions share this job's reader and stats — never let them outlive this frame.
+            if (offloaded is not null) Task.WaitAll(offloaded.AsSpan(0, offloadedCount));
+        }
+    }
+
+    /// <summary>
+    /// Reserves one partition-offload slot if some storage workers are currently idle.
+    /// </summary>
+    private bool TryReserveOffloadSlot()
+    {
+        if (Interlocked.Increment(ref _offloadedPartitions) + Volatile.Read(ref _busyStorageWorkers) > _storageWorkerCount)
+        {
+            Interlocked.Decrement(ref _offloadedPartitions);
             return false;
         }
 
-        if (!root.IsBranch) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Decides whether a storage trie is large enough to verify partitioned.
+    /// </summary>
+    /// <remarks>
+    /// Storage leaves at these depths always exceed 32 bytes of RLP (their HP-encoded key alone is
+    /// 32 bytes), so a hashed child only proves its nibble is occupied — a single full branch level
+    /// means merely ~50+ slots. Requiring two full levels (root and all 16 children each carrying 16
+    /// hash-referenced children) means all 256 depth-2 prefixes are occupied, which for
+    /// keccak-distributed keys implies at least a couple thousand slots — large enough that the
+    /// partitioning overhead (extra iterator seeks and root descents) is noise.
+    /// Splitting is range-based and correct regardless of the root shape — this is only a size heuristic.
+    /// </remarks>
+    internal static bool ShouldSplitStorage(IScopedTrieStore storageTrieStore, Hash256 storageRoot)
+    {
+        TreePath rootPath = TreePath.Empty;
+        if (!TryResolveBranch(storageTrieStore, rootPath, storageRoot, out TrieNode root)) return false;
 
         for (int i = 0; i < 16; i++)
         {
             // A null child hash means the child is either absent or inlined — both imply a small subtree.
-            if (root.GetChildHash(i) is null) return false;
+            if (root.GetChildHash(i) is not Hash256 childHash) return false;
+            if (!TryResolveBranch(storageTrieStore, rootPath.Append(i), childHash, out TrieNode child)) return false;
+
+            for (int j = 0; j < 16; j++)
+            {
+                if (child.GetChildHash(j) is null) return false;
+            }
         }
 
         return true;
+    }
+
+    private static bool TryResolveBranch(IScopedTrieStore store, in TreePath path, Hash256 hash, out TrieNode node)
+    {
+        node = store.FindCachedOrUnknown(path, hash);
+        try
+        {
+            node.ResolveNode(store, path);
+        }
+        catch (TrieNodeException)
+        {
+            // Benign to swallow: the co-iteration resolves the same node again and reports through LogTrieNodeException.
+            return false;
+        }
+
+        return node.IsBranch;
     }
 
     /// <summary>
