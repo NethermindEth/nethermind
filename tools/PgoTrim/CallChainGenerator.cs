@@ -40,8 +40,8 @@ static class CallChainGenerator
         Console.WriteLine($"Loading method map from {etlxPath}...");
 
         // Build IP -> method name map from .etlx CLR events
-        Dictionary<string, MethodInfo> methodsByName = new();
-        Dictionary<ulong, string> ipToMethod = new();
+        Dictionary<string, MethodInfo> methodsByName = [];
+        Dictionary<ulong, string> ipToMethod = [];
 
         using (TraceLog traceLog = TraceLog.OpenOrConvert(etlxPath, new TraceLogOptions { KeepAllEvents = true }))
         {
@@ -73,7 +73,7 @@ static class CallChainGenerator
         Console.WriteLine($"  {methodsByName.Count:N0} methods resolved from .etlx");
 
         // Build sorted array for binary search IP resolution
-        List<(ulong start, int size, string name)> sortedMethods = new();
+        List<(ulong start, int size, string name)> sortedMethods = [];
         foreach (MethodInfo mi in methodsByName.Values)
         {
             sortedMethods.Add((mi.Start, mi.Size, mi.Name));
@@ -81,8 +81,8 @@ static class CallChainGenerator
         sortedMethods.Sort((a, b) => a.start.CompareTo(b.start));
 
         // Parse .callgraph and aggregate caller -> callee -> count
-        Dictionary<string, Dictionary<string, int>> callGraph = new();
-        Dictionary<string, int> exclusiveSamples = new();
+        Dictionary<string, Dictionary<string, int>> callGraph = [];
+        Dictionary<string, int> exclusiveSamples = [];
         int resolvedEdges = 0;
         int unresolvedEdges = 0;
         int totalLines = 0;
@@ -121,7 +121,7 @@ static class CallChainGenerator
             {
                 if (!callGraph.TryGetValue(callerName, out Dictionary<string, int>? callees))
                 {
-                    callees = new Dictionary<string, int>();
+                    callees = [];
                     callGraph[callerName] = callees;
                 }
                 if (callees.TryGetValue(calleeName, out int edgeCount))
@@ -143,7 +143,7 @@ static class CallChainGenerator
         // Write CallChainProfile JSON
         Console.WriteLine($"Writing {outputJsonPath}...");
         using (FileStream fs = File.Create(outputJsonPath))
-        using (Utf8JsonWriter writer = new Utf8JsonWriter(fs, new JsonWriterOptions { Indented = false }))
+        using (Utf8JsonWriter writer = new(fs, new JsonWriterOptions { Indented = false }))
         {
             writer.WriteStartObject();
 
@@ -177,7 +177,7 @@ static class CallChainGenerator
         // Also write a method-sizes file for potential CDS implementation
         string sizesPath = Path.ChangeExtension(outputJsonPath, ".sizes");
         int sizesWritten = 0;
-        using (StreamWriter sw = new StreamWriter(sizesPath))
+        using (StreamWriter sw = new(sizesPath))
         {
             sw.WriteLine("# method_name native_size_bytes exclusive_samples");
             foreach (MethodInfo mi in methodsByName.Values)

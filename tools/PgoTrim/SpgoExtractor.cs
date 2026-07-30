@@ -38,9 +38,9 @@ static class SpgoExtractor
         int edgeCount = 0;
 
         using (Stream stream = perfEntry.Open())
-        using (StreamReader reader = new StreamReader(stream))
-        using (StreamWriter spgoWriter = new StreamWriter(outputPath))
-        using (StreamWriter cgWriter = new StreamWriter(callGraphPath))
+        using (StreamReader reader = new(stream))
+        using (StreamWriter spgoWriter = new(outputPath))
+        using (StreamWriter cgWriter = new(callGraphPath))
         {
             cgWriter.WriteLine("# callee_ip caller_ip");
 

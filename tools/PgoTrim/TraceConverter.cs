@@ -31,7 +31,7 @@ static class TraceConverter
         Console.WriteLine($"TraceEvent version: {teVersion}");
         Console.WriteLine($"Converting {inputPath} to {etlxPath}...");
 
-        using (CtfTraceEventSource ctfSource = new CtfTraceEventSource(inputPath))
+        using (CtfTraceEventSource ctfSource = new(inputPath))
         {
             // Register CLR parser (populates _eventMapping with known mappings)
             new ClrTraceEventParser(ctfSource);
