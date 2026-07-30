@@ -105,13 +105,24 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // Structural signature-shape failure in a legible frame: execution would revert it.
-        yield return Case("SelfVerify_WrongSignatureScheme_NoPayer",
+        // A signature-shape mismatch in a legible frame is not a native proof of invalidity: the
+        // hoisted-list vs VERIFY-frame-data placement is an open cross-client divergence, so the
+        // verdict is deferred to execution rather than dropped at admission.
+        yield return Case("SelfVerify_WrongSignatureScheme_RequiresSimulation",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
                 return FrameTx([SelfVerifyFrame()], [new TxFrameSignature(TxFrameSignature.SchemeP256, Sender, default, new byte[128])]);
-            }, FrameTxPayerOutcome.NoPayer, null);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
+        // An empty hoisted signature list (the ethrex devnet shape carrying the signature in the
+        // VERIFY frame data) is deferred, not dropped — the mempool must not pre-judge the divergence.
+        yield return Case("SelfVerify_EmptySignatureList_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([SelfVerifyFrame()], []);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A sponsored pay frame is deferred regardless of the (unverified) sponsor signature shape:
         // the pool never draws a native conclusion about a third-party payer from an unverified signature.
