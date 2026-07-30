@@ -131,6 +131,11 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
+        /// <summary>
+        /// An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.
+        /// </summary>
+        public static readonly AcceptTxResult PayerExposureExceeded = new(22, TxPoolErrorMessages.PayerExposureExceeded);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

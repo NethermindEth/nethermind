@@ -57,6 +57,7 @@ namespace Nethermind.TxPool
         private readonly ITxValidator? _headTxValidator;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
+        private readonly PayerExposureCache _payerExposure = new();
 
         private readonly ILogger _logger;
 
@@ -197,6 +198,10 @@ namespace Nethermind.TxPool
             // Runs last so only otherwise-admissible frame txs are resolved.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
 
+            // EIP-8141: bound each resolved payer's summed pending exposure to its balance; runs
+            // after FrameTxPayerFilter, which records the payer this gate reads.
+            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _payerExposure, _logger));
+
             _postHashFilters = postHashFilters.ToArray();
 
             int? reportMinutes = txPoolConfig.ReportMinutes;
@@ -254,15 +259,18 @@ namespace Nethermind.TxPool
         {
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            UpdatePayerExposure(args.Value, add: true);
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
+            UpdatePayerExposure(args.Value, add: false);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)
@@ -791,6 +799,22 @@ namespace Nethermind.TxPool
                     if (auth.Authority is not null)
                         _pendingDelegations.DecrementDelegationCount(auth.Authority!);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Adds or releases a resolved frame-tx payer's pending exposure as the transaction enters or
+        /// leaves the pool (covering eviction, replacement, inclusion, and reorg removal, which all
+        /// funnel through the pool <c>Removed</c> event). EIP-8141 (ethereum/EIPs#12007).
+        /// </summary>
+        private void UpdatePayerExposure(Transaction tx, bool add)
+        {
+            if (tx.SupportsFrames && tx.PayerAddress is not null && !tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
+            {
+                if (add)
+                    _payerExposure.Add(tx.PayerAddress, maxCost);
+                else
+                    _payerExposure.Subtract(tx.PayerAddress, maxCost);
             }
         }
 
