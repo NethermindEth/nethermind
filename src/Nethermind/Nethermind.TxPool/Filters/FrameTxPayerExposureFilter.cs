@@ -37,7 +37,7 @@ internal sealed class FrameTxPayerExposureFilter(
         // Max cost approximates TXPARAM(0x06). For a frame tx this is gas-only (MaxFeePerGas·GasLimit):
         // the top-level Value is always zero (frame value lives on TxFrame.Value) and blob fields are
         // rejected at validation while frame-blob support is off. The signature-verification add-on
-        // lands with the deferred MAX_VERIFY_GAS slice (see MEMPOOL-RULES-DESIGN.md).
+        // lands with the deferred MAX_VERIFY_GAS slice.
         if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
         {
             return AcceptTxResult.Int256Overflow;
@@ -48,10 +48,10 @@ internal sealed class FrameTxPayerExposureFilter(
         // Reserve atomically so N concurrent submissions for the same payer cannot each observe a
         // pre-reservation total and all pass. Released on the pool Removed event, or on the
         // non-insert path in TxPool.AddCore.
-        if (!exposure.TryReserve(payer, maxCost, balance))
+        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved))
         {
             if (logger.IsTrace)
-                logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} exposure {exposure.GetReserved(payer)} + {maxCost} exceeds balance {balance}.");
+                logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} reserved exposure {reserved} + {maxCost} exceeds balance {balance}.");
             return AcceptTxResult.PayerExposureExceeded;
         }
 

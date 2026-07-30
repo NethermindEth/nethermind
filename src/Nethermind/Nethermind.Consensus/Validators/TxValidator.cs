@@ -92,10 +92,9 @@ public sealed class TxValidator : ITxValidator
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
-            // Frame-blob support is not enabled: reject any blob fields so the per-payer exposure
-            // bound (which counts gas cost only) cannot be bypassed by a blob-carrying frame tx
-            // (EIP8141-GAP, see MEMPOOL-RULES-DESIGN.md).
-            NonBlobFieldsTxValidator.Instance,
+            // Blob fields cannot use the presence-based NonBlobFieldsTxValidator here: the frame-tx
+            // decoder always populates max_fee_per_blob_gas and blob_versioned_hashes, so it would
+            // reject every frame tx. FrameTxFieldsTxValidator rejects blob-carrying frame txs by value.
             FrameTxFieldsTxValidator.Instance
         ]));
     }
