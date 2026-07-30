@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 
@@ -62,6 +63,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Int256.UInt256[] constants = stream.Constants;
         byte[] constantBytes = stream.ConstantBytes;
         ushort[] pcToEntry = stream.PcToEntry;
+        byte[] shufflePlans = stream.ShufflePlans;
         int callDepth = VmState.Env.CallDepth;
         int opCodeCount = 0;
         int nextCancellationCheck = CancellationCheckMask + 1;
@@ -121,6 +123,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
 
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
+
+                    if (entry.Kind == StreamOpKind.Shuffle)
+                    {
+                        exceptionType = ApplyShuffle(ref stack, shufflePlans, (int)entry.Operand);
+                        if (exceptionType != EvmExceptionType.None) break;
+
+                        programCounter = entry.Pc + entry.Advance;
+                        entryIndex++;
+                        continue;
+                    }
 
                     // Gas already charged at the block entry, so the cores are gas-free.
                     switch (instruction)
@@ -449,7 +461,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     // A fused table handler can land past a block's charging entry; run the rest metered.
                     StreamOpKind landingKind = ops[entryIndex].Kind;
-                    metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock;
+                    metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock or StreamOpKind.Shuffle;
                 }
             }
 
@@ -496,6 +508,51 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [DoesNotReturn]
         static void ThrowStreamOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
     }
+
+    /// <summary>
+    /// Applies a coalesced permutation run: the plan names, for each word of the result, which of the
+    /// consumed words it came from, so the run costs one read of the window and one write of the
+    /// result instead of a dispatch and a memory move per op. The single depth check rejects exactly
+    /// the depths at which some op in the run would have underflowed, and an exceptional halt burns
+    /// the frame's gas either way, so which op failed is not observable.
+    /// </summary>
+    // NoInlining is load-bearing, not a hint: the window below is a stackalloc, and stack memory in
+    // an inlined callee is only released when the ENCLOSING method returns. Inlined into the dispatch
+    // loop, millions of runs per frame would each keep their buffer and exhaust the thread's stack -
+    // which is exactly how the first version of this failed, invisibly to unit tests that execute a
+    // handful of runs and fatally on a real call. One call per run, not per op, so the call is
+    // amortized over everything the run replaces.
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static EvmExceptionType ApplyShuffle(ref EvmStack stack, byte[] plans, int offset)
+    {
+        int reads = plans[offset];
+        int writes = plans[offset + 1];
+
+        int head = stack.Head;
+        if (head < reads) return EvmExceptionType.StackUnderflow;
+        if (head - reads + writes >= EvmStack.MaxStackSize) return EvmExceptionType.StackOverflow;
+
+        // The window is copied out first: a result word may name a source that a later write would
+        // otherwise have overwritten.
+        Span<Vector256<byte>> window = stackalloc Vector256<byte>[MaxShuffleWindow];
+        ref byte top = ref stack.PeekBytesByRef();
+        for (int i = 0; i < reads; i++)
+        {
+            window[i] = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Subtract(ref top, i * EvmStack.WordSize));
+        }
+
+        ref byte deepest = ref Unsafe.Subtract(ref top, (reads - 1) * EvmStack.WordSize);
+        for (int j = 0; j < writes; j++)
+        {
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref deepest, (writes - 1 - j) * EvmStack.WordSize), window[plans[offset + 2 + j]]);
+        }
+
+        stack.Head = head - reads + writes;
+        return EvmExceptionType.None;
+    }
+
+    private const int MaxShuffleWindow = 16;
 
     private enum MeteredOutcome : byte
     {
@@ -579,7 +636,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             StreamOpKind kind = ops[entryIndex].Kind;
-            if (kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock)
+            // A coalesced permutation run is a mid-block entry like any other: metering must persist
+            // through it, and the metered loop steps its raw ops one by one, charging each.
+            if (kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock or StreamOpKind.Shuffle)
                 continue;
 
             // Block-charging entry or boundary op: hand back so the stream loop re-evaluates the charge.
