@@ -31,9 +31,9 @@ namespace Nethermind.Synchronization.SnapSync
         private const uint StorageRangeSplitFactor = 2;
         internal static readonly byte[] ACC_PROGRESS_KEY = "AccountProgressKey"u8.ToArray();
 
-        // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
-        // bottlenecked by _syncCommit lock in SnapProviderHelper, which in turns is limited by the IO.
-        // In any case, all partition will be touched when calculating progress, so we can't really put like 1024 for this.
+        // This does not need to be a lot as it spawn other requests. Each partition boundary that fails to
+        // stitch adds healing work, and all partitions are touched when calculating progress, so we can't
+        // really put like 1024 for this.
         private readonly int _accountRangePartitionCount;
 
         private long _reqCount;

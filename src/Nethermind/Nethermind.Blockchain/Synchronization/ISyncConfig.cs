@@ -111,7 +111,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
 
-    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
+    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency at the cost of more partition boundaries to heal. Allowed values are between 1 and 256.", DefaultValue = "32")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
     [ConfigItem(Description = $"Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. The range to verify is `{nameof(FixReceiptsStartingBlock)}`..`{nameof(FixReceiptsLastBlock)}`.", DefaultValue = "false")]
