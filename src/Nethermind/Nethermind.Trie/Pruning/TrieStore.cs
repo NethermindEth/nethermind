@@ -578,6 +578,17 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(pruneDelayMs, _pruningTaskCancellationTokenSource.Token)) return;
         }
 
+        // Run off the thread pool: the prune blocks on parallel-persist pool tasks, so joining on
+        // a pool thread can starve and deadlock the pool when many stores prune on a small pool.
+        await Task.Factory.StartNew(
+            RunSyncPrune,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+    }
+
+    private void RunSyncPrune()
+    {
         using (_pruningLock.EnterScope())
         {
             // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer

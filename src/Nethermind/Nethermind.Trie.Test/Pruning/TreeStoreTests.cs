@@ -1536,13 +1536,14 @@ namespace Nethermind.Trie.Test.Pruning
             writeBlocker.Reset();
             writeReached.Reset();
 
-            // Background pruning
-            Task persistTask = Task.Run(() =>
+            // Background pruning on a dedicated thread, not a pool worker: SyncPruneQueue blocks on
+            // parallel-persist pool tasks, so backgrounding it on the pool can starve and deadlock it.
+            Task persistTask = Task.Factory.StartNew(() =>
             {
                 testPruningStrategy.ShouldPruneEnabled = true;
                 fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
-            });
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             Assert.That(writeReached.Wait(1000), Is.True, "Pruning task did not reach database write");
 
             // Bring block 5's node to block 12
