@@ -9,7 +9,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -52,10 +51,29 @@ public class FrameTxPayerFilterTests
         }
     }
 
+    [Test]
+    public void Accept_FrameTxWithNoPayer_Rejects()
+    {
+        TestReadOnlyStateProvider state = new();
+        state.CreateAccount(TestItem.AddressA, 1 * Unit.Ether);
+        // only_verify with no following pay frame never approves a payer: provably invalid.
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, default, new byte[TxFrameSignature.Secp256k1SignatureLength])],
+        };
+
+        AcceptTxResult result = Accept(state, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+    }
+
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, Transaction tx)
     {
         FrameTxPayerFilter filter = new(state, LimboLogs.Instance.GetClassLogger<FrameTxPayerFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState filteringState = new(tx, state);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }

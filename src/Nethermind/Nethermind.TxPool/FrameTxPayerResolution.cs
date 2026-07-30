@@ -11,7 +11,7 @@ namespace Nethermind.TxPool;
 /// Outcome of resolving an EIP-8141 frame transaction's fee-payer at mempool admission.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </summary>
-public enum FrameTxPayerOutcome
+internal enum FrameTxPayerOutcome
 {
     /// <summary>A legible validation prefix that sets a payer natively.</summary>
     Resolved,
@@ -33,7 +33,7 @@ public enum FrameTxPayerOutcome
 /// re-execution. Indexing pending transactions by this set is deferred; the fields are recorded now.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
-public readonly struct FrameTxDependencySet(
+internal readonly struct FrameTxDependencySet(
     ValueHash256 senderCodeHash,
     ulong senderNonce,
     Address? payer,
@@ -61,7 +61,7 @@ public readonly struct FrameTxDependencySet(
 /// Result of <see cref="FrameTxPayerResolver.Resolve"/>: the payer outcome and the state dependency
 /// set captured while resolving it.
 /// </summary>
-public readonly struct FrameTxPayerResolution(FrameTxPayerOutcome outcome, Address? payer, in FrameTxDependencySet dependencies)
+internal readonly struct FrameTxPayerResolution(FrameTxPayerOutcome outcome, Address? payer, in FrameTxDependencySet dependencies)
 {
     public FrameTxPayerOutcome Outcome { get; } = outcome;
 

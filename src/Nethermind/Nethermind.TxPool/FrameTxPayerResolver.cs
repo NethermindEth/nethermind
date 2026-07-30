@@ -20,19 +20,22 @@ namespace Nethermind.TxPool;
 /// (optionally preceded by an <c>expiry_verify</c> frame) are resolved natively; anything reaching
 /// deployed code — a deployed/delegated sender, a deploy-factory frame, a canonical (code hash
 /// unpinned) or non-canonical paymaster — yields <see cref="FrameTxPayerOutcome.RequiresSimulation"/>
-/// and is left to a later simulation layer. The native checks mirror the execution loop's default-code
-/// approval conditions (<c>TransactionProcessorBase.FrameTx.cs</c>), so a resolved payer equals the
-/// payer execution would set. This resolves who the structural payer is; solvency/exposure and the
-/// <c>MAX_VERIFY_GAS</c> / cryptographic-signature checks are separate deferred gates (ethereum/EIPs#12007).
+/// and is left to a later simulation layer. Native resolution mirrors the execution loop's
+/// default-code approval conditions for the legible prefixes (<c>TransactionProcessorBase.FrameTx.cs</c>);
+/// it identifies who the structural payer is, not that execution will set one. Solvency/exposure,
+/// the <c>MAX_VERIFY_GAS</c> budget, and cryptographic-signature verification are separate deferred
+/// gates (ethereum/EIPs#12007); until the signature gate lands a third-party payer is never named
+/// natively (see the sponsored branch), so a forged signature cannot resolve to an arbitrary victim.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
-public static class FrameTxPayerResolver
+internal static class FrameTxPayerResolver
 {
     /// <summary>
     /// Resolves the payer of <paramref name="tx"/> against <paramref name="state"/> (the chain head).
     /// </summary>
+    /// <param name="senderAccount">The sender's chain-head account, already fetched by the caller.</param>
     /// <returns>The payer outcome and the captured state dependency set.</returns>
-    public static FrameTxPayerResolution Resolve(Transaction tx, IReadOnlyStateProvider state)
+    public static FrameTxPayerResolution Resolve(Transaction tx, IReadOnlyStateProvider state, in AccountStruct senderAccount)
     {
         TxFrame[]? frames = tx.Frames;
         Address? sender = tx.SenderAddress;
@@ -43,11 +46,13 @@ public static class FrameTxPayerResolver
 
         TxFrameSignature[] signatures = tx.FrameSignatures ?? [];
 
-        // A never-seen account has empty (default) code, but TryGetAccount yields a zeroed struct
-        // whose code hash is not the empty-keccak, so normalize both the flag and the hash here.
-        bool senderExists = state.TryGetAccount(sender, out AccountStruct senderAccount);
+        // A never-seen account is the zeroed struct, whose code hash is not the empty-keccak, so
+        // normalize both the existence flag and the hash here.
+        bool senderExists = !senderAccount.IsNull;
         bool senderHasCode = senderExists && senderAccount.HasCode;
         ValueHash256 senderCodeHash = senderExists ? senderAccount.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
+        // Copied out of the in-parameter so the dependency-set builders below (local functions) can close over it.
+        ulong senderNonce = senderAccount.Nonce;
 
         // Optional leading expiry_verify frame: skipped for shape matching (it does not set the
         // payer), but its deadline and the EXPIRY_VERIFIER code join the dependency set (γρ.795).
@@ -65,13 +70,13 @@ public static class FrameTxPayerResolver
 
         FrameTxPayerResolution Unresolved(FrameTxPayerOutcome outcome) =>
             new(outcome, null, new FrameTxDependencySet(
-                senderCodeHash, senderAccount.Nonce,
+                senderCodeHash, senderNonce,
                 payer: null, default, default,
                 dependsOnExpiry, expiryDeadline, expiryCodeHash));
 
         FrameTxPayerResolution ResolvedTo(Address payer, in ValueHash256 payerCodeHash, in UInt256 payerBalance) =>
             new(FrameTxPayerOutcome.Resolved, payer, new FrameTxDependencySet(
-                senderCodeHash, senderAccount.Nonce,
+                senderCodeHash, senderNonce,
                 payer, payerCodeHash, payerBalance,
                 dependsOnExpiry, expiryDeadline, expiryCodeHash));
 
@@ -121,21 +126,12 @@ public static class FrameTxPayerResolver
                     : FrameTxPayerOutcome.NoPayer);
             }
 
-            Address payTarget = frames[index + 1].Target ?? sender;
-            bool payExists = state.TryGetAccount(payTarget, out AccountStruct payAccount);
-            bool payHasCode = payExists && payAccount.HasCode;
-            ValueHash256 payCodeHash = payExists ? payAccount.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
-
-            // A code-carrying pay target is a paymaster (canonical code hash unpinned, or
-            // non-canonical) and needs simulation; a default-code target is an EOA sponsor.
-            if (payHasCode)
-            {
-                return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
-            }
-
-            return DefaultCodeApproves(signatures, sigIndex: 1, expectedSigner: payTarget, sender)
-                ? ResolvedTo(payTarget, in payCodeHash, payAccount.Balance)
-                : Unresolved(FrameTxPayerOutcome.NoPayer);
+            // The pay frame names a third party (an EOA sponsor or a paymaster) as the payer, and its
+            // pay-frame signature is not cryptographically verified at admission. Naming that payer on
+            // an unverified signature is a griefing vector — a forged signature could charge an
+            // arbitrary victim's exposure budget — so it is deferred to the signature-verification /
+            // simulation layer rather than resolved natively (ethereum/EIPs#12007).
+            return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
         // Not a recognized legible prefix (e.g. a deploy frame, or an unrecognized VERIFY shape).
