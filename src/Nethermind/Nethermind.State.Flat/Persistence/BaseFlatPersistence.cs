@@ -216,8 +216,7 @@ public static class BaseFlatPersistence
 
         public ValueHash256 CurrentKey => _currentKey;
 
-        // Returned span is only valid until the next MoveNext (per IFlatIterator contract) — copying
-        // it per entry is measurable garbage over a few hundred million accounts in verifytrie.
+        // Not copied: valid only until the next MoveNext, per IFlatIterator contract.
         public ReadOnlySpan<byte> CurrentValue => view.CurrentValue;
 
         public void Dispose() => view.Dispose();
@@ -253,9 +252,8 @@ public static class BaseFlatPersistence
 
         public ValueHash256 CurrentKey => _currentKey;
 
-        // Re-derived per access instead of copied per slot: the RLP header parse is a few ns, while
-        // copying every slot value is billions of small allocations over a full verifytrie run. The
-        // span stays valid until the next MoveNext (per IFlatIterator contract).
+        // Re-derived per access instead of copied per slot; valid only until the next MoveNext,
+        // per IFlatIterator contract.
         public ReadOnlySpan<byte> CurrentValue => DecodeCurrentValue();
 
         private readonly ReadOnlySpan<byte> DecodeCurrentValue() =>

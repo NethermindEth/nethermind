@@ -23,8 +23,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class FlatTrieVerifier
 {
-    // Deep enough that account partitions keep enqueuing while workers are stuck on large contracts;
-    // jobs are small (one struct per account), so the memory cost is negligible.
+    // Deep enough that account partitions keep enqueuing while workers are stuck on large contracts.
     private const int StorageChannelCapacity = 1024;
     private const int FlatKeyLength = 20;
     private const int PartitionCount = 8;
@@ -491,8 +490,7 @@ public class FlatTrieVerifier
 
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
 
-        // A single whale contract otherwise pins one worker for the whole channel drain — split its
-        // co-iteration across the same key-space partitions used for accounts.
+        // A single whale contract otherwise pins one worker for the whole channel drain.
         if (ShouldSplitStorage(storageTrieStore, job.StorageRoot))
         {
             VerifyStorageHashedPartitioned(job, reader, storageTrieStore, cancellationToken);
@@ -508,15 +506,11 @@ public class FlatTrieVerifier
     /// only while other storage workers are idle.
     /// </summary>
     /// <remarks>
-    /// A whale job is usually dequeued while every worker is still busy, yet keeps draining long after
-    /// the rest of the queue is done. Deciding per partition rather than once per job lets the same job
-    /// run sequentially through the busy phase and fan out the moment other workers go idle — the
-    /// single-worker tail this targets. <see cref="TryReserveOffloadSlot"/> caps busy workers plus
-    /// offloaded partitions at the worker count at reservation time; workers turning busy afterwards can
-    /// transiently push concurrency past the pool size (by at most the partition count), self-correcting
-    /// as offloaded partitions finish.
-    /// Unlike the sequential full range, the partitions exclude a slot hashed to exactly 0xFF…FF
-    /// (probability 2⁻²⁵⁶) — the same asymmetry the account partitions already have.
+    /// Deciding per partition rather than once per job lets a whale dequeued while every worker is busy
+    /// run sequentially, then fan out the moment other workers go idle — the single-worker tail this
+    /// targets. The offload cap is checked at reservation time only, so concurrency can transiently
+    /// exceed the pool size by at most the partition count. Like the account partitions, the ranges
+    /// exclude a slot hashed to exactly 0xFF…FF (probability 2⁻²⁵⁶).
     /// </remarks>
     private void VerifyStorageHashedPartitioned(
         StorageVerificationJob job,
@@ -568,9 +562,8 @@ public class FlatTrieVerifier
                 }
                 catch (Exception ex) when (!loopCompleted)
                 {
-                    // An inline partition is already unwinding — keep it as the root cause
-                    // instead of letting this wait replace it. On cancellation both sides
-                    // throw the same thing, so logging it would only add shutdown noise.
+                    // An inline partition is already unwinding — keep it as the root cause. On
+                    // cancellation both sides throw alike, so logging would only add shutdown noise.
                     if (!cancellationToken.IsCancellationRequested && _logger.IsWarn)
                         _logger.Warn($"Offloaded storage partition failed: {ex}");
                 }
@@ -596,13 +589,10 @@ public class FlatTrieVerifier
     /// Decides whether a storage trie is large enough to verify partitioned.
     /// </summary>
     /// <remarks>
-    /// Storage leaves at these depths always exceed 32 bytes of RLP (their HP-encoded key alone is
-    /// 32 bytes), so a hashed child only proves its nibble is occupied — a single full branch level
-    /// means merely ~50+ slots. Requiring two full levels (root and all 16 children each carrying 16
-    /// hash-referenced children) means all 256 depth-2 prefixes are occupied, which for
-    /// keccak-distributed keys implies at least a couple thousand slots — large enough that the
-    /// partitioning overhead (extra iterator seeks and root descents) is noise.
-    /// Splitting is range-based and correct regardless of the root shape — this is only a size heuristic.
+    /// Storage leaves at these depths never inline (their HP-encoded key alone is 32 bytes of RLP), so
+    /// one full branch level means merely ~50+ slots; two full levels (all 256 depth-2 prefixes
+    /// occupied) imply thousands, enough that the partitioning overhead is noise. Purely a size
+    /// heuristic — splitting is range-based and correct regardless of the root shape.
     /// </remarks>
     internal static bool ShouldSplitStorage(IScopedTrieStore storageTrieStore, Hash256 storageRoot)
     {
@@ -644,10 +634,9 @@ public class FlatTrieVerifier
     /// Verifies one slot-key range of a storage trie by co-iterating flat and trie leaves.
     /// </summary>
     /// <remarks>
-    /// The flat storage iterator's end bound is inclusive while <see cref="TrieLeafIterator"/>'s is
-    /// exclusive. With <paramref name="endExclusive"/> the flat entry equal to <paramref name="endKey"/>
-    /// is dropped so partitioned calls cover disjoint [start, end) ranges on both sides; without it the
-    /// full-range behavior (flat inclusive of 0xFF…FF, trie unranged) is preserved.
+    /// The flat iterator's end bound is inclusive while <see cref="TrieLeafIterator"/>'s is exclusive;
+    /// <paramref name="endExclusive"/> drops the flat entry equal to <paramref name="endKey"/> so
+    /// partitioned calls cover disjoint [start, end) ranges on both sides.
     /// </remarks>
     private void VerifyStorageHashedRange(
         in StorageVerificationJob job,
@@ -1027,11 +1016,8 @@ public class FlatTrieVerifier
     {
         private long _hashMismatchCount;
 
-        /// <remarks>
-        /// Counted per RLP load, not per distinct node: snapshot misses hand out fresh unresolved
-        /// nodes, so re-descents (e.g. the whale split's gate probe plus its partitions) re-verify
-        /// and re-count the same corrupt node.
-        /// </remarks>
+        /// <remarks>Counted per RLP load, not per distinct node — re-descents re-verify and re-count
+        /// the same corrupt node.</remarks>
         public long HashMismatchCount => Interlocked.Read(ref _hashMismatchCount);
 
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);

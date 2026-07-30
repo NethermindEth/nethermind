@@ -369,11 +369,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
     }
 
-    /// <summary>
-    /// Enough slots that the storage root and all 16 of its children are full branches,
-    /// which triggers the partitioned verification path in hashed mode
-    /// (pinned by <see cref="ShouldSplitStorage_SplitsOnlyLargeTries"/>).
-    /// </summary>
+    // Enough slots that the root and all 16 children are full branches, triggering the partitioned path.
     private const int LargeStorageSlotCount = 4096;
 
     private static (UInt256 slot, byte[] value)[] CreateLargeStorageSlots(int count = LargeStorageSlotCount)
