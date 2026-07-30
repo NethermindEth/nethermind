@@ -2119,6 +2119,12 @@ jobs:
           echo "========================================="
           echo ""
 
+          # Populate GITHUB_OUTPUT for downstream quality gate
+          {
+            echo "exception_found=${exception_found}"
+            echo "invalid_block_found=${invalid_block_found}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Upload metrics artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -2137,10 +2143,12 @@ jobs:
             echo "Continuing multi-image run (fail-fast is disabled)."
           fi
           if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
-            echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+            echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}. Failing workflow."
+            exit 1
           fi
           if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
-            echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+            echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}. Failing workflow."
+            exit 1
           fi
 
       - name: Collect and upload dotTrace snapshots
