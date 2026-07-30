@@ -58,9 +58,9 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
         return new ReceiptTrie(spec, receipts, decoder, cappedArrayPool, canBuildProof: true, canBeParallel: canBeParallel).BuildProof(index);
     }
 
-    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TxReceipt> txReceipts, IRlpDecoder<TxReceipt> decoder, bool allowParallel = true)
+    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TxReceipt> txReceipts, IRlpDecoder<TxReceipt> decoder)
     {
-        bool canBeParallel = allowParallel && txReceipts.Length > MinItemsForParallelRootHash;
+        bool canBeParallel = txReceipts.Length > MinItemsForParallelRootHash;
         using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4, canBeParallel: canBeParallel);
         Hash256 receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, decoder, bufferPool: cappedArrayPool, canBeParallel: canBeParallel).RootHash;
         return receiptsRoot;
