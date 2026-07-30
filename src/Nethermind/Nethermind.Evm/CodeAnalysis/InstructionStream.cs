@@ -412,65 +412,21 @@ internal sealed class InstructionStream
     /// </summary>
     private static bool TryFoldConstantPair(List<StreamOp> ops, List<UInt256> constants, ushort[] pcToEntry, Instruction instruction, int pc, byte size)
     {
-        if (ops.Count == 0)
-            return false;
-
-        StreamOp top = ops[^1];
-
-        // A fused PUSH1 pair is two known constants in one entry: the whole triple folds into a
-        // single pooled push, with the pair's kind carrying any block charge it held.
-        if ((Instruction)top.Opcode == (Instruction)FusedOpcode.Push1Push1
-            && TryComputeFold(instruction, top.Operand >> 8 & 0xFF, top.Operand & 0xFF, out UInt256 pairResult)
-            && top.Advance + size <= byte.MaxValue)
-        {
-            constants.Add(pairResult);
-            pcToEntry[pc] = InvalidEntry;
-            ops[^1] = new StreamOp((byte)Instruction.PUSH32, top.Kind is StreamOpKind.FusedBlockFirst ? StreamOpKind.BlockFirst : StreamOpKind.InBlock, top.Pc, top.BlockIndex, (byte)(top.Advance + size), (ulong)(constants.Count - 1));
-            return true;
-        }
-
         if (ops.Count < 2)
             return false;
 
+        StreamOp top = ops[^1];
         StreamOp under = ops[^2];
         if (top.BlockIndex != under.BlockIndex)
             return false;
-        if (!TryGetConstPush(in top, constants, out UInt256 a))
-            return false;
-
-        if ((Instruction)under.Opcode == (Instruction)FusedOpcode.Push1Push1
-            && TryComputeFold(instruction, a, under.Operand >> 8 & 0xFF, out UInt256 splitResult)
-            && top.Advance + size <= byte.MaxValue)
-        {
-            // The pair's low half survives as its own push; its high half folds away with the top.
-            constants.Add(splitResult);
-            pcToEntry[pc] = InvalidEntry;
-            ops[^2] = new StreamOp((byte)Instruction.PUSH1, under.Kind is StreamOpKind.FusedBlockFirst ? StreamOpKind.BlockFirst : StreamOpKind.InBlock, under.Pc, under.BlockIndex, 2, under.Operand & 0xFF);
-            ops[^1] = new StreamOp((byte)Instruction.PUSH32, StreamOpKind.InBlock, top.Pc, top.BlockIndex, (byte)(top.Advance + size), (ulong)(constants.Count - 1));
-            return true;
-        }
-
-        if (!TryGetConstPush(in under, constants, out UInt256 b))
+        if (!TryGetConstPush(in top, constants, out UInt256 a) || !TryGetConstPush(in under, constants, out UInt256 b))
             return false;
 
         int advance = under.Advance + top.Advance + size;
         if (advance > byte.MaxValue)
             return false;
 
-        if (!TryComputeFold(instruction, a, b, out UInt256 result))
-            return false;
-
-        constants.Add(result);
-        pcToEntry[top.Pc] = InvalidEntry;
-        pcToEntry[pc] = InvalidEntry;
-        ops.RemoveAt(ops.Count - 1);
-        ops[^1] = new StreamOp((byte)Instruction.PUSH32, under.Kind, under.Pc, under.BlockIndex, (byte)advance, (ulong)(constants.Count - 1));
-        return true;
-    }
-
-    /// <summary>The executor's exact semantics for the foldable binary ops, top operand first.</summary>
-    private static bool TryComputeFold(Instruction instruction, in UInt256 a, in UInt256 b, out UInt256 result)
-    {
+        UInt256 result;
         switch (instruction)
         {
             case Instruction.ADD: EvmInstructions.OpAdd.Operation(in a, in b, out result); break;
@@ -490,9 +446,14 @@ internal sealed class InstructionStream
             case Instruction.EQ: result = a == b ? UInt256.One : default; break;
             case Instruction.SHL: result = !a.IsUint64 || a.u0 >= 256 ? default : b << (int)a.u0; break;
             case Instruction.SHR: result = !a.IsUint64 || a.u0 >= 256 ? default : b >> (int)a.u0; break;
-            default: result = default; return false;
+            default: return false;
         }
 
+        constants.Add(result);
+        pcToEntry[top.Pc] = InvalidEntry;
+        pcToEntry[pc] = InvalidEntry;
+        ops.RemoveAt(ops.Count - 1);
+        ops[^1] = new StreamOp((byte)Instruction.PUSH32, under.Kind, under.Pc, under.BlockIndex, (byte)advance, (ulong)(constants.Count - 1));
         return true;
     }
 
