@@ -44,6 +44,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Record dispatch timestamp
+        id: dispatch-time
+        run: echo "ts=$(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M)" >> "${GITHUB_OUTPUT}"
+
       - name: Trigger publish-docker.yml with Dockerfile.pgo
         uses: benc-uk/workflow-dispatch@v1
         with:
@@ -83,11 +87,14 @@ jobs:
           max_completion=7200
           head_sha="${{ github.sha }}"
 
-          # Phase 1: discover both runs (two dispatches for pgo + pgo-sampling)
+          # Phase 1: discover both runs (two dispatches for pgo + pgo-sampling).
+          # Filter by creation time so already-completed publish-docker runs at the
+          # same head_sha (e.g. a regular image build) cannot satisfy the wait.
+          created=">=${{ steps.dispatch-time.outputs.ts }}"
           elapsed=0
           run_ids=()
           while [[ "${#run_ids[@]}" -lt 2 ]]; do
-            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=10&branch=${{ github.ref_name }}&head_sha=${head_sha}" 2>/dev/null || echo '{"workflow_runs":[]}')
+            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=10&branch=${{ github.ref_name }}&head_sha=${head_sha}&created=${created}" 2>/dev/null || echo '{"workflow_runs":[]}')
             mapfile -t run_ids < <(echo "${response}" | jq -r '.workflow_runs[].id // empty' | head -2)
 
             if [[ "${#run_ids[@]}" -ge 2 ]]; then
