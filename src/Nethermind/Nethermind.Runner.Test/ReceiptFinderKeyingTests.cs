@@ -33,6 +33,9 @@ public class ReceiptFinderKeyingTests
     [
         "Nethermind.Synchronization.SyncServer",
         "Nethermind.Runner.Monitoring.DataFeed",
+        // Its web-host registration is consumed only by DataFeed (monitoring), so it must hand out the stored-only
+        // finder — monitoring must never cost a block execution or start throwing where empty was tolerated.
+        "Nethermind.Runner.Ethereum.JsonRpcRunner",
         "Nethermind.Consensus.AuRa.AuRaValidatorFactory",
         "Nethermind.Consensus.AuRa.Validators.ContractBasedValidator",
         "Nethermind.Consensus.AuRa.InitializationSteps.TxAuRaFilterBuilders",
@@ -66,7 +69,13 @@ public class ReceiptFinderKeyingTests
             .EnumerateFiles(AppContext.BaseDirectory, "Nethermind.*.dll")
             .Select(System.IO.Path.GetFileNameWithoutExtension)
             .Where(name => name is not null && !name.Contains("Test", StringComparison.Ordinal))
-            .Select(name => Assembly.Load(name!))
+            .Select(name =>
+            {
+                try { return Assembly.Load(name!); }
+                catch (Exception) { return null; }  // a native or unloadable satellite must not fail the scan
+            })
+            .Where(a => a is not null)
+            .Cast<Assembly>()
             .ToArray();
         Assert.That(assemblies, Has.Length.GreaterThan(20), "the scan must cover the full shipped assembly set");
 

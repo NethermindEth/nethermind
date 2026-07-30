@@ -1,18 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.History;
+using Nethermind.State.Flat.Persistence;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -114,11 +118,45 @@ public class SeedFlatHistoryGenesisTests
         Assert.That(_reader.HasHistoryForBlock(0), Is.True);
     }
 
-    private SeedFlatHistoryGenesis Step(ChainSpec chainSpec, int headBlockNumber = 100, bool hasGenesis = true)
+    // On-disk state can keep an upgraded node on patricia even with the flag on; then nothing reads this history
+    // and the step must not seed it.
+    [Test]
+    public async Task Skips_seeding_on_a_patricia_backend()
+    {
+        ChainSpec chainSpec = new() { Allocations = new() { [TestItem.AddressA] = new ChainSpecAllocation(1000) } };
+
+        SeedFlatHistoryGenesis step = new(CreatePolicy(flatActive: false), chainSpec, BlockTree(), _writer, _reader, LimboLogs.Instance);
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(_reader.HasHistoryForBlock(0), Is.False);
+    }
+
+    private SeedFlatHistoryGenesis Step(ChainSpec chainSpec, int headBlockNumber = 100, bool hasGenesis = true) =>
+        new(CreatePolicy(flatActive: true), chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
+
+    private static IBlockTree BlockTree(int headBlockNumber = 100, bool hasGenesis = true)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(headBlockNumber).TestObject);
         blockTree.Genesis.Returns(hasGenesis ? Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakA).TestObject : null);
-        return new(chainSpec, blockTree, _writer, _reader, LimboLogs.Instance);
+        return blockTree;
+    }
+
+    private static FlatStateActivationPolicy CreatePolicy(bool flatActive)
+    {
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(flatActive);
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(flatActive ? new StateId(1, Keccak.Zero) : StateId.PreGenesis);
+        IPersistence flatPersistence = Substitute.For<IPersistence>();
+        flatPersistence.CreateReader().Returns(reader);
+
+        return new FlatStateActivationPolicy(
+            flatDbConfig,
+            new TestHardwareInfo(32L * 1024 * 1024 * 1024),
+            new Lazy<IPersistence>(() => flatPersistence),
+            new Lazy<IDb>(() => new MemDb()),
+            LimboLogs.Instance);
     }
 }

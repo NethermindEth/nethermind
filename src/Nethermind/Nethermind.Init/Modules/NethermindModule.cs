@@ -108,7 +108,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             ValidateReceiptDerivationConfig(configProvider);
             builder.AddModule(new ReceiptRegenerationModule());
         }
-
     }
 
     /// <summary>

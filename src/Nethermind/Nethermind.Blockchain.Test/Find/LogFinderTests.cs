@@ -127,6 +127,23 @@ public class LogFinderTests
         Assert.That(LogFinder.IsParallelScanSlotHeld, Is.EqualTo(before), "building an unenumerated parallel getLogs result must not acquire the process-wide parallel slot");
     }
 
+    // The finder's "receipts unavailable" signal must survive the PLINQ path: several partitions faulting at once
+    // arrive as one AggregateException (possibly nested), and the RPC handlers catch the bare type to map it onto
+    // its error code. A single-block range takes the sequential path and cannot cover this.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
+    public void throw_unwrapped_exception_when_receipts_are_unavailable_on_the_parallel_path()
+    {
+        int chainLength = Math.Max(64, Environment.ProcessorCount + 2);
+        SetUp(allowReceiptIterator: true, chainLength: chainLength);
+
+        LogFinder logFinder = new(_blockTree, new UnavailableReceiptFinder(), _receiptStorage, LimboLogs.Instance,
+            _receiptsRecovery, new ReceiptConfig { DeriveFromState = true });
+
+        Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
+            Throws.TypeOf<ResourceNotFoundException>());
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void throw_exception_when_receipts_are_missing()
     {
@@ -401,6 +418,17 @@ public class LogFinderTests
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
+
+    // NSubstitute cannot stub a method with a ref-struct out parameter, so the unavailable finder is hand-rolled.
+    private sealed class UnavailableReceiptFinder : IReceiptFinder
+    {
+        public Hash256? FindBlockHash(Hash256 txHash) => null;
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => throw Unavailable();
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => throw Unavailable();
+        public bool CanGetReceiptsByHash(ulong blockNumber) => true;
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => throw Unavailable();
+        private static ResourceNotFoundException Unavailable() => new("receipts are neither stored nor reproducible");
+    }
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
         new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);

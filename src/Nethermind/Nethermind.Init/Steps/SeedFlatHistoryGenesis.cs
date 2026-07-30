@@ -35,8 +35,9 @@ public class SeedFlatHistoryGenesis(
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        // The history stack is registered on IFlatDbConfig.HistoryEnabled alone, but the backend is chosen later from
-        // what is on disk: an existing patricia DB keeps patricia, and then nothing will ever read this history.
+        // The config alone cannot answer whether flat is running: an existing patricia DB keeps patricia even with
+        // the flag on, and then nothing ever reads this history — so seeding (and its per-start warn on chains with
+        // constructor allocations) must follow the backend the policy actually selected.
         if (!activationPolicy.ShouldTurnOnFlatDb()) return Task.CompletedTask;
 
         if (historyReader.HasHistoryForBlock(0)) return Task.CompletedTask;
