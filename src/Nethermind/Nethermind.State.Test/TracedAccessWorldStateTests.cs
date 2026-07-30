@@ -409,6 +409,32 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    [TestCase(true, true, TestName = "AddToBalance suppressed")]
+    [TestCase(true, false, TestName = "AddToBalanceAndCreateIfNotExists suppressed")]
+    [TestCase(false, true, TestName = "AddToBalance not suppressed")]
+    [TestCase(false, false, TestName = "AddToBalanceAndCreateIfNotExists not suppressed")]
+    public void Zero_balance_credit_to_system_user_recorded_only_outside_suppression(bool suppressed, bool plainAdd)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(Address.SystemUser, 0));
+        using (scope)
+        {
+            using IDisposable? systemAccountReadSuppression = suppressed ? tws.BeginSystemAccountReadSuppression() : null;
+
+            if (plainAdd)
+            {
+                tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
+            }
+            else
+            {
+                tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+            }
+
+            AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(Address.SystemUser);
+            Assert.That(ac, suppressed ? Is.Null : Is.Not.Null);
+        }
+    }
+
     // Repeated same-tx balance/nonce/code/storage writes must reuse the BAL-recorded value as
     // their "old" baseline (not the inner state) and collapse to a single entry at this index.
 
