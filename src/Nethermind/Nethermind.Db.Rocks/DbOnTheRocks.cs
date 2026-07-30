@@ -1860,7 +1860,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         private ManagedIterators? _readaheadIterators3;
         private readonly RocksDb _rocksDb;
         private readonly ColumnFamilyHandle? _cf;
-        private readonly Func<ReadOptions?>? _readOptionsFactory;
+        private readonly Func<ReadOptions>? _readOptionsFactory;
         private ReadOptions? _readOptions;
         private readonly Lock _initLock = new();
         private Timer? _timer;
@@ -1889,7 +1889,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         /// The factory result is owned by the caller, which must keep it alive until this manager is disposed.
         /// Used by snapshot-scoped readers so that snapshots that never iterate allocate no native handle.
         /// </remarks>
-        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, Func<ReadOptions?> readOptionsFactory, bool sequentialKeys = false)
+        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, Func<ReadOptions> readOptionsFactory, bool sequentialKeys = false)
         {
             _rocksDb = rocksDb;
             _cf = cf;

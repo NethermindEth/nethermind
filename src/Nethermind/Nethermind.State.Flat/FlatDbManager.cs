@@ -253,9 +253,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // invalidation error-prone.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
 
-        // FullScan bundles hold readahead-capable readers; keep them out of the shared cache so ordinary
-        // consumers never inherit them, and never serve a cached (flagless) bundle for such a request.
-        bool shareable = (readerFlags & ReaderFlags.FullScan) == 0;
+        // Bundles built with non-default reader flags hold specially-configured readers; keep them out of
+        // the shared cache so ordinary consumers never inherit them, and never serve a cached (flagless)
+        // bundle for such a request.
+        bool shareable = readerFlags == ReaderFlags.None;
 
         if (baseBlock == StateId.PreGenesis)
         {
@@ -282,11 +283,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 Thread.Sleep(delayMs);
             }
 
-            // Parameterless overload for the common case: substituted IPersistenceManager instances
-            // configure LeaseReader() and may not route the default interface method to it.
-            IPersistence.IPersistenceReader persistenceReader = readerFlags == ReaderFlags.None
-                ? _persistenceManager.LeaseReader()
-                : _persistenceManager.LeaseReader(readerFlags);
+            IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader(readerFlags);
             AssembledSnapshotResult assembled;
             try
             {

@@ -185,7 +185,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
             // Shared by all column iterator managers; the ReadOptions it returns is created lazily
             // on the first HintReadAhead read, so snapshots that never iterate allocate nothing extra.
-            Func<ReadOptions?>? readAheadOptionsFactory = sequentialReadAhead ? GetOrCreateReadAheadReadOptions : null;
+            Func<ReadOptions>? readAheadOptionsFactory = sequentialReadAhead ? GetOrCreateReadAheadReadOptions : null;
             T[] keys = CreateKeyCache(columnsDb);
             GetCachedMaxOrdinal(columnsDb, keys);
             _readers = CreateReaders();
