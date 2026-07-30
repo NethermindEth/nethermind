@@ -11,18 +11,22 @@ namespace Nethermind.TxPool.Filters;
 /// validation-prefix gas plus signature-validation cost exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>.
 /// </summary>
 /// <remarks>
-/// State-free structural gate, so it runs first among the EIP-8141 post-hash filters. Only frame txs
-/// with a recognized validation prefix are bounded; other txs pass through (structural-match gate
+/// State-free structural gate, so it runs right after <c>MalformedTxFilter</c> (which recovers the
+/// sender and establishes a well-formed frame array) and before any state-reading filter. Only frame
+/// txs with a recognized validation prefix are bounded; other txs pass through (structural-match gate
 /// deferred). This is the Direct Evaluation form of the bound and needs no simulation
 /// (ethereum/EIPs#12007, "the sum of gas_limit values across the validation prefix, plus the intrinsic
-/// cost of validating tx.signatures, must not exceed MAX_VERIFY_GAS").
+/// cost of validating tx.signatures, must not exceed MAX_VERIFY_GAS"). The bound is scoped to the
+/// public mempool, so locally-submitted (persistent-broadcast) txs are exempt, as with the pool's
+/// other DoS gates.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 internal sealed class FrameTxVerifyGasFilter(ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (!tx.SupportsFrames || !FrameTxPayerResolver.TryGetValidationPrefixVerifyGas(tx, out ulong verifyGas))
+        bool isNotLocal = (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
+        if (!isNotLocal || !tx.SupportsFrames || !FrameTxPayerResolver.TryGetValidationPrefixVerifyGas(tx, out ulong verifyGas))
         {
             return AcceptTxResult.Accepted;
         }

@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -23,102 +24,93 @@ public class FrameTxVerifyGasFilterTests
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Sponsor = TestItem.AddressB;
 
-    // secp256k1 verification = 2_800, so the prefix gas budget below it is 97_200.
-    private const ulong SecpCost = Eip8141Constants.Secp256k1VerificationGasCost;
+    // Per-scheme signature-verification costs counted against MAX_VERIFY_GAS.
+    private const ulong SecpCost = Eip8141Constants.Secp256k1VerificationGasCost;   // 2_800
+    private const ulong P256Cost = Eip8141Constants.P256VerificationGasCost;        // 6_700
+    private const ulong ArbitraryCost = Eip8141Constants.ArbitraryVerificationGasCost; // 100
+    private const ulong Max = Eip8141Constants.MaxVerifyGas;                        // 100_000
 
-    [Test]
-    public void Accept_SelfVerify_WithinBudget_Accepted()
+    private static IEnumerable<TestCaseData> VerifyGasCases()
     {
-        // 90_000 prefix gas + 2_800 signature = 92_800 <= 100_000.
-        Transaction tx = FrameTx([SelfVerify(90_000)], [Secp(Sender)]);
+        // self_verify: the single verify frame is the whole prefix.
+        yield return Case("self_verify within budget", [SelfVerify(90_000)], [Secp(Sender)], AcceptTxResult.Accepted);
+        yield return Case("self_verify at budget", [SelfVerify(Max - SecpCost)], [Secp(Sender)], AcceptTxResult.Accepted);
+        yield return Case("self_verify one over budget", [SelfVerify(Max - SecpCost + 1)], [Secp(Sender)], AcceptTxResult.VerifyGasExceeded);
 
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
+        // only_verify + pay: both frames are in the prefix; both signatures are counted.
+        yield return Case("signature cost alone pushes over budget",
+            [OnlyVerify(Max - SecpCost), Pay(Sponsor, 0)], [Secp(Sender), Secp(Sponsor)], AcceptTxResult.VerifyGasExceeded);
+        yield return Case("only_verify+pay summed prefix gas over budget",
+            [OnlyVerify(60_000), Pay(Sponsor, 60_000)], [Secp(Sender), Secp(Sponsor)], AcceptTxResult.VerifyGasExceeded);
+
+        // A leading expiry_verify frame is skipped for shape matching but its gas counts.
+        yield return Case("expiry frame gas counts toward prefix",
+            [Expiry(9999, 50_000), SelfVerify(48_000)], [Secp(Sender)], AcceptTxResult.VerifyGasExceeded);
+
+        // Frames after the prefix are not counted.
+        yield return Case("frames after prefix not counted",
+            [SelfVerify(10_000), Frame(TxFrame.ModeSender, ulong.MaxValue / 2)], [Secp(Sender)], AcceptTxResult.Accepted);
+
+        // Unrecognized prefixes (e.g. a leading deploy frame) and expiry-only prefixes are not bounded here.
+        yield return Case("unrecognized (deploy-led) prefix passes through",
+            [Frame(TxFrame.ModeDefault, ulong.MaxValue / 2), SelfVerify(10_000)], [Secp(Sender)], AcceptTxResult.Accepted);
+        yield return Case("expiry-only prefix has no verify frame, passes through",
+            [Expiry(9999, ulong.MaxValue / 2)], [], AcceptTxResult.Accepted);
+
+        // Overflow in the summed prefix gas is treated as definitively over budget.
+        yield return Case("prefix gas overflow rejected",
+            [OnlyVerify(ulong.MaxValue), Pay(Sponsor, 10)], [Secp(Sender)], AcceptTxResult.VerifyGasExceeded);
+
+        // P256 signature cost (6_700) exercises the P256 branch of the scheme→cost switch.
+        yield return Case("P256 signature at budget", [SelfVerify(Max - P256Cost)], [P256(Sender)], AcceptTxResult.Accepted);
+        yield return Case("P256 signature one over budget", [SelfVerify(Max - P256Cost + 1)], [P256(Sender)], AcceptTxResult.VerifyGasExceeded);
+
+        // Arbitrary signature cost (100) exercises the Arbitrary branch.
+        yield return Case("arbitrary signature at budget", [SelfVerify(Max - ArbitraryCost)], [Arbitrary()], AcceptTxResult.Accepted);
+        yield return Case("arbitrary signature one over budget", [SelfVerify(Max - ArbitraryCost + 1)], [Arbitrary()], AcceptTxResult.VerifyGasExceeded);
+
+        // Mixed-scheme signatures (secp256k1 2_800 + P256 6_700 = 9_500) are summed per scheme.
+        yield return Case("mixed-scheme signatures at budget",
+            [OnlyVerify(Max - SecpCost - P256Cost - 500), Pay(Sponsor, 500)], [Secp(Sender), P256(Sponsor)], AcceptTxResult.Accepted);
+        yield return Case("mixed-scheme signatures one over budget",
+            [OnlyVerify(Max - SecpCost - P256Cost - 500), Pay(Sponsor, 501)], [Secp(Sender), P256(Sponsor)], AcceptTxResult.VerifyGasExceeded);
     }
 
-    [Test]
-    public void Accept_SelfVerify_AtBudget_Accepted()
-    {
-        // Exactly MAX_VERIFY_GAS: (100_000 - 2_800) prefix gas + 2_800 signature = 100_000.
-        Transaction tx = FrameTx([SelfVerify(Eip8141Constants.MaxVerifyGas - SecpCost)], [Secp(Sender)]);
-
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
-    }
+    [TestCaseSource(nameof(VerifyGasCases))]
+    public AcceptTxResult BoundsVerifyGas(TxFrame[] frames, TxFrameSignature[] signatures) =>
+        Accept(FrameTx(frames, signatures));
 
     [Test]
-    public void Accept_SelfVerify_OneOverBudget_Rejected()
-    {
-        // One gas over: prefix (100_000 - 2_800 + 1) + 2_800 signature = 100_001.
-        Transaction tx = FrameTx([SelfVerify(Eip8141Constants.MaxVerifyGas - SecpCost + 1)], [Secp(Sender)]);
-
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.VerifyGasExceeded));
-    }
-
-    [Test]
-    public void Accept_SignatureCostAlonePushesOverBudget_Rejected()
-    {
-        // Prefix gas is within budget, but two secp256k1 signatures (5_600) tip the total over.
-        Transaction tx = FrameTx([OnlyVerify(Eip8141Constants.MaxVerifyGas - SecpCost), Pay(Sponsor, 0)], [Secp(Sender), Secp(Sponsor)]);
-
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.VerifyGasExceeded));
-    }
-
-    [Test]
-    public void Accept_OnlyVerifyPay_SummedPrefixGasOverBudget_Rejected()
-    {
-        // The pay frame's gas counts toward the prefix: 60_000 + 60_000 + 2_800 > 100_000.
-        Transaction tx = FrameTx([OnlyVerify(60_000), Pay(Sponsor, 60_000)], [Secp(Sender), Secp(Sponsor)]);
-
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.VerifyGasExceeded));
-    }
-
-    [Test]
-    public void Accept_ExpiryFrameGasCountsTowardPrefix()
-    {
-        // expiry (50_000) + self_verify (48_000) + 2_800 = 100_800 > 100_000.
-        Transaction tx = FrameTx([Expiry(9999, 50_000), SelfVerify(48_000)], [Secp(Sender)]);
-
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.VerifyGasExceeded));
-    }
-
-    [Test]
-    public void Accept_FramesAfterPrefix_NotCounted()
-    {
-        // A huge user_op after the self_verify prefix does not count toward the verify-gas bound.
-        Transaction tx = FrameTx([SelfVerify(10_000), Frame(TxFrame.ModeSender, ulong.MaxValue / 2)], [Secp(Sender)]);
-
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
-    }
-
-    [Test]
-    public void Accept_UnrecognizedPrefix_PassesThrough()
-    {
-        // A leading DEFAULT (deploy) frame is not analyzed here; the bound is not enforced (deferred).
-        Transaction tx = FrameTx([Frame(TxFrame.ModeDefault, ulong.MaxValue / 2), SelfVerify(10_000)], [Secp(Sender)]);
-
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
-    }
-
-    [Test]
-    public void Accept_PrefixGasOverflow_Rejected()
-    {
-        Transaction tx = FrameTx([OnlyVerify(ulong.MaxValue), Pay(Sponsor, 10)], [Secp(Sender)]);
-
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.VerifyGasExceeded));
-    }
-
-    [Test]
-    public void Accept_NonFrameTx_PassesThrough()
+    public void NonFrameTx_PassesThrough()
     {
         Transaction tx = Build.A.Transaction.WithSenderAddress(Sender).WithGasLimit(long.MaxValue).TestObject;
 
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
     }
 
-    private static AcceptTxResult Accept(Transaction tx)
+    [Test]
+    public void LocalTx_ExemptFromBound()
+    {
+        // MAX_VERIFY_GAS bounds only public-mempool work; a locally-submitted over-budget tx is exempt.
+        Transaction tx = FrameTx([SelfVerify(Max)], [Secp(Sender)]);
+
+        Assert.That(Accept(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    [TestCase(TxFrameSignature.SchemeArbitrary, ArbitraryCost)]
+    [TestCase(TxFrameSignature.SchemeSecp256k1, SecpCost)]
+    [TestCase(TxFrameSignature.SchemeP256, P256Cost)]
+    public void SignatureVerificationGasCost_MapsSchemeToConstant(byte scheme, ulong expected) =>
+        Assert.That(Eip8141Constants.SignatureVerificationGasCost(scheme), Is.EqualTo(expected));
+
+    private static TestCaseData Case(string name, TxFrame[] frames, TxFrameSignature[] signatures, AcceptTxResult expected) =>
+        new TestCaseData(frames, signatures).Returns(expected).SetName(name);
+
+    private static AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions = TxHandlingOptions.None)
     {
         FrameTxVerifyGasFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
-        return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
+        return filter.Accept(tx, ref filteringState, handlingOptions);
     }
 
     private static Transaction FrameTx(TxFrame[] frames, TxFrameSignature[] signatures) => new()
@@ -131,6 +123,12 @@ public class FrameTxVerifyGasFilterTests
 
     private static TxFrameSignature Secp(Address signer) =>
         new(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
+
+    private static TxFrameSignature P256(Address signer) =>
+        new(TxFrameSignature.SchemeP256, signer, default, default);
+
+    private static TxFrameSignature Arbitrary() =>
+        new(TxFrameSignature.SchemeArbitrary, signer: null, default, default);
 
     private static TxFrame SelfVerify(ulong gasLimit) =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);

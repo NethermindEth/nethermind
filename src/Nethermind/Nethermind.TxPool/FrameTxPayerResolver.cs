@@ -150,7 +150,7 @@ internal static class FrameTxPayerResolver
     /// <c>deploy</c>-prefixed shapes are not analyzed here (deferred with the simulation layer).
     /// </remarks>
     /// <returns><c>true</c> with <paramref name="verifyGas"/> set for a recognized prefix; otherwise <c>false</c>.</returns>
-    public static bool TryGetValidationPrefixVerifyGas(Transaction tx, out ulong verifyGas)
+    internal static bool TryGetValidationPrefixVerifyGas(Transaction tx, out ulong verifyGas)
     {
         verifyGas = 0;
         TxFrame[]? frames = tx.Frames;

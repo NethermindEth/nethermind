@@ -23,6 +23,7 @@ public static class Eip8141Constants
     public const ulong MaxVerifyGas = 100_000;
 
     /// <summary>Per-signature verification gas for <paramref name="scheme"/>, as counted against <see cref="MaxVerifyGas"/>.</summary>
+    /// <remarks>The <c>_ => 0</c> fallback is only safe because <c>FrameTxValidation</c> rejects an unknown scheme before this is reached; otherwise it would price such a signature for free.</remarks>
     public static ulong SignatureVerificationGasCost(byte scheme) => scheme switch
     {
         TxFrameSignature.SchemeArbitrary => ArbitraryVerificationGasCost,
