@@ -6,9 +6,19 @@ name: MIBC Dedupe
 
 on:
   workflow_dispatch:
+  # A dispatch-only workflow that is absent from the default branch never registers;
+  # the push trigger both registers it and runs it when this file lands on the branch.
+  push:
+    branches: [pgo-2]
+    paths: [.github/workflows/mibc-dedupe.yml]
 
 permissions:
   contents: read
+
+env:
+  # The rich full-pipeline profile (edge counts + SPGO blocks + GDV, 810KB) as committed
+  # by PR #10877, before it was temporarily swapped for master's plain mibc to unblock builds.
+  RICH_MIBC_COMMIT: bf4e02bb71fa5073333348336efdbc608fe2df52
 
 jobs:
   dedupe:
@@ -17,6 +27,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -46,7 +58,8 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          mibc="src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc"
+          mibc="${RUNNER_TEMP}/nethermind.rich.mibc"
+          git show "${RICH_MIBC_COMMIT}:src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc" > "${mibc}"
           out="${RUNNER_TEMP}/nethermind.mibc"
 
           dotnet "${PGO_TOOL}" merge --input "${mibc}" --output "${out}" 2>&1 | tee "${RUNNER_TEMP}/merge.log"
