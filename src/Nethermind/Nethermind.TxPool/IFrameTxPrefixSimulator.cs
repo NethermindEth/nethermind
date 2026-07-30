@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool;
@@ -21,7 +22,13 @@ namespace Nethermind.TxPool;
 public interface IFrameTxPrefixSimulator
 {
     /// <summary>Simulates <paramref name="tx"/>'s validation prefix against the current head.</summary>
-    FrameTxSimulationResult Simulate(Transaction tx);
+    /// <param name="tx">The frame transaction whose validation prefix is simulated.</param>
+    /// <param name="token">
+    /// Cancels the (up to <c>MAX_VERIFY_GAS</c>) simulation, which may also block behind other peers'
+    /// serialized simulations. Honored at entry; per-frame cooperative cancellation is a deferred
+    /// follow-up (design note §4). An <see cref="System.OperationCanceledException"/> propagates.
+    /// </param>
+    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
 }
 
 /// <summary>
