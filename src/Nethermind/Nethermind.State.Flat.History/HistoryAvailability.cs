@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
@@ -29,6 +30,11 @@ internal sealed class HistoryAvailability
 
     private readonly IDb _availableBlocks;
 
+    // Monotonic fast path for the per-read availability gate: the watermark only ever grows, so a block at or
+    // below a previously observed value is covered without touching the DB. Never used to refuse — a miss
+    // re-reads, so another instance publishing (writer vs reader) cannot make this one refuse fresh heights.
+    private long _observedWatermark = -1;
+
     public HistoryAvailability(IDb availableBlocks)
     {
         ArgumentNullException.ThrowIfNull(availableBlocks);
@@ -40,7 +46,7 @@ internal sealed class HistoryAvailability
     /// stamps the version atomically via <see cref="MarkBlock"/>, so a marker without a format key can only mean a
     /// pre-versioning layout.
     /// </summary>
-    /// <exception cref="InvalidOperationException">The on-disk index uses a different format version.</exception>
+    /// <exception cref="InvalidConfigurationException">The on-disk index uses a different format version.</exception>
     public void VerifyFormat()
     {
         byte[]? version = _availableBlocks.Get(FormatVersionKey);
@@ -59,10 +65,10 @@ internal sealed class HistoryAvailability
 
         if (hasLegacyData)
         {
-            throw new InvalidOperationException(
+            throw new InvalidConfigurationException(
                 $"The flat history database was written by an incompatible pre-release format " +
                 $"(found version {(version is { Length: 1 } ? version[0].ToString() : "none")}, expected {FormatVersion}). " +
-                "Delete the flatHistory database directory to re-capture history, or resync the node.");
+                "Delete the flatHistory database directory to re-capture history, or resync the node.", -1);
         }
     }
 
@@ -77,11 +83,17 @@ internal sealed class HistoryAvailability
         }
 
         watermark = BinaryPrimitives.ReadUInt64BigEndian(value);
+        Volatile.Write(ref _observedWatermark, (long)watermark);
         return true;
     }
 
     /// <summary>Whether an as-of read at <paramref name="block"/> is backed by contiguous captured history.</summary>
-    public bool IsCovered(ulong block) => TryGetWatermark(out ulong watermark) && block <= watermark;
+    public bool IsCovered(ulong block)
+    {
+        long observed = Volatile.Read(ref _observedWatermark);
+        if (observed >= 0 && block <= (ulong)observed) return true;
+        return TryGetWatermark(out ulong watermark) && block <= watermark;
+    }
 
     /// <summary>Whether <paramref name="block"/> is covered and its captured state root equals <paramref name="stateRoot"/>.</summary>
     public bool Matches(ulong block, in ValueHash256 stateRoot)

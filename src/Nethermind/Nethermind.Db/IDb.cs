@@ -26,6 +26,12 @@ namespace Nethermind.Db
         long EstimatedCount => 0;
 
         void Flush(bool onlyWal = false);
+
+        /// <summary>Syncs the write-ahead log to durable storage, throwing on failure.</summary>
+        /// <remarks><see cref="Flush"/> swallows non-fatal backend errors, which is fine for opportunistic
+        /// flushes but not for callers whose crash-safety ordering depends on the WAL being on disk before they
+        /// proceed — those must observe the failure and abort.</remarks>
+        void SyncWal() => Flush(onlyWal: true);
         void Clear() { }
         void Compact() { }
         void SetWriteBuffer(long sizeBytes) { }

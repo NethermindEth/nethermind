@@ -20,8 +20,14 @@ namespace Nethermind.State.Flat.History;
 /// using the exact flat key/value encoders so the recorded bytes match the live flat columns. Deleted accounts
 /// and zeroed/removed slots are recorded as empty tombstones.
 /// </summary>
-public sealed class HistoryWriter : IFlatPersistenceCaptureHook
+public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCaptureStatus
 {
+    // A single failure aborts the persist and is retried (transient I/O); this bounds the pathological case where
+    // the same capture fails forever — persistence would never reach its Phase-2 conversion arms and the in-memory
+    // tier would grow one base per block until OOM. Degrading to "no more history" is fail-closed (the watermark
+    // stops advancing), losing the node is not.
+    private const int MaxConsecutiveCaptureFailures = 16;
+
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
@@ -34,6 +40,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     // Under the persistence lock a failed lease means the range below is gone for good (history enabled mid-life);
     // further captures would only write rows above a gap no read can cross, so skip them until restart.
     private bool _permanentGapDetected;
+    private int _consecutiveCaptureFailures;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
         : this(history, BasePersistence.ResolveSlotEncoding(
@@ -54,8 +61,15 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory));
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
         _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
-        if (enabled) _availability.VerifyFormat();
+        if (enabled)
+        {
+            _availability.VerifyFormat();
+            Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
+        }
     }
+
+    /// <inheritdoc/>
+    public bool CaptureHealthy => _enabled && !_permanentGapDetected;
 
     /// <summary>The contiguous-from-genesis watermark: the highest block a read is served for; 0 when none captured.</summary>
     public ulong LastCapturedBlock => _availability.TryGetWatermark(out ulong watermark) ? watermark : 0;
@@ -75,6 +89,26 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     {
         if (!_enabled || _permanentGapDetected) return;
 
+        try
+        {
+            CaptureUpToCore(persistedHead, snapshotRepository, cancellationToken);
+            _consecutiveCaptureFailures = 0;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            if (++_consecutiveCaptureFailures >= MaxConsecutiveCaptureFailures)
+            {
+                DisableCapture(
+                    $"History capture disabled after {MaxConsecutiveCaptureFailures} consecutive failures (last: {e.Message}). " +
+                    $"Flat persistence resumes without capture; as-of reads above block {LastCapturedBlock} report no history. " +
+                    "Resync the flatHistory database to re-enable.");
+            }
+            throw;
+        }
+    }
+
+    private void CaptureUpToCore(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
+    {
         ulong target = persistedHead.BlockNumber;
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
         if (hasWatermark && target <= watermark) return;
@@ -89,6 +123,18 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 
             if (hasWatermark && current.BlockNumber <= watermark)
             {
+                // Connecting on the block number alone is not enough: a pre-finalization force-persist can have
+                // captured a branch that later reorged. Advancing over a root mismatch would strand those rows
+                // under a healthy watermark forever, so bind the connect to the captured root and fail closed.
+                if (!_availability.Matches(current.BlockNumber, current.StateRoot))
+                {
+                    DisableCapture(
+                        $"History capture stopped: the captured state root at block {current.BlockNumber} does not match " +
+                        $"the chain being persisted ({current.StateRoot}) - a pre-finalization capture was reorged away. " +
+                        $"The watermark stays at {watermark}; resync the flatHistory database to re-enable capture.");
+                    return;
+                }
+
                 connected = true;
                 break;
             }
@@ -120,19 +166,30 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         if (connected)
         {
             // Publish, then WAL-sync so range + watermark are durable before the caller persists the flat state.
+            // SyncWal (unlike Flush) throws on failure: proceeding on an unsynced WAL would let the caller persist
+            // and prune sources whose capture may not survive a crash.
             _availability.PublishWatermark(target);
-            _history.Flush(onlyWal: true);
+            _history.SyncWal();
+            Metrics.FlatHistoryWatermark = (long)target;
         }
         else
         {
             // With capture ordered before every persist/prune, an unconnectable walk only happens when history was
             // enabled mid-life — permanent, so stop capturing instead of stalling or rewriting dead rows.
-            _permanentGapDetected = true;
-            if (_logger.IsWarn)
-                _logger.Warn($"History capture stopped at {current} without connecting to the captured range - " +
-                    $"the blocks below were pruned before history was enabled. The watermark stays at " +
-                    $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture is disabled until restart.");
+            DisableCapture($"History capture stopped at {current} without connecting to the captured range - " +
+                $"the blocks below were pruned before history was enabled. The watermark stays at " +
+                $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture is disabled until restart.");
         }
+    }
+
+    /// <summary>Permanently stops capture for this process and surfaces it: metric, error log, and
+    /// <see cref="CaptureHealthy"/> — so dependants (receipt derivation) stop skipping data they can no longer
+    /// reproduce, and operators can alert on history that silently stopped growing.</summary>
+    private void DisableCapture(string reason)
+    {
+        _permanentGapDetected = true;
+        Metrics.FlatHistoryCaptureDisabled = 1;
+        if (_logger.IsError) _logger.Error(reason);
     }
 
     /// <summary>
@@ -160,7 +217,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 
         // Publish only after the block-0 batch is durable — this is the genesis floor a later walk connects to.
         _availability.PublishWatermark(0);
-        _history.Flush(onlyWal: true);
+        _history.SyncWal();
     }
 
     [SkipLocalsInit]

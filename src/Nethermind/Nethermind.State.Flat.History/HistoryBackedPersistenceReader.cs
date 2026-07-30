@@ -17,6 +17,8 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block) : IPersistence.IPersistenceReader
 {
+    private readonly StorageClearsScopeCache _clearsCache = new();
+
     public StateId CurrentState => block;
 
     public Account? GetAccount(Address address) =>
@@ -26,7 +28,7 @@ internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
     {
-        if (!historyReader.TryGetStorage(block.BlockNumber, address, slot, out SlotValue value)) return false;
+        if (!historyReader.TryGetStorage(block.BlockNumber, address, slot, out SlotValue value, _clearsCache)) return false;
         outValue = value;
         return true;
     }

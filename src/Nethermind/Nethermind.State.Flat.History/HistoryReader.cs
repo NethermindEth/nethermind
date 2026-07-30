@@ -83,8 +83,13 @@ public sealed class HistoryReader
     /// Resolves the storage slot as of <paramref name="block"/>. Returns <c>false</c> when the slot was unset at
     /// that block — either it never changed at/before it, or its latest change at/before it cleared it.
     /// </summary>
+    public bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value) =>
+        TryGetStorage(block, address, index, out value, clearsCache: null);
+
+    /// <param name="clearsCache">Optional per-scope memo that skips the per-slot self-destruct probe for the
+    /// overwhelmingly common account with no clear markers at all.</param>
     [SkipLocalsInit]
-    public bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value)
+    internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value, StorageClearsScopeCache? clearsCache)
     {
         ValueHash256 addrHash = address.ToAccountPath;
         ValueHash256 slotHash = ValueKeccak.Zero;
@@ -104,7 +109,8 @@ public sealed class HistoryReader
         // expresses the destruct as a range-delete, which leaves no per-slot tombstone in the history.
         ReadOnlySpan<byte> accountKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], addrHash);
-        if (_storageClears.HasClearInRange(accountKey, changedAtBlock, block))
+        bool mayHaveClear = clearsCache?.HasAnyClearUpTo(addrHash, accountKey, _storageClears, block) ?? true;
+        if (mayHaveClear && _storageClears.HasClearInRange(accountKey, changedAtBlock, block))
         {
             value = default;
             return false;

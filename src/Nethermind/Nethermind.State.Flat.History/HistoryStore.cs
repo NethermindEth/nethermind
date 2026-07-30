@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -82,7 +81,13 @@ internal sealed class HistoryStore
 
         foundAtBlock = ~BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
         ReadOnlySpan<byte> value = view.CurrentValue;
-        Debug.Assert(value.Length <= outBuffer.Length, "history value exceeds caller buffer; a value encoder outgrew its buffer size constant");
+        if (value.Length > outBuffer.Length)
+        {
+            // Buffers are sized to the encoders' maxima, so an oversized row can only be corruption — fail with a
+            // description rather than let CopyTo surface an inscrutable ArgumentException.
+            throw new InvalidDataException(
+                $"History value of {value.Length} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
+        }
         value.CopyTo(outBuffer);
         return value.Length;
     }

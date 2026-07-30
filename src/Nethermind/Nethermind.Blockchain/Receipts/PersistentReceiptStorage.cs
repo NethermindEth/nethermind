@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IBlockTree _blockTree;
         private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
+        private readonly IStateHistoryCaptureStatus? _historyCaptureStatus;
         private readonly ILogger _logger;
         private readonly bool _legacyHashKey;
 
@@ -97,8 +98,10 @@ namespace Nethermind.Blockchain.Receipts
             ReceiptArrayStorageDecoder? storageDecoder = null,
             IDeferredBlockDataWriter? deferredWriter = null,
             IStatePersistenceBarrier? persistenceBarrier = null,
-            ILogManager? logManager = null)
+            ILogManager? logManager = null,
+            IStateHistoryCaptureStatus? historyCaptureStatus = null)
         {
+            _historyCaptureStatus = historyCaptureStatus;
             _deferredWriter = deferredWriter is { Enabled: true } ? deferredWriter : null;
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
@@ -578,7 +581,14 @@ namespace Nethermind.Blockchain.Receipts
         /// receipt migration write through unconditionally — migration in particular deletes the legacy key after
         /// re-inserting, so a skipped write there would destroy the bodies.
         /// </remarks>
-        private bool StoresBodies(IReleaseSpec spec) => !_receiptConfig.DeriveFromState || !spec.IsEip658Enabled;
+        private bool StoresBodies(IReleaseSpec spec) =>
+            !_receiptConfig.DeriveFromState
+            || !spec.IsEip658Enabled
+            // Skipping a body is only safe while history capture is demonstrably recording — capture can
+            // self-disable at runtime (permanent gap, reorged capture, repeated failures), and a body skipped
+            // then is permanently lost once its block leaves the in-memory tier. Absent status (patricia
+            // backend, tests) counts as unhealthy: store.
+            || _historyCaptureStatus?.CaptureHealthy != true;
 
         [SkipLocalsInit]
         private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber, bool storeBody = true)

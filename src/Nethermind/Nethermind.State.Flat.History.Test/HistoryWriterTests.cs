@@ -15,6 +15,9 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Test;
+using System.IO;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -392,6 +395,63 @@ public class HistoryWriterTests
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None); // unconnected: markers written, watermark never published
 
         Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, LimboLogs.Instance));
+    }
+
+    // A pre-finalization force-persist can capture a branch that later reorgs. Connecting on the block number
+    // alone would advance the watermark over the orphaned rows, making them permanently readable as healthy
+    // history - the connect must bind to the captured root and fail closed instead.
+    [Test]
+    public void Reorged_capture_at_the_connect_point_refuses_to_advance_the_watermark()
+    {
+        SeedGenesisFloor();
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 11))]);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        Assert.That(_writer.LastCapturedBlock, Is.EqualTo(1UL));
+
+        // The reorged branch: same height 1, different state root, continuing to block 2.
+        Span<byte> reorgedRoot = stackalloc byte[32];
+        reorgedRoot[0] = 0xde;
+        reorgedRoot[1] = 0xad;
+        StateId reorgedParent = new(1, new ValueHash256(reorgedRoot));
+        Snapshot snapshot = _resourcePool.CreateSnapshot(reorgedParent, StateAt(2), ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snapshot.Content.Accounts[AddrB] = new Account(2, 22);
+        Assert.That(_repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
+        _repository.AddStateId(StateAt(2));
+
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(1UL), "the watermark must not advance over a reorged capture");
+            Assert.That(_reader.HasHistoryForBlock(2), Is.False);
+            Assert.That(_writer.CaptureHealthy, Is.False, "capture must self-disable so dependants stop relying on it");
+        }
+    }
+
+    // A single capture failure aborts the persist and is retried; the same failure repeating forever must not
+    // stall persistence permanently (the in-memory tier would grow one base per block until OOM) - after the
+    // breaker trips, capture degrades to "no more history" and persistence resumes.
+    [Test]
+    public void Repeated_capture_failures_trip_the_breaker_and_let_persistence_resume()
+    {
+        SeedGenesisFloor();
+        ISnapshotRepository failing = Substitute.For<ISnapshotRepository>();
+        failing.TryLeaseInMemoryState(default, default, out _).ThrowsForAnyArgs(new IOException("disk failure"));
+
+        // Matches HistoryWriter.MaxConsecutiveCaptureFailures.
+        for (int i = 0; i < 16; i++)
+        {
+            Assert.Throws<IOException>(() => _writer.CaptureUpTo(StateAt(2), failing, CancellationToken.None),
+                $"failure {i + 1} must still abort the persist for a retry");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => _writer.CaptureUpTo(StateAt(3), failing, CancellationToken.None),
+                "after the breaker trips capture must be skipped so persistence can resume");
+            Assert.That(_writer.CaptureHealthy, Is.False);
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL), "reads above the frozen watermark fail closed");
+        }
     }
 
     [Test]

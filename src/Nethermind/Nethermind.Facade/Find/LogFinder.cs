@@ -130,6 +130,7 @@ namespace Nethermind.Facade.Find
                         // range answers correctly. Several partitions faulting at once (the normal shape for a wide
                         // unavailable range) and nested aggregates both must unwrap, hence Flatten.
                         ExceptionDispatchInfo.Capture(mappable).Throw();
+                        throw; // unreachable; tells the compiler the catch does not complete
                     }
 
                     yield return enumerator.Current;
@@ -152,6 +153,8 @@ namespace Nethermind.Facade.Find
             // unanswerable, that stays true after a retry, so it is the accurate answer for the whole range.
             // An unexpected fault wins over both — the aggregate then falls through to the generic handler,
             // the only site that logs the real error; unwrapping a transient over it would hide a genuine bug.
+            // ObjectDisposedException lands in that arm deliberately: it maps to a generic error on the
+            // sequential path too, so the two paths agree during shutdown.
             Exception? notFound = null;
             Exception? transient = null;
             foreach (Exception inner in e.Flatten().InnerExceptions)

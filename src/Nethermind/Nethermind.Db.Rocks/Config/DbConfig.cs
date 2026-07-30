@@ -427,6 +427,12 @@ public class DbConfig : IDbConfig
     public string FlatHistoryDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
     public string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
 
+    // The replay-sized write buffers matter only for the two bulky value columns; the per-block marker and
+    // self-destruct-range columns see a few small writes per block, so the shared 256 MB x 4 would be pure
+    // memtable overcommit for them (the concatenated per-column string wins over the table-level one).
+    public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
+    public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
+
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 

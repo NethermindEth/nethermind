@@ -24,6 +24,7 @@ public class FlatHistoryModule : Module
             .AddSingleton<HistoryReader>()
             .AddSingleton<HistoryWriter>()
             .Bind<IFlatPersistenceCaptureHook, HistoryWriter>()
+            .Bind<IStateHistoryCaptureStatus, HistoryWriter>()
             .AddDecorator<IFlatDbManager>((ctx, inner) => new HistoricalFlatDbManager(
                 inner,
                 ctx.Resolve<IPersistenceManager>(),

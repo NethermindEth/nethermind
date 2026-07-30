@@ -56,9 +56,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TearDown]
     public void TearDown() => _receiptsDb.Dispose();
 
-    private void CreateStorage()
+    private void CreateStorage(bool captureHealthy = true)
     {
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
+        IStateHistoryCaptureStatus captureStatus = Substitute.For<IStateHistoryCaptureStatus>();
+        captureStatus.CaptureHealthy.Returns(captureHealthy);
         _storage = new PersistentReceiptStorage(
             _receiptsDb,
             _specProvider,
@@ -66,7 +68,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _blockTree,
             _blockStore,
             _receiptConfig,
-            _decoder
+            _decoder,
+            historyCaptureStatus: captureStatus
         )
         { MigratedBlockNumber = 0 };
     }
@@ -517,6 +520,33 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             ((IReceiptMigrationStore)_storage).InsertForMigration(block, receipts);
         else
             _storage.Insert(block, receipts);
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    // Capture can self-disable at runtime; from that moment a skipped body is permanently lost once the block
+    // leaves the in-memory tier, so the skip must follow capture health, not the config flag.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_stores_bodies_when_history_capture_is_unhealthy()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage(captureHealthy: false);
+
+        Block block = ProcessBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_stores_bodies_when_no_capture_status_is_wired()
+    {
+        _receiptConfig.DeriveFromState = true;
+        _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
+        _storage = new PersistentReceiptStorage(
+            _receiptsDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
+        { MigratedBlockNumber = 0 };
+
+        Block block = ProcessBlock();
 
         Assert.That(BodyIsPersisted(block), Is.True);
     }
