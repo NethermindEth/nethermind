@@ -397,6 +397,19 @@ public class HistoryWriterTests
         Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, LimboLogs.Instance));
     }
 
+    // The config flag cannot prove the hook is wired (a patricia backend constructs the writer but never invokes
+    // capture); health must require a demonstrated capture, or receipt derivation would skip bodies with no
+    // history behind them.
+    [Test]
+    public void Capture_health_requires_a_proven_capture()
+    {
+        Assert.That(_writer.CaptureHealthy, Is.False, "no capture has run yet");
+
+        SeedGenesisFloor();
+
+        Assert.That(_writer.CaptureHealthy, Is.True, "the genesis seed proves the pipeline runs");
+    }
+
     // A pre-finalization force-persist can capture a branch that later reorgs; a number-only connect would
     // advance the watermark over the orphaned rows, making them permanently readable as healthy history.
     [Test]

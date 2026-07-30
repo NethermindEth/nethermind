@@ -84,7 +84,7 @@ internal sealed class HistoryStore
         // Buffers are sized to the encoders' maxima, so an oversized row can only be corruption.
         if (value.Length > outBuffer.Length)
         {
-            throw new InvalidDataException(
+            throw new StateUnavailableException(
                 $"History value of {value.Length} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
         }
         value.CopyTo(outBuffer);

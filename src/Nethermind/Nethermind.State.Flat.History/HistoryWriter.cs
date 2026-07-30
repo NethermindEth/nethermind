@@ -39,6 +39,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // further captures would only write rows above a gap no read can cross, so skip them until restart.
     private bool _permanentGapDetected;
     private int _consecutiveCaptureFailures;
+    // The config flag cannot prove the hook is wired: on a patricia backend this writer is constructed but nothing
+    // ever invokes capture, and reporting healthy there would let receipt derivation skip bodies with no history
+    // behind them. Only a completed capture (or genesis seed) demonstrates the pipeline actually runs.
+    private volatile bool _captureProven;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
         : this(history, BasePersistence.ResolveSlotEncoding(
@@ -67,7 +71,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     /// <inheritdoc/>
-    public bool CaptureHealthy => _enabled && !_permanentGapDetected;
+    public bool CaptureHealthy => _enabled && !_permanentGapDetected && _captureProven;
 
     /// <summary>The contiguous-from-genesis watermark: the highest block a read is served for; 0 when none captured.</summary>
     public ulong LastCapturedBlock => _availability.TryGetWatermark(out ulong watermark) ? watermark : 0;
@@ -91,6 +95,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             CaptureUpToCore(persistedHead, snapshotRepository, cancellationToken);
             _consecutiveCaptureFailures = 0;
+            _captureProven = true;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -214,6 +219,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         // Publish only after the block-0 batch is durable — this is the genesis floor a later walk connects to.
         _availability.PublishWatermark(0);
         _history.SyncWal();
+        _captureProven = true;
     }
 
     [SkipLocalsInit]
