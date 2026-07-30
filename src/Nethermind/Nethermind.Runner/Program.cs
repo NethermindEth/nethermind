@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -55,6 +56,7 @@ BlocksConfig.SetDefaultExtraDataWithVersion();
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
+PosixSignalRegistration? sigTermRegistration = null;
 string unhandledError = "A critical error has occurred";
 Option<string>[] deprecatedOptions =
 [
@@ -117,6 +119,17 @@ async Task<int> ConfigureAsync(string[] args)
         processExitSource?.Exit(ExitCodes.SigTerm);
         exit.Wait();
     };
+    // On Linux the runtime's default SIGTERM termination skips the managed-exit path,
+    // losing DOTNET_WritePGOData output and the exit code; cancel it so Main returns
+    // normally after the graceful shutdown.
+    sigTermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx =>
+    {
+        if (processExitSource is not null)
+        {
+            ctx.Cancel = true;
+            processExitSource.Exit(ExitCodes.SigTerm);
+        }
+    });
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
     PluginLoader pluginLoader = new(
@@ -150,6 +163,7 @@ async Task<int> ConfigureAsync(string[] args)
     finally
     {
         exit.Wait();
+        sigTermRegistration?.Dispose();
     }
 }
 
