@@ -35,16 +35,10 @@ which uses the same snapshots on this runner:
 - The node gets expb's stability flags (`--Init.DiscoveryEnabled=false`,
   `--Network.MaxActivePeers=0`, `--Merge.SweepMemory=NoGC`,
   `--Merge.CompactMemory=No`, `--Merge.CollectionsPerDecommit=-1`,
-  `--Pruning.Mode=None`). **Deliberate divergence from expb:** no
-  `DOTNET_TieredCompilation=0` / `DOTNET_GCLatencyLevel=0` env pins — the node
-  runs production-default code generation (tiered compilation + dynamic PGO),
-  because the pin disables dynamic PGO and misrepresents live nodes (a same-code
-  A/B showed it alone costs ~27% useful throughput on heavy eth_call). Timings
-  are therefore not directly comparable with expb runs or with rpc-bench results
-  produced before this change. JIT warm-up currently lands **inside** the
-  measured window; treat the first test/rate of a run as warm-up when reading
-  results. One-off code-gen experiments can set `NODE_ENV_VARS` instead of
-  editing the script.
+  `--Pruning.Mode=None`). Unlike expb, no `DOTNET_*` env pins: the node runs
+  production-default code generation (tiered compilation + dynamic PGO), so JIT
+  warm-up lands inside the measured window — treat a run's first test/rate as
+  warm-up. One-off code-gen experiments: set `NODE_ENV_VARS`.
 
 ## Multi-client snapshot sets
 
@@ -290,11 +284,8 @@ in the tool repo → fresh evolution from scratch.
 
 `dottrace=true` (requires `client=nethermind`) uses the same mechanism as expb's
 `--dottrace`, so it works with **any** Nethermind image (no special diag build).
-Note: reports captured before the removal of the `DOTNET_TieredCompilation=0`
-pin are not comparable with newer ones — restoring tiering shifts
-OwnTime/TotalTime attribution (tier-0 frames appear, dynamic-PGO inlining
-reshapes the call tree), so `dottrace-report.sh compare` across that boundary
-shows spurious deltas.
+Reports captured before the `DOTNET_TieredCompilation=0` pin removal are not
+comparable with newer ones (tiering shifts OwnTime/TotalTime attribution).
 
 1. The host-installed dotTrace CLI (`/opt/dottrace`, installed on demand via
    `dotnet tool install JetBrains.dotTrace.GlobalTools`) is mounted read-only

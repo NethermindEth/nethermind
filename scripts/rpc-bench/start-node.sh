@@ -258,13 +258,7 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
-# No DOTNET_TieredCompilation/GCLatencyLevel pins: the node must run with
-# production-default code generation (tiered compilation + dynamic PGO), or every
-# measurement misrepresents live nodes and any code-gen A/B. Consequence: JIT
-# warm-up lands inside the measured window — treat a run's first test/rate as
-# warm-up when reading results.
-# Deliberate code-gen experiments (e.g. reproducing an old pinned measurement) go
-# through NODE_ENV_VARS instead of edits here, so the default stays production-like.
+# Production-default code generation (no DOTNET_* pins); one-off experiments use NODE_ENV_VARS.
 # shellcheck disable=SC2086
 for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
