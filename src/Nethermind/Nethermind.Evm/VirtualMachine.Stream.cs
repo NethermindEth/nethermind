@@ -251,8 +251,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.PUSH0:
                             exceptionType = stack.PushZero<OffFlag>();
                             break;
-                        case Instruction.PUSH1:
-                        case >= Instruction.PUSH3 and <= Instruction.PUSH8:
+                        case >= Instruction.PUSH1 and <= Instruction.PUSH8:
                             // Analyzer pre-decoded full-width immediates; a truncated trailing PUSH stays a boundary op.
                             exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
                             break;
