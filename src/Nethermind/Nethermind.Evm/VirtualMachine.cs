@@ -244,6 +244,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
+                    if (SubcallProfile.IsEnabled) SubcallProfile.RecordTopFrame();
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     _currentState = null;
                     return substate;
@@ -256,6 +257,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
+                    if (SubcallProfile.IsEnabled && _currentState.Env.CallDepth == 0)
+                        SubcallProfile.RecordSubcall(previousState.Env.CodeSource, callResult.ShouldRevert);
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
