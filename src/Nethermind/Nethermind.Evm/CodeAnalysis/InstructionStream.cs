@@ -378,13 +378,25 @@ internal sealed class InstructionStream
     public const ulong NotInBlock = ulong.MaxValue;
 
     /// <summary>Dynamic-gas ops that always fall through on success: no control redirect, no frame
-    /// end, and no observation of remaining gas (which excludes GAS, the CALL family and CREATE:
-    /// they either observe gas, forward it, or suspend the frame mid-block).</summary>
+    /// end, and no observation of remaining gas. The gas rule is what keeps SSTORE out despite it
+    /// looking straight-line: its EIP-2200 sentry fails the op when less than 2300 gas remains, and
+    /// inside an open block the ops after it are already charged, so the sentry would see too little
+    /// and halt a frame that per-op interpretation completes. GAS, the CALL family and CREATE are
+    /// out for the same reason, plus forwarding and frame suspension.</summary>
     public static bool IsLinearBoundary(Instruction instruction) => instruction switch
     {
         Instruction.MSTORE or Instruction.MLOAD or Instruction.MSTORE8 or Instruction.MCOPY
             or Instruction.KECCAK256 or Instruction.CALLDATALOAD or Instruction.CALLDATACOPY
-            or Instruction.SLOAD => true,
+            or Instruction.SLOAD or Instruction.TLOAD
+            or Instruction.SIGNEXTEND or Instruction.BYTE or Instruction.SAR
+            or Instruction.ADDRESS or Instruction.ORIGIN or Instruction.CALLER or Instruction.CALLVALUE
+            or Instruction.CALLDATASIZE or Instruction.CODESIZE or Instruction.CODECOPY
+            or Instruction.GASPRICE or Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY
+            or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.EXTCODECOPY
+            or Instruction.COINBASE or Instruction.TIMESTAMP or Instruction.NUMBER or Instruction.PREVRANDAO
+            or Instruction.GASLIMIT or Instruction.CHAINID or Instruction.SELFBALANCE or Instruction.BASEFEE
+            or Instruction.BLOBHASH or Instruction.BLOBBASEFEE or Instruction.BLOCKHASH or Instruction.MSIZE
+            or (>= Instruction.LOG0 and <= Instruction.LOG4) => true,
         _ => false,
     };
 
