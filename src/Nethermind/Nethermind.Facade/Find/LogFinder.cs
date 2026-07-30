@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Autofac.Features.AttributeFilters;
@@ -121,14 +122,13 @@ namespace Nethermind.Facade.Find
                     {
                         if (!enumerator.MoveNext()) break;
                     }
-                    catch (AggregateException e) when (FirstResourceNotFound(e) is { } notFound)
+                    catch (AggregateException e) when (FirstMappable(e) is { } mappable)
                     {
-                        // PLINQ wraps worker exceptions, but callers catch the bare type to map "receipts not
-                        // available" onto its RPC error code — without this a multi-block range answers a generic
-                        // internal error while a single-block range answers correctly. Several partitions faulting
-                        // at once (the normal shape for a wide unavailable range) and nested aggregates both must
-                        // unwrap, hence Flatten over a single-inner check.
-                        throw notFound;
+                        // PLINQ wraps worker exceptions, but the RPC layer maps bare types onto error codes —
+                        // without this a multi-block range answers a generic internal error while a single-block
+                        // range answers correctly. Several partitions faulting at once (the normal shape for a wide
+                        // unavailable range) and nested aggregates both must unwrap, hence Flatten.
+                        throw mappable;
                     }
 
                     yield return enumerator.Current;
@@ -145,13 +145,17 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        private static ResourceNotFoundException? FirstResourceNotFound(AggregateException e)
+        private static Exception? FirstMappable(AggregateException e)
         {
+            // Unavailability wins over transient shapes on purpose: if any block in the range is genuinely
+            // unanswerable, that stays true after a retry, so it is the accurate answer for the whole range.
+            Exception? transient = null;
             foreach (Exception inner in e.Flatten().InnerExceptions)
             {
                 if (inner is ResourceNotFoundException notFound) return notFound;
+                transient ??= inner is ConcurrencyLimitReachedException or OperationCanceledException ? inner : null;
             }
-            return null;
+            return transient;
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)

@@ -44,9 +44,10 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             )
             .AddSingleton<FullInfoReceiptFinder>()
             .Bind<IReceiptFinder, FullInfoReceiptFinder>()
-            // Defaults to whatever the unkeyed finder is (not FullInfoReceiptFinder directly), so an override of
-            // IReceiptFinder — a plugin's or a test's — propagates here; ReceiptRegenerationModule replaces this
-            // registration when derivation is on.
+            // Defaults to whatever the unkeyed finder is (not FullInfoReceiptFinder directly), so with derivation
+            // off an override of IReceiptFinder — a plugin's or a test's — propagates here. With it on,
+            // ReceiptRegenerationModule replaces this registration and deliberately wraps the concrete
+            // FullInfoReceiptFinder instead.
             .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => ctx.Resolve<IReceiptFinder>())
             .AddSingleton<IHistoryPruner, HistoryPruner>()
             .AddSingleton<IBlockTree, BlockTree>()
