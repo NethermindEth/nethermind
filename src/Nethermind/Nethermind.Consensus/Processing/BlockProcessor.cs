@@ -186,7 +186,7 @@ public partial class BlockProcessor(
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
                 CalculateBlooms(receipts, s_backgroundBloomOptions);
-                return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
+                return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block, allowParallel: false));
             });
         }
         else
@@ -292,10 +292,10 @@ public partial class BlockProcessor(
         return blockBloom;
     }
 
-    private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
+    private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block, bool allowParallel = true)
     {
         using MetricsTimer<ReceiptsRootTimeSink> _ = new();
-        return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot, allowParallel);
     }
 
     // The background blooms computation runs concurrently with the whole state-commit phase;
