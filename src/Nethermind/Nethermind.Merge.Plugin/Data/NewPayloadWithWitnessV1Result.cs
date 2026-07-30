@@ -17,6 +17,8 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public class NewPayloadWithWitnessV1Result : IDisposable
 {
+    private Witness? _executionWitness;
+
     public string Status { get; set; } = PayloadStatus.Invalid;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -25,8 +27,14 @@ public class NewPayloadWithWitnessV1Result : IDisposable
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? ValidationError { get; set; }
 
+    [JsonPropertyName("witness")]
+    [JsonConverter(typeof(RlpExecutionWitnessJsonConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Witness? ExecutionWitness { get; set; }
+    public Witness? ExecutionWitness
+    {
+        get => Status == PayloadStatus.Valid ? _executionWitness : null;
+        set => _executionWitness = value;
+    }
 
     public static NewPayloadWithWitnessV1Result FromPayloadStatus(PayloadStatusV1 status, Witness? witness = null) =>
         new()
@@ -37,5 +45,5 @@ public class NewPayloadWithWitnessV1Result : IDisposable
             ExecutionWitness = witness
         };
 
-    public void Dispose() => ExecutionWitness?.Dispose();
+    public void Dispose() => _executionWitness?.Dispose();
 }
