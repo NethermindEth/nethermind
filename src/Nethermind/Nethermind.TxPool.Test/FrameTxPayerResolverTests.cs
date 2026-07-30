@@ -16,27 +16,35 @@ namespace Nethermind.TxPool.Test;
 
 /// <summary>
 /// Native payer resolution over EIP-8141 legible validation prefixes: the default-code
-/// <c>self_verify</c> and <c>only_verify | pay</c> shapes resolve, deployed code defers to
-/// simulation, and a prefix that never approves payment resolves to no payer.
+/// <c>self_verify</c> shape resolves to the sender, deployed code and unverified third-party
+/// payers (sponsored <c>only_verify | pay</c>) defer to simulation, and a prefix that never
+/// approves payment resolves to no payer.
 /// </summary>
 public class FrameTxPayerResolverTests
 {
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Sponsor = TestItem.AddressB;
 
+    // expectedOutcome is boxed FrameTxPayerOutcome; the enum is internal so it cannot appear in this public signature.
     [TestCaseSource(nameof(OutcomeCases))]
-    public void Resolve_OutcomeMatrix(Func<TestReadOnlyStateProvider, Transaction> build, FrameTxPayerOutcome expectedOutcome, Address? expectedPayer)
+    public void Resolve_OutcomeMatrix(Func<TestReadOnlyStateProvider, Transaction> build, object expectedOutcome, Address? expectedPayer)
     {
         TestReadOnlyStateProvider state = new();
         Transaction tx = build(state);
 
-        FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, state);
+        FrameTxPayerResolution resolution = Resolve(tx, state);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(resolution.Outcome, Is.EqualTo(expectedOutcome));
             Assert.That(resolution.Payer, Is.EqualTo(expectedPayer));
         }
+    }
+
+    private static FrameTxPayerResolution Resolve(Transaction tx, TestReadOnlyStateProvider state)
+    {
+        state.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount);
+        return FrameTxPayerResolver.Resolve(tx, state, senderAccount);
     }
 
     private static IEnumerable<TestCaseData> OutcomeCases()
@@ -49,14 +57,15 @@ public class FrameTxPayerResolverTests
                 return FrameTx([SelfVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
-        // Canonical-paymaster relay with a default-code EOA sponsor: the sponsor pays.
-        yield return Case("OnlyVerifyPay_DefaultCodeSponsor_PayerIsSponsor",
+        // Sponsored relay (only_verify | pay) names a third party as payer on a signature the pool
+        // does not verify; deferred to the verification/simulation layer rather than resolved natively.
+        yield return Case("OnlyVerifyPay_DefaultCodeSponsor_RequiresSimulation",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
                 DefaultCodeAccount(state, Sponsor);
                 return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
-            }, FrameTxPayerOutcome.Resolved, Sponsor);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A never-before-seen default-code sender still resolves (empty code hash).
         yield return Case("SelfVerify_NonExistentSender_PayerIsSender",
@@ -104,14 +113,15 @@ public class FrameTxPayerResolverTests
                 return FrameTx([SelfVerifyFrame()], [new TxFrameSignature(TxFrameSignature.SchemeP256, Sender, default, new byte[128])]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
-        // The sponsor signature at index 1 must name the pay target, not resolve to the sender.
-        yield return Case("OnlyVerifyPay_SponsorSignatureMissing_NoPayer",
+        // A sponsored pay frame is deferred regardless of the (unverified) sponsor signature shape:
+        // the pool never draws a native conclusion about a third-party payer from an unverified signature.
+        yield return Case("OnlyVerifyPay_SponsorSignatureShape_RequiresSimulation",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
                 DefaultCodeAccount(state, Sponsor);
                 return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sender)]);
-            }, FrameTxPayerOutcome.NoPayer, null);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A leading expiry_verify frame is skipped for shape matching; the self relay still resolves.
         yield return Case("ExpiryThenSelfVerify_PayerIsSender",
@@ -137,7 +147,7 @@ public class FrameTxPayerResolverTests
         state.CreateAccount(Sender, wei: Eth(7), nonce: 5);
         Transaction tx = FrameTx([SelfVerifyFrame()], [Secp(Sender)]);
 
-        FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, state);
+        FrameTxPayerResolution resolution = Resolve(tx, state);
         FrameTxDependencySet deps = resolution.Dependencies;
 
         using (Assert.EnterMultipleScope())
@@ -152,20 +162,22 @@ public class FrameTxPayerResolverTests
     }
 
     [Test]
-    public void Resolve_Sponsored_CapturesSponsorBalanceAsPayerDependency()
+    public void Resolve_Sponsored_DoesNotNamePayerFromUnverifiedSignature()
     {
+        // A forged pay-frame signature must not resolve to an arbitrary victim: the pool does not
+        // verify frame signatures at admission, so a third-party payer is never named natively.
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(Sender, wei: 0, nonce: 1);
         state.CreateAccount(Sponsor, wei: Eth(3), nonce: 0);
         Transaction tx = FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
 
-        FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, state);
+        FrameTxPayerResolution resolution = Resolve(tx, state);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resolution.Payer, Is.EqualTo(Sponsor));
-            Assert.That(resolution.Dependencies.Payer, Is.EqualTo(Sponsor));
-            Assert.That(resolution.Dependencies.PayerBalance, Is.EqualTo(Eth(3)));
+            Assert.That(resolution.Outcome, Is.EqualTo(FrameTxPayerOutcome.RequiresSimulation));
+            Assert.That(resolution.Payer, Is.Null);
+            Assert.That(resolution.Dependencies.Payer, Is.Null);
         }
     }
 
@@ -177,7 +189,7 @@ public class FrameTxPayerResolverTests
         state.InsertCode(Eip8141Constants.ExpiryVerifierCode, Eip8141Constants.ExpiryVerifierAddress);
         Transaction tx = FrameTx([ExpiryFrame(0xDEAD_BEEF), SelfVerifyFrame()], [Secp(Sender)]);
 
-        FrameTxDependencySet deps = FrameTxPayerResolver.Resolve(tx, state).Dependencies;
+        FrameTxDependencySet deps = Resolve(tx, state).Dependencies;
 
         using (Assert.EnterMultipleScope())
         {

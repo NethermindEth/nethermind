@@ -2053,6 +2053,8 @@ namespace Nethermind.TxPool.Test
         public void SubmitTx_FrameTransaction_AcceptedWhenEip8141Active()
         {
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            // A default-code self_verify frame tx: the sender pays for itself, so its payer resolves
+            // natively and it reaches the pool end-to-end (the earlier balance filters see the funded sender).
             Transaction frameTx = new()
             {
                 Type = TxType.FrameTx,
@@ -2060,7 +2062,7 @@ namespace Nethermind.TxPool.Test
                 Nonce = 0,
                 SenderAddress = TestItem.PrivateKeyA.Address,
                 Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
-                FrameSignatures = [],
+                FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyA.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength])],
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
@@ -2074,6 +2076,7 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "frame transactions must enter the pool once the EIP-8141 fork is active");
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction must be pending");
+                Assert.That(frameTx.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address), "the self_verify payer must be resolved to the sender");
             }
         }
 
