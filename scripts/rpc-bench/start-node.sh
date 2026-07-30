@@ -276,7 +276,14 @@ if [[ -n "$OPCODE_HISTOGRAM_PATH" ]]; then
   docker_args+=(-e "NETHERMIND_OPCODE_HISTOGRAM=$OPCODE_HISTOGRAM_PATH")
   log "Opcode histogram enabled, writing to $OPCODE_HISTOGRAM_PATH inside the container."
 fi
-if [[ "$CLIENT" == "nethermind" ]]; then
+# Two settings used to be forced on the Nethermind container here and both cost us on this
+# workload. Disabling tiered compilation also disables Dynamic PGO, which the runner project asks
+# for and which is what devirtualizes and inlines call-heavy code - an interpreter dispatching
+# through function-pointer tables is exactly that. GC latency level 0 is the batch mode, trading
+# pause length for throughput, and the measured p99-over-p50 spread was 1.57x against 1.07x for the
+# reference client, which is tail, not compute. Neither was applied to the other clients, so leaving
+# them off also makes the comparison symmetric. Set RPCBENCH_LEGACY_DOTNET_TUNING=1 to restore them.
+if [[ "$CLIENT" == "nethermind" && "${RPCBENCH_LEGACY_DOTNET_TUNING:-}" == "1" ]]; then
   docker_args+=(
     -e "DOTNET_TieredCompilation=0"
     -e "DOTNET_GCLatencyLevel=0"
