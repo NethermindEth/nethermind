@@ -18,7 +18,12 @@ on:
         options:
           - realblocks
           - superblocks
-        default: realblocks
+          - fusaka
+        default: fusaka
+      amount:
+        description: Payload amount (number of blocks to replay for profile collection)
+        required: false
+        default: "10000"
   schedule:
     # Weekly on Sunday at 02:00 UTC
     - cron: "0 2 * * 0"
@@ -170,7 +175,9 @@ jobs:
           PAYLOAD_SET: ${{ inputs.payload_set || 'realblocks' }}
         run: |
           set -euo pipefail
-          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
@@ -203,16 +210,16 @@ jobs:
             a\        mode: rw
           }' "${rendered}"
           # Patch config for PGO collection:
-          # - 10000 blocks for broader method coverage
+          # - configurable payload amount for broader method coverage
           # - No TC delay override — Tier-1 recompilation produces richer edge/block
           #   counts in the .jit file (TC delay is only needed for the sampling pass
           #   where perf map validity matters)
-          python3 -c "
-          import yaml, sys
+          AMOUNT="${{ inputs.amount || '10000' }}" python3 -c "
+          import os, yaml, sys
           p = sys.argv[1]
           c = yaml.safe_load(open(p))
           for s in c.get('scenarios', {}).values():
-              s['amount'] = 10000
+              s['amount'] = int(os.environ['AMOUNT'])
           yaml.safe_dump(c, open(p, 'w'), default_flow_style=False, sort_keys=False)
           " "${rendered}"
           echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
@@ -687,6 +694,9 @@ jobs:
 
       - name: Download .jit.gz artifact
         uses: actions/download-artifact@v7
+        # The .jit is best-effort: it is only written if the node shuts down gracefully
+        # within the stop timeout, so a missing artifact must not fail the profile update.
+        continue-on-error: true
         with:
           name: nethermind-pgo-jit
           path: src/Nethermind/Nethermind.Runner/pgo/
