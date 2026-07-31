@@ -194,8 +194,6 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         (PbtTiling.FourLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtFourLevelTileLayout, PbtDepth1>>(partition),
         (PbtTiling.FiveLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtFiveLevelTileLayout, PbtDepth4>>(partition),
         (PbtTiling.FiveLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtFiveLevelTileLayout, PbtDepth1>>(partition),
-        (PbtTiling.ClusteredFourLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtClusteredTileLayout, PbtDepth4>>(partition),
-        (PbtTiling.ClusteredFourLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtClusteredTileLayout, PbtDepth1>>(partition),
         _ => throw new ArgumentOutOfRangeException(nameof(partition)),
     };
 
@@ -207,47 +205,14 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             ScanTrieNode<TLayout>(value, key.Length, depth, partition, report);
         };
 
-    /// <summary>
-    /// Counts one trie node blob as the nodes it holds — the group at the key's depth, the runs hanging
-    /// off it, and for a cluster the children one group below it, with their own runs — so every
-    /// histogram here reads as it did before they shared a blob.
-    /// </summary>
-    /// <remarks>
-    /// <paramref name="keyBytes"/> is counted for this blob alone, as the nodes riding in it — a run, a
-    /// clustered child — are precisely the ones that cost no key of their own.
-    /// </remarks>
+    /// <summary>Counts one trie-node group and the runs hanging off it.</summary>
     private static void ScanTrieNode<TLayout>(ReadOnlySpan<byte> value, int keyBytes, int depth, PbtTreePartition partition, PbtScanReport report)
         where TLayout : IPbtTileLayout
     {
         PbtScanReport.TrieNodeStats stats = report[partition];
         stats.BlobCount++;
         stats.KeyBytes += keyBytes;
-
-        PbtNodeCluster cluster = PbtNodeCluster.Decode(value, out PbtTrieNodeGroup<TLayout> group);
-        ReadOnlySpan<byte> groupBytes = value[cluster.Group];
-        ScanGroup(group, groupBytes.Length, depth, stats, report);
-        if (cluster.IsBare) return;
-
-        stats.ClusterCount++;
-        stats.ClustersByDepth[depth]++;
-        stats.ClusterBytesByDepth[depth] += value.Length;
-        int childDepth = depth + TLayout.LevelsPerGroup;
-        int childBytes = 0;
-        for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
-        {
-            ReadOnlySpan<byte> child = value[cluster.Child(slot, group)];
-            if (child.IsEmpty) continue;
-
-            stats.ClusteredGroupCount++;
-            stats.ClusteredGroupsByDepth[depth]++;
-            childBytes += child.Length;
-
-            // a clustered child is a bare group, never a cluster of its own: the level a cluster holds is
-            // the level that does not itself cluster (see PbtLayout.IsClusteringDepth)
-            ScanGroup(PbtTrieNodeGroup<TLayout>.Decode(child), child.Length, childDepth, stats, report);
-        }
-
-        stats.ClusterFramingBytes += value.Length - groupBytes.Length - childBytes;
+        ScanGroup(PbtTrieNodeGroup<TLayout>.Decode(value), value.Length, depth, stats, report);
     }
 
     /// <summary>
@@ -320,8 +285,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         in PbtTrieNodeGroup<TLayout> group, int bytes, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
         where TLayout : IPbtTileLayout
     {
-        // A run's entry is the run's, not the group's, as a clustered child's blob is the child's: the two
-        // share an encoding, and the byte totals still say what each of them costs.
+        // A run's entry is the run's, not the group's; the byte totals still say what each costs.
         int chainBytes = 0;
         for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
         {
@@ -525,11 +489,9 @@ public sealed class PbtScanReport
     public long ChainCount => Sum(static stats => stats.ChainCount);
     public long StemCount => Sum(static stats => stats.StemCount);
     public long IntermediateNodeCount => Sum(static stats => stats.IntermediateNodeCount);
-    public long TrieNodeBytes => Sum(static stats => stats.GroupBytes + stats.ChainBytes + stats.ClusterFramingBytes);
+    public long TrieNodeBytes => Sum(static stats => stats.GroupBytes + stats.ChainBytes);
     public long TrieNodeBlobCount => Sum(static stats => stats.BlobCount);
     public long TrieNodeKeyBytes => Sum(static stats => stats.KeyBytes);
-    public long ClusterCount => Sum(static stats => stats.ClusterCount);
-    public long ClusteredGroupCount => Sum(static stats => stats.ClusteredGroupCount);
     public long SkippedLevelNodes => Sum(static stats => stats.SkippedLevelNodes);
     public long ChainSkippedNodes => Sum(static stats => stats.ChainSkippedNodes);
     public long ChainEntriesAvoided => Sum(static stats => stats.ChainEntriesAvoided);
@@ -588,37 +550,9 @@ public sealed class PbtScanReport
         /// <summary>The keys of those entries, a cost the value totals do not see.</summary>
         public long KeyBytes { get; internal set; }
 
-        /// <summary>Blobs holding their children's blobs alongside their own group.</summary>
-        public long ClusterCount { get; internal set; }
-
-        /// <summary>Children so held — the lookups, and the keys, that the clustering saves.</summary>
-        public long ClusteredGroupCount { get; internal set; }
-
-        /// <summary>The offset tables and counts those blobs spend to hold them.</summary>
-        public long ClusterFramingBytes { get; internal set; }
-
         public long[] GroupsByDepth { get; } = new long[DepthSlots];
         public long[] GroupBytesByDepth { get; } = new long[DepthSlots];
         public long[] StemsByDepth { get; } = new long[DepthSlots];
-
-        /// <summary>Clusters by the depth of the group they hold, which is where their key sits.</summary>
-        public long[] ClustersByDepth { get; } = new long[DepthSlots];
-
-        /// <summary>
-        /// The whole stored length of those clusters — their own group, every child they hold and the
-        /// framing between them — so that the average is the value size the store sees at that depth.
-        /// </summary>
-        /// <remarks>
-        /// Not <see cref="GroupBytesByDepth"/> restricted to clusters: that counts each group where it
-        /// sits, so a cluster's children land a group lower and its framing lands nowhere.
-        /// </remarks>
-        public long[] ClusterBytesByDepth { get; } = new long[DepthSlots];
-
-        /// <summary>
-        /// Clustered children by the depth of the cluster holding them, so that the two histograms read
-        /// as one table; a child itself sits <see cref="TLayout.LevelsPerGroup"/> levels below.
-        /// </summary>
-        public long[] ClusteredGroupsByDepth { get; } = new long[DepthSlots];
 
         public long[] ChainsByStartDepth { get; } = new long[DepthSlots];
         public long[] ChainsBySpan { get; } = new long[DepthSlots];
@@ -651,9 +585,6 @@ public sealed class PbtScanReport
             ChainBytes += other.ChainBytes;
             BlobCount += other.BlobCount;
             KeyBytes += other.KeyBytes;
-            ClusterCount += other.ClusterCount;
-            ClusteredGroupCount += other.ClusteredGroupCount;
-            ClusterFramingBytes += other.ClusterFramingBytes;
             SkippedLevelNodes += other.SkippedLevelNodes;
             ChainSkippedNodes += other.ChainSkippedNodes;
             ChainEntriesAvoided += other.ChainEntriesAvoided;
@@ -662,9 +593,6 @@ public sealed class PbtScanReport
             AddInto(GroupsByDepth, other.GroupsByDepth);
             AddInto(GroupBytesByDepth, other.GroupBytesByDepth);
             AddInto(StemsByDepth, other.StemsByDepth);
-            AddInto(ClustersByDepth, other.ClustersByDepth);
-            AddInto(ClusterBytesByDepth, other.ClusterBytesByDepth);
-            AddInto(ClusteredGroupsByDepth, other.ClusteredGroupsByDepth);
             AddInto(ChainsByStartDepth, other.ChainsByStartDepth);
             AddInto(ChainsBySpan, other.ChainsBySpan);
         }
@@ -764,7 +692,7 @@ public sealed class PbtScanReport
         report.AppendLine();
 
         report.AppendLine($"Totals: {GroupCount + ChainCount:N0} trie nodes ({TrieNodeBytes:N0} bytes), {GroupCount:N0} groups, {ChainCount:N0} chains, {StemCount:N0} stems over {IntermediateNodeCount:N0} intermediate nodes");
-        report.AppendLine($"Stored in {TrieNodeBlobCount:N0} blobs keyed by {TrieNodeKeyBytes:N0} bytes: every chain rides in the group above it, and {ClusterCount:N0} groups cluster {ClusteredGroupCount:N0} more");
+        report.AppendLine($"Stored in {TrieNodeBlobCount:N0} blobs keyed by {TrieNodeKeyBytes:N0} bytes; every chain rides in the group above it");
         report.AppendLine($"Root records {RootSubtreeStemCount:N0} stems for its subtree ({(StemCountAgrees ? "agrees" : "MISMATCH")})");
         report.AppendLine();
 
@@ -799,16 +727,9 @@ public sealed class PbtScanReport
         report.AppendLine($"--- {partition} ---");
         report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.BoundaryOnlyGroupCount:N0} boundary-only, {stats.Every4DepthGroupCount:N0} every-4-depth, {stats.Every3DepthGroupCount:N0} every-3-depth, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems over {stats.IntermediateNodeCount:N0} intermediate nodes");
         report.AppendLine($"  in {stats.BlobCount:N0} blobs, whose keys take a further {stats.KeyBytes:N0} bytes");
-        if (stats.ClusterCount != 0)
-        {
-            report.AppendLine($"  {stats.ClusterCount:N0} of those blobs also hold {stats.ClusteredGroupCount:N0} of those nodes, for {stats.ClusterFramingBytes:N0} bytes of framing");
-        }
-
         report.AppendLine();
 
         AppendDepthTable(report, "Trie node groups by depth", ("groups", "bytes", "avg size"), stats.GroupsByDepth, stats.GroupBytesByDepth);
-        AppendDepthTable(report, "Clusters by depth", ("clusters", "children", "avg children"), stats.ClustersByDepth, stats.ClusteredGroupsByDepth);
-        AppendDepthTable(report, "Cluster blobs by depth", ("clusters", "bytes", "avg size"), stats.ClustersByDepth, stats.ClusterBytesByDepth);
         AppendCountTable(report, "Stems by depth", "depth", "stems", stats.StemsByDepth);
         AppendCountTable(report, "Node chains by start depth", "depth", "chains", stats.ChainsByStartDepth);
         AppendCountTable(report, "Node chains by span", "levels", "chains", stats.ChainsBySpan);

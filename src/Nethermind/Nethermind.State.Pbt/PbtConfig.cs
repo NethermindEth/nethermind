@@ -19,7 +19,7 @@ public class PbtConfig : IPbtConfig
     public int ImportWindowSize { get; set; }
     public bool ScanTree { get; set; }
     public int ScanTreeConcurrency { get; set; }
-    public PbtTrieLayout TrieNodeLayout { get; set; } = PbtTrieLayout.ClusteredFourLevelInterleaved;
+    public PbtTrieLayout TrieNodeLayout { get; set; } = PbtTrieLayout.FourLevelInterleaved;
     public int RootFoldConcurrency { get; set; }
     public ulong AccountLeafBlobCacheSizeBudget { get; set; } = 64UL.MiB;
     public ulong CodeLeafBlobCacheSizeBudget { get; set; } = 32UL.MiB;

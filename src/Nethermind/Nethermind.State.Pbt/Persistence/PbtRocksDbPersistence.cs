@@ -63,25 +63,36 @@ public class PbtRocksDbPersistence : IPbtPersistence
     }
 
     /// <summary>Stamps a fresh database with its trie tiling or rejects an incompatible tiling.</summary>
-    /// <remarks>A missing stamp denotes the original <see cref="PbtTiling.ClusteredFourLevel"/> layout.</remarks>
-    /// <exception cref="InvalidDataException">The database holds state under another tiling.</exception>
+    /// <exception cref="InvalidDataException">The database holds state under an unsupported or different tiling.</exception>
     private static void EnsureTiling(IColumnsDb<PbtColumns> db, PbtTiling tiling)
     {
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         byte[]? stored = metadata.Get(TrieTilingKey);
-        PbtTiling storedTiling = stored is null ? PbtTiling.ClusteredFourLevel : (PbtTiling)stored[0];
-        if (stored is not null || ReadCurrentState(metadata).State != StateId.PreGenesis)
+        if (stored is null)
         {
-            if (storedTiling != tiling)
+            if (ReadCurrentState(metadata).State != StateId.PreGenesis)
             {
-                throw new InvalidDataException($"The pbt database was written with the {storedTiling} trie tiling, but this node is configured for {tiling}. Delete the pbt database and re-import, or set Pbt.TrieNodeLayout to a layout of the {storedTiling} tiling.");
+                throw new InvalidDataException("The populated pbt database has no trie tiling stamp and may use the unsupported legacy clustered layout. Delete the pbt database and re-import.");
             }
 
-            if (stored is not null) return;
+            metadata.PutSpan(TrieTilingKey, [(byte)tiling], WriteFlags.None);
+            return;
         }
 
-        metadata.PutSpan(TrieTilingKey, [(byte)tiling], WriteFlags.None);
+        if (stored.Length != sizeof(byte) || !IsSupportedTiling(stored[0]))
+        {
+            throw new InvalidDataException($"The pbt database uses unsupported trie tiling stamp {Convert.ToHexString(stored)}. Delete the pbt database and re-import.");
+        }
+
+        PbtTiling storedTiling = (PbtTiling)stored[0];
+        if (storedTiling != tiling)
+        {
+            throw new InvalidDataException($"The pbt database was written with the {storedTiling} trie tiling, but this node is configured for {tiling}. Delete the pbt database and re-import, or set Pbt.TrieNodeLayout to a layout of the {storedTiling} tiling.");
+        }
     }
+
+    private static bool IsSupportedTiling(byte tiling) => (PbtTiling)tiling is
+        PbtTiling.SixLevel or PbtTiling.EightLevel or PbtTiling.FourLevel or PbtTiling.FiveLevel;
 
     private static PbtColumns LeafColumn(in Stem stem) => stem.Zone switch
     {
