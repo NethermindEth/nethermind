@@ -150,9 +150,10 @@ public class Eip8141ScenarioTests
 
     // Spec Gas Accounting: charged gas = FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST
     // + per-scheme verification cost + max(standard token cost of frame data and signature fields
-    // + the gas each frame consumed, EIP-7623 floor token cost). Pinned against the spec constants
+    // + the gas each frame consumed, floor token cost). Pinned against the spec constants
     // with known payload bytes; ARBITRARY entries cost 100 verification gas, and their bytes are
-    // also calldata-priced.
+    // also calldata-priced. The fork under test schedules EIP-7976, so the floor prices every data
+    // byte as a non-zero token at 16 (64 per byte), as it does for an ordinary transaction.
     [Test]
     public void ChargedGas_MatchesSpecIntrinsicFormula()
     {
@@ -175,16 +176,17 @@ public class Eip8141ScenarioTests
 
         ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
         ulong tokens = CalldataTokens(frameData) + CalldataTokens(witnessBytes);
+        ulong floorTokens = (ulong)(frameData.Length + witnessBytes.Length) * 4;
         ulong expected = 15_000
                          + 2 * 475UL
                          + 100 // ARBITRARY signature verification cost
-                         + Math.Max(tokens * 4 + frameGasUsed, tokens * 10); // EIP-7623 floor (10/token)
+                         + Math.Max(tokens * 4 + frameGasUsed, floorTokens * 16); // EIP-7976 floor rate
         Assert.That((ulong)receipt.GasUsed, Is.EqualTo(expected));
         Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
             "the refund must return exactly max cost minus charged gas at the effective price");
     }
 
-    // EIP-7623 floor for frame transactions: the mandatory intrinsic, per-frame and signature
+    // The calldata floor for frame transactions: the mandatory intrinsic, per-frame and signature
     // verification costs stay outside the max, while the data tokens are charged at the floor rate
     // whenever it exceeds the standard rate plus the gas the frames actually consumed.
     [Test]
@@ -203,17 +205,17 @@ public class Eip8141ScenarioTests
         ulong mandatoryGas = 15_000 + 2 * 475UL;
         using (Assert.EnterMultipleScope())
         {
-            // EIP-8141 inherits the EIP-7623 floor (10 per token), NOT the EIP-7976 rate (16),
-            // even though the prototype fork also schedules EIP-7976 for the regular tx path.
-            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(mandatoryGas + 256 * 10UL));
+            // Every byte is a non-zero token under EIP-7976, priced at 16: 64 gas per data byte,
+            // the same rate an ordinary transaction's calldata floor uses under this fork.
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(mandatoryGas + 256 * 64UL));
             Assert.That((ulong)receipt.GasUsed, Is.GreaterThan(mandatoryGas + 256 * 4UL + frameGasUsed),
                 "the floor token cost must dominate the standard token cost plus execution gas");
             Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
         }
     }
 
-    // EIP-7623 regression: when the standard token cost plus consumed frame gas exceeds the floor
-    // token cost, the standard accounting is charged unchanged.
+    // Regression: when the standard token cost plus consumed frame gas exceeds the floor token cost,
+    // the standard accounting is charged unchanged.
     [Test]
     public void ChargedGas_ExecutionDominatesFloor_ChargesStandardTokenCostPlusExecution()
     {
@@ -232,10 +234,45 @@ public class Eip8141ScenarioTests
         ulong standardTokenCost = 64 * 4UL;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(standardTokenCost + frameGasUsed, Is.GreaterThan(64 * 10UL),
+            Assert.That(standardTokenCost + frameGasUsed, Is.GreaterThan(64 * 64UL),
                 "the scenario must stay execution-dominant for this regression to bind");
             Assert.That((ulong)receipt.GasUsed, Is.EqualTo(mandatoryGas + standardTokenCost + frameGasUsed));
             Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
+        }
+    }
+
+    // The floor bounds the charge from below after the EIP-3529 refund is netted, not before. The
+    // scenario is chosen so the two orderings disagree: gross gas exceeds the floor (so the floor is
+    // not trivially the answer), while gross minus the refund falls under it (so applying the floor
+    // first would leave the refund to be subtracted from it).
+    [Test]
+    public void ChargedGas_RefundNetsBeforeFloorIsApplied()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        _stateProvider.Set(new StorageCell(Recipient, UInt256.Zero), new byte[] { 1 });
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        // The payload size is chosen so the floor lands between the gross charge and the gross charge
+        // net of the refund: the floor grows 64 gas per byte while the standard cost grows 4.
+        byte[] frameData = new byte[160];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDefault, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
+        ulong grossGas = mandatoryGas + (ulong)frameData.Length * 4UL + frameGasUsed;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(grossGas, Is.GreaterThan(floorGas),
+                "gross gas must exceed the floor, or the ordering under test is not exercised");
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(floorGas),
+                "the refund may not push the charge below the floor");
         }
     }
 
