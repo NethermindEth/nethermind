@@ -1,0 +1,45 @@
+# Diagnostic, read-only: reports the host settings that decide whether bypassing
+# entrypoint.sh changes how a benchmarked node runs. Safe to run beside a benchmark.
+name: Runner facts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [pgo-2]
+    paths: [.github/workflows/runner-facts.yml]
+
+permissions: {}
+
+jobs:
+  facts:
+    name: Report host runtime facts
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 10
+    steps:
+      - name: Hugepages and GC-relevant host state
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "=== hugetlb (entrypoint.sh gates DOTNET_GCLargePages on free_hugepages > 0) ==="
+          for f in /sys/kernel/mm/hugepages/hugepages-*/nr_hugepages \
+                   /sys/kernel/mm/hugepages/hugepages-*/free_hugepages; do
+            [[ -f "$f" ]] && echo "$f = $(cat "$f")"
+          done
+          grep -iE 'huge' /proc/meminfo || true
+
+          echo "=== transparent hugepages ==="
+          cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || echo "(unavailable)"
+
+          echo "=== would entrypoint.sh enable large pages here? ==="
+          free_hp=0
+          [[ -f /sys/kernel/mm/hugepages/hugepages-2048kB/free_hugepages ]] && \
+            free_hp=$(cat /sys/kernel/mm/hugepages/hugepages-2048kB/free_hugepages)
+          if [[ "${free_hp}" -gt 0 ]]; then
+            echo "YES - free_hugepages=${free_hp}: bypassing entrypoint.sh changes GC configuration"
+          else
+            echo "NO - free_hugepages=${free_hp}: entrypoint.sh would leave GC settings at defaults, so the bypass is inert"
+          fi
+
+          echo "=== memory / cpu ==="
+          free -g | head -2
+          nproc
