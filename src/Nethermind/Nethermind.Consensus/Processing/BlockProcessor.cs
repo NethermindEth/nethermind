@@ -183,9 +183,13 @@ public partial class BlockProcessor(
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
         if (ShouldCalculateReceiptsInBackground(receipts))
         {
+            // Small bloom workloads clear the machine fastest at full width; capping them only
+            // stretches their overlap with the commit phase. Cap where the work is big enough
+            // that full width would starve the root hashing.
+            ParallelOptions? bloomOptions = receipts.Length >= 256 ? s_backgroundBloomOptions : null;
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
-                CalculateBlooms(receipts, s_backgroundBloomOptions);
+                CalculateBlooms(receipts, bloomOptions);
                 return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
             });
         }
