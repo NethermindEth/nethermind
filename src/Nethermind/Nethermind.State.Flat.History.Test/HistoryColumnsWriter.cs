@@ -9,6 +9,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History.Test;
 
@@ -20,7 +21,7 @@ internal static class HistoryColumnsWriter
 {
     public static void RecordAccount(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, Account? account)
     {
-        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
 
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
@@ -40,7 +41,7 @@ internal static class HistoryColumnsWriter
 
     public static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, Address address, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawValue)
     {
-        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory));
+        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
 
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
