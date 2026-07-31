@@ -803,12 +803,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // gate keeps block processing structurally outside this machinery.
         if (_txTracer.IsCancelable && _currentState.Env.CallDepth == 1)
         {
+            _siblingGasGiven = (long)TGasPolicy.GetRemainingGas(in _currentState.Gas);
             _siblingSiteKey = ParallelSiblings.SiblingRecorder.ComputeSiteKey(
                 (_blockExecutionContext.Header.StateRoot ?? Keccak.Zero).ValueHash256,
                 _currentState.Env.CodeSource,
                 _currentState.Env.InputData.Span,
-                in _currentState.Env.Value);
-            _siblingGasGiven = (long)TGasPolicy.GetRemainingGas(in _currentState.Gas);
+                in _currentState.Env.Value,
+                _siblingGasGiven);
             _siblingLogsAtStart = _currentState.AccessTracker.Logs.Count;
             _siblingDestroysAtStart = _currentState.AccessTracker.DestroyList.Count;
             ParallelSiblings.SiblingRecorder.BeginSibling(_siblingSiteKey);

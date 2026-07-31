@@ -56,6 +56,10 @@ public static class SiblingRecorder
     private static long s_rejectGas;
     private static long s_rejectCold;
     private static long s_rejectPrefix;
+    private static long s_recNotClean;
+    private static long s_recReverted;
+    private static long s_recTookValue;
+    private static long s_recPrefixOverlap;
     private static System.Threading.Timer? s_reportTimer;
 
     static SiblingRecorder() =>
@@ -66,7 +70,8 @@ public static class SiblingRecorder
         if (s_recorded == 0 && s_lookupMisses == 0 && s_replays == 0) return;
         string line =
             $"SIBLING-MEMO recorded {s_recorded} (memoable {s_recordedMemoable}), lookup misses {s_lookupMisses}, replays {s_replays}, " +
-            $"rejects: not-memoable {s_rejectNotMemoable}, gas {s_rejectGas}, cold {s_rejectCold}, prefix {s_rejectPrefix}, sites {s_sites.Count}";
+            $"rejects: not-memoable {s_rejectNotMemoable}, gas {s_rejectGas}, cold {s_rejectCold}, prefix {s_rejectPrefix}, sites {s_sites.Count}, " +
+            $"rec-fails: clean {s_recNotClean}, reverted {s_recReverted}, value {s_recTookValue}, prefix {s_recPrefixOverlap}";
         Console.WriteLine(line);
         if (string.IsNullOrWhiteSpace(s_reportPath)) return;
         try
@@ -96,10 +101,13 @@ public static class SiblingRecorder
         public required StorageCell[] FirstTouchSlots { get; init; }
     }
 
-    public static long ComputeSiteKey(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value)
+    public static long ComputeSiteKey(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value, long gasGiven)
     {
+        // gasGiven is part of the identity: the same inner call at a different position receives
+        // different gas through 63/64 forwarding and is a different execution. Positions are
+        // stable across requests, so each position's occurrence keeps a memo of its own.
         ValueHash256 inputHash = ValueKeccak.Compute(input);
-        return HashCode.Combine(stateRoot, to, inputHash, value.GetHashCode());
+        return HashCode.Combine(stateRoot, to, inputHash, value.GetHashCode(), gasGiven);
     }
 
     public static SiteRecord? TryGet(long siteKey) =>
@@ -201,6 +209,10 @@ public static class SiblingRecorder
         }
 
         bool memoable = cleanFrame && succeeded && !tookValue && prefixDisjoint;
+        if (!cleanFrame) s_recNotClean++;
+        if (!succeeded) s_recReverted++;
+        if (tookValue) s_recTookValue++;
+        if (!prefixDisjoint) s_recPrefixOverlap++;
         // Only real writers poison the suffix: a clean frame that merely reverted or arrived
         // with unusable shape left the state untouched.
         if (!cleanFrame)
