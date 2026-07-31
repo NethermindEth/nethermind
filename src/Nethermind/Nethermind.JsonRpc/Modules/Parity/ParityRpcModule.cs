@@ -16,6 +16,7 @@ using Nethermind.KeyStore;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Network;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -23,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         IEcdsa ecdsa,
         ITxPool txPool,
         IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IEnode enode,
         ISignerStore signerStore,
         IKeyStore keyStore,

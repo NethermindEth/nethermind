@@ -19,6 +19,12 @@ public sealed class SnapshotBundle : IDisposable
 {
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
 
+    /// <summary>
+    /// Passthrough of <see cref="ReadOnlySnapshotBundle.IsHistorical"/>: the wrapped bundle is history-backed and
+    /// trie-less, so the scope must skip post-block state-root trie recomputation.
+    /// </summary>
+    public bool IsHistorical => _readOnlySnapshotBundle.IsHistorical;
+
 
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
