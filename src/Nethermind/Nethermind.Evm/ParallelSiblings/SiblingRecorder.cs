@@ -39,6 +39,8 @@ public static class SiblingRecorder
     [ThreadStatic] private static List<Address>? t_firstTouchAddresses;
     [ThreadStatic] private static List<StorageCell>? t_firstTouchSlots;
     [ThreadStatic] private static HashSet<int>? t_prefixWrites;
+    [ThreadStatic] private static HashSet<int>? t_currentWrites;
+    [ThreadStatic] private static bool t_recordingWrites;
     [ThreadStatic] private static long t_siteKey;
     [ThreadStatic] private static SiteRecord? t_knownSite;
 
@@ -88,6 +90,16 @@ public static class SiblingRecorder
     public static void CountGasReject() => s_rejectGas++;
 
     public static bool Recording => t_recording;
+    public static bool RecordingWrites => t_recordingWrites;
+
+    /// <summary>An actual state write inside a depth-1 sibling: the precise poison for the memos
+    /// of everything after it, instead of the touch-set over-approximation that shared reads
+    /// (pools, tokens) would turn into a rejection of the whole request.</summary>
+    public static void TouchWrite(in StorageCell cell)
+    {
+        if (!t_recordingWrites) return;
+        (t_currentWrites ??= new HashSet<int>(64)).Add(cell.GetHashCode());
+    }
 
     /// <summary>One full observation of a call site. Immutable once published.</summary>
     public sealed class SiteRecord
@@ -97,6 +109,7 @@ public static class SiblingRecorder
         public required long GasUsed { get; init; }
         public required byte[] Output { get; init; }
         public required int[] TouchHashes { get; init; }
+        public required int[] WriteHashes { get; init; }
         public required Address[] FirstTouchAddresses { get; init; }
         public required StorageCell[] FirstTouchSlots { get; init; }
     }
@@ -166,6 +179,8 @@ public static class SiblingRecorder
         // A known site needs no re-recording (its touch set is stable), which keeps the tracker
         // hooks off the hot path in steady state; its stored touches still feed the prefix-write
         // tracking at merge when it is a writer.
+        t_recordingWrites = true;
+        (t_currentWrites ??= new HashSet<int>(64)).Clear();
         if (t_knownSite is not null)
         {
             t_recording = false;
@@ -182,15 +197,21 @@ public static class SiblingRecorder
     {
         bool wasRecording = t_recording;
         t_recording = false;
+        t_recordingWrites = false;
 
         if (!wasRecording)
         {
-            // Known writer sites poison the memos of everything after them in this request: their
-            // stored touch set over-approximates their write set. Clean known sites poison
-            // nothing, whether replayed or re-executed.
+            // Known dirty sites poison the memos of everything after them in this request with
+            // their recorded writes; if this occurrence wrote something new, the live capture
+            // covers it too. Clean known sites poison nothing, replayed or re-executed.
             if (t_knownSite is { Memoable: false } known)
             {
-                (t_prefixWrites ??= new HashSet<int>(1024)).UnionWith(known.TouchHashes);
+                (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(known.WriteHashes);
+            }
+
+            if (t_currentWrites is { Count: > 0 } liveWrites)
+            {
+                (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(liveWrites);
             }
 
             t_knownSite = null;
@@ -213,11 +234,11 @@ public static class SiblingRecorder
         if (!succeeded) s_recReverted++;
         if (tookValue) s_recTookValue++;
         if (!prefixDisjoint) s_recPrefixOverlap++;
-        // Only real writers poison the suffix: a clean frame that merely reverted or arrived
-        // with unusable shape left the state untouched.
-        if (!cleanFrame)
+        // Only actual writes poison the suffix - precise cells, not the touch set, or the shared
+        // reads every quote performs would reject the entire request.
+        if (t_currentWrites is { Count: > 0 } writes)
         {
-            (t_prefixWrites ??= new HashSet<int>(1024)).UnionWith(touches);
+            (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(writes);
         }
 
         s_recorded++;
@@ -230,6 +251,7 @@ public static class SiblingRecorder
             GasUsed = gasUsed,
             Output = memoable ? output.ToArray() : [],
             TouchHashes = [.. touches],
+            WriteHashes = t_currentWrites is null ? [] : [.. t_currentWrites],
             FirstTouchAddresses = [.. t_firstTouchAddresses!],
             FirstTouchSlots = [.. t_firstTouchSlots!],
         };
@@ -241,6 +263,7 @@ public static class SiblingRecorder
     public static void EndTopFrame()
     {
         t_recording = false;
+        t_recordingWrites = false;
         t_knownSite = null;
         t_prefixWrites?.Clear();
     }
