@@ -30,6 +30,14 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-resolute@sha256:dae546296490fa23d67
 
 WORKDIR /nethermind
 
+# Ship the edge/block profile entrypoint.sh seeds the JIT with (DOTNET_ReadPGOData)
+COPY src/Nethermind/Nethermind.Runner/pgo/ /tmp/pgo/
+RUN mkdir -p pgo && \
+  if [ -s /tmp/pgo/nethermind.jit.gz ]; then \
+    gzip -d -c /tmp/pgo/nethermind.jit.gz > pgo/nethermind.jit; \
+  fi && \
+  rm -rf /tmp/pgo
+
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
