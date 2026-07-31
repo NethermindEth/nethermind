@@ -38,9 +38,10 @@ public static class SiblingRecorder
     [ThreadStatic] private static HashSet<int>? t_touches;
     [ThreadStatic] private static List<Address>? t_firstTouchAddresses;
     [ThreadStatic] private static List<StorageCell>? t_firstTouchSlots;
-    [ThreadStatic] private static HashSet<int>? t_prefixWrites;
     [ThreadStatic] private static HashSet<int>? t_currentWrites;
     [ThreadStatic] private static bool t_recordingWrites;
+    [ThreadStatic] private static long t_chainHash;
+    [ThreadStatic] private static bool t_inCancelableFrame;
     [ThreadStatic] private static long t_siteKey;
     [ThreadStatic] private static SiteRecord? t_knownSite;
 
@@ -57,11 +58,9 @@ public static class SiblingRecorder
     private static long s_rejectNotMemoable;
     private static long s_rejectGas;
     private static long s_rejectCold;
-    private static long s_rejectPrefix;
     private static long s_recNotClean;
     private static long s_recReverted;
     private static long s_recTookValue;
-    private static long s_recPrefixOverlap;
     private static System.Threading.Timer? s_reportTimer;
 
     static SiblingRecorder() =>
@@ -72,8 +71,8 @@ public static class SiblingRecorder
         if (s_recorded == 0 && s_lookupMisses == 0 && s_replays == 0) return;
         string line =
             $"SIBLING-MEMO recorded {s_recorded} (memoable {s_recordedMemoable}), lookup misses {s_lookupMisses}, replays {s_replays}, " +
-            $"rejects: not-memoable {s_rejectNotMemoable}, gas {s_rejectGas}, cold {s_rejectCold}, prefix {s_rejectPrefix}, sites {s_sites.Count}, " +
-            $"rec-fails: clean {s_recNotClean}, reverted {s_recReverted}, value {s_recTookValue}, prefix {s_recPrefixOverlap}";
+            $"rejects: not-memoable {s_rejectNotMemoable}, gas {s_rejectGas}, cold {s_rejectCold}, sites {s_sites.Count}, " +
+            $"rec-fails: clean {s_recNotClean}, reverted {s_recReverted}, value {s_recTookValue}";
         Console.WriteLine(line);
         if (string.IsNullOrWhiteSpace(s_reportPath)) return;
         try
@@ -97,8 +96,16 @@ public static class SiblingRecorder
     /// (pools, tokens) would turn into a rejection of the whole request.</summary>
     public static void TouchWrite(in StorageCell cell)
     {
-        if (!t_recordingWrites) return;
-        (t_currentWrites ??= new HashSet<int>(64)).Add(cell.GetHashCode());
+        if (t_recordingWrites)
+        {
+            (t_currentWrites ??= new HashSet<int>(64)).Add(cell.GetHashCode());
+        }
+        else if (t_inCancelableFrame)
+        {
+            // A write in the glue between siblings is part of the state the next sibling starts
+            // from, so the chain must carry it.
+            t_chainHash = Mix(t_chainHash, cell.GetHashCode());
+        }
     }
 
     /// <summary>One full observation of a call site. Immutable once published.</summary>
@@ -116,19 +123,27 @@ public static class SiblingRecorder
 
     public static long ComputeSiteKey(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value, long gasGiven)
     {
-        // gasGiven is part of the identity: the same inner call at a different position receives
-        // different gas through 63/64 forwarding and is a different execution. Positions are
-        // stable across requests, so each position's occurrence keeps a memo of its own.
+        // The key is this sibling's own identity mixed into the chain of everything that ran before
+        // it in this request: each preceding sibling's identity and every state write in the glue
+        // between them. A sibling's result is a function of (state at its start, to, input, value,
+        // gas), and the state at its start is the state root plus exactly those preceding effects -
+        // so a key match implies the same starting state, which is what makes replay sound without
+        // any disjointness test. Divergence anywhere upstream changes the chain and the lookup
+        // misses into ordinary execution. gasGiven belongs here too: 63/64 forwarding gives the
+        // same call different gas at different positions, and that is a different execution.
         ValueHash256 inputHash = ValueKeccak.Compute(input);
-        return HashCode.Combine(stateRoot, to, inputHash, value.GetHashCode(), gasGiven);
+        return Mix(t_chainHash, HashCode.Combine(stateRoot, to, inputHash, value.GetHashCode(), gasGiven));
     }
+
+    private static long Mix(long chain, long value) =>
+        unchecked((long)((ulong)(chain ^ value) * 0x9E3779B97F4A7C15UL) + (value >> 3));
 
     public static SiteRecord? TryGet(long siteKey) =>
         s_sites.TryGetValue(siteKey, out SiteRecord? record) ? record : null;
 
-    /// <summary>The memo is replayable here iff its warmth assumptions hold (all recorded
-    /// first-touches still cold), the gas handed to the child matches the recording, and it reads
-    /// nothing an earlier sibling of this request wrote.</summary>
+    /// <summary>A key match already implies the same starting state (the chain covers the whole
+    /// prefix), so what remains is the warmth belt: every cell the recording touched cold must
+    /// still be cold here, which is what makes the recorded gas exact with no arithmetic.</summary>
     public static bool IsReplayable(SiteRecord record, long gasGiven, in StackAccessTracker tracker)
     {
         if (!record.Memoable) { s_rejectNotMemoable++; return false; }
@@ -142,15 +157,6 @@ public static class SiblingRecorder
         foreach (StorageCell slot in record.FirstTouchSlots)
         {
             if (!tracker.IsCold(in slot)) { s_rejectCold++; return false; }
-        }
-
-        HashSet<int>? prefixWrites = t_prefixWrites;
-        if (prefixWrites is { Count: > 0 })
-        {
-            foreach (int h in record.TouchHashes)
-            {
-                if (prefixWrites.Contains(h)) { s_rejectPrefix++; return false; }
-            }
         }
 
         return true;
@@ -180,6 +186,7 @@ public static class SiblingRecorder
         // hooks off the hot path in steady state; its stored touches still feed the prefix-write
         // tracking at merge when it is a writer.
         t_recordingWrites = true;
+        t_inCancelableFrame = true;
         (t_currentWrites ??= new HashSet<int>(64)).Clear();
         if (t_knownSite is not null)
         {
@@ -199,50 +206,20 @@ public static class SiblingRecorder
         t_recording = false;
         t_recordingWrites = false;
 
+        // Recorded, known-and-re-executed or replayed - every completed sibling advances the chain
+        // identically, which is what keeps a replaying request on the recording request's keys.
+        t_chainHash = Mix(t_chainHash, t_siteKey);
+
         if (!wasRecording)
         {
-            // Known dirty sites poison the memos of everything after them in this request with
-            // their recorded writes; if this occurrence wrote something new, the live capture
-            // covers it too. Clean known sites poison nothing, replayed or re-executed.
-            if (t_knownSite is { Memoable: false } known)
-            {
-                (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(known.WriteHashes);
-            }
-
-            if (!cleanFrame && t_currentWrites is { Count: > 0 } liveWrites)
-            {
-                (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(liveWrites);
-            }
-
             t_knownSite = null;
             return;
         }
 
-        HashSet<int> touches = t_touches!;
-        bool prefixDisjoint = true;
-        HashSet<int>? prefixWrites = t_prefixWrites;
-        if (prefixWrites is { Count: > 0 })
-        {
-            foreach (int h in touches)
-            {
-                if (prefixWrites.Contains(h)) { prefixDisjoint = false; break; }
-            }
-        }
-
-        bool memoable = cleanFrame && succeeded && !tookValue && prefixDisjoint;
+        bool memoable = cleanFrame && succeeded && !tookValue;
         if (!cleanFrame) s_recNotClean++;
         if (!succeeded) s_recReverted++;
         if (tookValue) s_recTookValue++;
-        if (!prefixDisjoint) s_recPrefixOverlap++;
-        // Only writes that SURVIVED the sibling poison the suffix. A clean frame's writes were all
-        // reverted away, and simulate-then-revert is exactly what these frames do: poisoning with
-        // them made every quote poison the pool slots the next quote reads, which is what rejected
-        // 60 of 68 recordings. cleanFrame is the journal's own answer to what survived.
-        if (!cleanFrame && t_currentWrites is { Count: > 0 } writes)
-        {
-            (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(writes);
-        }
-
         s_recorded++;
         if (memoable) s_recordedMemoable++;
         if (s_sites.Count >= MaxSites) s_sites.Clear();
@@ -252,7 +229,7 @@ public static class SiblingRecorder
             GasGiven = gasGiven,
             GasUsed = gasUsed,
             Output = memoable ? output.ToArray() : [],
-            TouchHashes = [.. touches],
+            TouchHashes = [.. t_touches!],
             WriteHashes = cleanFrame || t_currentWrites is null ? [] : [.. t_currentWrites],
             FirstTouchAddresses = [.. t_firstTouchAddresses!],
             FirstTouchSlots = [.. t_firstTouchSlots!],
@@ -266,8 +243,10 @@ public static class SiblingRecorder
     {
         t_recording = false;
         t_recordingWrites = false;
+        t_inCancelableFrame = false;
+        t_chainHash = 0;
+        t_recordingWrites = false;
         t_knownSite = null;
-        t_prefixWrites?.Clear();
     }
 
     public static void TouchAddress(Address? address, bool cold)
