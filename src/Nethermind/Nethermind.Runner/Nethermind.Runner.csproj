@@ -20,9 +20,6 @@
     <InternalsVisibleTo Include="Nethermind.Runner.Test" />
   </ItemGroup>
 
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
-    <PublishReadyToRun>true</PublishReadyToRun>
-  </PropertyGroup>
 
   <PropertyGroup Label="PackagesLock">
     <DisableImplicitNuGetFallbackFolder Condition="$(ContinuousIntegrationBuild) == 'true'">true</DisableImplicitNuGetFallbackFolder>
