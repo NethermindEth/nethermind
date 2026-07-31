@@ -113,7 +113,7 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
         int slots = 6 + random.Next(18);
         for (int i = 0; i < slots; i++)
         {
-            switch (random.Next(22))
+            switch (random.Next(23))
             {
                 case 0:
                     jumpDests.Add(code.Count);
@@ -217,6 +217,13 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     // A table handler that consumes its successor and lands past it - adjacent to a
                     // random JUMPDEST from case 0 this is the elided-marker landing.
                     code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(256), (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO]);
+                    break;
+                case 21:
+                    // SUB feeding AND at real depth, the masked-difference pair.
+                    code.AddRange([
+                        (byte)Instruction.PUSH1, (byte)random.Next(256),
+                        (byte)Instruction.PUSH1, (byte)random.Next(256),
+                        (byte)Instruction.SUB, (byte)Instruction.AND]);
                     break;
                 case 19:
                     // PUSH1 feeding a DUP at mixed depths, and the glued PUSH1 pair followed by an
