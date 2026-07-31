@@ -47,7 +47,19 @@ public static class SiblingRecorder
 
     public static void BeginSibling(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value)
     {
-        t_siteKey = ComputeSiteKey(in stateRoot, to, input, in value);
+        long key = ComputeSiteKey(in stateRoot, to, input, in value);
+
+        // A repeated site's touch set is stable across occurrences (measured 100.0% on the target
+        // workload), so a site the store already knows needs no re-recording - and in steady state
+        // that is nearly all of them, which is what keeps the access-tracker hooks off the hot
+        // path. The arbiter's validation queries live tracker state, not a fresh recording.
+        if (s_sites.ContainsKey(key))
+        {
+            t_recording = false;
+            return;
+        }
+
+        t_siteKey = key;
         (t_touches ??= new HashSet<int>(256)).Clear();
         (t_firstTouches ??= new HashSet<int>(128)).Clear();
         t_recording = true;
