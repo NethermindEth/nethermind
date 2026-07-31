@@ -1,7 +1,32 @@
 <Project>
 
+  <!-- Disable R2R for test projects - they don't need it and composite R2R is slow -->
+  <PropertyGroup Condition="$(MSBuildProjectName.Contains('Test'))">
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
+    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+    <OptimizationPreference>Speed</OptimizationPreference>
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
+    <!-- Inline framework methods (Dictionary, Span, Memory, etc.) into Nethermind R2R code.
+         Safe because Docker images pin the framework version via base image hash.
+         The * wildcard enables inlining from all referenced modules. -->
+    <!-- Split methods into hot/cold sections using SPGO block counts from .mibc.
+         Cold basic blocks (error paths, rare branches) go to .text.cold section,
+         keeping the hot working set smaller and improving I-cache density. -->
+    <!-- No method-layout flag: the committed profiles cannot drive one yet. The callchain profile
+         crashes crossgen2's CallChainProfile parser (its names lack the "Type!Method" format), and
+         the committed .mibc carries no call-graph data, so PettisHansen would silently no-op.
+         Re-enable "callchain-profile" plus "method-layout:callfrequency" once the profile is
+         regenerated with the fixed PgoTrim name formatting. -->
+    <!-- Match file layout to method ordering so hot methods are on adjacent pages on disk. -->
+    <!-- The SDK forwards $(PublishReadyToRunCrossgen2ExtraArgs) to crossgen2; the task-internal
+         Crossgen2ExtraCommandLineArgs name is not user-settable. -->
+    <PublishReadyToRunCrossgen2ExtraArgs>$(PublishReadyToRunCrossgen2ExtraArgs);--opt-cross-module:*;--file-layout:methodorder</PublishReadyToRunCrossgen2ExtraArgs>
+    <!-- Hot-cold splitting emits relocation types the arm64 R2R PE writer rejects
+         (NotSupportedException in RelocationHelper.ProcessRelocation) — x64 targets only. -->
+    <PublishReadyToRunCrossgen2ExtraArgs Condition="!$(RuntimeIdentifier.Contains('arm'))">$(PublishReadyToRunCrossgen2ExtraArgs);--hot-cold-splitting</PublishReadyToRunCrossgen2ExtraArgs>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(PublishReadyToRun)' == 'true' and Exists('$(NethermindPgoProfile)')">

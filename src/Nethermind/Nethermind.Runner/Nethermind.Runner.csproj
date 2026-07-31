@@ -20,6 +20,10 @@
     <InternalsVisibleTo Include="Nethermind.Runner.Test" />
   </ItemGroup>
 
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+
   <PropertyGroup Label="PackagesLock">
     <DisableImplicitNuGetFallbackFolder Condition="$(ContinuousIntegrationBuild) == 'true'">true</DisableImplicitNuGetFallbackFolder>
     <RuntimeIdentifiers>linux-arm64;linux-x64;osx-arm64;osx-x64;win-x64</RuntimeIdentifiers>
@@ -107,6 +111,15 @@
     <EmbeddedResource Include="Logging\Layouts\*.layout.xml" />
     <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="pgo\nethermind.jit.gz">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="pgo\nethermind.callchain.json.gz" Condition="Exists('pgo\nethermind.callchain.json.gz')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="pgo\nethermind.mibc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 

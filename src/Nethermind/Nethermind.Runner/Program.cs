@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -55,6 +56,7 @@ BlocksConfig.SetDefaultExtraDataWithVersion();
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
+PosixSignalRegistration[]? signalRegistrations = null;
 string unhandledError = "A critical error has occurred";
 Option<string>[] deprecatedOptions =
 [
@@ -117,6 +119,23 @@ async Task<int> ConfigureAsync(string[] args)
         processExitSource?.Exit(ExitCodes.SigTerm);
         exit.Wait();
     };
+    // The runtime's default signal termination skips the managed-exit path, so shutdown
+    // work that runs at clean CLR exit (e.g. DOTNET_WritePGOData) is lost; cancel it and
+    // let Main return normally after the graceful shutdown instead.
+    PosixSignalRegistration ExitOnSignal(PosixSignal signal, int exitCode) =>
+        PosixSignalRegistration.Create(signal, ctx =>
+        {
+            if (processExitSource is null) return;
+
+            ctx.Cancel = true;
+            processExitSource.Exit(exitCode);
+        });
+
+    signalRegistrations =
+    [
+        ExitOnSignal(PosixSignal.SIGTERM, ExitCodes.SigTerm),
+        ExitOnSignal(PosixSignal.SIGINT, ExitCodes.SigInt)
+    ];
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
     PluginLoader pluginLoader = new(
@@ -150,6 +169,11 @@ async Task<int> ConfigureAsync(string[] args)
     finally
     {
         exit.Wait();
+
+        foreach (PosixSignalRegistration registration in signalRegistrations ?? [])
+        {
+            registration.Dispose();
+        }
     }
 }
 

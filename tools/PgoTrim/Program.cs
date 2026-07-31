@@ -15,6 +15,40 @@ using System.Text;
 //
 // Usage: dotnet run -- <input.jit> [output.jit.gz] [--min-block 100] [--min-edge 250]
 
+// Subcommand: convert-trace — inject missing MethodDetails CTF mapping and convert to .etlx
+if (args.Length >= 1 && args[0] == "convert-trace")
+{
+    if (args.Length < 3)
+    {
+        Console.Error.WriteLine("Usage: PgoTrim convert-trace <input.trace.zip> <output.etlx>");
+        return 1;
+    }
+    return TraceConverter.Convert(args[1], args[2]);
+}
+
+// Subcommand: extract-spgo — extract perf sample IPs for dotnet-pgo SPGO
+if (args.Length >= 1 && args[0] == "extract-spgo")
+{
+    if (args.Length < 3)
+    {
+        Console.Error.WriteLine("Usage: PgoTrim extract-spgo <sampling.trace.zip> <output.spgo>");
+        return 1;
+    }
+    return SpgoExtractor.Extract(args[1], args[2]);
+}
+
+// Subcommand: generate-callchain — resolve .callgraph IPs to method names for crossgen2 CallFrequency layout
+if (args.Length >= 1 && args[0] == "generate-callchain")
+{
+    if (args.Length < 3)
+    {
+        Console.Error.WriteLine("Usage: PgoTrim generate-callchain <input.etlx> <output.json>");
+        Console.Error.WriteLine("  Reads .callgraph file (same base name as .etlx) and resolves IPs to method names.");
+        return 1;
+    }
+    return CallChainGenerator.Generate(args[1], args[2]);
+}
+
 int minBlock = 100;
 int minEdge = 250;
 string? inputPath = null;

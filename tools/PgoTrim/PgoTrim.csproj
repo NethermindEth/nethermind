@@ -2,4 +2,11 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Compiled into dotnet-pgo at CI time, not part of PgoTrim -->
+    <Compile Remove="dotnet-pgo-patches\**" />
+  </ItemGroup>
 </Project>
