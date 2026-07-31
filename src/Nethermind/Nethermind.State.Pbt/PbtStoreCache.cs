@@ -58,19 +58,12 @@ public sealed class PbtStoreCache : IDisposable
         PbtGroupFormat format = layout.GroupFormat();
         return layout.Tiling() switch
         {
-            PbtTiling.ClusteredFourLevel => EstimateClusterSize<PbtClusteredTileLayout>(format),
             PbtTiling.FourLevel => EstimateGroupSize<PbtFourLevelTileLayout>(format),
             PbtTiling.FiveLevel => EstimateGroupSize<PbtFiveLevelTileLayout>(format),
             PbtTiling.SixLevel => EstimateGroupSize<PbtSixLevelTileLayout>(format),
             PbtTiling.EightLevel => EstimateGroupSize<PbtEightLevelTileLayout>(format),
             _ => throw new ArgumentOutOfRangeException(nameof(layout)),
         };
-    }
-
-    private static int EstimateClusterSize<TLayout>(PbtGroupFormat format) where TLayout : IPbtTileLayout
-    {
-        int groupSize = EstimateGroupSize<TLayout>(format);
-        return PbtNodeCluster.EncodedLength(TLayout.BoundarySlots * groupSize, groupSize, TLayout.BoundarySlots);
     }
 
     private static int EstimateGroupSize<TLayout>(PbtGroupFormat format) where TLayout : IPbtTileLayout

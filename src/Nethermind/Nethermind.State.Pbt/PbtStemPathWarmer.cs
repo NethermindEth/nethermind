@@ -20,9 +20,6 @@ internal static class PbtStemPathWarmer
 
         switch (layout.Tiling())
         {
-            case PbtTiling.ClusteredFourLevel:
-                WarmPartition<PbtClusteredTileLayout>(bundle, partition, root, stem);
-                break;
             case PbtTiling.SixLevel:
                 WarmPartition<PbtSixLevelTileLayout>(bundle, partition, root, stem);
                 break;
