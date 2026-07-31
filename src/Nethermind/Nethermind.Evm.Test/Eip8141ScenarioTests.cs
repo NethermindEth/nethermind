@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -81,6 +82,37 @@ public class Eip8141ScenarioTests
             Is.EqualTo(1.Ether - transferred - (UInt256)receipt.GasUsed),
             "payer covers gas at the effective price on top of the transferred value");
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+    }
+
+    // EIP-7708: a codeless SENDER frame transfers through default code, not the VM, so the log must
+    // still reach the frame receipt and the transaction log union. Recipient is fresh, exercising
+    // the dead-recipient path where default code always logs (the VM path suppresses it when the
+    // EIP-8037 NEW_ACCOUNT gas is unaffordable).
+    [Test]
+    public void CodelessSenderFrameTransfer_EmitsEip7708TransferLog()
+    {
+        UInt256 transferred = 1_000_000;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            SenderFrame(Recipient, value: transferred));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+        LogEntry expected = new(
+            Address.SystemUser,
+            transferred.ToBigEndian(),
+            [new Hash256("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"), Sender.ToHash().ToHash256(), Recipient.ToHash().ToHash256()]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(transferred));
+            Assert.That(receipt.FrameReceipts![0].Logs, Is.Empty);
+            receipt.FrameReceipts[1].Logs.AssertEquivalentTo([expected]);
+            receipt.Logs.AssertEquivalentTo([expected]);
+            Assert.That(receipt.Bloom, Is.EqualTo(new Bloom([expected])));
+        }
     }
 
     // Spec Example 1b: a DEFAULT deploy frame installs the smart-account code at the sender address
