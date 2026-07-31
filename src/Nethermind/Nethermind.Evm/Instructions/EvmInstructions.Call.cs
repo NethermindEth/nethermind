@@ -93,7 +93,11 @@ public static partial class EvmInstructions
         where TEip7708 : struct, IFlag
     {
         vm.MetricsCounters.IncrementCalls();
-        if (ParallelViabilityCensus.IsEnabled) ParallelViabilityCensus.ObserveCall();
+        if (ParallelViabilityCensus.IsEnabled)
+        {
+            ParallelViabilityCensus.ObserveCall(vm.LastOpWasGas);
+            vm.LastOpWasGas = false;
+        }
 
         // Clear previous return data.
         vm.ReturnData = null;

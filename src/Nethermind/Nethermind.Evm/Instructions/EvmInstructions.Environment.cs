@@ -666,7 +666,11 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (ParallelViabilityCensus.IsEnabled) ParallelViabilityCensus.ObserveGas();
+        if (ParallelViabilityCensus.IsEnabled)
+        {
+            ParallelViabilityCensus.ObserveGas();
+            vm.LastOpWasGas = true;
+        }
         // Deduct the base gas cost for reading gas.
         TGasPolicy.Consume<BaseGasCost>(ref gas);
 

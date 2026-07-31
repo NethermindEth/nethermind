@@ -105,6 +105,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private bool _isTracingActionsCached;
 
     private BlockExecutionContext _blockExecutionContext;
+    /// <summary>Diagnostic only: the GAS opcode ran immediately before the current op, which is how
+    /// a forwarded budget reaches a call.</summary>
+    public bool LastOpWasGas;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
