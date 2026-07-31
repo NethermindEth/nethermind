@@ -635,6 +635,46 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
+    // A block count does not bound memory: receipt size spans ~100 KB to several MB per block, so log-heavy
+    // blocks must saturate on bytes long before the block cap is reached.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_stores_bodies_once_the_retention_byte_cap_is_reached()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        // One shared array: the estimate counts it per block, so the cap is reached without the test holding it
+        // that many times. Each block estimates at least its log data, so this many blocks always saturate.
+        const int LogDataBytes = 8 * 1024 * 1024;
+        int blocksToSaturate = (int)(PersistentReceiptStorage.MaxRetainedBytes / LogDataBytes);
+        Assert.That(blocksToSaturate, Is.LessThan(PersistentReceiptStorage.MaxRetainedBodies),
+            "precondition: the byte cap must bind before the block cap on log-heavy blocks");
+
+        LogEntry heavyLog = new(TestItem.AddressA, new byte[LogDataBytes], [TestItem.KeccakA]);
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block InsertHeavyBlock(ulong number)
+        {
+            Block block = Build.A.Block.WithNumber(number).WithTransactions(tx).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+            _storage.InsertDeferred(block, [Build.A.Receipt.WithLogs(heavyLog).WithCalculatedBloom().TestObject],
+                _specProvider.GetSpec((ForkActivation)number));
+            return block;
+        }
+
+        Block firstRetained = InsertHeavyBlock(1);
+        for (ulong number = 2; number <= (ulong)blocksToSaturate; number++)
+        {
+            InsertHeavyBlock(number);
+        }
+
+        Block overflow = InsertHeavyBlock((ulong)blocksToSaturate + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BodyIsPersisted(overflow), Is.True, "at the byte cap the body must write through");
+            Assert.That(BodyIsPersisted(firstRetained), Is.False, "below the cap the skip must keep applying");
+        }
+    }
+
     // Closes the insert/disable race: the disable flush may drain between the health check that skipped the
     // write and the retention add, which would otherwise strand the body in memory forever.
     [Test, MaxTime(Timeout.MaxTestTime)]
