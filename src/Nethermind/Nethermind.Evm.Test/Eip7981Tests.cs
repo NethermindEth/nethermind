@@ -147,14 +147,18 @@ public class Eip7981Tests
     [Test]
     public void Calldata_with_access_list_floor_equals_standard_at_exact_tie()
     {
-        // Sized so the standard's fixed access-entry component exactly equals the
+        // Sized so the standard's fixed access-entry components exactly equal the
         // floor's per-token premium over the standard's per-byte data cost.
-        AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).Build();
-        Transaction transaction = new() { To = Address.Zero, Data = new byte[50], AccessList = accessList };
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(Address.Zero)
+            .AddStorage(UInt256.Zero)
+            .AddStorage(UInt256.One)
+            .Build();
+        Transaction transaction = new() { To = Address.Zero, Data = new byte[145], AccessList = accessList };
 
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
         Assert.That(cost.Standard, Is.EqualTo(cost.FloorGas));
-        Assert.That(cost.MinimalGas, Is.EqualTo(19_480UL));
+        Assert.That(cost.MinimalGas, Is.EqualTo(29_656UL));
     }
 }

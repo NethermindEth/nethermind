@@ -14,8 +14,8 @@ public static class Eip8038Constants
 
     public const ulong CallValue = AccountWrite + CallStipend;
     public const ulong CreateAccess = AccountWrite + ColdStorageAccess;
-    public const ulong AccessListAddressCost = ColdAccountAccess;
-    public const ulong AccessListStorageKeyCost = ColdStorageAccess;
+    public const ulong AccessListAddressCost = ColdAccountAccess - WarmAccess;
+    public const ulong AccessListStorageKeyCost = ColdStorageAccess - WarmAccess;
     public const ulong PerAuthBaseExecution = AuthTupleCalldataCost + EcRecoverCost + ColdAccountAccess + 2 * WarmAccess;
 
     private const ulong AuthTupleCalldataCost = 101 * GasCostOf.TxDataNonZeroEip2028;

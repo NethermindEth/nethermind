@@ -35,6 +35,8 @@ public class Eip8038ConstantsTests
         {
             Assert.That(Eip8038Constants.CallValue, Is.EqualTo(10300));
             Assert.That(Eip8038Constants.CreateAccess, Is.EqualTo(11000));
+            Assert.That(Eip8038Constants.AccessListAddressCost, Is.EqualTo(2900));
+            Assert.That(Eip8038Constants.AccessListStorageKeyCost, Is.EqualTo(2900));
             Assert.That(RefundOf.SClearEip8038, Is.EqualTo(12480));
             Assert.That(Eip8038Constants.PerAuthBaseExecution, Is.EqualTo(7816));
         });
@@ -54,17 +56,17 @@ public class Eip8038ConstantsTests
     }
 
     [Test]
-    public void Access_list_address_cost_equals_cold_account_access()
+    public void Access_list_address_cost_subtracts_warm_access()
     {
         ulong addressCost = Eip8038Constants.AccessListAddressCost;
-        Assert.That(addressCost, Is.EqualTo(Eip8038Constants.ColdAccountAccess));
+        Assert.That(addressCost, Is.EqualTo(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess));
     }
 
     [Test]
-    public void Access_list_storage_key_cost_equals_cold_storage_access()
+    public void Access_list_storage_key_cost_subtracts_warm_access()
     {
         ulong storageKeyCost = Eip8038Constants.AccessListStorageKeyCost;
-        Assert.That(storageKeyCost, Is.EqualTo(Eip8038Constants.ColdStorageAccess));
+        Assert.That(storageKeyCost, Is.EqualTo(Eip8038Constants.ColdStorageAccess - Eip8038Constants.WarmAccess));
     }
 
     [Test]
