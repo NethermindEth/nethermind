@@ -282,10 +282,9 @@ if [[ "$DOTTRACE" == "true" ]]; then
     --entrypoint /opt/dottrace/dottrace
   )
   entry_args=(start --framework=NetCore "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.dtp" --propagate-exit-code -- /nethermind/nethermind)
-elif [[ "$CLIENT" == "nethermind" ]]; then
-  # Run the binary directly (as expb does) — skips entrypoint.sh host tuning.
-  docker_args+=(--entrypoint /nethermind/nethermind)
 fi
+# Nethermind keeps the image's entrypoint.sh (as expb and production do): it applies
+# host tuning and enables a shipped PGO profile, which a direct binary call skips.
 # geth/reth official images already have the client binary as their entrypoint;
 # node_args are passed as the container command.
 
