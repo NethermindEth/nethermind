@@ -105,7 +105,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private bool _isTracingActionsCached;
 
     private BlockExecutionContext _blockExecutionContext;
-    private long _siblingSiteKey;
+    private Core.Crypto.ValueHash256 _siblingSiteKey;
     private long _siblingGasGiven;
     private int _siblingLogsAtStart;
     private int _siblingDestroysAtStart;
@@ -223,18 +223,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             && _txTracer.IsCancelable
                             && !_currentState.ExecutionType.IsAnyCreate())
                         {
-                            memo = ParallelSiblings.SiblingRecorder.TryGet(_siblingSiteKey);
-                            if (memo is null)
-                            {
-                                ParallelSiblings.SiblingRecorder.CountLookupMiss();
-                            }
-                            else if (memo.GasGiven != (long)TGasPolicy.GetRemainingGas(in _currentState.Gas))
-                            {
-                                ParallelSiblings.SiblingRecorder.CountGasReject();
-                                memo = null;
-                            }
-                            else if (!ParallelSiblings.SiblingRecorder.IsReplayable(memo, memo.GasGiven, in _currentState.AccessTracker)
-                                || !TGasPolicy.TryConsume(ref _currentState.Gas, (ulong)memo.GasUsed))
+                            memo = ParallelSiblings.SiblingRecorder.TryGet(in _siblingSiteKey);
+                            if (memo is not null
+                                && (memo.GasGiven != (long)TGasPolicy.GetRemainingGas(in _currentState.Gas)
+                                || !ParallelSiblings.SiblingRecorder.IsReplayable(memo, memo.GasGiven, in _currentState.AccessTracker)
+                                || !TGasPolicy.TryConsume(ref _currentState.Gas, (ulong)memo.GasUsed)))
                             {
                                 memo = null;
                             }
@@ -242,7 +235,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                         if (memo is not null)
                         {
-                            ParallelSiblings.SiblingRecorder.CountReplay();
                             ParallelSiblings.SiblingRecorder.WarmReplayedTouches(memo, in _currentState.AccessTracker);
                             callResult = new CallResult(memo.Output, null);
                         }
@@ -812,7 +804,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 _siblingGasGiven);
             _siblingLogsAtStart = _currentState.AccessTracker.Logs.Count;
             _siblingDestroysAtStart = _currentState.AccessTracker.DestroyList.Count;
-            ParallelSiblings.SiblingRecorder.BeginSibling(_siblingSiteKey);
+            ParallelSiblings.SiblingRecorder.BeginSibling(in _siblingSiteKey);
         }
 
         // Clear the previous call result as the execution context is moving to a new frame.

@@ -101,7 +101,7 @@ public static partial class EvmInstructions
         if (!stack.PopWord256(out Span<byte> bytes)) goto StackUnderflow;
 
         // Store either the actual value (if non-zero) or a predefined zero constant.
-        if (ParallelSiblings.SiblingRecorder.RecordingWrites) ParallelSiblings.SiblingRecorder.TouchWrite(in storageCell);
+        if (ParallelSiblings.SiblingRecorder.ChainingGlueWrites) ParallelSiblings.SiblingRecorder.ChainGlueWrite(in storageCell);
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
@@ -406,7 +406,7 @@ public static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            if (ParallelSiblings.SiblingRecorder.RecordingWrites) ParallelSiblings.SiblingRecorder.TouchWrite(in storageCell);
+            if (ParallelSiblings.SiblingRecorder.ChainingGlueWrites) ParallelSiblings.SiblingRecorder.ChainGlueWrite(in storageCell);
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
             if (newIsZero)
             {
@@ -584,7 +584,7 @@ public static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            if (ParallelSiblings.SiblingRecorder.RecordingWrites) ParallelSiblings.SiblingRecorder.TouchWrite(in storageCell);
+            if (ParallelSiblings.SiblingRecorder.ChainingGlueWrites) ParallelSiblings.SiblingRecorder.ChainGlueWrite(in storageCell);
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
             if (newIsZero)
             {

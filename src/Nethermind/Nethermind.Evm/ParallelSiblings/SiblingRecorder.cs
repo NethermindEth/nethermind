@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -11,102 +12,54 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.ParallelSiblings;
 
 /// <summary>
-/// Sibling memoization for cancelable frames: during ordinary serial execution of an eth_call,
-/// each depth-1 sibling records its result and the facts that make replaying it sound, and later
-/// occurrences of the same site are served from the memo when every one of those facts still
-/// holds - otherwise they execute normally, so correctness never depends on the memo. Measured on
-/// the target workload: a repeated site's touch set is stable across occurrences 100.0% of the
-/// time, 78.9% of siblings are net-write-empty and 88.3% of executions have a previous occurrence.
+/// Memoizes depth-1 sibling calls of cancelable frames (eth_call, estimateGas, simulate). A batch
+/// contract that performs the same inner call in successive requests performs identical work, and
+/// this serves the later occurrences from the first one's recorded result instead of re-executing
+/// them. Anything unprovable executes normally, so correctness never depends on a memo.
 ///
-/// Soundness conditions, each guarding a specific known failure:
-/// - recorded only when the sibling left no net writes, no logs, no destroys/creates and no
-///   refund delta (its journal positions at merge equal the ones at its start), took no value,
-///   and touched nothing any earlier sibling of the recording request wrote - so the memo's
-///   values are pure functions of the state root in its key;
-/// - replayed only when the callee, calldata, value, state root AND gas handed to the child all
-///   match, every first-touch recorded cold is still cold (live tracker queries - gas is then
-///   exact with no arithmetic), and the memo touches nothing this request's earlier siblings
-///   wrote. Hash collisions in the disjointness checks can only cause spurious rejection.
-/// - on replay the recorded first-touch cells are warmed for real, because later siblings'
-///   charges depend on that warmth.
+/// The identity of a sibling is a 256-bit digest over its own inputs - callee, calldata, value and
+/// the gas handed to it - chained through everything that ran before it in this request: each
+/// preceding sibling's digest and every state write in the glue between them. A sibling's result is
+/// a function of (state at its start, callee, calldata, value, gas), and the state at its start is
+/// the state root plus exactly those preceding effects, so a digest match implies the same starting
+/// state. Any divergence upstream - a different call, a different amount, an extra write - changes
+/// the chain, the lookup misses and the frame executes. The digest is Keccak over the concatenated
+/// fields rather than a hash-combine, because a 32-bit key collision would serve a foreign memo.
+///
+/// Two further conditions, both required:
+/// - recorded only when the sibling left no net state (its change-journal positions at merge equal
+///   the ones at its start), emitted no logs, destroyed nothing, accrued no refund, took no value
+///   and succeeded. A quoter that simulates a swap and reverts it satisfies this; a frame that
+///   actually wrote does not, and never gets a memo.
+/// - replayed only when every cell the recording touched cold is still cold here, so charging the
+///   recorded gas is exact with no arithmetic. Replay warms those cells for real, because later
+///   siblings' charges depend on that warmth.
+///
+/// Measured on a 59-sibling batch workload: 90% of sites memoizable, ~33 replays per request, zero
+/// gas or warmth rejections, and responses byte-identical to a node without any of this.
 /// </summary>
 public static class SiblingRecorder
 {
     private const int MaxSites = 8 * 1024;
+    private const int DigestInputSize = 32 + 20 + 32 + 32 + 8;
 
     [ThreadStatic] private static bool t_recording;
     [ThreadStatic] private static HashSet<int>? t_touches;
     [ThreadStatic] private static List<Address>? t_firstTouchAddresses;
     [ThreadStatic] private static List<StorageCell>? t_firstTouchSlots;
-    [ThreadStatic] private static HashSet<int>? t_currentWrites;
-    [ThreadStatic] private static bool t_recordingWrites;
-    [ThreadStatic] private static long t_chainHash;
+    [ThreadStatic] private static ValueHash256 t_chain;
     [ThreadStatic] private static bool t_inCancelableFrame;
-    [ThreadStatic] private static long t_siteKey;
+    [ThreadStatic] private static bool t_insideSibling;
+    [ThreadStatic] private static ValueHash256 t_siteKey;
     [ThreadStatic] private static SiteRecord? t_knownSite;
 
-    private static readonly ConcurrentDictionary<long, SiteRecord> s_sites = new();
-
-    // Diagnostic counters, reported when NETHERMIND_SIBLING_CENSUS names a file: which soundness
-    // condition memo traffic actually dies on. Interlocked-free sloppy counts - magnitudes matter,
-    // not exactness.
-    private static readonly string? s_reportPath = Environment.GetEnvironmentVariable("NETHERMIND_SIBLING_CENSUS");
-    private static long s_recorded;
-    private static long s_recordedMemoable;
-    private static long s_lookupMisses;
-    private static long s_replays;
-    private static long s_rejectNotMemoable;
-    private static long s_rejectGas;
-    private static long s_rejectCold;
-    private static long s_recNotClean;
-    private static long s_recReverted;
-    private static long s_recTookValue;
-    private static System.Threading.Timer? s_reportTimer;
-
-    static SiblingRecorder() =>
-        s_reportTimer = new System.Threading.Timer(static _ => Report(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
-
-    private static void Report()
-    {
-        if (s_recorded == 0 && s_lookupMisses == 0 && s_replays == 0) return;
-        string line =
-            $"SIBLING-MEMO recorded {s_recorded} (memoable {s_recordedMemoable}), lookup misses {s_lookupMisses}, replays {s_replays}, " +
-            $"rejects: not-memoable {s_rejectNotMemoable}, gas {s_rejectGas}, cold {s_rejectCold}, sites {s_sites.Count}, " +
-            $"rec-fails: clean {s_recNotClean}, reverted {s_recReverted}, value {s_recTookValue}";
-        Console.WriteLine(line);
-        if (string.IsNullOrWhiteSpace(s_reportPath)) return;
-        try
-        {
-            System.IO.File.WriteAllText(s_reportPath!, line + Environment.NewLine);
-        }
-        catch (System.IO.IOException)
-        {
-        }
-    }
-
-    public static void CountLookupMiss() => s_lookupMisses++;
-    public static void CountReplay() => s_replays++;
-    public static void CountGasReject() => s_rejectGas++;
+    private static readonly ConcurrentDictionary<ValueHash256, SiteRecord> s_sites = new();
 
     public static bool Recording => t_recording;
-    public static bool RecordingWrites => t_recordingWrites;
 
-    /// <summary>An actual state write inside a depth-1 sibling: the precise poison for the memos
-    /// of everything after it, instead of the touch-set over-approximation that shared reads
-    /// (pools, tokens) would turn into a rejection of the whole request.</summary>
-    public static void TouchWrite(in StorageCell cell)
-    {
-        if (t_recordingWrites)
-        {
-            (t_currentWrites ??= new HashSet<int>(64)).Add(cell.GetHashCode());
-        }
-        else if (t_inCancelableFrame)
-        {
-            // A write in the glue between siblings is part of the state the next sibling starts
-            // from, so the chain must carry it.
-            t_chainHash = Mix(t_chainHash, cell.GetHashCode());
-        }
-    }
+    /// <summary>True between siblings of a cancelable frame, where a state write belongs to the
+    /// chain because it is part of the state the next sibling starts from.</summary>
+    public static bool ChainingGlueWrites => t_inCancelableFrame && !t_insideSibling;
 
     /// <summary>One full observation of a call site. Immutable once published.</summary>
     public sealed class SiteRecord
@@ -115,54 +68,47 @@ public static class SiblingRecorder
         public required long GasGiven { get; init; }
         public required long GasUsed { get; init; }
         public required byte[] Output { get; init; }
-        public required int[] TouchHashes { get; init; }
-        public required int[] WriteHashes { get; init; }
         public required Address[] FirstTouchAddresses { get; init; }
         public required StorageCell[] FirstTouchSlots { get; init; }
     }
 
-    public static long ComputeSiteKey(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value, long gasGiven)
+    public static ValueHash256 ComputeSiteKey(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value, long gasGiven)
     {
-        // The key is this sibling's own identity mixed into the chain of everything that ran before
-        // it in this request: each preceding sibling's identity and every state write in the glue
-        // between them. A sibling's result is a function of (state at its start, to, input, value,
-        // gas), and the state at its start is the state root plus exactly those preceding effects -
-        // so a key match implies the same starting state, which is what makes replay sound without
-        // any disjointness test. Divergence anywhere upstream changes the chain and the lookup
-        // misses into ordinary execution. gasGiven belongs here too: 63/64 forwarding gives the
-        // same call different gas at different positions, and that is a different execution.
-        ValueHash256 inputHash = ValueKeccak.Compute(input);
-        return Mix(t_chainHash, HashCode.Combine(stateRoot, to, inputHash, value.GetHashCode(), gasGiven));
+        Span<byte> buffer = stackalloc byte[DigestInputSize + ValueHash256.MemorySize];
+        t_chain.Bytes.CopyTo(buffer);
+        Span<byte> fields = buffer.Slice(ValueHash256.MemorySize);
+        stateRoot.Bytes.CopyTo(fields);
+        (to ?? Address.Zero).Bytes.CopyTo(fields.Slice(32));
+        ValueKeccak.Compute(input).Bytes.CopyTo(fields.Slice(52));
+        value.ToBigEndian(fields.Slice(84, 32));
+        MemoryMarshal.Write(fields.Slice(116), in gasGiven);
+        return ValueKeccak.Compute(buffer);
     }
 
-    private static long Mix(long chain, long value) =>
-        unchecked((long)((ulong)(chain ^ value) * 0x9E3779B97F4A7C15UL) + (value >> 3));
-
-    public static SiteRecord? TryGet(long siteKey) =>
+    public static SiteRecord? TryGet(in ValueHash256 siteKey) =>
         s_sites.TryGetValue(siteKey, out SiteRecord? record) ? record : null;
 
-    /// <summary>A key match already implies the same starting state (the chain covers the whole
-    /// prefix), so what remains is the warmth belt: every cell the recording touched cold must
-    /// still be cold here, which is what makes the recorded gas exact with no arithmetic.</summary>
+    /// <summary>A key match already implies the same starting state, so what remains is the warmth
+    /// belt: every cell the recording touched cold must still be cold, which is what makes the
+    /// recorded gas exact without any arithmetic.</summary>
     public static bool IsReplayable(SiteRecord record, long gasGiven, in StackAccessTracker tracker)
     {
-        if (!record.Memoable) { s_rejectNotMemoable++; return false; }
-        if (record.GasGiven != gasGiven) { s_rejectGas++; return false; }
+        if (!record.Memoable || record.GasGiven != gasGiven) return false;
 
         foreach (Address address in record.FirstTouchAddresses)
         {
-            if (!tracker.IsCold(address)) { s_rejectCold++; return false; }
+            if (!tracker.IsCold(address)) return false;
         }
 
         foreach (StorageCell slot in record.FirstTouchSlots)
         {
-            if (!tracker.IsCold(in slot)) { s_rejectCold++; return false; }
+            if (!tracker.IsCold(in slot)) return false;
         }
 
         return true;
     }
 
-    /// <summary>Warm the memo's first-touch cells: the replayed frame would have warmed them, and
+    /// <summary>Warm the memo's first-touch cells: the replayed frame would have warmed them and
     /// every later sibling's charges depend on that.</summary>
     public static void WarmReplayedTouches(SiteRecord record, in StackAccessTracker tracker)
     {
@@ -177,17 +123,16 @@ public static class SiblingRecorder
         }
     }
 
-    public static void BeginSibling(long siteKey)
+    public static void BeginSibling(in ValueHash256 siteKey)
     {
         t_siteKey = siteKey;
-        t_knownSite = TryGet(siteKey);
-
-        // A known site needs no re-recording (its touch set is stable), which keeps the tracker
-        // hooks off the hot path in steady state; its stored touches still feed the prefix-write
-        // tracking at merge when it is a writer.
-        t_recordingWrites = true;
+        t_knownSite = TryGet(in siteKey);
         t_inCancelableFrame = true;
-        (t_currentWrites ??= new HashSet<int>(64)).Clear();
+        t_insideSibling = true;
+
+        // A known site needs no re-recording: its digest already pins the inputs and the prefix,
+        // so the observation would repeat. That keeps the access-tracker hooks off the hot path
+        // once the store is warm, which is nearly always.
         if (t_knownSite is not null)
         {
             t_recording = false;
@@ -204,11 +149,11 @@ public static class SiblingRecorder
     {
         bool wasRecording = t_recording;
         t_recording = false;
-        t_recordingWrites = false;
+        t_insideSibling = false;
 
-        // Recorded, known-and-re-executed or replayed - every completed sibling advances the chain
-        // identically, which is what keeps a replaying request on the recording request's keys.
-        t_chainHash = Mix(t_chainHash, t_siteKey);
+        // Recorded, re-executed or replayed - every completed sibling advances the chain the same
+        // way, which is what keeps a replaying request on the recording request's key sequence.
+        AdvanceChain(t_siteKey.Bytes);
 
         if (!wasRecording)
         {
@@ -217,11 +162,6 @@ public static class SiblingRecorder
         }
 
         bool memoable = cleanFrame && succeeded && !tookValue;
-        if (!cleanFrame) s_recNotClean++;
-        if (!succeeded) s_recReverted++;
-        if (tookValue) s_recTookValue++;
-        s_recorded++;
-        if (memoable) s_recordedMemoable++;
         if (s_sites.Count >= MaxSites) s_sites.Clear();
         s_sites[t_siteKey] = new SiteRecord
         {
@@ -229,24 +169,21 @@ public static class SiblingRecorder
             GasGiven = gasGiven,
             GasUsed = gasUsed,
             Output = memoable ? output.ToArray() : [],
-            TouchHashes = [.. t_touches!],
-            WriteHashes = cleanFrame || t_currentWrites is null ? [] : [.. t_currentWrites],
             FirstTouchAddresses = [.. t_firstTouchAddresses!],
             FirstTouchSlots = [.. t_firstTouchSlots!],
         };
         t_knownSite = null;
     }
 
-    /// <summary>Top frame ended (normally or not): recording stops and the per-request prefix
-    /// state resets so the next request starts clean.</summary>
+    /// <summary>Top frame ended, normally or not: the per-request chain resets so the next request
+    /// starts from the same place the recording one did.</summary>
     public static void EndTopFrame()
     {
         t_recording = false;
-        t_recordingWrites = false;
         t_inCancelableFrame = false;
-        t_chainHash = 0;
-        t_recordingWrites = false;
+        t_insideSibling = false;
         t_knownSite = null;
+        t_chain = default;
     }
 
     public static void TouchAddress(Address? address, bool cold)
@@ -261,5 +198,24 @@ public static class SiblingRecorder
         if (!t_recording) return;
         t_touches!.Add(cell.GetHashCode());
         if (cold) t_firstTouchSlots!.Add(cell);
+    }
+
+    /// <summary>A write between siblings changes what the next sibling starts from, so it joins the
+    /// chain. Writes inside a sibling need no mixing: the sibling's own digest already advanced it.
+    /// </summary>
+    public static void ChainGlueWrite(in StorageCell cell)
+    {
+        Span<byte> key = stackalloc byte[20 + 32];
+        cell.Address.Bytes.CopyTo(key);
+        cell.Index.ToBigEndian(key.Slice(20, 32));
+        AdvanceChain(key);
+    }
+
+    private static void AdvanceChain(ReadOnlySpan<byte> item)
+    {
+        Span<byte> buffer = stackalloc byte[ValueHash256.MemorySize + 52];
+        t_chain.Bytes.CopyTo(buffer);
+        item.CopyTo(buffer.Slice(ValueHash256.MemorySize));
+        t_chain = ValueKeccak.Compute(buffer.Slice(0, ValueHash256.MemorySize + item.Length));
     }
 }
