@@ -309,7 +309,7 @@ public class BlockProcessorTests
     {
         yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode)
             .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
-        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode)
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray())
             .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
     }
 
