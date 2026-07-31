@@ -722,6 +722,7 @@
           "Nethermind.Numerics.Int256": "[1.5.0, )",
           "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
+          "System.IO.Hashing": "[10.0.10, )",
           "Testably.Abstractions": "[10.3.0, )"
         }
       },
