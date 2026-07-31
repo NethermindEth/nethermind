@@ -120,6 +120,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
 
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
+                    if (OpcodeHistogram.IsEnabled) OpcodeHistogram.Record(instruction);
 
                     // Gas already charged at the block entry, so the cores are gas-free.
                     switch (instruction)
@@ -451,6 +452,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
+                if (OpcodeHistogram.IsEnabled) OpcodeHistogram.Record(instruction);
                 programCounter++;
                 opCodeCount++;
 

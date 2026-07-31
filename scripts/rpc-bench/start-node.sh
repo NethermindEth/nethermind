@@ -48,6 +48,15 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+
+# The opcode histogram is driven by an environment variable, and additional_nethermind_flags is the
+# only per-run string the workflow already plumbs down to here, so accept it as a pseudo-flag and
+# translate it. Diagnostic branch only: costs ~4% when on, and nothing at all when absent.
+OPCODE_HISTOGRAM_PATH=""
+if [[ "$ADDITIONAL_FLAGS" == *--OpcodeHistogram=* ]]; then
+  OPCODE_HISTOGRAM_PATH="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/.*--OpcodeHistogram=([^ ]*).*/\1/')"
+  ADDITIONAL_FLAGS="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/--OpcodeHistogram=[^ ]*//')"
+fi
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
@@ -257,7 +266,24 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
-if [[ "$CLIENT" == "nethermind" ]]; then
+if [[ -n "$OPCODE_HISTOGRAM_PATH" ]]; then
+  # The report has to land on a mounted path or it dies with the container. The diag dir is only
+  # mounted by the dotTrace branch above, so mount it here too when dotTrace is off.
+  if [[ "$DOTTRACE" != "true" ]]; then
+    mkdir -p "$DIAG_DIR/dottrace"
+    docker_args+=(-v "$DIAG_DIR/dottrace:/dottrace-output:rw")
+  fi
+  docker_args+=(-e "NETHERMIND_OPCODE_HISTOGRAM=$OPCODE_HISTOGRAM_PATH")
+  log "Opcode histogram enabled, writing to $OPCODE_HISTOGRAM_PATH inside the container."
+fi
+# Two settings used to be forced on the Nethermind container here and both cost us on this
+# workload. Disabling tiered compilation also disables Dynamic PGO, which the runner project asks
+# for and which is what devirtualizes and inlines call-heavy code - an interpreter dispatching
+# through function-pointer tables is exactly that. GC latency level 0 is the batch mode, trading
+# pause length for throughput, and the measured p99-over-p50 spread was 1.57x against 1.07x for the
+# reference client, which is tail, not compute. Neither was applied to the other clients, so leaving
+# them off also makes the comparison symmetric. Set RPCBENCH_LEGACY_DOTNET_TUNING=1 to restore them.
+if [[ "$CLIENT" == "nethermind" && "${RPCBENCH_LEGACY_DOTNET_TUNING:-}" == "1" ]]; then
   docker_args+=(
     -e "DOTNET_TieredCompilation=0"
     -e "DOTNET_GCLatencyLevel=0"
