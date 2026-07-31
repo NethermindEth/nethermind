@@ -21,7 +21,7 @@ public abstract class StringRlpConverter : IRlpConverter<string>
     public static void Write(ref RlpWriter writer, string value)
     {
         ReadOnlySpan<char> charSpan = value.AsSpan();
-        var valueByteLength = Encoding.GetMaxByteCount(charSpan.Length);
+        int valueByteLength = Encoding.GetMaxByteCount(charSpan.Length);
 
         byte[]? sharedBuffer = null;
         try
@@ -30,7 +30,7 @@ public abstract class StringRlpConverter : IRlpConverter<string>
                 ? stackalloc byte[valueByteLength]
                 : sharedBuffer = ArrayPool<byte>.Shared.Rent(valueByteLength);
 
-            var bytes = Encoding.GetBytes(charSpan, buffer);
+            int bytes = Encoding.GetBytes(charSpan, buffer);
 
             writer.Write(buffer[..bytes]);
         }

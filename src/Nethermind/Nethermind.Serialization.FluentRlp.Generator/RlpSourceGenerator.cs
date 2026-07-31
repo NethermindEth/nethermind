@@ -45,12 +45,12 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var provider = context.SyntaxProvider.CreateSyntaxProvider(
+        IncrementalValuesProvider<RecordDeclarationSyntax> provider = context.SyntaxProvider.CreateSyntaxProvider(
             predicate: static (s, _) => s is RecordDeclarationSyntax,
             transform: static (ctx, _) => (RecordDeclarationSyntax)ctx.Node
         );
 
-        var compilation = context.CompilationProvider.Combine(provider.Collect());
+        IncrementalValueProvider<(Compilation, ImmutableArray<RecordDeclarationSyntax>)> compilation = context.CompilationProvider.Combine(provider.Collect());
 
         context.RegisterSourceOutput(compilation, Execute);
     }
@@ -60,7 +60,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         (Compilation Compilation, ImmutableArray<RecordDeclarationSyntax> RecordsDeclarationSyntaxes) p)
     {
         // For each record with the attribute, generate the RlpConverter class
-        foreach (var recordDecl in p.RecordsDeclarationSyntaxes)
+        foreach (RecordDeclarationSyntax recordDecl in p.RecordsDeclarationSyntaxes)
         {
             // Check if the record has the [RlpSerializable] attribute
             SemanticModel semanticModel = p.Compilation.GetSemanticModel(recordDecl.SyntaxTree);
@@ -77,31 +77,31 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             if (rlpSerializableAttribute is null) continue;
 
             // Extract the fully qualified record name with its namespace
-            var recordName = symbol.Name;
-            var fullTypeName = symbol.ToDisplayString();
+            string recordName = symbol.Name;
+            string fullTypeName = symbol.ToDisplayString();
             // TODO: Deal with missing and nested namespaces
-            var @namespace = symbol.ContainingNamespace?.ToDisplayString();
+            string? @namespace = symbol.ContainingNamespace?.ToDisplayString();
 
             // Extract all `using` directives
-            var usingDirectives = semanticModel.SyntaxTree.GetCompilationUnitRoot()
+            List<string> usingDirectives = semanticModel.SyntaxTree.GetCompilationUnitRoot()
                 .Usings
                 .Select(u => u.ToString())
                 .ToList();
 
             // Get the `RlpRepresentation` mode
-            var representation = (RlpRepresentation)(rlpSerializableAttribute.ConstructorArguments[0].Value ?? 0);
+            RlpRepresentation representation = (RlpRepresentation)(rlpSerializableAttribute.ConstructorArguments[0].Value ?? 0);
 
             // Get the constant length if specified
-            var constLength = (int)(rlpSerializableAttribute.ConstructorArguments[1].Value ?? -1);
+            int constLength = (int)(rlpSerializableAttribute.ConstructorArguments[1].Value ?? -1);
 
             // Gather recursively all members that are fields or primary constructor parameters
             // so we can read them in the same order they are declared.
-            var parameters = GetRecordParameters(recordDecl);
+            List<(string Name, TypeSyntax TypeName)> parameters = GetRecordParameters(recordDecl);
 
             // Ensure `Newtype` is only used in single-property records
             if (representation == RlpRepresentation.Newtype && parameters.Count != 1)
             {
-                var descriptor = new DiagnosticDescriptor(
+                DiagnosticDescriptor descriptor = new(
                     "RLP0001",
                     $"Invalid {nameof(RlpRepresentation)}",
                     $"'{nameof(RlpRepresentation.Newtype)}' representation is only allowed for records with a single property",
@@ -112,7 +112,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             }
 
             // Build the converter class source
-            var generatedCode = GenerateConverterClass(@namespace, usingDirectives, fullTypeName, recordName, parameters, representation, constLength);
+            string generatedCode = GenerateConverterClass(@namespace, usingDirectives, fullTypeName, recordName, parameters, representation, constLength);
 
             // Add to the compilation
             context.AddSource($"{recordName}RlpConverter.g.cs", SourceText.From(generatedCode, Encoding.UTF8));
@@ -130,10 +130,10 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // Primary constructor parameters
         if (recordDecl.ParameterList is not null)
         {
-            foreach (var param in recordDecl.ParameterList.Parameters)
+            foreach (ParameterSyntax param in recordDecl.ParameterList.Parameters)
             {
-                var paramName = param.Identifier.Text;
-                var paramType = param.Type!;
+                string paramName = param.Identifier.Text;
+                TypeSyntax paramType = param.Type!;
 
                 parameters.Add((paramName, paramType));
             }
@@ -159,27 +159,27 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             "using Nethermind.Serialization.FluentRlp.Instances;"
         ];
         IEnumerable<string> directives = defaultUsingDirectives.Concat(usingDirectives).Distinct();
-        var usingStatements = new StringBuilder();
-        foreach (var usingDirective in directives)
+        StringBuilder usingStatements = new();
+        foreach (string usingDirective in directives)
         {
             usingStatements.AppendLine(usingDirective);
         }
 
-        var writeCalls = new StringBuilder();
-        foreach (var (name, typeName) in parameters)
+        StringBuilder writeCalls = new();
+        foreach ((string name, TypeSyntax typeName) in parameters)
         {
-            var writeCall = MapTypeToWriteCall(name, typeName);
+            string writeCall = MapTypeToWriteCall(name, typeName);
             writeCalls.AppendLine($"w.{writeCall};");
         }
 
-        var readCalls = new StringBuilder();
-        foreach (var (name, typeName) in parameters)
+        StringBuilder readCalls = new();
+        foreach ((string name, TypeSyntax typeName) in parameters)
         {
-            var readCall = MapTypeToReadCall(typeName);
+            string readCall = MapTypeToReadCall(typeName);
             readCalls.AppendLine($"var {name} = r.{readCall};");
         }
 
-        var constructorCall = new StringBuilder($"{fullTypeName}(");
+        StringBuilder constructorCall = new($"{fullTypeName}(");
         for (int i = 0; i < parameters.Count; i++)
         {
             constructorCall.Append(parameters[i].Name);
@@ -259,7 +259,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // Generics
         if (syntax is GenericNameSyntax or TupleTypeSyntax or ArrayTypeSyntax)
         {
-            var typeConstructor = syntax switch
+            string typeConstructor = syntax switch
             {
                 GenericNameSyntax generic => generic.Identifier.ToString(),
                 TupleTypeSyntax _ => "Tuple",
@@ -267,7 +267,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 _ => throw new ArgumentOutOfRangeException(nameof(syntax))
             };
 
-            var typeParameters = syntax switch
+            IEnumerable<TypeSyntax> typeParameters = syntax switch
             {
                 GenericNameSyntax generic => generic.TypeArgumentList.Arguments,
                 TupleTypeSyntax tuple => tuple.Elements.Select(e => e.Type),
@@ -275,9 +275,9 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 _ => throw new ArgumentOutOfRangeException(nameof(syntax))
             };
 
-            var sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.AppendLine($"Read{typeConstructor.Capitalize()}(");
-            foreach (var typeParameter in typeParameters)
+            foreach (TypeSyntax typeParameter in typeParameters)
             {
                 sb.AppendLine($$"""static (scoped ref RlpReader r) => { return r.{{MapTypeToReadCall(typeParameter)}}; },""");
             }
@@ -307,7 +307,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // Generics
         if (syntax is GenericNameSyntax or TupleTypeSyntax or ArrayTypeSyntax)
         {
-            var typeParameters = syntax switch
+            IEnumerable<TypeSyntax> typeParameters = syntax switch
             {
                 GenericNameSyntax generic => generic.TypeArgumentList.Arguments,
                 TupleTypeSyntax tuple => tuple.Elements.Select(e => e.Type),
@@ -315,9 +315,9 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 _ => throw new ArgumentOutOfRangeException(nameof(syntax))
             };
 
-            var sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.AppendLine(propertyName is null ? "Write(value," : $"Write(value.{propertyName},");
-            foreach (var typeParameter in typeParameters)
+            foreach (TypeSyntax typeParameter in typeParameters)
             {
                 sb.AppendLine($$"""static (ref RlpWriter w, {{typeParameter}} value) => { w.{{MapTypeToWriteCall(null, typeParameter)}}; },""");
             }

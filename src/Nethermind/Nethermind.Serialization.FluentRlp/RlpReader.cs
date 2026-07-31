@@ -31,7 +31,7 @@ public ref struct RlpReader
     public unsafe T ReadInteger<T>() where T : unmanaged, IBinaryInteger<T>
     {
         ReadOnlySpan<byte> bigEndian;
-        var header = _buffer[_position];
+        byte header = _buffer[_position];
         if (header < 0x80)
         {
             bigEndian = _buffer.Slice(_position++, 1);
@@ -49,7 +49,7 @@ public ref struct RlpReader
     public ReadOnlySpan<byte> ReadBytes()
     {
         ReadOnlySpan<byte> result;
-        var header = _buffer[_position];
+        byte header = _buffer[_position];
         if (header < 0x80 || header >= 0xC0)
         {
             throw new RlpReaderException("RLP does not correspond to a byte string");
@@ -66,7 +66,7 @@ public ref struct RlpReader
             header -= 0xB7;
             ReadOnlySpan<byte> binaryLength = _buffer.Slice(++_position, header);
             _position += header;
-            var length = Int32Primitive.Read(binaryLength);
+            int length = Int32Primitive.Read(binaryLength);
             result = _buffer.Slice(_position, length);
             _position += length;
         }
@@ -80,7 +80,7 @@ public ref struct RlpReader
     public T ReadSequence<T, TContext>(TContext ctx, RefRlpReaderFunc<T, TContext> func)
     {
         T result;
-        var header = _buffer[_position++];
+        byte header = _buffer[_position++];
         if (header < 0xC0)
         {
             throw new RlpReaderException("RLP does not correspond to a sequence");
@@ -88,18 +88,18 @@ public ref struct RlpReader
 
         if (header < 0xF8)
         {
-            var length = header - 0xC0;
-            var reader = new RlpReader(_buffer.Slice(_position, length));
+            int length = header - 0xC0;
+            RlpReader reader = new(_buffer.Slice(_position, length));
             result = func(ref reader, ctx);
             _position += length;
         }
         else
         {
-            var lengthOfLength = header - 0xF7;
+            int lengthOfLength = header - 0xF7;
             ReadOnlySpan<byte> binaryLength = _buffer.Slice(_position, lengthOfLength);
             _position += lengthOfLength;
             int length = Int32Primitive.Read(binaryLength);
-            var reader = new RlpReader(_buffer.Slice(_position, length));
+            RlpReader reader = new(_buffer.Slice(_position, length));
             result = func(ref reader, ctx);
             _position += length;
         }
@@ -110,7 +110,7 @@ public ref struct RlpReader
     public T Choice<T>(params ReadOnlySpan<RefRlpReaderFunc<T>> alternatives)
     {
         int startingPosition = _position;
-        foreach (var f in alternatives)
+        foreach (RefRlpReaderFunc<T> f in alternatives)
         {
             try
             {

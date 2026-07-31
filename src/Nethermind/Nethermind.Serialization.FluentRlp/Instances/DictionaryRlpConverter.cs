@@ -10,7 +10,7 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
 {
     public static Dictionary<TKey, TValue> Read(ref RlpReader reader, RefRlpReaderFunc<TKey> readKey, RefRlpReaderFunc<TValue> readValue)
     {
-        var ctx = ValueTuple.Create(readKey, readValue);
+        (RefRlpReaderFunc<TKey>, RefRlpReaderFunc<TValue>) ctx = ValueTuple.Create(readKey, readValue);
         return reader.ReadSequence(ctx, static (scoped ref RlpReader r, (RefRlpReaderFunc<TKey>, RefRlpReaderFunc<TValue>) ctx) =>
         {
             Dictionary<TKey, TValue> result = [];
@@ -19,7 +19,7 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
 
                 (TKey key, TValue value) = r.ReadSequence(ctx, static (scoped ref RlpReader r, (RefRlpReaderFunc<TKey>, RefRlpReaderFunc<TValue>) ctx) =>
                 {
-                    var (readKey, readValue) = ctx;
+                    (RefRlpReaderFunc<TKey> readKey, RefRlpReaderFunc<TValue> readValue) = ctx;
                     TKey key = readKey(ref r);
                     TValue value = readValue(ref r);
 
@@ -35,16 +35,16 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
 
     public static void Write(ref RlpWriter writer, Dictionary<TKey, TValue> value, RefRlpWriterAction<TKey> writeKey, RefRlpWriterAction<TValue> writeValue)
     {
-        var ctx = ValueTuple.Create(value, writeKey, writeValue);
+        (Dictionary<TKey, TValue>, RefRlpWriterAction<TKey>, RefRlpWriterAction<TValue>) ctx = ValueTuple.Create(value, writeKey, writeValue);
         writer.WriteSequence(ctx, static (ref RlpWriter w, (Dictionary<TKey, TValue>, RefRlpWriterAction<TKey>, RefRlpWriterAction<TValue>) ctx) =>
         {
-            var (dictionary, writeKey, writeValue) = ctx;
-            foreach (var kp in dictionary)
+            (Dictionary<TKey, TValue> dictionary, RefRlpWriterAction<TKey> writeKey, RefRlpWriterAction<TValue> writeValue) = ctx;
+            foreach (KeyValuePair<TKey, TValue> kp in dictionary)
             {
-                var innerCtx = ValueTuple.Create(kp, writeKey, writeValue);
+                (KeyValuePair<TKey, TValue>, RefRlpWriterAction<TKey>, RefRlpWriterAction<TValue>) innerCtx = ValueTuple.Create(kp, writeKey, writeValue);
                 w.WriteSequence(innerCtx, static (ref RlpWriter w, (KeyValuePair<TKey, TValue>, RefRlpWriterAction<TKey>, RefRlpWriterAction<TValue>) ctx) =>
                 {
-                    var ((k, v), writeKey, writeValue) = ctx;
+                    ((TKey k, TValue v), RefRlpWriterAction<TKey> writeKey, RefRlpWriterAction<TValue> writeValue) = ctx;
                     writeKey(ref w, k);
                     writeValue(ref w, v);
                 });

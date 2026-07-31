@@ -9,8 +9,7 @@ namespace Nethermind.Serialization.FluentRlp.Instances;
 public abstract class ListRlpConverter<T>
 {
     public static List<T> Read(ref RlpReader reader, RefRlpReaderFunc<T> func)
-    {
-        return reader.ReadSequence(func, static (scoped ref RlpReader r, RefRlpReaderFunc<T> func) =>
+        => reader.ReadSequence(func, static (scoped ref RlpReader r, RefRlpReaderFunc<T> func) =>
         {
             List<T> result = [];
             while (r.HasNext)
@@ -20,14 +19,13 @@ public abstract class ListRlpConverter<T>
 
             return result;
         });
-    }
 
     public static void Write(ref RlpWriter writer, List<T> value, RefRlpWriterAction<T> action)
     {
-        var ctx = ValueTuple.Create(value, action);
+        (List<T>, RefRlpWriterAction<T>) ctx = ValueTuple.Create(value, action);
         writer.WriteSequence(ctx, static (ref RlpWriter w, (List<T>, RefRlpWriterAction<T>) ctx) =>
         {
-            var (value, action) = ctx;
+            (List<T> value, RefRlpWriterAction<T> action) = ctx;
             foreach (T v in value)
             {
                 action(ref w, v);

@@ -25,22 +25,9 @@ public ref struct RlpWriter
 
     private IBufferWriter<byte> _buffer;
 
-    public static RlpWriter LengthWriter()
-    {
-        return new RlpWriter
-        {
-            _mode = LengthMode
-        };
-    }
+    public static RlpWriter LengthWriter() => new() { _mode = LengthMode };
 
-    public static RlpWriter ContentWriter(IBufferWriter<byte> buffer)
-    {
-        return new RlpWriter
-        {
-            _mode = ContentMode,
-            _buffer = buffer
-        };
-    }
+    public static RlpWriter ContentWriter(IBufferWriter<byte> buffer) => new() { _mode = ContentMode, _buffer = buffer };
 
     public void Write<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
@@ -57,7 +44,7 @@ public ref struct RlpWriter
 
     public unsafe void UnsafeLengthWrite<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
-        var size = sizeof(T);
+        int size = sizeof(T);
         Span<byte> bigEndian = stackalloc byte[size];
         value.WriteBigEndian(bigEndian);
         bigEndian = bigEndian.TrimStart((byte)0);
@@ -78,7 +65,7 @@ public ref struct RlpWriter
 
     public unsafe void UnsafeContentWrite<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
-        var size = sizeof(T);
+        int size = sizeof(T);
         Span<byte> bigEndian = stackalloc byte[size];
         value.WriteBigEndian(bigEndian);
         bigEndian = bigEndian.TrimStart((byte)0);
@@ -168,7 +155,7 @@ public ref struct RlpWriter
 
     public void UnsafeLengthWriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
     {
-        var inner = LengthWriter();
+        RlpWriter inner = LengthWriter();
         action(ref inner, ctx);
         if (inner.Length < 55)
         {
@@ -185,7 +172,7 @@ public ref struct RlpWriter
 
     public void UnsafeContentWriteSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
     {
-        var lengthWriter = LengthWriter();
+        RlpWriter lengthWriter = LengthWriter();
         action(ref lengthWriter, ctx);
         if (lengthWriter.Length < 55)
         {
