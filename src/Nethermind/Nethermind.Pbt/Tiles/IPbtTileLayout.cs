@@ -32,9 +32,6 @@ public interface IPbtTileLayout
     /// <summary>Whether <paramref name="depth"/> is a tile root depth in this layout's grid.</summary>
     static abstract bool IsGroupDepth(int depth);
 
-    /// <summary>Whether the tile at <paramref name="depth"/> holds its children's blobs inside its own.</summary>
-    static abstract bool IsClusteringDepth(int depth);
-
     /// <summary>The depth of the tile holding trie level <paramref name="bit"/>: <paramref name="bit"/> rounded down to a tile boundary.</summary>
     static abstract int GroupDepthOf(int bit);
 

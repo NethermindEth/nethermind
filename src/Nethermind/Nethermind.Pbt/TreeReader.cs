@@ -20,13 +20,10 @@ internal readonly struct TreeReader<TLayout> where TLayout : IPbtTileLayout
     private readonly NodeKind _kind;
     private readonly bool _hasStoredEncoding;
     private readonly int _seedSlotPlusOne;
-    private readonly RefCountingMemory? _adoptedMemory;
-    private readonly int _adoptedOffset;
-    private readonly int _adoptedLength;
 
     private TreeReader(
         RefCountingMemory? memory, int offset, int length, NodeKind kind = NodeKind.Absent,
-        bool hasStoredEncoding = false, int seedSlot = -1, TreeReader<TLayout> adopted = default)
+        bool hasStoredEncoding = false, int seedSlot = -1)
     {
         _memory = memory;
         _offset = offset;
@@ -34,9 +31,6 @@ internal readonly struct TreeReader<TLayout> where TLayout : IPbtTileLayout
         _kind = kind;
         _hasStoredEncoding = hasStoredEncoding;
         _seedSlotPlusOne = seedSlot + 1;
-        _adoptedMemory = adopted._memory;
-        _adoptedOffset = adopted._offset;
-        _adoptedLength = adopted._length;
     }
 
     /// <summary>The whole of <paramref name="memory"/>, as the store hands a blob over; the absent reader for <c>null</c>.</summary>
@@ -57,15 +51,10 @@ internal readonly struct TreeReader<TLayout> where TLayout : IPbtTileLayout
 
     public TreeReader<TLayout> AsGroup() => new(_memory, _offset, _length, hasStoredEncoding: !IsEmpty);
 
-    public TreeReader<TLayout> WithSeed(int slot, TreeReader<TLayout> adopted = default) =>
-        new(_memory, _offset, _length, _kind, seedSlot: slot, adopted: adopted);
+    public TreeReader<TLayout> WithSeed(int slot) => new(_memory, _offset, _length, _kind, seedSlot: slot);
 
-    public PbtTrieNodeGroup<TLayout> Group()
-    {
-        if (!_hasStoredEncoding) return default;
-        PbtNodeCluster.Decode<TLayout>(Data, out PbtTrieNodeGroup<TLayout> group);
-        return group;
-    }
+    public PbtTrieNodeGroup<TLayout> Group() =>
+        _hasStoredEncoding ? PbtTrieNodeGroup<TLayout>.Decode(Data) : default;
 
     public BoundarySlotMasks<TLayout> BoundaryShape()
     {
@@ -83,36 +72,15 @@ internal readonly struct TreeReader<TLayout> where TLayout : IPbtTileLayout
     {
         if (!_hasStoredEncoding) return slot + 1 == _seedSlotPlusOne ? AsNode(_kind) : default;
 
-        PbtNodeCluster cluster = new(Data);
         int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
         NodeKind kind = group.KindAt(position);
         return kind == NodeKind.Absent
             ? default
-            : Slice((cluster.GroupOffset + group.EntryOffset(position))..).AsNode(kind);
-    }
-
-    public TreeReader<TLayout> Child(int slot, in PbtTrieNodeGroup<TLayout> group)
-    {
-        if (!_hasStoredEncoding)
-        {
-            return slot + 1 == _seedSlotPlusOne && _adoptedMemory is not null
-                ? new TreeReader<TLayout>(_adoptedMemory, _adoptedOffset, _adoptedLength)
-                : default;
-        }
-
-        return Slice(new PbtNodeCluster(Data).Child(slot, group));
-    }
-
-    public bool HasChild(int slot, in PbtTrieNodeGroup<TLayout> group)
-    {
-        if (!_hasStoredEncoding) return slot + 1 == _seedSlotPlusOne && _adoptedMemory is not null;
-
-        return !new PbtNodeCluster(Data).IsBare
-            && group.KindAt(PbtLayout.TrieNodeGroupBoundarySlotPosition(slot)) == NodeKind.Internal;
+            : Slice(group.EntryOffset(position)..).AsNode(kind);
     }
 
     /// <summary>The reader <paramref name="range"/> of these bytes holds; the absent reader for an empty range.</summary>
-    public TreeReader<TLayout> Slice(Range range)
+    private TreeReader<TLayout> Slice(Range range)
     {
         (int start, int sliceLength) = range.GetOffsetAndLength(_length);
         return sliceLength == 0 ? default : new TreeReader<TLayout>(_memory, _offset + start, sliceLength);

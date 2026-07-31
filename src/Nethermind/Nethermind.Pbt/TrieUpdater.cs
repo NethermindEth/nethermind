@@ -108,7 +108,6 @@ public static partial class TrieUpdater
         PbtGroupFormat groupFormat = layout.GroupFormat();
         PbtPartitionRoot root = layout.Tiling() switch
         {
-            PbtTiling.ClusteredFourLevel => UpdatePartition<PbtClusteredTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
             PbtTiling.SixLevel => UpdatePartition<PbtSixLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
             PbtTiling.EightLevel => UpdatePartition<PbtEightLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
             PbtTiling.FourLevel => UpdatePartition<PbtFourLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
@@ -237,7 +236,6 @@ public static partial class TrieUpdater
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && TLayout.IsGroupDepth(depth));
             Debug.Assert(depth <= TLayout.MaxGroupDepth);
-            Debug.Assert(!TLayout.IsClusteringDepth(depth), "a group holding its children goes through ApplyClustered");
 
             TreeReader<TLayout> occupants = existingData.AsGroup();
             PbtTrieNodeGroup<TLayout> existing = occupants.Group();
@@ -245,60 +243,11 @@ public static partial class TrieUpdater
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
             int mark = writer.WrittenCount;
-            PbtNodeCluster.Builder bare = default;
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, existing, existing.BoundaryShape(), plan, fanout, results);
             result = RebuildNode(
-                key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref bare, mark,
+                key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, mark,
                 out changed, out delta);
-        }
-
-        [SkipLocalsInit]
-        private void ApplyClustered(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, TreeReader<TLayout> existingData,
-            in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
-            out NodeResult result, out bool changed, out PbtSubtreeStats delta)
-        {
-            int depth = key.Depth;
-            Debug.Assert(!entries.IsEmpty && TLayout.IsGroupDepth(depth));
-            Debug.Assert(depth <= TLayout.MaxGroupDepth);
-            Debug.Assert(TLayout.IsClusteringDepth(depth), "a group holding no child goes through ApplyGroup");
-
-            TreeReader<TLayout> occupants = existingData.AsGroup();
-            PbtTrieNodeGroup<TLayout> existing = occupants.Group();
-
-            PbtNodeCluster.Builder builder = default;
-            using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
-            Span<NodeResult> results = resultBuffer.Span;
-
-            GroupShape shape = ResolveClusteredBoundaries(
-                key, entries, occupants, existing, existing.BoundaryShape(), plan, fanout, results, ref writer, ref builder);
-            result = RebuildNode(
-                key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, ref builder, mark: 0,
-                out changed, out delta);
-        }
-
-        /// <summary>
-        /// Applies <paramref name="entries"/> to the group stored at <paramref name="key"/>, through
-        /// whichever of the two frames its depth calls for.
-        /// </summary>
-        /// <remarks>
-        /// A tiling where no depth holds its children folds this to <see cref="ApplyGroup"/> outright,
-        /// leaving <see cref="ApplyClustered"/> — and the blob format it reads — out of its descent.
-        /// </remarks>
-        private void ApplyStoredGroup(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, TreeReader<TLayout> existingData,
-            in ValueHash256 beforeHash, scoped BucketPlan plan, in Fanout fanout, ref BufferWriter writer,
-            out NodeResult result, out bool changed, out PbtSubtreeStats delta)
-        {
-            if (TLayout.IsClusteringDepth(key.Depth))
-            {
-                ApplyClustered(key, entries, existingData, beforeHash, plan, fanout, ref writer, out result, out changed, out delta);
-            }
-            else
-            {
-                ApplyGroup(key, entries, existingData, beforeHash, plan, fanout, ref writer, out result, out changed, out delta);
-            }
         }
 
         /// <summary>
@@ -447,20 +396,18 @@ public static partial class TrieUpdater
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
-            PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
 
             // `buckets` carries the level partitioned above where there was none to start with, and
             // `entriesBranch` lets the resolve fill one itself where nothing was partitioned at all, so the
             // range is bucketed once however this frame reached here.
             BucketPlan resolvePlan = new(buckets, entriesBranch, isSorted);
-            GroupShape shape = TLayout.IsClusteringDepth(depth)
-                ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results, ref writer, ref builder)
-                : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results);
+            GroupShape shape = ResolveBoundaries(
+                key, entries, occupants, default, occupants.BoundaryShape(), resolvePlan, fanout, results);
             MergeUntouchedSeed(occupants, results, shape.Touched);
 
             result = RebuildNode(
-                key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, ref writer, ref builder, mark,
+                key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, ref writer, mark,
                 out changed, out delta);
         }
 
@@ -485,11 +432,8 @@ public static partial class TrieUpdater
         /// that this frame plants or removes.
         /// </summary>
         /// <remarks>
-        /// A frame whose children are stored under their own keys naturally gives each child a buffer of
-        /// its own. A clustered frame normally folds straight into its parent's blob, but its parallel path
-        /// gives each touched child a temporary buffer and assembles them in slot order afterward. A bucket
-        /// big enough to be worth the hand-off (<see cref="_minQueueEntries"/>) is handed to whichever
-        /// thread reaches it first; everything else is folded here and now.
+        /// A bucket big enough to be worth the hand-off (<see cref="_minQueueEntries"/>) is handed to
+        /// whichever thread reaches it first; everything else is folded here and now.
         /// </remarks>
         /// <returns>
         /// The whole frame's shape, which <see cref="RebuildNode"/> needs: the slots this descended, and
@@ -565,201 +509,6 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// Descends the non-empty buckets of a frame whose blob holds its children, applying each touched
-        /// slot's writes and settling the result. The walk covers every slot rooting a child on top of those
-        /// a write touches: an
-        /// untouched child is carried over from the blob being replaced, its bytes living nowhere else.
-        /// Both masks are ascending and walked as one, which is what keeps the children going into the
-        /// blob in the order they are read back out of it.
-        /// </summary>
-        /// <param name="existing"><inheritdoc cref="ResolveBoundaries" path="/param[@name='existing']"/></param>
-        /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
-        /// <param name="cluster">The blob this frame is assembling around its children.</param>
-        private GroupShape ResolveClusteredBoundaries(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader<TLayout> occupants,
-            in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
-            scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results, ref BufferWriter writer,
-            ref PbtNodeCluster.Builder cluster)
-        {
-            int depth = key.Depth;
-            AssertBranchDepthSound(entries, depth, plan.BranchDepth);
-
-            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(entries.Length, depth)];
-            scoped PartitionOutcome outcome = plan.BucketSort(entries, depth, buffer);
-
-            AssertCompactLevel(outcome, entries.Length);
-
-            PbtWriteBatch.BucketLevel<TLayout> buckets = outcome.IterateBuckets();
-            SlotBitmask<TLayout> touched = buckets.Touched;
-            PartitionResult partition = new(plan, outcome.BranchDepth, outcome.IsSorted);
-            if (MayQueue(touched, in fanout))
-            {
-                foreach ((_, Range range) in buckets)
-                {
-                    if (range.End.Value - range.Start.Value < _minQueueEntries) continue;
-
-                    return ResolveClusteredBoundariesParallel(
-                        key, entries, occupants, existing, untouched,
-                        plan, fanout, results, outcome, ref writer, ref cluster);
-                }
-            }
-
-            BoundaryScan scan = default;
-
-            // The slots whose child the frame holds and no key reaches, so the walk visits them alongside
-            // the touched ones to carry each untouched child over into the blob replacing this one.
-            SlotBitmask<TLayout> childSlots = default;
-            for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
-            {
-                if (occupants.HasChild(slot, existing)) childSlots.Set(slot);
-            }
-
-            PbtWriteBatch.BucketLevel<TLayout>.Enumerator bucketEnumerator = buckets.GetEnumerator();
-            foreach (int slot in touched | childSlots)
-            {
-                if (!touched[slot])
-                {
-                    cluster.AppendChild(ref writer, occupants.Child(slot, existing).Data);
-                    continue;
-                }
-
-                bucketEnumerator.MoveNext();
-                (int bucketSlot, Range range) = bucketEnumerator.Current;
-                Debug.Assert(bucketSlot == slot, "the level's buckets and touched slots must have the same order");
-                TreeReader<TLayout> reader = occupants.Reader(slot, existing);
-                Occupant occupant = reader.Occupant;
-                ref NodeResult result = ref results[slot];
-                Span<PbtWriteBatch.StemEntry> bucket = entries[range];
-                TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
-                BucketPlan childPlan = partition.GetChildPlan(slot);
-                bool childChanged;
-                PbtSubtreeStats childDelta;
-                if (occupant.Kind == NodeKind.Internal)
-                {
-                    ApplyGroup(childKey, bucket, occupants.Child(slot, existing), occupant.NodeHash(), childPlan, fanout, ref writer, out result, out childChanged, out childDelta);
-                }
-                else if (occupant.Kind == NodeKind.Chain)
-                {
-                    ApplyChain(childKey, bucket, reader, childPlan, fanout, ref writer, out result, out childChanged, out childDelta);
-                }
-                else
-                {
-                    ApplyPushedStem(childKey, bucket, reader, childPlan, fanout, ref writer, out result, out childChanged, out childDelta);
-                }
-
-                if (result.Kind == NodeKind.Internal) cluster.MarkChild(in writer);
-                scan.Add(slot, result, childChanged, childDelta);
-            }
-
-            // a child this frame holds is under no key of its own, so none of them was read from the store
-            return scan.ToShape(touched, storedChildren: default, untouched);
-        }
-
-        /// <summary>
-        /// Resolves a clustered frame's touched children independently, then appends their encodings in
-        /// boundary-slot order. Independence lets workers fold children concurrently; ordered assembly
-        /// keeps the cluster byte-identical to a serial fold.
-        /// </summary>
-        private GroupShape ResolveClusteredBoundariesParallel(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TreeReader<TLayout> occupants,
-            in PbtTrieNodeGroup<TLayout> existing, in BoundarySlotMasks<TLayout> untouched,
-            scoped BucketPlan plan, in Fanout fanout, Span<NodeResult> results,
-            scoped PartitionOutcome outcome, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster)
-        {
-            PbtWriteBatch.BucketLevel<TLayout> buckets = outcome.IterateBuckets();
-            SlotBitmask<TLayout> touched = buckets.Touched;
-            PartitionResult partition = new(plan, outcome.BranchDepth, outcome.IsSorted);
-            SlotBitmask<TLayout> childSlots = default;
-            for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
-            {
-                if (occupants.HasChild(slot, existing)) childSlots.Set(slot);
-            }
-
-            BoundaryScan scan = default;
-            SlotBitmask<TLayout> unusedStoredChildren = default;
-            QueuedBuckets queued = default;
-            try
-            {
-                foreach ((int slot, Range range) in buckets)
-                {
-                    TreeReader<TLayout> reader = occupants.Reader(slot, existing);
-                    TreeReader<TLayout> child = occupants.Child(slot, existing);
-                    Span<PbtWriteBatch.StemEntry> bucket = entries[range];
-                    TrieNodeKey childKey = key.ChildGroup(slot, TLayout.LevelsPerGroup);
-                    BucketPlan childPlan = partition.GetChildPlan(slot);
-
-                    if (bucket.Length >= _minQueueEntries &&
-                        TryQueue(slot, childKey, bucket, reader, child, childPlan, in fanout, ref queued))
-                    {
-                        continue;
-                    }
-
-                    ref NodeResult result = ref results[slot];
-                    ApplyClusteredChild(
-                        childKey, bucket, reader, child, childPlan, fanout,
-                        out result, out bool childChanged, out PbtSubtreeStats childDelta);
-                    scan.Add(slot, result, childChanged, childDelta);
-                }
-            }
-            catch
-            {
-                if (!queued.IsEmpty) Discard(in fanout, ref queued);
-                throw;
-            }
-
-            if (!queued.IsEmpty) Settle(in fanout, ref queued, results, ref scan, ref unusedStoredChildren);
-
-            foreach (int slot in touched | childSlots)
-            {
-                if (!touched[slot])
-                {
-                    cluster.AppendChild(ref writer, occupants.Child(slot, existing).Data);
-                    continue;
-                }
-
-                NodeResult result = results[slot];
-                if (result.Kind == NodeKind.Internal)
-                {
-                    Debug.Assert(result.Blob is not null, "an independently folded clustered child carries its encoding");
-                    cluster.AppendChild(ref writer, result.Blob!.GetSpan());
-                }
-            }
-
-            return scan.ToShape(touched, storedChildren: default, untouched);
-        }
-
-        /// <summary>Folds one clustered child into an independently owned buffer.</summary>
-        private void ApplyClusteredChild(
-            in TrieNodeKey childKey, Span<PbtWriteBatch.StemEntry> bucket, in TreeReader<TLayout> reader,
-            in TreeReader<TLayout> existingData, scoped BucketPlan childPlan, in Fanout fanout,
-            out NodeResult result, out bool changed, out PbtSubtreeStats delta)
-        {
-            BufferWriter owned = new(_memoryProvider);
-            Occupant occupant = reader.Occupant;
-            try
-            {
-                if (occupant.Kind == NodeKind.Internal)
-                {
-                    ApplyGroup(childKey, bucket, existingData, occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
-                }
-                else if (occupant.Kind == NodeKind.Chain)
-                {
-                    ApplyChain(childKey, bucket, reader, childPlan, fanout, ref owned, out result, out changed, out delta);
-                }
-                else
-                {
-                    ApplyPushedStem(childKey, bucket, reader, childPlan, fanout, ref owned, out result, out changed, out delta);
-                }
-
-                if (owned.Detach() is { } blob) result = result.WithBlob(blob);
-            }
-            finally
-            {
-                owned.Dispose();
-            }
-        }
-
-        /// <summary>
         /// Applies <paramref name="bucket"/> to the child group at <paramref name="childKey"/>, whose
         /// boundary slot holds <paramref name="occupant"/>, and settles the node now at that key into
         /// <paramref name="result"/> — with the encoding to plant, where the fold produced one.
@@ -787,7 +536,7 @@ public static partial class TrieUpdater
                     // old root hash, which the child no longer stores itself
                     using RefCountingMemory? childData = _store.GetTrieNode(childKey, occupant.NodeHash());
                     storedChild = childData is not null;
-                    ApplyStoredGroup(childKey, bucket, TreeReader<TLayout>.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
+                    ApplyGroup(childKey, bucket, TreeReader<TLayout>.Of(childData), occupant.NodeHash(), childPlan, fanout, ref owned, out result, out changed, out delta);
                     if (owned.Detach() is { } childBlob) result = result.WithBlob(childBlob);
 
                     // No frame writes its own key; the parent settles each child's: a stored one the writes
@@ -889,7 +638,6 @@ public static partial class TrieUpdater
         /// descent leave that child unread — an absolute count could not.
         /// </param>
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
-        /// <param name="cluster"><inheritdoc cref="ResolveClusteredBoundaries" path="/param[@name='cluster']"/></param>
         /// <param name="mark">
         /// Where this frame's bytes start in <paramref name="writer"/>, which it rolls back to when it
         /// settles into a node no key holds — a run, or a hoisting stem. Nothing written past it is a group
@@ -899,18 +647,14 @@ public static partial class TrieUpdater
         private NodeResult RebuildNode(
             in TrieNodeKey key, in TreeReader<TLayout> occupants, in PbtTrieNodeGroup<TLayout> existing,
             Span<NodeResult> results, in GroupShape shape, in ValueHash256 beforeHash,
-            in PbtSubtreeStats beforeStats, ref BufferWriter writer, ref PbtNodeCluster.Builder cluster,
-            int mark, out bool changed, out PbtSubtreeStats delta)
+            in PbtSubtreeStats beforeStats, ref BufferWriter writer, int mark,
+            out bool changed, out PbtSubtreeStats delta)
         {
             bool isRoot = key.Depth == TLayout.RootDepth;
-            bool headsCluster = TLayout.IsClusteringDepth(key.Depth);
             BoundarySlotMasks<TLayout> boundary = shape.Boundary;
             (SlotBitmask<TLayout> occupied, SlotBitmask<TLayout> stems, SlotBitmask<TLayout> chains) = boundary;
             SlotBitmask<TLayout> changedSlots = shape.Changed;
             AssertUntouchedMerged(occupants, existing, boundary, shape.Touched);
-            // What lets the cluster's offsets be the writer's own count: a group holding its children is
-            // one no group above holds, so its bytes are the whole of the buffer rather than a slice of it.
-            Debug.Assert(!headsCluster || mark == 0, "a clustering group's bytes must start the buffer for its child offsets to be absolute");
             NodeKind rootKind = boundary.RootKind;
 
             // Every stem of this subtree sits under one of the sixteen slots, so what they hoisted is the
@@ -934,16 +678,6 @@ public static partial class TrieUpdater
                 NodeResult survivor = results[survivorSlot].Kind != NodeKind.Absent
                     ? results[survivorSlot].Lease()
                     : AdoptOccupant(occupants.Reader(survivorSlot, existing).Occupant);
-
-                // A clustering frame's blob goes with the collapse, and the survivor's bytes with it: they
-                // move out into memory of their own, to be planted under the survivor's own key. The lone
-                // occupant is the only child there can be, so whatever the descent wrote is its encoding,
-                // and where it wrote nothing the blob being replaced still holds it.
-                if (headsCluster && survivor.Blob is null)
-                {
-                    survivor = AdoptChildBlob(
-                        writer.WrittenCount != mark ? writer.WrittenSpan[mark..] : occupants.Child(survivorSlot, existing).Data, survivor);
-                }
 
                 writer.Reset(mark);
 
@@ -997,57 +731,28 @@ public static partial class TrieUpdater
                     chains[slot] ? node.Blob : null));
             }
 
-            // The children a clustering frame holds are already in the writer, the descent having folded or
-            // copied each one in as it went, so all that is left is to close them off with their offset
-            // table and fold this group in behind it. A group rooting none — every boundary a stem or a
-            // run, whose bytes go into the group's own encoding — stores as a bare group whatever its
-            // depth, there being nothing to cluster.
-            bool holdsChildren = headsCluster && !boundary.ChildSlots.IsEmpty;
-            if (holdsChildren) cluster.WriteOffsets(ref writer);
-
             GroupRebuild<TLayout> rebuild = new(changedBoundaries[..changedCount], existing, boundary, changedSlots, beforeHash, _writeFormat);
             (Stem? rootStem, ValueHash256 rootHash) = rebuild.Rebuild(ref writer, afterStats);
             NodeResult rootNode = rootStem is { } stem ? NodeResult.StemNode(stem, rootHash) : NodeResult.Internal(rootHash);
-
-            if (holdsChildren) cluster.Finish(ref writer);
 
             // Unchanged root => the encoding is byte-identical to what is stored (an internal root whose
             // hash matches implies the same subtree, hence the same cached boundary hashes).
             changed = rootNode.NodeHash() != beforeHash;
 
-            // Plant each child group's blob at its key. The frame that built it never wrote it; this one,
-            // its parent, does. A clustering frame plants none of them: it has just written their bytes into
-            // its own blob, and the keys they would go under hold nothing. A run is planted by neither: the
-            // fold above has just written it into this group's own encoding.
-            if (!headsCluster)
+            // Plant each rebuilt child group at its independent key. A run is held by this group's
+            // encoding instead and has no keyed blob.
+            foreach (int slot in changedSlots)
             {
-                foreach (int slot in changedSlots)
+                if (results[slot].KeyedBlob is { } childBlob)
                 {
-                    if (results[slot].KeyedBlob is { } childBlob)
-                    {
-                        childBlob.AcquireLease();
-                        _store.SetTrieNode(key.ChildGroup(slot, TLayout.LevelsPerGroup), results[slot].NodeHash(), childBlob);
-                    }
+                    childBlob.AcquireLease();
+                    _store.SetTrieNode(key.ChildGroup(slot, TLayout.LevelsPerGroup), results[slot].NodeHash(), childBlob);
                 }
             }
 
             Release(results, handedUp: -1);
 
             return rootNode;
-        }
-
-        /// <summary>
-        /// Copies a child group's bytes out of the cluster holding them into memory of its own, for an
-        /// ancestor to plant under the key it is about to need again.
-        /// </summary>
-        /// <param name="node">What the frame read the child as, whose hash a group keeps.</param>
-        private NodeResult AdoptChildBlob(ReadOnlySpan<byte> childBlob, in NodeResult node)
-        {
-            Debug.Assert(!childBlob.IsEmpty, "a boundary internal roots a blob, which a clustering frame holds itself");
-
-            RefCountingMemory memory = _memoryProvider.Rent(childBlob.Length);
-            childBlob.CopyTo(memory.GetSpan());
-            return NodeResult.Internal(node.Hash, memory);
         }
 
         /// <summary>
@@ -1106,8 +811,8 @@ public static partial class TrieUpdater
         /// among what it carries: the frame folded that into a <see cref="BufferWriter"/>, so it is either
         /// the blob of the group above already, or a buffer <see cref="BufferWriter.Detach"/> hands over for the parent
         /// to plant. What a result does hold is a node with nowhere else to live — a run whose
-        /// <see cref="PbtNodeChain"/> encoding no group holds until an ancestor writes it into its own, or a
-        /// child group's bytes moved out of a cluster that is collapsing — and the lease keeps it safe to
+        /// <see cref="PbtNodeChain"/> encoding no group holds until an ancestor writes it into its own —
+        /// and the lease keeps it safe to
         /// hand up: it outlives the buffer's other owners, whether a <c>using</c> in the frame it leaves or
         /// an <see cref="IPbtStore"/> write taking the encoding with it. A group's internal root stores no
         /// entry at all (the parent caches it in its boundary slot), so it carries its hash by value, as

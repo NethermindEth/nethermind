@@ -4,10 +4,10 @@
 namespace Nethermind.Pbt;
 
 /// <summary>Internal trie-group levels stored by an encoding; the final byte of every non-empty group.</summary>
-/// <remarks>Formats represent the same trie and root while storing different levels; their values do not overlap chain or cluster encodings.</remarks>
+/// <remarks>Formats represent the same trie and root while storing different levels; their values do not overlap chain encodings.</remarks>
 public enum PbtGroupFormat : byte
 {
-    /// <summary>Every level of the tile, the original encoding.</summary>
+    /// <summary>Every level of the tile.</summary>
     EveryLevel = 0x01,
 
     /// <summary>
@@ -23,7 +23,6 @@ public enum PbtGroupFormat : byte
     /// link to the child group, stem or run below it, which no fold recovers without a lookup of its
     /// own.
     /// </summary>
-    /// <remarks>0x04 is <see cref="PbtNodeCluster"/>'s, whose encoding a group's has to be told from.</remarks>
     BoundaryOnly = 0x05,
 
     /// <summary>
@@ -38,7 +37,7 @@ public enum PbtGroupFormat : byte
     /// </summary>
     /// <remarks>
     /// In its intended six-level tile, only width-8 intermediate hashes are stored because the parent
-    /// caches the width-64 group root. 0x09 is distinct from the group, chain and cluster sentinels.
+    /// caches the width-64 group root. 0x09 is distinct from the group and chain sentinels.
     /// </remarks>
     Every3Depth = 0x09,
 }
