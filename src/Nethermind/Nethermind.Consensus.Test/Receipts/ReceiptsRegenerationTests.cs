@@ -127,6 +127,7 @@ public class ReceiptsRegenerationTests
                 postMerge, ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
             postMerge.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(processed, spec, postMerge.Header.ReceiptsRoot);
         }
+        postMerge.DisposeAccountChanges();
         postMerge.Header.Hash = postMerge.Header.CalculateHash();
 
         Block reloaded = new(postMerge.Header.Clone(), postMerge.Body);
@@ -136,6 +137,8 @@ public class ReceiptsRegenerationTests
             "re-execution must read PREVRANDAO from the mix hash, not the zeroed difficulty");
         Assert.That(ReceiptsRootCalculator.Instance.GetReceiptsRoot(regenerated, spec, reloaded.Header.ReceiptsRoot),
             Is.EqualTo(reloaded.Header.ReceiptsRoot));
+        Assert.That(regenerated[0].Logs[0].Data, Is.EqualTo(TestItem.KeccakB.BytesToArray()),
+            "the logged PREVRANDAO bytes must be the mix hash itself");
     }
 
     [TestCase(true, Description = "receipts on disk are served as-is, without re-execution")]
