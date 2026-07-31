@@ -182,11 +182,7 @@ public partial class BlockProcessor(
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
         if (ShouldCalculateReceiptsInBackground(receipts))
         {
-            // Large bloom sets are capped because this task overlaps the state-commit phase, which
-            // takes its parallelism from the same thread pool: at full width the blooms occupy the
-            // workers the root hashing wants. Small sets are left at full width — they clear the pool
-            // fastest that way, and capping them only stretches the overlap.
-            ParallelOptions? bloomOptions = receipts.Length >= BackgroundBloomCapThreshold ? s_backgroundBloomOptions : null;
+            ParallelOptions? bloomOptions = SelectBackgroundBloomOptions(receipts.Length);
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
                 CalculateBlooms(receipts, bloomOptions);
@@ -303,14 +299,45 @@ public partial class BlockProcessor(
     }
 
     /// <summary>
-    /// Receipt count from which the background bloom computation is worth capping.
+    /// Receipt count from which the background bloom computation is capped.
     /// </summary>
-    private const int BackgroundBloomCapThreshold = 256;
+    /// <remarks>
+    /// Below this the blooms finish well before the commit phase needs the pool, so capping them only
+    /// stretches the overlap without freeing anything.
+    /// </remarks>
+    internal const int BackgroundBloomCapThreshold = 256;
 
-    private static readonly ParallelOptions s_backgroundBloomOptions = new() { MaxDegreeOfParallelism = 4 };
+    /// <summary>
+    /// Worker count the capped background bloom computation is limited to.
+    /// </summary>
+    /// <remarks>
+    /// Enough to keep the blooms comfortably inside the commit window on mainnet-sized receipt sets,
+    /// while leaving the rest of the machine to the root hashing that runs concurrently.
+    /// </remarks>
+    internal const int BackgroundBloomMaxParallelism = 4;
 
+    private static readonly ParallelOptions s_backgroundBloomOptions =
+        new() { MaxDegreeOfParallelism = BackgroundBloomMaxParallelism };
+
+    /// <summary>
+    /// Parallelism for the bloom computation when it runs on the background task, or <c>null</c> for
+    /// the default full width.
+    /// </summary>
+    /// <remarks>
+    /// The background task overlaps <see cref="CommitStateAndStorageRoots"/> and
+    /// <see cref="ComputeStateRoot"/>, which draw their parallelism from the same thread pool. At full
+    /// width a large bloom set occupies the workers the root hashing is waiting for, costing more block
+    /// time than the bloom work it hides.
+    /// </remarks>
+    internal static ParallelOptions? SelectBackgroundBloomOptions(int receiptCount) =>
+        receiptCount >= BackgroundBloomCapThreshold ? s_backgroundBloomOptions : null;
+
+    /// <param name="parallelOptions">
+    /// Parallelism to use, or <c>null</c> for the default full width. Only affects scheduling: the
+    /// blooms produced are identical either way.
+    /// </param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CalculateBlooms(TxReceipt[] receipts, ParallelOptions? parallelOptions = null)
+    internal static void CalculateBlooms(TxReceipt[] receipts, ParallelOptions? parallelOptions = null)
     {
         using MetricsTimer<BloomsTimeSink> _ = new();
 
