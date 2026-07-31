@@ -348,6 +348,8 @@ namespace Nethermind.Core.Extensions
             }
             else
             {
+                // len == 16 aliases the block that built acc0 as the round key. Safe because
+                // FastHashAesRound XORs the key in after SubBytes, so key and state cannot cancel.
                 Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, len - 16));
                 acc0 = FastHashAesRound(acc0, data);
             }
@@ -600,8 +602,9 @@ namespace Nethermind.Core.Extensions
         public static ulong ToULong(this byte[] bytes) => ToULong((ReadOnlySpan<byte>)bytes);
 
         // Folds two 64-bit words to one with a multiply (mum/wymix): the product is non-linear in both
-        // words and spreads each word's high bits into the low output bits. The XOR constants keep an
-        // all-zero word from zeroing the product.
+        // words and spreads each word's high bits into the low output bits. The XOR constants move each
+        // factor's zeroing input off the common all-zero word; a factor still degenerates when a word
+        // equals its constant, which seeded inputs hit with probability 2^-64.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static long MumFold(ulong a, ulong b)
         {
