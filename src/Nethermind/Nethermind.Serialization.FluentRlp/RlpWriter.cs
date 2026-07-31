@@ -101,7 +101,7 @@ public ref struct RlpWriter
     {
         if (_mode != LengthMode) return false;
 
-        if (length < 55)
+        if (length < 56)
         {
             Length++;
         }
@@ -120,7 +120,7 @@ public ref struct RlpWriter
 
     public readonly void UnsafeContentWrite(scoped ReadOnlySpan<byte> value)
     {
-        if (value.Length < 55)
+        if (value.Length < 56)
         {
             _buffer.Write([(byte)(0x80 + value.Length)]);
         }
@@ -157,7 +157,7 @@ public ref struct RlpWriter
     {
         RlpWriter inner = LengthWriter();
         action(ref inner, ctx);
-        if (inner.Length < 55)
+        if (inner.Length < 56)
         {
             Length += 1 + inner.Length;
         }
@@ -174,7 +174,7 @@ public ref struct RlpWriter
     {
         RlpWriter lengthWriter = LengthWriter();
         action(ref lengthWriter, ctx);
-        if (lengthWriter.Length < 55)
+        if (lengthWriter.Length < 56)
         {
             _buffer.Write([(byte)(0xC0 + lengthWriter.Length)]);
         }

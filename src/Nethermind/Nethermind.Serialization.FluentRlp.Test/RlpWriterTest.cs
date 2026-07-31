@@ -39,6 +39,48 @@ public class RlpWriterTest
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
+    // A 55-byte payload is the largest that RLP encodes with a single-byte prefix; 56 is the smallest
+    // that must use the long form. Straddling the boundary catches an off-by-one in either direction.
+    [TestCase(54, (byte)0xb6)]
+    [TestCase(55, (byte)0xb7)]
+    [Test]
+    public void WriteStringAtShortFormBoundary(int length, byte expectedPrefix)
+    {
+        byte[] serialized = Rlp.Write(length, static (ref RlpWriter w, int length) => w.Write(new string('A', length)));
+
+        Assert.That(serialized[0], Is.EqualTo(expectedPrefix));
+        Assert.That(serialized.Length, Is.EqualTo(1 + length));
+    }
+
+    [Test]
+    public void WriteStringJustOverShortFormBoundary()
+    {
+        byte[] serialized = Rlp.Write(static (ref RlpWriter w) => w.Write(new string('A', 56)));
+
+        Assert.That(serialized[0], Is.EqualTo((byte)0xb8));
+        Assert.That(serialized[1], Is.EqualTo((byte)56));
+        Assert.That(serialized.Length, Is.EqualTo(2 + 56));
+    }
+
+    [TestCase(54, (byte)0xf6)]
+    [TestCase(55, (byte)0xf7)]
+    [Test]
+    public void WriteSequenceAtShortFormBoundary(int contentLength, byte expectedPrefix)
+    {
+        // Each element is a single byte below 0x80, so it encodes as itself.
+        byte[] serialized = Rlp.Write(contentLength, static (ref RlpWriter w, int contentLength) =>
+            w.WriteSequence(contentLength, static (ref RlpWriter w, int contentLength) =>
+            {
+                for (int i = 0; i < contentLength; i++)
+                {
+                    w.Write(1);
+                }
+            }));
+
+        Assert.That(serialized[0], Is.EqualTo(expectedPrefix));
+        Assert.That(serialized.Length, Is.EqualTo(1 + contentLength));
+    }
+
     [Test]
     public void WriteZero()
     {
