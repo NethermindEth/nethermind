@@ -15,7 +15,7 @@ namespace Nethermind.TxPool.Filters;
 /// transaction can still be delivered out of band. Without the bound a sender can make every node on the network run
 /// an arbitrarily expensive prefix before any gas is paid. The budget is read statically from the frame layout, so no
 /// prefix simulation is required. Must run after <see cref="MalformedTxFilter"/>, which guarantees the frame list is
-/// well-formed.
+/// well-formed. A configured limit of 0 lifts the bound, matching the other per-sender pool limits.
 /// </remarks>
 internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {
@@ -23,7 +23,7 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (tx.SupportsFrames)
+        if (tx.SupportsFrames && _maxVerifyGas != 0)
         {
             ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx);
             if (verifyGas > _maxVerifyGas)

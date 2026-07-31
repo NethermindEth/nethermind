@@ -189,12 +189,13 @@ public static class FrameTxValidation
     /// </summary>
     /// <remarks>
     /// The validation prefix is the shortest prefix of frames whose successful execution sets
-    /// <c>payer</c>, so it is bounded statically by the first frame permitted to approve payment
-    /// (approval scopes <see cref="TxFrame.ApprovePayment"/> and
-    /// <see cref="TxFrame.ApproveExecutionAndPayment"/>). A frame transaction with no such frame can
-    /// never set a payer, and charging its whole frame list here keeps the figure from ever being an
-    /// under-estimate. Signature validation counts against the same budget per EIP-8141
-    /// "Validation Prefix".
+    /// <c>payer</c>, so the walk stops at the first frame that could set one. Permission to approve
+    /// payment is not enough: <c>APPROVE</c> rejects a payment approval that is not preceded by an
+    /// execution approval, so a payment-only frame ahead of any execution approval provably cannot
+    /// set a payer and the frames behind it still run before any gas is paid. A frame transaction
+    /// with no payer-setting frame at all is charged its whole frame list, which keeps the figure
+    /// from being an under-estimate. Signature validation counts against the same budget per
+    /// EIP-8141 "Validation Prefix".
     /// </remarks>
     public static ulong ValidationWorkGas(Transaction transaction)
     {
@@ -203,13 +204,19 @@ public static class FrameTxValidation
         TxFrame[]? frames = transaction.Frames;
         if (frames is not null)
         {
+            bool senderApproved = false;
             foreach (TxFrame frame in frames)
             {
                 total = frame.GasLimit > ulong.MaxValue - total ? ulong.MaxValue : total + frame.GasLimit;
-                if (frame.AllowedApproveScope is TxFrame.ApprovePayment or TxFrame.ApproveExecutionAndPayment)
+
+                byte scope = frame.AllowedApproveScope;
+                bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
+                if ((scope & TxFrame.ApprovePayment) != 0 && (approvesExecution || senderApproved))
                 {
                     break;
                 }
+
+                senderApproved |= approvesExecution;
             }
         }
 

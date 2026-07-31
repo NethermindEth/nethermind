@@ -179,6 +179,64 @@ public class FrameTxValidationTests
         return digest;
     }
 
+    private static IEnumerable<TestCaseData> ValidationWorkCases()
+    {
+        static TestCaseData Work(string name, TxFrame[] frames, TxFrameSignature[] signatures, ulong expected) =>
+            new TestCaseData(frames, signatures, expected).SetName($"ValidationWorkGas_{name}");
+
+        static TxFrameSignature Signature(byte scheme) => new(scheme, null, default, Array.Empty<byte>());
+
+        // The prefix ends at the self-verify frame; the execution frame behind it is paid for out of
+        // the transaction's own gas and is outside the budget.
+        yield return Work("SelfVerifyThenSenderFrame_CountsOnlyThePrefix",
+            [SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: TestItem.AddressB, gasLimit: 5_000_000)],
+            [], 100_000);
+
+        // The canonical paymaster shape: execution approval, then payment approval by the sponsor.
+        yield return Work("ExecutionThenPaymentApproval_CountsBothPrefixFrames",
+            [
+                Frame(TxFrame.ModeVerify, TxFrame.ApproveExecution, gasLimit: 40_000),
+                Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressB, gasLimit: 30_000),
+                Frame(TxFrame.ModeSender, target: TestItem.AddressC, gasLimit: 900_000),
+            ],
+            [], 70_000);
+
+        // A payment-only frame ahead of any execution approval provably cannot set the payer
+        // (APPROVE reverts), so the walk must continue past it and count the frames that still run
+        // before the transaction is paid for.
+        yield return Work("PaymentApprovalBeforeExecutionApproval_KeepsWalking",
+            [
+                Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressB, gasLimit: 1_000),
+                Frame(gasLimit: 3_000_000),
+                SelfVerifyFrame(),
+            ],
+            [], 3_101_000);
+
+        // Nothing in the list can ever set a payer, so the whole list is charged.
+        yield return Work("NoPaymentApprovalAnywhere_CountsEveryFrame",
+            [Frame(gasLimit: 10_000), Frame(gasLimit: 20_000)], [], 30_000);
+
+        yield return Work("SignatureCostsCountAgainstTheBudget",
+            [SelfVerifyFrame()],
+            [Signature(TxFrameSignature.SchemeSecp256k1), Signature(TxFrameSignature.SchemeP256)],
+            100_000 + Eip8141Constants.Secp256k1VerificationGasCost + Eip8141Constants.P256VerificationGasCost);
+
+        yield return Work("OverflowingFrameGas_Saturates",
+            [Frame(gasLimit: ulong.MaxValue), Frame(gasLimit: 1)], [], ulong.MaxValue);
+    }
+
+    [TestCaseSource(nameof(ValidationWorkCases))]
+    public void ValidationWorkGas_BoundsThePrefixAndSignatures(TxFrame[] frames, TxFrameSignature[] signatures, ulong expected)
+    {
+        Transaction tx = CreateValidFrameTx(candidate =>
+        {
+            candidate.Frames = frames;
+            candidate.FrameSignatures = signatures;
+        });
+
+        Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(expected));
+    }
+
     [Test]
     public void TryGetExpiryDeadline_ReadsBigEndianDeadlineFromExpiryFrame()
     {

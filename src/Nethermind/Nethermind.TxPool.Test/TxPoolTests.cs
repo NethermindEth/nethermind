@@ -2201,17 +2201,54 @@ namespace Nethermind.TxPool.Test
 
         // MAX_VERIFY_GAS is a public-mempool DoS bound, not a validity rule: a prefix over the ceiling is
         // still consensus-valid, so the pool must refuse it at ingress rather than the validator.
-        [TestCase(100_000UL, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
-        [TestCase(100_001UL, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
-        public void Frame_transaction_prefix_is_bounded_by_max_verify_gas(ulong verifyGasLimit, bool expectedAccepted)
+        [TestCase(100_000UL, false, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
+        [TestCase(100_001UL, false, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
+        [TestCase(100_000UL, true, false, TestName = "signature verification cost pushes the prefix over the ceiling")]
+        [TestCase(93_300UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
+        public void Frame_transaction_prefix_is_bounded_by_max_verify_gas(ulong verifyGasLimit, bool withP256Signature, bool expectedAccepted)
         {
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Bogota.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(peer);
 
             Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: verifyGasLimit);
+            if (withP256Signature)
+            {
+                // 6 700 gas, so it decides the outcome on its own at a 93 300-gas prefix.
+                frameTx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, new byte[TxFrameSignature.P256SignatureLength])];
+                frameTx.Hash = frameTx.CalculateHash();
+            }
+
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
 
-            Assert.That(result, Is.EqualTo(expectedAccepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxVerifyGasTooHigh));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expectedAccepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxVerifyGasTooHigh));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
+
+            // Propagation is what the bound exists to stop, so the non-broadcast half is asserted too.
+            if (expectedAccepted)
+            {
+                peer.Received().SendNewTransaction(frameTx);
+            }
+            else
+            {
+                peer.DidNotReceive().SendNewTransaction(frameTx);
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_verify_gas_limit_of_zero_lifts_the_bound()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 30_000_000);
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
         [Test]
