@@ -3,8 +3,11 @@ using BenchmarkDotNet.Running;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.FluentRlp.Generator;
+using CurrentRlp = Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Serialization.Rlp.Benchmark;
+// The namespace deliberately avoids nesting under `Nethermind.Serialization.Rlp`, which would shadow
+// FluentRlp's `RlpReader`/`RlpWriter` with the identically-named types in that namespace.
+namespace Nethermind.Serialization.FluentRlp.Benchmark;
 
 [RlpSerializable(representation: RlpRepresentation.Newtype, length: Size)]
 public record Address(byte[] Bytes)
@@ -30,25 +33,21 @@ public class CurrentFluentBenchmark
     [Benchmark(Baseline = true)]
     public Nethermind.Core.Eip2930.AccessList Current()
     {
-        var decoder = Eip2930.AccessListDecoder.Instance;
+        CurrentRlp.Eip2930.AccessListDecoder decoder = CurrentRlp.Eip2930.AccessListDecoder.Instance;
 
-        var length = decoder.GetLength(_current, RlpBehaviors.None);
-        var stream = new RlpStream(length);
-        decoder.Encode(stream, _current);
+        int length = decoder.GetLength(_current, CurrentRlp.RlpBehaviors.None);
+        byte[] buffer = new byte[length];
+        CurrentRlp.RlpWriter writer = new(buffer);
+        decoder.Encode(ref writer, _current);
 
-        stream.Reset();
-
-        var decoded = decoder.Decode(stream);
-        return decoded!;
+        return decoder.Decode(buffer)!;
     }
 
     [Benchmark]
     public AccessList Fluent()
     {
-        var decoded = FluentRlp.Rlp.Write(_fluent, (ref RlpWriter writer, AccessList value) => writer.Write(value));
-        var encoded = FluentRlp.Rlp.Read(decoded, (scoped ref RlpReader reader) => reader.ReadAccessList());
-
-        return encoded;
+        byte[] encoded = Rlp.Write(_fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
+        return Rlp.Read(encoded, static (scoped ref RlpReader reader) => reader.ReadAccessList());
     }
 }
 
@@ -56,21 +55,21 @@ public static class Current
 {
     private static Nethermind.Core.Address BuildAddress(Random rnd)
     {
-        var bytes = new byte[Core.Address.Size];
+        byte[] bytes = new byte[Core.Address.Size];
         rnd.NextBytes(bytes);
         return new Nethermind.Core.Address(bytes);
     }
 
     public static Nethermind.Core.Eip2930.AccessList BuildAccessList(Random rnd)
     {
-        var builder = new Nethermind.Core.Eip2930.AccessList.Builder();
+        Nethermind.Core.Eip2930.AccessList.Builder builder = new();
         for (int i = 0; i < 1_000; i++)
         {
             builder.AddAddress(BuildAddress(rnd));
-            var keyCount = rnd.Next(10);
+            int keyCount = rnd.Next(10);
             for (int j = 0; j < keyCount; j++)
             {
-                var bytes = new byte[32];
+                byte[] bytes = new byte[32];
                 rnd.NextBytes(bytes);
                 builder.AddStorage(new UInt256(bytes));
             }
@@ -84,22 +83,22 @@ public static class Fluent
 {
     private static Address BuildAddress(Random rnd)
     {
-        var bytes = new byte[Address.Size];
+        byte[] bytes = new byte[Address.Size];
         rnd.NextBytes(bytes);
         return new Address(bytes);
     }
 
     public static AccessList BuildAccessList(Random rnd)
     {
-        var result = new List<(Address, List<UInt256>)>(1_000);
+        List<(Address, List<UInt256>)> result = new(1_000);
         for (int i = 0; i < 1_000; i++)
         {
             Address address = BuildAddress(rnd);
             List<UInt256> keys = [];
-            var keyCount = rnd.Next(10);
+            int keyCount = rnd.Next(10);
             for (int j = 0; j < keyCount; j++)
             {
-                var bytes = new byte[32];
+                byte[] bytes = new byte[32];
                 rnd.NextBytes(bytes);
                 keys.Add(new UInt256(bytes));
             }
@@ -113,8 +112,5 @@ public static class Fluent
 
 public static class Program
 {
-    public static void Main()
-    {
-        BenchmarkRunner.Run(typeof(Program).Assembly);
-    }
+    public static void Main(string[] args) => BenchmarkRunner.Run(typeof(Program).Assembly, args: args);
 }

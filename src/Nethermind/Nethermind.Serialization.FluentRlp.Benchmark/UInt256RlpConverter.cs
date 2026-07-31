@@ -7,7 +7,7 @@ using System.Numerics;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 
-namespace Nethermind.Serialization.Rlp.Benchmark;
+namespace Nethermind.Serialization.FluentRlp.Benchmark;
 
 // NOTE: This converter is required since `UInt256` does not implement `IBinaryInteger` (which it should)
 public abstract class UInt256RlpConverter : IRlpConverter<UInt256>
@@ -18,14 +18,14 @@ public abstract class UInt256RlpConverter : IRlpConverter<UInt256>
 
         public static bool TryReadBigEndian(ReadOnlySpan<byte> source, bool isUnsigned, out Wrap value)
         {
-            var uint256 = new UInt256(source, isBigEndian: true);
+            UInt256 uint256 = new(source, isBigEndian: true);
             value = new Wrap(uint256);
             return true;
         }
 
         public bool TryWriteBigEndian(Span<byte> destination, out int bytesWritten)
         {
-            var uint256 = Unwrap;
+            UInt256 uint256 = Unwrap;
             uint256.ToBigEndian(destination);
             bytesWritten = 32;
             return true;
@@ -33,21 +33,21 @@ public abstract class UInt256RlpConverter : IRlpConverter<UInt256>
 
         public int WriteBigEndian(Span<byte> destination)
         {
-            var uint256 = Unwrap;
+            UInt256 uint256 = Unwrap;
             uint256.ToBigEndian(destination);
             return 32;
         }
 
         public int WriteBigEndian(byte[] destination, int startIndex)
         {
-            var uint256 = Unwrap;
+            UInt256 uint256 = Unwrap;
             uint256.ToBigEndian(destination.AsSpan()[startIndex..]);
             return 32;
         }
 
         public int WriteBigEndian(byte[] destination)
         {
-            var uint256 = Unwrap;
+            UInt256 uint256 = Unwrap;
             uint256.ToBigEndian(destination);
             return 32;
         }
@@ -138,13 +138,13 @@ public abstract class UInt256RlpConverter : IRlpConverter<UInt256>
 
     public static UInt256 Read(ref RlpReader reader)
     {
-        var wrap = reader.ReadInteger<Wrap>();
+        Wrap wrap = reader.ReadInteger<Wrap>();
         return wrap.Unwrap;
     }
 
     public static void Write(ref RlpWriter writer, UInt256 value)
     {
-        var wrap = new Wrap(value);
+        Wrap wrap = new(value);
         writer.Write(wrap);
     }
 }
