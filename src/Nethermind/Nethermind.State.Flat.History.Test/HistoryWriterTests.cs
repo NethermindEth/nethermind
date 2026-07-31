@@ -466,8 +466,6 @@ public class HistoryWriterTests
         }
     }
 
-    // The durable watermark publish must notify retention dependants (the receipt store) so they can drop data
-    // whose blocks history now covers.
     [Test]
     public void Successful_capture_raises_watermark_advanced()
     {
@@ -481,7 +479,6 @@ public class HistoryWriterTests
         Assert.That(advancedTo, Is.EqualTo(1UL));
     }
 
-    // Eviction is advisory: a throwing handler must not abort a persist whose watermark already published.
     [Test]
     public void Watermark_advanced_handler_failure_is_contained()
     {
@@ -494,8 +491,6 @@ public class HistoryWriterTests
         Assert.That(_writer.LastCapturedBlock, Is.EqualTo(1UL));
     }
 
-    // The disable notification lets dependants persist retained data before the resumed persist prunes the
-    // blocks above the watermark; it must fire exactly once, at the trip.
     [Test]
     public void Breaker_trip_raises_capture_disabled_once()
     {
@@ -515,8 +510,6 @@ public class HistoryWriterTests
         Assert.That(disabled, Is.EqualTo(1), "skipped captures after the trip must not re-notify");
     }
 
-    // Disabling is one-shot: if a handler exception escaped, the retried persist — with capture already disabled —
-    // would prune the handler's data source without ever re-notifying it, so the failure must be contained.
     [Test]
     public void Capture_disabled_handler_failure_is_contained()
     {

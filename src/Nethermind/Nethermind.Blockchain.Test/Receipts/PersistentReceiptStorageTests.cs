@@ -492,8 +492,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(BodyIsPersisted(block), Is.False);
     }
 
-    // Pre-EIP-658 receipts carry a post-transaction state root that re-execution cannot reproduce, so they stay
-    // stored even when deriving - otherwise that range would be permanently unservable.
+    // Pre-EIP-658 receipts carry a post-transaction state root that re-execution cannot reproduce.
     [TestCase(true, false)]
     [TestCase(false, true)]
     public void Deriving_from_state_still_stores_pre_eip658_bodies(bool eip658Enabled, bool expectPersisted)
@@ -508,8 +507,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(BodyIsPersisted(block), Is.EqualTo(expectPersisted));
     }
 
-    // Only block processing produces regenerable blocks. Sync, era import and migration must write through - the
-    // migration in particular deletes the legacy key afterwards, so a skipped write there would destroy the bodies.
+    // Migration deletes the legacy key after re-inserting, so a skipped write there would destroy the bodies.
     [TestCase(false)]
     [TestCase(true)]
     public void Deriving_from_state_does_not_skip_bodies_outside_block_processing(bool viaMigration)
@@ -526,8 +524,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(BodyIsPersisted(block), Is.True);
     }
 
-    // A body skipped while capture is unhealthy (or unwired, e.g. a patricia backend) is permanently lost once
-    // the block leaves the in-memory tier, so the skip must follow capture health, not the config flag.
+    // A body skipped while capture is unhealthy is lost once the block leaves the in-memory tier.
     [TestCase(false)]
     [TestCase(null)]
     [MaxTime(Timeout.MaxTestTime)]
@@ -559,8 +556,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(BodyIsPersisted(block), Is.True);
     }
 
-    // A capture breakdown means the skipped bodies' blocks will never be derivable: the disable notification
-    // must persist them, so a restarted node can still serve them after the persist prunes their snapshots.
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Deriving_from_state_persists_retained_bodies_when_capture_stops()
     {
@@ -575,8 +570,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(BodyIsPersisted(block), Is.True);
     }
 
-    // A body whose block the durable watermark covers is derivable from history forever — the disable must not
-    // write it back.
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Deriving_from_state_drops_retained_bodies_once_the_watermark_covers_them()
     {
@@ -605,8 +598,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(BodyIsPersisted(block), Is.True);
     }
 
-    // A finality stall freezes the watermark (no eviction) while blocks keep coming: at the retention cap the
-    // skip must stop — bodies write through — so the retained memory stays bounded.
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Deriving_from_state_stores_bodies_once_the_retention_cap_is_reached()
     {
@@ -635,16 +626,13 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
-    // A block count does not bound memory: receipt size spans ~100 KB to several MB per block, so log-heavy
-    // blocks must saturate on bytes long before the block cap is reached.
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Deriving_from_state_stores_bodies_once_the_retention_byte_cap_is_reached()
     {
         _receiptConfig.DeriveFromState = true;
         CreateStorage();
 
-        // One shared array: the estimate counts it per block, so the cap is reached without the test holding it
-        // that many times. Each block estimates at least its log data, so this many blocks always saturate.
+        // One shared array: the estimate counts it per block, so the test never holds that much.
         const int LogDataBytes = 8 * 1024 * 1024;
         int blocksToSaturate = (int)(PersistentReceiptStorage.MaxRetainedBytes / LogDataBytes);
         Assert.That(blocksToSaturate, Is.LessThan(PersistentReceiptStorage.MaxRetainedBodies),
@@ -678,9 +666,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
-    // The byte counter must track the retained set on every removal path, not just eviction: a path that drops a
-    // body without subtracting its bytes drifts the counter up permanently, and once the drift alone exceeds the
-    // byte cap the derivation skip latches off for good.
+    // A removal that drops a body without subtracting its bytes latches the skip off once the drift exceeds the cap.
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Removing_receipts_keeps_the_retained_byte_count_in_step()
     {
@@ -704,8 +690,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
-    // Closes the insert/disable race: the disable flush may drain between the health check that skipped the
-    // write and the retention add, which would otherwise strand the body in memory forever.
+    // The disable flush may drain between the health check that skipped the write and the retention add.
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Deriving_from_state_persists_a_body_skipped_concurrently_with_the_disable()
     {
@@ -725,7 +710,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         return block;
     }
 
-    // A fresh instance over the same database has an empty receipts cache, so this reads through to the column.
+    // A fresh instance has an empty receipts cache, so this reads through to the column.
     private bool BodyIsPersisted(Block block)
     {
         CreateStorage();

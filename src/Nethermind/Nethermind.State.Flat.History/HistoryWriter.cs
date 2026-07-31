@@ -176,8 +176,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             }
             catch (Exception e)
             {
-                // Eviction is advisory (retained data stays and is flushed on a later disable), whereas an escaping
-                // handler exception would abort the persist after the watermark published and retry it to the breaker.
+                // Contained: the watermark has already published, so letting this out would abort the persist.
                 if (_logger.IsError) _logger.Error($"A watermark-advanced handler failed at block {target}.", e);
             }
         }
@@ -191,9 +190,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>Permanently stops capture for this process: metric, error log, <see cref="CaptureHealthy"/>, and
-    /// the <see cref="CaptureDisabled"/> notification that lets dependants persist retained data before the
-    /// pending persist prunes the blocks above the watermark.</summary>
+    /// <summary>Permanently stops capture for this process, notifying dependants so they can persist retained data
+    /// before the pending persist prunes the blocks above the watermark.</summary>
     private void DisableCapture(string reason)
     {
         _permanentGapDetected = true;
@@ -207,8 +205,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
         catch (Exception e)
         {
-            // Disabling is one-shot: an escaping handler exception would just abort this persist, and the retry —
-            // with capture already disabled — would prune the handler's data source without ever re-notifying it.
+            // Contained: disabling is one-shot, so a retry would prune without ever re-notifying the handler.
             if (_logger.IsError) _logger.Error("A capture-disabled handler failed; data retained for blocks above the watermark may be lost.", e);
         }
     }

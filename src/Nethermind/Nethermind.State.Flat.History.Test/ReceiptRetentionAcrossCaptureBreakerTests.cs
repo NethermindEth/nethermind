@@ -25,10 +25,8 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.History.Test;
 
 /// <summary>
-/// Regression for receipt loss across a capture breaker trip: bodies are skipped while capture is healthy, so when
-/// the breaker trips — letting the pending state persist resume and prune the blocks' regeneration sources — the
-/// retained bodies must already be in the receipt store. A restarted node must still answer the transaction-receipt
-/// lookup for the blocks skipped since the last watermark.
+/// Regression for receipt loss across a capture breaker trip: once the trip lets the persist resume and prune the
+/// blocks' regeneration sources, a restarted node must still serve the bodies skipped since the last watermark.
 /// </summary>
 [TestFixture]
 public class ReceiptRetentionAcrossCaptureBreakerTests
@@ -58,7 +56,7 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
 
         _specProvider = new TestSpecProvider(Byzantium.Instance);
         _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();
-        // A hash-valued tx index resolves without the block tree, keeping the lookup assertion self-contained.
+        // A hash-valued tx index resolves without the block tree.
         _receiptConfig = new ReceiptConfig { DeriveFromState = true, CompactTxIndex = false };
         _blockTree = Substitute.For<IBlockTree>();
         _blockStore = Substitute.For<IBlockStore>();
@@ -76,22 +74,19 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
     [Test]
     public void Bodies_skipped_before_a_breaker_trip_survive_restart_and_serve_transaction_lookups()
     {
-        // Prove capture (genesis floor + one captured block) so the storage starts skipping bodies.
         PersistentReceiptStorage storage = CreateStorage();
         _writer.SeedGenesis([], StateAt(0).StateRoot);
         CommitBlock(0, 1);
         _writer.CaptureUpTo(StateAt(1), _tier.Repository, CancellationToken.None);
         Assert.That(_writer.CaptureHealthy, Is.True, "precondition: only a proven capture skips bodies");
 
-        // Process block 2: the body write is skipped (derivable once captured) and retained in memory.
         Block block = ProcessedBlock();
         storage.InsertDeferred(block, [Build.A.Receipt.WithCalculatedBloom().TestObject], _specProvider.GetSpec((ForkActivation)block.Number));
         storage.EnsureCanonical(block);
         Assert.That(CreateStorage().HasBlock(block.Number, block.Hash!), Is.False,
             "precondition: the body write is skipped while capture is healthy");
 
-        // Trip the breaker: block 2 will never be captured, so the trip must persist its retained body before
-        // the persist (and the pruning of the block's snapshot) resumes.
+        // Block 2 will never be captured, so the trip must persist its retained body.
         ISnapshotRepository failing = Substitute.For<ISnapshotRepository>();
         failing.TryLeaseInMemoryState(default, default, out _).ThrowsForAnyArgs(new IOException("disk failure"));
         for (int i = 0; i < MaxConsecutiveCaptureFailures; i++)
@@ -99,7 +94,7 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
             Assert.Throws<IOException>(() => _writer.CaptureUpTo(StateAt(2), failing, CancellationToken.None));
         }
 
-        // "Restart": a fresh storage over the same database — no receipts cache, no retained state.
+        // "Restart": a fresh storage over the same database.
         PersistentReceiptStorage restarted = CreateStorage();
 
         using (Assert.EnterMultipleScope())
@@ -112,8 +107,6 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
         }
     }
 
-    // A body whose block the durable watermark already covers is derivable from history forever, so the trip
-    // must not write it back.
     [Test]
     public void Bodies_covered_by_the_watermark_are_not_written_back_at_the_trip()
     {
@@ -125,7 +118,7 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
         Block block = ProcessedBlock();
         storage.InsertDeferred(block, [Build.A.Receipt.WithCalculatedBloom().TestObject], _specProvider.GetSpec((ForkActivation)block.Number));
 
-        // Capture catches up over block 2, making it durably derivable; then the breaker trips.
+        // Capture catches up over block 2, making it durably derivable, before the breaker trips.
         CommitBlock(1, 2);
         _writer.CaptureUpTo(StateAt(2), _tier.Repository, CancellationToken.None);
         ISnapshotRepository failing = Substitute.For<ISnapshotRepository>();

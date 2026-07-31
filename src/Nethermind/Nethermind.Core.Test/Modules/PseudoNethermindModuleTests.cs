@@ -41,8 +41,6 @@ public class PseudoNethermindModuleTests
         }
     }
 
-    // The regenerating wrapper resolves the unkeyed finder, not the concrete FullInfoReceiptFinder, so a plugin's
-    // override of IReceiptFinder keeps applying on the regenerable path.
     [Test]
     public void Regenerating_finder_wraps_the_unkeyed_finder()
     {

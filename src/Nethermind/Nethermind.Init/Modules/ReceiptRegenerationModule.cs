@@ -26,9 +26,7 @@ namespace Nethermind.Init.Modules;
 /// which any peer can drive, and consensus components that read receipts on the processing path (the AuRa validator
 /// contract, Shutter) — the latter also tolerate absent receipts, which this decorator deliberately does not.
 /// A decorator would not do: an Autofac decorator applies to keyed registrations of the same service too.
-/// The wrapped inner is the unkeyed finder, so a plugin's override of <see cref="IReceiptFinder"/> keeps applying
-/// on the regenerable path; an empty answer from it only triggers a regeneration attempt, whose result is served
-/// solely after reproducing the header's receipts root.
+/// The wrapped inner is the unkeyed finder, so a plugin's override of <see cref="IReceiptFinder"/> keeps applying.
 /// </para>
 /// </remarks>
 public class ReceiptRegenerationModule : Module

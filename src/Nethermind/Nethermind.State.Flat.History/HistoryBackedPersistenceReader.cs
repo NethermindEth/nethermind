@@ -50,9 +50,8 @@ internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader
     }
 
     /// <summary>
-    /// Translates "state unavailable" (e.g. a corrupt history row decoded here, after the bundle gather) into
-    /// <see cref="MissingTrieNodeException"/> — the hash-based reader's contract, which JSON-RPC maps to
-    /// resource-not-found instead of an internal error.
+    /// Translates "state unavailable" into <see cref="MissingTrieNodeException"/> — the hash-based reader's
+    /// contract, which JSON-RPC maps to resource-not-found instead of an internal error.
     /// </summary>
     private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
         new($"Historical state for block {block.BlockNumber} is unavailable", null, TreePath.Empty, block.StateRoot.ToCommitment(), inner);
