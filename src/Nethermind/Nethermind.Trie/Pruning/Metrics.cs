@@ -11,8 +11,6 @@ namespace Nethermind.Trie.Pruning
 {
     public static class Metrics
     {
-        private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
-
         [GaugeMetric]
         [Description("Nodes that are currently kept in cache (either persisted or not)")]
         public static long DirtyNodesCount { get; set; }
@@ -47,21 +45,17 @@ namespace Nethermind.Trie.Pruning
 
         [CounterMetric]
         [Description("Number of DB reads.")]
-        public static long LoadedFromDbNodesCount => _mainLoadedFromDbNodesCount.Value + _otherLoadedFromDbNodesCount.Value;
-        private static CacheLinePaddedLong _mainLoadedFromDbNodesCount;
-        private static CacheLinePaddedLong _otherLoadedFromDbNodesCount;
+        public static long LoadedFromDbNodesCount => _loadedFromDbNodesCount.Sum();
+        private static readonly PerThreadCounter _loadedFromDbNodesCount = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromDbNodesCount() =>
-            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromDbNodesCount.Value : ref _otherLoadedFromDbNodesCount.Value);
+        public static void IncrementLoadedFromDbNodesCount() => _loadedFromDbNodesCount.Increment();
 
         [CounterMetric]
         [Description("Number of reads from the node cache.")]
-        public static long LoadedFromCacheNodesCount => _mainLoadedFromCacheNodesCount.Value + _otherLoadedFromCacheNodesCount.Value;
-        private static CacheLinePaddedLong _mainLoadedFromCacheNodesCount;
-        private static CacheLinePaddedLong _otherLoadedFromCacheNodesCount;
+        public static long LoadedFromCacheNodesCount => _loadedFromCacheNodesCount.Sum();
+        private static readonly PerThreadCounter _loadedFromCacheNodesCount = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromCacheNodesCount() =>
-            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromCacheNodesCount.Value : ref _otherLoadedFromCacheNodesCount.Value);
+        public static void IncrementLoadedFromCacheNodesCount() => _loadedFromCacheNodesCount.Increment();
 
         [CounterMetric]
         [Description("Number of reads from the RLP cache.")]

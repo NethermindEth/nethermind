@@ -3,7 +3,6 @@
 
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Threading;
 
@@ -11,33 +10,25 @@ namespace Nethermind.Trie
 {
     public static class Metrics
     {
-        private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
-
         [CounterMetric]
         [Description("Number of trie node hash calculations.")]
-        public static long TreeNodeHashCalculations => _mainTreeNodeHashCalculations.Value + _otherTreeNodeHashCalculations.Value;
-        private static CacheLinePaddedLong _mainTreeNodeHashCalculations;
-        private static CacheLinePaddedLong _otherTreeNodeHashCalculations;
+        public static long TreeNodeHashCalculations => _treeNodeHashCalculations.Sum();
+        private static readonly PerThreadCounter _treeNodeHashCalculations = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeHashCalculations() =>
-            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainTreeNodeHashCalculations.Value : ref _otherTreeNodeHashCalculations.Value);
+        internal static void IncrementTreeNodeHashCalculations() => _treeNodeHashCalculations.Increment();
 
         [CounterMetric]
         [Description("Number of trie node RLP encodings.")]
-        public static long TreeNodeRlpEncodings => _mainTreeNodeRlpEncodings.Value + _otherTreeNodeRlpEncodings.Value;
-        private static CacheLinePaddedLong _mainTreeNodeRlpEncodings;
-        private static CacheLinePaddedLong _otherTreeNodeRlpEncodings;
+        public static long TreeNodeRlpEncodings => _treeNodeRlpEncodings.Sum();
+        private static readonly PerThreadCounter _treeNodeRlpEncodings = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeRlpEncodings() =>
-            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainTreeNodeRlpEncodings.Value : ref _otherTreeNodeRlpEncodings.Value);
+        internal static void IncrementTreeNodeRlpEncodings() => _treeNodeRlpEncodings.Increment();
 
         [CounterMetric]
         [Description("Number of trie node RLP decodings.")]
-        public static long TreeNodeRlpDecodings => _mainTreeNodeRlpDecodings.Value + _otherTreeNodeRlpDecodings.Value;
-        private static CacheLinePaddedLong _mainTreeNodeRlpDecodings;
-        private static CacheLinePaddedLong _otherTreeNodeRlpDecodings;
+        public static long TreeNodeRlpDecodings => _treeNodeRlpDecodings.Sum();
+        private static readonly PerThreadCounter _treeNodeRlpDecodings = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeRlpDecodings() =>
-            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainTreeNodeRlpDecodings.Value : ref _otherTreeNodeRlpDecodings.Value);
+        internal static void IncrementTreeNodeRlpDecodings() => _treeNodeRlpDecodings.Increment();
     }
 }
