@@ -100,8 +100,9 @@ namespace Nethermind.Blockchain.Receipts
 
         // Estimated, not measured: a bloom (256 B) plus object and field overhead per receipt, and per log the
         // LogEntry/Address/topic-array headers on top of the data actually held, with each topic counted as its
-        // Hash256 object plus the array slot referencing it. Every term rounds up, since over-estimating only
-        // makes the cap bind earlier — the receipt overhead also absorbs the small optional fields (Error, etc.).
+        // Hash256 object plus the array slot referencing it (an over-estimate whenever topics are shared instances).
+        // Never deliberately under-counts — the receipt overhead also absorbs the small optional fields (Error, etc.)
+        // — since over-estimating only makes the cap bind earlier.
         private const int RetainedReceiptOverhead = 512;
         private const int RetainedLogOverhead = 96;
         private const int RetainedTopicBytes = 56;
@@ -676,14 +677,22 @@ namespace Nethermind.Blockchain.Receipts
             if (_historyCaptureStatus?.CaptureHealthy is false) PersistRetainedBodies();
         }
 
-        /// <summary>Drops a retained body if present, keeping <see cref="_retainedBytes"/> in step with the set —
-        /// the single removal path, so no caller can leave the byte counter drifting above what is held.</summary>
-        private void DropRetainedBody(in ValueHash256 blockHash)
+        /// <summary>
+        /// Discards a retained body if present, subtracting its bytes so <see cref="_retainedBytes"/> stays in step
+        /// with the set. Returns whether anything was dropped.
+        /// </summary>
+        /// <remarks>
+        /// The removal path for every caller that discards a body; <see cref="PersistRetainedBodies"/> necessarily
+        /// removes inline because it needs the body it takes out in order to write it. Deliberately does not touch
+        /// the gauges: callers settle those once, so a bulk eviction does not pay a lock-all-buckets
+        /// <see cref="ConcurrentDictionary{TKey,TValue}.Count"/> per entry.
+        /// </remarks>
+        private bool DropRetainedBody(in ValueHash256 blockHash)
         {
-            if (_retainedBodies is null || !_retainedBodies.TryRemove(blockHash, out RetainedBody? dropped)) return;
+            if (_retainedBodies is null || !_retainedBodies.TryRemove(blockHash, out RetainedBody? dropped)) return false;
 
             Interlocked.Add(ref _retainedBytes, -dropped.EstimatedBytes);
-            UpdateRetentionMetrics();
+            return true;
         }
 
         /// <summary>Approximate live heap held by a retained body, for the byte cap (see <see cref="MaxRetainedBytes"/>).</summary>
@@ -715,13 +724,18 @@ namespace Nethermind.Blockchain.Receipts
                 if (retained.Value.BlockNumber <= watermark) DropRetainedBody(retained.Key);
             }
 
+            // One Count for the whole eviction: it locks every bucket, so it must not run per entry.
+            int remaining = _retainedBodies.Count;
+            long remainingBytes = Volatile.Read(ref _retainedBytes);
+
             // Arm the warning again once retention is back under both caps, so a later episode is not silent.
-            if (_retainedBodies.Count < MaxRetainedBodies && Volatile.Read(ref _retainedBytes) < MaxRetainedBytes)
+            if (remaining < MaxRetainedBodies && remainingBytes < MaxRetainedBytes)
             {
                 _retentionSaturationLogged = false;
             }
 
-            UpdateRetentionMetrics();
+            Metrics.RetainedReceiptBodies = remaining;
+            Metrics.RetainedReceiptBodyBytes = remainingBytes;
         }
 
         /// <summary>Bytes the retained bodies are accounted at — the invariant tests assert against, since the
@@ -883,7 +897,7 @@ namespace Nethermind.Blockchain.Receipts
             // Cancel any queued canonical write for this block so it cannot resurrect the tx-index below. The
             // block-level entry is the only overlay state, so one removal drops all its txs from the lazy scan.
             _pendingCanonical.TryRemove(block.Hash!.ValueHash256, out _);
-            DropRetainedBody(block.Hash!.ValueHash256);
+            if (DropRetainedBody(block.Hash!.ValueHash256)) UpdateRetentionMetrics();
 
             _receiptsCache.Delete(block.Hash);
 
