@@ -509,6 +509,48 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         { TestName = "MeteredWalkReachesElidedMarker" };
     }
 
+    // A linear boundary does not end its block, so the in-block entries after it are paid by the
+    // block charge - and an arrival that entered the block past that charge must not resurface
+    // into gas-free dispatch when it crosses the linear boundary. One shape walks metered onto the
+    // MSTORE, the other lands on it directly; without the routing both run the suffix uncharged.
+    private static IEnumerable<TestCaseData> LinearBoundarySuffixCases()
+    {
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x02, (byte)Instruction.ADD, (byte)Instruction.POP,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "MeteredWalkCrossesTheLinearBoundary" };
+
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x00, (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x02, (byte)Instruction.ADD, (byte)Instruction.POP,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "PeepholeLandsOnTheLinearBoundary" };
+    }
+
+    [TestCaseSource(nameof(LinearBoundarySuffixCases))]
+    public void StreamInterpreter_BlockEnteredPastItsCharge_PaysTheLinearBoundarySuffix(byte[] code)
+    {
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), "the stream did not engage");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "status must match");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+                "in-block ops after a linear boundary are paid by a block charge a mid-block arrival bypassed");
+        }
+    }
+
     [TestCaseSource(nameof(ElidedMarkerLandingCases))]
     public void StreamInterpreter_LandingOnElidedJumpTarget_ChargesTheMarker(byte[] code)
     {

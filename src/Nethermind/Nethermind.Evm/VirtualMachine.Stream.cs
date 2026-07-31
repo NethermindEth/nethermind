@@ -404,7 +404,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // Linear boundary: a self-charging table op that always falls through on success, so
                 // the open block continues across it - table dispatch + sequential advance, no landing
                 // recompute and no block reset. The general epilogue below is for ops that redirect.
-                if (entry.Kind == StreamOpKind.BoundaryLinear)
+                // A metered arrival takes that epilogue instead: its landing recompute is what routes
+                // the uncharged in-block suffix back into the metered walk.
+                if (entry.Kind == StreamOpKind.BoundaryLinear && !metered)
                 {
                     // Threshold, not a mask: block charges advance opCodeCount in strides that can step
                     // over every multiple of the mask, so equality tests are allowed to never fire.
@@ -486,9 +488,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 entryIndex = landing;
                 if ((uint)entryIndex < (uint)ops.Length)
                 {
-                    // A fused table handler can land past a block's charging entry; run the rest metered.
+                    // A fused table handler can land past a block's charging entry; run the rest
+                    // metered. A linear boundary counts too: it does not end its block, so the
+                    // entries after it belong to that bypassed charge.
                     StreamOpKind landingKind = ops[entryIndex].Kind;
-                    metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock;
+                    metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock or StreamOpKind.BoundaryLinear;
 
                     if (ops[entryIndex].Pc != programCounter)
                     {
@@ -633,8 +637,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if ((uint)entryIndex >= (uint)ops.Length)
                 return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
+            // A linear boundary does not end its block: the entries after it are precharged by a
+            // block charge this walk bypassed, so step it raw like any interior op - the raw
+            // dispatch is the same self-charging handler - and keep metering the suffix.
             StreamOp landingOp = ops[entryIndex];
-            if (landingOp.Kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock)
+            if (landingOp.Kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock or StreamOpKind.BoundaryLinear)
                 continue;
 
             // An entry starting past this pc means the pc holds an elided jump-target marker whose
