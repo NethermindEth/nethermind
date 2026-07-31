@@ -263,6 +263,9 @@ jobs:
           # WritePGOData flushes the .jit only at clean CLR exit; a warmed node's DB
           # disposal exceeds expb's default 120s SIGTERM->SIGKILL window.
           export EXPB_STOP_TIMEOUT=1800
+          # expb pins DOTNET_TieredCompilation=0 for every Nethermind container; with
+          # tiering off nothing is instrumented and there is no edge/block data to write.
+          export EXPB_CLIENT_ENV="DOTNET_TieredCompilation=1,DOTNET_TieredPGO=1"
           expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
             --per-payload-metrics \
