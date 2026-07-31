@@ -48,6 +48,11 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+DISABLE_STREAM=""
+if [[ "$ADDITIONAL_FLAGS" == *--DisableStream* ]]; then
+  DISABLE_STREAM="1"
+  ADDITIONAL_FLAGS="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/--DisableStream//')"
+fi
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
@@ -263,6 +268,7 @@ if [[ "$CLIENT" == "nethermind" ]]; then
     -e "DOTNET_GCLatencyLevel=0"
   )
 fi
+[[ -n "$DISABLE_STREAM" ]] && docker_args+=(-e "NETHERMIND_DISABLE_STREAM=1")
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
