@@ -182,9 +182,14 @@ public partial class BlockProcessor(
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
         if (ShouldCalculateReceiptsInBackground(receipts))
         {
+            // Large bloom sets are capped because this task overlaps the state-commit phase, which
+            // takes its parallelism from the same thread pool: at full width the blooms occupy the
+            // workers the root hashing wants. Small sets are left at full width — they clear the pool
+            // fastest that way, and capping them only stretches the overlap.
+            ParallelOptions? bloomOptions = receipts.Length >= BackgroundBloomCapThreshold ? s_backgroundBloomOptions : null;
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
-                CalculateBlooms(receipts);
+                CalculateBlooms(receipts, bloomOptions);
                 return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
             });
         }
@@ -297,8 +302,15 @@ public partial class BlockProcessor(
         return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
     }
 
+    /// <summary>
+    /// Receipt count from which the background bloom computation is worth capping.
+    /// </summary>
+    private const int BackgroundBloomCapThreshold = 256;
+
+    private static readonly ParallelOptions s_backgroundBloomOptions = new() { MaxDegreeOfParallelism = 4 };
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CalculateBlooms(TxReceipt[] receipts)
+    private static void CalculateBlooms(TxReceipt[] receipts, ParallelOptions? parallelOptions = null)
     {
         using MetricsTimer<BloomsTimeSink> _ = new();
 
@@ -316,7 +328,7 @@ public partial class BlockProcessor(
         ParallelUnbalancedWork.For(
             0,
             receipts.Length,
-            ParallelUnbalancedWork.DefaultOptions,
+            parallelOptions ?? ParallelUnbalancedWork.DefaultOptions,
             receipts,
             static (i, receipts) =>
             {
