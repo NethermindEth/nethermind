@@ -420,9 +420,7 @@ public class PbtStoreCacheTests
         }
     }
 
-    [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel, 16644)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, 11204)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, 9028)]
+    [TestCase(PbtTrieLayout.FourLevelEveryLevel, 977)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, 657)]
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, 529)]
     [TestCase(PbtTrieLayout.FiveLevelInterleaved, 1371)]

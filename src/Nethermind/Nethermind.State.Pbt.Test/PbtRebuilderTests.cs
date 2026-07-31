@@ -25,7 +25,6 @@ namespace Nethermind.State.Pbt.Test;
 /// The rebuild is a producer of its own — it folds windows of sorted leaves rather than a block's
 /// writes — so it is run under every tiling, against the same reference root.
 /// </param>
-[TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FiveLevelInterleaved)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]

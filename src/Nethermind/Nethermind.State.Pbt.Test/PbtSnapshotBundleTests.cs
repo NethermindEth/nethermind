@@ -166,9 +166,7 @@ public class PbtSnapshotBundleTests
         Assert.That(blob.GetSpan().ToArray(), Is.EqualTo((byte[])[0x33]));
     }
 
-    [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
+    [TestCase(PbtTrieLayout.FourLevelEveryLevel)]
     [TestCase(PbtTrieLayout.SixLevelInterleaved)]
     [TestCase(PbtTrieLayout.SixLevelEvery3Depth)]
     [TestCase(PbtTrieLayout.EightLevelInterleaved)]

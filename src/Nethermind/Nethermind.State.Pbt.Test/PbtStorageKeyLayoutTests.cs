@@ -138,16 +138,15 @@ public class PbtStorageKeyLayoutTests
     /// under a layout of the tiling that wrote it — the levels half of the layout being free to change,
     /// as the encodings all read whichever wrote them.
     /// </summary>
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelBoundaryOnly, false, TestName = "clustered, other levels")]
+    [TestCase(PbtTrieLayout.FourLevelEveryLevel, PbtTrieLayout.FourLevelBoundaryOnly, false, TestName = "four-level, every level to boundary-only")]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelBoundaryOnly, false, TestName = "four-level, other levels")]
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelInterleaved, false, TestName = "four-level, reverse levels")]
     [TestCase(PbtTrieLayout.SixLevelInterleaved, PbtTrieLayout.SixLevelEvery3Depth, false, TestName = "six-level, every-three groups")]
     [TestCase(PbtTrieLayout.SixLevelEvery3Depth, PbtTrieLayout.SixLevelInterleaved, false, TestName = "six-level, reverse levels")]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.FourLevelInterleaved, true, TestName = "clustered to independent")]
-    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelInterleaved, true, TestName = "independent to clustered")]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.FiveLevelInterleaved, true, TestName = "another tiling, odd width")]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.SixLevelInterleaved, true, TestName = "another tiling")]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.EightLevelInterleaved, true, TestName = "another tiling, wider")]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FiveLevelInterleaved, true, TestName = "four to five levels")]
+    [TestCase(PbtTrieLayout.FiveLevelInterleaved, PbtTrieLayout.FourLevelInterleaved, true, TestName = "five to four levels")]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.SixLevelInterleaved, true, TestName = "four to six levels")]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.EightLevelInterleaved, true, TestName = "four to eight levels")]
     public void ReopeningAPopulatedDatabase_IsRefusedOnlyUnderAnotherTiling(PbtTrieLayout writtenAs, PbtTrieLayout reopenAs, bool refused)
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
