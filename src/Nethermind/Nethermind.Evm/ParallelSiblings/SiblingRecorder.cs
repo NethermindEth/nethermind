@@ -58,22 +58,20 @@ public static class SiblingRecorder
     private static long s_rejectPrefix;
     private static System.Threading.Timer? s_reportTimer;
 
-    static SiblingRecorder()
-    {
-        if (!string.IsNullOrWhiteSpace(s_reportPath))
-        {
-            s_reportTimer = new System.Threading.Timer(static _ => Report(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
-        }
-    }
+    static SiblingRecorder() =>
+        s_reportTimer = new System.Threading.Timer(static _ => Report(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
     private static void Report()
     {
+        if (s_recorded == 0 && s_lookupMisses == 0 && s_replays == 0) return;
+        string line =
+            $"SIBLING-MEMO recorded {s_recorded} (memoable {s_recordedMemoable}), lookup misses {s_lookupMisses}, replays {s_replays}, " +
+            $"rejects: not-memoable {s_rejectNotMemoable}, gas {s_rejectGas}, cold {s_rejectCold}, prefix {s_rejectPrefix}, sites {s_sites.Count}";
+        Console.WriteLine(line);
+        if (string.IsNullOrWhiteSpace(s_reportPath)) return;
         try
         {
-            System.IO.File.WriteAllText(s_reportPath!,
-                $"recorded {s_recorded} (memoable {s_recordedMemoable}), lookup misses {s_lookupMisses}, replays {s_replays}\n" +
-                $"rejects: not-memoable {s_rejectNotMemoable}, gas {s_rejectGas}, cold {s_rejectCold}, prefix {s_rejectPrefix}\n" +
-                $"sites {s_sites.Count}\n");
+            System.IO.File.WriteAllText(s_reportPath!, line + Environment.NewLine);
         }
         catch (System.IO.IOException)
         {
