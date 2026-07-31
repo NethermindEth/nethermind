@@ -45,6 +45,25 @@ public static class FrameTxValidation
     public const string MalformedNonceKeySet = "malformed nonce key set";
     public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
 
+    /// <summary>Sums the gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
+    /// <remarks>
+    /// A frame transaction has no <c>gas_limit</c> field, so <see cref="Transaction.GasLimit"/> is derived
+    /// from the frames wherever one is constructed — on decode and in tooling that builds transactions
+    /// directly. Both must agree, or the same transaction executes with different limits depending on
+    /// which path produced it. Saturation is safe here because <see cref="FrameGasOverflow"/> rejects an
+    /// overflowing total during validation.
+    /// </remarks>
+    public static ulong SumFrameGasLimits(TxFrame[]? frames)
+    {
+        ulong total = 0;
+        foreach (TxFrame frame in frames ?? [])
+        {
+            total = Saturating(total, frame.GasLimit);
+        }
+
+        return total;
+    }
+
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {
         error = null;
