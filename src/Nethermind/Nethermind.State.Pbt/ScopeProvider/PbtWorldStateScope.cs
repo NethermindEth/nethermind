@@ -219,7 +219,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         if (!_rootDirty) return;
 
         long start = Stopwatch.GetTimestamp();
-        using (PbtWriteBatchSet changes = _writeBatchBuilder.DrainToWriteBatches(_writeLayout.Tiling()))
+        using (PbtWriteBatchSet changes = _writeBatchBuilder.DrainToWriteBatches())
         {
             _partitionRoots = TrieUpdater.UpdateRoot(
                 this, _partitionRoots, changes, PooledRefCountingMemoryProvider.Instance, _writeLayout, _rootFoldConcurrency, out _);

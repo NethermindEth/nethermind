@@ -151,7 +151,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
                             if (pending >= FlushEntryInterval || pendingStems >= MaxWindowStems)
                             {
                                 // A drained batch lost to a faulting flusher only drops its pooled maps to the GC.
-                                await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStems, hasEntries), pipelineCts.Token);
+                                await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(), writeBatch!, entries, lastStems, hasEntries), pipelineCts.Token);
                                 writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, PbtPartitionRoots.Empty, WriteFlags.DisableWAL);
                                 (pending, pendingStems) = (0, 0);
                                 lastStems = new Stem[PbtPartitions.Count];
@@ -176,7 +176,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
             group.Flush(builder);
 
             // seal the final (possibly empty) window; the flusher owns its write batch from here
-            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(config.TrieNodeLayout.Tiling()), writeBatch!, entries, lastStems, hasEntries), pipelineCts.Token);
+            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatches(), writeBatch!, entries, lastStems, hasEntries), pipelineCts.Token);
             writeBatch = null;
             flushChannel.Writer.Complete();
             await flusher;

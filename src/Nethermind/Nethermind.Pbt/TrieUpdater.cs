@@ -214,8 +214,7 @@ public static partial class TrieUpdater
         /// </summary>
         /// <param name="existingData">
         /// The group's stored blob, which the caller owns and this keeps no lease on beyond the
-        /// call: the occupants read out of it take their own. Where the group's depth holds its children,
-        /// the blob holds them too, and they are read — and carried over — straight out of it.
+        /// call: the occupants read out of it take their own.
         /// </param>
         /// <param name="beforeHash"><inheritdoc cref="RebuildNode" path="/param[@name='beforeHash']"/></param>
         /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
@@ -223,7 +222,7 @@ public static partial class TrieUpdater
         /// Where this frame hands the buckets it is not folding itself. Carried down the descent rather
         /// than held, since the queue belongs to whichever thread is running the fold, not to the updater.
         /// </param>
-        /// <param name="writer">Where the group folds its encoding: the blob of the group above where that one holds this, a buffer of this group's own where it owns its blob.</param>
+        /// <param name="writer">The buffer dedicated to this group's encoding.</param>
         /// <param name="result">The node now occupying the group's root position, written straight into the caller's slot.</param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
@@ -242,11 +241,10 @@ public static partial class TrieUpdater
 
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
-            int mark = writer.WrittenCount;
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, existing, existing.BoundaryShape(), plan, fanout, results);
             result = RebuildNode(
-                key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer, mark,
+                key, occupants, existing, results, shape, beforeHash, existing.Stats, ref writer,
                 out changed, out delta);
         }
 
@@ -396,8 +394,6 @@ public static partial class TrieUpdater
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
-            int mark = writer.WrittenCount;
-
             // `buckets` carries the level partitioned above where there was none to start with, and
             // `entriesBranch` lets the resolve fill one itself where nothing was partitioned at all, so the
             // range is bucketed once however this frame reached here.
@@ -407,7 +403,7 @@ public static partial class TrieUpdater
             MergeUntouchedSeed(occupants, results, shape.Touched);
 
             result = RebuildNode(
-                key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, ref writer, mark,
+                key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, ref writer,
                 out changed, out delta);
         }
 
@@ -638,16 +634,11 @@ public static partial class TrieUpdater
         /// descent leave that child unread — an absolute count could not.
         /// </param>
         /// <param name="writer"><inheritdoc cref="ApplyGroup" path="/param[@name='writer']"/></param>
-        /// <param name="mark">
-        /// Where this frame's bytes start in <paramref name="writer"/>, which it rolls back to when it
-        /// settles into a node no key holds — a run, or a hoisting stem. Nothing written past it is a group
-        /// above's, so nothing else is lost.
-        /// </param>
         [SkipLocalsInit]
         private NodeResult RebuildNode(
             in TrieNodeKey key, in TreeReader<TLayout> occupants, in PbtTrieNodeGroup<TLayout> existing,
             Span<NodeResult> results, in GroupShape shape, in ValueHash256 beforeHash,
-            in PbtSubtreeStats beforeStats, ref BufferWriter writer, int mark,
+            in PbtSubtreeStats beforeStats, ref BufferWriter writer,
             out bool changed, out PbtSubtreeStats delta)
         {
             bool isRoot = key.Depth == TLayout.RootDepth;
@@ -679,7 +670,7 @@ public static partial class TrieUpdater
                     ? results[survivorSlot].Lease()
                     : AdoptOccupant(occupants.Reader(survivorSlot, existing).Occupant);
 
-                writer.Reset(mark);
+                writer.Reset(0);
 
                 // Nothing is read to settle this: a survivor that is itself a run was in this very group's
                 // encoding, so merging with it — which is what keeps runs maximal — needs no lookup,
@@ -706,7 +697,7 @@ public static partial class TrieUpdater
                     : results[hoistedSlot].Kind != NodeKind.Absent ? results[hoistedSlot] : PromoteOccupant(occupants.Reader(hoistedSlot, existing).Occupant);
                 changed = hoisted.NodeHash() != beforeHash;
                 Release(results, hoistedSlot);
-                writer.Reset(mark);
+                writer.Reset(0);
                 return hoisted;
             }
 
@@ -808,9 +799,9 @@ public static partial class TrieUpdater
         /// </summary>
         /// <remarks>
         /// The descent's output, distinct from its <see cref="Occupant"/> input. A group's encoding is not
-        /// among what it carries: the frame folded that into a <see cref="BufferWriter"/>, so it is either
-        /// the blob of the group above already, or a buffer <see cref="BufferWriter.Detach"/> hands over for the parent
-        /// to plant. What a result does hold is a node with nowhere else to live — a run whose
+        /// among what it carries: the frame folded that into a dedicated <see cref="BufferWriter"/>, whose
+        /// buffer <see cref="BufferWriter.Detach"/> hands over for the parent to plant. What a result does
+        /// hold is a node with nowhere else to live — a run whose
         /// <see cref="PbtNodeChain"/> encoding no group holds until an ancestor writes it into its own —
         /// and the lease keeps it safe to
         /// hand up: it outlives the buffer's other owners, whether a <c>using</c> in the frame it leaves or
