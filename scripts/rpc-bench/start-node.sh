@@ -207,10 +207,7 @@ case "$CLIENT" in
       # Park the node at the snapshot head: no peers, no discovery, no sync writes.
       "--Init.DiscoveryEnabled=false"
       "--Network.MaxActivePeers=0"
-      # expb's stability flags: no forced GC between blocks, no background pruning.
-      "--Merge.SweepMemory=NoGC"
-      "--Merge.CompactMemory=No"
-      "--Merge.CollectionsPerDecommit=-1"
+      # No background pruning while serving a parked snapshot.
       "--Pruning.Mode=None"
       "--HealthChecks.Enabled=false"
       "--Metrics.Enabled=false"

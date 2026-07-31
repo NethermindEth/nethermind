@@ -32,13 +32,11 @@ which uses the same snapshots on this runner:
 - The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
   including `redirect_dir=on,metacopy=on,volatile` mount options (plain-options
   fallback).
-- The node gets expb's stability flags (`--Init.DiscoveryEnabled=false`,
-  `--Network.MaxActivePeers=0`, `--Merge.SweepMemory=NoGC`,
-  `--Merge.CompactMemory=No`, `--Merge.CollectionsPerDecommit=-1`,
-  `--Pruning.Mode=None`). Unlike expb, no `DOTNET_*` env pins: the node runs
-  production-default code generation (tiered compilation + dynamic PGO), so JIT
-  warm-up lands inside the measured window — treat a run's first test/rate as
-  warm-up. One-off code-gen experiments: set `NODE_ENV_VARS`.
+- The node is isolated from network and pruning noise (`--Init.DiscoveryEnabled=false`,
+  `--Network.MaxActivePeers=0`, `--Pruning.Mode=None`) but otherwise runs
+  production defaults — no GC or `DOTNET_*` overrides — so JIT warm-up lands
+  inside the measured window; treat a run's first test/rate as warm-up. One-off
+  code-gen experiments: set `NODE_ENV_VARS`.
 
 ## Multi-client snapshot sets
 
@@ -59,7 +57,7 @@ Per-client node profiles in `start-node.sh`:
 
 | Client | Image default | Datadir handling | Parked-at-head flags |
 |---|---|---|---|
-| `nethermind` | branch resolution (build/reuse), like before | snapshot = datadir, mounted at `/execution-data` | discovery off, 0 peers, expb stability flags |
+| `nethermind` | branch resolution (build/reuse), like before | snapshot = datadir, mounted at `/execution-data` | discovery off, 0 peers, pruning off |
 | `geth` | `ethereum/client-go:stable` | snapshot holds the contents of `<datadir>/geth` → mounted at `/execution-data/geth` | `--nodiscover --maxpeers=0` |
 | `reth` | `ghcr.io/paradigmxyz/reth:latest` | snapshot = datadir (`db/`, `static_files/`), mounted at `/execution-data` | `--disable-discovery --max-*-peers=0` |
 
