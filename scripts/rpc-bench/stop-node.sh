@@ -30,6 +30,12 @@ integrity_fail=0
 log "Stopping container '$CONTAINER_NAME' (grace ${STOP_GRACE}s for snapshot finalize)..."
 docker stop -t "$STOP_GRACE" "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
+# Ship the opcode histogram with the state artifact: the diag mount is only uploaded on the
+# dotTrace path, and the report is written after the process-exit flush.
+if compgen -G "$DIAG_DIR/dottrace/histogram.txt*" > /dev/null 2>&1; then
+  cp "$DIAG_DIR"/dottrace/histogram.txt* "$STATE_DIR/" 2>/dev/null || true
+fi
+
 log "Capturing node logs -> $LOG_OUT"
 docker logs "$CONTAINER_NAME" > "$LOG_OUT" 2>&1 || true
 
