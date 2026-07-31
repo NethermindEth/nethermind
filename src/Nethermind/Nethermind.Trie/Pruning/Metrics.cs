@@ -45,17 +45,15 @@ namespace Nethermind.Trie.Pruning
 
         [CounterMetric]
         [Description("Number of DB reads.")]
-        public static long LoadedFromDbNodesCount => _loadedFromDbNodesCount.Sum();
-        private static readonly PerThreadCounter _loadedFromDbNodesCount = new();
+        public static long LoadedFromDbNodesCount => TrieNodeCounters.TotalLoadedFromDb;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromDbNodesCount() => _loadedFromDbNodesCount.Increment();
+        public static void IncrementLoadedFromDbNodesCount() => TrieNodeCounters.IncrementLoadedFromDb();
 
         [CounterMetric]
         [Description("Number of reads from the node cache.")]
-        public static long LoadedFromCacheNodesCount => _loadedFromCacheNodesCount.Sum();
-        private static readonly PerThreadCounter _loadedFromCacheNodesCount = new();
+        public static long LoadedFromCacheNodesCount => TrieNodeCounters.TotalLoadedFromCache;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromCacheNodesCount() => _loadedFromCacheNodesCount.Increment();
+        public static void IncrementLoadedFromCacheNodesCount() => TrieNodeCounters.IncrementLoadedFromCache();
 
         [CounterMetric]
         [Description("Number of reads from the RLP cache.")]
