@@ -458,7 +458,12 @@ public struct EvmPooledMemory
     [ThreadStatic] private static byte[]?[]? _cleanArrays;
     [ThreadStatic] private static int _cleanArrayCount;
 
-    private static byte[] RentClean(int minLength)
+    /// <summary>Rents a buffer of at least <paramref name="minLength"/> and reports how much of it
+    /// is known to be zero. Cached and freshly allocated buffers are zero throughout; a buffer from
+    /// the shared pool arrives dirty, and zeroing it only up to the requested length instead of to
+    /// the end of its size class is the difference between paying for what the frame asked for and
+    /// paying for the whole power-of-two bucket.</summary>
+    private static byte[] RentClean(int minLength, out ulong zeroedLength)
     {
         byte[]?[]? cache = _cleanArrays;
         int cleanArrayCount = _cleanArrayCount - 1;
@@ -470,6 +475,7 @@ public struct EvmPooledMemory
                 _cleanArrayCount = cleanArrayCount;
                 cache[i] = cache[cleanArrayCount];
                 cache[cleanArrayCount] = null;
+                zeroedLength = (ulong)candidate.Length;
                 return candidate;
             }
         }
@@ -477,11 +483,14 @@ public struct EvmPooledMemory
         if (minLength > MaxCachedArrayLength)
         {
             byte[] pooled = RentLarge(minLength);
-            Array.Clear(pooled);
+            Array.Clear(pooled, 0, minLength);
+            zeroedLength = (ulong)minLength;
             return pooled;
         }
 
-        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+        byte[] fresh = new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+        zeroedLength = (ulong)fresh.Length;
+        return fresh;
     }
 
     private static void ReturnClean(byte[] array, int dirtyLength)
@@ -530,17 +539,26 @@ public struct EvmPooledMemory
     {
         if (_memory is null)
         {
-            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
+            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize), out ulong zeroed);
+            _lastZeroedSize = zeroed;
         }
         else if (Size > (ulong)_memory.LongLength)
         {
             byte[] beforeResize = _memory;
-            _memory = RentClean(TruncateToInt32(Size));
+            _memory = RentClean(TruncateToInt32(Size), out ulong zeroed);
             Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
             ReturnClean(beforeResize, beforeResize.Length);
+            _lastZeroedSize = zeroed;
         }
 
-        _lastZeroedSize = (ulong)_memory.Length;
+        // A pooled buffer is only zeroed as far as it was asked for, so growth inside it has to
+        // zero the rest: memory reads past what this frame wrote must still see zero.
+        if (Size > _lastZeroedSize)
+        {
+            ulong upTo = Math.Min(Size, (ulong)_memory.Length);
+            Array.Clear(_memory, (int)_lastZeroedSize, (int)(upTo - _lastZeroedSize));
+            _lastZeroedSize = upTo;
+        }
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
