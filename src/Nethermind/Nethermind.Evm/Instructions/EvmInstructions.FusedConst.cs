@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using static System.Runtime.CompilerServices.Unsafe;
 using Nethermind.Core;
 
@@ -32,7 +34,11 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
-    /// <summary>Fused <c>PUSH shift-amount; SHL/SHR</c>, mirroring <see cref="ShiftCore{TOpShift, TTracingInst}"/>.</summary>
+    /// <summary>Fused <c>PUSH shift-amount; SHL/SHR</c>, mirroring <see cref="ShiftCore{TOpShift, TTracingInst}"/>.
+    /// The amount is an analysis-time constant, and generated code shifts almost exclusively by whole
+    /// bytes (address and selector packing, fixed-point scaling), so the byte-aligned case runs as a
+    /// byte move over the stack representation: no limb conversion and no shift arithmetic at all.
+    /// Big-endian order makes SHL a move toward index zero and SHR a move away from it.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, in UInt256 a)
@@ -48,6 +54,25 @@ public static partial class EvmInstructions
         if (!a.IsUint64 || a.u0 >= 256)
         {
             EvmStack.WriteUInt256ToSlot(ref topRef, in UInt256.Zero);
+            return EvmExceptionType.None;
+        }
+
+        int amount = (int)a.u0;
+        if ((amount & 7) == 0)
+        {
+            int bytes = amount >> 3;
+            Span<byte> slot = MemoryMarshal.CreateSpan(ref topRef, EvmStack.WordSize);
+            if (typeof(TOpShift) == typeof(OpShl))
+            {
+                slot.Slice(bytes).CopyTo(slot);
+                slot.Slice(EvmStack.WordSize - bytes).Clear();
+            }
+            else
+            {
+                slot.Slice(0, EvmStack.WordSize - bytes).CopyTo(slot.Slice(bytes));
+                slot.Slice(0, bytes).Clear();
+            }
+
             return EvmExceptionType.None;
         }
 
