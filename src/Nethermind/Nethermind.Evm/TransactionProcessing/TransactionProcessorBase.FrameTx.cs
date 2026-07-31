@@ -312,11 +312,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.AddToBalance(payer, maxCost - spentCost, spec);
         }
 
+        // EIP-1559/EIP-7928: fee accounting touches the beneficiary regardless of premium, so the
+        // credit is applied unconditionally like PayFees on the regular path; the BAL recorder drops
+        // the zero balance change and the EIP-158 commit clears a touched-empty beneficiary.
+        // PayFees also skips the credit for a beneficiary self-destructed within the tx (EIP-6780),
+        // but the frame path never finalizes its destroy list, so there is nothing to resurrect here;
+        // mirroring the guard would burn the premium while leaving the account live, matching neither
+        // path. Destroy-list finalization on the frame path (and the guard it would justify) is tracked
+        // separately.
         UInt256 fees = premiumPerGas * (UInt256)spentGas;
-        if (!fees.IsZero)
-        {
-            WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
-        }
+        WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
         bool commit = opts.HasFlag(ExecutionOptions.Commit);
         if (commit)
