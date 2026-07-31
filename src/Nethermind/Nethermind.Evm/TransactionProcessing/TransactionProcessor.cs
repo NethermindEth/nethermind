@@ -1560,7 +1560,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
             ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
 
-            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
+            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas, regularRefund);
         }
 
         private GasConsumed RefundFailedEip8037Gas(
@@ -1570,12 +1570,13 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 gasPrice,
             ulong spentGas,
             ulong blockGas,
-            long blockStateGas)
+            long blockStateGas,
+            ulong gasRefund = 0)
         {
             if (ShouldRefundGas(tx, opts, in gasPrice) && spentGas < tx.GasLimit)
                 PayRefund(tx, (tx.GasLimit - spentGas) * gasPrice, spec);
 
-            return new GasConsumed(spentGas, spentGas, blockGas, (ulong)blockStateGas, spentGas);
+            return new GasConsumed(spentGas, spentGas, blockGas, (ulong)blockStateGas, spentGas, gasRefund);
         }
 
         protected virtual bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
@@ -1715,7 +1716,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (ShouldRefundGas(tx, opts, in gasPrice))
                 PayRefund(tx, (tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
-            return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong));
+            return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong), refund > 0 ? (ulong)refund : 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
