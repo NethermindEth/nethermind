@@ -152,14 +152,8 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     }
 
     /// <summary>Hands every dirtied stem to one fresh write batch per partition, emptying this builder.</summary>
-    public PbtWriteBatchSet DrainToWriteBatches(PbtTiling tiling)
+    public PbtWriteBatchSet DrainToWriteBatches()
     {
-        _ = tiling switch
-        {
-            PbtTiling.SixLevel or PbtTiling.EightLevel or PbtTiling.FourLevel or PbtTiling.FiveLevel => tiling,
-            _ => throw new ArgumentOutOfRangeException(nameof(tiling), tiling, null),
-        };
-
         PbtWriteBatch? account = null;
         PbtWriteBatch? code = null;
         PbtWriteBatch? storage = null;

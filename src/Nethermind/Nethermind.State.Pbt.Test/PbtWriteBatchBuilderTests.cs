@@ -28,7 +28,7 @@ public class PbtWriteBatchBuilderTests
 
         Assert.That(builder.HasDirtyStems, Is.True);
 
-        using (PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.FourLevel))
+        using (PbtWriteBatchSet batches = builder.DrainToWriteBatches())
         {
             Assert.That(batches.Count, Is.EqualTo(2));
             AssertEntry(batches[PbtPartition.Storage], first, [10, 11, 12, 40]);
@@ -36,7 +36,7 @@ public class PbtWriteBatchBuilderTests
         }
 
         Assert.That(builder.HasDirtyStems, Is.False, "the drain hands every map to the batch");
-        using PbtWriteBatchSet drained = builder.DrainToWriteBatches(PbtTiling.FourLevel);
+        using PbtWriteBatchSet drained = builder.DrainToWriteBatches();
         Assert.That(drained.Count, Is.Zero);
     }
 
@@ -58,7 +58,7 @@ public class PbtWriteBatchBuilderTests
         if (alreadyDirtied) builder.SetLeaf(stem, 7, Value(7));
         builder.SetLeaves(stem, subIndices, Values(subIndices));
 
-        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.FourLevel);
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches();
         PbtWriteBatch batch = batches[PbtPartition.Storage];
         Assert.That(batch.Count, Is.EqualTo(1));
         AssertEntry(batch, stem, alreadyDirtied ? [0, 3, 7, 200, 255] : [0, 3, 200, 255]);
@@ -92,7 +92,7 @@ public class PbtWriteBatchBuilderTests
 
         Parallel.ForEach(work, item => builder.SetLeaf(TestStem(0x80, item.Stem), (byte)item.SubIndex, Value(item.Stem * subIndices + item.SubIndex)));
 
-        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.FourLevel);
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches();
         PbtWriteBatch batch = batches[PbtPartition.Storage];
         Assert.That(batch.Count, Is.EqualTo(stems));
         for (int s = 0; s < stems; s++)
@@ -115,7 +115,7 @@ public class PbtWriteBatchBuilderTests
         using PbtWriteBatchBuilder builder = new();
         for (int i = 0; i < firstBytes.Length; i++) builder.SetLeaf(TestStem(firstBytes[i], i), 0, Value(i));
 
-        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.FourLevel);
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(batches[PbtPartition.Account].Count, Is.EqualTo(3));
@@ -145,7 +145,7 @@ public class PbtWriteBatchBuilderTests
         using PbtWriteBatchBuilder builder = new();
         for (int i = 0; i < stems; i++) builder.SetLeaf(TestStem(0x80, i), 0, Value(i));
 
-        using (PbtWriteBatchSet batches = builder.DrainToWriteBatches(PbtTiling.FourLevel))
+        using (PbtWriteBatchSet batches = builder.DrainToWriteBatches())
         {
             Assert.That(batches[PbtPartition.Storage].Count, Is.EqualTo(stems));
         }
@@ -153,7 +153,7 @@ public class PbtWriteBatchBuilderTests
         Assert.That(builder.HasDirtyStems, Is.False);
 
         builder.SetLeaf(TestStem(0x80, 0), 1, Value(1));
-        using PbtWriteBatchSet reused = builder.DrainToWriteBatches(PbtTiling.FourLevel);
+        using PbtWriteBatchSet reused = builder.DrainToWriteBatches();
         Assert.That(reused[PbtPartition.Storage].Count, Is.EqualTo(1));
         AssertEntry(reused[PbtPartition.Storage], TestStem(0x80, 0), [1]);
     }

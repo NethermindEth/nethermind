@@ -172,7 +172,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
             builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
         }
 
-        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(WriteLayout.Tiling());
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches();
         _roots = TrieUpdater.UpdateRoot(this, _roots, batches, memoryProvider, WriteLayout, RootFoldConcurrency, out _);
         return _roots.Root;
     }
@@ -195,7 +195,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
             builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
         }
 
-        using PbtWriteBatchSet batches = builder.DrainToWriteBatches(WriteLayout.Tiling());
+        using PbtWriteBatchSet batches = builder.DrainToWriteBatches();
         _roots = TrieUpdater.UpdateRoot(this, _roots, batches, memoryProvider, WriteLayout, RootFoldConcurrency, out _);
         return _roots.Root;
     }

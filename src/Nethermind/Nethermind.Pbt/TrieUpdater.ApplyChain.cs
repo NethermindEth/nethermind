@@ -214,19 +214,17 @@ public static partial class TrieUpdater
             TreeReader<TLayout> seedReader = TreeReader<TLayout>.Of(seed).AsNode(seedKind);
 
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
-            // into a shared buffer and rebuild the group the split makes.
+            // and rebuild the group the split makes.
             TreeReader<TLayout> occupants = seedReader.WithSeed(targetSlot);
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
-
-            int mark = writer.WrittenCount;
 
             GroupShape shape = ResolveBoundaries(
                 key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results);
             MergeUntouchedSeed(occupants, results, shape.Touched);
 
             return RebuildNode(
-                key, occupants, default, results, shape, chain.NodeHash, chain.Stats, ref writer, mark,
+                key, occupants, default, results, shape, chain.NodeHash, chain.Stats, ref writer,
                 out changed, out delta);
         }
 

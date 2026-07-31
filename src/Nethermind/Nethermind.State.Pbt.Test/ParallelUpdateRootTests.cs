@@ -270,7 +270,7 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
             builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
         }
 
-        return builder.DrainToWriteBatches(layout.Tiling());
+        return builder.DrainToWriteBatches();
     }
 
     private static byte[] AccountStem(Random rng)
