@@ -41,29 +41,25 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private int _consecutiveCaptureFailures;
     // The config flag cannot prove the hook is wired: on a patricia backend this writer is constructed but nothing
     // ever invokes capture, and reporting healthy there would let receipt derivation skip bodies with no history
-    // behind them. Only a completed capture (or genesis seed) demonstrates the pipeline actually runs.
+    // behind them. Only a completed capture demonstrates the pipeline actually runs.
     private volatile bool _captureProven;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
-        : this(history, BasePersistence.ResolveSlotEncoding(
-            db,
-            (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
-            logManager.GetClassLogger<HistoryWriter>()), config.HistoryEnabled, logManager.GetClassLogger<HistoryWriter>())
-    {
-    }
-
-    private HistoryWriter(IColumnsDb<FlatHistoryColumns> history, bool rlpWrapSlots, bool enabled, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(history);
-        _enabled = enabled;
+        ILogger logger = logManager.GetClassLogger<HistoryWriter>();
+        _enabled = config.HistoryEnabled;
         _history = history;
-        _rlpWrapSlots = rlpWrapSlots;
+        _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(
+            db,
+            (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
+            logger);
         _logger = logger;
         _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory), logger);
         _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory), logger);
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
         _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
-        if (enabled)
+        if (_enabled)
         {
             _availability.VerifyFormat();
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
@@ -218,9 +214,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
 
         // Publish only after the block-0 batch is durable — this is the genesis floor a later walk connects to.
+        // Deliberately does not prove capture health: the seed shows the DB is writable, not that the walk connects,
+        // and the nodes that reach it (history enabled mid-life) are exactly the ones whose first walk fails.
         _availability.PublishWatermark(0);
         _history.SyncWal();
-        _captureProven = true;
     }
 
     [SkipLocalsInit]

@@ -30,13 +30,9 @@ public sealed class HistoryReader
     private readonly bool _rlpWrapSlots;
 
     public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, ILogManager logManager)
-        : this(db, history, logManager.GetClassLogger<HistoryReader>())
-    {
-    }
-
-    private HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(history);
+        ILogger logger = logManager.GetClassLogger<HistoryReader>();
         _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(
             db,
             (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),

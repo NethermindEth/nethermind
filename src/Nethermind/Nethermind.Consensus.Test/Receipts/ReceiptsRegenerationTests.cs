@@ -28,6 +28,8 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Flat;
+using System.Threading;
 using Nethermind.State.Flat.History;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
@@ -345,9 +347,15 @@ public class ReceiptsRegenerationTests
             RecoverReceiptsBlockchain chain = new();
             await chain.Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance)));
 
-            // TestBlockchain does not run init steps; prove capture the way SeedFlatHistoryGenesis does at startup,
-            // or StoresBodies correctly refuses to skip bodies for an unproven pipeline.
-            chain.Container.Resolve<HistoryWriter>().SeedGenesis([], chain.BlockTree.Genesis!.StateRoot!);
+            // TestBlockchain does not run init steps or persistence cycles; seed the genesis floor the way the
+            // startup step does, then drive one real capture - only a completed CaptureUpTo proves health, and
+            // StoresBodies correctly refuses to skip bodies for an unproven pipeline.
+            HistoryWriter historyWriter = chain.Container.Resolve<HistoryWriter>();
+            historyWriter.SeedGenesis([], chain.BlockTree.Genesis!.StateRoot!);
+            historyWriter.CaptureUpTo(
+                new StateId(0, chain.BlockTree.Genesis!.StateRoot!),
+                chain.Container.Resolve<ISnapshotRepository>(),
+                CancellationToken.None);
             return chain;
         }
 
