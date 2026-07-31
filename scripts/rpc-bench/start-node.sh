@@ -48,6 +48,11 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+PARALLEL_CENSUS=""
+if [[ "$ADDITIONAL_FLAGS" == *--ParallelCensus* ]]; then
+  PARALLEL_CENSUS="1"
+  ADDITIONAL_FLAGS="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/--ParallelCensus//')"
+fi
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
@@ -257,12 +262,7 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
-if [[ "$CLIENT" == "nethermind" ]]; then
-  docker_args+=(
-    -e "DOTNET_TieredCompilation=0"
-    -e "DOTNET_GCLatencyLevel=0"
-  )
-fi
+[[ -n "$PARALLEL_CENSUS" ]] && docker_args+=(-e "NETHERMIND_PARALLEL_CENSUS=1")
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 

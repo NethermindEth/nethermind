@@ -405,6 +405,7 @@ public static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
+            if (ParallelViabilityCensus.IsEnabled) ParallelViabilityCensus.ObserveWrite(storageCell.GetHashCode());
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
             if (newIsZero)
             {
@@ -582,6 +583,7 @@ public static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
+            if (ParallelViabilityCensus.IsEnabled) ParallelViabilityCensus.ObserveWrite(storageCell.GetHashCode());
             vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
             if (newIsZero)
             {

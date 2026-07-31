@@ -28,9 +28,17 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
-    public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
+    public readonly bool IsCold(Address? address)
+    {
+        if (ParallelViabilityCensus.IsEnabled && address is not null) ParallelViabilityCensus.ObserveRead(address.GetHashCode());
+        return !_trackingState.AccessedAddresses.Contains(address);
+    }
 
-    public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
+    public readonly bool IsCold(in StorageCell storageCell)
+    {
+        if (ParallelViabilityCensus.IsEnabled) ParallelViabilityCensus.ObserveRead(storageCell.GetHashCode());
+        return !_trackingState.AccessedStorageCells.Contains(storageCell);
+    }
 
     public readonly bool WarmUp(Address address)
         => _trackingState.AccessedAddresses.Add(address);

@@ -244,6 +244,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
+                    if (ParallelViabilityCensus.IsEnabled) ParallelViabilityCensus.EndTopFrame();
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     _currentState = null;
                     return substate;
@@ -256,6 +257,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
+                    if (ParallelViabilityCensus.IsEnabled && _txTracer.IsCancelable && _currentState.Env.CallDepth == 0)
+                    {
+                        Evm.State.Snapshot now = _worldState.TakeSnapshot();
+                        ref readonly Evm.State.Snapshot start = ref previousState.Snapshot;
+                        ParallelViabilityCensus.EndSibling(
+                            now.StateSnapshot == start.StateSnapshot
+                            && now.StorageSnapshot.PersistentStorageSnapshot == start.StorageSnapshot.PersistentStorageSnapshot
+                            && now.StorageSnapshot.TransientStorageSnapshot == start.StorageSnapshot.TransientStorageSnapshot
+                            && previousState.Refund == 0
+                            && !previousState.ExecutionType.IsAnyCreate());
+                    }
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
@@ -732,6 +744,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
+        if (ParallelViabilityCensus.IsEnabled && _txTracer.IsCancelable && _currentState.Env.CallDepth == 1)
+            ParallelViabilityCensus.BeginSibling();
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
