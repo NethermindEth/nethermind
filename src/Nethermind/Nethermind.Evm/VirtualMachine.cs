@@ -746,7 +746,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
         if (SiblingCensus.IsEnabled && _currentState.Env.CallDepth == 1)
-            SiblingCensus.BeginSibling();
+            SiblingCensus.BeginSibling(_currentState.Env.CodeSource, _currentState.Env.InputData, in _currentState.Env.Value);
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;

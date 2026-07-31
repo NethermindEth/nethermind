@@ -7,6 +7,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm;
 
@@ -29,7 +30,13 @@ public static class SiblingCensus
     public static readonly bool IsEnabled = !string.IsNullOrWhiteSpace(s_path);
 
     [ThreadStatic] private static bool t_recording;
-    [ThreadStatic] private static List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted, bool Clean)>? t_siblings;
+    [ThreadStatic] private static List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted, bool Clean, long SiteKey)>? t_siblings;
+    [ThreadStatic] private static long t_currentSiteKey;
+
+    /// <summary>Last observed touch fingerprints per call site, for the wave-two question: does
+    /// the same site touch the same cells on the next request. Order-independent fingerprint, so
+    /// internal ordering differences do not read as instability.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<long, (long TouchFp, int TouchCount)> s_predictions = new();
     [ThreadStatic] private static HashSet<int>? t_currentTouches;
     [ThreadStatic] private static HashSet<int>? t_currentFirstTouches;
 
@@ -41,6 +48,8 @@ public static class SiblingCensus
     private static readonly long[] s_bucketViable = new long[4];
     private static readonly long[] s_bucketClean = new long[4];
     private static readonly long[] s_bucketMemoable = new long[4];
+    private static readonly long[] s_bucketPredicted = new long[4];
+    private static readonly long[] s_bucketPredictionHits = new long[4];
     private static readonly long[] s_bucketTouches = new long[4];
     private static Timer? s_timer;
     private static int s_timerStarted;
@@ -55,9 +64,12 @@ public static class SiblingCensus
 
     public static bool Recording => t_recording;
 
-    public static void BeginSibling()
+    public static void BeginSibling(Address? to, ReadOnlyMemory<byte> input, in Nethermind.Int256.UInt256 value)
     {
-        t_siblings ??= new List<(HashSet<int>, HashSet<int>, bool, bool)>(64);
+        ValueHash256 inputHash = ValueKeccak.Compute(input.Span);
+        long key = System.HashCode.Combine(to, inputHash, value.GetHashCode());
+        t_currentSiteKey = key;
+        t_siblings ??= new List<(HashSet<int>, HashSet<int>, bool, bool, long)>(64);
         t_currentTouches = new HashSet<int>(128);
         t_currentFirstTouches = new HashSet<int>(64);
         t_recording = true;
@@ -67,7 +79,7 @@ public static class SiblingCensus
     {
         t_recording = false;
         if (t_currentTouches is null || t_currentFirstTouches is null) return;
-        t_siblings!.Add((t_currentTouches, t_currentFirstTouches, reverted, netWriteEmpty));
+        t_siblings!.Add((t_currentTouches, t_currentFirstTouches, reverted, netWriteEmpty, t_currentSiteKey));
         t_currentTouches = null;
         t_currentFirstTouches = null;
     }
@@ -94,7 +106,7 @@ public static class SiblingCensus
         t_recording = false;
         t_currentTouches = null;
         t_currentFirstTouches = null;
-        List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted, bool Clean)>? siblings = t_siblings;
+        List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted, bool Clean, long SiteKey)>? siblings = t_siblings;
         if (Interlocked.CompareExchange(ref s_timerStarted, 1, 0) == 0) StartTimer();
         if (siblings is null || siblings.Count == 0)
         {
@@ -108,8 +120,20 @@ public static class SiblingCensus
         long reverts = 0;
         long clean = 0;
         long memoable = 0;
-        foreach ((HashSet<int> touched, HashSet<int> firstTouched, bool reverted, bool netWriteEmpty) in siblings)
+        long predicted = 0;
+        long predictionHits = 0;
+        foreach ((HashSet<int> touched, HashSet<int> firstTouched, bool reverted, bool netWriteEmpty, long siteKey) in siblings)
         {
+            long fp = 0;
+            foreach (int h in touched) fp += unchecked((long)((ulong)(uint)h * 0x9E3779B97F4A7C15UL));
+            if (s_predictions.TryGetValue(siteKey, out (long TouchFp, int TouchCount) prev))
+            {
+                predicted++;
+                if (prev.TouchFp == fp && prev.TouchCount == touched.Count) predictionHits++;
+            }
+
+            s_predictions[siteKey] = (fp, touched.Count);
+
             bool overlaps = false;
             foreach (int h in touched)
             {
@@ -131,6 +155,8 @@ public static class SiblingCensus
         Interlocked.Add(ref s_bucketViable[bucket], viable);
         Interlocked.Add(ref s_bucketClean[bucket], clean);
         Interlocked.Add(ref s_bucketMemoable[bucket], memoable);
+        Interlocked.Add(ref s_bucketPredicted[bucket], predicted);
+        Interlocked.Add(ref s_bucketPredictionHits[bucket], predictionHits);
         Interlocked.Add(ref s_bucketTouches[bucket], touches);
         siblings.Clear();
     }
@@ -154,11 +180,13 @@ public static class SiblingCensus
             long viable = Interlocked.Read(ref s_bucketViable[i]);
             long clean = Interlocked.Read(ref s_bucketClean[i]);
             long memoable = Interlocked.Read(ref s_bucketMemoable[i]);
+            long predicted = Interlocked.Read(ref s_bucketPredicted[i]);
+            long predictionHits = Interlocked.Read(ref s_bucketPredictionHits[i]);
             long touches = Interlocked.Read(ref s_bucketTouches[i]);
             report.AppendLine($"[{labels[i]}] frames {frames}, siblings {siblings}"
                 + (frames > 0 ? $", per frame {(double)siblings / Math.Max(frames, 1):F2}" : "")
                 + (siblings > 0
-                    ? $", reverted {100.0 * reverted / siblings:F2}%, wave-one viable {100.0 * viable / siblings:F2}%, net-write-empty {100.0 * clean / siblings:F2}%, wave-one memoable {100.0 * memoable / siblings:F2}%, touches/sibling {(double)touches / siblings:F1}"
+                    ? $", reverted {100.0 * reverted / siblings:F2}%, wave-one viable {100.0 * viable / siblings:F2}%, net-write-empty {100.0 * clean / siblings:F2}%, wave-one memoable {100.0 * memoable / siblings:F2}%, site seen before {100.0 * predicted / siblings:F2}%, touch-set stable {(predicted > 0 ? 100.0 * predictionHits / predicted : 0):F2}%, touches/sibling {(double)touches / siblings:F1}"
                     : ""));
         }
 
