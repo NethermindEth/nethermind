@@ -209,7 +209,7 @@ public static class SiblingRecorder
                 (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(known.WriteHashes);
             }
 
-            if (t_currentWrites is { Count: > 0 } liveWrites)
+            if (!cleanFrame && t_currentWrites is { Count: > 0 } liveWrites)
             {
                 (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(liveWrites);
             }
@@ -234,9 +234,11 @@ public static class SiblingRecorder
         if (!succeeded) s_recReverted++;
         if (tookValue) s_recTookValue++;
         if (!prefixDisjoint) s_recPrefixOverlap++;
-        // Only actual writes poison the suffix - precise cells, not the touch set, or the shared
-        // reads every quote performs would reject the entire request.
-        if (t_currentWrites is { Count: > 0 } writes)
+        // Only writes that SURVIVED the sibling poison the suffix. A clean frame's writes were all
+        // reverted away, and simulate-then-revert is exactly what these frames do: poisoning with
+        // them made every quote poison the pool slots the next quote reads, which is what rejected
+        // 60 of 68 recordings. cleanFrame is the journal's own answer to what survived.
+        if (!cleanFrame && t_currentWrites is { Count: > 0 } writes)
         {
             (t_prefixWrites ??= new HashSet<int>(256)).UnionWith(writes);
         }
@@ -251,7 +253,7 @@ public static class SiblingRecorder
             GasUsed = gasUsed,
             Output = memoable ? output.ToArray() : [],
             TouchHashes = [.. touches],
-            WriteHashes = t_currentWrites is null ? [] : [.. t_currentWrites],
+            WriteHashes = cleanFrame || t_currentWrites is null ? [] : [.. t_currentWrites],
             FirstTouchAddresses = [.. t_firstTouchAddresses!],
             FirstTouchSlots = [.. t_firstTouchSlots!],
         };
