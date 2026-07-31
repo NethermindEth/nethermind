@@ -89,6 +89,16 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         writer.WritePropertyName("gasUsed"u8);
         JsonSerializer.Serialize(writer, value.GasUsed, options);
 
+        if (value.RegularGasUsed is not null)
+        {
+            writer.WritePropertyName("regularGasUsed"u8);
+            JsonSerializer.Serialize(writer, value.RegularGasUsed.Value, options);
+            writer.WritePropertyName("stateGasUsed"u8);
+            JsonSerializer.Serialize(writer, value.StateGasUsed!.Value, options);
+            writer.WritePropertyName("gasRefund"u8);
+            JsonSerializer.Serialize(writer, value.GasRefund!.Value, options);
+        }
+
         writer.WritePropertyName("input"u8);
         if (value.Input is null || value.Input.Count == 0)
         {
