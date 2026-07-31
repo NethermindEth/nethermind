@@ -12,23 +12,23 @@ namespace Nethermind.Trie
     {
         [CounterMetric]
         [Description("Number of trie node hash calculations.")]
-        public static long TreeNodeHashCalculations => StripedCounter.Sum(_treeNodeHashCalculations);
-        private static readonly CacheLinePaddedLong[] _treeNodeHashCalculations = StripedCounter.Create();
+        public static long TreeNodeHashCalculations => _treeNodeHashCalculations.Sum();
+        private static readonly PerThreadCounter _treeNodeHashCalculations = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeHashCalculations() => StripedCounter.Increment(_treeNodeHashCalculations);
+        internal static void IncrementTreeNodeHashCalculations() => _treeNodeHashCalculations.Increment();
 
         [CounterMetric]
         [Description("Number of trie node RLP encodings.")]
-        public static long TreeNodeRlpEncodings => StripedCounter.Sum(_treeNodeRlpEncodings);
-        private static readonly CacheLinePaddedLong[] _treeNodeRlpEncodings = StripedCounter.Create();
+        public static long TreeNodeRlpEncodings => _treeNodeRlpEncodings.Sum();
+        private static readonly PerThreadCounter _treeNodeRlpEncodings = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeRlpEncodings() => StripedCounter.Increment(_treeNodeRlpEncodings);
+        internal static void IncrementTreeNodeRlpEncodings() => _treeNodeRlpEncodings.Increment();
 
         [CounterMetric]
         [Description("Number of trie node RLP decodings.")]
-        public static long TreeNodeRlpDecodings => StripedCounter.Sum(_treeNodeRlpDecodings);
-        private static readonly CacheLinePaddedLong[] _treeNodeRlpDecodings = StripedCounter.Create();
+        public static long TreeNodeRlpDecodings => _treeNodeRlpDecodings.Sum();
+        private static readonly PerThreadCounter _treeNodeRlpDecodings = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeRlpDecodings() => StripedCounter.Increment(_treeNodeRlpDecodings);
+        internal static void IncrementTreeNodeRlpDecodings() => _treeNodeRlpDecodings.Increment();
     }
 }

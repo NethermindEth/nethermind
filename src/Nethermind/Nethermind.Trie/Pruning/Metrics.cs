@@ -45,17 +45,17 @@ namespace Nethermind.Trie.Pruning
 
         [CounterMetric]
         [Description("Number of DB reads.")]
-        public static long LoadedFromDbNodesCount => StripedCounter.Sum(_loadedFromDbNodesCount);
-        private static readonly CacheLinePaddedLong[] _loadedFromDbNodesCount = StripedCounter.Create();
+        public static long LoadedFromDbNodesCount => _loadedFromDbNodesCount.Sum();
+        private static readonly PerThreadCounter _loadedFromDbNodesCount = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromDbNodesCount() => StripedCounter.Increment(_loadedFromDbNodesCount);
+        public static void IncrementLoadedFromDbNodesCount() => _loadedFromDbNodesCount.Increment();
 
         [CounterMetric]
         [Description("Number of reads from the node cache.")]
-        public static long LoadedFromCacheNodesCount => StripedCounter.Sum(_loadedFromCacheNodesCount);
-        private static readonly CacheLinePaddedLong[] _loadedFromCacheNodesCount = StripedCounter.Create();
+        public static long LoadedFromCacheNodesCount => _loadedFromCacheNodesCount.Sum();
+        private static readonly PerThreadCounter _loadedFromCacheNodesCount = new();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromCacheNodesCount() => StripedCounter.Increment(_loadedFromCacheNodesCount);
+        public static void IncrementLoadedFromCacheNodesCount() => _loadedFromCacheNodesCount.Increment();
 
         [CounterMetric]
         [Description("Number of reads from the RLP cache.")]
