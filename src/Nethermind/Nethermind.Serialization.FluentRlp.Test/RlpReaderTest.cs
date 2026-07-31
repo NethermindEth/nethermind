@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using Nethermind.Serialization.FluentRlp.Instances;
 
@@ -153,5 +154,63 @@ public class RlpReaderTest
 
         Assert.That(reader.HasNext, Is.False);
         Assert.That(reader.BytesRead, Is.EqualTo(source.Length));
+    }
+
+    // A sequence whose reader stops short leaves undecoded items behind. Both the short and the long
+    // prefix form must reject that, so the cases straddle the 55-byte content boundary.
+    [TestCase(2)]
+    [TestCase(100)]
+    [Test]
+    public void ReadSequenceLeavingItemsUnconsumed(int itemCount)
+    {
+        byte[] rlp = Rlp.Write(itemCount, static (ref RlpWriter w, int itemCount) =>
+        {
+            w.WriteSequence(itemCount, static (ref RlpWriter w, int itemCount) =>
+            {
+                for (int i = 0; i < itemCount; i++)
+                {
+                    w.Write("dog");
+                }
+            });
+        });
+
+        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        {
+            return r.ReadSequence(static (scoped ref RlpReader r) => r.ReadString());
+        }), Throws.InstanceOf<RlpReaderException>());
+    }
+
+    [TestCase(2)]
+    [TestCase(100)]
+    [Test]
+    public void ReadSequenceConsumingEveryItem(int itemCount)
+    {
+        byte[] rlp = Rlp.Write(itemCount, static (ref RlpWriter w, int itemCount) =>
+        {
+            w.WriteSequence(itemCount, static (ref RlpWriter w, int itemCount) =>
+            {
+                for (int i = 0; i < itemCount; i++)
+                {
+                    w.Write("dog");
+                }
+            });
+        });
+
+        List<string> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        {
+            return r.ReadSequence(static (scoped ref RlpReader r) =>
+            {
+                List<string> result = [];
+                while (r.HasNext)
+                {
+                    result.Add(r.ReadString());
+                }
+
+                return result;
+            });
+        });
+
+        Assert.That(decoded, Is.All.EqualTo("dog"));
+        Assert.That(decoded.Count, Is.EqualTo(itemCount));
     }
 }

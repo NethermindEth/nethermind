@@ -91,6 +91,7 @@ public ref struct RlpReader
             int length = header - 0xC0;
             RlpReader reader = new(_buffer.Slice(_position, length));
             result = func(ref reader, ctx);
+            if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
             _position += length;
         }
         else
@@ -101,6 +102,7 @@ public ref struct RlpReader
             int length = Int32Primitive.Read(binaryLength);
             RlpReader reader = new(_buffer.Slice(_position, length));
             result = func(ref reader, ctx);
+            if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
             _position += length;
         }
 
