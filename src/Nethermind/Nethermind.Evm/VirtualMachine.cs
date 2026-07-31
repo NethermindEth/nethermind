@@ -258,7 +258,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
                     if (SiblingCensus.IsEnabled && _currentState.Env.CallDepth == 0)
-                        SiblingCensus.EndSibling(callResult.ShouldRevert);
+                    {
+                        // Net-write-empty: the sibling left nothing in the change journals - its
+                        // internal writes were all reverted away. Those are the memoizable frames.
+                        Evm.State.Snapshot now = _worldState.TakeSnapshot();
+                        ref readonly Evm.State.Snapshot start = ref previousState.Snapshot;
+                        bool netWriteEmpty =
+                            now.StateSnapshot == start.StateSnapshot
+                            && now.StorageSnapshot.PersistentStorageSnapshot == start.StorageSnapshot.PersistentStorageSnapshot
+                            && now.StorageSnapshot.TransientStorageSnapshot == start.StorageSnapshot.TransientStorageSnapshot;
+                        SiblingCensus.EndSibling(callResult.ShouldRevert, netWriteEmpty);
+                    }
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)

@@ -29,7 +29,7 @@ public static class SiblingCensus
     public static readonly bool IsEnabled = !string.IsNullOrWhiteSpace(s_path);
 
     [ThreadStatic] private static bool t_recording;
-    [ThreadStatic] private static List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted)>? t_siblings;
+    [ThreadStatic] private static List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted, bool Clean)>? t_siblings;
     [ThreadStatic] private static HashSet<int>? t_currentTouches;
     [ThreadStatic] private static HashSet<int>? t_currentFirstTouches;
 
@@ -39,6 +39,8 @@ public static class SiblingCensus
     private static readonly long[] s_bucketSiblings = new long[4];
     private static readonly long[] s_bucketReverted = new long[4];
     private static readonly long[] s_bucketViable = new long[4];
+    private static readonly long[] s_bucketClean = new long[4];
+    private static readonly long[] s_bucketMemoable = new long[4];
     private static readonly long[] s_bucketTouches = new long[4];
     private static Timer? s_timer;
     private static int s_timerStarted;
@@ -55,17 +57,17 @@ public static class SiblingCensus
 
     public static void BeginSibling()
     {
-        t_siblings ??= new List<(HashSet<int>, HashSet<int>, bool)>(64);
+        t_siblings ??= new List<(HashSet<int>, HashSet<int>, bool, bool)>(64);
         t_currentTouches = new HashSet<int>(128);
         t_currentFirstTouches = new HashSet<int>(64);
         t_recording = true;
     }
 
-    public static void EndSibling(bool reverted)
+    public static void EndSibling(bool reverted, bool netWriteEmpty)
     {
         t_recording = false;
         if (t_currentTouches is null || t_currentFirstTouches is null) return;
-        t_siblings!.Add((t_currentTouches, t_currentFirstTouches, reverted));
+        t_siblings!.Add((t_currentTouches, t_currentFirstTouches, reverted, netWriteEmpty));
         t_currentTouches = null;
         t_currentFirstTouches = null;
     }
@@ -92,7 +94,7 @@ public static class SiblingCensus
         t_recording = false;
         t_currentTouches = null;
         t_currentFirstTouches = null;
-        List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted)>? siblings = t_siblings;
+        List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted, bool Clean)>? siblings = t_siblings;
         if (Interlocked.CompareExchange(ref s_timerStarted, 1, 0) == 0) StartTimer();
         if (siblings is null || siblings.Count == 0)
         {
@@ -104,7 +106,9 @@ public static class SiblingCensus
         long viable = 0;
         long touches = 0;
         long reverts = 0;
-        foreach ((HashSet<int> touched, HashSet<int> firstTouched, bool reverted) in siblings)
+        long clean = 0;
+        long memoable = 0;
+        foreach ((HashSet<int> touched, HashSet<int> firstTouched, bool reverted, bool netWriteEmpty) in siblings)
         {
             bool overlaps = false;
             foreach (int h in touched)
@@ -114,6 +118,8 @@ public static class SiblingCensus
 
             if (!overlaps) viable++;
             if (reverted) reverts++;
+            if (netWriteEmpty) clean++;
+            if (netWriteEmpty && !overlaps) memoable++;
             touches += touched.Count;
             warmedByPrefix.UnionWith(firstTouched);
         }
@@ -123,6 +129,8 @@ public static class SiblingCensus
         Interlocked.Add(ref s_bucketSiblings[bucket], siblings.Count);
         Interlocked.Add(ref s_bucketReverted[bucket], reverts);
         Interlocked.Add(ref s_bucketViable[bucket], viable);
+        Interlocked.Add(ref s_bucketClean[bucket], clean);
+        Interlocked.Add(ref s_bucketMemoable[bucket], memoable);
         Interlocked.Add(ref s_bucketTouches[bucket], touches);
         siblings.Clear();
     }
@@ -144,11 +152,13 @@ public static class SiblingCensus
             long siblings = Interlocked.Read(ref s_bucketSiblings[i]);
             long reverted = Interlocked.Read(ref s_bucketReverted[i]);
             long viable = Interlocked.Read(ref s_bucketViable[i]);
+            long clean = Interlocked.Read(ref s_bucketClean[i]);
+            long memoable = Interlocked.Read(ref s_bucketMemoable[i]);
             long touches = Interlocked.Read(ref s_bucketTouches[i]);
             report.AppendLine($"[{labels[i]}] frames {frames}, siblings {siblings}"
                 + (frames > 0 ? $", per frame {(double)siblings / Math.Max(frames, 1):F2}" : "")
                 + (siblings > 0
-                    ? $", reverted {100.0 * reverted / siblings:F2}%, wave-one viable {100.0 * viable / siblings:F2}%, touches/sibling {(double)touches / siblings:F1}"
+                    ? $", reverted {100.0 * reverted / siblings:F2}%, wave-one viable {100.0 * viable / siblings:F2}%, net-write-empty {100.0 * clean / siblings:F2}%, wave-one memoable {100.0 * memoable / siblings:F2}%, touches/sibling {(double)touches / siblings:F1}"
                     : ""));
         }
 
