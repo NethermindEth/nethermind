@@ -122,15 +122,52 @@ public class PbtStorageKeyLayoutTests
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()), Throws.InstanceOf<InvalidDataException>());
     }
 
-    /// <summary>An empty database has no state to misread, so it is stamped with the current layout rather than refused.</summary>
+    /// <summary>An empty database has no state to misread, so it is stamped with the current layout and tiling rather than refused.</summary>
     [Test]
     public void StampsAFreshDatabase()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        _ = new PbtRocksDbPersistence(db, new PbtConfig());
+        PbtConfig config = new() { TrieNodeLayout = PbtTrieLayout.FiveLevelInterleaved };
+        _ = new PbtRocksDbPersistence(db, config);
 
-        Assert.That(db.GetColumnDb(PbtColumns.Metadata)["layoutVersion"u8.ToArray()], Is.Not.Null);
-        Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()), Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata)["layoutVersion"u8.ToArray()], Is.Not.Null);
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata)["trieTiling"u8.ToArray()], Is.EqualTo([(byte)PbtTiling.FiveLevel]));
+        }
+        Assert.That(() => new PbtRocksDbPersistence(db, config), Throws.Nothing);
+    }
+
+    /// <summary>A populated database without a tiling stamp may use the removed clustered layout and must be refused.</summary>
+    [Test]
+    public void RejectsAPopulatedDatabaseWithoutATilingStamp()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
+        {
+            batch.SetLeafBlob(StemOf(TestItem.AddressA, 1, out byte subIndex), Blob(subIndex, 0xAB));
+        }
+
+        db.GetColumnDb(PbtColumns.Metadata).Remove("trieTiling"u8);
+
+        Assert.That(
+            () => new PbtRocksDbPersistence(db, new PbtConfig()),
+            Throws.InstanceOf<InvalidDataException>().With.Message.Contains("legacy clustered layout"));
+    }
+
+    /// <summary>The removed clustered tiling used stamp zero and must not be reopened as an independent layout.</summary>
+    [Test]
+    public void RejectsLegacyClusteredTilingStamp()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        _ = new PbtRocksDbPersistence(db, new PbtConfig());
+        db.GetColumnDb(PbtColumns.Metadata)["trieTiling"u8.ToArray()] = [0];
+
+        Assert.That(
+            () => new PbtRocksDbPersistence(db, new PbtConfig()),
+            Throws.InstanceOf<InvalidDataException>().With.Message.Contains("unsupported trie tiling stamp 00"));
     }
 
     /// <summary>
