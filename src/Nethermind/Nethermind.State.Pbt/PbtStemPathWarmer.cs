@@ -83,10 +83,7 @@ internal static class PbtStemPathWarmer
             case NodeKind.Internal:
                 int childDepth = key.Depth + TLayout.LevelsPerGroup;
                 TrieNodeKey childKey = TrieNodeKey.For(childDepth, stem);
-                if (occupants.HasChild(slot, group))
-                    WarmGroup<TLayout>(bundle, childKey, occupants.Child(slot, group), stem);
-                else
-                    WarmStoredGroup<TLayout>(bundle, childKey, occupant.NodeHash(), stem);
+                WarmStoredGroup<TLayout>(bundle, childKey, occupant.NodeHash(), stem);
                 return;
             default:
                 throw new InvalidDataException($"Unexpected PBT node kind {occupant.Kind}");
