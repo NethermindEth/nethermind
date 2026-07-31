@@ -99,8 +99,71 @@ public class FrameTxBlockReceiptsTests
         Assert.That(tx.BlockGasUsed, Is.EqualTo((ulong)receipt.GasUsed),
             "frame tx must report block gas via Transaction.BlockGasUsed for parallel block validation");
 
+        Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+
         // The frame-aware wire encoding must produce a computable receipts root.
         Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());
         Assert.That(receiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+    }
+
+    // The transaction-level status is absent from the EIP-8141 receipt payload, so it is derived from
+    // the frame statuses. A reverted frame therefore surfaces as a failed transaction even though the
+    // transaction itself executed and was charged.
+    [Test]
+    public void Execute_FrameTxWithRevertedFrame_ReportsFailureStatus()
+    {
+        ISpecProvider specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        IReleaseSpec spec = specProvider.GenesisSpec;
+
+        stateProvider.CreateAccount(Sender, 1.Ether);
+        stateProvider.InsertCode(Sender, Prepare.EvmCode
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, spec);
+        stateProvider.CreateAccount(Observer, UInt256.Zero);
+        stateProvider.InsertCode(Observer, Prepare.EvmCode
+            .PushData(0).PushData(0).Op(Instruction.REVERT).Done, spec);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = Sender,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 200_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModeSender, 0, Observer, 200_000, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        TxReceipt receipt = receiptsTracer.TxReceipts[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "a reverted frame must not be reported as a successful transaction");
+        }
     }
 }

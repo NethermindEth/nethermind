@@ -164,6 +164,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         {
             txReceipt.Payer = _frameTxPayer;
             txReceipt.FrameReceipts = _frameTxReceipts;
+            // The transaction is charged and included whatever its frames did, so the processor
+            // always reports success; the status a caller sees comes from the frames instead.
+            txReceipt.StatusCode = TxFrameReceipt.AggregateStatus(_frameTxReceipts);
             _frameTxPayer = null;
             _frameTxReceipts = null;
         }
