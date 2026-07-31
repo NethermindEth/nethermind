@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -91,10 +91,10 @@ namespace Nethermind.State
             /// Below this, the separate <see cref="PatriciaTree.UpdateRootHash"/> pass is faster: its
             /// grandchild frontier work-steals across up to 256 jobs, while fused hashing unwinds
             /// serially inside the 16 top-level buckets and pays the slowest-bucket imbalance. Per-block
-            /// fusaka A/B showed fusion only wins on write-heavy blocks (top decile, ≥ roughly this many
+            /// fusaka A/B showed fusion only wins on write-heavy blocks (top decile, â‰Ą roughly this many
             /// changed accounts) and costs ~0.5 ms on typical blocks when unconditional.
             /// </remarks>
-            private const int FusedRootHashThreshold = 2048;
+            private const int FusedRootHashThreshold = int.MaxValue;
 
             readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
 
