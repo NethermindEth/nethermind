@@ -17,9 +17,7 @@ namespace Nethermind.State.Pbt.Test;
 /// Covers layouts with boundary masks wider than a machine word.
 /// </remarks>
 /// <param name="layout"><inheritdoc cref="PbtTilingTests" path="/param[@name='layout']"/></param>
-[TestFixture(PbtTrieLayout.ClusteredFourLevelEveryLevel)]
-[TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
-[TestFixture(PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
+[TestFixture(PbtTrieLayout.FourLevelEveryLevel)]
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
 [TestFixture(PbtTrieLayout.FiveLevelInterleaved)]
@@ -162,63 +160,6 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
     }
 
     /// <summary>
-    /// Verifies worker-folded children assemble in slot order within a clustering frame.
-    /// </summary>
-    [Test]
-    public void ParallelFold_BranchesAndQueuesInsideACluster()
-    {
-        if (layout.Tiling() != PbtTiling.ClusteredFourLevel) return;
-
-        Random rng = new(29);
-        List<(byte[] Key, byte[]? Value)> writes = WritesBranchingInsideCluster(rng, stemsPerSlot: 128);
-        PbtTreeHarness serial = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = 1 };
-        PbtTreeHarness parallel = new(PooledRefCountingMemoryProvider.Instance, layout) { RootFoldConcurrency = Workers };
-
-        serial.ApplyBatch(writes);
-        parallel.ApplyBatch(writes);
-        serial.ResetReadThreads();
-        parallel.ResetReadThreads();
-
-        Assert.That(parallel.ApplyBatch(writes), Is.EqualTo(serial.ApplyBatch(writes)));
-        AssertStoresMatch(serial, parallel);
-        Assert.That(parallel.ReadThreadCount, Is.GreaterThan(1), "the clustering frame did not hand a child to a worker");
-        Assert.That(serial.ReadThreadCount, Is.EqualTo(1), "the serial fold must retain its direct path");
-    }
-
-    /// <summary>
-    /// Verifies non-queued clustering children write directly without temporary buffers.
-    /// </summary>
-    [Test]
-    public void ParallelFold_DoesNotBufferAClusterWhoseChildrenAreBelowTheQueueThreshold()
-    {
-        if (layout.Tiling() != PbtTiling.ClusteredFourLevel) return;
-
-        Random rng = new(31);
-        List<(byte[] Key, byte[]? Value)> writes = WritesBranchingInsideClusters(rng, stemsPerSlot: 4);
-        TrackingMemoryProvider serialProvider = new();
-        TrackingMemoryProvider parallelProvider = new();
-        PbtTreeHarness serial = new(serialProvider, layout) { RootFoldConcurrency = 1 };
-        PbtTreeHarness parallel = new(parallelProvider, layout) { RootFoldConcurrency = Workers };
-
-        serial.ApplyBatch(writes);
-        parallel.ApplyBatch(writes);
-        int serialRents = serialProvider.Rented.Count;
-        int parallelRents = parallelProvider.Rented.Count;
-        parallel.ResetReadThreads();
-
-        Assert.That(parallel.ApplyBatch(writes), Is.EqualTo(serial.ApplyBatch(writes)));
-        AssertStoresMatch(serial, parallel);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parallel.ReadThreadCount, Is.GreaterThan(1), "upper buckets did not run in parallel");
-            Assert.That(
-                parallelProvider.Rented.Count - parallelRents,
-                Is.EqualTo(serialProvider.Rented.Count - serialRents),
-                "clusters with no queueable children rented temporary child buffers");
-        }
-    }
-
-    /// <summary>
     /// Verifies every buffer rented by a parallel fold is released.
     /// </summary>
     [Test]
@@ -313,32 +254,6 @@ public class ParallelUpdateRootTests(PbtTrieLayout layout)
                 stem[^2] = (byte)rng.Next(256);
                 stem[^1] = (byte)rng.Next(256);
                 writes.Add(([.. stem, (byte)rng.Next(256)], Value(rng)));
-            }
-        }
-
-        return writes;
-    }
-
-    private static List<(byte[] Key, byte[]? Value)> WritesBranchingInsideCluster(Random rng, int stemsPerSlot) =>
-        WritesBranchingInsideClusters(rng, stemsPerSlot, rootSlot: 0xA);
-
-    private static List<(byte[] Key, byte[]? Value)> WritesBranchingInsideClusters(
-        Random rng, int stemsPerSlot, int? rootSlot = null)
-    {
-        List<(byte[] Key, byte[]? Value)> writes = [];
-        int firstRootSlot = rootSlot ?? 0;
-        int rootSlotCount = rootSlot.HasValue ? 1 : 16;
-        for (int root = firstRootSlot; root < firstRootSlot + rootSlotCount; root++)
-        {
-            for (int slot = 0; slot < 16; slot++)
-            {
-                for (int i = 0; i < stemsPerSlot; i++)
-                {
-                    byte[] stem = AccountStem(rng);
-                    stem[0] = (byte)root;
-                    stem[1] = (byte)((slot << 4) | (stem[1] & 0x0F));
-                    writes.Add(([.. stem, (byte)rng.Next(256)], Value(rng)));
-                }
             }
         }
 

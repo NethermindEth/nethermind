@@ -10,7 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
-using Layout = Nethermind.Pbt.Tiles.PbtClusteredTileLayout;
+using Layout = Nethermind.Pbt.Tiles.PbtFourLevelTileLayout;
 using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt.Test;
@@ -129,7 +129,7 @@ public class PbtScannerTests
     /// The counts above are the four-level tree's shape and do not carry over to a tile of another
     /// width, so only what every tiling shares is asserted here.
     /// </remarks>
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.FourLevelEveryLevel)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved)]
     [TestCase(PbtTrieLayout.FiveLevelInterleaved)]
     [TestCase(PbtTrieLayout.SixLevelInterleaved)]
@@ -337,18 +337,14 @@ public class PbtScannerTests
         });
     }
 
-    /// <summary>
-    /// A blob holding its children counts as the nodes it holds, at the depths they sit at, so the
-    /// shape reads exactly as it would had they been stored apart — and the sharing itself is counted
-    /// beside it, one lookup and one key saved per child.
-    /// </summary>
+    /// <summary>Independent groups are counted at their stored depths.</summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
     [TestCase(PbtGroupFormat.BoundaryOnly)]
-    public async Task Scan_ReadsAClusterAsTheNodesItHolds(PbtGroupFormat format)
+    public async Task Scan_ReadsIndependentGroupsAtTheirDepths(PbtGroupFormat format)
     {
-        // three account stems: two parting at nibble 2, so their group at depth 8 hangs under the
-        // depth-4 group that the third one branches — and depth 4 holds its children
+        // Three account stems: two part at nibble 2, so their group at depth 8 hangs under the
+        // depth-4 group where the third one branches.
         List<(byte[], byte[]?)> writes = [];
         foreach (byte[] prefix in (byte[][])[[0x00, 0x00], [0x00, 0x10], [0x01, 0x00]])
         {
@@ -365,18 +361,11 @@ public class PbtScannerTests
             Assert.That(report.Root.IsEmpty, Is.True, "partition roots replace the stored depth-0 root");
             Assert.That(report.AccountNodes.GroupsByDepth[4], Is.EqualTo(1));
             Assert.That(report.AccountNodes.GroupsByDepth[8], Is.EqualTo(1));
-            Assert.That(report.ClusterCount, Is.EqualTo(0), "the partition root cannot cluster");
-            Assert.That(report.ClusteredGroupCount, Is.EqualTo(0));
             Assert.That(report.TrieNodeBlobCount, Is.EqualTo(2));
             Assert.That(report.AccountNodes.KeyBytes, Is.EqualTo(2 * TrieNodeKey.Length));
-            Assert.That(report.AccountNodes.ClustersByDepth[4], Is.EqualTo(0));
-            Assert.That(report.AccountNodes.ClusteredGroupsByDepth[4], Is.EqualTo(0));
-            Assert.That(report.ChainCount, Is.EqualTo(0), "nothing here collapses, so the blob is its two groups and the framing");
-            Assert.That(report.AccountNodes.ClusterBytesByDepth[4], Is.EqualTo(0));
+            Assert.That(report.ChainCount, Is.EqualTo(0), "nothing here collapses, so the tree is its two groups");
             Assert.That(report.StemCount, Is.EqualTo(3));
             Assert.That(report.StemCountAgrees, Is.True);
-            Assert.That(report.Format(), Does.Not.Contain("Clusters by depth"));
-            Assert.That(report.Format(), Does.Not.Contain("Cluster blobs by depth"));
         });
     }
 
@@ -408,7 +397,6 @@ public class PbtScannerTests
             Assert.That(report, Does.Not.Contain("--- Code ---"), "an empty partition is left out");
             Assert.That(report, Does.Contain("Account leaf blobs"));
             Assert.That(report, Does.Contain("Storage leaf blobs"));
-            Assert.That(report, Does.Not.Contain("Clusters by depth"), "no group of this tree holds its children");
         });
     }
 
@@ -463,7 +451,13 @@ public class PbtScannerTests
     }
 
     private static Task<PbtScanReport> ScanTree(PbtGroupFormat format, List<(byte[] Key, byte[]? Value)> writes, int concurrency) =>
-        ScanTree(PbtTestFormats.Clustered(format), writes, concurrency);
+        ScanTree(format switch
+        {
+            PbtGroupFormat.EveryLevel => PbtTrieLayout.FourLevelEveryLevel,
+            PbtGroupFormat.Interleaved => PbtTrieLayout.FourLevelInterleaved,
+            PbtGroupFormat.BoundaryOnly => PbtTrieLayout.FourLevelBoundaryOnly,
+            _ => throw new System.ArgumentOutOfRangeException(nameof(format)),
+        }, writes, concurrency);
 
     private static Task<PbtScanReport> ScanTree(PbtTrieLayout layout, List<(byte[] Key, byte[]? Value)> writes, int concurrency)
     {

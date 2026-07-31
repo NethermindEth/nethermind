@@ -116,7 +116,7 @@ public static partial class TrieUpdater
                 bool targetChanged;
                 try
                 {
-                    ApplyStoredGroup(
+                    ApplyGroup(
                         chain.TargetKey, entries, TreeReader<TLayout>.Of(targetData), chain.TargetHash, plan.AfterJump(), fanout, ref targetWriter,
                         out inner, out targetChanged, out delta);
 

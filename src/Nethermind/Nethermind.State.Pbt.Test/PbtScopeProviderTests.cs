@@ -23,7 +23,6 @@ namespace Nethermind.State.Pbt.Test;
 /// The whole component stack — scope, snapshot, compaction, persistence — over each tiling of the
 /// trie underneath it, all folding to the same reference roots.
 /// </param>
-[TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FiveLevelInterleaved)]
 [TestFixture(PbtTrieLayout.SixLevelInterleaved)]

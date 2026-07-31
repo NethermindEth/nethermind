@@ -77,7 +77,7 @@ public class PbtScopeProviderBenchmark
     // State writes scale linearly with layer depth, so this benchmark fixes depth at one.
     /// <summary>Which layout the PBT backend stores its nodes in; ignored by the trie backend.</summary>
     [Params(
-        PbtTrieLayout.ClusteredFourLevelInterleaved,
+        PbtTrieLayout.FourLevelEveryLevel,
         PbtTrieLayout.FourLevelInterleaved,
         PbtTrieLayout.FiveLevelInterleaved,
         PbtTrieLayout.SixLevelInterleaved,
