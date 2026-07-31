@@ -666,12 +666,41 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             InsertHeavyBlock(number);
         }
 
+        Assert.That(_storage.RetainedBytes, Is.GreaterThanOrEqualTo(PersistentReceiptStorage.MaxRetainedBytes),
+            "precondition: retention must be saturated by bytes at this point");
+
         Block overflow = InsertHeavyBlock((ulong)blocksToSaturate + 1);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(BodyIsPersisted(overflow), Is.True, "at the byte cap the body must write through");
             Assert.That(BodyIsPersisted(firstRetained), Is.False, "below the cap the skip must keep applying");
+        }
+    }
+
+    // The byte counter must track the retained set on every removal path, not just eviction: a path that drops a
+    // body without subtracting its bytes drifts the counter up permanently, and once the drift alone exceeds the
+    // byte cap the derivation skip latches off for good.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Removing_receipts_keeps_the_retained_byte_count_in_step()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        IStateHistoryCaptureStatus captureStatus = _captureStatus;
+
+        Block block = ProcessBlock();
+        Assert.That(_storage.RetainedBytes, Is.GreaterThan(0), "precondition: the skipped body is retained");
+
+        _storage.RemoveReceipts(block);
+        long afterRemoval = _storage.RetainedBytes;
+
+        captureStatus.CaptureDisabled += Raise.Event<Action>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterRemoval, Is.Zero, "removal must subtract the body's bytes");
+            Assert.That(_storage.RetainedBodyCount, Is.Zero);
+            Assert.That(BodyIsPersisted(block), Is.False, "a removed body must not be resurrected by the disable flush");
         }
     }
 
