@@ -2,6 +2,11 @@ name: Clean up EXPB runner
 
 on:
   workflow_dispatch:
+  # A dispatch-only workflow absent from the default branch never registers;
+  # the push trigger both registers it and runs it when this file lands.
+  push:
+    branches: [pgo-2]
+    paths: [.github/workflows/clean-expb-runner.yml]
 
 permissions: {}
 
