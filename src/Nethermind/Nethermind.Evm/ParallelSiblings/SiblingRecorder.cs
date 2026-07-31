@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -12,108 +11,198 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.ParallelSiblings;
 
 /// <summary>
-/// Records, during ordinary serial execution of a cancelable top-level frame, what each depth-1
-/// sibling touched and whether it left any net writes behind - the two facts speculation is
-/// validated by. Measured on the target workload: 78.9% of siblings are net-write-empty, a
-/// repeated site's touch set is stable across occurrences 100.0% of the time, and 88.3% of
-/// sibling executions have a previous occurrence to predict from. Touches are captured at the two
-/// access-tracker funnels every EIP-2929 charge consults; net writes are the equality of the
-/// change-journal positions at the sibling's start and merge. Execution is single-threaded per
-/// frame, so per-frame state is thread-static; the cross-request site store is shared and keyed
-/// by (state root, callee, calldata hash, value), which makes head changes self-invalidating.
+/// Sibling memoization for cancelable frames: during ordinary serial execution of an eth_call,
+/// each depth-1 sibling records its result and the facts that make replaying it sound, and later
+/// occurrences of the same site are served from the memo when every one of those facts still
+/// holds - otherwise they execute normally, so correctness never depends on the memo. Measured on
+/// the target workload: a repeated site's touch set is stable across occurrences 100.0% of the
+/// time, 78.9% of siblings are net-write-empty and 88.3% of executions have a previous occurrence.
+///
+/// Soundness conditions, each guarding a specific known failure:
+/// - recorded only when the sibling left no net writes, no logs, no destroys/creates and no
+///   refund delta (its journal positions at merge equal the ones at its start), took no value,
+///   and touched nothing any earlier sibling of the recording request wrote - so the memo's
+///   values are pure functions of the state root in its key;
+/// - replayed only when the callee, calldata, value, state root AND gas handed to the child all
+///   match, every first-touch recorded cold is still cold (live tracker queries - gas is then
+///   exact with no arithmetic), and the memo touches nothing this request's earlier siblings
+///   wrote. Hash collisions in the disjointness checks can only cause spurious rejection.
+/// - on replay the recorded first-touch cells are warmed for real, because later siblings'
+///   charges depend on that warmth.
 /// </summary>
 public static class SiblingRecorder
 {
-    private const int MaxSites = 64 * 1024;
+    private const int MaxSites = 8 * 1024;
 
     [ThreadStatic] private static bool t_recording;
     [ThreadStatic] private static HashSet<int>? t_touches;
-    [ThreadStatic] private static HashSet<int>? t_firstTouches;
+    [ThreadStatic] private static List<Address>? t_firstTouchAddresses;
+    [ThreadStatic] private static List<StorageCell>? t_firstTouchSlots;
+    [ThreadStatic] private static HashSet<int>? t_prefixWrites;
     [ThreadStatic] private static long t_siteKey;
+    [ThreadStatic] private static SiteRecord? t_knownSite;
 
     private static readonly ConcurrentDictionary<long, SiteRecord> s_sites = new();
 
     public static bool Recording => t_recording;
 
-    /// <summary>Last full observation of a call site: the prediction wave-two speculation runs
-    /// against, and the stability fingerprint its validation is cross-checked with.</summary>
+    /// <summary>One full observation of a call site. Immutable once published.</summary>
     public sealed class SiteRecord
     {
-        public required long TouchFingerprint { get; init; }
-        public required int TouchCount { get; init; }
-        public required int[] FirstTouches { get; init; }
-        public required bool NetWriteEmpty { get; init; }
+        public required bool Memoable { get; init; }
+        public required long GasGiven { get; init; }
+        public required long GasUsed { get; init; }
+        public required byte[] Output { get; init; }
+        public required int[] TouchHashes { get; init; }
+        public required Address[] FirstTouchAddresses { get; init; }
+        public required StorageCell[] FirstTouchSlots { get; init; }
     }
 
-    public static void BeginSibling(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value)
+    public static long ComputeSiteKey(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value)
     {
-        long key = ComputeSiteKey(in stateRoot, to, input, in value);
+        ValueHash256 inputHash = ValueKeccak.Compute(input);
+        return HashCode.Combine(stateRoot, to, inputHash, value.GetHashCode());
+    }
 
-        // A repeated site's touch set is stable across occurrences (measured 100.0% on the target
-        // workload), so a site the store already knows needs no re-recording - and in steady state
-        // that is nearly all of them, which is what keeps the access-tracker hooks off the hot
-        // path. The arbiter's validation queries live tracker state, not a fresh recording.
-        if (s_sites.ContainsKey(key))
+    public static SiteRecord? TryGet(long siteKey) =>
+        s_sites.TryGetValue(siteKey, out SiteRecord? record) ? record : null;
+
+    /// <summary>The memo is replayable here iff its warmth assumptions hold (all recorded
+    /// first-touches still cold), the gas handed to the child matches the recording, and it reads
+    /// nothing an earlier sibling of this request wrote.</summary>
+    public static bool IsReplayable(SiteRecord record, long gasGiven, in StackAccessTracker tracker)
+    {
+        if (!record.Memoable || record.GasGiven != gasGiven) return false;
+
+        foreach (Address address in record.FirstTouchAddresses)
+        {
+            if (!tracker.IsCold(address)) return false;
+        }
+
+        foreach (StorageCell slot in record.FirstTouchSlots)
+        {
+            if (!tracker.IsCold(in slot)) return false;
+        }
+
+        HashSet<int>? prefixWrites = t_prefixWrites;
+        if (prefixWrites is { Count: > 0 })
+        {
+            foreach (int h in record.TouchHashes)
+            {
+                if (prefixWrites.Contains(h)) return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Warm the memo's first-touch cells: the replayed frame would have warmed them, and
+    /// every later sibling's charges depend on that.</summary>
+    public static void WarmReplayedTouches(SiteRecord record, in StackAccessTracker tracker)
+    {
+        foreach (Address address in record.FirstTouchAddresses)
+        {
+            tracker.WarmUp(address);
+        }
+
+        foreach (StorageCell slot in record.FirstTouchSlots)
+        {
+            tracker.WarmUp(in slot);
+        }
+    }
+
+    public static void BeginSibling(long siteKey)
+    {
+        t_siteKey = siteKey;
+        t_knownSite = TryGet(siteKey);
+
+        // A known site needs no re-recording (its touch set is stable), which keeps the tracker
+        // hooks off the hot path in steady state; its stored touches still feed the prefix-write
+        // tracking at merge when it is a writer.
+        if (t_knownSite is not null)
         {
             t_recording = false;
             return;
         }
 
-        t_siteKey = key;
-        (t_touches ??= new HashSet<int>(256)).Clear();
-        (t_firstTouches ??= new HashSet<int>(128)).Clear();
+        (t_touches ??= new HashSet<int>(1024)).Clear();
+        (t_firstTouchAddresses ??= new List<Address>(64)).Clear();
+        (t_firstTouchSlots ??= new List<StorageCell>(256)).Clear();
         t_recording = true;
     }
 
-    public static void EndSibling(bool netWriteEmpty)
+    public static void EndSibling(bool cleanFrame, bool succeeded, long gasGiven, long gasUsed, bool tookValue, ReadOnlySpan<byte> output)
     {
+        bool wasRecording = t_recording;
         t_recording = false;
-        HashSet<int>? touches = t_touches;
-        HashSet<int>? firstTouches = t_firstTouches;
-        if (touches is null || firstTouches is null) return;
 
-        long fingerprint = 0;
-        foreach (int h in touches)
+        if (!wasRecording)
         {
-            fingerprint += unchecked((long)((ulong)(uint)h * 0x9E3779B97F4A7C15UL));
+            // Known writer sites poison the memos of everything after them in this request: their
+            // stored touch set over-approximates their write set. Clean known sites poison
+            // nothing, whether replayed or re-executed.
+            if (t_knownSite is { Memoable: false } known)
+            {
+                (t_prefixWrites ??= new HashSet<int>(1024)).UnionWith(known.TouchHashes);
+            }
+
+            t_knownSite = null;
+            return;
         }
 
-        // A head change rotates every key, so stale entries only waste memory; one coarse sweep
-        // keeps the store bounded without an eviction policy on the hot path.
-        if (s_sites.Count >= MaxSites) s_sites.Clear();
+        HashSet<int> touches = t_touches!;
+        bool prefixDisjoint = true;
+        HashSet<int>? prefixWrites = t_prefixWrites;
+        if (prefixWrites is { Count: > 0 })
+        {
+            foreach (int h in touches)
+            {
+                if (prefixWrites.Contains(h)) { prefixDisjoint = false; break; }
+            }
+        }
 
+        bool memoable = cleanFrame && succeeded && !tookValue && prefixDisjoint;
+        // Only real writers poison the suffix: a clean frame that merely reverted or arrived
+        // with unusable shape left the state untouched.
+        if (!cleanFrame)
+        {
+            (t_prefixWrites ??= new HashSet<int>(1024)).UnionWith(touches);
+        }
+
+        if (s_sites.Count >= MaxSites) s_sites.Clear();
         s_sites[t_siteKey] = new SiteRecord
         {
-            TouchFingerprint = fingerprint,
-            TouchCount = touches.Count,
-            FirstTouches = [.. firstTouches],
-            NetWriteEmpty = netWriteEmpty,
+            Memoable = memoable,
+            GasGiven = gasGiven,
+            GasUsed = gasUsed,
+            Output = memoable ? output.ToArray() : [],
+            TouchHashes = [.. touches],
+            FirstTouchAddresses = [.. t_firstTouchAddresses!],
+            FirstTouchSlots = [.. t_firstTouchSlots!],
         };
+        t_knownSite = null;
     }
 
-    public static void AbortSibling() => t_recording = false;
-
-    public static SiteRecord? TryPredict(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value) =>
-        s_sites.TryGetValue(ComputeSiteKey(in stateRoot, to, input, in value), out SiteRecord? record) ? record : null;
+    /// <summary>Top frame ended (normally or not): recording stops and the per-request prefix
+    /// state resets so the next request starts clean.</summary>
+    public static void EndTopFrame()
+    {
+        t_recording = false;
+        t_knownSite = null;
+        t_prefixWrites?.Clear();
+    }
 
     public static void TouchAddress(Address? address, bool cold)
     {
-        if (address is null) return;
-        int hash = address.GetHashCode();
-        t_touches?.Add(hash);
-        if (cold) t_firstTouches?.Add(hash);
+        if (address is null || !t_recording) return;
+        t_touches!.Add(address.GetHashCode());
+        if (cold) t_firstTouchAddresses!.Add(address);
     }
 
     public static void TouchSlot(in StorageCell cell, bool cold)
     {
-        int hash = cell.GetHashCode();
-        t_touches?.Add(hash);
-        if (cold) t_firstTouches?.Add(hash);
-    }
-
-    private static long ComputeSiteKey(in ValueHash256 stateRoot, Address? to, ReadOnlySpan<byte> input, in UInt256 value)
-    {
-        ValueHash256 inputHash = ValueKeccak.Compute(input);
-        return HashCode.Combine(stateRoot, to, inputHash, value.GetHashCode());
+        if (!t_recording) return;
+        t_touches!.Add(cell.GetHashCode());
+        if (cold) t_firstTouchSlots!.Add(cell);
     }
 }

@@ -105,6 +105,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private bool _isTracingActionsCached;
 
     private BlockExecutionContext _blockExecutionContext;
+    private long _siblingSiteKey;
+    private long _siblingGasGiven;
+    private int _siblingLogsAtStart;
+    private int _siblingDestroysAtStart;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
@@ -206,10 +210,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = ExecuteCall<TTracingInst>(
-                            _previousCallResult,
-                            previousCallOutput,
-                            _previousCallOutputDestination);
+                        // A fresh depth-1 sibling of a cancelable, non-tracing frame is served from
+                        // its memo when every soundness condition holds: same site, same gas, all
+                        // recorded first-touches still cold, nothing this request wrote among its
+                        // touches. Charging the recorded gas and returning the recorded output here
+                        // makes the frame flow through the ordinary merge path exactly like a child
+                        // that computed instantly; anything unprovable executes normally.
+                        ParallelSiblings.SiblingRecorder.SiteRecord? memo = null;
+                        if (!TTracingInst.IsActive && !_isTracingActionsCached
+                            && !_currentState.IsContinuation
+                            && _currentState.Env.CallDepth == 1
+                            && _txTracer.IsCancelable
+                            && !_currentState.ExecutionType.IsAnyCreate())
+                        {
+                            memo = ParallelSiblings.SiblingRecorder.TryGet(_siblingSiteKey);
+                            if (memo is not null
+                                && (memo.GasGiven != (long)TGasPolicy.GetRemainingGas(in _currentState.Gas)
+                                    || !ParallelSiblings.SiblingRecorder.IsReplayable(memo, memo.GasGiven, in _currentState.AccessTracker)
+                                    || !TGasPolicy.TryConsume(ref _currentState.Gas, (ulong)memo.GasUsed)))
+                            {
+                                memo = null;
+                            }
+                        }
+
+                        if (memo is not null)
+                        {
+                            ParallelSiblings.SiblingRecorder.WarmReplayedTouches(memo, in _currentState.AccessTracker);
+                            callResult = new CallResult(memo.Output, null);
+                        }
+                        else
+                        {
+                            callResult = ExecuteCall<TTracingInst>(
+                                _previousCallResult,
+                                previousCallOutput,
+                                _previousCallOutputDestination);
+                        }
                     }
                     else
                     {
@@ -244,7 +279,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
-                    ParallelSiblings.SiblingRecorder.AbortSibling();
+                    ParallelSiblings.SiblingRecorder.EndTopFrame();
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     _currentState = null;
                     return substate;
@@ -257,18 +292,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
-                    if (ParallelSiblings.SiblingRecorder.Recording && _currentState.Env.CallDepth == 0)
+                    if (_txTracer.IsCancelable && _currentState.Env.CallDepth == 0)
                     {
-                        // Net-write-empty: the change journals sit where they were when the sibling
-                        // started - everything it wrote internally was reverted away. Those frames
-                        // are the memoizable population.
+                        // Clean frame: the change journals sit where they were when the sibling
+                        // started (everything it wrote internally was reverted away), it emitted
+                        // no logs, destroyed nothing and accrued no refund. Those frames are the
+                        // memoizable population.
                         Evm.State.Snapshot now = _worldState.TakeSnapshot();
                         ref readonly Evm.State.Snapshot start = ref previousState.Snapshot;
-                        bool netWriteEmpty =
+                        bool cleanFrame =
                             now.StateSnapshot == start.StateSnapshot
                             && now.StorageSnapshot.PersistentStorageSnapshot == start.StorageSnapshot.PersistentStorageSnapshot
-                            && now.StorageSnapshot.TransientStorageSnapshot == start.StorageSnapshot.TransientStorageSnapshot;
-                        ParallelSiblings.SiblingRecorder.EndSibling(netWriteEmpty);
+                            && now.StorageSnapshot.TransientStorageSnapshot == start.StorageSnapshot.TransientStorageSnapshot
+                            && _currentState.AccessTracker.Logs.Count == _siblingLogsAtStart
+                            && _currentState.AccessTracker.DestroyList.Count == _siblingDestroysAtStart
+                            && previousState.Refund == 0
+                            && !previousState.ExecutionType.IsAnyCreate();
+                        bool succeeded = !callResult.ShouldRevert && !callResult.IsException;
+                        long gasUsed = _siblingGasGiven - (long)TGasPolicy.GetRemainingGas(in previousState.Gas);
+                        ParallelSiblings.SiblingRecorder.EndSibling(
+                            cleanFrame, succeeded, _siblingGasGiven, gasUsed,
+                            tookValue: !previousState.Env.Value.IsZero,
+                            output: callResult.Output.Span);
                     }
                     bool previousStateSucceeded = true;
 
@@ -746,15 +791,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
-        // Depth-1 siblings of a cancelable frame are recorded for the parallel-sibling arbiter;
-        // the cancelable gate keeps block processing structurally outside this machinery.
+        // Depth-1 siblings of a cancelable frame go through the memo bookkeeping; the cancelable
+        // gate keeps block processing structurally outside this machinery.
         if (_txTracer.IsCancelable && _currentState.Env.CallDepth == 1)
         {
-            ParallelSiblings.SiblingRecorder.BeginSibling(
+            _siblingSiteKey = ParallelSiblings.SiblingRecorder.ComputeSiteKey(
                 (_blockExecutionContext.Header.StateRoot ?? Keccak.Zero).ValueHash256,
                 _currentState.Env.CodeSource,
                 _currentState.Env.InputData.Span,
                 in _currentState.Env.Value);
+            _siblingGasGiven = (long)TGasPolicy.GetRemainingGas(in _currentState.Gas);
+            _siblingLogsAtStart = _currentState.AccessTracker.Logs.Count;
+            _siblingDestroysAtStart = _currentState.AccessTracker.DestroyList.Count;
+            ParallelSiblings.SiblingRecorder.BeginSibling(_siblingSiteKey);
         }
 
         // Clear the previous call result as the execution context is moving to a new frame.
