@@ -63,7 +63,13 @@ public static class OpcodeHistogram
         // Diagnostics must never take down the node; swallow I/O failures.
         try
         {
-            File.WriteAllText(s_outputPath!, BuildReport());
+            string report = BuildReport();
+            File.WriteAllText(s_outputPath!, report);
+            // The diag mount is only uploaded on the dotTrace path; node stdout always is.
+            foreach (string line in report.Split('\n'))
+            {
+                if (line.Length > 0) Console.WriteLine("HISTOGRAM " + line.TrimEnd());
+            }
         }
         catch (Exception)
         {
