@@ -187,11 +187,14 @@ public partial class BlockProcessor(
             // stretches their overlap with the commit phase. Cap where the work is big enough
             // that full width would starve the root hashing.
             ParallelOptions? bloomOptions = receipts.Length >= 256 ? s_backgroundBloomOptions : null;
-            bloomsAndReceiptsRootTask = Task.Run(() =>
+            // Own thread rather than a pool work item: the commit phase that this overlaps takes its
+            // parallelism from the same pool, so a queued work item both occupies a worker the commit
+            // wants and waits behind the commit's own items before it starts.
+            bloomsAndReceiptsRootTask = Task.Factory.StartNew(() =>
             {
                 CalculateBlooms(receipts, bloomOptions);
                 return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
-            });
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
         else
         {
