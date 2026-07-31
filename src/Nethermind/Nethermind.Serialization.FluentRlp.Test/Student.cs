@@ -15,18 +15,17 @@ public record Student(string Name, int Age, Dictionary<string, int> Scores);
 public abstract class StudentRlpConverter : IRlpConverter<Student>
 {
     public static Student Read(ref RlpReader reader)
-    {
-        return reader.ReadSequence(static (scoped ref RlpReader r) =>
+        => reader.ReadSequence(static (scoped ref RlpReader r) =>
         {
-            var name = r.ReadString();
-            var age = r.ReadInt32();
-            var scores = r.ReadSequence(static (scoped ref RlpReader r) =>
+            string name = r.ReadString();
+            int age = r.ReadInt32();
+            Dictionary<string, int> scores = r.ReadSequence(static (scoped ref RlpReader r) =>
             {
                 Dictionary<string, int> scores = [];
                 while (r.HasNext)
                 {
-                    var subject = r.ReadString();
-                    var score = r.ReadInt32();
+                    string subject = r.ReadString();
+                    int score = r.ReadInt32();
 
                     scores[subject] = score;
                 }
@@ -36,24 +35,21 @@ public abstract class StudentRlpConverter : IRlpConverter<Student>
 
             return new Student(name, age, scores);
         });
-    }
 
     public static void Write(ref RlpWriter writer, Student value)
-    {
-        writer.WriteSequence(value, static (ref RlpWriter w, Student value) =>
+        => writer.WriteSequence(value, static (ref RlpWriter w, Student value) =>
         {
             w.Write(value.Name);
             w.Write(value.Age);
             w.WriteSequence(value, (ref RlpWriter w, Student value) =>
             {
-                foreach (var (subject, score) in value.Scores)
+                foreach ((string subject, int score) in value.Scores)
                 {
                     w.Write(subject);
                     w.Write(score);
                 }
             });
         });
-    }
 }
 
 public static class StudentExt

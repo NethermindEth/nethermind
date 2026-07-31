@@ -3,7 +3,6 @@
 
 using System;
 using NUnit.Framework;
-using FluentAssertions;
 using Nethermind.Serialization.FluentRlp.Instances;
 
 namespace Nethermind.Serialization.FluentRlp.Test;
@@ -16,7 +15,7 @@ public class RlpReaderTest
         byte[] source = [0x83, (byte)'d', (byte)'o', (byte)'g'];
         string actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadString());
 
-        actual.Should().Be("dog");
+        Assert.That(actual, Is.EqualTo("dog"));
     }
 
     [Test]
@@ -25,7 +24,7 @@ public class RlpReaderTest
         byte[] source = [0x80];
         string actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadString());
 
-        actual.Should().Be("");
+        Assert.That(actual, Is.EqualTo(""));
     }
 
     [Test]
@@ -34,7 +33,7 @@ public class RlpReaderTest
         byte[] source = [0xb8, 0x38, .. "Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
         string actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadString());
 
-        actual.Should().Be("Lorem ipsum dolor sit amet, consectetur adipisicing elit");
+        Assert.That(actual, Is.EqualTo("Lorem ipsum dolor sit amet, consectetur adipisicing elit"));
     }
 
     [Test]
@@ -42,11 +41,11 @@ public class RlpReaderTest
     {
         for (int i = 0; i < 0x80; i++)
         {
-            var integer = i;
+            int integer = i;
             byte[] source = [(byte)integer];
             int actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadInt32());
 
-            actual.Should().Be(integer);
+            Assert.That(actual, Is.EqualTo(integer));
         }
     }
 
@@ -55,11 +54,11 @@ public class RlpReaderTest
     {
         for (int i = 0x100; i < 0xFFFF; i++)
         {
-            var integer = i;
+            int integer = i;
             byte[] source = [0x82, (byte)((integer & 0xFF00) >> 8), (byte)((integer & 0x00FF) >> 0)];
             int actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadInt32());
 
-            actual.Should().Be(integer);
+            Assert.That(actual, Is.EqualTo(integer));
         }
     }
 
@@ -67,18 +66,18 @@ public class RlpReaderTest
     public void ReadStringList()
     {
         byte[] source = [0xc8, 0x83, .. "cat"u8, 0x83, .. "dog"u8];
-        var actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        (string, string) actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
-                var cat = r.ReadString();
-                var dog = r.ReadString();
+                string cat = r.ReadString();
+                string dog = r.ReadString();
 
                 return (cat, dog);
             });
         });
 
-        actual.Should().Be(("cat", "dog"));
+        Assert.That(actual, Is.EqualTo(("cat", "dog")));
     }
 
     [Test]
@@ -86,12 +85,12 @@ public class RlpReaderTest
     {
         byte[] source = [0xc0];
 
-        var actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        object[] actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
         });
 
-        actual.Should().BeEmpty();
+        Assert.That(actual, Is.Empty);
     }
 
     [Test]
@@ -102,7 +101,7 @@ public class RlpReaderTest
         ReadOnlySpan<byte> actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadBytes());
 
         ReadOnlySpan<byte> expected = [0x04, 0x00];
-        actual.SequenceEqual(expected).Should().BeTrue();
+        Assert.That(actual.SequenceEqual(expected), Is.True);
     }
 
     [Test]
@@ -114,18 +113,18 @@ public class RlpReaderTest
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
-                var _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
-                var _2 = r.ReadSequence(static (scoped ref RlpReader r) =>
+                object[] _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
+                object[] _2 = r.ReadSequence(static (scoped ref RlpReader r) =>
                 {
-                    var _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
+                    object[] _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
                     return new object[] { _1 };
                 });
-                var _3 = r.ReadSequence(static (scoped ref RlpReader r) =>
+                object[] _3 = r.ReadSequence(static (scoped ref RlpReader r) =>
                 {
-                    var _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
-                    var _2 = r.ReadSequence(static (scoped ref RlpReader r) =>
+                    object[] _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
+                    object[] _2 = r.ReadSequence(static (scoped ref RlpReader r) =>
                     {
-                        var _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
+                        object[] _1 = r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
                         return new object[] { _1 };
                     });
 
@@ -136,12 +135,12 @@ public class RlpReaderTest
             });
         });
 
-        actual.Should().BeEquivalentTo(new object[]
+        Assert.That(actual, Is.EqualTo(new object[]
         {
-            new object[] { },
-            new object[] { new object[] { } },
-            new object[] { new object[] { }, new object[] { new object[] { } } },
-        });
+            Array.Empty<object>(),
+            new object[] { Array.Empty<object>() },
+            new object[] { Array.Empty<object>(), new object[] { Array.Empty<object>() } },
+        }));
     }
 
     [Test]
@@ -149,10 +148,10 @@ public class RlpReaderTest
     {
         byte[] source = [0x83, (byte)'d', (byte)'o', (byte)'g'];
 
-        var reader = new RlpReader(source);
+        RlpReader reader = new(source);
         _ = reader.ReadString();
 
-        reader.HasNext.Should().BeFalse();
-        reader.BytesRead.Should().Be(source.Length);
+        Assert.That(reader.HasNext, Is.False);
+        Assert.That(reader.BytesRead, Is.EqualTo(source.Length));
     }
 }
