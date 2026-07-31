@@ -6,16 +6,16 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>What a fixture needs to name a layout: the four-level ones by their levels.</summary>
+/// <summary>What a fixture needs to name a four-level layout by its group format.</summary>
 internal static class PbtTestFormats
 {
-    /// <summary>The four-level clustered layout storing the levels <paramref name="groupFormat"/> does.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">No clustered layout stores those levels.</exception>
-    public static PbtTrieLayout Clustered(PbtGroupFormat groupFormat) => groupFormat switch
+    /// <summary>The four-level layout storing the levels <paramref name="groupFormat"/> does.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">No four-level layout stores those levels.</exception>
+    public static PbtTrieLayout FourLevel(PbtGroupFormat groupFormat) => groupFormat switch
     {
-        PbtGroupFormat.EveryLevel => PbtTrieLayout.ClusteredFourLevelEveryLevel,
-        PbtGroupFormat.Interleaved => PbtTrieLayout.ClusteredFourLevelInterleaved,
-        PbtGroupFormat.BoundaryOnly => PbtTrieLayout.ClusteredFourLevelBoundaryOnly,
+        PbtGroupFormat.EveryLevel => PbtTrieLayout.FourLevelEveryLevel,
+        PbtGroupFormat.Interleaved => PbtTrieLayout.FourLevelInterleaved,
+        PbtGroupFormat.BoundaryOnly => PbtTrieLayout.FourLevelBoundaryOnly,
         _ => throw new ArgumentOutOfRangeException(nameof(groupFormat)),
     };
 }

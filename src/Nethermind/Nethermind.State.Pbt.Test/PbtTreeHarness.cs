@@ -43,7 +43,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// <summary>The partition roots after the latest batch.</summary>
     public PbtPartitionRoots Roots => _roots;
 
-    /// <summary>The blobs as the store keeps them, a run or a clustered child having no entry of its own.</summary>
+    /// <summary>The blobs as the store keeps them, a run having no entry of its own.</summary>
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
     /// <summary>The leaf blobs, one per stem the trie holds — an emptied one is removed, not stored empty.</summary>
@@ -77,51 +77,44 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     }
 
     /// <summary>
-    /// Every node the store holds, keyed by where it sits in the trie — the children inside a cluster
-    /// and the runs inside a group flattened back out to the keys they would have had of their own.
+    /// Every node the store holds, keyed by where it sits in the trie, with runs inside a group flattened
+    /// back out to the keys they would have had of their own.
     /// </summary>
     /// <remarks>
     /// What a walk of the trie wants, as against <see cref="Nodes"/>, which is what the store wants: a
-    /// blob's key says where its node is, and a clustered child's or a run's is its parent's plus its
-    /// boundary slot.
+    /// blob's key says where its node is, and a run's is its parent's plus its boundary slot.
     /// </remarks>
     public Dictionary<TrieNodeKey, byte[]> FlattenedNodes()
     {
-        Dictionary<TrieNodeKey, byte[]> flattened = [];
+        Dictionary<TrieNodeKey, byte[]> flattened = new(_nodes);
         foreach ((TrieNodeKey key, byte[] blob) in _nodes)
         {
             switch (WriteLayout.Tiling())
             {
-                case PbtTiling.FourLevel: Flatten<PbtFourLevelTileLayout>(flattened, key, blob); break;
-                case PbtTiling.FiveLevel: Flatten<PbtFiveLevelTileLayout>(flattened, key, blob); break;
-                case PbtTiling.SixLevel: Flatten<PbtSixLevelTileLayout>(flattened, key, blob); break;
-                case PbtTiling.EightLevel: Flatten<PbtEightLevelTileLayout>(flattened, key, blob); break;
-                default: Flatten<PbtClusteredTileLayout>(flattened, key, blob); break;
+                case PbtTiling.FourLevel: FlattenChains<PbtFourLevelTileLayout>(flattened, key, blob); break;
+                case PbtTiling.FiveLevel: FlattenChains<PbtFiveLevelTileLayout>(flattened, key, blob); break;
+                case PbtTiling.SixLevel: FlattenChains<PbtSixLevelTileLayout>(flattened, key, blob); break;
+                case PbtTiling.EightLevel: FlattenChains<PbtEightLevelTileLayout>(flattened, key, blob); break;
+                default: throw new ArgumentOutOfRangeException(nameof(WriteLayout));
             }
         }
 
         return flattened;
     }
 
-    /// <summary>Adds the blob at <paramref name="key"/> and every node it holds: its runs, and the children it clusters with theirs.</summary>
-    private static void Flatten<TLayout>(Dictionary<TrieNodeKey, byte[]> flattened, in TrieNodeKey key, byte[] blob)
+    private static void FlattenChains<TLayout>(Dictionary<TrieNodeKey, byte[]> flattened, in TrieNodeKey key, byte[] blob)
         where TLayout : IPbtTileLayout
     {
-        flattened.Add(key, blob);
+        if (PbtNodeChain.IsChain(blob)) return;
 
-        PbtNodeCluster cluster = PbtNodeCluster.Decode(blob, out PbtTrieNodeGroup<TLayout> group);
+        PbtTrieNodeGroup<TLayout> group = PbtTrieNodeGroup<TLayout>.Decode(blob);
         for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
         {
             int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
             if (group.KindAt(position) == PbtTrieNodeGroup.NodeKind.Chain)
             {
                 flattened.Add(key.ChildGroup(slot, TLayout.LevelsPerGroup), group[position].ChainData.ToArray());
-                continue;
             }
-
-            // A clustered child may hold runs of its own.
-            byte[] child = blob[cluster.Child(slot, group)];
-            if (child.Length != 0) Flatten<TLayout>(flattened, key.ChildGroup(slot, TLayout.LevelsPerGroup), child);
         }
     }
 

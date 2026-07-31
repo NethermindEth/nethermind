@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
-using Layout = Nethermind.Pbt.Tiles.PbtClusteredTileLayout;
+using Layout = Nethermind.Pbt.Tiles.PbtFourLevelTileLayout;
 using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt.Test;
@@ -32,9 +32,9 @@ public class PbtFormatInteropTests
         // Every4Depth shares BoundaryOnly's tile bytes; its interop is covered below.
         PbtTreeHarness[] harnesses =
         [
-            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelEveryLevel),
-            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelInterleaved),
-            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelBoundaryOnly),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.FourLevelEveryLevel),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.FourLevelInterleaved),
+            new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.FourLevelBoundaryOnly),
         ];
 
         using (Assert.EnterMultipleScope())
@@ -56,12 +56,10 @@ public class PbtFormatInteropTests
 
     /// <summary>Verifies that rewriting across layouts matches a fresh fold in the target layout.</summary>
     /// <remarks>The eight-level pair covers <see cref="PbtGroupFormat.Every4Depth"/>.</remarks>
-    [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel, PbtTrieLayout.ClusteredFourLevelInterleaved)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelEveryLevel)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelEveryLevel, PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, PbtTrieLayout.ClusteredFourLevelEveryLevel)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelInterleaved, PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
-    [TestCase(PbtTrieLayout.ClusteredFourLevelBoundaryOnly, PbtTrieLayout.ClusteredFourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.FourLevelEveryLevel, PbtTrieLayout.FourLevelInterleaved)]
+    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelEveryLevel)]
+    [TestCase(PbtTrieLayout.FourLevelEveryLevel, PbtTrieLayout.FourLevelBoundaryOnly)]
+    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelEveryLevel)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelBoundaryOnly)]
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelInterleaved)]
     [TestCase(PbtTrieLayout.EightLevelInterleaved, PbtTrieLayout.EightLevelEvery4Depth)]
@@ -138,13 +136,13 @@ public class PbtFormatInteropTests
             groupB.Add((BoundaryKey(1, slot), Value));
         }
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.ClusteredFourLevelEveryLevel);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.FourLevelEveryLevel);
         harness.ApplyBatch([.. groupA, .. groupB]);
         TrieNodeKey keyA = PbtPartitions.RootKey(PbtPartition.Account).ChildGroup(0, Layout.LevelsPerGroup);
         TrieNodeKey keyB = PbtPartitions.RootKey(PbtPartition.Account).ChildGroup(1, Layout.LevelsPerGroup);
         Assert.That(PbtTrieNodeGroup<Layout>.Decode(harness.Nodes[keyA]).Format, Is.EqualTo(PbtGroupFormat.EveryLevel));
 
-        harness.WriteLayout = PbtTrieLayout.ClusteredFourLevelInterleaved;
+        harness.WriteLayout = PbtTrieLayout.FourLevelInterleaved;
         groupA[3] = (groupA[3].Item1, Rewritten);
         ValueHash256 root = harness.ApplyBatch([groupA[3]]);
 
