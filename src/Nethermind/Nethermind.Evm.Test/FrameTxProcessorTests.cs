@@ -691,6 +691,41 @@ public class FrameTxProcessorTests
         }
     }
 
+    [Test]
+    public void Execute_ZeroPriorityFee_TouchesBeneficiaryInBalWithoutBalanceChange()
+    {
+        // EIP-7928: fee accounting accesses the beneficiary even when the priority fee is zero, so
+        // the BAL must record an empty entry for it while omitting the zero balance change.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Address beneficiary = TestItem.AddressF;
+
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.GasPrice = 0; // max_priority_fee_per_gas - zero premium, so the beneficiary credit is zero
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AccountChangesAtIndex? beneficiaryChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(beneficiary);
+        Assert.That(beneficiaryChanges, Is.Not.Null, "beneficiary accessed and recorded in the BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beneficiaryChanges.BalanceChange, Is.Null, "zero balance change omitted");
+            Assert.That(beneficiaryChanges.NonceChange, Is.Null);
+            Assert.That(beneficiaryChanges.CodeChange, Is.Null);
+        }
+    }
+
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
