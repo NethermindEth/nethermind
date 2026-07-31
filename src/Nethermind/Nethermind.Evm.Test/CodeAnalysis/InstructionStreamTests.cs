@@ -496,7 +496,8 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
             (byte)Instruction.JUMPDEST,
             (byte)Instruction.PUSH1, 0x02, (byte)Instruction.STOP,
-        }) { TestName = "PeepholeLandsOnElidedMarker" };
+        })
+        { TestName = "PeepholeLandsOnElidedMarker" };
 
         yield return new TestCaseData(new byte[]
         {
@@ -504,7 +505,8 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             (byte)Instruction.PUSH1, 0x01,
             (byte)Instruction.JUMPDEST,
             (byte)Instruction.PUSH1, 0x02, (byte)Instruction.STOP,
-        }) { TestName = "MeteredWalkReachesElidedMarker" };
+        })
+        { TestName = "MeteredWalkReachesElidedMarker" };
     }
 
     [TestCaseSource(nameof(ElidedMarkerLandingCases))]
