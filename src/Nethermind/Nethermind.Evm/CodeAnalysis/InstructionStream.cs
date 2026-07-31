@@ -424,31 +424,6 @@ internal sealed class InstructionStream
         if (ops.Count == 0)
             return false;
 
-        // A glued PUSH1 pair holds both operands in one entry - the low byte was pushed first, so
-        // the high byte is what an operator consumes first. Folding through it is what stops the
-        // pair from leaving a runtime operation behind: on the measured workload this shape,
-        // followed by a shift, is 2.35% of all dispatches.
-        if (ops[^1].Opcode == FusedOpcode.Push1Push1
-            && ops[^1].Kind is StreamOpKind.FusedInBlock or StreamOpKind.FusedBlockFirst)
-        {
-            StreamOp pair = ops[^1];
-            int pairAdvance = pair.Advance + size;
-            if (pairAdvance > byte.MaxValue)
-                return false;
-
-            UInt256 pairA = (pair.Operand >> 8) & 0xFF;
-            UInt256 pairB = pair.Operand & 0xFF;
-            if (!TryApplyConstOperation(instruction, in pairA, in pairB, out UInt256 pairResult))
-                return false;
-
-            constants.Add(pairResult);
-            pcToEntry[pc] = InvalidEntry;
-            ops[^1] = new StreamOp((byte)Instruction.PUSH32,
-                pair.Kind == StreamOpKind.FusedBlockFirst ? StreamOpKind.BlockFirst : StreamOpKind.InBlock,
-                pair.Pc, pair.BlockIndex, (byte)pairAdvance, (ulong)(constants.Count - 1));
-            return true;
-        }
-
         if (ops.Count < 2)
             return false;
 
