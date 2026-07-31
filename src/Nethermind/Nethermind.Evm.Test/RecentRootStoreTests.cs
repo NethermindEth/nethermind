@@ -208,32 +208,23 @@ public class RecentRootStoreTests
         }
     }
 
-    [Test]
-    public void AreReferencesValid_false_over_the_reference_cap()
-    {
-        IWorldState state = CreateState(out IDisposable scope);
-        using (scope)
-        {
-            (ValueHash256, ulong, ValueHash256)[] references = new (ValueHash256, ulong, ValueHash256)[Eip8272Constants.MaxRecentRootReferences + 1];
-            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.False);
-        }
-    }
-
-    [Test]
-    public void AreReferencesValid_true_at_the_reference_cap()
+    [TestCase(0, ExpectedResult = true)]
+    [TestCase(1, ExpectedResult = false)]
+    public bool AreReferencesValid_enforces_the_reference_cap(int overCap)
     {
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-            (ValueHash256, ulong, ValueHash256)[] references = new (ValueHash256, ulong, ValueHash256)[Eip8272Constants.MaxRecentRootReferences];
+            // every reference is individually valid, so only the count decides the result
+            (ValueHash256, ulong, ValueHash256)[] references = new (ValueHash256, ulong, ValueHash256)[Eip8272Constants.MaxRecentRootReferences + overCap];
             for (int i = 0; i < references.Length; i++)
             {
                 ulong slot = (ulong)(100 + i);
                 RecentRootStore.Write(state, Source, Salt, Root, slot, Spec);
                 references[i] = (sourceId, slot, Root);
             }
-            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 500), Is.True);
+            return RecentRootStore.AreReferencesValid(state, references, currentSlot: 500);
         }
     }
 
