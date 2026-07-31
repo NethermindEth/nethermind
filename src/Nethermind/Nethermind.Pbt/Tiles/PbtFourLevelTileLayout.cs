@@ -8,7 +8,6 @@ using Nethermind.Pbt;
 namespace Nethermind.Pbt.Tiles;
 
 /// <summary>4-level tiles, each its own blob.</summary>
-/// <remarks>The geometry matches <see cref="PbtClusteredTileLayout"/>, without storing child blobs in their parent.</remarks>
 public readonly struct PbtFourLevelTileLayout : IPbtTileLayout
 {
     public static PbtTiling Tiling => PbtTiling.FourLevel;
@@ -36,8 +35,6 @@ public readonly struct PbtFourLevelTileLayout : IPbtTileLayout
     public static int MaskTrailerLength => MaxMaskTrailerLength;
 
     public static bool IsGroupDepth(int depth) => depth >= RootDepth && depth % LevelsPerGroup == 0;
-
-    public static bool IsClusteringDepth(int depth) => false;
 
     public static int GroupDepthOf(int bit) => bit & ~(LevelsPerGroup - 1);
 

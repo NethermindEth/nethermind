@@ -213,31 +213,20 @@ public static partial class TrieUpdater
                 : NewChainNode(childDepth, chain.TargetDepth, targetPath, targetHash, chain.Stats);
             TreeReader<TLayout> seedReader = TreeReader<TLayout>.Of(seed).AsNode(seedKind);
 
-            // The group this split makes real clusters its children where its depth says so, and the target
-            // is one of them: its blob moves out of the key the run left it under and into the cluster
-            // this frame is about to write. A run below the child depth is not stored anywhere to begin
-            // with, and rides in the seed as it always has.
-            using RefCountingMemory? adopted = directChild && TLayout.IsClusteringDepth(depth)
-                ? _store.GetTrieNode(chain.TargetKey, targetHash)
-                : null;
-            if (adopted is not null) _store.SetTrieNode(chain.TargetKey, targetHash, null);
-
             // The run reached one subtree and nothing else, so it is the whole of what is here: resolve it
             // into a shared buffer and rebuild the group the split makes.
-            TreeReader<TLayout> occupants = seedReader.WithSeed(targetSlot, TreeReader<TLayout>.Of(adopted));
+            TreeReader<TLayout> occupants = seedReader.WithSeed(targetSlot);
             using PbtLeasedFrameBuffer<NodeResult> resultBuffer = new(TLayout.BoundarySlots);
             Span<NodeResult> results = resultBuffer.Span;
 
-            PbtNodeCluster.Builder builder = default;
             int mark = writer.WrittenCount;
 
-            GroupShape shape = TLayout.IsClusteringDepth(depth)
-                ? ResolveClusteredBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results, ref writer, ref builder)
-                : ResolveBoundaries(key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results);
+            GroupShape shape = ResolveBoundaries(
+                key, entries, occupants, default, occupants.BoundaryShape(), plan, fanout, results);
             MergeUntouchedSeed(occupants, results, shape.Touched);
 
             return RebuildNode(
-                key, occupants, default, results, shape, chain.NodeHash, chain.Stats, ref writer, ref builder, mark,
+                key, occupants, default, results, shape, chain.NodeHash, chain.Stats, ref writer, mark,
                 out changed, out delta);
         }
 

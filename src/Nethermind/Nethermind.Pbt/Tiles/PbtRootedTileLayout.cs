@@ -41,7 +41,6 @@ public readonly struct PbtRootedTileLayout<TLayout, TRoot> : IPbtTileLayout
     public static bool HasCompactBoundaryMask => TLayout.HasCompactBoundaryMask;
     public static int MaskTrailerLength => TLayout.MaskTrailerLength;
     public static bool IsGroupDepth(int depth) => depth >= RootDepth && TLayout.IsGroupDepth(depth - RootDepth);
-    public static bool IsClusteringDepth(int depth) => TLayout.IsClusteringDepth(depth - RootDepth);
     public static int GroupDepthOf(int bit) => RootDepth + (bit - RootDepth) / LevelsPerGroup * LevelsPerGroup;
 
     public static int SlotOf(in Stem stem, int depth)

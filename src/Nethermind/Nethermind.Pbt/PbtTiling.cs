@@ -11,9 +11,6 @@ namespace Nethermind.Pbt;
 /// </remarks>
 public enum PbtTiling : byte
 {
-    /// <summary>Four-level clustered tiles.</summary>
-    ClusteredFourLevel = 0,
-
     /// <summary>Six-level independent tiles.</summary>
     SixLevel = 1,
 

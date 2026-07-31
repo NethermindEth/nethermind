@@ -12,7 +12,7 @@ namespace Nethermind.Pbt.Tiles;
 /// another.
 /// </summary>
 /// <remarks>
-/// The middle of the trade <see cref="PbtClusteredTileLayout"/> takes the other way. A lookup buys half
+/// The middle of the trade between narrower and wider independent tiles. A lookup buys half
 /// again as many levels for one blob rather than two, at the cost of a 64-way bucket sort per descent
 /// frame instead of a 16-way one, and of storing the internal nodes along every root-to-slot path of a
 /// wider tile.
@@ -53,8 +53,6 @@ public readonly struct PbtSixLevelTileLayout : IPbtTileLayout
     public static int MaskTrailerLength => MaxMaskTrailerLength;
 
     public static bool IsGroupDepth(int depth) => depth >= RootDepth && depth % LevelsPerGroup == 0;
-
-    public static bool IsClusteringDepth(int depth) => false;
 
     public static int GroupDepthOf(int bit) => bit - bit % LevelsPerGroup;
 
