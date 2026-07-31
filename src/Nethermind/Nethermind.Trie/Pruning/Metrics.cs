@@ -11,8 +11,6 @@ namespace Nethermind.Trie.Pruning
 {
     public static class Metrics
     {
-        private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
-
         [GaugeMetric]
         [Description("Nodes that are currently kept in cache (either persisted or not)")]
         public static long DirtyNodesCount { get; set; }
@@ -47,21 +45,17 @@ namespace Nethermind.Trie.Pruning
 
         [CounterMetric]
         [Description("Number of DB reads.")]
-        public static long LoadedFromDbNodesCount => _mainLoadedFromDbNodesCount.Value + _otherLoadedFromDbNodesCount.Value;
-        private static CacheLinePaddedLong _mainLoadedFromDbNodesCount;
-        private static CacheLinePaddedLong _otherLoadedFromDbNodesCount;
+        public static long LoadedFromDbNodesCount => StripedCounter.Sum(_loadedFromDbNodesCount);
+        private static readonly CacheLinePaddedLong[] _loadedFromDbNodesCount = StripedCounter.Create();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromDbNodesCount() =>
-            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromDbNodesCount.Value : ref _otherLoadedFromDbNodesCount.Value);
+        public static void IncrementLoadedFromDbNodesCount() => StripedCounter.Increment(_loadedFromDbNodesCount);
 
         [CounterMetric]
         [Description("Number of reads from the node cache.")]
-        public static long LoadedFromCacheNodesCount => _mainLoadedFromCacheNodesCount.Value + _otherLoadedFromCacheNodesCount.Value;
-        private static CacheLinePaddedLong _mainLoadedFromCacheNodesCount;
-        private static CacheLinePaddedLong _otherLoadedFromCacheNodesCount;
+        public static long LoadedFromCacheNodesCount => StripedCounter.Sum(_loadedFromCacheNodesCount);
+        private static readonly CacheLinePaddedLong[] _loadedFromCacheNodesCount = StripedCounter.Create();
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromCacheNodesCount() =>
-            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromCacheNodesCount.Value : ref _otherLoadedFromCacheNodesCount.Value);
+        public static void IncrementLoadedFromCacheNodesCount() => StripedCounter.Increment(_loadedFromCacheNodesCount);
 
         [CounterMetric]
         [Description("Number of reads from the RLP cache.")]
