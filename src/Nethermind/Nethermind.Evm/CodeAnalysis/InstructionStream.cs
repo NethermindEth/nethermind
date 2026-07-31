@@ -140,6 +140,11 @@ internal sealed class InstructionStream
     /// <summary>Entry index for every entry-start pc; <see cref="InvalidEntry"/> for immediate
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
+    /// <summary>Per-block stack read edges and the block-local subset, built only when
+    /// <see cref="StreamShapeCensus.IsEnabled"/> - diagnostic sizing data, never consulted by
+    /// execution.</summary>
+    public readonly ushort[]? BlockEdges;
+    public readonly ushort[]? BlockLocalEdges;
 
     public int RetainedBytes =>
         Ops.Length * Unsafe.SizeOf<StreamOp>()
@@ -149,13 +154,15 @@ internal sealed class InstructionStream
         + ConstantBytes.Length
         + PcToEntry.Length * sizeof(ushort);
 
-    private InstructionStream(StreamOp[] ops, ulong[] blockGas, ushort[] blockOpCount, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
+    private InstructionStream(StreamOp[] ops, ulong[] blockGas, ushort[] blockOpCount, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes, ushort[]? blockEdges, ushort[]? blockLocalEdges)
     {
         Ops = ops;
         BlockGas = blockGas;
         BlockOpCount = blockOpCount;
         Constants = constants;
         PcToEntry = pcToEntry;
+        BlockEdges = blockEdges;
+        BlockLocalEdges = blockLocalEdges;
 
         // Only the fused bitwise cores index ConstantBytes; arithmetic/shift fusion reads the UInt256
         // Constants form. Skip the big-endian copy entirely when no bitwise fusion was emitted.
@@ -367,7 +374,11 @@ internal sealed class InstructionStream
             }
         }
 
-        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), blockOpCount.ToArray(), constants.ToArray(), pcToEntry, anyBitwiseFusion);
+        (ushort[]? blockEdges, ushort[]? blockLocalEdges) = StreamShapeCensus.IsEnabled
+            ? ComputeShapeCensus(ops, blockGas.Count)
+            : (null, null);
+
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), blockOpCount.ToArray(), constants.ToArray(), pcToEntry, anyBitwiseFusion, blockEdges, blockLocalEdges);
     }
 
     /// <summary>
@@ -536,6 +547,183 @@ internal sealed class InstructionStream
         int size = second == Instruction.PUSH1 ? 2 : 1;
         glued = new StreamOp(fused, first.Kind, first.Pc, first.BlockIndex, (byte)(first.Advance + size), operand);
         return true;
+    }
+
+    /// <summary>
+    /// Per-block dataflow simulation for <see cref="StreamShapeCensus"/>: walks the entries in
+    /// execution order with a stack of flags (true = pushed earlier in this block), counting one
+    /// edge per stack read and marking it local when the flag is set. Local edges are exactly the
+    /// reads a block-scoped register machine keeps out of stack memory. Conservative on purpose:
+    /// values entering the block stay non-local even after a first read, and arrivals into the
+    /// middle of a block are not modeled. Linear boundaries keep the run alive - their stack
+    /// operands are edges like any other - while jumps and boundaries end it.
+    /// </summary>
+    private static (ushort[] Edges, ushort[] LocalEdges) ComputeShapeCensus(List<StreamOp> ops, int blockCount)
+    {
+        ushort[] edges = new ushort[blockCount];
+        ushort[] localEdges = new ushort[blockCount];
+        List<bool> sim = new(32);
+        int block = -1;
+
+        int total = 0;
+        int local = 0;
+
+        void Read(int depth)
+        {
+            total++;
+            if (depth <= sim.Count && depth >= 1 && sim[^depth]) local++;
+        }
+
+        bool Pop()
+        {
+            total++;
+            if (sim.Count == 0) return false;
+            bool flag = sim[^1];
+            if (flag) local++;
+            sim.RemoveAt(sim.Count - 1);
+            return flag;
+        }
+
+        void Push(bool flag) => sim.Add(flag);
+
+        void FlushInto(int b)
+        {
+            if (b >= 0)
+            {
+                edges[b] = (ushort)Math.Min(edges[b] + total, ushort.MaxValue);
+                localEdges[b] = (ushort)Math.Min(localEdges[b] + local, ushort.MaxValue);
+            }
+
+            total = 0;
+            local = 0;
+        }
+
+        foreach (StreamOp op in ops)
+        {
+            switch (op.Kind)
+            {
+                case StreamOpKind.BlockFirst or StreamOpKind.FusedBlockFirst:
+                    FlushInto(block);
+                    block = op.BlockIndex;
+                    sim.Clear();
+                    Apply(op);
+                    break;
+                case StreamOpKind.InBlock or StreamOpKind.FusedInBlock:
+                    Apply(op);
+                    break;
+                case StreamOpKind.BoundaryLinear when block >= 0:
+                    ApplyLinear((Instruction)op.Opcode);
+                    break;
+                default:
+                    FlushInto(block);
+                    block = -1;
+                    sim.Clear();
+                    break;
+            }
+        }
+
+        FlushInto(block);
+        return (edges, localEdges);
+
+        void Apply(StreamOp op)
+        {
+            switch ((Instruction)op.Opcode)
+            {
+                case Instruction.JUMPDEST:
+                    break;
+                case Instruction.POP:
+                    Pop();
+                    break;
+                case Instruction.ISZERO or Instruction.NOT:
+                    Pop();
+                    Push(true);
+                    break;
+                case Instruction.ADD or Instruction.SUB or Instruction.MUL or Instruction.DIV
+                    or Instruction.SDIV or Instruction.MOD or Instruction.SMOD
+                    or Instruction.LT or Instruction.GT or Instruction.SLT or Instruction.SGT
+                    or Instruction.EQ or Instruction.AND or Instruction.OR or Instruction.XOR
+                    or Instruction.SHL or Instruction.SHR:
+                    Pop();
+                    Pop();
+                    Push(true);
+                    break;
+                case >= Instruction.DUP1 and <= Instruction.DUP8:
+                    Read(op.Opcode - (byte)Instruction.DUP1 + 1);
+                    Push(true);
+                    break;
+                case >= Instruction.SWAP1 and <= Instruction.SWAP8:
+                {
+                    int depth = op.Opcode - (byte)Instruction.SWAP1 + 2;
+                    Read(1);
+                    Read(depth);
+                    if (depth <= sim.Count)
+                    {
+                        (sim[^1], sim[^depth]) = (sim[^depth], sim[^1]);
+                    }
+
+                    break;
+                }
+                case Instruction.PUSH0 or Instruction.PUSH1 or (>= Instruction.PUSH3 and <= Instruction.PUSH32):
+                    Push(true);
+                    break;
+                case (Instruction)FusedOpcode.Push1Push1:
+                    Push(true);
+                    Push(true);
+                    break;
+                case (Instruction)FusedOpcode.PopPop:
+                    Pop();
+                    Pop();
+                    break;
+                case (Instruction)FusedOpcode.SwapPop:
+                {
+                    // stack[depth] = top, then pop: reads the top, discards the old slot value.
+                    int depth = (int)op.Operand;
+                    bool top = Pop();
+                    Read(depth - 1);
+                    if (depth - 1 <= sim.Count && depth - 1 >= 1)
+                    {
+                        sim[^(depth - 1)] = top;
+                    }
+
+                    break;
+                }
+                case (Instruction)FusedOpcode.AndIsZero:
+                    Pop();
+                    Pop();
+                    Push(true);
+                    break;
+                default:
+                    // Fused constant binops and shifts: one stack operand, the constant is not an edge.
+                    Pop();
+                    Push(true);
+                    break;
+            }
+        }
+
+        void ApplyLinear(Instruction instruction)
+        {
+            switch (instruction)
+            {
+                case Instruction.MLOAD or Instruction.CALLDATALOAD or Instruction.SLOAD:
+                    Pop();
+                    Push(true);
+                    break;
+                case Instruction.MSTORE or Instruction.MSTORE8:
+                    Pop();
+                    Pop();
+                    break;
+                case Instruction.KECCAK256:
+                    Pop();
+                    Pop();
+                    Push(true);
+                    break;
+                case Instruction.MCOPY or Instruction.CALLDATACOPY:
+                    Pop();
+                    Pop();
+                    Pop();
+                    break;
+            }
+        }
     }
 
     private static bool CanCarryJumpDestGas(ReadOnlySpan<byte> code, int pc)

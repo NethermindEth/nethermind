@@ -87,6 +87,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             metered = false;
                             opCodeCount += blockOpCount[entry.BlockIndex];
+                            if (StreamShapeCensus.IsEnabled)
+                            {
+                                StreamShapeCensus.OnBlockCharge(
+                                    blockOpCount[entry.BlockIndex],
+                                    stream.BlockEdges![entry.BlockIndex],
+                                    stream.BlockLocalEdges![entry.BlockIndex]);
+                            }
+
                             if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                             {
                                 nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;

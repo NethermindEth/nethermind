@@ -57,6 +57,11 @@ if [[ "$ADDITIONAL_FLAGS" == *--OpcodeHistogram=* ]]; then
   OPCODE_HISTOGRAM_PATH="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/.*--OpcodeHistogram=([^ ]*).*/\1/')"
   ADDITIONAL_FLAGS="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/--OpcodeHistogram=[^ ]*//')"
 fi
+STREAM_CENSUS_PATH=""
+if [[ "$ADDITIONAL_FLAGS" == *--StreamCensus=* ]]; then
+  STREAM_CENSUS_PATH="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/.*--StreamCensus=([^ ]*).*/\1/')"
+  ADDITIONAL_FLAGS="$(printf '%s\n' "$ADDITIONAL_FLAGS" | sed -E 's/--StreamCensus=[^ ]*//')"
+fi
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
@@ -275,6 +280,14 @@ if [[ -n "$OPCODE_HISTOGRAM_PATH" ]]; then
   fi
   docker_args+=(-e "NETHERMIND_OPCODE_HISTOGRAM=$OPCODE_HISTOGRAM_PATH")
   log "Opcode histogram enabled, writing to $OPCODE_HISTOGRAM_PATH inside the container."
+fi
+if [[ -n "$STREAM_CENSUS_PATH" ]]; then
+  if [[ "$DOTTRACE" != "true" && -z "$OPCODE_HISTOGRAM_PATH" ]]; then
+    mkdir -p "$DIAG_DIR/dottrace"
+    docker_args+=(-v "$DIAG_DIR/dottrace:/dottrace-output:rw")
+  fi
+  docker_args+=(-e "NETHERMIND_STREAM_CENSUS=$STREAM_CENSUS_PATH")
+  log "Stream shape census enabled, writing to $STREAM_CENSUS_PATH inside the container."
 fi
 # Two settings used to be forced on the Nethermind container here and both cost us on this
 # workload. Disabling tiered compilation also disables Dynamic PGO, which the runner project asks
