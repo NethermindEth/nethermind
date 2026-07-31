@@ -56,7 +56,7 @@ BlocksConfig.SetDefaultExtraDataWithVersion();
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
-PosixSignalRegistration? sigTermRegistration = null;
+PosixSignalRegistration[]? signalRegistrations = null;
 string unhandledError = "A critical error has occurred";
 Option<string>[] deprecatedOptions =
 [
@@ -119,17 +119,23 @@ async Task<int> ConfigureAsync(string[] args)
         processExitSource?.Exit(ExitCodes.SigTerm);
         exit.Wait();
     };
-    // On Linux the runtime's default SIGTERM termination skips the managed-exit path,
-    // losing DOTNET_WritePGOData output and the exit code; cancel it so Main returns
-    // normally after the graceful shutdown.
-    sigTermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx =>
-    {
-        if (processExitSource is not null)
+    // The runtime's default signal termination skips the managed-exit path, so shutdown
+    // work that runs at clean CLR exit (e.g. DOTNET_WritePGOData) is lost; cancel it and
+    // let Main return normally after the graceful shutdown instead.
+    PosixSignalRegistration ExitOnSignal(PosixSignal signal, int exitCode) =>
+        PosixSignalRegistration.Create(signal, ctx =>
         {
+            if (processExitSource is null) return;
+
             ctx.Cancel = true;
-            processExitSource.Exit(ExitCodes.SigTerm);
-        }
-    });
+            processExitSource.Exit(exitCode);
+        });
+
+    signalRegistrations =
+    [
+        ExitOnSignal(PosixSignal.SIGTERM, ExitCodes.SigTerm),
+        ExitOnSignal(PosixSignal.SIGINT, ExitCodes.SigInt)
+    ];
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
     PluginLoader pluginLoader = new(
@@ -163,7 +169,11 @@ async Task<int> ConfigureAsync(string[] args)
     finally
     {
         exit.Wait();
-        sigTermRegistration?.Dispose();
+
+        foreach (PosixSignalRegistration registration in signalRegistrations ?? [])
+        {
+            registration.Dispose();
+        }
     }
 }
 
