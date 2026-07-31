@@ -290,6 +290,9 @@ jobs:
           if [[ -n "${pgo_vol_dir}" ]]; then
             echo "Found PGO volume at: ${pgo_vol_dir}"
             ls -la "${pgo_vol_dir}/"
+            # Shutdown-phase stderr (CLR fatal errors) only lands in the saved log
+            echo "=== execution client log tail ==="
+            tail -40 "$(dirname "$(dirname "${pgo_vol_dir}")")/nethermind.log" 2>/dev/null || true
             cp -a "${pgo_vol_dir}/." "${RUNNER_TEMP}/pgo-data/"
           else
             echo "No EXPB pgo volume found, trying container fallback..."
