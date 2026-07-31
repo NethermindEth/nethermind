@@ -33,12 +33,23 @@ public static class SiblingCensus
     [ThreadStatic] private static HashSet<int>? t_currentTouches;
     [ThreadStatic] private static HashSet<int>? t_currentFirstTouches;
 
-    private static long s_topFrames;
-    private static long s_siblings;
-    private static long s_reverted;
-    private static long s_waveOneViable;
-    private static long s_touchesTotal;
+    // Buckets by sibling count per frame: the bench mixes warmup traffic (few siblings) with the
+    // measured multicalls (dozens), and an aggregate average hides the shape that matters.
+    private static readonly long[] s_bucketFrames = new long[4];
+    private static readonly long[] s_bucketSiblings = new long[4];
+    private static readonly long[] s_bucketReverted = new long[4];
+    private static readonly long[] s_bucketViable = new long[4];
+    private static readonly long[] s_bucketTouches = new long[4];
     private static Timer? s_timer;
+    private static int s_timerStarted;
+
+    private static int BucketOf(int siblingCount) => siblingCount switch
+    {
+        <= 4 => 0,
+        <= 16 => 1,
+        <= 48 => 2,
+        _ => 3,
+    };
 
     public static bool Recording => t_recording;
 
@@ -82,9 +93,10 @@ public static class SiblingCensus
         t_currentTouches = null;
         t_currentFirstTouches = null;
         List<(HashSet<int> Touches, HashSet<int> FirstTouches, bool Reverted)>? siblings = t_siblings;
+        if (Interlocked.CompareExchange(ref s_timerStarted, 1, 0) == 0) StartTimer();
         if (siblings is null || siblings.Count == 0)
         {
-            if (Interlocked.Increment(ref s_topFrames) == 1) StartTimer();
+            Interlocked.Increment(ref s_bucketFrames[0]);
             return;
         }
 
@@ -106,11 +118,12 @@ public static class SiblingCensus
             warmedByPrefix.UnionWith(firstTouched);
         }
 
-        Interlocked.Add(ref s_siblings, siblings.Count);
-        Interlocked.Add(ref s_reverted, reverts);
-        Interlocked.Add(ref s_waveOneViable, viable);
-        Interlocked.Add(ref s_touchesTotal, touches);
-        if (Interlocked.Increment(ref s_topFrames) == 1) StartTimer();
+        int bucket = BucketOf(siblings.Count);
+        Interlocked.Increment(ref s_bucketFrames[bucket]);
+        Interlocked.Add(ref s_bucketSiblings[bucket], siblings.Count);
+        Interlocked.Add(ref s_bucketReverted[bucket], reverts);
+        Interlocked.Add(ref s_bucketViable[bucket], viable);
+        Interlocked.Add(ref s_bucketTouches[bucket], touches);
         siblings.Clear();
     }
 
@@ -122,22 +135,21 @@ public static class SiblingCensus
 
     private static void Flush()
     {
-        long frames = Interlocked.Read(ref s_topFrames);
-        long siblings = Interlocked.Read(ref s_siblings);
-        long reverted = Interlocked.Read(ref s_reverted);
-        long viable = Interlocked.Read(ref s_waveOneViable);
-        long touches = Interlocked.Read(ref s_touchesTotal);
-
+        string[] labels = ["1-4 siblings", "5-16 siblings", "17-48 siblings", "49+ siblings"];
         StringBuilder report = new();
         report.AppendLine("sibling census (serial execution replay of wave-one speculation validity)");
-        report.AppendLine($"top frames:          {frames}");
-        report.AppendLine($"depth-1 siblings:    {siblings}");
-        if (frames > 0) report.AppendLine($"siblings per frame:  {(double)siblings / frames:F2}");
-        if (siblings > 0)
+        for (int i = 0; i < 4; i++)
         {
-            report.AppendLine($"reverted:            {100.0 * reverted / siblings:F2}%");
-            report.AppendLine($"wave-one viable:     {100.0 * viable / siblings:F2}%");
-            report.AppendLine($"touches per sibling: {(double)touches / siblings:F2}");
+            long frames = Interlocked.Read(ref s_bucketFrames[i]);
+            long siblings = Interlocked.Read(ref s_bucketSiblings[i]);
+            long reverted = Interlocked.Read(ref s_bucketReverted[i]);
+            long viable = Interlocked.Read(ref s_bucketViable[i]);
+            long touches = Interlocked.Read(ref s_bucketTouches[i]);
+            report.AppendLine($"[{labels[i]}] frames {frames}, siblings {siblings}"
+                + (frames > 0 ? $", per frame {(double)siblings / Math.Max(frames, 1):F2}" : "")
+                + (siblings > 0
+                    ? $", reverted {100.0 * reverted / siblings:F2}%, wave-one viable {100.0 * viable / siblings:F2}%, touches/sibling {(double)touches / siblings:F1}"
+                    : ""));
         }
 
         try
