@@ -224,10 +224,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             && !_currentState.ExecutionType.IsAnyCreate())
                         {
                             memo = ParallelSiblings.SiblingRecorder.TryGet(_siblingSiteKey);
-                            if (memo is not null
-                                && (memo.GasGiven != (long)TGasPolicy.GetRemainingGas(in _currentState.Gas)
-                                    || !ParallelSiblings.SiblingRecorder.IsReplayable(memo, memo.GasGiven, in _currentState.AccessTracker)
-                                    || !TGasPolicy.TryConsume(ref _currentState.Gas, (ulong)memo.GasUsed)))
+                            if (memo is null)
+                            {
+                                ParallelSiblings.SiblingRecorder.CountLookupMiss();
+                            }
+                            else if (memo.GasGiven != (long)TGasPolicy.GetRemainingGas(in _currentState.Gas))
+                            {
+                                ParallelSiblings.SiblingRecorder.CountGasReject();
+                                memo = null;
+                            }
+                            else if (!ParallelSiblings.SiblingRecorder.IsReplayable(memo, memo.GasGiven, in _currentState.AccessTracker)
+                                || !TGasPolicy.TryConsume(ref _currentState.Gas, (ulong)memo.GasUsed))
                             {
                                 memo = null;
                             }
@@ -235,6 +242,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                         if (memo is not null)
                         {
+                            ParallelSiblings.SiblingRecorder.CountReplay();
                             ParallelSiblings.SiblingRecorder.WarmReplayedTouches(memo, in _currentState.AccessTracker);
                             callResult = new CallResult(memo.Output, null);
                         }

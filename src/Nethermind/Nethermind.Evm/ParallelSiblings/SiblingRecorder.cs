@@ -44,6 +44,46 @@ public static class SiblingRecorder
 
     private static readonly ConcurrentDictionary<long, SiteRecord> s_sites = new();
 
+    // Diagnostic counters, reported when NETHERMIND_SIBLING_CENSUS names a file: which soundness
+    // condition memo traffic actually dies on. Interlocked-free sloppy counts - magnitudes matter,
+    // not exactness.
+    private static readonly string? s_reportPath = Environment.GetEnvironmentVariable("NETHERMIND_SIBLING_CENSUS");
+    private static long s_recorded;
+    private static long s_recordedMemoable;
+    private static long s_lookupMisses;
+    private static long s_replays;
+    private static long s_rejectNotMemoable;
+    private static long s_rejectGas;
+    private static long s_rejectCold;
+    private static long s_rejectPrefix;
+    private static System.Threading.Timer? s_reportTimer;
+
+    static SiblingRecorder()
+    {
+        if (!string.IsNullOrWhiteSpace(s_reportPath))
+        {
+            s_reportTimer = new System.Threading.Timer(static _ => Report(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        }
+    }
+
+    private static void Report()
+    {
+        try
+        {
+            System.IO.File.WriteAllText(s_reportPath!,
+                $"recorded {s_recorded} (memoable {s_recordedMemoable}), lookup misses {s_lookupMisses}, replays {s_replays}\n" +
+                $"rejects: not-memoable {s_rejectNotMemoable}, gas {s_rejectGas}, cold {s_rejectCold}, prefix {s_rejectPrefix}\n" +
+                $"sites {s_sites.Count}\n");
+        }
+        catch (System.IO.IOException)
+        {
+        }
+    }
+
+    public static void CountLookupMiss() => s_lookupMisses++;
+    public static void CountReplay() => s_replays++;
+    public static void CountGasReject() => s_rejectGas++;
+
     public static bool Recording => t_recording;
 
     /// <summary>One full observation of a call site. Immutable once published.</summary>
@@ -72,16 +112,17 @@ public static class SiblingRecorder
     /// nothing an earlier sibling of this request wrote.</summary>
     public static bool IsReplayable(SiteRecord record, long gasGiven, in StackAccessTracker tracker)
     {
-        if (!record.Memoable || record.GasGiven != gasGiven) return false;
+        if (!record.Memoable) { s_rejectNotMemoable++; return false; }
+        if (record.GasGiven != gasGiven) { s_rejectGas++; return false; }
 
         foreach (Address address in record.FirstTouchAddresses)
         {
-            if (!tracker.IsCold(address)) return false;
+            if (!tracker.IsCold(address)) { s_rejectCold++; return false; }
         }
 
         foreach (StorageCell slot in record.FirstTouchSlots)
         {
-            if (!tracker.IsCold(in slot)) return false;
+            if (!tracker.IsCold(in slot)) { s_rejectCold++; return false; }
         }
 
         HashSet<int>? prefixWrites = t_prefixWrites;
@@ -89,7 +130,7 @@ public static class SiblingRecorder
         {
             foreach (int h in record.TouchHashes)
             {
-                if (prefixWrites.Contains(h)) return false;
+                if (prefixWrites.Contains(h)) { s_rejectPrefix++; return false; }
             }
         }
 
@@ -169,6 +210,8 @@ public static class SiblingRecorder
             (t_prefixWrites ??= new HashSet<int>(1024)).UnionWith(touches);
         }
 
+        s_recorded++;
+        if (memoable) s_recordedMemoable++;
         if (s_sites.Count >= MaxSites) s_sites.Clear();
         s_sites[t_siteKey] = new SiteRecord
         {
