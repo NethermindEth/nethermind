@@ -23,10 +23,8 @@
     <!-- Match file layout to method ordering so hot methods are on adjacent pages on disk. -->
     <!-- The SDK forwards $(PublishReadyToRunCrossgen2ExtraArgs) to crossgen2; the task-internal
          Crossgen2ExtraCommandLineArgs name is not user-settable. -->
-    <PublishReadyToRunCrossgen2ExtraArgs>$(PublishReadyToRunCrossgen2ExtraArgs);--opt-cross-module:*;--file-layout:methodorder</PublishReadyToRunCrossgen2ExtraArgs>
     <!-- Hot-cold splitting emits relocation types the arm64 R2R PE writer rejects
          (NotSupportedException in RelocationHelper.ProcessRelocation) — x64 targets only. -->
-    <PublishReadyToRunCrossgen2ExtraArgs Condition="!$(RuntimeIdentifier.Contains('arm'))">$(PublishReadyToRunCrossgen2ExtraArgs);--hot-cold-splitting</PublishReadyToRunCrossgen2ExtraArgs>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(PublishReadyToRun)' == 'true' and Exists('$(NethermindPgoProfile)')">
