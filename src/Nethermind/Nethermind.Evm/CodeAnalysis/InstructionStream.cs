@@ -120,7 +120,9 @@ internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ush
 /// whenever a new fork changes any of them. A JUMPDEST is a solo block; a truncated trailing PUSH stays
 /// a boundary op; nothing lands inside a fused pair; the executor recomputes the entry from the landing
 /// pc and re-meters any block entered past its charging entry (metered dispatch reads raw code, so gas
-/// stays exact).
+/// stays exact). An elided JUMPDEST is the pc map's only forward mapping, and a landing that finds one
+/// (entry pc past the landing pc) charges the marker itself — the block charge that carries it was
+/// bypassed by that arrival.
 /// </remarks>
 internal sealed class InstructionStream
 {
@@ -238,7 +240,10 @@ internal sealed class InstructionStream
                 }
                 else if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
-                    && TryTakePrecedingPush(ops, out StreamOp push))
+                    && TryTakePrecedingPush(ops, out StreamOp push)
+                    // Folded entries can carry Advance near the byte ceiling; a wrapped sum would
+                    // break the "advance spans the fused source bytes" invariant the landings rely on.
+                    && push.Advance + size <= byte.MaxValue)
                 {
                     // Pair becomes one entry: constant goes to the pool (one indexed load, no
                     // per-width branching) and the pc map forgets this start (nothing lands in a pair).
@@ -403,12 +408,14 @@ internal sealed class InstructionStream
     };
 
     /// <summary>
-    /// Folds PUSHx a; PUSHx b; binop into a single pooled push of the computed result, using the
-    /// same operation implementations the executor dispatches, so analysis and execution can never
-    /// disagree on semantics (division by zero, wrapping, shift saturation). Gas and the per-block
-    /// op count are left to the caller: the block still charges and counts every original op, the
-    /// stream just stops dispatching them. Cascades, because the folded entry is itself a const
-    /// push - the (1 &lt;&lt; n) - 1 mask idiom collapses to one entry from five.
+    /// Folds PUSHx a; PUSHx b; binop into a single pooled push of the computed result. ADD through
+    /// SGT run the executor's own operation implementations, so those cannot disagree on semantics
+    /// (division by zero, wrapping); the bitwise ops and shifts below them are hand-mirrored from
+    /// the executor's cores — the shift guard replicates ShiftCore's saturation test — so a change
+    /// to either side must be made to both. Gas and the per-block op count are left to the caller:
+    /// the block still charges and counts every original op, the stream just stops dispatching
+    /// them. Cascades, because the folded entry is itself a const push - the (1 &lt;&lt; n) - 1
+    /// mask idiom collapses to one entry from five.
     /// </summary>
     private static bool TryFoldConstantPair(List<StreamOp> ops, List<UInt256> constants, ushort[] pcToEntry, Instruction instruction, int pc, byte size)
     {

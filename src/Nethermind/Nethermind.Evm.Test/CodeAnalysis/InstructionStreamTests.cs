@@ -466,7 +466,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     [TestCase(2)]
     [TestCase(3)]
     [TestCase(5)]
-    public void ElisionBisect(int counter)
+    public void JumpDestGasCarry_MatchesByteCodeLoop_PerTakenJumpCount(int counter)
     {
         byte[] code = Prepare.EvmCode
             .PushData(counter)
@@ -480,9 +480,86 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
         Setup();
         ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
-        System.Console.WriteLine($"BISECT counter={counter} baseline={baseline.GasSpent} streamed={streamed.GasSpent} delta={(long)streamed.GasSpent - (long)baseline.GasSpent}");
         Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
             "gas must match per taken-jump count: a landing that re-charges the JUMPDEST scales the error with the jump count");
+    }
+
+    // An elided jump-target marker's gas rides in the block that falls into it. A table handler
+    // that consumes its successor op (the EXTCODESIZE/ISZERO peephole) arrives past that block's
+    // charging entry, so nothing has paid the marker: the landing must charge it. One shape lands
+    // directly on the marker (main-loop landing), the other lands one op earlier so the metered
+    // fallback walks onto the marker (metered handback).
+    private static IEnumerable<TestCaseData> ElidedMarkerLandingCases()
+    {
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH1, 0x02, (byte)Instruction.STOP,
+        }) { TestName = "PeepholeLandsOnElidedMarker" };
+
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH1, 0x01,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH1, 0x02, (byte)Instruction.STOP,
+        }) { TestName = "MeteredWalkReachesElidedMarker" };
+    }
+
+    [TestCaseSource(nameof(ElidedMarkerLandingCases))]
+    public void StreamInterpreter_LandingOnElidedJumpTarget_ChargesTheMarker(byte[] code)
+    {
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), "the stream did not engage");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "status must match");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+                "an arrival that bypasses the block charge carrying an elided JUMPDEST must still pay the marker's gas");
+        }
+    }
+
+    // A fused static jump that targets its own block re-enters one entry past the charging point,
+    // so the loop never passes a block charge again: the cancellation probe must live on the jump
+    // path too, or an eth_call timeout is ignored until the gas cap runs out.
+    [Test]
+    public void StreamInterpreter_StaticJumpLoop_HonorsCancellation()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH2, 0x00, 0x00, (byte)Instruction.JUMP,
+        ];
+
+        TestState.CreateAccount(CalleeAddress, 1000000);
+        TestState.InsertCode(CalleeAddress, CalleeCode, Spec);
+
+        bool enabledBefore = StreamInterpreter.Enabled;
+        int thresholdBefore = StreamInterpreter.BuildThreshold;
+        StreamInterpreter.Enabled = true;
+        StreamInterpreter.BuildThreshold = 1;
+        try
+        {
+            (Block block, Transaction transaction) = PrepareTx(Activation, 8_000_000, code);
+            CodeInfo codeInfo = CodeInfoRepository.GetCachedCodeInfo(Recipient, Spec);
+            if (!System.Threading.SpinWait.SpinUntil(() => codeInfo.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)))
+                Assert.Fail("the stream did not build within the timeout");
+
+            Evm.Tracing.CancellationTxTracer tracer = new(new ReceiptCaptureTracer(), new System.Threading.CancellationToken(canceled: true));
+            Assert.Throws<OperationCanceledException>(
+                () => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
+                "a cancelled tracer must stop the loop instead of letting it spin to the gas cap");
+        }
+        finally
+        {
+            StreamInterpreter.Enabled = enabledBefore;
+            StreamInterpreter.BuildThreshold = thresholdBefore;
+        }
     }
 
     private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream, ulong gasLimit = 8_000_000)

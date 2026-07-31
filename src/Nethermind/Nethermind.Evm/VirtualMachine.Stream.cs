@@ -283,6 +283,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 goto OutOfGas;
                             }
 
+                            opCodeCount += 2;
                             if (!EvmInstructions.TestJumpCondition(ref stack, out bool invertedUnderflow))
                             {
                                 if (invertedUnderflow)
@@ -296,6 +297,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     TGasPolicy.SetOutOfGas(ref gas);
                                     OpCodeCount += opCodeCount;
                                     goto OutOfGas;
+                                }
+
+                                // Taken backward jumps can loop without a block charge: probe here too.
+                                opCodeCount++;
+                                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                                {
+                                    nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
+                                    if (_txTracer.IsCancelled)
+                                        ThrowStreamOperationCanceledException();
                                 }
 
                                 entryIndex = (int)entry.Operand - 1;
@@ -318,7 +328,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 goto OutOfGas;
                             }
 
-                            opCodeCount++;
+                            // PUSH2, JUMP and the landed JUMPDEST all execute here. A backward jump can
+                            // loop without ever crossing a block charge, so this redirect must carry its
+                            // own cancellation probe or a cancelable frame spins until the gas cap.
+                            opCodeCount += 3;
+                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                            {
+                                nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
+                                if (_txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                            }
+
                             // The operand entry sits one past the JUMPDEST, whose gas this op already charged;
                             // the shared loop-tail entryIndex++ lands there. programCounter is transiently
                             // stale until the next entry sets it — fine, nothing reads it here.
@@ -339,6 +359,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 goto OutOfGas;
                             }
 
+                            opCodeCount += 2;
                             if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
                             {
                                 if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
@@ -346,6 +367,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     TGasPolicy.SetOutOfGas(ref gas);
                                     OpCodeCount += opCodeCount;
                                     goto OutOfGas;
+                                }
+
+                                // Taken backward jumps can loop without a block charge: probe here too.
+                                opCodeCount++;
+                                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                                {
+                                    nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
+                                    if (_txTracer.IsCancelled)
+                                        ThrowStreamOperationCanceledException();
                                 }
 
                                 entryIndex = (int)entry.Operand - 1;
@@ -376,8 +406,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // recompute and no block reset. The general epilogue below is for ops that redirect.
                 if (entry.Kind == StreamOpKind.BoundaryLinear)
                 {
-                    if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
-                        ThrowStreamOperationCanceledException();
+                    // Threshold, not a mask: block charges advance opCodeCount in strides that can step
+                    // over every multiple of the mask, so equality tests are allowed to never fire.
+                    if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                    {
+                        nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
+                        if (_txTracer.IsCancelled)
+                            ThrowStreamOperationCanceledException();
+                    }
 
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
                     opCodeCount++;
@@ -402,8 +438,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // Boundary op: standard handler + epilogue. Structured control flow only —
                 // backward gotos make the loop irreducible and the JIT stops optimizing it.
                 programCounter = entry.Pc;
-                if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
-                    ThrowStreamOperationCanceledException();
+                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                {
+                    nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
+                    if (_txTracer.IsCancelled)
+                        ThrowStreamOperationCanceledException();
+                }
 
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
                 programCounter++;
@@ -449,6 +489,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     // A fused table handler can land past a block's charging entry; run the rest metered.
                     StreamOpKind landingKind = ops[entryIndex].Kind;
                     metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock;
+
+                    if (ops[entryIndex].Pc != programCounter)
+                    {
+                        // The pc map's only forward mapping is an elided jump-target marker (elision
+                        // closes the block, so markers never chain). Its gas rides in the block that
+                        // falls into it, and this arrival bypassed that charge — jumps land past the
+                        // marker having self-charged it, so reaching it here means nobody has paid.
+                        // Step it the way the bytecode loop would: count, charge, advance.
+                        opCodeCount++;
+                        if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
+                        {
+                            OpCodeCount += opCodeCount;
+                            goto OutOfGas;
+                        }
+
+                        programCounter++;
+                    }
                 }
             }
 
@@ -576,8 +633,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if ((uint)entryIndex >= (uint)ops.Length)
                 return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
-            StreamOpKind kind = ops[entryIndex].Kind;
-            if (kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock)
+            StreamOp landingOp = ops[entryIndex];
+            if (landingOp.Kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock)
+                continue;
+
+            // An entry starting past this pc means the pc holds an elided jump-target marker whose
+            // gas nobody on this path has charged: keep stepping raw so the marker's own dispatch
+            // pays it, and hand back at the entry that really starts here.
+            if (landingOp.Pc != programCounter)
                 continue;
 
             // Block-charging entry or boundary op: hand back so the stream loop re-evaluates the charge.

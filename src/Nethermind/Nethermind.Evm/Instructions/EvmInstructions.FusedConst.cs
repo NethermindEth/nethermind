@@ -73,8 +73,9 @@ public static partial class EvmInstructions
 
     /// <summary>
     /// Fused <c>PUSH1 a; PUSH1 b</c>, with both immediates packed into the entry operand: <c>a</c> in
-    /// the low byte, <c>b</c> in the next. One overflow check covers both pushes for the same reason
-    /// the pop pair needs only one underflow check.
+    /// the low byte, <c>b</c> in the next. The leading check rejects only a full stack; at one slot
+    /// free the first push lands and the second one's own bound reports the overflow, exactly like
+    /// the unfused pair. The intermediate write is unobservable — an exceptional halt discards it.
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
