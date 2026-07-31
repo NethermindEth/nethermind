@@ -19,8 +19,9 @@ public partial class BlockProcessor
     public interface ISystemContractHandler
         : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
     {
-        /// <summary>Installs the EIP-8141 expiry-verifier predeploy so its code + nonce are captured
-        /// in the computed state root (and, on the BAL path, the block-level access list).</summary>
+        /// <summary>Installs every predeploy that <paramref name="spec"/> activates (as declared in
+        /// <see cref="PredeployInstaller"/>) so its code + nonce are captured in the computed state
+        /// root (and, on the BAL path, the block-level access list).</summary>
         void InstallPredeploys(IReleaseSpec spec);
     }
 

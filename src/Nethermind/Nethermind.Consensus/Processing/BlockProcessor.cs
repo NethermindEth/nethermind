@@ -164,7 +164,7 @@ public partial class BlockProcessor(
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (spec.IsEip8141Enabled && !block.IsGenesis)
+        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
         {
             _systemContractHandler.InstallPredeploys(spec);
         }
