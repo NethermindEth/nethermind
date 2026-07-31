@@ -169,7 +169,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             _availability.PublishWatermark(target);
             _history.SyncWal();
             Metrics.FlatHistoryWatermark = (long)target;
-            WatermarkAdvanced?.Invoke(target);
+
+            try
+            {
+                WatermarkAdvanced?.Invoke(target);
+            }
+            catch (Exception e)
+            {
+                // Eviction is advisory (retained data stays and is flushed on a later disable), whereas an escaping
+                // handler exception would abort the persist after the watermark published and retry it to the breaker.
+                if (_logger.IsError) _logger.Error($"A watermark-advanced handler failed at block {target}.", e);
+            }
         }
         else
         {

@@ -605,6 +605,36 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(BodyIsPersisted(block), Is.True);
     }
 
+    // A finality stall freezes the watermark (no eviction) while blocks keep coming: at the retention cap the
+    // skip must stop — bodies write through — so the retained memory stays bounded.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_stores_bodies_once_the_retention_cap_is_reached()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block InsertBlockNumber(ulong number)
+        {
+            Block block = Build.A.Block.WithNumber(number).WithTransactions(tx).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+            _storage.InsertDeferred(block, [Build.A.Receipt.WithCalculatedBloom().TestObject], _specProvider.GetSpec((ForkActivation)number));
+            return block;
+        }
+
+        Block firstRetained = InsertBlockNumber(1);
+        for (ulong number = 2; number <= PersistentReceiptStorage.MaxRetainedBodies; number++)
+        {
+            InsertBlockNumber(number);
+        }
+        Block overflow = InsertBlockNumber(PersistentReceiptStorage.MaxRetainedBodies + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BodyIsPersisted(overflow), Is.True, "at the cap the body must write through");
+            Assert.That(BodyIsPersisted(firstRetained), Is.False, "below the cap the skip must keep applying");
+        }
+    }
+
     // Closes the insert/disable race: the disable flush may drain between the health check that skipped the
     // write and the retention add, which would otherwise strand the body in memory forever.
     [Test, MaxTime(Timeout.MaxTestTime)]

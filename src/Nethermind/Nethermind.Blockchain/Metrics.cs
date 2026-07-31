@@ -34,6 +34,10 @@ public static class Metrics
     public static long Reorganizations { get; set; }
 
     [GaugeMetric]
+    [Description("Number of receipt bodies retained in memory while awaiting durable state-history capture (receipt derivation only).")]
+    public static long RetainedReceiptBodies { get; set; }
+
+    [GaugeMetric]
     [Description("Number of blocks awaiting for recovery of public keys from signatures.")]
     public static long RecoveryQueueSize { get; set; }
 

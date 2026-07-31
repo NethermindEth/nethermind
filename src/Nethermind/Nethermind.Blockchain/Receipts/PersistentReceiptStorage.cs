@@ -81,10 +81,18 @@ namespace Nethermind.Blockchain.Receipts
 
         // Bodies skipped by StoresBodies, retained until history capture durably covers their block — so that a
         // capture breakdown can persist them before the pending state persist prunes the blocks' snapshots, their
-        // only other recovery source. Bounded by the same in-memory snapshot window that gates the skip:
-        // a durable-watermark advance (which tracks the flat persisted head) evicts everything at or below it.
+        // only other recovery source. A durable-watermark advance (which tracks the flat persisted head) evicts
+        // everything at or below it; that normally keeps the window at the persist cadence (tens of blocks), but a
+        // finality stall freezes the watermark while snapshots spill to disk, so the count is capped explicitly:
+        // at the cap StoresBodies writes through again (never wrong, just not derivable-only), bounding both the
+        // held memory and the size of the flush a breaker trip performs.
         // Null when derivation is off or capture status is unwired (then no body is ever skipped).
         private readonly ConcurrentDictionary<ValueHash256, RetainedBody>? _retainedBodies;
+
+        // Well above the deepest healthy window (~160 in-memory bases) so it binds only during a prolonged
+        // finality stall; at heavy-block receipt sizes (~100 KB) it holds the retention near 100 MB.
+        internal const int MaxRetainedBodies = 1024;
+        private bool _retentionSaturationLogged;
 
         private sealed record RetainedBody(ulong BlockNumber, Hash256 BlockHash, TxReceipt[] Receipts, RlpBehaviors Behaviors);
 
@@ -605,7 +613,26 @@ namespace Nethermind.Blockchain.Receipts
             || !spec.IsEip658Enabled
             // A skipped body is permanently lost once its block leaves the in-memory tier: follow live capture
             // health, and treat absent status (patricia backend) as unhealthy.
-            || _historyCaptureStatus?.CaptureHealthy != true;
+            || _historyCaptureStatus?.CaptureHealthy != true
+            || IsRetentionSaturated();
+
+        /// <summary>Whether the retention cap is reached — the skip then stops (bodies write through) until the
+        /// watermark catches up and evicts, keeping the retained memory bounded through a finality stall.</summary>
+        private bool IsRetentionSaturated()
+        {
+            int retained = _retainedBodies?.Count ?? 0;
+            Metrics.RetainedReceiptBodies = retained;
+            if (retained < MaxRetainedBodies) return false;
+
+            if (_logger.IsWarn && !_retentionSaturationLogged)
+            {
+                _retentionSaturationLogged = true;
+                _logger.Warn(
+                    $"Retained receipt bodies reached the {MaxRetainedBodies}-block cap (history capture is not keeping up, e.g. during a finality stall); storing bodies to disk until it catches up.");
+            }
+
+            return true;
+        }
 
         /// <summary>Retains a body skipped by <see cref="StoresBodies"/> until history capture durably covers its
         /// block, so a capture breakdown can persist it instead of losing it (see <see cref="_retainedBodies"/>).</summary>
@@ -630,15 +657,19 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (retained.Value.BlockNumber <= watermark) _retainedBodies.TryRemove(retained.Key, out _);
             }
+
+            Metrics.RetainedReceiptBodies = _retainedBodies.Count;
         }
 
         /// <summary>
         /// Persists every retained body — capture stopped, so their blocks will never be derivable from history.
         /// </summary>
         /// <remarks>
-        /// Runs on the capture hook's thread before the pending state persist resumes, and the WAL fsync makes the
-        /// bodies durable before that persist prunes the blocks' snapshots. Must not throw: disabling is one-shot,
-        /// so the capture side cannot re-notify (it logs and moves on if a handler fails).
+        /// Runs on the capture hook's thread before the pending state persist resumes (or, in the rare
+        /// insert/disable race closed by <see cref="RetainSkippedBody"/>, once on the processing thread for the
+        /// single racing entry), and the throwing WAL sync makes the bodies durable before that persist prunes the
+        /// blocks' snapshots. Must not throw: disabling is one-shot, so the capture side cannot re-notify (it logs
+        /// and moves on if a handler fails).
         /// </remarks>
         private void PersistRetainedBodies()
         {
@@ -657,7 +688,9 @@ namespace Nethermind.Blockchain.Receipts
                     }
                 }
 
-                _database.Flush(onlyWal: true);
+                // SyncWal rethrows on failure where Flush(onlyWal: true) degrades to a warning — this line carries
+                // the durability claim above, so a failure must land in the catch, not read as success.
+                _database.SyncWal();
                 if (_logger.IsWarn) _logger.Warn(
                     $"History capture stopped: persisted the receipt bodies retained for {persisted} block(s) that can no longer be derived from state history.");
             }
@@ -665,6 +698,10 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_logger.IsError) _logger.Error(
                     $"Failed to persist the retained receipt bodies after history capture stopped ({persisted} of {persisted + _retainedBodies.Count} written) - the affected blocks cannot serve receipts; re-sync receipts to recover them.", e);
+            }
+            finally
+            {
+                Metrics.RetainedReceiptBodies = _retainedBodies.Count;
             }
         }
 

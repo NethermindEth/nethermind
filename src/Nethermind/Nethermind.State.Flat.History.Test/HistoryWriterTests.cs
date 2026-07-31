@@ -481,6 +481,19 @@ public class HistoryWriterTests
         Assert.That(advancedTo, Is.EqualTo(1UL));
     }
 
+    // Eviction is advisory: a throwing handler must not abort a persist whose watermark already published.
+    [Test]
+    public void Watermark_advanced_handler_failure_is_contained()
+    {
+        SeedGenesisFloor();
+        _writer.WatermarkAdvanced += _ => throw new InvalidOperationException("handler failure");
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+
+        Assert.DoesNotThrow(() => _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None));
+        Assert.That(_writer.LastCapturedBlock, Is.EqualTo(1UL));
+    }
+
     // The disable notification lets dependants persist retained data before the resumed persist prunes the
     // blocks above the watermark; it must fire exactly once, at the trip.
     [Test]
