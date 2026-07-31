@@ -11,6 +11,9 @@ namespace Nethermind.Trie.Pruning
 {
     public static class Metrics
     {
+        // Probe only: see Nethermind.Trie.Metrics._countersEnabled.
+        private static readonly bool _countersEnabled = false;
+
         private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
 
         [GaugeMetric]
@@ -51,8 +54,11 @@ namespace Nethermind.Trie.Pruning
         private static CacheLinePaddedLong _mainLoadedFromDbNodesCount;
         private static CacheLinePaddedLong _otherLoadedFromDbNodesCount;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromDbNodesCount() =>
+        public static void IncrementLoadedFromDbNodesCount()
+        {
+            if (!_countersEnabled) return;
             Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromDbNodesCount.Value : ref _otherLoadedFromDbNodesCount.Value);
+        }
 
         [CounterMetric]
         [Description("Number of reads from the node cache.")]
@@ -60,8 +66,11 @@ namespace Nethermind.Trie.Pruning
         private static CacheLinePaddedLong _mainLoadedFromCacheNodesCount;
         private static CacheLinePaddedLong _otherLoadedFromCacheNodesCount;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void IncrementLoadedFromCacheNodesCount() =>
+        public static void IncrementLoadedFromCacheNodesCount()
+        {
+            if (!_countersEnabled) return;
             Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromCacheNodesCount.Value : ref _otherLoadedFromCacheNodesCount.Value);
+        }
 
         [CounterMetric]
         [Description("Number of reads from the RLP cache.")]

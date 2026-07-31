@@ -11,6 +11,10 @@ namespace Nethermind.Trie
 {
     public static class Metrics
     {
+        // Probe only: readonly static false folds every counter body away at JIT time, to measure
+        // how much of the commit phase is cross-thread contention on these shared counters.
+        private static readonly bool _countersEnabled = false;
+
         private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
 
         [CounterMetric]
@@ -19,8 +23,11 @@ namespace Nethermind.Trie
         private static CacheLinePaddedLong _mainTreeNodeHashCalculations;
         private static CacheLinePaddedLong _otherTreeNodeHashCalculations;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeHashCalculations() =>
+        internal static void IncrementTreeNodeHashCalculations()
+        {
+            if (!_countersEnabled) return;
             Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainTreeNodeHashCalculations.Value : ref _otherTreeNodeHashCalculations.Value);
+        }
 
         [CounterMetric]
         [Description("Number of trie node RLP encodings.")]
@@ -28,8 +35,11 @@ namespace Nethermind.Trie
         private static CacheLinePaddedLong _mainTreeNodeRlpEncodings;
         private static CacheLinePaddedLong _otherTreeNodeRlpEncodings;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeRlpEncodings() =>
+        internal static void IncrementTreeNodeRlpEncodings()
+        {
+            if (!_countersEnabled) return;
             Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainTreeNodeRlpEncodings.Value : ref _otherTreeNodeRlpEncodings.Value);
+        }
 
         [CounterMetric]
         [Description("Number of trie node RLP decodings.")]
@@ -37,7 +47,10 @@ namespace Nethermind.Trie
         private static CacheLinePaddedLong _mainTreeNodeRlpDecodings;
         private static CacheLinePaddedLong _otherTreeNodeRlpDecodings;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void IncrementTreeNodeRlpDecodings() =>
+        internal static void IncrementTreeNodeRlpDecodings()
+        {
+            if (!_countersEnabled) return;
             Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainTreeNodeRlpDecodings.Value : ref _otherTreeNodeRlpDecodings.Value);
+        }
     }
 }
