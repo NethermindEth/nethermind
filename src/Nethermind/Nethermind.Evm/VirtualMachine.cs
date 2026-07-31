@@ -244,6 +244,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
+                    if (SiblingCensus.IsEnabled) SiblingCensus.EndTopFrame();
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     _currentState = null;
                     return substate;
@@ -256,6 +257,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
+                    if (SiblingCensus.IsEnabled && _currentState.Env.CallDepth == 0)
+                        SiblingCensus.EndSibling(callResult.ShouldRevert);
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
@@ -732,6 +735,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
+        if (SiblingCensus.IsEnabled && _currentState.Env.CallDepth == 1)
+            SiblingCensus.BeginSibling();
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
