@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History;
 
@@ -23,9 +24,11 @@ internal sealed class HistoryStore
     private const int BlockBytes = sizeof(ulong);
 
     private readonly ISortedKeyValueStore _history;
+    private readonly ILogger _logger;
 
-    public HistoryStore(IDb history)
+    public HistoryStore(IDb history, ILogger logger = default)
     {
+        _logger = logger;
         ArgumentNullException.ThrowIfNull(history);
         if (history is not ISortedKeyValueStore sortedHistory)
             throw new ArgumentException($"History column must be a {nameof(ISortedKeyValueStore)}.", nameof(history));
@@ -84,8 +87,10 @@ internal sealed class HistoryStore
         // Buffers are sized to the encoders' maxima, so an oversized row can only be corruption.
         if (value.Length > outBuffer.Length)
         {
-            throw new StateUnavailableException(
-                $"History value of {value.Length} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
+            string message = $"History value of {value.Length} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.";
+            // Logged here because the RPC layer reports it as a generic error - the operator must still see it.
+            if (_logger.IsError) _logger.Error(message);
+            throw new StateUnavailableException(message);
         }
         value.CopyTo(outBuffer);
         return value.Length;

@@ -37,7 +37,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     // Under the persistence lock a failed lease means the range below is gone for good (history enabled mid-life);
     // further captures would only write rows above a gap no read can cross, so skip them until restart.
-    private bool _permanentGapDetected;
+    private volatile bool _permanentGapDetected;
     private int _consecutiveCaptureFailures;
     // The config flag cannot prove the hook is wired: on a patricia backend this writer is constructed but nothing
     // ever invokes capture, and reporting healthy there would let receipt derivation skip bodies with no history
@@ -59,8 +59,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _history = history;
         _rlpWrapSlots = rlpWrapSlots;
         _logger = logger;
-        _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory));
-        _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory));
+        _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory), logger);
+        _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory), logger);
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
         _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         if (enabled)
@@ -190,7 +190,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     {
         _permanentGapDetected = true;
         Metrics.FlatHistoryCaptureDisabled = 1;
-        if (_logger.IsError) _logger.Error(reason);
+        if (_logger.IsError) _logger.Error(reason +
+            " If receipt derivation is enabled, receipt bodies skipped for blocks above the watermark cannot be regenerated - recover them with a receipts re-sync.");
     }
 
     /// <summary>
