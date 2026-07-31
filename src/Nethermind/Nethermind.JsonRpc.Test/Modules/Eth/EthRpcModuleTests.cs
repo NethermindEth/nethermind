@@ -2252,6 +2252,25 @@ public partial class EthRpcModuleTests
             Does.Contain("0x0000000000000000000000000000000000000000000000000000000000000001"));
     }
 
+    [Test]
+    public async Task Eth_createAccessList_unfunded_sender_without_fee_fields_succeeds()
+    {
+        // execution-apis #854: when all gas-fee fields are omitted, the request must not fail
+        // solely because the sender cannot afford client-selected default fees.
+        using Context ctx = await Context.Create();
+
+        // Unfunded sender, codeless recipient, zero value, no gas/fee fields.
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x000000000000000000000000000000000000dead","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
+
+        JToken? result = JToken.Parse(serialized)["result"];
+        Assert.That(result, Is.Not.Null, $"expected success for an unfunded sender with omitted fee fields, got: {serialized}");
+        Assert.That(result!["accessList"]!.Children().Count(), Is.EqualTo(0), "expected empty access list for a plain transfer to a codeless account");
+        Assert.That(Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16), Is.EqualTo(21000));
+    }
+
     private static async Task<(JToken Result, long GasUsed)> CallCreateAccessList(
         Context ctx, string txJson, string? stateOverrideJson, bool optimize)
     {
