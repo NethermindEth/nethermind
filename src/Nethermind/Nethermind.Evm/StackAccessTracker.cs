@@ -28,15 +28,33 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
-    public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
+    public readonly bool IsCold(Address? address)
+    {
+        bool cold = !_trackingState.AccessedAddresses.Contains(address);
+        if (ParallelSiblings.SiblingRecorder.Recording) ParallelSiblings.SiblingRecorder.TouchAddress(address, cold);
+        return cold;
+    }
 
-    public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
+    public readonly bool IsCold(in StorageCell storageCell)
+    {
+        bool cold = !_trackingState.AccessedStorageCells.Contains(storageCell);
+        if (ParallelSiblings.SiblingRecorder.Recording) ParallelSiblings.SiblingRecorder.TouchSlot(in storageCell, cold);
+        return cold;
+    }
 
     public readonly bool WarmUp(Address address)
-        => _trackingState.AccessedAddresses.Add(address);
+    {
+        bool added = _trackingState.AccessedAddresses.Add(address);
+        if (ParallelSiblings.SiblingRecorder.Recording) ParallelSiblings.SiblingRecorder.TouchAddress(address, added);
+        return added;
+    }
 
     public readonly bool WarmUp(in StorageCell storageCell)
-        => _trackingState.AccessedStorageCells.Add(storageCell);
+    {
+        bool added = _trackingState.AccessedStorageCells.Add(storageCell);
+        if (ParallelSiblings.SiblingRecorder.Recording) ParallelSiblings.SiblingRecorder.TouchSlot(in storageCell, added);
+        return added;
+    }
 
     public readonly void WarmUp(AccessList? accessList)
     {

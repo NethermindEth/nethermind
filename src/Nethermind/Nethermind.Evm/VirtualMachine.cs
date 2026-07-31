@@ -244,6 +244,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
+                    ParallelSiblings.SiblingRecorder.AbortSibling();
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     _currentState = null;
                     return substate;
@@ -256,6 +257,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Restore the previous state from the stack and mark it as a continuation.
                     _currentState = _stateStack.Pop();
                     _currentState.IsContinuation = true;
+                    if (ParallelSiblings.SiblingRecorder.Recording && _currentState.Env.CallDepth == 0)
+                    {
+                        // Net-write-empty: the change journals sit where they were when the sibling
+                        // started - everything it wrote internally was reverted away. Those frames
+                        // are the memoizable population.
+                        Evm.State.Snapshot now = _worldState.TakeSnapshot();
+                        ref readonly Evm.State.Snapshot start = ref previousState.Snapshot;
+                        bool netWriteEmpty =
+                            now.StateSnapshot == start.StateSnapshot
+                            && now.StorageSnapshot.PersistentStorageSnapshot == start.StorageSnapshot.PersistentStorageSnapshot
+                            && now.StorageSnapshot.TransientStorageSnapshot == start.StorageSnapshot.TransientStorageSnapshot;
+                        ParallelSiblings.SiblingRecorder.EndSibling(netWriteEmpty);
+                    }
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
@@ -732,6 +746,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
+        // Depth-1 siblings of a cancelable frame are recorded for the parallel-sibling arbiter;
+        // the cancelable gate keeps block processing structurally outside this machinery.
+        if (_txTracer.IsCancelable && _currentState.Env.CallDepth == 1)
+        {
+            ParallelSiblings.SiblingRecorder.BeginSibling(
+                (_blockExecutionContext.Header.StateRoot ?? Keccak.Zero).ValueHash256,
+                _currentState.Env.CodeSource,
+                _currentState.Env.InputData.Span,
+                in _currentState.Env.Value);
+        }
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
