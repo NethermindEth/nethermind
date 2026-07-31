@@ -361,7 +361,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out spentGas);
 
-            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, blobBaseFee, statusCode);
+            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, in opcodeGasPrice, blobBaseFee, statusCode);
 
             // EIP-8037+EIP-7708: process destroy list after PayFees so burn logs include
             // the priority fee in the destroyed account's balance.
@@ -495,7 +495,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ReportSimpleTransferAccess(tx, spec, tracer, recipient);
             }
 
-            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, blobBaseFee, statusCode);
+            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, in opcodeGasPrice, blobBaseFee, statusCode);
             return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, recipient, in substate, spentGas, statusCode);
         }
 
@@ -550,6 +550,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in TransactionSubstate substate,
             in GasConsumed spentGas,
             in UInt256 premiumPerGas,
+            in UInt256 effectiveGasPrice,
             in UInt256 blobBaseFee,
             int statusCode)
         {
@@ -567,7 +568,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
         }
 
         [SkipLocalsInit]
@@ -860,15 +861,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.SenderNotSpecified;
             }
 
-            if (validate && tx.Nonce >= ulong.MaxValue - 1)
+            // EIP-2681 rejects the transaction nonce that would overflow the sender nonce after inclusion.
+            if (validate && tx.Nonce == ulong.MaxValue)
             {
-                // we are here if nonce is at least (ulong.MaxValue - 1). If tx is contract creation,
-                // it is max possible value. Otherwise, (ulong.MaxValue - 1) is allowed, but ulong.MaxValue not.
-                if (tx.IsContractCreation || tx.Nonce == ulong.MaxValue)
-                {
-                    TraceLogInvalidTx(tx, "NONCE_OVERFLOW");
-                    return TransactionResult.NonceOverflow;
-                }
+                TraceLogInvalidTx(tx, "NONCE_OVERFLOW");
+                return TransactionResult.NonceOverflow;
             }
 
             if (tx.IsAboveInitCode(spec))
@@ -1636,7 +1633,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
-        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode)
         {
             UInt256 fees = premiumPerGas * spentGas;
 
@@ -1648,7 +1645,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }
 
-            UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * spentGas : UInt256.Zero;
+            // Cap collected base fee at the effective price paid — a no-op for validated blocks; prevents fee-collector minting in validation-off eth_simulateV1 where maxFeePerGas < baseFee.
+            UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
+            UInt256 eip1559Fees = !tx.IsFree() ? effectiveBaseFee * spentGas : UInt256.Zero;
             UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
             if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)

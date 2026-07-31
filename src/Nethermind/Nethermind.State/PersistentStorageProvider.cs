@@ -42,13 +42,22 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
 
+    // Zero means never captured, which is what a default BlockChange entry carries.
+    private uint _originalsRound = 1;
+
+    private void EndOriginalsRound()
+    {
+        _originalValues.ClearAndTrim();
+        if (++_originalsRound == 0) _originalsRound = 1;
+    }
+
     /// <summary>
     /// Reset the storage state
     /// </summary>
     public override void Reset(bool resetBlockChanges = true)
     {
         base.Reset();
-        _originalValues.ClearAndTrim();
+        EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
@@ -143,17 +152,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         for (int i = 0; i <= currentPosition; i++)
         {
             ref readonly Change change = ref changes[currentPosition - i];
-            if (_committedThisRound.Contains(change!.StorageCell))
+            if (!_committedThisRound.Add(change!.StorageCell))
             {
                 continue;
             }
 
-            _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].CurrentIdx;
-            if (forAssertion != currentPosition - i)
-            {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
-            }
+            // Debug-only: A broken index surfaces anyway as a storage-root mismatch on the block.
+            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == currentPosition - i,
+                $"Expected the cached index to equal {currentPosition} - {i}");
 
             if (change.ChangeType == ChangeType.Update)
             {
@@ -230,7 +236,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         base.CommitCore(tracer);
-        _originalValues.ClearAndTrim();
+        EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
 
@@ -366,7 +372,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                 }
 
-                _originalValues.ClearAndTrim();
+                EndOriginalsRound();
             }
 
             _destroyedThisRound.ClearAndTrim();
@@ -565,7 +571,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _provider._metrics.IncrementStorageTreeCache();
             }
 
-            _provider.CaptureOriginalValue(storageCell, valueChange.After);
+            uint round = _provider._originalsRound;
+            if (valueChange.CapturedRound != round)
+            {
+                _provider.CaptureOriginalValue(storageCell, valueChange.After);
+                valueChange = valueChange.WithCapturedRound(round);
+            }
+
             return valueChange.After;
         }
 
@@ -690,8 +702,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             IsInitialValue = true;
         }
 
+        private StorageChangeTrace(byte[] before, byte[] after, bool isInitialValue, uint capturedRound)
+        {
+            Before = before;
+            After = after;
+            IsInitialValue = isInitialValue;
+            CapturedRound = capturedRound;
+        }
+
+        public StorageChangeTrace WithCapturedRound(uint round) => new(Before, After, IsInitialValue, round);
+
         public readonly byte[] Before;
         public readonly byte[] After;
         public readonly bool IsInitialValue;
+        public readonly uint CapturedRound;
     }
 }

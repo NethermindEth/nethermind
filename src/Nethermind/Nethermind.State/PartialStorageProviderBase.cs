@@ -265,15 +265,5 @@ namespace Nethermind.State
             public readonly int CurrentIdx = currentIdx;
             public readonly int OriginalIdx = originalIdx;
         }
-
-        /// <summary>
-        /// Type of change to track
-        /// </summary>
-        protected enum ChangeType
-        {
-            Null = 0,
-            JustCache,
-            Update,
-        }
     }
 }

@@ -232,7 +232,10 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         Evm.Metrics.IncrementTotalBackgroundTasksDropped();
         long now = Environment.TickCount64;
         long lastLog = Volatile.Read(ref _lastDropLogTicks);
-        if (_logger.IsWarn && now - lastLog > 10_000 && Interlocked.CompareExchange(ref _lastDropLogTicks, now, lastLog) == lastLog)
+        if (!Volatile.Read(ref _disposed)
+            && _logger.IsWarn
+            && now - lastLog > 10_000
+            && Interlocked.CompareExchange(ref _lastDropLogTicks, now, lastLog) == lastLog)
         {
             _logger.Warn(
                 $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{source ?? "unknown"}]. " +
