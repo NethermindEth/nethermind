@@ -22,7 +22,10 @@ namespace Nethermind.Evm;
 /// A sibling qualifies when all of these hold, and this measures each one:
 /// - it reads nothing an earlier sibling of the same request WROTE AND KEPT (a stale read would
 ///   change the output, which no gas correction can repair);
-/// - it never executes GAS, whose value would differ under speculation and can feed control flow;
+/// - every GAS it executes is matched by a call, i.e. the value is only forwarded as a budget. Gas
+///   consumption is budget-independent as long as nothing runs out of gas, since unused gas is
+///   refunded, so a generous speculative budget yields the real consumption; a GAS value that
+///   escapes into anything other than a call operand is the case this cannot cover;
 /// - it leaves no net state, no logs, no destroys, no refund, and takes no value, so applying its
 ///   effect at arbitration is trivial.
 /// Enabled by NETHERMIND_PARALLEL_CENSUS; the flag is static readonly so a disabled build carries
@@ -36,7 +39,8 @@ public static class ParallelViabilityCensus
     [ThreadStatic] private static HashSet<int>? t_reads;
     [ThreadStatic] private static HashSet<int>? t_writes;
     [ThreadStatic] private static HashSet<int>? t_survivingWrites;
-    [ThreadStatic] private static bool t_usedGas;
+    [ThreadStatic] private static int t_gasOps;
+    [ThreadStatic] private static int t_callOps;
     [ThreadStatic] private static int t_siblings;
     [ThreadStatic] private static int t_qualified;
     [ThreadStatic] private static int t_failStale;
@@ -52,6 +56,8 @@ public static class ParallelViabilityCensus
     private static long s_bigFrames;
     private static long s_bigSiblings;
     private static long s_bigQualified;
+    private static long s_gasOps;
+    private static long s_callOps;
     private static System.Threading.Timer? s_timer;
 
     static ParallelViabilityCensus()
@@ -67,14 +73,24 @@ public static class ParallelViabilityCensus
     public static void BeginSibling()
     {
         t_insideSibling = true;
-        t_usedGas = false;
+        t_gasOps = 0;
+        t_callOps = 0;
         (t_reads ??= new HashSet<int>(1024)).Clear();
         (t_writes ??= new HashSet<int>(64)).Clear();
     }
 
+    /// <summary>GAS executions and call-family executions per sibling. Solidity emits gas() as the
+    /// forwarding operand of every external call, so counts that track each other mean the value is
+    /// only forwarded - and a forwarded budget cannot change a result that does not run out of gas.
+    /// A surplus of GAS over calls is the case that would need a real taint proof.</summary>
     public static void ObserveGas()
     {
-        if (t_insideSibling) t_usedGas = true;
+        if (t_insideSibling) t_gasOps++;
+    }
+
+    public static void ObserveCall()
+    {
+        if (t_insideSibling) t_callOps++;
     }
 
     public static void ObserveRead(int hash)
@@ -103,9 +119,15 @@ public static class ParallelViabilityCensus
         }
 
         if (stale) t_failStale++;
-        if (t_usedGas) t_failGas++;
+        // Forwarding-only use of GAS is the sound case: a larger forwarded budget cannot change a
+        // result that does not run out of gas. A surplus of GAS over calls is what would need a
+        // real taint proof, so that is what this counts as a failure.
+        bool gasBeyondForwarding = t_gasOps > t_callOps;
+        if (gasBeyondForwarding) t_failGas++;
         if (!cleanFrame) t_failDirty++;
-        if (!stale && !t_usedGas && cleanFrame) t_qualified++;
+        if (!stale && !gasBeyondForwarding && cleanFrame) t_qualified++;
+        System.Threading.Interlocked.Add(ref s_gasOps, t_gasOps);
+        System.Threading.Interlocked.Add(ref s_callOps, t_callOps);
 
         // Only writes that survived the frame can make a later sibling's speculation stale.
         if (!cleanFrame && t_writes is { Count: > 0 } writes)
@@ -151,7 +173,8 @@ public static class ParallelViabilityCensus
             $"qualified {100.0 * System.Threading.Interlocked.Read(ref s_qualified) / siblings:F2}%, " +
             $"fails: stale-read {100.0 * System.Threading.Interlocked.Read(ref s_failStale) / siblings:F2}%, " +
             $"GAS {100.0 * System.Threading.Interlocked.Read(ref s_failGas) / siblings:F2}%, " +
-            $"dirty {100.0 * System.Threading.Interlocked.Read(ref s_failDirty) / siblings:F2}% | " +
+            $"dirty {100.0 * System.Threading.Interlocked.Read(ref s_failDirty) / siblings:F2}%, " +
+            $"GAS/call ops {System.Threading.Interlocked.Read(ref s_gasOps)}/{System.Threading.Interlocked.Read(ref s_callOps)} | " +
             $"batches>=20: frames {System.Threading.Interlocked.Read(ref s_bigFrames)}, siblings {big}" +
             (big > 0 ? $", qualified {100.0 * System.Threading.Interlocked.Read(ref s_bigQualified) / big:F2}%" : ""));
     }
