@@ -42,6 +42,11 @@ public class InputData
                     FrameTransactionForRpc frameTransactionForRpc = (FrameTransactionForRpc)Txs[i];
                     transaction.SenderAddress = frameTransactionForRpc.From;
                     transaction.ChainId ??= chainId;
+                    // There is no RLP round-trip on this path, so the gas limit the decoder would have
+                    // derived from the frames has to be derived here too. Otherwise the JSON `gas` field
+                    // (or its absence) decides the limit and t8n executes the transaction differently
+                    // from any client that decoded the same bytes.
+                    transaction.GasLimit = FrameTxValidation.SumFrameGasLimits(transaction.Frames);
                     SignFrameTransaction(transaction, TransactionMetaDataList[i]);
                     transaction.Hash = transaction.CalculateHash();
 

@@ -30,6 +30,28 @@ public static class FrameTxValidation
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
 
+    /// <summary>Sums the gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
+    /// <remarks>
+    /// A frame transaction has no <c>gas_limit</c> field, so <see cref="Transaction.GasLimit"/> is derived
+    /// from the frames wherever one is constructed — on decode and in tooling that builds transactions
+    /// directly. Both must agree, or the same transaction executes with different limits depending on
+    /// which path produced it. Saturation is safe here because <see cref="FrameGasOverflow"/> rejects an
+    /// overflowing total during validation.
+    /// </remarks>
+    public static ulong SumFrameGasLimits(TxFrame[]? frames)
+    {
+        ulong total = 0;
+        if (frames is not null)
+        {
+            foreach (TxFrame frame in frames)
+            {
+                total = frame.GasLimit > ulong.MaxValue - total ? ulong.MaxValue : total + frame.GasLimit;
+            }
+        }
+
+        return total;
+    }
+
     public static bool IsWellFormed(Transaction transaction, out string? error)
     {
         error = null;

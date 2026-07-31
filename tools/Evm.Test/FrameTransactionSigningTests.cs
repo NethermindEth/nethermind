@@ -143,20 +143,35 @@ public class FrameTransactionSigningTests
             Is.EqualTo("cannot fill frame signature 1: only canonical-hash secp256k1 entries are fillable"));
     }
 
+    // A frame transaction has no gas_limit field, so whatever the JSON carries in `gas` must not decide
+    // the limit t8n executes with: it has to match the sum the decoder derives from the frames, or the
+    // same transaction runs differently here than in a client that decoded its RLP.
+    [TestCase(null, TestName = "gas absent")]
+    [TestCase(100_000UL, TestName = "gas conflicts with the frame sum")]
+    public void Derives_gas_limit_from_the_frames(ulong? gas)
+    {
+        PrivateKey key = TestItem.PrivateKeyA;
+
+        Transaction transaction = Fill(BuildInput(key, key.Address, [Entry()], gas));
+
+        Assert.That(transaction.GasLimit, Is.EqualTo(50_000UL));
+    }
+
     private static Transaction Fill(InputData input) => input.GetTransactions(null!, ChainId)[0];
 
     private static FrameSignatureForRpc Entry(byte scheme = TxFrameSignature.SchemeSecp256k1, Address? signer = null,
         byte[]? msg = null, byte[]? signature = null) =>
         new() { Scheme = scheme, Signer = signer, Msg = msg ?? [], Signature = signature ?? [] };
 
-    private static InputData BuildInput(PrivateKey? key, Address? sender, FrameSignatureForRpc[]? signatures)
+    private static InputData BuildInput(PrivateKey? key, Address? sender, FrameSignatureForRpc[]? signatures,
+        ulong? gas = 100_000)
     {
         FrameTransactionForRpc transaction = new()
         {
             ChainId = ChainId,
             From = sender,
             Nonce = 0,
-            Gas = 100_000,
+            Gas = gas,
             MaxFeePerGas = UInt256.One,
             MaxPriorityFeePerGas = UInt256.Zero,
             Frames =
