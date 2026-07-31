@@ -25,11 +25,12 @@ internal sealed class HistoryStore
 
     private readonly ISortedKeyValueStore _history;
     private readonly ILogger _logger;
+    private bool _corruptRowLogged;
 
-    public HistoryStore(IDb history, ILogger logger = default)
+    public HistoryStore(IDb history, ILogger logger)
     {
-        _logger = logger;
         ArgumentNullException.ThrowIfNull(history);
+        _logger = logger;
         if (history is not ISortedKeyValueStore sortedHistory)
             throw new ArgumentException($"History column must be a {nameof(ISortedKeyValueStore)}.", nameof(history));
 
@@ -89,7 +90,12 @@ internal sealed class HistoryStore
         {
             string message = $"History value of {value.Length} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.";
             // Logged here because the RPC layer reports it as a generic error - the operator must still see it.
-            if (_logger.IsError) _logger.Error(message);
+            // Once per store: a retrying client hitting a permanently corrupt height must not flood the log.
+            if (!_corruptRowLogged && _logger.IsError)
+            {
+                _corruptRowLogged = true;
+                _logger.Error(message);
+            }
             throw new StateUnavailableException(message);
         }
         value.CopyTo(outBuffer);

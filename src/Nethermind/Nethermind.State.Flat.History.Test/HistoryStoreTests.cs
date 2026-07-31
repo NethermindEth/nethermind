@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Db;
 using NUnit.Framework;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History.Test;
 
@@ -19,7 +20,7 @@ public class HistoryStoreTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _store = new HistoryStore(_columnsDb.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        _store = new HistoryStore(_columnsDb.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
     }
 
     [TearDown]

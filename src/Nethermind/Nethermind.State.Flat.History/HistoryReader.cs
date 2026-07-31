@@ -30,17 +30,17 @@ public sealed class HistoryReader
     private readonly bool _rlpWrapSlots;
 
     public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, ILogManager logManager)
-        : this(history, BasePersistence.ResolveSlotEncoding(
-            db,
-            (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
-            logManager.GetClassLogger<HistoryReader>()), logManager.GetClassLogger<HistoryReader>())
+        : this(db, history, logManager.GetClassLogger<HistoryReader>())
     {
     }
 
-    private HistoryReader(IColumnsDb<FlatHistoryColumns> history, bool rlpWrapSlots, ILogger logger)
+    private HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(history);
-        _rlpWrapSlots = rlpWrapSlots;
+        _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(
+            db,
+            (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
+            logger);
         _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory), logger);
         _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory), logger);
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
