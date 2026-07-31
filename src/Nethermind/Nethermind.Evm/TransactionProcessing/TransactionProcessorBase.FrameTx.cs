@@ -39,7 +39,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        IPrecompile? p256Precompile = _codeInfoRepository.GetCachedCodeInfo(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec, out _).Precompile;
+        // EIP-7928: resolved without recording an account access - a tx that never takes the P256
+        // signature branch never accesses the precompile, so it must not enter the BAL.
+        IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
         if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
