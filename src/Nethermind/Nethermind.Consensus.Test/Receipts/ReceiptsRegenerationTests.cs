@@ -347,9 +347,8 @@ public class ReceiptsRegenerationTests
             RecoverReceiptsBlockchain chain = new();
             await chain.Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance)));
 
-            // TestBlockchain does not run init steps or persistence cycles; seed the genesis floor the way the
-            // startup step does, then drive one real capture - only a completed CaptureUpTo proves health, and
-            // StoresBodies correctly refuses to skip bodies for an unproven pipeline.
+            // TestBlockchain runs no init steps or persist cycles: establish the genesis floor and prove capture
+            // through its already-covered completion path (the walk itself is covered by HistoryWriterTests).
             HistoryWriter historyWriter = chain.Container.Resolve<HistoryWriter>();
             historyWriter.SeedGenesis([], chain.BlockTree.Genesis!.StateRoot!);
             historyWriter.CaptureUpTo(

@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using System.Collections.Concurrent;
 
 namespace Nethermind.State.Flat.History;
 
@@ -25,8 +26,8 @@ internal sealed class HistoryStore
 
     private readonly ISortedKeyValueStore _history;
     private readonly ILogger _logger;
-    // Written from concurrent readers; Interlocked keeps the intent explicit. -1 = nothing logged yet.
-    private long _lastCorruptRowLoggedBlock = -1;
+    private const int MaxCorruptHeightsLogged = 16;
+    private readonly ConcurrentDictionary<ulong, bool> _corruptHeightsLogged = new();
 
     public HistoryStore(IDb history, ILogger logger)
     {
@@ -86,14 +87,12 @@ internal sealed class HistoryStore
 
         foundAtBlock = ~BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
         ReadOnlySpan<byte> value = view.CurrentValue;
-        // Buffers are sized to the encoders' maxima, so an oversized row can only be corruption.
+        // Buffers are sized to the encoders' maxima: oversized can only be corruption.
         if (value.Length > outBuffer.Length)
         {
-            // The message is also the exception text, so it is needed on this path regardless of the log level.
             string message = $"History value of {value.Length} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.";
-            // Logged here because the RPC layer reports it as a generic error - the operator must still see it.
-            // Once per height: a retrying client must not flood the log, but a second corrupt height must still report.
-            if (_logger.IsError && Interlocked.Exchange(ref _lastCorruptRowLoggedBlock, (long)foundAtBlock) != (long)foundAtBlock)
+            // Once per height: the RPC layer reports a generic error, so the operator only learns extent from here.
+            if (_logger.IsError && _corruptHeightsLogged.Count < MaxCorruptHeightsLogged && _corruptHeightsLogged.TryAdd(foundAtBlock, true))
             {
                 _logger.Error(message);
             }

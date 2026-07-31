@@ -30,9 +30,7 @@ internal sealed class HistoryAvailability
 
     private readonly IDb _availableBlocks;
 
-    // Monotonic fast path: the watermark only grows, so a block at or below a previously observed value is
-    // covered without a DB read. Never used to refuse — a miss re-reads, so the reader instance cannot lag the
-    // writer's published value.
+    // Monotonic fast path: never used to refuse (a miss re-reads), so a reader instance cannot lag the writer.
     private long _observedWatermark = -1;
 
     public HistoryAvailability(IDb availableBlocks)

@@ -427,8 +427,7 @@ public class DbConfig : IDbConfig
     public string FlatHistoryDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
     public string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
 
-    // The replay-sized write buffers matter only for the two bulky value columns; the marker and self-destruct
-    // columns see a few small writes per block (the concatenated per-column string wins over the table-level one).
+    // The replay-sized write buffers matter only for the two bulky value columns.
     public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
     public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
 

@@ -7,10 +7,6 @@ namespace Nethermind.Core;
 /// Live health of archival state-history capture, for features whose safety depends on history actually being
 /// recorded — not merely enabled in the config.
 /// </summary>
-/// <remarks>
-/// Capture can self-disable at runtime (permanent gap, reorged capture, repeated write failures); consumers that
-/// skip persisting data on the promise of later re-execution must follow this signal, not the config flag.
-/// </remarks>
 public interface IStateHistoryCaptureStatus
 {
     /// <summary>Whether capture is enabled and has not self-disabled; when <c>false</c>, data whose recovery

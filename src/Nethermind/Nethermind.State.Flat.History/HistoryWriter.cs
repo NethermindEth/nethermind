@@ -22,8 +22,7 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCaptureStatus
 {
-    // A single failure aborts the persist and is retried; a capture failing forever would stall persistence and
-    // grow the in-memory tier one base per block until OOM. Degrading to "no more history" is fail-closed.
+    // A capture failing forever would stall persistence and grow the in-memory tier until OOM; degrade instead.
     private const int MaxConsecutiveCaptureFailures = 16;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
@@ -39,9 +38,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // further captures would only write rows above a gap no read can cross, so skip them until restart.
     private volatile bool _permanentGapDetected;
     private int _consecutiveCaptureFailures;
-    // The config flag cannot prove the hook is wired: on a patricia backend this writer is constructed but nothing
-    // ever invokes capture, and reporting healthy there would let receipt derivation skip bodies with no history
-    // behind them. Only a completed capture demonstrates the pipeline actually runs.
+    // Config cannot prove the hook is wired (a patricia backend constructs this writer but never invokes it).
     private volatile bool _captureProven;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
@@ -122,8 +119,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (hasWatermark && current.BlockNumber <= watermark)
             {
-                // A pre-finalization force-persist can have captured a branch that later reorged; advancing on the
-                // block number alone would strand those rows under a healthy watermark forever.
+                // A number-only connect would strand a reorged pre-finalization capture under a healthy watermark.
                 if (!_availability.Matches(current.BlockNumber, current.StateRoot))
                 {
                     DisableCapture(
@@ -163,8 +159,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (connected)
         {
-            // Publish, then WAL-sync (throwing on failure) so range + watermark are durable before the caller
-            // persists the flat state and prunes the sources.
+            // Durable (throwing WAL-sync) before the caller persists the flat state and prunes the sources.
             _availability.PublishWatermark(target);
             _history.SyncWal();
             Metrics.FlatHistoryWatermark = (long)target;
@@ -179,9 +174,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>Permanently stops capture for this process and surfaces it: metric, error log, and
-    /// <see cref="CaptureHealthy"/> — so dependants (receipt derivation) stop skipping data they can no longer
-    /// reproduce, and operators can alert on history that silently stopped growing.</summary>
+    /// <summary>Permanently stops capture for this process: metric, error log, and <see cref="CaptureHealthy"/>.</summary>
     private void DisableCapture(string reason)
     {
         _permanentGapDetected = true;
@@ -213,9 +206,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             }
         }
 
-        // Publish only after the block-0 batch is durable — this is the genesis floor a later walk connects to.
-        // Deliberately does not prove capture health: the seed shows the DB is writable, not that the walk connects,
-        // and the nodes that reach it (history enabled mid-life) are exactly the ones whose first walk fails.
+        // The genesis floor a later walk connects to. Deliberately not proof of health: the nodes that reach the
+        // seed (history enabled mid-life) are exactly the ones whose first walk fails.
         _availability.PublishWatermark(0);
         _history.SyncWal();
     }

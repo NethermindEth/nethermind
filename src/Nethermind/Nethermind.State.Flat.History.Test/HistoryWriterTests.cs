@@ -397,21 +397,23 @@ public class HistoryWriterTests
         Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, LimboLogs.Instance));
     }
 
-    // The config flag cannot prove the hook is wired (a patricia backend constructs the writer but never invokes
-    // capture); health must require a demonstrated capture, or receipt derivation would skip bodies with no
-    // history behind them.
+    // Only a completed capture may report health: config cannot prove the hook is wired, and the seed proves
+    // only the floor.
     [Test]
     public void Capture_health_requires_a_proven_capture()
     {
         Assert.That(_writer.CaptureHealthy, Is.False, "no capture has run yet");
 
         SeedGenesisFloor();
+        Assert.That(_writer.CaptureHealthy, Is.False, "the seed alone must not report health");
 
-        Assert.That(_writer.CaptureHealthy, Is.True, "the genesis seed proves the pipeline runs");
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        Assert.That(_writer.CaptureHealthy, Is.True, "a completed capture proves the pipeline runs");
     }
 
-    // A pre-finalization force-persist can capture a branch that later reorgs; a number-only connect would
-    // advance the watermark over the orphaned rows, making them permanently readable as healthy history.
+    // A number-only connect would advance the watermark over a reorged pre-finalization capture.
     [Test]
     public void Reorged_capture_at_the_connect_point_refuses_to_advance_the_watermark()
     {
@@ -440,8 +442,7 @@ public class HistoryWriterTests
         }
     }
 
-    // The same capture failure repeating forever must not stall persistence permanently; after the breaker
-    // trips, capture degrades to "no more history" and persistence resumes.
+    // After the breaker trips, capture degrades to "no more history" and persistence resumes.
     [Test]
     public void Repeated_capture_failures_trip_the_breaker_and_let_persistence_resume()
     {

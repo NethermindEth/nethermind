@@ -584,8 +584,8 @@ namespace Nethermind.Blockchain.Receipts
         private bool StoresBodies(IReleaseSpec spec) =>
             !_receiptConfig.DeriveFromState
             || !spec.IsEip658Enabled
-            // A body skipped after capture self-disabled is permanently lost once its block leaves the in-memory
-            // tier, so the skip follows live capture health; absent status (patricia backend) counts as unhealthy.
+            // A skipped body is permanently lost once its block leaves the in-memory tier: follow live capture
+            // health, and treat absent status (patricia backend) as unhealthy.
             || _historyCaptureStatus?.CaptureHealthy != true;
 
         [SkipLocalsInit]

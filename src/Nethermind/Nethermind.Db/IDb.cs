@@ -27,8 +27,7 @@ namespace Nethermind.Db
 
         void Flush(bool onlyWal = false);
 
-        /// <summary>Syncs the write-ahead log to durable storage, throwing on failure — unlike <see cref="Flush"/>,
-        /// which swallows non-fatal errors and so cannot serve crash-safety ordering.</summary>
+        /// <summary>Syncs the write-ahead log to durable storage, throwing on failure (<see cref="Flush"/> swallows).</summary>
         void SyncWal() => Flush(onlyWal: true);
         void Clear() { }
         void Compact() { }
