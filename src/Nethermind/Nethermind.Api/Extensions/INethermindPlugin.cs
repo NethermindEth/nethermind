@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Core;
+using Nethermind.Core.Attributes;
 
 namespace Nethermind.Api.Extensions;
 
+[StableApi]
 public interface INethermindPlugin
 {
     string Name { get; }
