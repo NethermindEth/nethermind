@@ -63,7 +63,12 @@ public sealed class ReceiptsRegenerator(
         // buffers, and generated access list, and this runs on RPC threads against the shared block-tree instance —
         // so it must never see that instance. The parent header is cloned for the same reason (BuildAndOverride
         // assigns the resolved state root into whatever header it is handed).
-        Block isolated = new(block.Header.Clone(), block.Body, block.BlockAccessList);
+        BlockHeader isolatedHeader = block.Header.Clone();
+        // Storage does not persist the post-merge flag and this path bypasses the recovery step that restores it;
+        // without it PREVRANDAO evaluates to the pre-merge difficulty — zero — and any transaction reading it
+        // regenerates receipts that fail the root check. Same derivation as BlockchainBridge's call header.
+        isolatedHeader.IsPostMerge = isolatedHeader.Difficulty == 0;
+        Block isolated = new(isolatedHeader, block.Body, block.BlockAccessList);
         try
         {
             using Scope<ReceiptsRegenerationEnv> scope = envSource.BuildAndOverride(parent.Clone());

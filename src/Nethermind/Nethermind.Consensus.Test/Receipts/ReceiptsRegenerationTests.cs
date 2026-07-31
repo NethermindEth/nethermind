@@ -10,7 +10,9 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -45,6 +47,8 @@ public class ReceiptsRegenerationTests
     private static readonly byte[] LogEmittingInitCode = [0x60, 0x00, 0x60, 0x00, 0xa0, 0x60, 0x00, 0x60, 0x00, 0xf3];
     // REVERT immediately — a create that fails, so its receipt carries status 0 and no contract address.
     private static readonly byte[] RevertingInitCode = [0x60, 0x00, 0x60, 0x00, 0xfd];
+    // PREVRANDAO, MSTORE at 0, LOG0 the 32 bytes, RETURN nothing — the receipts root commits to the opcode's value.
+    private static readonly byte[] PrevRandaoLoggingInitCode = [0x44, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xa0, 0x60, 0x00, 0x60, 0x00, 0xf3];
 
     public enum Scenario
     {
@@ -96,6 +100,42 @@ public class ReceiptsRegenerationTests
 
         Assert.That(_regenerator.TryRegenerate(block, out TxReceipt[] regenerated), Is.True);
         AssertReceiptsMatch(stored, regenerated, block);
+    }
+
+    // Storage does not persist the post-merge flag, so a queried block re-executes with it cleared; the regenerator
+    // must restore it or PREVRANDAO evaluates to the pre-merge difficulty — zero on every post-merge header — and
+    // any transaction reading it regenerates receipts that fail the root check.
+    [Test]
+    public void Regenerates_a_post_merge_block_whose_stored_header_lost_the_flag()
+    {
+        BlockHeader parent = _chain.BlockTree.Head!.Header;
+        ulong nonce = _chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.PrivateKeyA.Address);
+        Block postMerge = Build.A.Block
+            .WithParent(parent)
+            .WithDifficulty(0)
+            .WithMixHash(TestItem.KeccakB)
+            .WithPostMergeFlag(true)
+            .WithTransactions(Create(nonce, PrevRandaoLoggingInitCode))
+            .TestObject;
+
+        // Ground truth mirroring live processing: execute with the flag intact and commit the resulting receipts
+        // root, which captures the logged PREVRANDAO bytes.
+        IReleaseSpec spec = _chain.SpecProvider.GetSpec(postMerge.Header);
+        using (Scope<ReceiptsRegenerationEnv> scope = _envSource.BuildAndOverride(parent.Clone()))
+        {
+            (Block _, TxReceipt[] processed) = scope.Component.BlockProcessor.ProcessOne(
+                postMerge, ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+            postMerge.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(processed, spec, postMerge.Header.ReceiptsRoot);
+        }
+        postMerge.Header.Hash = postMerge.Header.CalculateHash();
+
+        Block reloaded = new(postMerge.Header.Clone(), postMerge.Body);
+        reloaded.Header.IsPostMerge = false;
+
+        Assert.That(_regenerator.TryRegenerate(reloaded, out TxReceipt[] regenerated), Is.True,
+            "re-execution must read PREVRANDAO from the mix hash, not the zeroed difficulty");
+        Assert.That(ReceiptsRootCalculator.Instance.GetReceiptsRoot(regenerated, spec, reloaded.Header.ReceiptsRoot),
+            Is.EqualTo(reloaded.Header.ReceiptsRoot));
     }
 
     [TestCase(true, Description = "receipts on disk are served as-is, without re-execution")]
