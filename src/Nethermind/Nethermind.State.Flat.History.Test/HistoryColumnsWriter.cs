@@ -57,6 +57,32 @@ internal static class HistoryColumnsWriter
         store.RecordChange(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
     }
 
+    /// <summary>Writes a raw account-history row, bypassing the account encoder — for staging corrupt rows.</summary>
+    public static void RecordRawAccountRow(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, ReadOnlySpan<byte> rawRow)
+    {
+        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
+
+        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
+            stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
+
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
+        store.RecordChange(block, flatKey, rawRow, batch.GetColumnBatch(FlatHistoryColumns.AccountHistory));
+    }
+
+    /// <summary>Writes a raw storage-history row, bypassing the slot encoder — for staging corrupt rows.</summary>
+    public static void RecordRawStorageRow(IColumnsDb<FlatHistoryColumns> columns, Address address, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawRow)
+    {
+        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
+
+        ValueHash256 slotHash = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(
+            stackalloc byte[BaseFlatPersistence.StorageKeyLength], address.ToAccountPath, slotHash);
+
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
+        store.RecordChange(block, flatKey, rawRow, batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
+    }
+
     /// <summary>Records the per-block availability marker (<c>block -> captured state root</c>).</summary>
     public static void MarkBlock(IColumnsDb<FlatHistoryColumns> columns, ulong block, in ValueHash256 stateRoot)
     {

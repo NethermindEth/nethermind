@@ -21,17 +21,41 @@ internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader
 
     public StateId CurrentState => block;
 
-    public Account? GetAccount(Address address) =>
-        historyReader.TryGetAccount(block.BlockNumber, address, out AccountStruct account)
-            ? new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment())
-            : null;
+    public Account? GetAccount(Address address)
+    {
+        try
+        {
+            return historyReader.TryGetAccount(block.BlockNumber, address, out AccountStruct account)
+                ? new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment())
+                : null;
+        }
+        catch (StateUnavailableException e)
+        {
+            throw StateUnavailable(e);
+        }
+    }
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
     {
-        if (!historyReader.TryGetStorage(block.BlockNumber, address, slot, out SlotValue value, _clearsCache)) return false;
-        outValue = value;
-        return true;
+        try
+        {
+            if (!historyReader.TryGetStorage(block.BlockNumber, address, slot, out SlotValue value, _clearsCache)) return false;
+            outValue = value;
+            return true;
+        }
+        catch (StateUnavailableException e)
+        {
+            throw StateUnavailable(e);
+        }
     }
+
+    /// <summary>
+    /// Translates "state unavailable" (e.g. a corrupt history row decoded here, after the bundle gather) into
+    /// <see cref="MissingTrieNodeException"/> — the hash-based reader's contract, which JSON-RPC maps to
+    /// resource-not-found instead of an internal error.
+    /// </summary>
+    private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
+        new($"Historical state for block {block.BlockNumber} is unavailable", null, TreePath.Empty, block.StateRoot.ToCommitment(), inner);
 
     public void Dispose() { }
 

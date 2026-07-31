@@ -119,10 +119,16 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
     /// </remarks>
     internal static void ValidateReceiptDerivationConfig(IConfigProvider configProvider)
     {
+        if (!configProvider.GetConfig<IReceiptConfig>().StoreReceipts)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IReceiptConfig.DeriveFromState)} requires Receipt.{nameof(IReceiptConfig.StoreReceipts)}: without the receipt database neither pre-Byzantium bodies nor the transaction index are written, so transaction-addressed queries cannot locate their block.", -1);
+        }
+
         if (!configProvider.GetConfig<IFlatDbConfig>().HistoryEnabled)
         {
             throw new InvalidConfigurationException(
-                $"{nameof(IReceiptConfig.DeriveFromState)} requires Flat.{nameof(IFlatDbConfig.HistoryEnabled)}: receipt bodies are not written and can only be reproduced by re-executing over state history.", -1);
+                $"{nameof(IReceiptConfig.DeriveFromState)} requires FlatDb.{nameof(IFlatDbConfig.HistoryEnabled)}: receipt bodies are not written and can only be reproduced by re-executing over state history.", -1);
         }
 
         if (configProvider.GetConfig<ILogIndexConfig>().Enabled)

@@ -39,6 +39,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     private ReceiptConfig _receiptConfig = null!;
     private PersistentReceiptStorage _storage = null!;
     private ReceiptArrayStorageDecoder _decoder = null!;
+    private IStateHistoryCaptureStatus _captureStatus = null!;
 
     [SetUp]
     public void SetUp()
@@ -61,6 +62,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
         IStateHistoryCaptureStatus captureStatus = Substitute.For<IStateHistoryCaptureStatus>();
         captureStatus.CaptureHealthy.Returns(captureHealthy);
+        _captureStatus = captureStatus;
         _storage = new PersistentReceiptStorage(
             _receiptsDb,
             _specProvider,
@@ -552,6 +554,66 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Storing_bodies_is_the_default()
     {
+        Block block = ProcessBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    // A capture breakdown means the skipped bodies' blocks will never be derivable: the disable notification
+    // must persist them, so a restarted node can still serve them after the persist prunes their snapshots.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_persists_retained_bodies_when_capture_stops()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        IStateHistoryCaptureStatus captureStatus = _captureStatus;
+        Block block = ProcessBlock();
+        Assert.That(BodyIsPersisted(block), Is.False, "precondition: the body is skipped while capture is healthy");
+
+        captureStatus.CaptureDisabled += Raise.Event<Action>();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    // A body whose block the durable watermark covers is derivable from history forever — the disable must not
+    // write it back.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_drops_retained_bodies_once_the_watermark_covers_them()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        IStateHistoryCaptureStatus captureStatus = _captureStatus;
+        Block block = ProcessBlock();
+
+        captureStatus.WatermarkAdvanced += Raise.Event<Action<ulong>>((ulong)block.Number);
+        captureStatus.CaptureDisabled += Raise.Event<Action>();
+
+        Assert.That(BodyIsPersisted(block), Is.False);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_keeps_retaining_bodies_above_the_watermark()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        IStateHistoryCaptureStatus captureStatus = _captureStatus;
+        Block block = ProcessBlock();
+
+        captureStatus.WatermarkAdvanced += Raise.Event<Action<ulong>>((ulong)block.Number - 1);
+        captureStatus.CaptureDisabled += Raise.Event<Action>();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    // Closes the insert/disable race: the disable flush may drain between the health check that skipped the
+    // write and the retention add, which would otherwise strand the body in memory forever.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_persists_a_body_skipped_concurrently_with_the_disable()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        _captureStatus.CaptureHealthy.Returns(true, false);
+
         Block block = ProcessBlock();
 
         Assert.That(BodyIsPersisted(block), Is.True);

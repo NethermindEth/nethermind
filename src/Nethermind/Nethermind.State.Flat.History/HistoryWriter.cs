@@ -66,6 +66,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// <inheritdoc/>
     public bool CaptureHealthy => _enabled && !_permanentGapDetected && _captureProven;
 
+    /// <inheritdoc/>
+    public event Action<ulong>? WatermarkAdvanced;
+
+    /// <inheritdoc/>
+    public event Action? CaptureDisabled;
+
     /// <summary>The contiguous-from-genesis watermark: the highest block a read is served for; 0 when none captured.</summary>
     public ulong LastCapturedBlock => _availability.TryGetWatermark(out ulong watermark) ? watermark : 0;
 
@@ -163,6 +169,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             _availability.PublishWatermark(target);
             _history.SyncWal();
             Metrics.FlatHistoryWatermark = (long)target;
+            WatermarkAdvanced?.Invoke(target);
         }
         else
         {
@@ -174,13 +181,26 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>Permanently stops capture for this process: metric, error log, and <see cref="CaptureHealthy"/>.</summary>
+    /// <summary>Permanently stops capture for this process: metric, error log, <see cref="CaptureHealthy"/>, and
+    /// the <see cref="CaptureDisabled"/> notification that lets dependants persist retained data before the
+    /// pending persist prunes the blocks above the watermark.</summary>
     private void DisableCapture(string reason)
     {
         _permanentGapDetected = true;
         Metrics.FlatHistoryCaptureDisabled = 1;
         if (_logger.IsError) _logger.Error(reason +
-            " If receipt derivation is enabled, receipt bodies skipped for blocks above the watermark cannot be regenerated - recover them with a receipts re-sync.");
+            " If receipt derivation is enabled, the receipt bodies retained for blocks above the watermark are persisted now (see the receipt store's log for the outcome).");
+
+        try
+        {
+            CaptureDisabled?.Invoke();
+        }
+        catch (Exception e)
+        {
+            // Disabling is one-shot: an escaping handler exception would just abort this persist, and the retry —
+            // with capture already disabled — would prune the handler's data source without ever re-notifying it.
+            if (_logger.IsError) _logger.Error("A capture-disabled handler failed; data retained for blocks above the watermark may be lost.", e);
+        }
     }
 
     /// <summary>

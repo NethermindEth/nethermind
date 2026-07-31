@@ -5,12 +5,15 @@ using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Receipts;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
 using Nethermind.Init.Modules;
 using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Modules;
@@ -38,15 +41,42 @@ public class PseudoNethermindModuleTests
         }
     }
 
+    // The regenerating wrapper resolves the unkeyed finder, not the concrete FullInfoReceiptFinder, so a plugin's
+    // override of IReceiptFinder keeps applying on the regenerable path.
+    [Test]
+    public void Regenerating_finder_wraps_the_unkeyed_finder()
+    {
+        IReceiptFinder pluginFinder = Substitute.For<IReceiptFinder>();
+        Hash256 marker = TestItem.KeccakB;
+        pluginFinder.FindBlockHash(TestItem.KeccakA).Returns(marker);
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(
+                new ReceiptConfig { DeriveFromState = true },
+                new FlatDbConfig { Enabled = true, HistoryEnabled = true }))
+            .AddSingleton<IReceiptFinder>(pluginFinder)
+            .Build();
+
+        IReceiptFinder regenerable = container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(regenerable, Is.InstanceOf<RegeneratingReceiptFinder>());
+            Assert.That(regenerable.FindBlockHash(TestItem.KeccakA), Is.EqualTo(marker),
+                "the plugin's finder must serve the regenerable path");
+        }
+    }
+
     // The guard against permanent receipt loss: bodies skipped under a config that cannot reproduce them are gone
     // for good, so the wrong combinations must refuse to start rather than warn.
-    [TestCase(false, false, true, TestName = "DeriveFromState_refuses_to_start_without_flat_history")]
-    [TestCase(true, true, true, TestName = "DeriveFromState_refuses_to_start_with_log_index")]
-    [TestCase(true, false, false, TestName = "DeriveFromState_accepts_flat_history_without_log_index")]
-    public void DeriveFromState_startup_validation(bool historyEnabled, bool logIndexEnabled, bool expectRefusal)
+    [TestCase(false, false, true, true, TestName = "DeriveFromState_refuses_to_start_without_flat_history")]
+    [TestCase(true, true, true, true, TestName = "DeriveFromState_refuses_to_start_with_log_index")]
+    [TestCase(true, false, false, true, TestName = "DeriveFromState_refuses_to_start_without_receipt_storage")]
+    [TestCase(true, false, true, false, TestName = "DeriveFromState_accepts_flat_history_without_log_index")]
+    public void DeriveFromState_startup_validation(bool historyEnabled, bool logIndexEnabled, bool storeReceipts, bool expectRefusal)
     {
         ConfigProvider configProvider = new(
-            new ReceiptConfig { DeriveFromState = true },
+            new ReceiptConfig { DeriveFromState = true, StoreReceipts = storeReceipts },
             new FlatDbConfig { Enabled = historyEnabled, HistoryEnabled = historyEnabled },
             new LogIndexConfig { Enabled = logIndexEnabled });
 

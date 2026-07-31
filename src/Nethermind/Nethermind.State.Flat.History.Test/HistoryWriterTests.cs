@@ -466,6 +466,61 @@ public class HistoryWriterTests
         }
     }
 
+    // The durable watermark publish must notify retention dependants (the receipt store) so they can drop data
+    // whose blocks history now covers.
+    [Test]
+    public void Successful_capture_raises_watermark_advanced()
+    {
+        SeedGenesisFloor();
+        ulong advancedTo = 0;
+        _writer.WatermarkAdvanced += w => advancedTo = w;
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        Assert.That(advancedTo, Is.EqualTo(1UL));
+    }
+
+    // The disable notification lets dependants persist retained data before the resumed persist prunes the
+    // blocks above the watermark; it must fire exactly once, at the trip.
+    [Test]
+    public void Breaker_trip_raises_capture_disabled_once()
+    {
+        SeedGenesisFloor();
+        ISnapshotRepository failing = Substitute.For<ISnapshotRepository>();
+        failing.TryLeaseInMemoryState(default, default, out _).ThrowsForAnyArgs(new IOException("disk failure"));
+        int disabled = 0;
+        _writer.CaptureDisabled += () => disabled++;
+
+        for (int i = 0; i < 16; i++)
+        {
+            Assert.Throws<IOException>(() => _writer.CaptureUpTo(StateAt(2), failing, CancellationToken.None));
+        }
+        Assert.That(disabled, Is.EqualTo(1), "the trip must notify exactly once");
+
+        Assert.DoesNotThrow(() => _writer.CaptureUpTo(StateAt(3), failing, CancellationToken.None));
+        Assert.That(disabled, Is.EqualTo(1), "skipped captures after the trip must not re-notify");
+    }
+
+    // Disabling is one-shot: if a handler exception escaped, the retried persist — with capture already disabled —
+    // would prune the handler's data source without ever re-notifying it, so the failure must be contained.
+    [Test]
+    public void Capture_disabled_handler_failure_is_contained()
+    {
+        SeedGenesisFloor();
+        ISnapshotRepository failing = Substitute.For<ISnapshotRepository>();
+        failing.TryLeaseInMemoryState(default, default, out _).ThrowsForAnyArgs(new IOException("disk failure"));
+        _writer.CaptureDisabled += () => throw new InvalidOperationException("handler failure");
+
+        for (int i = 0; i < 16; i++)
+        {
+            Assert.Throws<IOException>(() => _writer.CaptureUpTo(StateAt(2), failing, CancellationToken.None),
+                "the original capture failure must keep propagating, not the handler's");
+        }
+
+        Assert.That(_writer.CaptureHealthy, Is.False);
+    }
+
     [Test]
     public void Permanent_gap_disables_further_capture()
     {

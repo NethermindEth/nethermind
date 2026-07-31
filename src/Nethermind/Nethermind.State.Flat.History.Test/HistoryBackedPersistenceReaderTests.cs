@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -66,6 +67,30 @@ public class HistoryBackedPersistenceReaderTests
             Assert.That(present.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
             Assert.That(foundAbsent, Is.False);
         }
+    }
+
+    // Corrupt value rows are decoded here, after the bundle gather, so FlatStateReader's gather-level translation
+    // never sees them; the reader itself must map them to the unavailable-state contract (MissingTrieNodeException),
+    // which JSON-RPC reports as resource-not-found instead of an internal error.
+    [Test]
+    public void Corrupt_account_row_surfaces_as_missing_trie_node()
+    {
+        HistoryColumnsWriter.RecordRawAccountRow(_historyColumns, Address, 6, new byte[300]);
+
+        Assert.That(() => Reader(10).GetAccount(Address),
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+    }
+
+    [Test]
+    public void Corrupt_storage_row_surfaces_as_missing_trie_node()
+    {
+        HistoryColumnsWriter.RecordRawStorageRow(_historyColumns, Address, Slot, 6, new byte[300]);
+
+        Assert.That(() =>
+        {
+            SlotValue value = default;
+            Reader(10).TryGetSlot(Address, Slot, ref value);
+        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
     }
 
     [Test]

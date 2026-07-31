@@ -79,6 +79,15 @@ namespace Nethermind.Blockchain.Receipts
         // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
         private readonly Lock _writeLock = new();
 
+        // Bodies skipped by StoresBodies, retained until history capture durably covers their block — so that a
+        // capture breakdown can persist them before the pending state persist prunes the blocks' snapshots, their
+        // only other recovery source. Bounded by the same in-memory snapshot window that gates the skip:
+        // a durable-watermark advance (which tracks the flat persisted head) evicts everything at or below it.
+        // Null when derivation is off or capture status is unwired (then no body is ever skipped).
+        private readonly ConcurrentDictionary<ValueHash256, RetainedBody>? _retainedBodies;
+
+        private sealed record RetainedBody(ulong BlockNumber, Hash256 BlockHash, TxReceipt[] Receipts, RlpBehaviors Behaviors);
+
         /// <summary>
         /// Mirrors the deferred tx-index write: block number under <see cref="IReceiptConfig.CompactTxIndex"/>
         /// (resolved canonically on read, so a reorged-out block self-heals like the persisted form), else block hash.
@@ -129,6 +138,13 @@ namespace Nethermind.Blockchain.Receipts
                 _pendingReceipts = new DeferredWriteOverlay<(TxReceipt[] Receipts, RlpBehaviors Behaviors)>(_deferredWriter, WriteReceipts, _writeLock);
                 // Fsync the whole receipts DB WAL (receipts + transaction columns) after the barrier drains the writer.
                 (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _database.Flush(onlyWal: true));
+            }
+
+            if (historyCaptureStatus is not null && receiptConfig.DeriveFromState)
+            {
+                _retainedBodies = new ConcurrentDictionary<ValueHash256, RetainedBody>();
+                historyCaptureStatus.WatermarkAdvanced += EvictRetainedBodies;
+                historyCaptureStatus.CaptureDisabled += PersistRetainedBodies;
             }
         }
 
@@ -528,8 +544,10 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_pendingReceipts is null)
             {
+                bool storesBody = StoresBodies(spec);
                 InsertCore(block, txReceipts, spec, ensureCanonical: false, WriteFlags.None, lastBlockNumber: null,
-                    storeBody: StoresBodies(spec));
+                    storeBody: storesBody);
+                if (!storesBody) RetainSkippedBody(block, txReceipts ?? []);
                 if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
                 return;
             }
@@ -552,6 +570,7 @@ namespace Nethermind.Blockchain.Receipts
             Hash256 blockHash = block.Hash!;
             _receiptsCache.Set(blockHash, txReceipts);
             if (StoresBodies(spec)) _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
+            else RetainSkippedBody(block, txReceipts);
 
             if (block.Number < MigratedBlockNumber)
             {
@@ -587,6 +606,67 @@ namespace Nethermind.Blockchain.Receipts
             // A skipped body is permanently lost once its block leaves the in-memory tier: follow live capture
             // health, and treat absent status (patricia backend) as unhealthy.
             || _historyCaptureStatus?.CaptureHealthy != true;
+
+        /// <summary>Retains a body skipped by <see cref="StoresBodies"/> until history capture durably covers its
+        /// block, so a capture breakdown can persist it instead of losing it (see <see cref="_retainedBodies"/>).</summary>
+        private void RetainSkippedBody(Block block, TxReceipt[] txReceipts)
+        {
+            if (_retainedBodies is null || txReceipts.Length == 0) return;
+
+            // A skipped body is post-EIP-658 by StoresBodies, so the storage encoding is fixed.
+            _retainedBodies[block.Hash!.ValueHash256] =
+                new RetainedBody(block.Number, block.Hash, txReceipts, RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage);
+
+            // Close the race with a concurrent disable: the flush may have drained between the health check that
+            // skipped the write and the add above, which would strand this entry in memory forever.
+            if (_historyCaptureStatus?.CaptureHealthy is false) PersistRetainedBodies();
+        }
+
+        private void EvictRetainedBodies(ulong watermark)
+        {
+            if (_retainedBodies is null) return;
+
+            foreach (KeyValuePair<ValueHash256, RetainedBody> retained in _retainedBodies)
+            {
+                if (retained.Value.BlockNumber <= watermark) _retainedBodies.TryRemove(retained.Key, out _);
+            }
+        }
+
+        /// <summary>
+        /// Persists every retained body — capture stopped, so their blocks will never be derivable from history.
+        /// </summary>
+        /// <remarks>
+        /// Runs on the capture hook's thread before the pending state persist resumes, and the WAL fsync makes the
+        /// bodies durable before that persist prunes the blocks' snapshots. Must not throw: disabling is one-shot,
+        /// so the capture side cannot re-notify (it logs and moves on if a handler fails).
+        /// </remarks>
+        private void PersistRetainedBodies()
+        {
+            if (_retainedBodies is null || _retainedBodies.IsEmpty) return;
+
+            int persisted = 0;
+            try
+            {
+                lock (_writeLock)
+                {
+                    foreach (KeyValuePair<ValueHash256, RetainedBody> retained in _retainedBodies)
+                    {
+                        if (!_retainedBodies.TryRemove(retained.Key, out RetainedBody? body)) continue;
+                        WriteReceipts(body.BlockNumber, body.BlockHash, (body.Receipts, body.Behaviors));
+                        persisted++;
+                    }
+                }
+
+                _database.Flush(onlyWal: true);
+                if (_logger.IsWarn) _logger.Warn(
+                    $"History capture stopped: persisted the receipt bodies retained for {persisted} block(s) that can no longer be derived from state history.");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error(
+                    $"Failed to persist the retained receipt bodies after history capture stopped ({persisted} of {persisted + _retainedBodies.Count} written) - the affected blocks cannot serve receipts; re-sync receipts to recover them.", e);
+            }
+        }
 
         [SkipLocalsInit]
         private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber, bool storeBody = true)
@@ -680,6 +760,7 @@ namespace Nethermind.Blockchain.Receipts
             // Cancel any queued canonical write for this block so it cannot resurrect the tx-index below. The
             // block-level entry is the only overlay state, so one removal drops all its txs from the lazy scan.
             _pendingCanonical.TryRemove(block.Hash!.ValueHash256, out _);
+            _retainedBodies?.TryRemove(block.Hash!.ValueHash256, out _);
 
             _receiptsCache.Delete(block.Hash);
 
