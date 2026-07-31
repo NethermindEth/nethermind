@@ -568,13 +568,6 @@ internal sealed class InstructionStream
             fused = FusedOpcode.Push1Push1;
             operand = first.Operand | ((ulong)code[pc + 1] << 8);
         }
-        else if (firstOp == Instruction.PUSH1 && second is >= Instruction.DUP1 and <= Instruction.DUP8)
-        {
-            // The immediate travels in the low byte and the dup depth in the next; the executor
-            // pushes then duplicates, so depth one duplicates the value just pushed.
-            fused = FusedOpcode.Push1Dup;
-            operand = first.Operand | ((ulong)(second - Instruction.DUP1 + 1) << 8);
-        }
         else if (second == Instruction.POP && firstOp is >= Instruction.SWAP1 and <= Instruction.SWAP8)
         {
             // Swap depth as the executor takes it: SWAP1 exchanges the top with the slot two down.
