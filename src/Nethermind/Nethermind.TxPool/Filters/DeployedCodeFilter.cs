@@ -10,6 +10,7 @@ namespace Nethermind.TxPool.Filters
 {
     /// <summary>
     /// Filters out transactions that sender has any code deployed. If <see cref="IReleaseSpec.IsEip3607Enabled"/> is enabled.
+    /// EIP-8141 frame transactions are exempt.
     /// </summary>
     internal sealed class DeployedCodeFilter(IReadOnlyStateProvider worldState, IChainHeadSpecProvider specProvider) : IIncomingTxFilter
     {
