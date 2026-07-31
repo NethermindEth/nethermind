@@ -25,9 +25,7 @@ namespace Nethermind.State.Pbt.Test;
 /// width. What does carry over is here, run under every layout, with <see cref="EipReferenceTree"/> as
 /// the oracle throughout: a tiling changes where the bytes live and nothing else.
 /// </remarks>
-[TestFixture(PbtTrieLayout.ClusteredFourLevelEveryLevel)]
-[TestFixture(PbtTrieLayout.ClusteredFourLevelInterleaved)]
-[TestFixture(PbtTrieLayout.ClusteredFourLevelBoundaryOnly)]
+[TestFixture(PbtTrieLayout.FourLevelEveryLevel)]
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
 [TestFixture(PbtTrieLayout.FiveLevelInterleaved)]
@@ -46,7 +44,7 @@ public class PbtTilingTests(PbtTrieLayout layout)
         PbtTiling.FiveLevel => PbtFiveLevelTileLayout.LevelsPerGroup,
         PbtTiling.SixLevel => PbtSixLevelTileLayout.LevelsPerGroup,
         PbtTiling.EightLevel => PbtEightLevelTileLayout.LevelsPerGroup,
-        _ => PbtClusteredTileLayout.LevelsPerGroup,
+        _ => throw new ArgumentOutOfRangeException(nameof(layout)),
     };
 
     private const PbtPartition Partition = PbtPartition.Storage;
@@ -306,9 +304,9 @@ public class PbtTilingTests(PbtTrieLayout layout)
             writes.Add((PbtKeyDerivation.StorageKey(TestItem.AddressB, (UInt256)(PbtKeyDerivation.HeaderStorageOffset + (slot << 8))).ToByteArray(), Value));
         }
 
-        PbtTrieLayout otherLayout = layout.Tiling() == PbtTiling.ClusteredFourLevel
+        PbtTrieLayout otherLayout = layout.Tiling() == PbtTiling.FourLevel
             ? PbtTrieLayout.SixLevelInterleaved
-            : PbtTrieLayout.ClusteredFourLevelInterleaved;
+            : PbtTrieLayout.FourLevelInterleaved;
         PbtTreeHarness other = new(PooledRefCountingMemoryProvider.Instance, otherLayout);
         Assert.That(NewHarness().ApplyBatch(writes), Is.EqualTo(other.ApplyBatch(writes)));
         Assert.That(other.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));

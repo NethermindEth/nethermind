@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
-using Layout = Nethermind.Pbt.Tiles.PbtClusteredTileLayout;
+using Layout = Nethermind.Pbt.Tiles.PbtFourLevelTileLayout;
 using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt.Test;
@@ -187,24 +187,16 @@ public class PbtTrieNodeGroupTests
         }
     }
 
-    /// <summary>
-    /// A group's encoding is told from a run's and from a cluster's by the byte it ends with, so no
-    /// format may take one of theirs — a group whose last byte reads as a cluster is parsed as one, and
-    /// what it says its group's length is is then whatever those bytes happen to hold.
-    /// </summary>
+    /// <summary>A group's encoding is told from a run's by the byte it ends with, so no format may take its value.</summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
     [TestCase(PbtGroupFormat.BoundaryOnly)]
     [TestCase(PbtGroupFormat.Every3Depth)]
-    public void FormatByte_IsNeitherARunsNorAClusters(PbtGroupFormat format)
+    public void FormatByte_IsNotAChain(PbtGroupFormat format)
     {
         byte[] encoding = [(byte)format];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PbtNodeChain.IsChain(encoding), Is.False);
-            Assert.That(PbtNodeCluster.HoldsChildren(encoding), Is.False);
-            if (format == PbtGroupFormat.Every3Depth) Assert.That(encoding[0], Is.EqualTo(0x09));
-        }
+        Assert.That(PbtNodeChain.IsChain(encoding), Is.False);
+        if (format == PbtGroupFormat.Every3Depth) Assert.That(encoding[0], Is.EqualTo(0x09));
     }
 
     /// <summary>
