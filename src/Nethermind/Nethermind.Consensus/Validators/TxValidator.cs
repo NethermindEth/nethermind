@@ -92,7 +92,8 @@ public sealed class TxValidator : ITxValidator
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
-            FrameTxFieldsTxValidator.Instance
+            FrameTxFieldsTxValidator.Instance,
+            FrameTxPostTxModeValidator.Instance
         ]));
     }
 
@@ -191,6 +192,36 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         FrameTxValidation.IsWellFormed(transaction, out string? error) ? ValidationResult.Success : error!;
+}
+
+/// <summary>Admits the EIP-7906 <c>POST_TX</c> frame mode only on forks that define it.</summary>
+/// <remarks>
+/// The mode is accepted without fork context wherever the frame list is checked structurally, so the
+/// fork that admits it is enforced here. Before the fork the mode is undefined, and executing such a
+/// frame as if it were <c>DEFAULT</c> would let it write state the assertion semantics forbid.
+/// </remarks>
+public sealed class FrameTxPostTxModeValidator : ITxValidator
+{
+    public static readonly FrameTxPostTxModeValidator Instance = new();
+    private FrameTxPostTxModeValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (releaseSpec.IsEip7906Enabled || transaction.Frames is not { } frames)
+        {
+            return ValidationResult.Success;
+        }
+
+        foreach (TxFrame frame in frames)
+        {
+            if (frame.Mode == TxFrame.ModePostTx)
+            {
+                return "POST_TX frames are not enabled";
+            }
+        }
+
+        return ValidationResult.Success;
+    }
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator
