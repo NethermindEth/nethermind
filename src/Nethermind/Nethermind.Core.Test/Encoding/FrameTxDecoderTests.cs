@@ -30,6 +30,7 @@ public class FrameTxDecoderTests
         Assert.That(decoded.Type, Is.EqualTo(TxType.FrameTx));
         Assert.That(decoded.ChainId, Is.EqualTo(tx.ChainId));
         Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
+        Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
         // The sender is explicit in the payload — no envelope signature, no ECDSA recovery.
         Assert.That(decoded.SenderAddress, Is.EqualTo(tx.SenderAddress));
         Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
@@ -109,6 +110,24 @@ public class FrameTxDecoderTests
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
+    // The keyed envelope is part of the signing payload, so selecting different keys — or none at all,
+    // which is a different envelope rather than the key 0 — must not reuse another transaction's hash.
+    [Test]
+    public void ComputeSigHash_NonceKeysChange_HashChanges()
+    {
+        Transaction legacy = CreateFrameTx();
+        Transaction legacyKey = CreateFrameTx();
+        legacyKey.NonceKeys = [UInt256.Zero];
+        Transaction otherKey = CreateFrameTx();
+        otherKey.NonceKeys = [1];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxSigHash.ComputeValue(legacyKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacy)));
+            Assert.That(FrameTxSigHash.ComputeValue(otherKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacyKey)));
+        }
+    }
+
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateFrameTx()).SetName("Roundtrip_MinimalSingleFrame");
@@ -128,6 +147,15 @@ public class FrameTxDecoderTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, FilledBytes(32, 0xab), FilledBytes(TxFrameSignature.Secp256k1SignatureLength, 0x22)),
             new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressD, default, FilledBytes(TxFrameSignature.P256SignatureLength, 0x33)),
         ])).SetName("Roundtrip_AllSignatureSchemes");
+
+        Transaction keyed = CreateFrameTx();
+        keyed.NonceKeys = [UInt256.Zero];
+        yield return new TestCaseData(keyed).SetName("Roundtrip_KeyedNonceEnvelope_LegacyKeyOnly");
+
+        Transaction multiKeyed = CreateFrameTx();
+        multiKeyed.NonceKeys = [1, UInt256.MaxValue];
+        multiKeyed.Nonce = 42;
+        yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
 
         Transaction blobCarrying = CreateFrameTx();
         blobCarrying.MaxFeePerBlobGas = 7;
