@@ -331,6 +331,11 @@ namespace Nethermind.Core.Specs
         bool IsEip8250Enabled { get; }
 
         /// <summary>
+        /// EIP-8272: recent roots for frame transactions.
+        /// </summary>
+        bool IsEip8272Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }

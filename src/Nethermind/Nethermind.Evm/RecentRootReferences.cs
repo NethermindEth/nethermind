@@ -14,11 +14,16 @@ namespace Nethermind.Evm;
 /// </summary>
 public static class RecentRootReferences
 {
-    /// <summary>The <c>recent_root_calldata</c> the references add to the payload, priced as frame data is.</summary>
-    /// <remarks>Empty for a transaction that declares no reference, so its gas is exactly the EIP-8141 figure.</remarks>
+    /// <summary>
+    /// The <c>recent_root_calldata</c> the references add to the payload, priced as frame data is.
+    /// </summary>
+    /// <remarks>
+    /// Only an absent list is free: a present-but-empty list still encodes as <c>0xc0</c>, and EIP-8272
+    /// short-circuits the per-reference intrinsic term at zero references but not the calldata term.
+    /// </remarks>
     public static byte[] Calldata(RecentRootReference[]? references)
     {
-        if (references is null || references.Length == 0)
+        if (references is null)
         {
             return [];
         }
@@ -79,8 +84,9 @@ public static class RecentRootReferences
         accessTracker.WarmUp(Eip8272Constants.RecentRootAddress);
         foreach (RecentRootReference reference in references)
         {
-            accessTracker.WarmUp(RecentRootStore.ReferenceCell(reference.SourceId, reference.Slot));
-            if (!RecentRootStore.IsReferenceValid(state, reference.SourceId, reference.Slot, reference.Root, slot))
+            StorageCell cell = RecentRootStore.ReferenceCell(reference.SourceId, reference.Slot);
+            accessTracker.WarmUp(cell);
+            if (!RecentRootStore.IsReferenceValid(state, in cell, reference.SourceId, reference.Slot, reference.Root, slot))
             {
                 return false;
             }

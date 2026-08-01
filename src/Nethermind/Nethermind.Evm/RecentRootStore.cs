@@ -45,7 +45,14 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
-    public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
+    public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
+        IsReferenceValid(state, ReferenceCell(sourceId, slot), sourceId, slot, root, currentSlot);
+
+    /// <summary>
+    /// Checks a reference against the commitment held in <paramref name="cell"/>, which the caller has
+    /// already derived — the ring-buffer key costs a Keccak the gas schedule pays for once per reference.
+    /// </summary>
+    public static bool IsReferenceValid(IWorldState state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
     {
         ulong age = currentSlot - slot; // unsigned: a future or same slot underflows and is rejected below
         if (age is 0 || age > Eip8272Constants.RecentRootUsableWindow)
@@ -53,7 +60,6 @@ public static class RecentRootStore
             return false;
         }
 
-        StorageCell cell = RingBufferCell(sourceId, slot % Eip8272Constants.RecentRootLength);
         ReadOnlySpan<byte> stored = state.Get(cell);
         if (stored.Length > HashLength)
         {
@@ -72,24 +78,6 @@ public static class RecentRootStore
         StorageCell cell = RingBufferCell(sourceId, currentSlot % Eip8272Constants.RecentRootLength);
         ValueHash256 entryHash = EntryHash(sourceId, currentSlot, root);
         state.Set(cell, entryHash.Bytes.WithoutLeadingZeros().ToArray());
-    }
-
-    public static bool AreReferencesValid(IWorldState state, ReadOnlySpan<(ValueHash256 SourceId, ulong Slot, ValueHash256 Root)> references, ulong currentSlot)
-    {
-        if (references.Length > Eip8272Constants.MaxRecentRootReferences)
-        {
-            return false;
-        }
-
-        foreach ((ValueHash256 sourceId, ulong slot, ValueHash256 root) in references)
-        {
-            if (!IsReferenceValid(state, sourceId, slot, root, currentSlot))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /// <summary>The predeploy storage cell a reference to <paramref name="slot"/> reads.</summary>

@@ -155,19 +155,25 @@ public class RecentRootStoreTests
         }
     }
 
+    // The consensus check the processor runs: a set is admissible only when every reference matches
+    // the commitment the predeploy holds, and only up to the reference cap.
     [Test]
-    public void AreReferencesValid_true_for_empty_set()
+    public void Validate_true_for_an_absent_and_an_empty_set()
     {
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            (ValueHash256, ulong, ValueHash256)[] references = [];
-            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.True);
+            using StackAccessTracker accessTracker = new(false);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(RecentRootReferences.Validate(state, null, currentSlot: 200, in accessTracker), Is.True);
+                Assert.That(RecentRootReferences.Validate(state, [], currentSlot: 200, in accessTracker), Is.True);
+            }
         }
     }
 
     [Test]
-    public void AreReferencesValid_true_when_every_reference_is_valid()
+    public void Validate_true_when_every_reference_is_committed()
     {
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
@@ -176,17 +182,12 @@ public class RecentRootStoreTests
             RecentRootStore.Write(state, Source, Salt, OtherRoot, 150, Spec);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
-            (ValueHash256, ulong, ValueHash256)[] references =
-            [
-                (sourceId, 100UL, Root),
-                (sourceId, 150UL, OtherRoot)
-            ];
-            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.True);
+            Assert.That(Validate(state, [new(sourceId, 100, Root), new(sourceId, 150, OtherRoot)]), Is.True);
         }
     }
 
     [Test]
-    public void AreReferencesValid_false_when_a_reference_is_invalid()
+    public void Validate_false_when_a_reference_names_a_root_the_slot_does_not_hold()
     {
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
@@ -194,17 +195,12 @@ public class RecentRootStoreTests
             RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
-            (ValueHash256, ulong, ValueHash256)[] references =
-            [
-                (sourceId, 100UL, Root),
-                (sourceId, 100UL, OtherRoot)
-            ];
-            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.False);
+            Assert.That(Validate(state, [new(sourceId, 100, Root), new(sourceId, 100, OtherRoot)]), Is.False);
         }
     }
 
     [Test]
-    public void AreReferencesValid_true_for_duplicate_valid_references()
+    public void Validate_true_for_a_repeated_committed_reference()
     {
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
@@ -212,33 +208,50 @@ public class RecentRootStoreTests
             RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
-            (ValueHash256, ulong, ValueHash256)[] references =
-            [
-                (sourceId, 100UL, Root),
-                (sourceId, 100UL, Root)
-            ];
-            Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.True);
+            Assert.That(Validate(state, [new(sourceId, 100, Root), new(sourceId, 100, Root)]), Is.True);
+        }
+    }
+
+    // A header without a slot number cannot place a reference in the window, so it admits none.
+    [Test]
+    public void Validate_false_without_a_slot_number()
+    {
+        IWorldState state = CreateState(out IDisposable scope);
+        using (scope)
+        {
+            RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
+            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            using StackAccessTracker accessTracker = new(false);
+
+            Assert.That(RecentRootReferences.Validate(state, [new(sourceId, 100, Root)], currentSlot: null, in accessTracker), Is.False);
         }
     }
 
     [TestCase(0, ExpectedResult = true)]
     [TestCase(1, ExpectedResult = false)]
-    public bool AreReferencesValid_enforces_the_reference_cap(int overCap)
+    public bool Validate_enforces_the_reference_cap(int overCap)
     {
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
             // every reference is individually valid, so only the count decides the result
-            (ValueHash256, ulong, ValueHash256)[] references = new (ValueHash256, ulong, ValueHash256)[Eip8272Constants.MaxRecentRootReferences + overCap];
+            RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + overCap];
             for (int i = 0; i < references.Length; i++)
             {
                 ulong slot = (ulong)(100 + i);
                 RecentRootStore.Write(state, Source, Salt, Root, slot, Spec);
-                references[i] = (sourceId, slot, Root);
+                references[i] = new RecentRootReference(sourceId, slot, Root);
             }
-            return RecentRootStore.AreReferencesValid(state, references, currentSlot: 500);
+
+            return Validate(state, references, currentSlot: 500);
         }
+    }
+
+    private static bool Validate(IWorldState state, RecentRootReference[] references, ulong currentSlot = 200)
+    {
+        using StackAccessTracker accessTracker = new(false);
+        return RecentRootReferences.Validate(state, references, currentSlot, in accessTracker);
     }
 
     private static IWorldState CreateState(out IDisposable scope)
