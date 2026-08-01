@@ -19,4 +19,10 @@ public static class Eip8272Constants
 
     // Provisional: spec address is TBD; mirrors the only existing implementation.
     public static readonly Address RecentRootAddress = new("0x0000000000000000000000000000000000008272");
+
+    /// <remarks>Provisional: the spec leaves RECENT_ROOT_CODE TBD, so the write is native and priced as
+    /// the cold account access plus the storage write that real predeploy bytecode would perform.</remarks>
+    public const ulong RecentRootWriteGas = 22100;
+
+    public const int RecentRootWriteCalldataLength = 64;
 }

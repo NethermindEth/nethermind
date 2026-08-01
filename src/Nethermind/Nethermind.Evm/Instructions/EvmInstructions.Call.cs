@@ -241,8 +241,10 @@ public static partial class EvmInstructions
             return pushResult;
         }
 
-        // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        // Fast-path for calls to externally owned accounts (non-contracts). EIP-8272's RECENT_ROOT_ADDRESS
+        // is excluded: it carries no bytecode, but a call into it performs the native recent-root write.
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions
+            && !(Eip8272Constants.RecentRootAddress.Equals(codeSource) && spec.IsEip8272Enabled))
         {
             vm.ReturnDataBuffer = default;
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.

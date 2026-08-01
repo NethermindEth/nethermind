@@ -180,8 +180,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             {
                 CallResult callResult;
 
+                if (spec.IsEip8272Enabled && Eip8272Constants.RecentRootAddress.Equals(_currentState.Env.CodeSource))
+                {
+                    callResult = ExecuteRecentRootWrite(_currentState);
+                    failure = null;
+                    substateError = null;
+                }
                 // If the current state represents a precompiled contract, handle it separately.
-                if (_currentState.IsPrecompile)
+                else if (_currentState.IsPrecompile)
                 {
                     callResult = ExecutePrecompile(_currentState, _isTracingActionsCached, out failure, out substateError);
                     if (failure is not null)
@@ -808,6 +814,55 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
         shouldExit = false;
         return default;
+    }
+
+    /// <summary>Executes the EIP-8272 <c>RECENT_ROOT_ADDRESS</c> write, which has no bytecode to run.</summary>
+    /// <remarks>
+    /// The spec leaves <c>RECENT_ROOT_CODE</c> undefined, so the 64-byte <c>salt ‖ root</c> write runs
+    /// natively. Only a direct call may write: under <c>DELEGATECALL</c>/<c>CALLCODE</c> the executing
+    /// account is the caller's, so the write would land in a foreign storage namespace. The entry commits
+    /// to the current EIP-7843 slot, which is what makes it referenceable only from the next slot on.
+    /// </remarks>
+    private CallResult ExecuteRecentRootWrite(VmState<TGasPolicy> currentState)
+    {
+        AddTransferLog(currentState);
+        if (_isTracingActionsCached)
+        {
+            _txTracer.ReportAction(
+                TGasPolicy.GetRemainingGas(currentState.Gas),
+                currentState.Env.Value,
+                currentState.From,
+                currentState.To,
+                currentState.Env.InputData,
+                currentState.ExecutionType,
+                isPrecompileCall: false);
+        }
+
+        ReadOnlySpan<byte> callData = currentState.Env.InputData.Span;
+        ulong? slotNumber = BlockExecutionContext.Header.SlotNumber;
+        if (currentState.IsStatic
+            || !Eip8272Constants.RecentRootAddress.Equals(currentState.Env.ExecutingAccount)
+            || callData.Length != Eip8272Constants.RecentRootWriteCalldataLength
+            || !currentState.Env.Value.IsZero
+            || slotNumber is null)
+        {
+            return new CallResult(default, precompileSuccess: null, shouldRevert: true);
+        }
+
+        if (!TGasPolicy.TryConsume(ref currentState.Gas, Eip8272Constants.RecentRootWriteGas))
+        {
+            return new CallResult(EvmExceptionType.OutOfGas);
+        }
+
+        RecentRootStore.Write(
+            _worldState,
+            currentState.Env.Caller,
+            new ValueHash256(callData[..32]),
+            new ValueHash256(callData[32..]),
+            slotNumber.Value,
+            BlockExecutionContext.Spec);
+
+        return new CallResult(default, precompileSuccess: true);
     }
 
     /// <summary>

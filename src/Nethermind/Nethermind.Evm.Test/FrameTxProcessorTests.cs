@@ -1150,6 +1150,45 @@ public class FrameTxProcessorTests
             Is.EqualTo((long)(Spec.GasCosts.TxDataNonZeroMultiplier * GasCostOf.TxDataZero)));
     }
 
+    [TestCase(64, 1UL, true, TestName = "a 64-byte direct call commits the entry")]
+    [TestCase(63, 0UL, false, TestName = "a call whose calldata is not the salt-root pair writes nothing")]
+    public void Execute_RecentRootWrite_CommitsAnEntryTheNextSlotCanReference(int callDataLength, ulong expectedCallResult, bool expectedCommitted)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        byte[] callData = [.. TestItem.KeccakA.Bytes, .. TestItem.KeccakB.Bytes];
+        DeployContract(Observer, Prepare.EvmCode
+            .CallWithInput(Eip8272Constants.RecentRootAddress, 100_000, callData[..callDataLength])
+            .PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        Assert.That(Process(tx, slotNumber: ReferencedSlot).TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, expectedCallResult, "the CALL's success flag");
+        Assert.That(IsCommitted(ReferencedSlot), Is.EqualTo(expectedCommitted));
+    }
+
+    // A VERIFY frame runs static, and the mempool simulates it to decide admission: a write there would
+    // let the validation prefix commit a root the simulation never accounted for.
+    [Test]
+    public void Execute_RecentRootWriteInsideAVerifyFrame_WritesNothing()
+    {
+        byte[] callData = [.. TestItem.KeccakA.Bytes, .. TestItem.KeccakB.Bytes];
+        DeploySmartSender(Prepare.EvmCode
+            .CallWithInput(Eip8272Constants.RecentRootAddress, 100_000, callData).Op(Instruction.POP)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
+
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame()), slotNumber: ReferencedSlot).TransactionExecuted, Is.True);
+        Assert.That(IsCommitted(ReferencedSlot, Sender), Is.False);
+    }
+
+    private bool IsCommitted(ulong slot, Address? source = null) =>
+        RecentRootStore.IsReferenceValid(
+            _stateProvider,
+            RecentRootStore.SourceId(source ?? Observer, TestItem.KeccakA.ValueHash256),
+            slot,
+            TestItem.KeccakB.ValueHash256,
+            slot + 1);
+
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
