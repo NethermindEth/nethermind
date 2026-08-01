@@ -157,6 +157,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.Xor:
                             exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
                             break;
+                        case (Instruction)FusedOpcode.Push1Dup:
+                            exceptionType = EvmInstructions.FusedPush1DupCore<OffFlag>(ref stack, entry.Operand);
+                            break;
                         case (Instruction)FusedOpcode.Shl:
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, constants[(int)entry.Operand]);
                             break;

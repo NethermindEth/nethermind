@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
@@ -76,4 +77,21 @@ public static partial class EvmInstructions
         WriteUnaligned(ref topRef, TOpBitwise.Operation(in a, in b));
         return EvmExceptionType.None;
     }
+    /// <summary>
+    /// Fused <c>PUSH1 v; DUPn</c>, with the immediate in the low byte of the operand and the dup
+    /// depth in the next. The push lands first, so the duplicate is taken relative to a stack that
+    /// already holds it - depth one duplicates the pushed value itself. Failure order matches the
+    /// unfused pair: a full stack overflows on the push, and a dup reaching below the stack
+    /// underflows.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedPush1DupCore<TTracingInst>(ref EvmStack stack, ulong packed)
+        where TTracingInst : struct, IFlag
+    {
+        EvmExceptionType result = stack.PushUInt64<TTracingInst>(packed & 0xFF);
+        if (result != EvmExceptionType.None) return result;
+        return stack.Dup<TTracingInst>((int)((packed >> 8) & 0xFF));
+    }
+
 }

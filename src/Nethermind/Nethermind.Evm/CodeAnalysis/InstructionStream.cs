@@ -50,6 +50,8 @@ internal static class FusedOpcode
     public const byte Shr = 0x2D;
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
+    // 0xA5..0xB4 is left alone: the frame-transaction work claims part of that range.
+    public const byte Push1Dup = 0xC0;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
@@ -189,6 +191,24 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
+                    && instruction is >= Instruction.DUP1 and <= Instruction.DUP8
+                    && ops.Count > 0
+                    && ops[^1].Opcode == (byte)Instruction.PUSH1
+                    && ops[^1].Kind is StreamOpKind.InBlock or StreamOpKind.BlockFirst
+                    && ops[^1].Advance + size <= byte.MaxValue)
+                {
+                    // A small constant pushed and immediately duplicated over. The immediate rides
+                    // in the low byte of the operand and the dup depth in the next; the block still
+                    // charges and counts both, and nothing may land between them.
+                    StreamOp pushed = ops[^1];
+                    blockGas[openBlock] += cost;
+                    pcToEntry[pc] = InvalidEntry;
+                    ops[^1] = new StreamOp(FusedOpcode.Push1Dup,
+                        pushed.Kind == StreamOpKind.BlockFirst ? StreamOpKind.FusedBlockFirst : StreamOpKind.FusedInBlock,
+                        pushed.Pc, pushed.BlockIndex, (byte)(pushed.Advance + size),
+                        pushed.Operand | ((ulong)(instruction - Instruction.DUP1 + 1) << 8));
+                }
+                else if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
