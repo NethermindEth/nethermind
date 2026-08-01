@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -130,6 +131,46 @@ public class FrameTxDecoderTests
             Assert.That(FrameTxSigHash.ComputeValue(otherSlot), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(referencing)));
         }
     }
+
+    // Every rejection the reference list introduces: a tuple that is not three well-sized elements is
+    // not a reference, and a list longer than the cap is not decodable at all — both must throw rather
+    // than yield a transaction some other client would read differently.
+    [TestCaseSource(nameof(MalformedReferenceListCases))]
+    public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references)
+    {
+        Rlp sequence = Rlp.Encode(
+            Rlp.Encode(TestBlockchainIds.ChainId),
+            Rlp.Encode(0L),
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.Encode(Array.Empty<Rlp>()),
+            Rlp.Encode(Array.Empty<Rlp>()),
+            Rlp.Encode(0L),
+            Rlp.Encode(0L),
+            Rlp.Encode(0L),
+            Rlp.Encode(Array.Empty<Rlp>()),
+            references);
+
+        byte[] payload = new byte[1 + sequence.Length];
+        payload[0] = (byte)TxType.FrameTx;
+        sequence.Bytes.CopyTo(payload, 1);
+
+        Assert.That(() => { RlpReader reader = new(payload); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpException>());
+    }
+
+    private static IEnumerable<TestCaseData> MalformedReferenceListCases()
+    {
+        Rlp wellFormed = EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray());
+
+        yield return new TestCaseData(Rlp.Encode(EncodeReference(new byte[31], 7, TestItem.KeccakB.BytesToArray())))
+            .SetName("Decode_ReferenceWithUndersizedSourceId_Throws");
+        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L) })))
+            .SetName("Decode_ReferenceMissingRoot_Throws");
+        yield return new TestCaseData(Rlp.Encode(Enumerable.Repeat(wellFormed, Eip8272Constants.MaxRecentRootReferences + 1).ToArray()))
+            .SetName("Decode_MoreReferencesThanTheCap_Throws");
+    }
+
+    private static Rlp EncodeReference(byte[] sourceId, ulong slot, byte[] root) =>
+        Rlp.Encode(new[] { Rlp.Encode(sourceId), Rlp.Encode(slot), Rlp.Encode(root) });
 
     private static RecentRootReference Reference(ulong slot) =>
         new(TestItem.KeccakA.ValueHash256, slot, TestItem.KeccakB.ValueHash256);
