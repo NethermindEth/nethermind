@@ -79,13 +79,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
         }
 
-        // EIP-7623: the payer's max-cost reservation below is derived from the gas limit, so a
-        // limit that cannot cover the floor-priced charge is rejected rather than under-reserved.
-        if (txGasLimit < floorGas)
-        {
-            return TransactionResult.ErrorType.GasLimitBelowFloorGas.WithDetail(
-                $"frame transaction gas limit {txGasLimit} below EIP-7623 floor gas {floorGas}");
-        }
+        // max_gas: frames that reserve less than the transaction's own calldata floor raise the
+        // reservation rather than invalidate the transaction, so the payer can always cover the
+        // floor-priced charge settled below. The frames keep their own allocations — the headroom
+        // is reserved and refunded, never spendable — and the block gas pool is credited the same
+        // max_gas minus gas_used.
+        txGasLimit = Math.Max(txGasLimit, floorGas);
 
         // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
         // max_fee_per_gas plus blob cost, not the effective price, so it is not under-reserved.

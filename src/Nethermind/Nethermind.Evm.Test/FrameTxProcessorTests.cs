@@ -111,22 +111,20 @@ public class FrameTxProcessorTests
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
     }
 
+    // A frame carrying more data than its own gas limit can pay for at the floor rate does not
+    // invalidate the transaction: the spec reserves max(standard_gas_limit, calldata_floor_gas).
     [Test]
-    public void Execute_GasLimitBelowEip7623Floor_ReturnsGasLimitBelowFloorGas()
+    public void Execute_FramesReserveLessGasThanTheCalldataFloor_StillExecutes()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        // Enough zero-byte tokens that the floor rate (tokens * 10) outpaces the standard rate
-        // plus the declared frame gas (tokens * 4 + sum(frame.gas_limit)), even with the second
-        // frame's own limit at zero.
+        // Enough tokens that the floor rate outpaces the standard rate plus the declared frame gas,
+        // even with the second frame's own limit at zero.
         byte[] frameData = new byte[40_000];
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
             new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 0, UInt256.Zero, frameData));
 
-        TransactionResult result = Process(tx);
-
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitBelowFloorGas));
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
     }
 
     [Test]

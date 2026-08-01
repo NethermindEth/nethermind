@@ -241,6 +241,36 @@ public class Eip8141ScenarioTests
         }
     }
 
+    // A frame transaction whose frames reserve less gas than its own calldata floor is valid: the
+    // spec resolves the shortfall by reserving `max(standard_gas_limit, calldata_floor_gas)`, not by
+    // rejecting the transaction. Rejecting it would fork away from any client that reserves the max,
+    // since the same block is then valid for one and invalid for the other.
+    [Test]
+    public void ChargedGas_FloorExceedsTheFramesGasReservation_ReservesTheFloorAndExecutes()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        byte[] frameData = new byte[2_000];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 20_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 20_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong standardGasLimit = mandatoryGas + (ulong)frameData.Length * 16UL + 40_000UL;
+        ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(floorGas, Is.GreaterThan(standardGasLimit),
+                "the frames must reserve less than the floor, or this regression does not bind");
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(floorGas));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
+                "the payer is charged the floor and refunded the rest of the raised reservation");
+        }
+    }
+
     // The floor bounds the charge from below after the EIP-3529 refund is netted, not before. The
     // scenario is chosen so the two orderings disagree: gross gas exceeds the floor (so the floor is
     // not trivially the answer), while gross minus the refund falls under it (so applying the floor
