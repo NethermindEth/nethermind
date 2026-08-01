@@ -60,16 +60,21 @@ public static partial class EvmInstructions
         if ((amount & 7) == 0)
         {
             int bytes = amount >> 3;
-            Span<byte> slot = MemoryMarshal.CreateSpan(ref topRef, EvmStack.WordSize);
+            Span<byte> window = stackalloc byte[EvmStack.WordSize * 2];
+            ref byte first = ref MemoryMarshal.GetReference(window);
+            ref byte second = ref Add(ref first, EvmStack.WordSize);
+            EvmWord word = ReadUnaligned<EvmWord>(ref topRef);
             if (typeof(TOpShift) == typeof(OpShl))
             {
-                slot.Slice(bytes).CopyTo(slot);
-                slot.Slice(EvmStack.WordSize - bytes).Clear();
+                WriteUnaligned(ref first, word);
+                WriteUnaligned(ref second, default(EvmWord));
+                WriteUnaligned(ref topRef, ReadUnaligned<EvmWord>(ref Add(ref first, bytes)));
             }
             else
             {
-                slot.Slice(0, EvmStack.WordSize - bytes).CopyTo(slot.Slice(bytes));
-                slot.Slice(0, bytes).Clear();
+                WriteUnaligned(ref first, default(EvmWord));
+                WriteUnaligned(ref second, word);
+                WriteUnaligned(ref topRef, ReadUnaligned<EvmWord>(ref Add(ref second, -bytes)));
             }
 
             return EvmExceptionType.None;
@@ -103,7 +108,6 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType FusedPush1Push1Core(ref EvmStack stack, ulong packed)
     {
-        if (stack.Head > EvmStack.MaxStackSize - 2) return EvmExceptionType.StackOverflow;
         EvmExceptionType result = stack.PushUInt64<OffFlag>(packed & 0xFF);
         if (result != EvmExceptionType.None) return result;
         return stack.PushUInt64<OffFlag>((packed >> 8) & 0xFF);

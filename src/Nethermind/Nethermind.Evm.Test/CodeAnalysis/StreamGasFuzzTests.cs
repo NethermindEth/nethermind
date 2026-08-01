@@ -101,7 +101,7 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
         int slots = 6 + random.Next(18);
         for (int i = 0; i < slots; i++)
         {
-            switch (random.Next(24))
+            switch (random.Next(29))
             {
                 case 0:
                     jumpDests.Add(code.Count);
@@ -224,6 +224,45 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     int width = 3 + random.Next(30);
                     code.Add((byte)((byte)Instruction.PUSH1 + width - 1));
                     for (int k = 0; k < width; k++) code.Add((byte)random.Next(256));
+                    break;
+                case 23:
+                    code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.DUP3,
+                        (byte)(random.Next(4) switch { 0 => Instruction.LT, 1 => Instruction.GT, 2 => Instruction.SLT, _ => Instruction.SGT })]);
+                    break;
+                case 24:
+                    random.NextBytes(wide);
+                    wide[0] = (byte)(random.Next(2) == 0 ? 0x80 : 0x00);
+                    code.Add((byte)Instruction.PUSH32);
+                    code.AddRange(wide);
+                    code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(2), (byte)Instruction.SWAP1,
+                        (byte)(random.Next(2) == 0 ? Instruction.SLT : Instruction.SGT)]);
+                    break;
+                case 25 when jumpDests.Count > 0:
+                    int notDest = jumpDests[random.Next(jumpDests.Count)];
+                    code.AddRange([
+                        (byte)Instruction.PUSH1, 0x01, (byte)Instruction.SWAP1, (byte)Instruction.SUB,
+                        (byte)Instruction.DUP1, (byte)Instruction.ISZERO,
+                        (byte)Instruction.PUSH2, (byte)(notDest >> 8), (byte)notDest, (byte)Instruction.JUMPI]);
+                    break;
+                case 26:
+                    code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.DUP3, (byte)Instruction.AND, (byte)Instruction.ISZERO]);
+                    break;
+                case 27:
+                    code.Add((byte)Instruction.DUP1);
+                    if (random.Next(4) == 0)
+                        code.AddRange([(byte)Instruction.PUSH2, 0x01, 0x00]);
+                    else
+                        code.AddRange([(byte)Instruction.PUSH1, (byte)(random.Next(4) switch { 0 => 0, 1 => 8, 2 => 248, _ => random.Next(256) })]);
+                    code.Add((byte)(random.Next(2) == 0 ? Instruction.SHL : Instruction.SHR));
+                    break;
+                case 28:
+                    code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(256), (byte)Instruction.PUSH1, (byte)random.Next(256),
+                        (byte)(random.Next(9) switch
+                        {
+                            0 => Instruction.EQ, 1 => Instruction.OR, 2 => Instruction.XOR,
+                            3 => Instruction.SDIV, 4 => Instruction.SMOD, 5 => Instruction.LT,
+                            6 => Instruction.GT, 7 => Instruction.SLT, _ => Instruction.SGT,
+                        })]);
                     break;
                 default:
                     code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(64), (byte)Instruction.POP]);

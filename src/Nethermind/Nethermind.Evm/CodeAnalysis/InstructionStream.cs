@@ -172,6 +172,7 @@ internal sealed class InstructionStream
         List<ushort> blockOpCount = new(code.Length / 16);
         List<ulong> blockGas = new(code.Length / 16);
         List<UInt256> constants = new(code.Length / 32);
+        Dictionary<UInt256, int> constantIndex = [];
         ushort[] pcToEntry = new ushort[code.Length + 1];
         pcToEntry.AsSpan().Fill(InvalidEntry);
 
@@ -206,7 +207,7 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
-                    && TryFoldConstantPair(ops, constants, pcToEntry, instruction, pc, (byte)size))
+                    && TryFoldConstantPair(ops, constants, constantIndex, pcToEntry, instruction, pc, (byte)size))
                 {
                     blockGas[openBlock] += cost;
                     blockOpCount[openBlock]++;
@@ -235,8 +236,7 @@ internal sealed class InstructionStream
                     }
                     else
                     {
-                        constants.Add(push.Operand);
-                        poolIndex = (ulong)(constants.Count - 1);
+                        poolIndex = Intern(constants, constantIndex, push.Operand);
                     }
 
                     StreamOpKind fusedKind = push.Kind == StreamOpKind.BlockFirst
@@ -254,8 +254,7 @@ internal sealed class InstructionStream
                     }
                     else if (instruction is >= Instruction.PUSH9 and <= Instruction.PUSH32)
                     {
-                        constants.Add(ReadWideImmediate(code.Slice(pc + 1, immediates)));
-                        operand = (ulong)(constants.Count - 1);
+                        operand = Intern(constants, constantIndex, ReadWideImmediate(code.Slice(pc + 1, immediates)));
                     }
 
                     StreamOpKind kind = StreamOpKind.InBlock;
@@ -373,7 +372,7 @@ internal sealed class InstructionStream
         _ => NotInBlock,
     };
 
-    private static bool TryFoldConstantPair(List<StreamOp> ops, List<UInt256> constants, ushort[] pcToEntry, Instruction instruction, int pc, byte size)
+    private static bool TryFoldConstantPair(List<StreamOp> ops, List<UInt256> constants, Dictionary<UInt256, int> constantIndex, ushort[] pcToEntry, Instruction instruction, int pc, byte size)
     {
         if (ops.Count < 2)
             return false;
@@ -412,12 +411,25 @@ internal sealed class InstructionStream
             default: return false;
         }
 
-        constants.Add(result);
         pcToEntry[top.Pc] = InvalidEntry;
         pcToEntry[pc] = InvalidEntry;
         ops.RemoveAt(ops.Count - 1);
-        ops[^1] = new StreamOp((byte)Instruction.PUSH32, under.Kind, under.Pc, under.BlockIndex, (byte)advance, (ulong)(constants.Count - 1));
+        bool fitsInline = (result.u1 | result.u2 | result.u3) == 0;
+        ops[^1] = fitsInline
+            ? new StreamOp((byte)Instruction.PUSH8, under.Kind, under.Pc, under.BlockIndex, (byte)advance, result.u0)
+            : new StreamOp((byte)Instruction.PUSH32, under.Kind, under.Pc, under.BlockIndex, (byte)advance, Intern(constants, constantIndex, in result));
         return true;
+    }
+
+    private static ulong Intern(List<UInt256> constants, Dictionary<UInt256, int> index, in UInt256 value)
+    {
+        if (index.TryGetValue(value, out int existing))
+            return (ulong)existing;
+
+        constants.Add(value);
+        int slot = constants.Count - 1;
+        index[value] = slot;
+        return (ulong)slot;
     }
 
     private static bool TryGetConstPush(in StreamOp entry, List<UInt256> constants, out UInt256 value)
