@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -36,6 +37,7 @@ namespace Nethermind.Evm.Test;
 public class FrameTxProcessorTests
 {
     private ISpecProvider _specProvider;
+    private OverridableReleaseSpec _spec;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private IDisposable _worldStateCloser;
@@ -49,7 +51,9 @@ public class FrameTxProcessorTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        // Switched on here so a test can turn it back off and assert the fork gate rather than the feature.
+        _spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true };
+        _specProvider = new TestSpecProvider(_spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -763,6 +767,143 @@ public class FrameTxProcessorTests
     {
         UInt256 actual = new(_stateProvider.Get(new StorageCell(address, (UInt256)slot)), isBigEndian: true);
         Assert.That(actual, Is.EqualTo(expected), message ?? $"storage slot {slot} of {address}");
+    }
+
+    // A keyed transaction consumes the whole set at payment approval and leaves the account nonce alone.
+    [Test]
+    public void Execute_KeyedNonce_ConsumesEverySelectedKeyAndChargesFirstUse()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        UInt256[] keys = [1, 7];
+
+        Transaction firstUse = FrameTx(nonce: 0, SelfVerifyFrame());
+        firstUse.NonceKeys = keys;
+        CallOutputTracer firstUseTracer = new();
+        TransactionResult result = Process(firstUse, tracer: firstUseTracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetNonce(Sender), Is.Zero,
+            "a keyed transaction must not advance the account nonce");
+        foreach (UInt256 key in keys)
+        {
+            Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Is.EqualTo(UInt256.One));
+        }
+
+        Transaction reuse = FrameTx(nonce: 1, SelfVerifyFrame());
+        reuse.NonceKeys = keys;
+        CallOutputTracer reuseTracer = new();
+
+        Assert.That(Process(reuse, tracer: reuseTracer).TransactionExecuted, Is.True);
+        Assert.That(firstUseTracer.GasSpent - reuseTracer.GasSpent,
+            Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas),
+            "only the first use of each key is surcharged");
+    }
+
+    // The sequence is per key, so every selected key must currently sit at nonce_seq.
+    [TestCase(0UL, 1UL, false, TestName = "a nonce sequence behind a consumed key is too low")]
+    [TestCase(1UL, 1UL, true, TestName = "a nonce sequence matching every selected key executes")]
+    [TestCase(2UL, 1UL, false, TestName = "a nonce sequence ahead of an unconsumed key is too high")]
+    public void Execute_KeyedNonce_RequiresEverySelectedKeyAtTheSequence(ulong nonceSeq, ulong consumedSeq, bool expectedExecuted)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        UInt256[] keys = [1, 7];
+        KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, keys, consumedSeq - 1);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonceSeq, SelfVerifyFrame());
+        tx.NonceKeys = keys;
+
+        Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
+    }
+
+    // The property the set semantics exist for: one advanced key makes the whole set unusable.
+    [Test]
+    public void Execute_KeyedNonce_PartiallyAdvancedSetIsNotReplayable()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [(UInt256)1], nonceSeq: 0);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.NonceKeys = [1, 7];
+
+        Assert.That(Process(tx).TransactionExecuted, Is.False,
+            "key 1 is at sequence 1 while key 7 is still at 0, so no sequence satisfies the set");
+    }
+
+    // The EIP-8141 envelope answers as the key set [0], so verifier code reads one shape for both.
+    [TestCase(0x0D, false, ExpectedResult = 1UL, TestName = "Execute_TxParam_NonceKeyCount_WithoutKeys")]
+    [TestCase(0x0D, true, ExpectedResult = 2UL, TestName = "Execute_TxParam_NonceKeyCount_WithKeys")]
+    [TestCase(0x10, false, ExpectedResult = 0UL, TestName = "Execute_TxParam_FirstNonceKey_WithoutKeys")]
+    [TestCase(0x10, true, ExpectedResult = 3UL, TestName = "Execute_TxParam_FirstNonceKey_WithKeys")]
+    public ulong Execute_TxParam_ReadsTheNonceKeySet(int param, bool keyed)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData((UInt256)param).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        if (keyed) tx.NonceKeys = [3, 9];
+
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+        return (ulong)new UInt256(_stateProvider.Get(new StorageCell(Observer, 0)), isBigEndian: true);
+    }
+
+    // Authenticating only the first key would accept a set an attacker extended with keys approval consumes.
+    [Test]
+    public void Execute_TxParam_NonceKeysHash_CommitsToEveryKey()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x0E).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.NonceKeys = [3, 9];
+
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+        Span<byte> preimage = stackalloc byte[3 * 32];
+        ((UInt256)2).ToBigEndian(preimage[..32]);
+        ((UInt256)3).ToBigEndian(preimage.Slice(32, 32));
+        ((UInt256)9).ToBigEndian(preimage.Slice(64, 32));
+        AssertStorage(Observer, 0, new UInt256(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true));
+    }
+
+    // Payment approval moves the account nonce; the read must still report the admitted value.
+    [Test]
+    public void Execute_TxParam_LegacyNonce_IsTheValueObservedBeforeAnyFrameRan()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        _stateProvider.IncrementNonce(Sender);
+        _stateProvider.Commit(Spec);
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x0C).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(2UL), "payment approval moved the account nonce");
+        AssertStorage(Observer, 0, (UInt256)1);
+    }
+
+    // Asserted through a sentinel: index 0x10 answers 0 without keys, which a halted frame also leaves.
+    [TestCase(true, ExpectedResult = 0UL, TestName = "Execute_NonceIntrospectionBeforeTheFork_Halts")]
+    [TestCase(false, ExpectedResult = 1UL, TestName = "Execute_NonceIntrospectionAfterTheFork_Reads")]
+    public ulong Execute_NonceIntrospection_IsGatedOnTheFork(bool beforeTheFork)
+    {
+        _spec.IsEip8250Enabled = !beforeTheFork;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x10).Op(Instruction.TXPARAM).Op(Instruction.POP)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+        return (ulong)new UInt256(_stateProvider.Get(new StorageCell(Observer, 0)), isBigEndian: true);
     }
 
     private static UInt256 AddressAsWord(Address address) => new(address.Bytes, isBigEndian: true);
