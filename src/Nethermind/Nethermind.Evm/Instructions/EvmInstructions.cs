@@ -147,7 +147,7 @@ public static unsafe partial class EvmInstructions
         {
             lookup[(int)Instruction.SLOTNUM] = &InstructionSlotNum<TGasPolicy, TTracingInst>;
         }
-        if (spec.IsEip8272Enabled)
+        if (spec.IsEip8141Enabled && spec.IsEip8272Enabled)
         {
             lookup[(int)Instruction.RECENTROOTREFLOAD] = &InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>;
         }

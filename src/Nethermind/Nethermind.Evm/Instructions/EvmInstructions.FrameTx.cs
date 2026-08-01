@@ -11,9 +11,9 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// EIP-8141 frame transaction introspection and approval opcodes. All six are registered only when
-/// <c>IsEip8141Enabled</c>; each exceptional-halts when executed outside a frame transaction (i.e.
-/// when the transaction-scoped <see cref="FrameTxContext"/> is absent).
+/// EIP-8141 frame transaction introspection and approval opcodes, plus the EIP-8272 reference reader,
+/// which is additionally gated on <c>IsEip8272Enabled</c>. Each exceptional-halts when executed outside
+/// a frame transaction (i.e. when the transaction-scoped <see cref="FrameTxContext"/> is absent).
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </summary>
 public static unsafe partial class EvmInstructions
@@ -114,9 +114,8 @@ public static unsafe partial class EvmInstructions
 
     /// <summary>RECENTROOTREFLOAD (0xb5): read one field of a declared recent-root reference.</summary>
     /// <remarks>
-    /// Reads the signed envelope, not the predeploy's storage — the references were checked against the
-    /// pre-state before any frame ran, so no state access is needed here and the opcode is legal in every
-    /// frame mode, <c>VERIFY</c> included.
+    /// Reads the signed envelope, not the predeploy's storage: the references were checked against the
+    /// pre-state before any frame ran, so the opcode is legal in every frame mode, <c>VERIFY</c> included.
     /// </remarks>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
@@ -127,6 +126,7 @@ public static unsafe partial class EvmInstructions
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        // Spec stack order: field on top, index second — the reverse of FRAMEPARAM and SIGPARAM.
         if (!stack.PopUInt256(out UInt256 field, out UInt256 index)) return EvmExceptionType.StackUnderflow;
         if (index >= (UInt256)ctx.RecentRootReferences.Length || field > 2) return EvmExceptionType.BadInstruction;
 

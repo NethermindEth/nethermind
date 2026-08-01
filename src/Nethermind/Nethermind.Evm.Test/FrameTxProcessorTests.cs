@@ -764,8 +764,7 @@ public class FrameTxProcessorTests
         // APPROVE stack order (top to bottom): offset, length, scope.
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
 
-    // RECENTROOTREFLOAD reads the signed envelope, so each field must come back exactly as declared —
-    // application validation logic binds the proof's public inputs to this tuple.
+    // Application validation logic binds a proof's public inputs to this tuple.
     [TestCase((byte)0, TestName = "Execute_RecentRootRefLoad_SourceId")]
     [TestCase((byte)1, TestName = "Execute_RecentRootRefLoad_Slot")]
     [TestCase((byte)2, TestName = "Execute_RecentRootRefLoad_Root")]
@@ -791,22 +790,20 @@ public class FrameTxProcessorTests
         });
     }
 
-    // Both out-of-range conditions the spec makes exceptional. A silent zero would let validation logic
-    // read an absent reference as a real one committing to the zero root.
+    // Asserted through a sentinel stored after the opcode: a silent zero push would also leave slot 0
+    // at zero, and it would read as a real reference committing to the zero root.
     [TestCase(1, 0, TestName = "Execute_RecentRootRefLoad_IndexPastTheDeclaredList_Halts")]
     [TestCase(0, 3, TestName = "Execute_RecentRootRefLoad_UndefinedField_Halts")]
     public void Execute_RecentRootRefLoad_OutOfRange_ExceptionallyHalts(int index, int field)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
-            .PushData((UInt256)index).PushData((UInt256)field).Op(Instruction.RECENTROOTREFLOAD).PushData(0).Op(Instruction.SSTORE)
-            .Op(Instruction.STOP).Done);
-        RecentRootReference reference = CommitReference(ReferencedSlot);
+            .PushData((UInt256)index).PushData((UInt256)field).Op(Instruction.RECENTROOTREFLOAD).Op(Instruction.POP)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
-        tx.RecentRootReferences = [reference];
+        tx.RecentRootReferences = [CommitReference(ReferencedSlot)];
 
-        // The halting frame is a DEFAULT one, so the transaction still executes; its writes are discarded.
         Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
         AssertStorage(Observer, 0, UInt256.Zero);
     }
@@ -829,9 +826,7 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, (UInt256)referenceCount);
     }
 
-    // The fork gate on the new TXPARAM index. Asserted through a sentinel rather than the value itself:
-    // an ungated read of a transaction declaring nothing returns 0, which is also what a halted frame
-    // leaves behind, so storing the count would pass with the gate removed.
+    // Asserted through a sentinel: an ungated read returns 0, which is also what a halted frame leaves.
     [TestCase(true, ExpectedResult = 0UL, TestName = "Execute_ReferenceCountTxParamBeforeTheFork_Halts")]
     [TestCase(false, ExpectedResult = 1UL, TestName = "Execute_ReferenceCountTxParamAfterTheFork_Reads")]
     public ulong Execute_ReferenceCountTxParam_IsGatedOnTheFork(bool beforeTheFork)
@@ -862,24 +857,17 @@ public class FrameTxProcessorTests
         return new RecentRootReference(sourceId, slot, root);
     }
 
-    // EIP-8272: a declared reference is only satisfied by the commitment the predeploy actually holds
-    // for that slot, so an uncommitted or out-of-window reference invalidates the transaction. The
-    // committed case also proves the reference's intrinsic gas is charged, since the transaction pays
-    // more than the same transaction declaring nothing.
+    // A declared reference is only satisfied by the commitment the predeploy holds for that slot. The
+    // committed case also proves the reference's intrinsic gas is charged.
     [TestCase(1_000UL, true, TestName = "a committed reference inside the window executes")]
     [TestCase(1_001UL, false, TestName = "a reference to the current slot is not yet referenceable")]
     [TestCase(9_193UL, false, TestName = "a reference older than the usable window has been overwritten")]
     public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool expectedExecuted)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
-            RecentRootStore.EntryHash(sourceId, committedSlot, root).Bytes.WithoutLeadingZeros().ToArray());
-        _stateProvider.Commit(Spec);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
+        tx.RecentRootReferences = [CommitReference(committedSlot)];
 
         CallOutputTracer referencingTracer = new();
         TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: HeadSlot);
@@ -887,8 +875,7 @@ public class FrameTxProcessorTests
         Assert.That(referencing.TransactionExecuted, Is.EqualTo(expectedExecuted));
         if (!expectedExecuted)
         {
-            // Pinned to the reference check specifically: every other rejection in the outer loop also
-            // leaves TransactionExecuted false, so the weaker assertion would survive an unrelated break.
+            // Every other rejection in the outer loop also leaves TransactionExecuted false.
             Assert.That(referencing.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
             Assert.That(referencing.ErrorDescription, Does.Contain("recent root reference"));
             return;
