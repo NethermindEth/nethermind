@@ -803,6 +803,23 @@ public class FrameTxProcessorTests
         Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
     }
 
+    // The replay-protection property the set semantics exist for: if one key of a set has already moved
+    // on, the whole set is unusable at that sequence, so the transaction cannot be replayed against the
+    // keys that stayed behind.
+    [Test]
+    public void Execute_KeyedNonce_PartiallyAdvancedSetIsNotReplayable()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [(UInt256)1], nonceSeq: 0);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.NonceKeys = [1, 7];
+
+        Assert.That(Process(tx).TransactionExecuted, Is.False,
+            "key 1 is at sequence 1 while key 7 is still at 0, so no sequence satisfies the set");
+    }
+
     private static UInt256 AddressAsWord(Address address) => new(address.Bytes, isBigEndian: true);
 
     private static byte[] ApproveCode(byte scope) =>

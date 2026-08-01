@@ -63,18 +63,10 @@ public static unsafe partial class EvmInstructions
 
             // EIP-8250: consumption happens at payment approval, so the state-growth surcharge for every
             // key used for the first time is charged here, against this frame's remaining gas.
-            if (ctx.NonceKeys is { } nonceKeys)
+            if (ctx.NonceKeys is { } nonceKeys
+                && !TGasPolicy.TryConsume(ref gas, KeyedNonceManager.FirstUseSurcharge(vm.WorldState, ctx.Sender, nonceKeys)))
             {
-                ulong firstUseCount = 0;
-                foreach (UInt256 nonceKey in nonceKeys)
-                {
-                    if (KeyedNonceManager.IsFirstUse(vm.WorldState, ctx.Sender, in nonceKey)) firstUseCount++;
-                }
-
-                if (firstUseCount != 0 && !TGasPolicy.TryConsume(ref gas, firstUseCount * Eip8250Constants.KeyedNonceFirstUseGas))
-                {
-                    return EvmExceptionType.OutOfGas;
-                }
+                return EvmExceptionType.OutOfGas;
             }
         }
 

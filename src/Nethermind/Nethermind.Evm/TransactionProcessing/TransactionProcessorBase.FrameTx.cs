@@ -44,23 +44,22 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce mismatch");
         }
 
+        if (KeyedNonceManager.IsNonceSetValid(WorldState, sender, nonceKeys, tx.Nonce))
+        {
+            return TransactionResult.Ok;
+        }
+
+        // Cold path only: re-read to say which side of the sequence the transaction sits on, so a keyed
+        // transaction reports the same too-low / too-high distinction the account-nonce shape does.
         if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) || tx.Nonce >= Eip8250Constants.MaxNonceSeq)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
         }
 
-        foreach (UInt256 nonceKey in nonceKeys)
-        {
-            ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, in nonceKey);
-            if (current != tx.Nonce)
-            {
-                return (tx.Nonce < current
-                    ? TransactionResult.ErrorType.TransactionNonceTooLow
-                    : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce sequence mismatch");
-            }
-        }
-
-        return TransactionResult.Ok;
+        ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
+        return (tx.Nonce < current
+            ? TransactionResult.ErrorType.TransactionNonceTooLow
+            : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce sequence mismatch");
     }
 
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
@@ -570,6 +569,20 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
             {
                 return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+            }
+
+            // The default code approves without running any EVM code, so the EIP-8250 surcharge the
+            // APPROVE opcode charges has to be charged here too — otherwise the same transaction costs
+            // less purely because its approving account carries no code.
+            if ((allowedScope & TxFrame.ApprovePayment) != 0 && frameContext.NonceKeys is { } nonceKeys)
+            {
+                ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
+                if (surcharge > frame.GasLimit)
+                {
+                    return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                }
+
+                gasUsed = surcharge;
             }
 
             frameContext.ApprovalScopeSignal = allowedScope;
