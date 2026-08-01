@@ -24,7 +24,8 @@ public sealed class FrameTxContext(
     in UInt256 maxCost,
     in UInt256 maxPriorityFeePerGas,
     in UInt256 maxFeePerGas,
-    in UInt256 maxFeePerBlobGas)
+    in UInt256 maxFeePerBlobGas,
+    RecentRootReference[]? recentRootReferences = null)
 {
     public Address Sender { get; } = sender;
     public ulong Nonce { get; } = nonce;
@@ -35,6 +36,13 @@ public sealed class FrameTxContext(
     public UInt256 MaxPriorityFeePerGas { get; } = maxPriorityFeePerGas;
     public UInt256 MaxFeePerGas { get; } = maxFeePerGas;
     public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
+
+    /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
+    /// <remarks>
+    /// <c>RECENTROOTREFLOAD</c> reads the envelope, never the predeploy's storage, so the absent and the
+    /// empty list are indistinguishable to executing code even though they are different envelopes.
+    /// </remarks>
+    public RecentRootReference[] RecentRootReferences { get; } = recentRootReferences ?? [];
 
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }
