@@ -54,9 +54,8 @@ internal static class FusedOpcode
     public const byte Shr = 0x2D;
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
-    // Glue pairs. 0x1E is CLZ and 0x4B is SLOTNUM in this tree, so the only bytes left undefined
-    // below the 0xA5 range are 0x1F and 0x4C..0x4F; the 0xA5.. range is avoided because the
-    // frame-transaction work claims part of it. Verified against Instruction.cs, not assumed.
+    // Glue pairs. 0x1E is CLZ and 0x4B is SLOTNUM in this tree, so the bytes left undefined below
+    // 0xA5 are 0x1F and 0x4C..0x4F; 0xA5 and up is avoided, the frame-transaction work claims it.
     public const byte Push1Push1 = 0x1F;
     public const byte StaticJumpINot = 0x4F;
     public const byte AndIsZero = 0x4C;
@@ -103,7 +102,7 @@ internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ush
     public readonly byte Advance = advance;
     public readonly ushort BlockIndex = blockIndex;
     public readonly ushort Pc = pc;
-    /// <summary>In-block PUSH immediate (value for widths ≤8 bytes, else index into
+    /// <summary>In-block PUSH immediate (value for widths of 8 bytes or fewer, else index into
     /// <see cref="InstructionStream.Constants"/>); for a fused pair, the constant the op consumes.</summary>
     public readonly ulong Operand = operand;
 }
@@ -114,15 +113,14 @@ internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ush
 /// every execution of that code.
 /// </summary>
 /// <remarks>
-/// Consensus invariants: only static-gas ops are precharged. The actual gate is
-/// <c>spec.IncludePush0Instruction</c> — i.e. ANY fork &gt;= Shanghai runs the stream; there is no
-/// upper-bound fork check. The precharged gas costs are assumed fork-stable and MUST be revalidated
-/// whenever a new fork changes any of them. A JUMPDEST is a solo block; a truncated trailing PUSH stays
-/// a boundary op; nothing lands inside a fused pair; the executor recomputes the entry from the landing
-/// pc and re-meters any block entered past its charging entry (metered dispatch reads raw code, so gas
-/// stays exact). An elided JUMPDEST is the pc map's only forward mapping, and a landing that finds one
-/// (entry pc past the landing pc) charges the marker itself — the block charge that carries it was
-/// bypassed by that arrival.
+/// Consensus invariants. Only static-gas ops are precharged. The fork gate is
+/// <c>spec.IncludePush0Instruction</c>, so any fork &gt;= Shanghai runs the stream with no upper
+/// bound: the precharged costs are assumed fork-stable and MUST be revalidated whenever a fork
+/// changes one. A JUMPDEST is a solo block; a truncated trailing PUSH stays a boundary op; nothing
+/// lands inside a fused pair. The executor recomputes the entry from the landing pc and re-meters
+/// any block entered past its charging entry. An elided JUMPDEST is the pc map's only forward
+/// mapping, and a landing that finds one charges the marker itself, because the block charge that
+/// carries it was bypassed by that arrival.
 /// </remarks>
 internal sealed class InstructionStream
 {
@@ -159,8 +157,8 @@ internal sealed class InstructionStream
         Constants = constants;
         PcToEntry = pcToEntry;
 
-        // Only the fused bitwise cores index ConstantBytes; arithmetic/shift fusion reads the UInt256
-        // Constants form. Skip the big-endian copy entirely when no bitwise fusion was emitted.
+        // Only the fused bitwise cores index ConstantBytes, so skip the big-endian copy entirely
+        // when no bitwise fusion was emitted.
         if (buildConstantBytes)
         {
             ConstantBytes = new byte[constants.Length * 32];
@@ -189,8 +187,6 @@ internal sealed class InstructionStream
 
         int openBlock = -1;
         int pc = 0;
-        // ConstantBytes (the big-endian form) is read only by the fused bitwise cores; track whether any
-        // get emitted so a stream whose constants feed only arithmetic/shift fusion skips that allocation.
         bool anyBitwiseFusion = false;
         while (pc < code.Length)
         {
@@ -203,9 +199,8 @@ internal sealed class InstructionStream
             {
                 if (openBlock >= 0 && CanCarryJumpDestGas(code, pc + 1))
                 {
-                    // No entry: fall-through pays the marker as part of the block that flows into it
-                    // (straight-line ops cannot divert), and both jump flavors charge it at the jump
-                    // and land one entry past. The successor opens a fresh block below.
+                    // No entry: fall-through pays the marker with the block that flows into it, and
+                    // both jump flavors charge it at the jump and land one entry past.
                     blockGas[openBlock] += GasCostOf.JumpDest;
                     blockOpCount[openBlock]++;
                     openBlock = -1;
@@ -213,8 +208,8 @@ internal sealed class InstructionStream
                     continue;
                 }
 
-                // Solo block: a fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it,
-                // so the following ops must sit in their own separately charged block.
+                // A fused PUSH2+JUMP lands one past the JUMPDEST having self-charged it, so the ops
+                // after it need their own charged block.
                 blockGas.Add(GasCostOf.JumpDest);
                 blockOpCount.Add(1);
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
@@ -245,8 +240,7 @@ internal sealed class InstructionStream
                     // break the "advance spans the fused source bytes" invariant the landings rely on.
                     && push.Advance + size <= byte.MaxValue)
                 {
-                    // Pair becomes one entry: constant goes to the pool (one indexed load, no
-                    // per-width branching) and the pc map forgets this start (nothing lands in a pair).
+                    // The pc map forgets this start: nothing may land inside a fused pair.
                     anyBitwiseFusion |= fusedOpcode is >= FusedOpcode.Eq and <= FusedOpcode.Xor;
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
@@ -299,15 +293,13 @@ internal sealed class InstructionStream
                 && (Instruction)code[pc + 3] is Instruction.JUMP or Instruction.JUMPI
                 && TryReadStaticJumpTarget(code, pc) is int dest and >= 0)
             {
-                // PUSH2 const + JUMP/JUMPI to a validated JUMPDEST: one entry, target resolved to an
-                // entry index by the fixup pass below. Push+jump gas is self-charged at execution; the
-                // landing JUMPDEST's solo block charges itself like a taken dynamic jump would.
+                // Push+jump gas is self-charged at execution; the landing JUMPDEST's solo block
+                // charges itself, as a taken dynamic jump would.
                 bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
 
-                // An ISZERO feeding a static JUMPI inverts into the jump: its gas is already in its
-                // block's sum, so only the dispatch and the condition's stack round trip disappear.
-                // Only a non-charging entry may fold away, and both interior pcs unmap so the
-                // metered loop steps them raw.
+                // The ISZERO's gas is already in its block's sum, so only its dispatch disappears.
+                // Only a non-charging entry may fold away, and both interior pcs unmap so the metered
+                // loop steps them raw.
                 if (conditional
                     && ops.Count > 0
                     && ops[^1].Kind == StreamOpKind.InBlock
@@ -409,13 +401,10 @@ internal sealed class InstructionStream
 
     /// <summary>
     /// Folds PUSHx a; PUSHx b; binop into a single pooled push of the computed result. ADD through
-    /// SGT run the executor's own operation implementations, so those cannot disagree on semantics
-    /// (division by zero, wrapping); the bitwise ops and shifts below them are hand-mirrored from
-    /// the executor's cores — the shift guard replicates ShiftCore's saturation test — so a change
-    /// to either side must be made to both. Gas and the per-block op count are left to the caller:
-    /// the block still charges and counts every original op, the stream just stops dispatching
-    /// them. Cascades, because the folded entry is itself a const push - the (1 &lt;&lt; n) - 1
-    /// mask idiom collapses to one entry from five.
+    /// SGT run the executor's own operation implementations; the bitwise ops and shifts below them
+    /// are hand-mirrored from the executor's cores, so a change to either side must be made to both.
+    /// Gas and the per-block op count are left to the caller: the block still charges and counts
+    /// every original op. Cascades, since the folded entry is itself a const push.
     /// </summary>
     private static bool TryFoldConstantPair(List<StreamOp> ops, List<UInt256> constants, ushort[] pcToEntry, Instruction instruction, int pc, byte size)
     {
@@ -488,10 +477,9 @@ internal sealed class InstructionStream
     }
 
     /// <summary>
-    /// Fuses two adjacent glue ops into one entry when the previously emitted entry is the plain,
-    /// unfused first half. Gas is unchanged (each half's static cost is already summed into the
-    /// block) and the failure type matches per-op interpretation: the pair's single bounds check
-    /// rejects exactly the stack depths at which one of the two halves would have failed.
+    /// Fuses two adjacent glue ops into one entry. Gas is unchanged, each half's static cost is
+    /// already summed into the block, and the pair's single bounds check rejects exactly the stack
+    /// depths at which one of the two halves would have failed.
     /// </summary>
     private static bool TryFuseGluePair(ReadOnlySpan<byte> code, List<StreamOp> ops, Instruction second, int pc, out StreamOp glued)
     {
@@ -511,16 +499,14 @@ internal sealed class InstructionStream
         }
         else if (firstOp == Instruction.PUSH1 && second == Instruction.PUSH1)
         {
-            // Folding a constant into the following arithmetic op saves a dispatch AND a stack
-            // round trip, so it outranks pairing the two pushes: leave the second PUSH1 alone when
-            // the op after it would consume it.
+            // Folding into the following op saves a dispatch and a stack round trip, so it outranks
+            // pairing the pushes: leave the second PUSH1 alone when the op after it would consume it.
             if (pc + 2 < code.Length && FusedOpcode.TryMap((Instruction)code[pc + 2], out _))
             {
                 return false;
             }
 
-            // Both immediates travel in the operand: the first PUSH's value in the low byte, this
-            // one's in the next, and the executor pushes low then high in that order.
+            // Both immediates travel in the operand: first PUSH in the low byte, this one in the next.
             fused = FusedOpcode.Push1Push1;
             operand = first.Operand | ((ulong)code[pc + 1] << 8);
         }

@@ -284,8 +284,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         return code;
     }
 
-    // PUSH; AND fuses to a bitwise superinstruction that indexes ConstantBytes — exercises the path that
-    // only allocates ConstantBytes when a bitwise fusion is actually emitted.
+    // PUSH; AND fuses to a bitwise superinstruction, the only shape that allocates ConstantBytes.
     private static readonly byte[] BitwiseFusionWithConstant = Prepare.EvmCode
         .PushData(0xFF)
         .PushData(0x0F)
@@ -300,9 +299,8 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
 
     private static byte[] BuildFullStackJump(Instruction jump)
     {
-        // 1024 PUSH0 fill the stack to the limit, so the fused PUSH2 overflows on its own push exactly as the
-        // unfused PUSH2 does — the jump must never execute. The PUSH2 immediate targets the JUMPDEST so the
-        // analyzer fuses PUSH2+JUMP/JUMPI into StaticJump/StaticJumpI, which is the path under test.
+        // 1024 PUSH0 fill the stack, so the fused PUSH2 must overflow on its own push exactly as the
+        // unfused pair does and the jump must never execute.
         const int fill = 1024;
         byte[] code = new byte[fill + 6];
         code.AsSpan(0, fill).Fill((byte)Instruction.PUSH0);
@@ -319,8 +317,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static Address CalleeAddress => TestItem.AddressC;
     private static Address SolidityExampleAddress => TestItem.AddressE;
 
-    // Runtime code of Legacy stExample.solidityExample — smallest real-world reproducer of the
-    // mainnet stream divergence (CREATE child contract, then CALL into it).
+    // Runtime code of Legacy stExample.solidityExample: CREATE a child contract, then CALL into it.
     private const string SolidityExampleRuntime =
         "608060405234801561001057600080fd5b506004361061002b5760003560e01c8063b66176a714610030575b600080fd5b61004a6004803603810190610045919061018d565b61004c565b005b60405161005890610145565b604051809103906000f080158015610074573d6000803e3d6000fd5b506000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555060008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663b66176a783836040518363ffffffff1660e01b815260040161010f9291906101dc565b600060405180830381600087803b15801561012957600080fd5b505af115801561013d573d6000803e3d6000fd5b505050505050565b6101238061020683390190565b600080fd5b6000819050919050565b61016a81610157565b811461017557600080fd5b50565b60008135905061018781610161565b92915050565b600080604083850312156101a4576101a3610152565b5b60006101b285828601610178565b92505060206101c385828601610178565b9150509250929050565b6101d681610157565b82525050565b60006040820190506101f160008301856101cd565b6101fe60208301846101cd565b939250505056fe608060405267ff00ff00ff00ff0060005534801561001c57600080fd5b5060f88061002b6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063b66176a714602d575b600080fd5b60436004803603810190603f91906089565b6045565b005b806000819055508082555050565b600080fd5b6000819050919050565b6069816058565b8114607357600080fd5b50565b6000813590506083816062565b92915050565b60008060408385031215609d57609c6053565b5b600060a9858286016076565b925050602060b8858286016076565b915050925092905056fea26469706673582212209beb73a466a9b6fcce247e8e1ec0ac303febcb2192064276aa2188d57d06a98d64736f6c63430008150033a2646970667358221220223335c3b4079496a81c6cbdfc0adb8a4b8ed0637499a9301f31c89383d238e164736f6c63430008150033";
 
@@ -388,7 +385,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore),
-                "the stream interpreter did not engage — this differential proved nothing");
+                "the stream interpreter did not engage - this differential proved nothing");
             Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "success/failure must match");
             Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas must match to the unit");
             Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
@@ -433,7 +430,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     // guard the stream runs past exhaustion and reports success, diverging from the bytecode loop here.
     private static IEnumerable<TestCaseData> OutOfGasCases()
     {
-        // Boundary op: PUSH1 0; SLOAD; STOP — the ~100-gas budget can't pay the cold SLOAD (2100).
+        // Boundary op: the ~100-gas budget cannot pay the cold SLOAD (2100).
         yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH1, 0x00, (byte)Instruction.SLOAD, (byte)Instruction.STOP }, 21_100UL) { TestName = "OutOfGasOnBoundarySLoad" };
 
         // Metered fallback: a 500-PUSH0 block (cost 1000) behind a ~500-gas budget can't be precharged,
@@ -484,11 +481,9 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             "gas must match per taken-jump count: a landing that re-charges the JUMPDEST scales the error with the jump count");
     }
 
-    // An elided jump-target marker's gas rides in the block that falls into it. A table handler
-    // that consumes its successor op (the EXTCODESIZE/ISZERO peephole) arrives past that block's
-    // charging entry, so nothing has paid the marker: the landing must charge it. One shape lands
-    // directly on the marker (main-loop landing), the other lands one op earlier so the metered
-    // fallback walks onto the marker (metered handback).
+    // An elided marker's gas rides in the block that falls into it, so a handler that consumes its
+    // successor arrives past that charge and the landing must pay the marker. The two shapes land on
+    // it directly and via the metered handback.
     private static IEnumerable<TestCaseData> ElidedMarkerLandingCases()
     {
         yield return new TestCaseData(new byte[]
@@ -509,10 +504,9 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         { TestName = "MeteredWalkReachesElidedMarker" };
     }
 
-    // A linear boundary does not end its block, so the in-block entries after it are paid by the
-    // block charge - and an arrival that entered the block past that charge must not resurface
-    // into gas-free dispatch when it crosses the linear boundary. One shape walks metered onto the
-    // MSTORE, the other lands on it directly; without the routing both run the suffix uncharged.
+    // A linear boundary does not end its block, so an arrival that entered past the block charge must
+    // not resurface into gas-free dispatch when it crosses one. Without the routing both shapes run
+    // the suffix uncharged.
     private static IEnumerable<TestCaseData> LinearBoundarySuffixCases()
     {
         yield return new TestCaseData(new byte[]
@@ -534,12 +528,10 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         { TestName = "PeepholeLandsOnTheLinearBoundary" };
     }
 
-    // EXTCODESIZE's handler peeks at the next raw opcode and, for ISZERO or for GT/EQ with zero on
-    // top, computes it itself, charges its gas and steps the program counter past it. In the stream
-    // that consumed opcode is the first entry of the block the boundary opened, so the arrival lands
-    // inside a block whose charge never ran - the shape that has to keep metering rather than resume
-    // gas-free dispatch. The randomized generator cannot produce it: the GT and EQ forms need a zero
-    // sitting on the stack at exactly that point.
+    // EXTCODESIZE's handler consumes a following ISZERO, or GT/EQ with zero on top, charging its
+    // gas and stepping past it. That consumed opcode is the first entry of the block the boundary
+    // opened, so the arrival lands inside a block whose charge never ran. The randomized generator
+    // cannot produce the GT and EQ forms: they need a zero on the stack at exactly that point.
     private static IEnumerable<TestCaseData> PeepholeConsumedBlockFirstCases()
     {
         foreach ((string name, byte consumed) in new[] { ("Gt", (byte)Instruction.GT), ("Eq", (byte)Instruction.EQ) })
@@ -624,9 +616,8 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
-    // A fused static jump that targets its own block re-enters one entry past the charging point,
-    // so the loop never passes a block charge again: the cancellation probe must live on the jump
-    // path too, or an eth_call timeout is ignored until the gas cap runs out.
+    // A fused static jump into its own block re-enters past the charging point, so the loop never
+    // passes a block charge again and the jump path needs its own cancellation probe.
     [Test]
     public void StreamInterpreter_StaticJumpLoop_HonorsCancellation()
     {

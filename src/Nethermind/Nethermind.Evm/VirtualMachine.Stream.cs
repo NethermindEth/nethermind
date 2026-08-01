@@ -28,10 +28,8 @@ internal static class StreamInterpreter
     // Larger streams fall back to the metered loop; 512 KiB fits an EIP-170-sized contract of typical (~15-16x) output.
     public const int MaxStreamRetainedBytes = 512 * 1024;
 
-    // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
-    // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and
-    // no cross-core cache-line bouncing on the hot RunStream entry. Tests run single-threaded, so they
-    // observe their own thread's count. Not a true global total — that is not needed.
+    // Per-thread count of stream frames executed, read by differential tests to assert the stream
+    // engaged. [ThreadStatic] so the hot entry does a plain write, not an atomic; not a global total.
     [ThreadStatic] public static long FramesExecuted;
 }
 
@@ -313,9 +311,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         case (Instruction)FusedOpcode.StaticJump:
-                            // PUSH2 + JUMP, JUMPDEST validated at analysis; self-charges since outside any block.
-                            // Mirror the unfused PUSH2: at a full stack the PUSH2 overflows before the JUMP would
-                            // pop it, so the fast path must fail with StackOverflow rather than execute the jump.
+                            // Self-charges, being outside any block. At a full stack the unfused PUSH2
+                            // would overflow before the JUMP popped it, so fail with StackOverflow.
                             if (stack.Head >= EvmStack.MaxStackSize - 1)
                             {
                                 exceptionType = EvmExceptionType.StackOverflow;
@@ -328,9 +325,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 goto OutOfGas;
                             }
 
-                            // PUSH2, JUMP and the landed JUMPDEST all execute here. A backward jump can
-                            // loop without ever crossing a block charge, so this redirect must carry its
-                            // own cancellation probe or a cancelable frame spins until the gas cap.
+                            // A backward jump can loop without ever crossing a block charge, so this
+                            // redirect needs its own cancellation probe.
                             opCodeCount += 3;
                             if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                             {
@@ -339,14 +335,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     ThrowStreamOperationCanceledException();
                             }
 
-                            // The operand entry sits one past the JUMPDEST, whose gas this op already charged;
-                            // the shared loop-tail entryIndex++ lands there. programCounter is transiently
-                            // stale until the next entry sets it — fine, nothing reads it here.
+                            // The operand entry sits one past the JUMPDEST, whose gas this op already
+                            // charged; the shared loop-tail entryIndex++ lands there.
                             entryIndex = (int)entry.Operand - 1;
                             break;
                         case (Instruction)FusedOpcode.StaticJumpI:
-                            // Same full-stack overflow as the unfused PUSH2, which pushes the destination before
-                            // JUMPI pops it; fail with StackOverflow instead of testing the condition and jumping.
+                            // Same full-stack overflow as the unfused PUSH2, which pushes the destination
+                            // before JUMPI pops it.
                             if (stack.Head >= EvmStack.MaxStackSize - 1)
                             {
                                 exceptionType = EvmExceptionType.StackOverflow;
@@ -387,8 +382,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         default:
-                            // Unreachable: every in-block opcode has a case above. Fail closed rather than
-                            // mis-dispatch a precharged op and corrupt gas.
+                            // Unreachable: every in-block opcode has a case above. Fail closed rather
+                            // than mis-dispatch a precharged op and corrupt gas.
                             exceptionType = EvmExceptionType.BadInstruction;
                             break;
                     }
@@ -401,15 +396,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
-                // Linear boundary: a self-charging table op that always falls through on success, so
-                // the open block continues across it - table dispatch + sequential advance, no landing
-                // recompute and no block reset. The general epilogue below is for ops that redirect.
-                // A metered arrival takes that epilogue instead: its landing recompute is what routes
-                // the uncharged in-block suffix back into the metered walk.
+                // A self-charging table op that always falls through, so the open block continues
+                // across it: no landing recompute and no block reset. A metered arrival takes the
+                // general epilogue instead, whose landing recompute routes the uncharged in-block
+                // suffix back into the metered walk.
                 if (entry.Kind == StreamOpKind.BoundaryLinear && !metered)
                 {
-                    // Threshold, not a mask: block charges advance opCodeCount in strides that can step
-                    // over every multiple of the mask, so equality tests are allowed to never fire.
+                    // Threshold, not a mask: block charges advance opCodeCount in strides that can
+                    // step over every multiple of a mask, so an equality test may never fire.
                     if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                     {
                         nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
@@ -437,8 +431,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
-                // Boundary op: standard handler + epilogue. Structured control flow only —
-                // backward gotos make the loop irreducible and the JIT stops optimizing it.
+                // Structured control flow only: a backward goto makes the loop irreducible and the
+                // JIT stops optimizing it.
                 programCounter = entry.Pc;
                 if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
                 {
@@ -489,18 +483,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if ((uint)entryIndex < (uint)ops.Length)
                 {
                     // A fused table handler can land past a block's charging entry; run the rest
-                    // metered. A linear boundary counts too: it does not end its block, so the
-                    // entries after it belong to that bypassed charge.
+                    // metered. A linear boundary counts too, since it does not end its block.
                     StreamOpKind landingKind = ops[entryIndex].Kind;
                     metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock or StreamOpKind.BoundaryLinear;
 
                     if (ops[entryIndex].Pc != programCounter)
                     {
-                        // The pc map's only forward mapping is an elided jump-target marker (elision
-                        // closes the block, so markers never chain). Its gas rides in the block that
-                        // falls into it, and this arrival bypassed that charge — jumps land past the
-                        // marker having self-charged it, so reaching it here means nobody has paid.
-                        // Step it the way the bytecode loop would: count, charge, advance.
+                        // The pc map's only forward mapping is an elided jump-target marker. Its gas
+                        // rides in the block that falls into it and this arrival bypassed that charge,
+                        // so step it the way the bytecode loop would: count, charge, advance.
                         opCodeCount++;
                         if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
                         {
@@ -637,16 +628,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if ((uint)entryIndex >= (uint)ops.Length)
                 return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
-            // A linear boundary does not end its block: the entries after it are precharged by a
-            // block charge this walk bypassed, so step it raw like any interior op - the raw
-            // dispatch is the same self-charging handler - and keep metering the suffix.
+            // A linear boundary does not end its block, so the entries after it are precharged by a
+            // charge this walk bypassed: step it raw and keep metering the suffix.
             StreamOp landingOp = ops[entryIndex];
             if (landingOp.Kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock or StreamOpKind.BoundaryLinear)
                 continue;
 
-            // An entry starting past this pc means the pc holds an elided jump-target marker whose
-            // gas nobody on this path has charged: keep stepping raw so the marker's own dispatch
-            // pays it, and hand back at the entry that really starts here.
+            // An entry starting past this pc means an elided jump-target marker nobody on this path
+            // has charged: keep stepping raw so its own dispatch pays it.
             if (landingOp.Pc != programCounter)
                 continue;
 
