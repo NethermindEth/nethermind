@@ -38,15 +38,9 @@ public sealed class RecentRootReferenceDecoder : RlpDecoder<RecentRootReference>
         writer.Encode(item.Root);
     }
 
-    public void EncodeArray<TWriter>(ref TWriter writer, RecentRootReference[]? items)
+    public void EncodeArray<TWriter>(ref TWriter writer, RecentRootReference[] items)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        if (items is null)
-        {
-            writer.WriteByte(Rlp.EmptyListByte);
-            return;
-        }
-
         writer.StartSequence(GetArrayContentLength(items));
         for (int i = 0; i < items.Length; i++)
         {
@@ -56,7 +50,7 @@ public sealed class RecentRootReferenceDecoder : RlpDecoder<RecentRootReference>
 
     public override int GetLength(RecentRootReference item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item));
 
-    public int GetArrayLength(RecentRootReference[]? items) => items is null ? 1 : Rlp.LengthOfSequence(GetArrayContentLength(items));
+    public int GetArrayLength(RecentRootReference[] items) => Rlp.LengthOfSequence(GetArrayContentLength(items));
 
     private int GetArrayContentLength(RecentRootReference[] items)
     {
