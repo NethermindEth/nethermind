@@ -126,6 +126,9 @@ public class FrameTxDecoderTests
         {
             Assert.That(FrameTxSigHash.ComputeValue(legacyKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacy)));
             Assert.That(FrameTxSigHash.ComputeValue(otherKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacyKey)));
+        }
+    }
+
     // The reference list is part of the signing payload, and an absent list is a different envelope
     // from an empty one, so neither may reuse the other's hash.
     [Test]

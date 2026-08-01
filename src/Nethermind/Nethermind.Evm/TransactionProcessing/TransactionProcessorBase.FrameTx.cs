@@ -128,6 +128,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             accessTracker.WarmUp(sender);
         }
 
+        // EIP-8272: every declared reference must match the commitment RECENT_ROOT_ADDRESS holds in the
+        // pre-state, so the transaction is invalid — and the block carrying it with it — when one does not.
+        if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, header.SlotNumber, in accessTracker))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
+        }
+
         // Atomic batch state: a maximal contiguous run [i, j] where i..j-1 have ATOMIC_BATCH_FLAG
         // and j does not. On any failure inside the run, state rolls back to before the run began
         // and the remaining frames are skipped (spec: Behavior, atomic batch).
@@ -417,10 +424,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        // EIP-8272 prices the bytes its reference list adds to the payload exactly as EIP-8141 prices
+        // frame and signature data, and prepays the predeploy and storage-key accesses the checks make.
+        tokens += CountCalldataTokens(RecentRootReferences.Calldata(tx.RecentRootReferences), spec);
+
         return (ulong)Eip8141Constants.IntrinsicGasCost
                + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                + tokens * GasCostOf.TxDataZero
-               + signatureVerificationCost;
+               + signatureVerificationCost
+               + RecentRootReferences.IntrinsicGas(tx.RecentRootReferences, spec);
     }
 
     private static ulong CountCalldataTokens(ReadOnlySpan<byte> data, IReleaseSpec spec)

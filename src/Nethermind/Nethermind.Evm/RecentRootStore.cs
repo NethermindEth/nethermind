@@ -92,6 +92,10 @@ public static class RecentRootStore
         return true;
     }
 
+    /// <summary>The predeploy storage cell a reference to <paramref name="slot"/> reads.</summary>
+    public static StorageCell ReferenceCell(in ValueHash256 sourceId, ulong slot) =>
+        RingBufferCell(sourceId, slot % Eip8272Constants.RecentRootLength);
+
     private static StorageCell RingBufferCell(in ValueHash256 sourceId, ulong ringIndex) =>
         new(Eip8272Constants.RecentRootAddress, StorageKey(sourceId, ringIndex).ToUInt256());
 }
