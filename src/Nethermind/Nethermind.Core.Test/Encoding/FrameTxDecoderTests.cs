@@ -111,8 +111,7 @@ public class FrameTxDecoderTests
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
-    // The reference list is part of the signing payload, and an absent list is a different envelope
-    // from an empty one, so neither may reuse the other's hash.
+    // An absent list is a different envelope from an empty one, so neither may reuse the other's hash.
     [Test]
     public void ComputeSigHash_RecentRootReferencesChange_HashChanges()
     {
@@ -132,9 +131,7 @@ public class FrameTxDecoderTests
         }
     }
 
-    // Every rejection the reference list introduces: a tuple that is not three well-sized elements is
-    // not a reference, and a list longer than the cap is not decodable at all — both must throw rather
-    // than yield a transaction some other client would read differently.
+    // Anything another client would read differently must throw rather than decode.
     [TestCaseSource(nameof(MalformedReferenceListCases))]
     public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references)
     {

@@ -11,10 +11,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// <summary>
 /// JSON-RPC view of an EIP-8272 recent-root reference <c>[source_id, slot, root]</c>.
 /// </summary>
-/// <remarks>
-/// The reference list is part of the signing payload, so an absent list and an empty one are different
-/// transactions; the mapping preserves that distinction rather than collapsing both to <c>null</c>.
-/// </remarks>
+/// <remarks>An absent list and an empty one are different transactions; the mapping keeps them apart.</remarks>
 public class RecentRootReferenceForRpc
 {
     public Hash256 SourceId { get; set; } = Keccak.Zero;
