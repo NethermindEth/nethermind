@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -16,18 +17,12 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.CodeAnalysis;
 
 /// <summary>
-/// Randomized differential over the opcode alphabet the block analyzer treats specially: jump
-/// targets, static and dynamic jumps, the fused glue pairs, constant folds, the peephole-consumed
-/// shapes and the boundary ops that keep a block open. The hand-written differential cases cover
-/// the shapes we thought of; a cross-client gas mismatch showed that the shapes we did not think
-/// of are the ones that break, so this walks the space instead. Every generated program runs on
-/// both interpreters twice - once with ample gas and once with a seed-derived budget that starves
-/// it mid-run, which is what forces the metered fallback and the out-of-gas edges - and gas,
-/// status and output must all match exactly. Gas alone cannot see a wrong value that does not
-/// flip a branch, so the top of the stack is returned as output. A seed that fails prints its
-/// bytecode, which is the reproduction.
+/// Randomized differential between the stream interpreter and the bytecode loop. Each program runs
+/// on both twice - ample gas, then a budget that starves it mid-run - and gas, status and output
+/// must match exactly. A failing seed prints its bytecode as the reproduction.
 /// </summary>
-[TestFixture]
+// Mutates process-wide StreamInterpreter statics, so it must not run alongside other EVM tests.
+[TestFixture, NonParallelizable]
 public class StreamGasFuzzTests : VirtualMachineTestsBase
 {
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber + 4;
@@ -41,6 +36,8 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
     public void StreamExecution_MatchesByteCodeLoop_OverRandomJumpHeavyPrograms()
     {
         List<string> failures = [];
+        int completed = 0;
+        int starved = 0;
         for (int seed = 0; seed < Programs; seed++)
         {
             byte[] code = Generate(seed);
@@ -48,20 +45,28 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
             ExecutionCapture baseline = RunFor(code, useStream: false, AmpleGas);
             ExecutionCapture streamed = RunFor(code, useStream: true, AmpleGas);
             Compare(failures, seed, "ample", code, baseline, streamed);
+            if (baseline.StatusCode == Evm.StatusCode.Success) completed++;
 
-            // A budget cut somewhere inside the run starves a block precharge, so the tail executes
-            // metered from raw code - the paths a run that always completes never crosses.
             if (baseline.GasSpent > GasCostOf.Transaction)
             {
                 ulong execGas = baseline.GasSpent - GasCostOf.Transaction;
-                ulong budget = GasCostOf.Transaction + execGas * (ulong)(seed % 97) / 97;
+                ulong budget = GasCostOf.Transaction + execGas * (ulong)(1 + seed % 96) / 97;
                 ExecutionCapture tightBaseline = RunFor(code, useStream: false, budget);
                 ExecutionCapture tightStreamed = RunFor(code, useStream: true, budget);
                 Compare(failures, seed, $"tight budget {budget}", code, tightBaseline, tightStreamed);
+                if (tightBaseline.StatusCode == Evm.StatusCode.Failure) starved++;
             }
 
             if (failures.Count >= 5)
                 break;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.GreaterThan(Programs / 2),
+                "most generated programs must run to completion, or the comparison is between two immediate halts");
+            Assert.That(starved, Is.GreaterThan(Programs / 4),
+                "the tight-budget pass must actually run out of gas, or the metered fallback is never crossed");
         }
 
         if (failures.Count > 0)
@@ -87,11 +92,9 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// Builds a program whose jump targets are always real JUMPDESTs, so the run exercises jump
-    /// accounting rather than invalid-destination failures, and whose backward jumps are all
-    /// conditional on a decrementing counter so it terminates. Weighted toward the constructs the
-    /// analyzer rewrites. Ends by returning the top of the stack, so a wrong value diverges even
-    /// when it never flips a branch or moves gas.
+    /// Builds a program weighted toward the constructs the analyzer rewrites. Jump targets are
+    /// always real JUMPDESTs and conditional branches decrement the word they test, so a backward
+    /// jump makes progress towards leaving the loop instead of spinning until the gas runs out.
     /// </summary>
     private static byte[] Generate(int seed)
     {
@@ -99,10 +102,8 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
         List<byte> code = [];
         List<int> jumpDests = [];
 
-        // A leading counter lets generated loops decrement toward zero instead of spinning, and a
-        // dozen words under it give the deep DUP and SWAP forms something to reach - the first
-        // version of this generator only ever produced depth one and two, which is why it passed
-        // while a permutation-coalescing bug that only shows past that depth broke every real call.
+        // A leading counter for loops to decrement, and a dozen words under it so the deep DUP and
+        // SWAP forms have something to reach.
         code.AddRange([(byte)Instruction.PUSH1, (byte)(1 + random.Next(3))]);
         for (int i = 0; i < 12; i++)
         {
@@ -113,7 +114,7 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
         int slots = 6 + random.Next(18);
         for (int i = 0; i < slots; i++)
         {
-            switch (random.Next(20))
+            switch (random.Next(24))
             {
                 case 0:
                     jumpDests.Add(code.Count);
@@ -138,8 +139,7 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.ISZERO]);
                     break;
                 case 7:
-                    // A run of several permutation ops at mixed depths, the shape the coalescing pass
-                    // rewrites and the shape the first generator never produced.
+                    // Permutation ops at mixed depths, the shape the coalescing pass rewrites.
                     for (int k = random.Next(2, 6); k > 0; k--)
                     {
                         code.Add(random.Next(3) switch
@@ -155,29 +155,35 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     code.AddRange([(byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE]);
                     break;
                 case 9 when jumpDests.Count > 0:
-                    // Static conditional jump: PUSH2 target + JUMPI, the fused shape.
+                    // Static conditional jump, the fused shape.
                     int condDest = jumpDests[random.Next(jumpDests.Count)];
-                    code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.ISZERO, (byte)Instruction.PUSH2, (byte)(condDest >> 8), (byte)condDest, (byte)Instruction.JUMPI]);
+                    code.AddRange([
+                        (byte)Instruction.PUSH1, 0x01, (byte)Instruction.SWAP1, (byte)Instruction.SUB,
+                        (byte)Instruction.DUP1,
+                        (byte)Instruction.PUSH2, (byte)(condDest >> 8), (byte)condDest, (byte)Instruction.JUMPI]);
                     break;
                 case 10 when jumpDests.Count > 0:
-                    // Dynamic conditional jump: the target arrives through the stack.
+                    // Dynamic conditional jump: the SWAP1 stops the static-jump fusion from
+                    // claiming the pair, which is the point of this arm.
                     int dynDest = jumpDests[random.Next(jumpDests.Count)];
-                    code.AddRange([(byte)Instruction.PUSH1, 0x00, (byte)Instruction.PUSH2, (byte)(dynDest >> 8), (byte)dynDest, (byte)Instruction.SWAP1, (byte)Instruction.JUMPI]);
+                    code.AddRange([
+                        (byte)Instruction.PUSH2, (byte)(dynDest >> 8), (byte)dynDest,
+                        (byte)Instruction.PUSH1, (byte)random.Next(2),
+                        (byte)Instruction.SWAP1, (byte)Instruction.JUMPI]);
                     break;
                 case 11:
-                    // AND alone and AND feeding ISZERO, the fused compare-to-zero pair.
                     code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(256), (byte)Instruction.PUSH1, (byte)random.Next(256), (byte)Instruction.AND]);
                     if (random.Next(2) == 0) code.Add((byte)Instruction.ISZERO);
                     break;
                 case 12:
-                    // Division and modulo, with a zero divisor often enough to hit that fold.
+                    // Zero divisor often enough to hit that fold.
                     code.AddRange([
                         (byte)Instruction.PUSH1, (byte)(random.Next(4) == 0 ? 0 : random.Next(256)),
                         (byte)Instruction.PUSH1, (byte)random.Next(256),
                         (byte)(random.Next(2) == 0 ? Instruction.DIV : Instruction.MOD)]);
                     break;
                 case 13:
-                    // Shifts, sometimes past 255 so saturation folds and cores agree.
+                    // Sometimes past 255, so saturation folds and cores must agree.
                     if (random.Next(3) == 0)
                         code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(256), (byte)Instruction.PUSH2, 0x01, 0x00]);
                     else
@@ -185,7 +191,7 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     code.Add((byte)(random.Next(2) == 0 ? Instruction.SHL : Instruction.SHR));
                     break;
                 case 14:
-                    // Wide constant pair feeding an operator: the fold path through the constant pool.
+                    // The fold path through the constant pool.
                     random.NextBytes(wide);
                     code.Add((byte)Instruction.PUSH32);
                     code.AddRange(wide);
@@ -195,14 +201,13 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     code.Add((byte)(random.Next(3) switch { 0 => Instruction.ADD, 1 => Instruction.MUL, _ => Instruction.AND }));
                     break;
                 case 15:
-                    // Unconditional static jump to the very next instruction: the fused StaticJump
-                    // shape, and a jump arrival on a marker whose gas the analyzer may have elided.
+                    // Fused StaticJump, arriving on a marker whose gas the analyzer may have elided.
                     int target = code.Count + 4;
                     code.AddRange([(byte)Instruction.PUSH2, (byte)(target >> 8), (byte)target, (byte)Instruction.JUMP, (byte)Instruction.JUMPDEST]);
                     jumpDests.Add(target);
                     break;
                 case 16:
-                    // Boundary ops that keep a block open - the widest behavioural change.
+                    // Boundary ops that keep a block open.
                     switch (random.Next(5))
                     {
                         case 0: code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(64), (byte)Instruction.MLOAD]); break;
@@ -214,12 +219,34 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
 
                     break;
                 case 17:
-                    // A table handler that consumes its successor and lands past it - adjacent to a
-                    // random JUMPDEST from case 0 this is the elided-marker landing.
+                    // A handler that consumes its successor and lands past it; next to a JUMPDEST
+                    // from case 0 this is the elided-marker landing.
                     code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(256), (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO]);
                     break;
+                case 22:
+                    // Constant shift feeding a subtraction, at saturating amounts too.
+                    code.AddRange([
+                        (byte)Instruction.PUSH1, (byte)random.Next(256),
+                        (byte)Instruction.PUSH1, (byte)(random.Next(4) == 0 ? 0xFF : random.Next(40)),
+                        (byte)Instruction.SHL, (byte)Instruction.SUB]);
+                    break;
+                case 21:
+                    code.AddRange([
+                        (byte)Instruction.PUSH1, (byte)random.Next(256),
+                        (byte)Instruction.PUSH1, (byte)random.Next(256),
+                        (byte)Instruction.SUB, (byte)Instruction.AND]);
+                    break;
+                case 19:
+                    code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(256), (byte)((byte)Instruction.DUP1 + random.Next(8))]);
+                    break;
+                case 20:
+                    code.AddRange([
+                        (byte)Instruction.PUSH1, (byte)random.Next(256),
+                        (byte)Instruction.PUSH1, (byte)random.Next(9),
+                        (byte)(random.Next(4) switch { 0 => Instruction.SHL, 1 => Instruction.SHR, 2 => Instruction.ADD, _ => Instruction.DIV })]);
+                    break;
                 case 18:
-                    // Pushes of every width, so folds and pool references cross the PUSH8/PUSH9 seam.
+                    // Every push width, so folds and pool references cross the PUSH8/PUSH9 seam.
                     int width = 3 + random.Next(30);
                     code.Add((byte)((byte)Instruction.PUSH1 + width - 1));
                     for (int k = 0; k < width; k++) code.Add((byte)random.Next(256));
@@ -230,8 +257,8 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
             }
         }
 
-        // Return the top of the stack so a wrong value is observable; an empty stack underflows
-        // identically on both interpreters, which is a comparison too.
+        // Return the top of the stack, so a wrong value is observable even when it never flips a
+        // branch or moves gas.
         code.AddRange([
             (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE,
             (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.RETURN]);
@@ -254,12 +281,15 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
             {
                 StreamInterpreter.BuildThreshold = 1;
                 CodeInfo codeInfo = CodeInfoRepository.GetCachedCodeInfo(Recipient, Spec);
-                if (!System.Threading.SpinWait.SpinUntil(() => codeInfo.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)))
-                    Assert.Fail("the stream did not build within the timeout");
+                if (!SpinWait.SpinUntil(() => codeInfo.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)))
+                    Assert.Fail($"the stream did not build within the timeout for code 0x{Convert.ToHexString(code)}");
             }
 
+            long framesBefore = StreamInterpreter.FramesExecuted;
             ExecutionCapture tracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+            if (useStream && StreamInterpreter.FramesExecuted == framesBefore)
+                Assert.Fail($"the stream did not engage, so this comparison proved nothing, for code 0x{Convert.ToHexString(code)}");
             return tracer;
         }
         finally
