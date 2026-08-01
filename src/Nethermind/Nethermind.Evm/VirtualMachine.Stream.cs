@@ -175,6 +175,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.Shr:
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in constants[(int)entry.Operand]);
                             break;
+                        case (Instruction)FusedOpcode.ShlSub:
+                            exceptionType = EvmInstructions.FusedShlSubCore(ref stack, in constants[(int)entry.Operand]);
+                            break;
                         case (Instruction)FusedOpcode.SubAnd:
                             exceptionType = EvmInstructions.FusedSubAndCore(ref stack);
                             break;

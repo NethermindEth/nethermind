@@ -65,6 +65,7 @@ internal static class FusedOpcode
     // 0xA5..0xB4 is left alone: the frame-transaction work claims part of that range.
     public const byte Push1Dup = 0xC0;
     public const byte SubAnd = 0xC1;
+    public const byte ShlSub = 0xC2;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
@@ -581,6 +582,14 @@ internal sealed class InstructionStream
             // Swap depth as the executor takes it: SWAP1 exchanges the top with the slot two down.
             fused = FusedOpcode.SwapPop;
             operand = (ulong)(firstOp - Instruction.SWAP1 + 2);
+        }
+        else if (first.Opcode == FusedOpcode.Shl && second == Instruction.SUB)
+        {
+            // The already-fused shift keeps its pooled constant and absorbs the subtraction, so the
+            // shifted value never reaches the stack. Top pair on the wave-two histogram after the
+            // glued pushes.
+            fused = FusedOpcode.ShlSub;
+            operand = first.Operand;
         }
         else if (firstOp == Instruction.SUB && second == Instruction.AND)
         {
