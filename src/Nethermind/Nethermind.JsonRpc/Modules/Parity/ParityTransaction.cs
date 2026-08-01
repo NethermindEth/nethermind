@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             V = (UInt256)transaction.Signature.V;
             StandardV = transaction.Signature.RecoveryId;
             // TKS: it does not seem to work with CREATE2
-            Creates = transaction.IsContractCreation ? ContractAddress.From(transaction.SenderAddress, transaction.Nonce) : null;
+            Creates = transaction.CreatesContract ? ContractAddress.From(transaction.SenderAddress, transaction.Nonce) : null;
         }
     }
 }

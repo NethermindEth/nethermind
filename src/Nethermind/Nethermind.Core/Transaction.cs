@@ -78,6 +78,16 @@ namespace Nethermind.Core
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
 
+        /// <summary>Whether the transaction creates a contract at the top level, so a receipt names a <c>contractAddress</c>.</summary>
+        /// <remarks>
+        /// An EIP-8141 frame transaction carries no <c>to</c> field at all, which makes
+        /// <see cref="IsContractCreation"/> true for it, yet it creates nothing at the top level: a
+        /// creation happens inside a deploy frame through <c>CREATE</c>, at an address the frame
+        /// determines. Reporting a top-level contract address for one names an account that was never
+        /// created, and every site that derives it independently invents a different address.
+        /// </remarks>
+        public bool CreatesContract => IsContractCreation && Type != TxType.FrameTx;
+
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
         public bool HasAuthorizationList =>
             Type == TxType.SetCode &&
