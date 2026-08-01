@@ -534,6 +534,62 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         { TestName = "PeepholeLandsOnTheLinearBoundary" };
     }
 
+    // EXTCODESIZE's handler peeks at the next raw opcode and, for ISZERO or for GT/EQ with zero on
+    // top, computes it itself, charges its gas and steps the program counter past it. In the stream
+    // that consumed opcode is the first entry of the block the boundary opened, so the arrival lands
+    // inside a block whose charge never ran - the shape that has to keep metering rather than resume
+    // gas-free dispatch. The randomized generator cannot produce it: the GT and EQ forms need a zero
+    // sitting on the stack at exactly that point.
+    private static IEnumerable<TestCaseData> PeepholeConsumedBlockFirstCases()
+    {
+        foreach ((string name, byte consumed) in new[] { ("Gt", (byte)Instruction.GT), ("Eq", (byte)Instruction.EQ) })
+        {
+            yield return new TestCaseData(new byte[]
+            {
+                (byte)Instruction.PUSH1, 0x00,
+                (byte)Instruction.PUSH1, 0x04,
+                (byte)Instruction.EXTCODESIZE,
+                consumed,
+                (byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x02, (byte)Instruction.ADD,
+                (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE,
+                (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.RETURN,
+            })
+            { TestName = $"Peephole{name}ConsumesTheBlockFirstEntry" };
+        }
+
+        // The ISZERO form fires unconditionally, and here the consumed opcode is followed by a jump
+        // target, so the landing crosses a block boundary as well.
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x04,
+            (byte)Instruction.EXTCODESIZE,
+            (byte)Instruction.ISZERO,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x02, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.RETURN,
+        })
+        { TestName = "PeepholeIsZeroConsumesTheBlockFirstEntryBeforeAJumpTarget" };
+    }
+
+    [TestCaseSource(nameof(PeepholeConsumedBlockFirstCases))]
+    public void StreamInterpreter_PeepholeConsumingABlocksFirstEntry_MatchesByteCodeLoop(byte[] code)
+    {
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), "the stream did not engage");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "status must match");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+                "a handler that consumes the opcode a block charges first must not leave the block's gas unpaid or paid twice");
+            Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
+        }
+    }
+
     [TestCaseSource(nameof(LinearBoundarySuffixCases))]
     public void StreamInterpreter_BlockEnteredPastItsCharge_PaysTheLinearBoundarySuffix(byte[] code)
     {
