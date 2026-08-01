@@ -113,6 +113,34 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Fused <c>SUB; AND</c>, the second most frequent adjacent pair the first fusion wave left
+    /// behind on the measured workload - masking a difference. Three words in, one out, no
+    /// intermediate write to the stack. One depth check covers both halves for the same reason the
+    /// pop pair needs only one: the depths it rejects are exactly the depths at which one of the two
+    /// would have underflowed, and an exceptional halt discards the stack either way.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedSubAndCore(ref EvmStack stack)
+    {
+        if (stack.Head < 3) return EvmExceptionType.StackUnderflow;
+
+        ref byte top = ref stack.PeekBytesByRef();
+        EvmStack.ReadUInt256FromSlot(ref top, out UInt256 a);
+        ref byte second = ref Subtract(ref top, EvmStack.WordSize);
+        EvmStack.ReadUInt256FromSlot(ref second, out UInt256 b);
+        OpSub.Operation(in a, in b, out UInt256 difference);
+
+        ref byte third = ref Subtract(ref second, EvmStack.WordSize);
+        EvmStack.ReadUInt256FromSlot(ref third, out UInt256 mask);
+        UInt256 result = difference & mask;
+
+        EvmStack.WriteUInt256ToSlot(ref third, in result);
+        stack.Head -= 2;
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
     /// Fused <c>PUSH1 v; DUPn</c>, with the immediate in the low byte of the operand and the dup
     /// depth in the next. The push lands first, so the duplicate is taken relative to a stack that
     /// already holds it - depth one duplicates the pushed value itself. Failure order matches the
