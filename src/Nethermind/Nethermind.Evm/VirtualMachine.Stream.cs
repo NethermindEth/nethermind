@@ -84,7 +84,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             metered = false;
                             opCodeCount += blockOpCount[entry.BlockIndex];
-                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                            if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                             {
                                 nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
                                 if (_txTracer.IsCancelled)
@@ -156,16 +156,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Eq:
-                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, in constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.And:
-                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack, in constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.Or:
-                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, in constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.Xor:
-                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, in constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.Shl:
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, in constants[(int)entry.Operand]);
@@ -299,7 +299,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                                 // Taken backward jumps can loop without a block charge: probe here too.
                                 opCodeCount++;
-                                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                                if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                                 {
                                     nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
                                     if (_txTracer.IsCancelled)
@@ -328,7 +328,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             // A backward jump can loop without ever crossing a block charge, so this
                             // redirect needs its own cancellation probe.
                             opCodeCount += 3;
-                            if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                            if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                             {
                                 nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
                                 if (_txTracer.IsCancelled)
@@ -366,7 +366,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                                 // Taken backward jumps can loop without a block charge: probe here too.
                                 opCodeCount++;
-                                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                                if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                                 {
                                     nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
                                     if (_txTracer.IsCancelled)
@@ -404,7 +404,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     // Threshold, not a mask: block charges advance opCodeCount in strides that can
                     // step over every multiple of a mask, so an equality test may never fire.
-                    if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                    if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                     {
                         nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
                         if (_txTracer.IsCancelled)
@@ -434,7 +434,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // Structured control flow only: a backward goto makes the loop irreducible and the
                 // JIT stops optimizing it.
                 programCounter = entry.Pc;
-                if (TCancelable.IsActive && opCodeCount >= nextCancellationCheck)
+                if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                 {
                     nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
                     if (_txTracer.IsCancelled)

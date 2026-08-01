@@ -115,7 +115,7 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType FusedConstBitwiseCore<TOpBitwise>(ref EvmStack stack, ref byte constantSlot)
+    internal static EvmExceptionType FusedConstBitwiseCore<TOpBitwise>(ref EvmStack stack, ref readonly byte constantSlot)
         where TOpBitwise : struct, IOpBitwise
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)

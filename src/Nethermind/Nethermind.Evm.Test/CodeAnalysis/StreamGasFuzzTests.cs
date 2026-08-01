@@ -281,7 +281,7 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
 
             long framesBefore = StreamInterpreter.FramesExecuted;
             ExecutionCapture tracer = new();
-            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), new CancellationTxTracer(tracer));
             if (useStream && StreamInterpreter.FramesExecuted == framesBefore)
                 Assert.Fail($"the stream did not engage, so this comparison proved nothing, for code 0x{Convert.ToHexString(code)}");
             return tracer;
