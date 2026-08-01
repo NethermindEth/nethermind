@@ -164,11 +164,28 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         {
             txReceipt.Payer = _frameTxPayer;
             txReceipt.FrameReceipts = _frameTxReceipts;
+            // EIP-8141 keeps only the per-frame statuses in the consensus receipt, so the single
+            // status callers still expect is derived here rather than at the tracer call, which
+            // would have to drop the frame logs the block's bloom is built from.
+            txReceipt.StatusCode = AllFramesSucceeded(_frameTxReceipts) ? txReceipt.StatusCode : StatusCode.Failure;
             _frameTxPayer = null;
             _frameTxReceipts = null;
         }
 
         return txReceipt;
+    }
+
+    private static bool AllFramesSucceeded(TxFrameReceipt[]? frameReceipts)
+    {
+        foreach (TxFrameReceipt frameReceipt in frameReceipts ?? [])
+        {
+            if (frameReceipt.Status != TxFrameReceipt.StatusSuccess)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>

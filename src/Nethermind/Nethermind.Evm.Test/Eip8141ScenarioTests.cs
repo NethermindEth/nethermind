@@ -61,6 +61,28 @@ public class Eip8141ScenarioTests
     [TearDown]
     public void TearDown() => _worldStateCloser?.Dispose();
 
+    // EIP-8141 drops the single status from the consensus receipt, so the one JSON-RPC still reports
+    // is derived; a client deriving it differently disagrees with us on every such receipt. The frame
+    // logs must survive that derivation because the block's bloom is built from them.
+    [TestCase(false, ExpectedResult = StatusCode.Success, TestName = "AllFramesSucceed_ReceiptReportsSuccess")]
+    [TestCase(true, ExpectedResult = StatusCode.Failure, TestName = "AnyFrameFails_ReceiptReportsFailure")]
+    public byte FrameTx_DerivesTheReceiptStatusFromEveryFrame(bool frameReverts)
+    {
+        Address logger = TestItem.AddressE;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(logger, Prepare.EvmCode.Log(0, 0).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, frameReverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0, SelfVerifyFrame(), SenderFrame(logger), SenderFrame(Recipient));
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(receipt.Logs, Has.Length.EqualTo(1), "a derived failure must not discard the frame logs");
+        AssertBloomAndReceiptLogsAgree(receipt);
+        return receipt.StatusCode;
+    }
+
     // Spec Example 1a: self-relayed ETH transfer — VERIFY approves execution+payment, SENDER moves value.
     [Test]
     public void EthTransfer_MovesValueAndChargesGasToPayer()
