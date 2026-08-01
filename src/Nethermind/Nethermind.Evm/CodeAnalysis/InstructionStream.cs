@@ -50,6 +50,8 @@ internal static class FusedOpcode
     public const byte Shr = 0x2D;
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
+    // 0xA5..0xB4 is left alone: the frame-transaction work claims part of that range.
+    public const byte ShlSub = 0xC2;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
@@ -189,6 +191,22 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
+                    && instruction == Instruction.SUB
+                    && ops.Count > 0
+                    && ops[^1].Opcode == FusedOpcode.Shl
+                    && ops[^1].Kind is StreamOpKind.FusedInBlock or StreamOpKind.FusedBlockFirst
+                    && ops[^1].Advance + size <= byte.MaxValue)
+                {
+                    // A constant shift feeding a subtraction: the entry keeps its pooled shift
+                    // amount and consumes the word beneath, so the shifted value never reaches the
+                    // stack. The block still charges and counts both original operations.
+                    StreamOp shift = ops[^1];
+                    blockGas[openBlock] += cost;
+                    pcToEntry[pc] = InvalidEntry;
+                    ops[^1] = new StreamOp(FusedOpcode.ShlSub, shift.Kind, shift.Pc, shift.BlockIndex,
+                        (byte)(shift.Advance + size), shift.Operand);
+                }
+                else if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {

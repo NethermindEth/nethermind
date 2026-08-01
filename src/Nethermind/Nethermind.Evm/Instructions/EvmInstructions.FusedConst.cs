@@ -76,4 +76,30 @@ public static partial class EvmInstructions
         WriteUnaligned(ref topRef, TOpBitwise.Operation(in a, in b));
         return EvmExceptionType.None;
     }
+    /// <summary>
+    /// Fused <c>PUSH shift; SHL; SUB</c> - a constant shift feeding a subtraction. The shift amount
+    /// is the analysis-time constant, so only two stack words are read and one is written. The
+    /// leading full-stack check stands in for the push that was fused away, exactly as the plain
+    /// fused shift does, and the saturation at 256 or more mirrors ShiftCore.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedShlSubCore(ref EvmStack stack, in UInt256 shift)
+    {
+        if (stack.Head == EvmStack.MaxStackSize - 1) return EvmExceptionType.StackOverflow;
+        if (stack.Head < 2) return EvmExceptionType.StackUnderflow;
+
+        ref byte top = ref stack.PeekBytesByRef();
+        EvmStack.ReadUInt256FromSlot(ref top, out UInt256 value);
+        UInt256 shifted = !shift.IsUint64 || shift.u0 >= 256 ? default : value << (int)shift.u0;
+
+        ref byte second = ref Subtract(ref top, EvmStack.WordSize);
+        EvmStack.ReadUInt256FromSlot(ref second, out UInt256 subtrahend);
+        OpSub.Operation(in shifted, in subtrahend, out UInt256 result);
+
+        EvmStack.WriteUInt256ToSlot(ref second, in result);
+        stack.Head--;
+        return EvmExceptionType.None;
+    }
+
 }
