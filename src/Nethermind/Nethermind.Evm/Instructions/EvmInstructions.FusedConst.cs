@@ -76,4 +76,31 @@ public static partial class EvmInstructions
         WriteUnaligned(ref topRef, TOpBitwise.Operation(in a, in b));
         return EvmExceptionType.None;
     }
+    /// <summary>
+    /// Fused <c>SUB; AND</c> - masking a difference. Three words in, one out, with no intermediate
+    /// write to the stack. One depth check covers both halves: the depths it rejects are exactly
+    /// the depths at which one of the two would have underflowed, and an exceptional halt discards
+    /// the stack either way.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedSubAndCore(ref EvmStack stack)
+    {
+        if (stack.Head < 3) return EvmExceptionType.StackUnderflow;
+
+        ref byte top = ref stack.PeekBytesByRef();
+        EvmStack.ReadUInt256FromSlot(ref top, out UInt256 a);
+        ref byte second = ref Subtract(ref top, EvmStack.WordSize);
+        EvmStack.ReadUInt256FromSlot(ref second, out UInt256 b);
+        OpSub.Operation(in a, in b, out UInt256 difference);
+
+        ref byte third = ref Subtract(ref second, EvmStack.WordSize);
+        EvmStack.ReadUInt256FromSlot(ref third, out UInt256 mask);
+        UInt256 result = difference & mask;
+
+        EvmStack.WriteUInt256ToSlot(ref third, in result);
+        stack.Head -= 2;
+        return EvmExceptionType.None;
+    }
+
 }
