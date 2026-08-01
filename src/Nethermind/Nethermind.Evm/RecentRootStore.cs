@@ -18,12 +18,11 @@ public static class RecentRootStore
     private const int AddressLength = Address.Size;
     private const int SlotLength = sizeof(ulong);
 
-    // Consensus-critical, spec-ambiguous: 32-byte-padded address matches the only existing implementation (spec text says 20 bytes).
     public static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
     {
-        Span<byte> input = stackalloc byte[HashLength + HashLength];
-        sourceAddress.Bytes.CopyTo(input.Slice(HashLength - AddressLength, AddressLength));
-        salt.Bytes.CopyTo(input.Slice(HashLength));
+        Span<byte> input = stackalloc byte[AddressLength + HashLength];
+        sourceAddress.Bytes.CopyTo(input);
+        salt.Bytes.CopyTo(input.Slice(AddressLength));
         return ValueKeccak.Compute(input);
     }
 
