@@ -142,7 +142,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.DecodedMaxFeePerGas,
             tx.MaxFeePerBlobGas.GetValueOrDefault(),
             tx.NonceKeys,
-            WorldState.GetNonce(sender));
+            WorldState.GetNonce(sender),
+            tx.RecentRootReferences);
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
@@ -162,6 +163,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             accessTracker.WarmUp(sender);
+        }
+
+        // EIP-8272: every declared reference must match the commitment RECENT_ROOT_ADDRESS holds in the
+        // pre-state, so the transaction is invalid — and the block carrying it with it — when one does not.
+        if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, header.SlotNumber, in accessTracker))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
         }
 
         // Atomic batch state: a maximal contiguous run [i, j] where i..j-1 have ATOMIC_BATCH_FLAG
@@ -463,9 +471,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        // EIP-8272 prices the bytes its reference list adds to the payload exactly as EIP-8141 prices
+        // frame and signature data, so they are floor-priced too; its access prepayment is not data and
+        // belongs with the other mandatory costs.
+        ReadOnlySpan<byte> referenceCalldata = RecentRootReferences.Calldata(tx.RecentRootReferences);
+        tokens += CountCalldataTokens(referenceCalldata, spec);
+        dataLength += (ulong)referenceCalldata.Length;
+
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
-                             + signatureVerificationCost;
+                             + signatureVerificationCost
+                             + RecentRootReferences.IntrinsicGas(tx.RecentRootReferences, spec);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         return mandatoryGas + tokens * GasCostOf.TxDataZero;

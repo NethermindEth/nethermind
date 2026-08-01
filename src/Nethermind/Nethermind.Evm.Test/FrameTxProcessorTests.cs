@@ -53,6 +53,9 @@ public class FrameTxProcessorTests
     {
         // Switched on here so a test can turn it back off and assert the fork gate rather than the feature.
         _spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true };
+        // The prototype fork carries EIP-8141 only; the later frame-transaction EIPs are switched on
+        // here so a test can turn one back off and assert the fork gate rather than the feature.
+        _spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true, IsEip8272Enabled = true };
         _specProvider = new TestSpecProvider(_spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
@@ -743,12 +746,13 @@ public class FrameTxProcessorTests
         }
     }
 
-    private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
+    private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null, ulong? slotNumber = null)
     {
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(baseFeePerGas)
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
+            .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
         return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
     }
@@ -911,6 +915,152 @@ public class FrameTxProcessorTests
     private static byte[] ApproveCode(byte scope) =>
         // APPROVE stack order (top to bottom): offset, length, scope.
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    // Application validation logic binds a proof's public inputs to this tuple.
+    [TestCase((byte)0, TestName = "Execute_RecentRootRefLoad_SourceId")]
+    [TestCase((byte)1, TestName = "Execute_RecentRootRefLoad_Slot")]
+    [TestCase((byte)2, TestName = "Execute_RecentRootRefLoad_Root")]
+    public void Execute_RecentRootRefLoad_ReadsTheDeclaredReferenceField(byte field)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Spec stack order: field on top, index second.
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0).PushData(field).Op(Instruction.RECENTROOTREFLOAD).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        RecentRootReference reference = CommitReference(ReferencedSlot);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.RecentRootReferences = [reference];
+
+        TransactionResult r = Process(tx, slotNumber: HeadSlot);
+        Assert.That(r.TransactionExecuted, Is.True, r.ErrorDescription ?? r.Error.ToString());
+        AssertStorage(Observer, 0, field switch
+        {
+            0 => new UInt256(reference.SourceId.Bytes, isBigEndian: true),
+            1 => (UInt256)reference.Slot,
+            _ => new UInt256(reference.Root.Bytes, isBigEndian: true),
+        });
+    }
+
+    // Asserted through a sentinel stored after the opcode: a silent zero push would also leave slot 0
+    // at zero, and it would read as a real reference committing to the zero root.
+    [TestCase(1, 0, TestName = "Execute_RecentRootRefLoad_IndexPastTheDeclaredList_Halts")]
+    [TestCase(0, 3, TestName = "Execute_RecentRootRefLoad_UndefinedField_Halts")]
+    public void Execute_RecentRootRefLoad_OutOfRange_ExceptionallyHalts(int index, int field)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData((UInt256)index).PushData((UInt256)field).Op(Instruction.RECENTROOTREFLOAD).Op(Instruction.POP)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.RecentRootReferences = [CommitReference(ReferencedSlot)];
+
+        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, UInt256.Zero);
+    }
+
+    [TestCase(0, TestName = "Execute_TxParamReferenceCount_WithoutReferences")]
+    [TestCase(2, TestName = "Execute_TxParamReferenceCount_WithReferences")]
+    public void Execute_TxParam_ReportsTheReferenceCount(int referenceCount)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x0F).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        RecentRootReference[] references = new RecentRootReference[referenceCount];
+        for (int i = 0; i < referenceCount; i++) references[i] = CommitReference(ReferencedSlot - (ulong)i);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.RecentRootReferences = references;
+
+        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, (UInt256)referenceCount);
+    }
+
+    // Asserted through a sentinel: an ungated read returns 0, which is also what a halted frame leaves.
+    [TestCase(true, ExpectedResult = 0UL, TestName = "Execute_ReferenceCountTxParamBeforeTheFork_Halts")]
+    [TestCase(false, ExpectedResult = 1UL, TestName = "Execute_ReferenceCountTxParamAfterTheFork_Reads")]
+    public ulong Execute_ReferenceCountTxParam_IsGatedOnTheFork(bool beforeTheFork)
+    {
+        _spec.IsEip8272Enabled = !beforeTheFork;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x0F).Op(Instruction.TXPARAM).Op(Instruction.POP)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
+        return (ulong)_stateProvider.Get(new StorageCell(Observer, 0)).ToUnsignedBigInteger();
+    }
+
+    private const ulong HeadSlot = 1_001;
+    private const ulong ReferencedSlot = 1_000;
+
+    /// <summary>Commits a recent root for <paramref name="slot"/> so a reference to it validates.</summary>
+    private RecentRootReference CommitReference(ulong slot)
+    {
+        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot),
+            RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
+        _stateProvider.Commit(Spec);
+        return new RecentRootReference(sourceId, slot, root);
+    }
+
+    // A declared reference is only satisfied by the commitment the predeploy holds for that slot. The
+    // committed case also proves the reference's intrinsic gas is charged.
+    [TestCase(1_000UL, true, TestName = "a committed reference inside the window executes")]
+    [TestCase(1_001UL, false, TestName = "a reference to the current slot is not yet referenceable")]
+    [TestCase(9_193UL, false, TestName = "a reference older than the usable window has been overwritten")]
+    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool expectedExecuted)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.RecentRootReferences = [CommitReference(committedSlot)];
+
+        CallOutputTracer referencingTracer = new();
+        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: HeadSlot);
+
+        Assert.That(referencing.TransactionExecuted, Is.EqualTo(expectedExecuted));
+        if (!expectedExecuted)
+        {
+            // Every other rejection in the outer loop also leaves TransactionExecuted false.
+            Assert.That(referencing.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(referencing.ErrorDescription, Does.Contain("recent root reference"));
+            return;
+        }
+
+        CallOutputTracer plainTracer = new();
+        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: HeadSlot);
+
+        Assert.That(unreferencing.TransactionExecuted, Is.True);
+        Assert.That(referencingTracer.GasSpent, Is.GreaterThan(plainTracer.GasSpent),
+            "the reference's calldata and prepaid accesses must be charged");
+    }
+
+    // An empty reference list is a different envelope from an absent one and still occupies a byte on
+    // the wire, so it is priced: EIP-8272 short-circuits the per-reference term at zero references, not
+    // the calldata term over `rlp(recent_root_references)`.
+    [Test]
+    public void Execute_EmptyRecentRootReferenceList_IsPricedAsTheBytesItAdds()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        Transaction empty = FrameTx(nonce: 0, SelfVerifyFrame());
+        empty.RecentRootReferences = [];
+        CallOutputTracer emptyTracer = new();
+        CallOutputTracer absentTracer = new();
+
+        Assert.That(Process(empty, tracer: emptyTracer).TransactionExecuted, Is.True);
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: absentTracer).TransactionExecuted, Is.True);
+
+        // rlp([]) is the single non-zero byte 0xc0, which is TxDataNonZeroMultiplier tokens.
+        Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent,
+            Is.EqualTo((long)(Spec.GasCosts.TxDataNonZeroMultiplier * GasCostOf.TxDataZero)));
+    }
 
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);

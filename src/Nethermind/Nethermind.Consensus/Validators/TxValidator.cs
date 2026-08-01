@@ -95,6 +95,7 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             FrameTxFieldsTxValidator.Instance,
             FrameTxNonceKeysTxValidator.Instance
+            FrameTxEnvelopeTxValidator.Instance
         ]));
     }
 
@@ -210,6 +211,22 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
     {
         UInt256[]? nonceKeys = transaction.NonceKeys;
         if (nonceKeys is null)
+/// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
+/// <remarks>
+/// The RLP decoder tells the envelope shapes apart without fork context, so the fork that admits each
+/// one is decided here. The reference cap is re-checked because a transaction can reach validation
+/// without passing through the decoder at all — <c>eth_call</c>, <c>eth_estimateGas</c> and block
+/// building all construct one directly.
+/// </remarks>
+public sealed class FrameTxEnvelopeTxValidator : ITxValidator
+{
+    public static readonly FrameTxEnvelopeTxValidator Instance = new();
+    private FrameTxEnvelopeTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        RecentRootReference[]? references = transaction.RecentRootReferences;
+        if (references is null)
         {
             return ValidationResult.Success;
         }
@@ -222,6 +239,11 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
         return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
             ? ValidationResult.Success
             : "malformed nonce key set";
+        return releaseSpec.IsEip8272Enabled
+            ? references.Length <= Eip8272Constants.MaxRecentRootReferences
+                ? ValidationResult.Success
+                : "too many recent root references"
+            : "recent root references are not enabled";
     }
 }
 
