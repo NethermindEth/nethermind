@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
@@ -73,6 +74,73 @@ public class FrameTxReceiptDecoderTests
         AssertFrameReceiptsEqual(decodedFrame.FrameReceipts!, frameReceipt.FrameReceipts!);
         AssertLogsEqual(decodedFrame.Logs!, frameReceipt.Logs,
             "the stored union must stay the union, not get rebuilt from frame logs");
+    }
+
+    // Regression for eth_getLogs throwing on any block containing a frame-tx receipt.
+    // LogFinder reads receipts through ReceiptsIterator, which loops CompactReceiptStorageDecoder
+    // .DecodeStructRef over the array with RlpBehaviors.Storage (no AllowExtraBytes). The struct-ref
+    // path used to skip past the frame extension (payer + per-frame receipts) only when
+    // AllowExtraBytes was set, so a frame-tx receipt left the reader parked mid-sequence and the
+    // next DecodeStructRef misread the payer bytes as a receipt prefix, throwing an RlpException.
+    // The frame receipt is placed between two regular receipts so a misalignment corrupts a neighbor.
+    [Test]
+    public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours()
+    {
+        LogEntry frameLog = Log(0x01);
+        TxReceipt frameReceipt = CreateReceipt(
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [frameLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [Log(0x02)]));
+        frameReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
+        frameReceipt.Sender = TestItem.AddressC;
+        frameReceipt.Logs = [frameLog];
+        frameReceipt.Bloom = new Bloom(frameReceipt.Logs);
+
+        TxReceipt before = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
+        TxReceipt after = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
+
+        CompactReceiptStorageDecoder decoder = new();
+        byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+
+        // Mirror ReceiptsIterator.TryGetNext: read the outer sequence, then loop DecodeStructRef.
+        // TxReceiptStructRef is a ref struct, so scalar fields are captured per index as we go.
+        RlpReader reader = new(encoded);
+        int length = reader.ReadSequenceLength() + reader.Position;
+        int count = 0;
+        (byte Status, ulong Gas, string Sender, LogEntry[] Logs)[] decoded = new (byte, ulong, string, LogEntry[])[3];
+        while (reader.Position < length)
+        {
+            decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef current);
+            if (count < decoded.Length)
+            {
+                decoded[count] = (current.StatusCode, current.GasUsedTotal, current.Sender.ToString(), DecodeLogs(current.LogsRlp));
+            }
+            count++;
+        }
+
+        Assert.That(count, Is.EqualTo(3), "every receipt must decode, including the neighbours");
+
+        Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
+        Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
+        Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender.ToString()), "frame sender");
+        AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs);
+
+        // The receipt after the frame tx must be intact, proving the reader realigned.
+        Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender!.ToString()), "trailing receipt sender");
+        Assert.That(decoded[2].Gas, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
+    }
+
+    private static LogEntry[] DecodeLogs(scoped ReadOnlySpan<byte> logsRlp)
+    {
+        RlpReader reader = new(logsRlp);
+        int end = reader.ReadSequenceLength() + reader.Position;
+        List<LogEntry> logs = [];
+        while (reader.Position < end)
+        {
+            LogEntry log = CompactLogEntryDecoder.Instance.Decode(ref reader, RlpBehaviors.AllowExtraBytes)!;
+            logs.Add(log);
+        }
+
+        return logs.ToArray();
     }
 
     private static IEnumerable<TestCaseData> RoundtripCases()

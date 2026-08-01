@@ -119,9 +119,12 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            // Handle any remaining extra bytes
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (decoderContext.Position < receiptEnd && allowExtraBytes)
+            // EIP-8141: a frame-tx receipt carries a trailing extension (payer + per-frame
+            // receipts) after the logs sequence. The struct-ref path does not surface those
+            // fields, but it must still advance past them to receiptEnd — the boundary of this
+            // receipt's own sequence — so the next receipt in the array decodes from the right
+            // offset. For pre-fork receipts Position already equals receiptEnd, so this is a no-op.
+            if (decoderContext.Position < receiptEnd)
             {
                 decoderContext.Position = receiptEnd;
             }
