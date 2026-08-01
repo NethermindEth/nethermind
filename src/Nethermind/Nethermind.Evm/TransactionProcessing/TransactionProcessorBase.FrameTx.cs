@@ -79,11 +79,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
         }
 
-        // max_gas: frames that reserve less than the transaction's own calldata floor raise the
-        // reservation rather than invalidate the transaction, so the payer can always cover the
-        // floor-priced charge settled below. The frames keep their own allocations — the headroom
-        // is reserved and refunded, never spendable — and the block gas pool is credited the same
-        // max_gas minus gas_used.
+        // max_gas: frames reserving less than the calldata floor raise the reservation rather than
+        // invalidate the transaction. The headroom is reserved and refunded, never spendable.
         txGasLimit = Math.Max(txGasLimit, floorGas);
 
         // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
@@ -388,24 +385,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>
-    /// Computes the intrinsic gas of a frame transaction and, via <paramref name="floorGas"/>, the
-    /// least gas it may be charged.
+    /// FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST + calldata cost of frame data
+    /// and signature fields + per-scheme signature verification cost.
     /// </summary>
     /// <remarks>
-    /// The intrinsic cost is <c>FRAME_TX_INTRINSIC_COST</c> + frames × <c>FRAME_TX_PER_FRAME_COST</c>
-    /// + per-scheme signature verification + the calldata cost of the frame data and signature
-    /// fields. The floor adds the same mandatory (non-data) costs to the data priced at
-    /// <see cref="SpecGasCosts.TotalCostFloorPerToken"/>, mirroring
-    /// <see cref="IntrinsicGasCalculator.CalculateFloorCost"/>: EIP-7976 prices every data byte as a
-    /// non-zero token, EIP-7623 weights zero bytes lower. Both the rate and the token weighting are
-    /// resolved from the spec so a frame transaction's floor cannot diverge from an ordinary
-    /// transaction's under the same fork.
+    /// The rate and token weighting behind <paramref name="floorGas"/> are resolved from the spec, as
+    /// <see cref="IntrinsicGasCalculator.CalculateFloorCost"/> does, so a frame transaction's floor
+    /// cannot diverge from an ordinary transaction's under the same fork.
     /// </remarks>
-    /// <param name="tx">The frame transaction being charged.</param>
-    /// <param name="frames">The transaction's frames.</param>
-    /// <param name="spec">The release spec in effect.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
-    /// <returns>The intrinsic gas charged before execution.</returns>
     private static ulong CalculateFrameTxIntrinsicGas(Transaction tx, TxFrame[] frames, IReleaseSpec spec, out ulong floorGas)
     {
         ulong tokens = 0;

@@ -149,11 +149,7 @@ public class Eip8141ScenarioTests
     }
 
     // Spec Gas Accounting: charged gas = FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST
-    // + per-scheme verification cost + max(standard token cost of frame data and signature fields
-    // + the gas each frame consumed, floor token cost). Pinned against the spec constants
-    // with known payload bytes; ARBITRARY entries cost 100 verification gas, and their bytes are
-    // also calldata-priced. The fork under test schedules EIP-7976, so the floor prices every data
-    // byte as a non-zero token at 16 (64 per byte), as it does for an ordinary transaction.
+    // + per-scheme verification cost + max(standard token cost + frame gas consumed, floor token cost).
     [Test]
     public void ChargedGas_MatchesSpecIntrinsicFormula()
     {
@@ -186,9 +182,7 @@ public class Eip8141ScenarioTests
             "the refund must return exactly max cost minus charged gas at the effective price");
     }
 
-    // The calldata floor for frame transactions: the mandatory intrinsic, per-frame and signature
-    // verification costs stay outside the max, while the data tokens are charged at the floor rate
-    // whenever it exceeds the standard rate plus the gas the frames actually consumed.
+    // Only the data tokens go through the max; the mandatory costs stay outside it.
     [Test]
     public void ChargedGas_FloorDominatesExecution_ChargesFloorTokenCost()
     {
@@ -205,8 +199,7 @@ public class Eip8141ScenarioTests
         ulong mandatoryGas = 15_000 + 2 * 475UL;
         using (Assert.EnterMultipleScope())
         {
-            // Every byte is a non-zero token under EIP-7976, priced at 16: 64 gas per data byte,
-            // the same rate an ordinary transaction's calldata floor uses under this fork.
+            // EIP-7976 prices every byte as a non-zero token: 64 gas per data byte.
             Assert.That((ulong)receipt.GasUsed, Is.EqualTo(mandatoryGas + 256 * 64UL));
             Assert.That((ulong)receipt.GasUsed, Is.GreaterThan(mandatoryGas + 256 * 4UL + frameGasUsed),
                 "the floor token cost must dominate the standard token cost plus execution gas");
@@ -214,8 +207,6 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // Regression: when the standard token cost plus consumed frame gas exceeds the floor token cost,
-    // the standard accounting is charged unchanged.
     [Test]
     public void ChargedGas_ExecutionDominatesFloor_ChargesStandardTokenCostPlusExecution()
     {
@@ -241,10 +232,8 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // A frame transaction whose frames reserve less gas than its own calldata floor is valid: the
-    // spec resolves the shortfall by reserving `max(standard_gas_limit, calldata_floor_gas)`, not by
-    // rejecting the transaction. Rejecting it would fork away from any client that reserves the max,
-    // since the same block is then valid for one and invalid for the other.
+    // Rejecting a transaction that reserves less than its floor would fork away from any client that
+    // reserves `max(standard_gas_limit, calldata_floor_gas)` instead, as the spec requires.
     [Test]
     public void ChargedGas_FloorExceedsTheFramesGasReservation_ReservesTheFloorAndExecutes()
     {
@@ -271,10 +260,7 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // The floor bounds the charge from below after the EIP-3529 refund is netted, not before. The
-    // scenario is chosen so the two orderings disagree: gross gas exceeds the floor (so the floor is
-    // not trivially the answer), while gross minus the refund falls under it (so applying the floor
-    // first would leave the refund to be subtracted from it).
+    // The floor bounds the charge after the EIP-3529 refund is netted, not before.
     [Test]
     public void ChargedGas_RefundNetsBeforeFloorIsApplied()
     {
@@ -284,8 +270,7 @@ public class Eip8141ScenarioTests
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
-        // The payload size is chosen so the floor lands between the gross charge and the gross charge
-        // net of the refund: the floor grows 64 gas per byte while the standard cost grows 4.
+        // Sized so the floor lands between the gross charge and the gross charge net of the refund.
         byte[] frameData = new byte[160];
         Transaction tx = FrameTx(Sender, nonce: 0,
             SelfVerifyFrame(),
