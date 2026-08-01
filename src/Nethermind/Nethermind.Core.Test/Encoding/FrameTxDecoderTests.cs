@@ -31,6 +31,7 @@ public class FrameTxDecoderTests
         Assert.That(decoded.ChainId, Is.EqualTo(tx.ChainId));
         Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
         Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
+        AssertReferencesEqual(decoded.RecentRootReferences, tx.RecentRootReferences);
         // The sender is explicit in the payload — no envelope signature, no ECDSA recovery.
         Assert.That(decoded.SenderAddress, Is.EqualTo(tx.SenderAddress));
         Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
@@ -125,6 +126,45 @@ public class FrameTxDecoderTests
         {
             Assert.That(FrameTxSigHash.ComputeValue(legacyKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacy)));
             Assert.That(FrameTxSigHash.ComputeValue(otherKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacyKey)));
+    // The reference list is part of the signing payload, and an absent list is a different envelope
+    // from an empty one, so neither may reuse the other's hash.
+    [Test]
+    public void ComputeSigHash_RecentRootReferencesChange_HashChanges()
+    {
+        Transaction none = CreateFrameTx();
+        Transaction empty = CreateFrameTx();
+        empty.RecentRootReferences = [];
+        Transaction referencing = CreateFrameTx();
+        referencing.RecentRootReferences = [Reference(slot: 7)];
+        Transaction otherSlot = CreateFrameTx();
+        otherSlot.RecentRootReferences = [Reference(slot: 8)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxSigHash.ComputeValue(empty), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(none)));
+            Assert.That(FrameTxSigHash.ComputeValue(referencing), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(empty)));
+            Assert.That(FrameTxSigHash.ComputeValue(otherSlot), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(referencing)));
+        }
+    }
+
+    private static RecentRootReference Reference(ulong slot) =>
+        new(TestItem.KeccakA.ValueHash256, slot, TestItem.KeccakB.ValueHash256);
+
+    private static void AssertReferencesEqual(RecentRootReference[]? actual, RecentRootReference[]? expected)
+    {
+        if (expected is null)
+        {
+            Assert.That(actual, Is.Null);
+            return;
+        }
+
+        Assert.That(actual, Is.Not.Null);
+        Assert.That(actual!.Length, Is.EqualTo(expected.Length));
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.That(actual[i].SourceId, Is.EqualTo(expected[i].SourceId));
+            Assert.That(actual[i].Slot, Is.EqualTo(expected[i].Slot));
+            Assert.That(actual[i].Root, Is.EqualTo(expected[i].Root));
         }
     }
 
@@ -156,6 +196,13 @@ public class FrameTxDecoderTests
         multiKeyed.NonceKeys = [1, UInt256.MaxValue];
         multiKeyed.Nonce = 42;
         yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
+        Transaction emptyReferences = CreateFrameTx();
+        emptyReferences.RecentRootReferences = [];
+        yield return new TestCaseData(emptyReferences).SetName("Roundtrip_EmptyRecentRootReferenceList");
+
+        Transaction referencing = CreateFrameTx();
+        referencing.RecentRootReferences = [Reference(slot: 0), Reference(slot: ulong.MaxValue)];
+        yield return new TestCaseData(referencing).SetName("Roundtrip_RecentRootReferences");
 
         Transaction blobCarrying = CreateFrameTx();
         blobCarrying.MaxFeePerBlobGas = 7;
