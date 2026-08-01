@@ -62,8 +62,7 @@ public static class FrameTxValidation
                 return false;
             }
 
-            // EIP-7906: the assertion frames observe the finished transaction, so nothing may run after
-            // them, and a read-only frame has no valid reason to approve.
+            // Assertions observe the finished transaction, so nothing may run after them.
             if (frame.Mode == TxFrame.ModePostTx)
             {
                 if (i + 1 < frames.Length && frames[i + 1].Mode != TxFrame.ModePostTx)
