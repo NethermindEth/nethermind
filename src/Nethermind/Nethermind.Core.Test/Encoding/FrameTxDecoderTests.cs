@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -177,13 +178,38 @@ public class FrameTxDecoderTests
 
         Transaction multiKeyed = CreateFrameTx();
         multiKeyed.NonceKeys = [1, UInt256.MaxValue];
-        multiKeyed.Nonce = 42;
         yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
 
         Transaction blobCarrying = CreateFrameTx();
         blobCarrying.MaxFeePerBlobGas = 7;
         blobCarrying.BlobVersionedHashes = [FilledBytes(32, 0x01), FilledBytes(32, 0x02)];
         yield return new TestCaseData(blobCarrying).SetName("Roundtrip_WithBlobFields");
+    }
+
+    // A nonce key encoded as an empty list is not a key: decoding it as one would admit `c1 c0` as the
+    // set [0], whose sequence lives in the sender's account nonce rather than in NONCE_MANAGER.
+    [Test]
+    public void Decode_NonceKeyEncodedAsAnEmptyList_Throws()
+    {
+        Transaction keyed = CreateFrameTx();
+        keyed.NonceKeys = [1];
+        byte[] bytes = new byte[_txDecoder.GetLength(keyed, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, keyed);
+        // The one-byte key `01` and the empty list `c0` occupy the same slot, so no length changes.
+        int keyIndex = Array.IndexOf(bytes, (byte)0xc1) + 1;
+        bytes[keyIndex] = 0xc0;
+
+        Assert.That(() => { RlpReader reader = new(bytes); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Decode_MoreNonceKeysThanTheCap_Throws()
+    {
+        Transaction keyed = CreateFrameTx();
+        keyed.NonceKeys = [.. Enumerable.Range(1, Eip8250Constants.MaxNonceKeys + 1).Select(static i => (UInt256)i)];
+
+        Assert.That(() => EncodeDecode(keyed), Throws.InstanceOf<RlpException>());
     }
 
     private static Transaction EncodeDecode(Transaction tx)
