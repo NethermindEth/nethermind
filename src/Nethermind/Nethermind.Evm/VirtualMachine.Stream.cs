@@ -185,16 +185,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
                             break;
                         case Instruction.LT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpLt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpLtBytes>(ref stack);
                             break;
                         case Instruction.GT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpGt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpGtBytes>(ref stack);
                             break;
                         case Instruction.SLT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSLt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpSLtBytes>(ref stack);
                             break;
                         case Instruction.SGT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSGt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.CompareCore<EvmInstructions.OpSGtBytes>(ref stack);
                             break;
                         case Instruction.EQ:
                             exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack);
