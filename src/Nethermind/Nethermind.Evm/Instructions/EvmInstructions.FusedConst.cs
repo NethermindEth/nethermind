@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
@@ -47,6 +49,30 @@ public static partial class EvmInstructions
         if (!a.IsUint64 || a.u0 >= 256)
         {
             EvmStack.WriteUInt256ToSlot(ref topRef, in UInt256.Zero);
+            return EvmExceptionType.None;
+        }
+
+        int amount = (int)a.u0;
+        if ((amount & 7) == 0)
+        {
+            // Generated code shifts almost exclusively by whole bytes - address and selector
+            // packing, fixed-point scaling - and the amount is known at analysis time. Big-endian
+            // order makes a left shift a move toward index zero and a right shift a move away from
+            // it, so the aligned case is a byte move with no limb conversion and no shift
+            // arithmetic. CopyTo has move semantics, which the overlap here relies on.
+            int bytes = amount >> 3;
+            Span<byte> slot = MemoryMarshal.CreateSpan(ref topRef, EvmStack.WordSize);
+            if (typeof(TOpShift) == typeof(OpShl))
+            {
+                slot[bytes..].CopyTo(slot);
+                slot[(EvmStack.WordSize - bytes)..].Clear();
+            }
+            else
+            {
+                slot[..(EvmStack.WordSize - bytes)].CopyTo(slot[bytes..]);
+                slot[..bytes].Clear();
+            }
+
             return EvmExceptionType.None;
         }
 
