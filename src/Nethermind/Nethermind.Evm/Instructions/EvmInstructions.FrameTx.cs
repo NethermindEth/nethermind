@@ -91,17 +91,19 @@ public static unsafe partial class EvmInstructions
     }
 
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
+    /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0C, 0x0D, 0x0E and 0x10.</typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where TEip8250 : struct, IFlag
     {
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > 0x0B) return EvmExceptionType.BadInstruction;
+        if (param > (TEip8250.IsActive ? 0x10U : 0x0BU)) return EvmExceptionType.BadInstruction;
 
         byte[][]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
@@ -118,6 +120,11 @@ public static unsafe partial class EvmInstructions
             0x09 => stack.PushUInt256<TTracingInst>((UInt256)ctx.Frames.Length),
             0x0A => stack.PushUInt256<TTracingInst>((UInt256)ctx.CurrentFrameIndex),
             0x0B => stack.PushUInt256<TTracingInst>((UInt256)ctx.Signatures.Length),
+            // 0x0C..0x10 are unreachable before EIP-8250: the bound above rejects them.
+            0x0C => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
+            0x0D => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 1)),
+            0x0E => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
+            0x10 => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is { } keys ? keys[0] : UInt256.Zero),
             _ => EvmExceptionType.BadInstruction,
         };
     }

@@ -131,7 +131,9 @@ public static unsafe partial class EvmInstructions
         if (spec.IsEip8141Enabled)
         {
             lookup[(int)Instruction.APPROVE] = &InstructionApprove;
-            lookup[(int)Instruction.TXPARAM] = &InstructionTxParam<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.TXPARAM] = spec.IsEip8250Enabled
+                ? &InstructionTxParam<TGasPolicy, TTracingInst, OnFlag>
+                : &InstructionTxParam<TGasPolicy, TTracingInst, OffFlag>;
             lookup[(int)Instruction.FRAMEDATALOAD] = &InstructionFrameDataLoad<TGasPolicy, TTracingInst>;
             lookup[(int)Instruction.FRAMEDATACOPY] = &InstructionFrameDataCopy<TGasPolicy, TTracingInst>;
             lookup[(int)Instruction.FRAMEPARAM] = &InstructionFrameParam<TGasPolicy, TTracingInst>;
