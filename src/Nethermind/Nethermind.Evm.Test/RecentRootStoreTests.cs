@@ -33,6 +33,19 @@ public class RecentRootStoreTests
         Assert.That(RecentRootStore.SourceId(Source, OtherRoot), Is.Not.EqualTo(baseline));
     }
 
+    // Every concatenation in EIP-8272 is fixed-width, and an address is 20 bytes there, so the
+    // preimage is 52 bytes. Left-padding the address to a word changes every source id, which is
+    // consensus-visible on the first reference-carrying transaction.
+    [Test]
+    public void SourceId_hashes_the_address_unpadded()
+    {
+        Span<byte> preimage = stackalloc byte[Address.Size + ValueHash256.MemorySize];
+        Source.Bytes.CopyTo(preimage);
+        Salt.Bytes.CopyTo(preimage[Address.Size..]);
+
+        Assert.That(RecentRootStore.SourceId(Source, Salt), Is.EqualTo(ValueKeccak.Compute(preimage)));
+    }
+
     [Test]
     public void EntryHash_is_deterministic_and_distinct_per_input()
     {
