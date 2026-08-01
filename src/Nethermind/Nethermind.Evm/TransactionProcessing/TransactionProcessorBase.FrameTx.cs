@@ -143,6 +143,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         bool batchStartSenderApproved = false;
         long batchStartRefund = 0;
 
+        Snapshot prefixEndSnapshot = txSnapshot;
+        int prefixEndIndex = -1;
+        long prefixEndRefund = 0;
+        bool postTxReverted = false;
+
         for (int i = 0; i < frames.Length; i++)
         {
             TxFrame frame = frames[i];
@@ -174,7 +179,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             Address resolvedTarget = frame.Target ?? sender;
             Address caller = isSender ? sender : Eip8141Constants.EntryPointAddress;
-            bool isStatic = frame.Mode == TxFrame.ModeVerify;
+            bool isStatic = frame.Mode is TxFrame.ModeVerify or TxFrame.ModePostTx;
 
             // ORIGIN returns the frame's caller throughout all call depths.
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
@@ -228,9 +233,49 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted");
             }
 
+            if (frame.Mode == TxFrame.ModePostTx && !frameSucceeded)
+            {
+                // EIP-7906: a failed assertion discards the execution body down to the validation
+                // prefix and overrides any atomic-batch unrolling, but unlike a VERIFY revert it leaves
+                // the transaction valid: it is still included, the payer still pays for what ran, and
+                // the receipt reports failure.
+                WorldState.Restore(prefixEndSnapshot);
+                refundCounter = prefixEndRefund;
+
+                // Body logs go with the state that produced them; the tx log set is derived from these
+                // receipts, so clearing them here also keeps them out of the bloom.
+                for (int s = prefixEndIndex + 1; s < i; s++)
+                {
+                    TxFrameReceipt reverted = frameReceipts[s];
+                    if (reverted.Logs.Length > 0)
+                    {
+                        frameReceipts[s] = new TxFrameReceipt(reverted.Status, reverted.GasUsed, []);
+                    }
+                }
+
+                for (int s = i + 1; s < frames.Length; s++)
+                {
+                    frameReceipts[s] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []);
+                    frameContext.MarkFrameSkipped(s);
+                }
+
+                postTxReverted = true;
+                break;
+            }
+
             if (frameSucceeded)
             {
+                bool payerWasSet = frameContext.Payer is not null;
                 ApplyApproval(frameContext, resolvedTarget, spec);
+                if (!payerWasSet && frameContext.Payer is not null)
+                {
+                    // End of the validation prefix (the shortest prefix whose success sets the payer):
+                    // EIP-7906 keeps everything up to here and discards the execution body when a
+                    // POST_TX frame reverts.
+                    prefixEndSnapshot = WorldState.TakeSnapshot();
+                    prefixEndIndex = i;
+                    prefixEndRefund = refundCounter;
+                }
             }
             else
             {
@@ -358,7 +403,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
             LogEntry[] txLogs = ConcatFrameLogs(frameReceipts);
             GasConsumed gasConsumed = new(spentGas, spentGas, spentGas);
-            tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], txLogs);
+            if (postTxReverted)
+            {
+                tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");
+            }
+            else
+            {
+                tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], txLogs);
+            }
         }
 
         return TransactionResult.Ok;
@@ -533,7 +585,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     {
         gasUsed = 0;
 
-        if (isStatic)
+        // Keyed on VERIFY rather than on staticness: EIP-7906 POST_TX frames are static too, but the
+        // spec routes them through the SENDER / DEFAULT branch below.
+        if (frame.Mode == TxFrame.ModeVerify)
         {
             byte allowedScope = frame.AllowedApproveScope;
             if (allowedScope == 0)
