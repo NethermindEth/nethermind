@@ -98,6 +98,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip8141Enabled { get; set; } = spec.IsEip8141Enabled;
         public bool IsEip8250Enabled { get; set; } = spec.IsEip8250Enabled;
         public bool IsEip8272Enabled { get; set; } = spec.IsEip8272Enabled;
+
+        public bool IsEip7906Enabled { get; set; } = spec.IsEip7906Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress { get; set; } = spec.Eip4788ContractAddress;

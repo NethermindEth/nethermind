@@ -16,6 +16,9 @@ public class TxFrame(byte mode, byte flags, Address? target, ulong gasLimit, UIn
     public const byte ModeVerify = 1;
     public const byte ModeSender = 2;
 
+    /// <summary>EIP-7906: a read-only trailing frame that asserts the transaction's outcome.</summary>
+    public const byte ModePostTx = 3;
+
     public const byte ApproveScopeNone = 0x0;
     public const byte ApprovePayment = 0x1;
     public const byte ApproveExecution = 0x2;

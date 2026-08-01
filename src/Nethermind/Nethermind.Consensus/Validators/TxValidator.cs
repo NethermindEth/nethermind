@@ -11,8 +11,8 @@ using Nethermind.Core.Validation;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -94,8 +94,9 @@ public sealed class TxValidator : ITxValidator
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
             FrameTxFieldsTxValidator.Instance,
-            FrameTxNonceKeysTxValidator.Instance
-            FrameTxEnvelopeTxValidator.Instance
+            FrameTxNonceKeysTxValidator.Instance,
+            FrameTxEnvelopeTxValidator.Instance,
+            FrameTxPostTxModeValidator.Instance,
         ]));
     }
 
@@ -211,6 +212,21 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
     {
         UInt256[]? nonceKeys = transaction.NonceKeys;
         if (nonceKeys is null)
+        {
+            return ValidationResult.Success;
+        }
+
+        if (!releaseSpec.IsEip8250Enabled)
+        {
+            return "keyed nonces are not enabled";
+        }
+
+        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
+            ? ValidationResult.Success
+            : "malformed nonce key set";
+    }
+}
+
 /// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
 /// <remarks>
 /// The RLP decoder tells the envelope shapes apart without fork context, so the fork that admits each
@@ -231,19 +247,41 @@ public sealed class FrameTxEnvelopeTxValidator : ITxValidator
             return ValidationResult.Success;
         }
 
-        if (!releaseSpec.IsEip8250Enabled)
-        {
-            return "keyed nonces are not enabled";
-        }
-
-        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
-            ? ValidationResult.Success
-            : "malformed nonce key set";
         return releaseSpec.IsEip8272Enabled
             ? references.Length <= Eip8272Constants.MaxRecentRootReferences
                 ? ValidationResult.Success
                 : "too many recent root references"
             : "recent root references are not enabled";
+    }
+}
+
+/// <summary>Admits the EIP-7906 <c>POST_TX</c> frame mode only on forks that define it.</summary>
+/// <remarks>
+/// The frame-list shape check accepts the mode without fork context. Before the fork the mode is
+/// undefined, and running such a frame as <c>DEFAULT</c> would give it the write access the assertion
+/// semantics forbid.
+/// </remarks>
+public sealed class FrameTxPostTxModeValidator : ITxValidator
+{
+    public static readonly FrameTxPostTxModeValidator Instance = new();
+    private FrameTxPostTxModeValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (releaseSpec.IsEip7906Enabled || transaction.Frames is not { } frames)
+        {
+            return ValidationResult.Success;
+        }
+
+        foreach (TxFrame frame in frames)
+        {
+            if (frame.Mode == TxFrame.ModePostTx)
+            {
+                return "POST_TX frames are not enabled";
+            }
+        }
+
+        return ValidationResult.Success;
     }
 }
 

@@ -48,9 +48,19 @@ public class FrameTxValidationTests
         yield return Case("NullSender_MissingSender",
             static tx => tx.SenderAddress = null, FrameTxValidation.MissingSender);
 
-        // assert frame.mode < 3
-        yield return Case("FrameModeThree_InvalidMode",
-            static tx => tx.Frames = [Frame(mode: 3)], FrameTxValidation.InvalidMode);
+        // assert frame.mode < 4 (EIP-7906 widened it from 3)
+        yield return Case("FrameModeFour_InvalidMode",
+            static tx => tx.Frames = [Frame(mode: 4)], FrameTxValidation.InvalidMode);
+
+        // POST_TX frames form a trailing suffix and never approve
+        yield return Case("PostTxSuffix_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx), Frame(mode: TxFrame.ModePostTx)], null);
+        yield return Case("PostTxFollowedByDefault_PostTxNotTrailing",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx), DefaultModeFrame()],
+            FrameTxValidation.PostTxNotTrailing);
+        yield return Case("PostTxAllowedToApprove_PostTxApproves",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx, flags: TxFrame.ApprovePayment)],
+            FrameTxValidation.PostTxApproves);
 
         // assert frame.flags < 8
         yield return Case("FrameFlagsEight_InvalidFlags",
