@@ -111,8 +111,8 @@ public class FrameTxDecoderTests
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
-    // The keyed envelope is part of the signing payload, so selecting different keys — or none at all,
-    // which is a different envelope rather than the key 0 — must not reuse another transaction's hash.
+    // Selecting different keys — or none at all, which is a different envelope rather than the key 0 —
+    // must not reuse another transaction's signing hash.
     [Test]
     public void ComputeSigHash_NonceKeysChange_HashChanges()
     {
@@ -163,8 +163,7 @@ public class FrameTxDecoderTests
         yield return new TestCaseData(blobCarrying).SetName("Roundtrip_WithBlobFields");
     }
 
-    // A nonce key encoded as an empty list is not a key: decoding it as one would admit `c1 c0` as the
-    // set [0], whose sequence lives in the sender's account nonce rather than in NONCE_MANAGER.
+    // Decoding `c1 c0` as the set [0] would move the sequence into the sender's account nonce.
     [Test]
     public void Decode_NonceKeyEncodedAsAnEmptyList_Throws()
     {
