@@ -85,14 +85,16 @@ public sealed class TxValidator : ITxValidator
             IntrinsicGasTxValidator.Instance
         ]));
         // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
-        // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
-        // signature validation happen during processing.
+        // signature list) — the signature validators do not apply, and their intrinsic gas is derived
+        // from the frames rather than a gas_limit field; per-frame signature validation happens during
+        // processing.
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
-            FrameTxFieldsTxValidator.Instance
+            FrameTxFieldsTxValidator.Instance,
+            FrameTxIntrinsicGasTxValidator.Instance
         ]));
     }
 
@@ -191,6 +193,30 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         FrameTxValidation.IsWellFormed(transaction, out string? error) ? ValidationResult.Success : error!;
+}
+
+/// <summary>Rejects a frame transaction whose frame gas limits cannot cover its EIP-7623 calldata floor.</summary>
+/// <remarks>
+/// A frame transaction is charged at least the floor of the data it carries, so a gas limit below the floor is
+/// unpayable and the transaction can never execute — the same condition <see cref="IntrinsicGasTxValidator"/>
+/// enforces for every other transaction type. Without it the processor rejects the transaction only once a block
+/// builder tries to execute it, by which point it has already been pooled and broadcast, and it sits on the sender's
+/// nonce blocking their later transactions.
+/// </remarks>
+public sealed class FrameTxIntrinsicGasTxValidator : ITxValidator
+{
+    public static readonly FrameTxIntrinsicGasTxValidator Instance = new();
+    private FrameTxIntrinsicGasTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        // Runs after FrameTxFieldsTxValidator, which establishes the frame list and that the frame gas limits
+        // (summed into GasLimit at decode time) do not overflow.
+        ulong intrinsicGas = FrameTxIntrinsicGas.Calculate(transaction, transaction.Frames!, releaseSpec, out ulong floorGas);
+        return intrinsicGas + transaction.GasLimit < floorGas
+            ? new ValidationResult(TxErrorMessages.IntrinsicGasTooLow) { IsIntrinsicGasError = true }
+            : ValidationResult.Success;
+    }
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator

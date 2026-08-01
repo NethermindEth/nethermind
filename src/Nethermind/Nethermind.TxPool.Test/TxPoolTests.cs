@@ -2199,11 +2199,35 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null)
+        // A frame transaction is charged at least the EIP-7623 floor of the data it carries, so frame gas
+        // limits that cannot reach that floor make it unexecutable. Admitting it parks a permanently
+        // unmineable transaction on the sender's nonce, where it blocks every later transaction from that
+        // sender until the pool evicts it.
+        [TestCase(10_000UL, false, TestName = "frame tx whose gas limit cannot reach the calldata floor is rejected")]
+        [TestCase(100_000UL, true, TestName = "frame tx reserving the calldata floor is accepted")]
+        public void Frame_transaction_below_the_calldata_floor_is_rejected_at_ingress(ulong gasLimit, bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            // The gas limit of a frame transaction is the sum of its frame gas limits, so the two move together.
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null,
+                frameData: new byte[3000], gasLimit: gasLimit, frameGasLimit: gasLimit);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
+        }
+
+        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, byte[] frameData = null, ulong gasLimit = 1_000_000, ulong frameGasLimit = 100_000)
         {
             List<TxFrame> frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: frameGasLimit, UInt256.Zero, frameData ?? []),
             ];
 
             if (deadline is not null)
@@ -2221,7 +2245,7 @@ namespace Nethermind.TxPool.Test
                 SenderAddress = sender,
                 Frames = [.. frames],
                 FrameSignatures = [],
-                GasLimit = 1_000_000,
+                GasLimit = gasLimit,
                 GasPrice = maxPriorityFeePerGas ?? 1.GWei,
                 DecodedMaxFeePerGas = maxFeePerGas ?? 1.GWei,
             };
