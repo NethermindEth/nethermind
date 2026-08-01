@@ -196,9 +196,9 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 
 /// <summary>Admits the EIP-7906 <c>POST_TX</c> frame mode only on forks that define it.</summary>
 /// <remarks>
-/// The mode is accepted without fork context wherever the frame list is checked structurally, so the
-/// fork that admits it is enforced here. Before the fork the mode is undefined, and executing such a
-/// frame as if it were <c>DEFAULT</c> would let it write state the assertion semantics forbid.
+/// The frame-list shape check accepts the mode without fork context. Before the fork the mode is
+/// undefined, and running such a frame as <c>DEFAULT</c> would give it the write access the assertion
+/// semantics forbid.
 /// </remarks>
 public sealed class FrameTxPostTxModeValidator : ITxValidator
 {

@@ -51,8 +51,7 @@ public class FrameTxProcessorTests
     [SetUp]
     public void Setup()
     {
-        // The prototype fork carries EIP-8141 only; EIP-7906 is switched on here so a test can turn it
-        // back off and assert the fork gate rather than the feature.
+        // Switched on here so a test can turn it back off and assert the fork gate rather than the feature.
         _spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true };
         _specProvider = new TestSpecProvider(_spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
@@ -762,9 +761,7 @@ public class FrameTxProcessorTests
         return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
     }
 
-    // EIP-7906: an assertion frame observes the finished body and, when it reverts, unwinds the body
-    // without invalidating the transaction — so the payer is still charged and the receipt fails. That
-    // is the whole difference from a VERIFY revert, which drops the transaction entirely.
+    // The difference from a VERIFY revert: the body unwinds but the transaction stays valid and pays.
     [TestCase(false, ExpectedResult = StatusCode.Success, TestName = "Execute_PostTxAsserts_TransactionSucceeds")]
     [TestCase(true, ExpectedResult = StatusCode.Failure, TestName = "Execute_PostTxReverts_TransactionFailsButIsIncluded")]
     public byte Execute_PostTxFrame_DecidesTheTransactionOutcomeWithoutInvalidatingIt(bool assertionFails)
@@ -791,8 +788,7 @@ public class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
-    // A POST_TX frame runs as a STATICCALL, so its own write halts it — and that halt is an assertion
-    // failure like any other, unwinding the body rather than being silently ignored.
+    // A write halts the static frame, and that halt is an assertion failure like any other.
     [Test]
     public void Execute_PostTxFrameWritesState_HaltsAndUnwindsTheBody()
     {
@@ -813,9 +809,7 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, UInt256.Zero, "the halted assertion unwound the body");
     }
 
-    // The unwind stops at the validation prefix rather than at the start of the transaction: the
-    // account the deploy frame created and the payment it approved are state the transaction is
-    // charged for, and they survive a failed assertion.
+    // The unwind stops at the validation prefix: that state is what the transaction is charged for.
     [Test]
     public void Execute_PostTxReverts_KeepsTheValidationPrefix()
     {

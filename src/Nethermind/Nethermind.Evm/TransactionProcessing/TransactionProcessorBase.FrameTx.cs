@@ -235,10 +235,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             if (frame.Mode == TxFrame.ModePostTx && !frameSucceeded)
             {
-                // EIP-7906: a failed assertion discards the execution body down to the validation
-                // prefix and overrides any atomic-batch unrolling, but unlike a VERIFY revert it leaves
-                // the transaction valid: it is still included, the payer still pays for what ran, and
-                // the receipt reports failure.
+                // A failed assertion discards the body down to the validation prefix and overrides any
+                // atomic-batch unrolling, but unlike a VERIFY revert it leaves the transaction valid.
                 WorldState.Restore(prefixEndSnapshot);
                 refundCounter = prefixEndRefund;
 
