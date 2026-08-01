@@ -192,6 +192,65 @@ public static class FrameTxValidation
         return true;
     }
 
+    /// <summary>The gas charged for verifying a signature of the given EIP-8141 scheme.</summary>
+    public static ulong SignatureVerificationGas(byte scheme) => scheme switch
+    {
+        TxFrameSignature.SchemeArbitrary => Eip8141Constants.ArbitraryVerificationGasCost,
+        TxFrameSignature.SchemeSecp256k1 => Eip8141Constants.Secp256k1VerificationGasCost,
+        TxFrameSignature.SchemeP256 => Eip8141Constants.P256VerificationGasCost,
+        _ => 0,
+    };
+
+    /// <summary>
+    /// The public-mempool validation work of <paramref name="transaction"/>: the gas limits of its
+    /// validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
+    /// </summary>
+    /// <remarks>
+    /// The validation prefix is the shortest prefix of frames whose successful execution sets
+    /// <c>payer</c>, so the walk stops at the first frame that could set one. Permission to approve
+    /// payment is not enough: <c>APPROVE</c> rejects a payment approval that is not preceded by an
+    /// execution approval, so a payment-only frame ahead of any execution approval provably cannot
+    /// set a payer and the frames behind it still run before any gas is paid. A frame transaction
+    /// with no payer-setting frame at all is charged its whole frame list, which keeps the figure
+    /// from being an under-estimate. Signature validation counts against the same budget per
+    /// EIP-8141 "Validation Prefix".
+    /// </remarks>
+    public static ulong ValidationWorkGas(Transaction transaction)
+    {
+        ulong total = 0;
+
+        TxFrame[]? frames = transaction.Frames;
+        if (frames is not null)
+        {
+            bool senderApproved = false;
+            foreach (TxFrame frame in frames)
+            {
+                total = frame.GasLimit > ulong.MaxValue - total ? ulong.MaxValue : total + frame.GasLimit;
+
+                byte scope = frame.AllowedApproveScope;
+                bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
+                if ((scope & TxFrame.ApprovePayment) != 0 && (approvesExecution || senderApproved))
+                {
+                    break;
+                }
+
+                senderApproved |= approvesExecution;
+            }
+        }
+
+        TxFrameSignature[]? signatures = transaction.FrameSignatures;
+        if (signatures is not null)
+        {
+            foreach (TxFrameSignature signature in signatures)
+            {
+                ulong cost = SignatureVerificationGas(signature.Scheme);
+                total = cost > ulong.MaxValue - total ? ulong.MaxValue : total + cost;
+            }
+        }
+
+        return total;
+    }
+
     /// <summary>
     /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.
     /// </summary>

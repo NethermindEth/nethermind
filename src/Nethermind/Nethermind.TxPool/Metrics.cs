@@ -37,6 +37,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxExpired { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix exceeds MAX_VERIFY_GAS.")]
+        public static long PendingTransactionsFrameTxVerifyGasTooHigh { get; set; }
+
+        [CounterMetric]
         [Description(
             "Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
         public static long PendingTransactionsNonceGap { get; set; }
