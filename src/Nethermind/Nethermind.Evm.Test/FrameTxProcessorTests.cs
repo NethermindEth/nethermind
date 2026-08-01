@@ -752,6 +752,57 @@ public class FrameTxProcessorTests
         Assert.That(actual, Is.EqualTo(expected), message ?? $"storage slot {slot} of {address}");
     }
 
+    // EIP-8250: a keyed transaction consumes every selected key as a unit at payment approval and
+    // leaves the account nonce alone, so a partially advanced set cannot be replayed. Each key used
+    // for the first time pays the state-growth surcharge against the approving frame's gas.
+    [Test]
+    public void Execute_KeyedNonce_ConsumesEverySelectedKeyAndChargesFirstUse()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        UInt256[] keys = [1, 7];
+
+        Transaction firstUse = FrameTx(nonce: 0, SelfVerifyFrame());
+        firstUse.NonceKeys = keys;
+        CallOutputTracer firstUseTracer = new();
+        TransactionResult result = Process(firstUse, tracer: firstUseTracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetNonce(Sender), Is.Zero,
+            "a keyed transaction must not advance the account nonce");
+        foreach (UInt256 key in keys)
+        {
+            Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Is.EqualTo(UInt256.One));
+        }
+
+        Transaction reuse = FrameTx(nonce: 1, SelfVerifyFrame());
+        reuse.NonceKeys = keys;
+        CallOutputTracer reuseTracer = new();
+
+        Assert.That(Process(reuse, tracer: reuseTracer).TransactionExecuted, Is.True);
+        Assert.That(firstUseTracer.GasSpent - reuseTracer.GasSpent,
+            Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas),
+            "only the first use of each key is surcharged");
+    }
+
+    // The nonce sequence is per key, so a transaction is only valid when every selected key currently
+    // sits at its nonce_seq; a set where one key has moved on must not execute.
+    [TestCase(0UL, 1UL, false, TestName = "a nonce sequence behind a consumed key is too low")]
+    [TestCase(1UL, 1UL, true, TestName = "a nonce sequence matching every selected key executes")]
+    [TestCase(2UL, 1UL, false, TestName = "a nonce sequence ahead of an unconsumed key is too high")]
+    public void Execute_KeyedNonce_RequiresEverySelectedKeyAtTheSequence(ulong nonceSeq, ulong consumedSeq, bool expectedExecuted)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        UInt256[] keys = [1, 7];
+        KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, keys, consumedSeq - 1);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonceSeq, SelfVerifyFrame());
+        tx.NonceKeys = keys;
+
+        Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
+    }
+
     private static UInt256 AddressAsWord(Address address) => new(address.Bytes, isBigEndian: true);
 
     private static byte[] ApproveCode(byte scope) =>

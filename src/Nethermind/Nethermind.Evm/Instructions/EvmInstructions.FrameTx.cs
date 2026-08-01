@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -59,6 +60,22 @@ public static unsafe partial class EvmInstructions
             if (ctx.Payer is not null) return EvmExceptionType.Revert;
             if (!approvesExecution && !ctx.SenderApproved) return EvmExceptionType.Revert;
             if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) return EvmExceptionType.Revert;
+
+            // EIP-8250: consumption happens at payment approval, so the state-growth surcharge for every
+            // key used for the first time is charged here, against this frame's remaining gas.
+            if (ctx.NonceKeys is { } nonceKeys)
+            {
+                ulong firstUseCount = 0;
+                foreach (UInt256 nonceKey in nonceKeys)
+                {
+                    if (KeyedNonceManager.IsFirstUse(vm.WorldState, ctx.Sender, in nonceKey)) firstUseCount++;
+                }
+
+                if (firstUseCount != 0 && !TGasPolicy.TryConsume(ref gas, firstUseCount * Eip8250Constants.KeyedNonceFirstUseGas))
+                {
+                    return EvmExceptionType.OutOfGas;
+                }
+            }
         }
 
         // Load the return data region (RETURN semantics). The outer loop applies the approval effects.
