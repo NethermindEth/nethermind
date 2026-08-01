@@ -211,14 +211,14 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         UInt256[]? nonceKeys = transaction.NonceKeys;
-        if (nonceKeys is null)
-        {
-            return ValidationResult.Success;
-        }
-
         if (!releaseSpec.IsEip8250Enabled)
         {
-            return "keyed nonces are not enabled";
+            return nonceKeys is null ? ValidationResult.Success : "keyed nonces are not enabled";
+        }
+
+        if (nonceKeys is null)
+        {
+            return "frame transaction must carry a nonce key set";
         }
 
         return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
@@ -242,16 +242,16 @@ public sealed class FrameTxEnvelopeTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         RecentRootReference[]? references = transaction.RecentRootReferences;
-        if (references is null)
+        if (!releaseSpec.IsEip8272Enabled)
         {
-            return ValidationResult.Success;
+            return references is null ? ValidationResult.Success : "recent root references are not enabled";
         }
 
-        return releaseSpec.IsEip8272Enabled
-            ? references.Length <= Eip8272Constants.MaxRecentRootReferences
+        return references is null
+            ? "frame transaction must carry a recent root reference list"
+            : references.Length <= Eip8272Constants.MaxRecentRootReferences
                 ? ValidationResult.Success
-                : "too many recent root references"
-            : "recent root references are not enabled";
+                : "too many recent root references";
     }
 }
 

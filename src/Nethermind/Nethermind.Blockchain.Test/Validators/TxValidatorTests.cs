@@ -877,3 +877,47 @@ public class FrameTxPostTxModeValidatorTests
         return FrameTxPostTxModeValidator.Instance.IsWellFormed(tx, spec);
     }
 }
+
+/// <summary>Both envelope extensions redefine the payload, so each fork pins the shape in both directions.</summary>
+/// <remarks>
+/// Admitting the pre-extension shape after activation forks against a client whose decoder reads the
+/// extended envelope only: the two disagree on whether the transaction exists at all, and then on the
+/// gas its added bytes cost.
+/// </remarks>
+[TestFixture]
+public class FrameTxEnvelopeShapeValidatorTests
+{
+    [TestCase(true, true, ExpectedResult = true, TestName = "a key set is required once EIP-8250 is enabled")]
+    [TestCase(true, false, ExpectedResult = false, TestName = "a bare nonce is rejected once EIP-8250 is enabled")]
+    [TestCase(false, true, ExpectedResult = false, TestName = "a key set is rejected before EIP-8250")]
+    [TestCase(false, false, ExpectedResult = true, TestName = "a bare nonce is accepted before EIP-8250")]
+    public bool IsWellFormed_NonceKeys_MatchTheForksEnvelope(bool forkEnabled, bool carriesKeys)
+    {
+        OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8250Enabled = forkEnabled };
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            NonceKeys = carriesKeys ? [UInt256.Zero] : null,
+        };
+
+        return FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, spec);
+    }
+
+    [TestCase(true, true, ExpectedResult = true, TestName = "a reference list is required once EIP-8272 is enabled")]
+    [TestCase(true, false, ExpectedResult = false, TestName = "a missing reference list is rejected once EIP-8272 is enabled")]
+    [TestCase(false, true, ExpectedResult = false, TestName = "a reference list is rejected before EIP-8272")]
+    [TestCase(false, false, ExpectedResult = true, TestName = "no reference list is accepted before EIP-8272")]
+    public bool IsWellFormed_RecentRootReferences_MatchTheForksEnvelope(bool forkEnabled, bool carriesList)
+    {
+        OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = forkEnabled };
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            RecentRootReferences = carriesList ? [] : null,
+        };
+
+        return FrameTxEnvelopeTxValidator.Instance.IsWellFormed(tx, spec);
+    }
+}
