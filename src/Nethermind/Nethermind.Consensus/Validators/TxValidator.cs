@@ -197,11 +197,9 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 
 /// <summary>Admits the EIP-8250 keyed-nonce envelope only on forks that define it, and only well-formed.</summary>
 /// <remarks>
-/// The RLP decoder tells the two envelope shapes apart without fork context, so the fork that admits the
-/// keyed one is decided here. Pre-fork the keys carry no replay protection at all — the account nonce is
-/// left untouched — so admitting one would make the transaction replayable. Well-formedness is re-checked
-/// because a transaction can reach validation without passing through the decoder: <c>eth_call</c>,
-/// <c>eth_estimateGas</c> and block building all construct one directly.
+/// Pre-fork the keys carry no replay protection at all — the account nonce is left untouched — so admitting
+/// one would make the transaction replayable. Well-formedness is re-checked because <c>eth_call</c>,
+/// <c>eth_estimateGas</c> and block building construct a transaction without going through the decoder.
 /// </remarks>
 public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 {

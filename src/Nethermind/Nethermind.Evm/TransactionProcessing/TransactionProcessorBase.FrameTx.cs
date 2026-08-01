@@ -25,11 +25,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
     /// <summary>Checks a frame transaction's nonce against the sender's state, under either nonce shape.</summary>
     /// <remarks>
-    /// Without <see cref="Transaction.NonceKeys"/> this is the EIP-8141 account nonce. With them, EIP-8250 replaces
-    /// the account nonce by a set of keyed sequences that must all currently sit at <see cref="Transaction.Nonce"/>
-    /// (the transaction's <c>nonce_seq</c>), so the set is consumed as a unit and a partially advanced set is not
-    /// replayable. A malformed set is rejected as malformed rather than as a nonce mismatch: no sequence it names
-    /// exists to be too low or too high.
+    /// With <see cref="Transaction.NonceKeys"/> every selected key must currently sit at
+    /// <see cref="Transaction.Nonce"/>, so the set is consumed as a unit and a partially advanced set is not
+    /// replayable. A malformed set is rejected as malformed, not as a nonce mismatch: it names no sequence.
     /// </remarks>
     private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
     {
@@ -49,8 +47,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.Ok;
         }
 
-        // Cold path only: re-read to say which side of the sequence the transaction sits on, so a keyed
-        // transaction reports the same too-low / too-high distinction the account-nonce shape does.
+        // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
         if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) || tx.Nonce >= Eip8250Constants.MaxNonceSeq)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
@@ -571,9 +568,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
             }
 
-            // The default code approves without running any EVM code, so the EIP-8250 surcharge the
-            // APPROVE opcode charges has to be charged here too — otherwise the same transaction costs
-            // less purely because its approving account carries no code.
+            // The default code approves without running EVM code, so it owes the surcharge APPROVE charges.
             if ((allowedScope & TxFrame.ApprovePayment) != 0 && frameContext.NonceKeys is { } nonceKeys)
             {
                 ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);

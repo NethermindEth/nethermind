@@ -43,9 +43,8 @@ public static class KeyedNonceManager
 
     /// <summary>The state-growth surcharge <c>APPROVE</c> owes for the keys this set uses for the first time.</summary>
     /// <remarks>
-    /// Charged against the approving frame's remaining gas, so it can exhaust that frame; every path that
-    /// grants payment approval must charge it, or the same transaction costs different gas depending on
-    /// whether the approving account carries code.
+    /// Charged against the approving frame's remaining gas, so it can exhaust that frame. Every path that
+    /// grants payment approval must charge it, or the cost depends on whether the approver carries code.
     /// </remarks>
     public static ulong FirstUseSurcharge(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
     {
