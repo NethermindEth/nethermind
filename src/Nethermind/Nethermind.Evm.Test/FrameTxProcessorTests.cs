@@ -726,6 +726,22 @@ public class FrameTxProcessorTests
         }
     }
 
+    // A VERIFY frame runs as a STATICCALL, so a write inside it halts the frame and, because a failed
+    // VERIFY invalidates the transaction, drops the transaction. Without this the validation prefix
+    // could mutate state the mempool never simulated.
+    [Test]
+    public void Execute_VerifyFrameWritesState_InvalidatesTheTransaction()
+    {
+        DeploySmartSender(Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
+
+        TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        AssertStorage(Sender, 0, UInt256.Zero, "a VERIFY frame cannot write");
+    }
+
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
