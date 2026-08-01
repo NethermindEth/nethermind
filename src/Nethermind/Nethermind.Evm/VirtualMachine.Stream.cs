@@ -399,7 +399,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     opCodeCount++;
 
                     int mpc = entry.Pc + 1;
-                    exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref mpc);
+                    exceptionType = instruction switch
+                    {
+                        Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                        Instruction.MLOAD => EvmInstructions.InstructionMLoad<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                        Instruction.MCOPY => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                        _ => opcodeMethods[(int)instruction](this, ref stack, ref gas, ref mpc),
+                    };
 
                     if (TGasPolicy.IsOutOfGas(in gas))
                     {
