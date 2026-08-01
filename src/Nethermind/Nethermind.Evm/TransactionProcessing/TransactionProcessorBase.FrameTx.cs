@@ -60,7 +60,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // Spec gas: tx_gas_limit = intrinsic + per-frame + calldata + signature verification
         // + sum(frame.gas_limit); the sum is overflow-checked so the processor does not depend
         // on static validation having run.
-        ulong intrinsicGas = CalculateFrameTxIntrinsicGas(tx, frames, spec);
+        ulong intrinsicGas = CalculateFrameTxIntrinsicGas(tx, frames, spec, out ulong floorGas);
         ulong totalFrameGas = 0;
         foreach (TxFrame frame in frames)
         {
@@ -78,6 +78,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
         }
+
+        // max_gas: frames reserving less than the calldata floor raise the reservation rather than
+        // invalidate the transaction. The headroom is reserved and refunded, never spendable.
+        txGasLimit = Math.Max(txGasLimit, floorGas);
 
         // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
         // max_fee_per_gas plus blob cost, not the effective price, so it is not under-reserved.
@@ -294,9 +298,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-3529 storage refunds are netted once at the transaction level (ethereum/EIPs#11940):
         // the accumulated counter is capped at a fifth of the gross gas and subtracted here. Per-frame
-        // receipts stay gross; only this transaction total is netted.
+        // receipts stay gross; only this transaction total is netted. The EIP-7623 floor then bounds
+        // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
-        ulong spentGas = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec);
+        ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
         // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
         // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
         // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
@@ -386,16 +391,22 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     /// <summary>
     /// FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST + calldata cost of frame data
-    /// and signature fields (EIP-7623 token pricing) + per-scheme signature verification cost.
-    /// EIP8141: whether the EIP-7623 floor applies to frame transactions is unspecified; the
-    /// standard token cost is used here.
+    /// and signature fields + per-scheme signature verification cost.
     /// </summary>
-    private static ulong CalculateFrameTxIntrinsicGas(Transaction tx, TxFrame[] frames, IReleaseSpec spec)
+    /// <remarks>
+    /// The rate and token weighting behind <paramref name="floorGas"/> are resolved from the spec, as
+    /// <see cref="IntrinsicGasCalculator.CalculateFloorCost"/> does, so a frame transaction's floor
+    /// cannot diverge from an ordinary transaction's under the same fork.
+    /// </remarks>
+    /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
+    private static ulong CalculateFrameTxIntrinsicGas(Transaction tx, TxFrame[] frames, IReleaseSpec spec, out ulong floorGas)
     {
         ulong tokens = 0;
+        ulong dataLength = 0;
         foreach (TxFrame frame in frames)
         {
             tokens += CountCalldataTokens(frame.Data.Span, spec);
+            dataLength += (ulong)frame.Data.Length;
         }
 
         ulong signatureVerificationCost = 0;
@@ -407,6 +418,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
                 tokens += CountCalldataTokens(signature.Msg.Span, spec);
                 tokens += CountCalldataTokens(signature.Signature.Span, spec);
+                dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
+                              + (ulong)signature.Msg.Length
+                              + (ulong)signature.Signature.Length;
                 signatureVerificationCost += signature.Scheme switch
                 {
                     TxFrameSignature.SchemeArbitrary => Eip8141Constants.ArbitraryVerificationGasCost,
@@ -417,10 +431,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
-        return (ulong)Eip8141Constants.IntrinsicGasCost
-               + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
-               + tokens * GasCostOf.TxDataZero
-               + signatureVerificationCost;
+        ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
+                             + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
+                             + signatureVerificationCost;
+        ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
+        floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
+        return mandatoryGas + tokens * GasCostOf.TxDataZero;
     }
 
     private static ulong CountCalldataTokens(ReadOnlySpan<byte> data, IReleaseSpec spec)
