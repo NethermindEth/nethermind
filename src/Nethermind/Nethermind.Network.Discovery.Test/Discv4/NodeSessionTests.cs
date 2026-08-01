@@ -6,7 +6,9 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
@@ -199,6 +201,76 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             }
 
             Assert.That(await waitTask, Is.False);
+        }
+
+        [Test]
+        public async Task GetOrStartBond_shares_in_flight_attempt_for_same_endpoint()
+        {
+            int startCount = 0;
+            TaskCompletionSource<PongMsg?> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            Task<PongMsg?> first = _nodeSession.GetOrStartBond(TestEndpoint, () =>
+            {
+                Interlocked.Increment(ref startCount);
+                return pending.Task;
+            });
+            Task<PongMsg?> second = _nodeSession.GetOrStartBond(TestEndpoint, () =>
+            {
+                Interlocked.Increment(ref startCount);
+                return pending.Task;
+            });
+
+            Assert.That(second, Is.SameAs(first));
+            Assert.That(startCount, Is.EqualTo(1));
+
+            PongMsg pong = new(TestEndpoint, 0, default);
+            pending.SetResult(pong);
+
+            Assert.That(await first, Is.SameAs(pong));
+            Assert.That(await second, Is.SameAs(pong));
+        }
+
+        [Test]
+        public async Task GetOrStartBond_starts_a_new_attempt_once_the_previous_one_completes()
+        {
+            int startCount = 0;
+
+            Task<PongMsg?> first = _nodeSession.GetOrStartBond(TestEndpoint, () =>
+            {
+                Interlocked.Increment(ref startCount);
+                return Task.FromResult<PongMsg?>(null);
+            });
+            await first;
+
+            Task<PongMsg?> second = _nodeSession.GetOrStartBond(TestEndpoint, () =>
+            {
+                Interlocked.Increment(ref startCount);
+                return Task.FromResult<PongMsg?>(null);
+            });
+            await second;
+
+            Assert.That(startCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void GetOrStartBond_tracks_endpoints_independently()
+        {
+            IPEndPoint otherEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
+            int startCount = 0;
+            TaskCompletionSource<PongMsg?> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            _nodeSession.GetOrStartBond(TestEndpoint, () =>
+            {
+                Interlocked.Increment(ref startCount);
+                return pending.Task;
+            });
+            _nodeSession.GetOrStartBond(otherEndpoint, () =>
+            {
+                Interlocked.Increment(ref startCount);
+                return pending.Task;
+            });
+
+            Assert.That(startCount, Is.EqualTo(2));
         }
 
         [Test]
