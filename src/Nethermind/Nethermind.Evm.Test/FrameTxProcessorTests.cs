@@ -862,6 +862,9 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_KeyedNonce_ConsumesEverySelectedKeyAndChargesFirstUse()
     {
+        // A VERIFY-only transaction is cheap enough that the calldata floor clamps the reuse case,
+        // which would hide part of the surcharge the first use pays.
+        _spec.IsEip7623Enabled = false;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         UInt256[] keys = [1, 7];
 
@@ -1188,6 +1191,29 @@ public class FrameTxProcessorTests
             slot,
             TestItem.KeccakB.ValueHash256,
             slot + 1);
+
+    // The keyed-nonce fields replace one payload field with two, and EIP-8250 prices the bytes they add
+    // exactly as frame data. Charging the shared 8141 term alone forks against a client that does.
+    [Test]
+    public void Execute_KeyedNonceEnvelope_IsPricedAsTheBytesItAdds()
+    {
+        // Without this the calldata floor binds on a payload this small, so the delta stops being the
+        // price of the added bytes.
+        _spec.IsEip7623Enabled = false;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        Transaction keyed = FrameTx(nonce: 0, SelfVerifyFrame());
+        keyed.NonceKeys = [UInt256.Zero];
+        CallOutputTracer keyedTracer = new();
+        CallOutputTracer bareTracer = new();
+
+        Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: bareTracer).TransactionExecuted, Is.True);
+
+        // rlp([0]) || rlp(0) is the three non-zero bytes c1 80 80.
+        Assert.That(keyedTracer.GasSpent - bareTracer.GasSpent,
+            Is.EqualTo((long)(3 * Spec.GasCosts.TxDataNonZeroMultiplier * GasCostOf.TxDataZero)));
+    }
 
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);

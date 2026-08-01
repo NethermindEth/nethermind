@@ -522,6 +522,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         tokens += CountCalldataTokens(referenceCalldata, spec);
         dataLength += (ulong)referenceCalldata.Length;
 
+        ReadOnlySpan<byte> nonceCalldata = KeyedNonceManager.Calldata(tx.NonceKeys, tx.Nonce);
+        tokens += CountCalldataTokens(nonceCalldata, spec);
+        dataLength += (ulong)nonceCalldata.Length;
+
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost

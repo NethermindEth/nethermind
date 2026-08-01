@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -15,6 +16,33 @@ namespace Nethermind.Evm.TransactionProcessing;
 public static class KeyedNonceManager
 {
     private const int SlotPreimageLength = 2 * 32;
+
+    /// <summary>The <c>nonce_calldata</c> the keyed-nonce fields add to the payload, priced as frame data is.</summary>
+    /// <remarks>Empty for an envelope that predates EIP-8250: it carries a bare nonce, not a key set.</remarks>
+    public static byte[] Calldata(UInt256[]? nonceKeys, in UInt256 nonceSeq)
+    {
+        if (nonceKeys is null)
+        {
+            return [];
+        }
+
+        int keysContentLength = 0;
+        foreach (UInt256 nonceKey in nonceKeys)
+        {
+            keysContentLength += Rlp.LengthOf(nonceKey);
+        }
+
+        byte[] bytes = new byte[Rlp.LengthOfSequence(keysContentLength) + Rlp.LengthOf(nonceSeq)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(keysContentLength);
+        foreach (UInt256 nonceKey in nonceKeys)
+        {
+            writer.Encode(nonceKey);
+        }
+
+        writer.Encode(nonceSeq);
+        return bytes;
+    }
 
     public static StorageCell StorageSlot(Address sender, in UInt256 nonceKey)
     {
