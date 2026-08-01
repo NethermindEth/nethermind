@@ -1297,9 +1297,7 @@ public class FrameTxProcessorTests
         Assert.That(actual, Is.EqualTo(expected), message ?? $"storage slot {slot} of {address}");
     }
 
-    // EIP-8250: a keyed transaction consumes every selected key as a unit at payment approval and
-    // leaves the account nonce alone, so a partially advanced set cannot be replayed. Each key used
-    // for the first time pays the state-growth surcharge against the approving frame's gas.
+    // A keyed transaction consumes the whole set at payment approval and leaves the account nonce alone.
     [Test]
     public void Execute_KeyedNonce_ConsumesEverySelectedKeyAndChargesFirstUse()
     {
@@ -1330,8 +1328,7 @@ public class FrameTxProcessorTests
             "only the first use of each key is surcharged");
     }
 
-    // The nonce sequence is per key, so a transaction is only valid when every selected key currently
-    // sits at its nonce_seq; a set where one key has moved on must not execute.
+    // The sequence is per key, so every selected key must currently sit at nonce_seq.
     [TestCase(0UL, 1UL, false, TestName = "a nonce sequence behind a consumed key is too low")]
     [TestCase(1UL, 1UL, true, TestName = "a nonce sequence matching every selected key executes")]
     [TestCase(2UL, 1UL, false, TestName = "a nonce sequence ahead of an unconsumed key is too high")]
@@ -1348,9 +1345,7 @@ public class FrameTxProcessorTests
         Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
     }
 
-    // The replay-protection property the set semantics exist for: if one key of a set has already moved
-    // on, the whole set is unusable at that sequence, so the transaction cannot be replayed against the
-    // keys that stayed behind.
+    // The property the set semantics exist for: one advanced key makes the whole set unusable.
     [Test]
     public void Execute_KeyedNonce_PartiallyAdvancedSetIsNotReplayable()
     {

@@ -66,8 +66,7 @@ public static unsafe partial class EvmInstructions
             if (!approvesExecution && !ctx.SenderApproved) return EvmExceptionType.Revert;
             if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) return EvmExceptionType.Revert;
 
-            // EIP-8250: consumption happens at payment approval, so the state-growth surcharge for every
-            // key used for the first time is charged here, against this frame's remaining gas.
+            // Consumption happens at payment approval, so first use is charged against this frame's gas.
             if (ctx.NonceKeys is { } nonceKeys
                 && !TGasPolicy.TryConsume(ref gas, KeyedNonceManager.FirstUseSurcharge(vm.WorldState, ctx.Sender, nonceKeys)))
             {
