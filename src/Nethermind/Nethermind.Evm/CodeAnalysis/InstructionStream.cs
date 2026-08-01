@@ -22,9 +22,8 @@ internal enum StreamOpKind : byte
     StaticJump = 4,
     StaticJumpI = 5,
     Boundary = 6,
-    /// <summary>Self-charging table op that neither redirects control nor ends the frame, so the
-    /// open block continues across it: the executor advances sequentially with no landing
-    /// recompute, and the ops after it keep their precharge in the same block.</summary>
+    /// <summary>Self-charging table op that neither redirects control nor ends the frame, so the ops
+    /// after it keep their precharge in the same block.</summary>
     BoundaryLinear = 7,
 }
 
@@ -129,8 +128,8 @@ internal sealed class InstructionStream
     public readonly StreamOp[] Ops;
     public readonly ulong[] BlockGas;
     /// <summary>Ops the bytecode loop would execute per block (fused pairs count as two, an elided
-    /// JUMPDEST counts in the block that carries its gas). Consumed once per block charge, so the
-    /// hot loop drops its per-op counter updates; a block that faults mid-run is counted whole.</summary>
+    /// JUMPDEST counts in the block that carries its gas). A block that faults mid-run is counted
+    /// whole.</summary>
     public readonly ushort[] BlockOpCount;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
     public readonly UInt256[] Constants;
@@ -179,7 +178,7 @@ internal sealed class InstructionStream
             return null;
 
         List<StreamOp> ops = new(code.Length / 2);
-        List<ushort> blockOpCount = new(64);
+        List<ushort> blockOpCount = new(code.Length / 16);
         List<ulong> blockGas = new(code.Length / 16);
         List<UInt256> constants = new(code.Length / 32);
         ushort[] pcToEntry = new ushort[code.Length + 1];
@@ -220,8 +219,6 @@ internal sealed class InstructionStream
                 if (openBlock >= 0
                     && TryFoldConstantPair(ops, constants, pcToEntry, instruction, pc, (byte)size))
                 {
-                    // Entry surgery happened inside; the original ops' gas and count stay in the block
-                    // so the charge and the executed-op metric keep matching the bytecode loop.
                     blockGas[openBlock] += cost;
                     blockOpCount[openBlock]++;
                 }
@@ -453,7 +450,6 @@ internal sealed class InstructionStream
         return true;
     }
 
-    /// <summary>A plain, unfused in-block push whose value analysis knows exactly.</summary>
     private static bool TryGetConstPush(in StreamOp entry, List<UInt256> constants, out UInt256 value)
     {
         value = default;

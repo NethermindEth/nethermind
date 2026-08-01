@@ -2212,12 +2212,8 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
-    /// <summary>
-    /// Fused <c>SWAPn; POP</c>: the swap partner slot takes the top word and the top is dropped, which
-    /// is what the pair leaves behind without moving the discarded word. One depth check suffices: the
-    /// swap already requires <c>Head &gt;= depth</c> and depth is at least 2, so the pop cannot underflow
-    /// separately.
-    /// </summary>
+    /// <summary>Fused <c>SWAPn; POP</c>. One depth check suffices: the swap already requires
+    /// <c>Head &gt;= depth</c> and depth is at least 2, so the pop cannot underflow separately.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType SwapPop(int depth)
@@ -2239,11 +2235,7 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
-    /// <summary>
-    /// Fused <c>AND; ISZERO</c> run straight over the stack representation: the conjunction only has to
-    /// be compared against zero, so neither operand is converted to limbs and the intermediate is never
-    /// written back.
-    /// </summary>
+    /// <summary>Fused <c>AND; ISZERO</c>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType AndIsZero()

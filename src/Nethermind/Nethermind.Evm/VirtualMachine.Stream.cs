@@ -119,7 +119,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
 
-                    // Gas already charged at the block entry, so the cores are gas-free.
+                    // Gas already charged at the block entry, so the cores are gas-free. Must stay inline (JIT).
                     switch (instruction)
                     {
                         case (Instruction)FusedOpcode.Add:

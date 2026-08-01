@@ -150,12 +150,8 @@ public static partial class EvmInstructions
     public struct OpSLtBytes : IOpCompare { public static bool IsSigned => true; public static bool IsGreater => false; }
     public struct OpSGtBytes : IOpCompare { public static bool IsSigned => true; public static bool IsGreater => true; }
 
-    /// <summary>
-    /// Comparison run straight over the stack representation: big-endian byte order is numeric order
-    /// for unsigned words, so the most significant differing byte decides, and flipping the sign bit
-    /// of the leading byte extends the same order to signed comparisons. Neither operand is converted
-    /// to limbs.
-    /// </summary>
+    /// <summary>Flipping the sign bit of the leading byte extends unsigned big-endian byte order to
+    /// signed comparison.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType CompareCore<TOpCompare>(ref EvmStack stack)

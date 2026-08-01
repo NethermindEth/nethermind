@@ -139,7 +139,6 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.ISZERO]);
                     break;
                 case 7:
-                    // Permutation ops at mixed depths, the shape the coalescing pass rewrites.
                     for (int k = random.Next(2, 6); k > 0; k--)
                     {
                         code.Add(random.Next(3) switch
@@ -155,7 +154,6 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     code.AddRange([(byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE]);
                     break;
                 case 9 when jumpDests.Count > 0:
-                    // Static conditional jump, the fused shape.
                     int condDest = jumpDests[random.Next(jumpDests.Count)];
                     code.AddRange([
                         (byte)Instruction.PUSH1, 0x01, (byte)Instruction.SWAP1, (byte)Instruction.SUB,
@@ -176,7 +174,6 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     if (random.Next(2) == 0) code.Add((byte)Instruction.ISZERO);
                     break;
                 case 12:
-                    // Zero divisor often enough to hit that fold.
                     code.AddRange([
                         (byte)Instruction.PUSH1, (byte)(random.Next(4) == 0 ? 0 : random.Next(256)),
                         (byte)Instruction.PUSH1, (byte)random.Next(256),
@@ -191,7 +188,6 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     code.Add((byte)(random.Next(2) == 0 ? Instruction.SHL : Instruction.SHR));
                     break;
                 case 14:
-                    // The fold path through the constant pool.
                     random.NextBytes(wide);
                     code.Add((byte)Instruction.PUSH32);
                     code.AddRange(wide);
@@ -207,7 +203,6 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     jumpDests.Add(target);
                     break;
                 case 16:
-                    // Boundary ops that keep a block open.
                     switch (random.Next(5))
                     {
                         case 0: code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(64), (byte)Instruction.MLOAD]); break;
@@ -224,7 +219,6 @@ public class StreamGasFuzzTests : VirtualMachineTestsBase
                     code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(256), (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO]);
                     break;
                 case 22:
-                    // Constant shift feeding a subtraction, at saturating amounts too.
                     code.AddRange([
                         (byte)Instruction.PUSH1, (byte)random.Next(256),
                         (byte)Instruction.PUSH1, (byte)(random.Next(4) == 0 ? 0xFF : random.Next(40)),
