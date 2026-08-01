@@ -2212,8 +2212,6 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
-    /// <summary>Fused <c>SWAPn; POP</c>. One depth check suffices: the swap already requires
-    /// <c>Head &gt;= depth</c> and depth is at least 2, so the pop cannot underflow separately.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType SwapPop(int depth)
@@ -2235,7 +2233,6 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
-    /// <summary>Fused <c>AND; ISZERO</c>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType AndIsZero()

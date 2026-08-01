@@ -28,8 +28,8 @@ internal static class StreamInterpreter
     // Larger streams fall back to the metered loop; 512 KiB fits an EIP-170-sized contract of typical (~15-16x) output.
     public const int MaxStreamRetainedBytes = 512 * 1024;
 
-    // Per-thread count of stream frames executed, read by differential tests to assert the stream
-    // engaged. [ThreadStatic] so the hot entry does a plain write, not an atomic; not a global total.
+    // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
+    // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and
     [ThreadStatic] public static long FramesExecuted;
 }
 
@@ -266,8 +266,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmExceptionType.None;
                             break;
                         case (Instruction)FusedOpcode.StaticJumpINot:
-                            // ISZERO + PUSH2 + JUMPI: jump when the condition is zero. The inverter's
-                            // gas sits in its block; this op self-charges exactly what PUSH2+JUMPI would.
                             if (stack.Head >= EvmStack.MaxStackSize - 1)
                             {
                                 exceptionType = EvmExceptionType.StackOverflow;
@@ -297,7 +295,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     goto OutOfGas;
                                 }
 
-                                // Taken backward jumps can loop without a block charge: probe here too.
                                 opCodeCount++;
                                 if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                                 {
@@ -311,8 +308,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         case (Instruction)FusedOpcode.StaticJump:
-                            // Self-charges, being outside any block. At a full stack the unfused PUSH2
-                            // would overflow before the JUMP popped it, so fail with StackOverflow.
+                            // JUMPI pops it; fail with StackOverflow instead of testing the condition and jumping.
                             if (stack.Head >= EvmStack.MaxStackSize - 1)
                             {
                                 exceptionType = EvmExceptionType.StackOverflow;
@@ -325,8 +321,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 goto OutOfGas;
                             }
 
-                            // A backward jump can loop without ever crossing a block charge, so this
-                            // redirect needs its own cancellation probe.
                             opCodeCount += 3;
                             if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                             {
@@ -335,13 +329,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     ThrowStreamOperationCanceledException();
                             }
 
-                            // The operand entry sits one past the JUMPDEST, whose gas this op already
-                            // charged; the shared loop-tail entryIndex++ lands there.
                             entryIndex = (int)entry.Operand - 1;
                             break;
                         case (Instruction)FusedOpcode.StaticJumpI:
-                            // Same full-stack overflow as the unfused PUSH2, which pushes the destination
-                            // before JUMPI pops it.
                             if (stack.Head >= EvmStack.MaxStackSize - 1)
                             {
                                 exceptionType = EvmExceptionType.StackOverflow;
@@ -364,7 +354,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     goto OutOfGas;
                                 }
 
-                                // Taken backward jumps can loop without a block charge: probe here too.
                                 opCodeCount++;
                                 if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                                 {
@@ -382,8 +371,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         default:
-                            // Unreachable: every in-block opcode has a case above. Fail closed rather
-                            // than mis-dispatch a precharged op and corrupt gas.
+                            // Unreachable: every in-block opcode has a case above. Fail closed rather than
+                            // mis-dispatch a precharged op and corrupt gas.
                             exceptionType = EvmExceptionType.BadInstruction;
                             break;
                     }
@@ -396,14 +385,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
-                // A self-charging table op that always falls through, so the open block continues
-                // across it: no landing recompute and no block reset. A metered arrival takes the
-                // general epilogue instead, whose landing recompute routes the uncharged in-block
-                // suffix back into the metered walk.
+                // and dominated them — a boundary op always resets the open block, so metered stays off.
                 if (entry.Kind == StreamOpKind.BoundaryLinear && !metered)
                 {
-                    // Threshold, not a mask: block charges advance opCodeCount in strides that can
-                    // step over every multiple of a mask, so an equality test may never fire.
                     if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                     {
                         nextCancellationCheck = opCodeCount + CancellationCheckMask + 1;
@@ -431,8 +415,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
-                // Structured control flow only: a backward goto makes the loop irreducible and the
-                // JIT stops optimizing it.
+                // backward gotos make the loop irreducible and the JIT stops optimizing it.
                 programCounter = entry.Pc;
                 if (TCancelable.IsActive && opCodeCount - nextCancellationCheck >= 0)
                 {
@@ -482,16 +465,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 entryIndex = landing;
                 if ((uint)entryIndex < (uint)ops.Length)
                 {
-                    // A fused table handler can land past a block's charging entry; run the rest
-                    // metered. A linear boundary counts too, since it does not end its block.
+                    // A fused table handler can land past a block's charging entry; run the rest metered.
                     StreamOpKind landingKind = ops[entryIndex].Kind;
                     metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock or StreamOpKind.BoundaryLinear;
 
                     if (ops[entryIndex].Pc != programCounter)
                     {
-                        // The pc map's only forward mapping is an elided jump-target marker. Its gas
-                        // rides in the block that falls into it and this arrival bypassed that charge,
-                        // so step it the way the bytecode loop would: count, charge, advance.
                         opCodeCount++;
                         if (!TGasPolicy.TryConsume(ref gas, GasCostOf.JumpDest))
                         {
@@ -628,14 +607,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if ((uint)entryIndex >= (uint)ops.Length)
                 return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
-            // A linear boundary does not end its block, so the entries after it are precharged by a
-            // charge this walk bypassed: step it raw and keep metering the suffix.
             StreamOp landingOp = ops[entryIndex];
             if (landingOp.Kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock or StreamOpKind.BoundaryLinear)
                 continue;
 
-            // An entry starting past this pc means an elided jump-target marker nobody on this path
-            // has charged: keep stepping raw so its own dispatch pays it.
             if (landingOp.Pc != programCounter)
                 continue;
 
