@@ -38,10 +38,11 @@ public class InstructionStreamTests
             Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.VeryLow),
                 "two pushes and an add are one block charged as a single sum");
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst), "the first op of a block carries its charge");
-            Assert.That(stream.Ops[0].Opcode, Is.EqualTo((byte)Instruction.PUSH32),
-                "two constant pushes feeding an operator fold at analysis into one pooled push");
-            Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)3),
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo((byte)Instruction.PUSH8),
+                "a folded value that fits in 64 bits rides in the operand instead of the constant pool");
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo(3UL),
                 "the folded value is computed with the operation the executor would have dispatched");
+            Assert.That(stream.Constants, Is.Empty, "nothing was pooled, so no constant load survives");
             Assert.That(stream.Ops, Has.Length.EqualTo(2), "the folded push and the STOP boundary");
             Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
                 "STOP is not a static-cost op and must run the standard handler");
