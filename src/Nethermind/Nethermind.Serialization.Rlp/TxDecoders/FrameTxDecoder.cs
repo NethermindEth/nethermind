@@ -15,6 +15,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// <c>[chain_id, nonce, sender, frames, signatures, max_priority_fee_per_gas, max_fee_per_gas,
 /// max_fee_per_blob_gas, blob_versioned_hashes]</c>, or its EIP-8250 form, which replaces
 /// <c>nonce</c> with <c>nonce_keys, nonce_seq</c>.
+/// max_fee_per_blob_gas, blob_versioned_hashes]</c>, optionally followed by the EIP-8272
+/// <c>recent_root_references</c> list.
 /// The sender is explicit in the payload — there is no envelope ECDSA signature and no recovery.
 /// Encoding with <c>forSigning</c> produces the <c>compute_sig_hash</c> form: the raw signature
 /// bytes of canonical-hash (empty msg) entries are elided.
@@ -33,7 +35,50 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     // EIP8141-GAP: the spec does not bound blob_versioned_hashes; mirrors the blob tx decode cap.
     private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(128, nameof(Transaction.BlobVersionedHashes));
 
+    private static readonly RlpLimit ReferencesCountLimit = RlpLimit.For<Transaction>(Eip8272Constants.MaxRecentRootReferences, nameof(Transaction.RecentRootReferences));
+
     private static readonly byte[][] EmptyVersionedHashes = [];
+
+    private readonly Func<T> _newTransaction = transactionFactory ?? (static () => new T());
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A frame transaction carries no envelope signature — the sender is explicit — so what follows the
+    /// EIP-8141 fields is the optional EIP-8272 reference list rather than a trailing <c>[v, r, s]</c>.
+    /// A non-list element there is padding and is rejected: accepting it would decode a spurious
+    /// signature that strict clients drop, diverging on the transaction hash.
+    /// </remarks>
+    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        transaction ??= _newTransaction();
+        transaction.Type = Type;
+
+        int payloadLength = decoderContext.ReadSequenceLength();
+        int lastCheck = decoderContext.Position + payloadLength;
+
+        DecodePayload(transaction, ref decoderContext, rlpBehaviors);
+
+        if (decoderContext.Position < lastCheck)
+        {
+            if (!decoderContext.IsSequenceNext())
+            {
+                ThrowTrailingSignature();
+            }
+
+            transaction.RecentRootReferences = decoderContext.DecodeArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
+        }
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            decoderContext.Check(lastCheck);
+        }
+
+        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+        {
+            CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
+        }
+    }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -110,6 +155,10 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         writer.Encode(transaction.DecodedMaxFeePerGas);
         writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
         writer.Encode(transaction.BlobVersionedHashes ?? EmptyVersionedHashes);
+        if (transaction.RecentRootReferences is { } references)
+        {
+            RecentRootReferenceDecoder.Instance.EncodeArray(ref writer, references);
+        }
     }
 
     protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
@@ -123,7 +172,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         + Rlp.LengthOf(transaction.GasPrice)
         + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
         + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault())
-        + Rlp.LengthOf(transaction.BlobVersionedHashes ?? EmptyVersionedHashes);
+        + Rlp.LengthOf(transaction.BlobVersionedHashes ?? EmptyVersionedHashes)
+        + (transaction.RecentRootReferences is { } references ? RecentRootReferenceDecoder.Instance.GetArrayLength(references) : 0);
 
     protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
 
@@ -132,12 +182,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     {
     }
 
-    // The payload is exactly 9 fields with no envelope signature (the sender is explicit). The base
-    // decoder reads a trailing [v, r, s] whenever elements remain after the payload; reject that so a
-    // padded encoding is not silently accepted with a spurious signature (which strict clients drop,
-    // diverging on the transaction hash).
-    protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        throw new RlpException("frame transaction must not carry a trailing signature");
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowTrailingSignature() => throw new RlpException("frame transaction must not carry a trailing signature");
 
     /// <summary>Reads <c>nonce_keys</c> as a list of integers.</summary>
     /// <remarks>
