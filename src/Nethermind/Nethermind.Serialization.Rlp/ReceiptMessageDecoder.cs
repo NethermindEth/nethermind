@@ -111,6 +111,13 @@ namespace Nethermind.Serialization.Rlp
             int framesEnd = ctx.ReadSequenceLength() + ctx.Position;
             int frameCount = ctx.PeekNumberOfItemsRemaining(framesEnd, Eip8141Constants.MaxFrames + 1);
             ctx.GuardLimit(frameCount, FrameReceiptsRlpLimit);
+            if (frameCount == 0)
+            {
+                // A frame transaction has at least one frame, so a receipt without one is malformed.
+                // Accepting it would derive a successful transaction status from nothing.
+                ThrowEmptyFrameReceipts();
+            }
+
             TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frameCount];
             int totalLogs = 0;
             for (int i = 0; i < frameCount; i++)
@@ -155,6 +162,10 @@ namespace Nethermind.Serialization.Rlp
             {
                 ctx.Position = receiptEnd;
             }
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowEmptyFrameReceipts()
+                => throw new RlpException("Frame transaction receipt carries no frame receipts");
         }
 
         private static (int Total, int Frames) GetFrameTxContentLength(TxReceipt item)

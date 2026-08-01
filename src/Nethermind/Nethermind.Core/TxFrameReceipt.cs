@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Core;
 
 /// <summary>
@@ -26,16 +28,13 @@ public class TxFrameReceipt(byte status, ulong gasUsed, LogEntry[] logs)
     /// succeeded — keeps a node that executed the block and a node that only received its receipts in
     /// agreement, which a value taken from local execution state cannot do.
     /// </remarks>
-    public static byte AggregateStatus(TxFrameReceipt[]? frameReceipts)
+    public static byte AggregateStatus(ReadOnlySpan<TxFrameReceipt> frameReceipts)
     {
-        if (frameReceipts is not null)
+        foreach (TxFrameReceipt frameReceipt in frameReceipts)
         {
-            foreach (TxFrameReceipt frameReceipt in frameReceipts)
+            if (frameReceipt.Status != StatusSuccess)
             {
-                if (frameReceipt.Status != StatusSuccess)
-                {
-                    return StatusFailure;
-                }
+                return StatusFailure;
             }
         }
 
