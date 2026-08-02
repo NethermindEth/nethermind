@@ -314,6 +314,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     frameContext.SenderApproved = batchStartSenderApproved;
                     refundCounter = batchStartRefund;
 
+                    if (prefixEndIndex >= batchStartIndex)
+                    {
+                        // The prefix ended inside the batch, so its snapshot now points past the
+                        // truncated journal and unwinding a failed assertion to it would throw.
+                        prefixEndSnapshot = batchStartSnapshot;
+                        prefixEndIndex = batchStartIndex - 1;
+                        prefixEndRefund = batchStartRefund;
+                    }
+
                     int terminal = i;
                     while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
                     for (int s = i + 1; s <= terminal && s < frames.Length; s++)
@@ -399,7 +408,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
             // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
-            LogEntry[] txLogs = ConcatFrameLogs(frameReceipts);
+            LogEntry[] txLogs = TxFrameReceipt.ConcatLogs(frameReceipts);
             GasConsumed gasConsumed = new(spentGas, spentGas, spentGas);
             if (postTxReverted)
             {
@@ -412,31 +421,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         return TransactionResult.Ok;
-    }
-
-    /// <summary>
-    /// The transaction log set: the frame-order concatenation of the per-frame receipt logs.
-    /// </summary>
-    private static LogEntry[] ConcatFrameLogs(TxFrameReceipt[] frameReceipts)
-    {
-        int total = 0;
-        foreach (TxFrameReceipt frameReceipt in frameReceipts)
-        {
-            total += frameReceipt.Logs.Length;
-        }
-
-        if (total == 0) return [];
-
-        LogEntry[] logs = new LogEntry[total];
-        int offset = 0;
-        foreach (TxFrameReceipt frameReceipt in frameReceipts)
-        {
-            LogEntry[] frameLogs = frameReceipt.Logs;
-            frameLogs.CopyTo(logs, offset);
-            offset += frameLogs.Length;
-        }
-
-        return logs;
     }
 
     /// <summary>

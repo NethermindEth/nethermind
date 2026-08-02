@@ -827,6 +827,23 @@ public class FrameTxProcessorTests
             "the sender nonce bump is part of the prefix that payment approval committed");
     }
 
+    // An unrolled batch truncates the journal past the prefix snapshot the approving frame inside it
+    // took, and the failed assertion below then unwinds to it — a restore into the future.
+    [Test]
+    public void Execute_AtomicBatchUnrollsTheApprovingFrame_InvalidatesTheTransaction()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, (byte)(TxFrame.ApproveExecutionAndPayment | TxFrame.AtomicBatchFlag),
+                target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, target: Recipient),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        Assert.That(Process(tx).TransactionExecuted, Is.False);
+    }
+
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
