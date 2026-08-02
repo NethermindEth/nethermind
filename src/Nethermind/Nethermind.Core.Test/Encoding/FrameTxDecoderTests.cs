@@ -33,7 +33,6 @@ public class FrameTxDecoderTests
         Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
         AssertReferencesEqual(decoded.RecentRootReferences, tx.RecentRootReferences);
         Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
-        AssertReferencesEqual(decoded.RecentRootReferences, tx.RecentRootReferences);
         // The sender is explicit in the payload — no envelope signature, no ECDSA recovery.
         Assert.That(decoded.SenderAddress, Is.EqualTo(tx.SenderAddress));
         Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
@@ -241,119 +240,6 @@ public class FrameTxDecoderTests
         }
     }
 
-    // The reference list is part of the signing payload, and an absent list is a different envelope
-    // from an empty one, so neither may reuse the other's hash.
-    [Test]
-    public void ComputeSigHash_RecentRootReferencesChange_HashChanges()
-    {
-        Transaction none = CreateFrameTx();
-        Transaction empty = CreateFrameTx();
-        empty.RecentRootReferences = [];
-        Transaction referencing = CreateFrameTx();
-        referencing.RecentRootReferences = [Reference(slot: 7)];
-        Transaction otherSlot = CreateFrameTx();
-        otherSlot.RecentRootReferences = [Reference(slot: 8)];
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(FrameTxSigHash.ComputeValue(empty), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(none)));
-            Assert.That(FrameTxSigHash.ComputeValue(referencing), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(empty)));
-            Assert.That(FrameTxSigHash.ComputeValue(otherSlot), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(referencing)));
-        }
-    }
-
-    // Every rejection the reference list introduces: a tuple that is not three well-sized elements is
-    // not a reference, and a list longer than the cap is not decodable at all — both must throw rather
-    // than yield a transaction some other client would read differently.
-    [TestCaseSource(nameof(MalformedReferenceListCases))]
-    public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references) =>
-        Assert.That(() => DecodeReferenceEnvelope(references), Throws.InstanceOf<RlpException>());
-
-    // Control: the same envelope with a well-formed list must decode, or the malformed cases above
-    // would be satisfied by any exception the surrounding payload throws.
-    [Test]
-    public void Decode_WellFormedRecentRootReferenceList_Decodes()
-    {
-        Transaction tx = DecodeReferenceEnvelope(Rlp.Encode(new[]
-        {
-            EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray())
-        }));
-
-        Assert.That(tx.RecentRootReferences, Has.Length.EqualTo(1));
-    }
-
-    private static IEnumerable<TestCaseData> MalformedReferenceListCases()
-    {
-        Rlp wellFormed = EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray());
-
-        yield return new TestCaseData(Rlp.Encode(new[]
-        {
-            EncodeReference(new byte[31], 7, TestItem.KeccakB.BytesToArray())
-        })).SetName("Decode_ReferenceWithUndersizedSourceId_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[]
-        {
-            Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L) })
-        })).SetName("Decode_ReferenceMissingRoot_Throws");
-        yield return new TestCaseData(Rlp.Encode(Enumerable.Repeat(wellFormed, Eip8272Constants.MaxRecentRootReferences + 1).ToArray()))
-            .SetName("Decode_MoreReferencesThanTheCap_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[] { Rlp.OfEmptyList }))
-            .SetName("Decode_EmptyListAsAReference_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[]
-        {
-            Rlp.Encode(new[]
-            {
-                Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L),
-                Rlp.Encode(TestItem.KeccakB.BytesToArray()), Rlp.Encode(0L)
-            })
-        })).SetName("Decode_ReferenceWithAFourthElement_Throws");
-    }
-
-    private Transaction DecodeReferenceEnvelope(Rlp references)
-    {
-        Rlp sequence = Rlp.Encode(
-            Rlp.Encode(TestBlockchainIds.ChainId),
-            Rlp.Encode(0L),
-            Rlp.Encode(TestItem.AddressA.Bytes),
-            Rlp.Encode(Array.Empty<Rlp>()),
-            Rlp.Encode(Array.Empty<Rlp>()),
-            Rlp.Encode(0L),
-            Rlp.Encode(0L),
-            Rlp.Encode(0L),
-            Rlp.Encode(Array.Empty<Rlp>()),
-            references);
-
-        byte[] payload = new byte[1 + sequence.Length];
-        payload[0] = (byte)TxType.FrameTx;
-        sequence.Bytes.CopyTo(payload, 1);
-
-        RlpReader reader = new(payload);
-        return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-    }
-
-    private static Rlp EncodeReference(byte[] sourceId, ulong slot, byte[] root) =>
-        Rlp.Encode(new[] { Rlp.Encode(sourceId), Rlp.Encode(slot), Rlp.Encode(root) });
-
-    private static RecentRootReference Reference(ulong slot) =>
-        new(TestItem.KeccakA.ValueHash256, slot, TestItem.KeccakB.ValueHash256);
-
-    private static void AssertReferencesEqual(RecentRootReference[]? actual, RecentRootReference[]? expected)
-    {
-        if (expected is null)
-        {
-            Assert.That(actual, Is.Null);
-            return;
-        }
-
-        Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Length, Is.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
-        {
-            Assert.That(actual[i].SourceId, Is.EqualTo(expected[i].SourceId));
-            Assert.That(actual[i].Slot, Is.EqualTo(expected[i].Slot));
-            Assert.That(actual[i].Root, Is.EqualTo(expected[i].Root));
-        }
-    }
-
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateFrameTx()).SetName("Roundtrip_MinimalSingleFrame");
@@ -389,13 +275,6 @@ public class FrameTxDecoderTests
         Transaction multiKeyed = CreateFrameTx();
         multiKeyed.NonceKeys = [1, UInt256.MaxValue];
         yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
-        Transaction emptyReferences = CreateFrameTx();
-        emptyReferences.RecentRootReferences = [];
-        yield return new TestCaseData(emptyReferences).SetName("Roundtrip_EmptyRecentRootReferenceList");
-
-        Transaction referencing = CreateFrameTx();
-        referencing.RecentRootReferences = [Reference(slot: 0), Reference(slot: ulong.MaxValue)];
-        yield return new TestCaseData(referencing).SetName("Roundtrip_RecentRootReferences");
 
         Transaction blobCarrying = CreateFrameTx();
         blobCarrying.MaxFeePerBlobGas = 7;

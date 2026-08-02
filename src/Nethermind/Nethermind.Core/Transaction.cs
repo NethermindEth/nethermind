@@ -229,14 +229,6 @@ namespace Nethermind.Core
         public RecentRootReference[]? RecentRootReferences { get; set; }
 
         /// <summary>
-        /// Recent-root references declared by a frame transaction.
-        /// https://eips.ethereum.org/EIPS/eip-8272
-        /// </summary>
-        /// <remarks><see langword="null"/> for an envelope that predates EIP-8272, which is a different
-        /// signing payload from one carrying an empty reference list.</remarks>
-        public RecentRootReference[]? RecentRootReferences { get; set; }
-
-        /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
