@@ -962,9 +962,12 @@ public class FrameTxProcessorTests
         return (ulong)new UInt256(_stateProvider.Get(new StorageCell(Observer, 0)), isBigEndian: true);
     }
 
-    // Authenticating only the first key would accept a set an attacker extended with keys approval consumes.
-    [Test]
-    public void Execute_TxParam_NonceKeysHash_CommitsToEveryKey()
+    // Authenticating only the first key would accept a set an attacker extended with keys approval
+    // consumes. The non-keyed envelope answers as the key set [0], which is the shape most likely to
+    // diverge between clients, so both are pinned.
+    [TestCase(false, TestName = "Execute_TxParam_NonceKeysHash_WithoutKeys")]
+    [TestCase(true, TestName = "Execute_TxParam_NonceKeysHash_CommitsToEveryKey")]
+    public void Execute_TxParam_NonceKeysHash_IsTheHashOfTheAnsweredKeySet(bool keyed)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
@@ -972,14 +975,35 @@ public class FrameTxProcessorTests
             .Op(Instruction.STOP).Done);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        UInt256[] keys = keyed ? [3, 9] : [UInt256.Zero];
+        if (keyed) tx.NonceKeys = keys;
+
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+        Span<byte> preimage = stackalloc byte[(keys.Length + 1) * 32];
+        ((UInt256)keys.Length).ToBigEndian(preimage[..32]);
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i].ToBigEndian(preimage.Slice(32 * (i + 1), 32));
+        }
+
+        AssertStorage(Observer, 0, new UInt256(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true));
+    }
+
+    // The fork widens the accepted range to 0x00..0x10, but EIP-8250 leaves 0x0F undefined: it must
+    // still halt, or a future switch arm silently turns an undefined index into a consensus-split push.
+    [Test]
+    public void Execute_TxParam_UndefinedIndexInsideTheWidenedRange_ExceptionallyHalts()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x0F).Op(Instruction.TXPARAM).Op(Instruction.POP)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
         tx.NonceKeys = [3, 9];
 
         Assert.That(Process(tx).TransactionExecuted, Is.True);
-        Span<byte> preimage = stackalloc byte[3 * 32];
-        ((UInt256)2).ToBigEndian(preimage[..32]);
-        ((UInt256)3).ToBigEndian(preimage.Slice(32, 32));
-        ((UInt256)9).ToBigEndian(preimage.Slice(64, 32));
-        AssertStorage(Observer, 0, new UInt256(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true));
+        AssertStorage(Observer, 0, UInt256.Zero);
     }
 
     // Payment approval moves the account nonce; the read must still report the admitted value.
