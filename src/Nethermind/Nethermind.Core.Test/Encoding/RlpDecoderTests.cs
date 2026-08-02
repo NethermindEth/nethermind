@@ -155,6 +155,16 @@ public class RlpDecoderTests
     }
 
     [Test]
+    public void Decode_array_legacy_allow_nulls_parameter_is_preserved()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+
+        Hash256?[] result = context.DecodeArray(KeccakDecoder.Instance, allowNulls: true);
+
+        Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
+    }
+
+    [Test]
     public void Decode_nullable_delegate_array_uses_default_for_empty_list_element()
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });

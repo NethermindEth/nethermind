@@ -942,9 +942,21 @@ public ref struct RlpReader
         }
     }
 
-    public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, RlpLimit? limit = null)
+    /// <summary>
+    /// Decodes an RLP sequence using the legacy array API. New code should use
+    /// <see cref="DecodeNonNullArray{T}"/> or <see cref="DecodeNullableArray{T}(IRlpDecoder{T}?, bool, T?, RlpLimit?)"/>
+    /// to make element nullability explicit.
+    /// </summary>
+    public T[] DecodeArray<T>(
+        IRlpDecoder<T>? decoder = null,
+        bool checkPositions = true,
+        bool allowNulls = false,
+        T? defaultElement = default,
+        RlpLimit? limit = null)
         where T : class
-        => DecodeNonNullArray(decoder, checkPositions, limit);
+        => allowNulls
+            ? DecodeNullableArrayCore(decoder, checkPositions, defaultElement, limit)
+            : DecodeNonNullArray(decoder, checkPositions, limit);
 
     public T[] DecodeNonNullArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, RlpLimit? limit = null)
         where T : class
@@ -971,6 +983,10 @@ public ref struct RlpReader
 
     public T?[] DecodeNullableArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
         where T : class
+        => DecodeNullableArrayCore(decoder, checkPositions, defaultElement, limit);
+
+    private T[] DecodeNullableArrayCore<T>(IRlpDecoder<T>? decoder, bool checkPositions, T? defaultElement, RlpLimit? limit)
+        where T : class
     {
         decoder ??= Rlp.GetDecoder<T>()
             ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
@@ -980,17 +996,17 @@ public ref struct RlpReader
             checkPositions ? positionCheck : null,
             (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
-        T?[] result = new T?[count];
+        T[] result = new T[count];
         for (int i = 0; i < result.Length; i++)
         {
             if (PeekByte() == Rlp.OfEmptyList[0])
             {
-                result[i] = defaultElement;
+                result[i] = defaultElement!;
                 Position++;
             }
             else
             {
-                result[i] = decoder.Decode(ref this);
+                result[i] = decoder.Decode(ref this)!;
             }
         }
 

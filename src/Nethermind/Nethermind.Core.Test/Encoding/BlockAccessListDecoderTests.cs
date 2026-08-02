@@ -241,6 +241,7 @@ public class BlockAccessListDecoderTests
             .GetMethods()
             .Single(m => m.Name == nameof(RlpReader.DecodeArray)
                 && m.IsGenericMethodDefinition
+                && m.GetParameters().Length == 5
                 && m.GetParameters()[0].ParameterType.IsGenericType
                 && m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IRlpDecoder<>));
 
