@@ -72,12 +72,12 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
             int startPosition = decoderContext.Position;
             try
             {
-                return Decoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+                return Decoder.DecodeNonNullArray(ref decoderContext, RlpBehaviors.Storage);
             }
             catch (RlpException)
             {
                 decoderContext.Position = startPosition;
-                return Decoder.DecodeArray(ref decoderContext);
+                return Decoder.DecodeNonNullArray(ref decoderContext);
             }
         }
     }
@@ -130,12 +130,12 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
             RlpReader decoderContext = new(receiptsData);
             try
             {
-                return Decoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+                return Decoder.DecodeNonNullArray(ref decoderContext, RlpBehaviors.Storage);
             }
             catch (RlpException)
             {
                 decoderContext.Position = 0;
-                return Decoder.DecodeArray(ref decoderContext);
+                return Decoder.DecodeNonNullArray(ref decoderContext);
             }
         }
     }

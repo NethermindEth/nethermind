@@ -947,7 +947,7 @@ public ref struct RlpReader
     /// <see cref="DecodeNonNullArray{T}"/> or <see cref="DecodeNullableArray{T}(IRlpDecoder{T}?, bool, T?, RlpLimit?)"/>
     /// to make element nullability explicit.
     /// </summary>
-    public T[] DecodeArray<T>(
+    public T?[] DecodeArray<T>(
         IRlpDecoder<T>? decoder = null,
         bool checkPositions = true,
         bool allowNulls = false,
@@ -958,6 +958,8 @@ public ref struct RlpReader
             ? DecodeNullableArrayCore(decoder, checkPositions, defaultElement, limit)
             : DecodeNonNullArray(decoder, checkPositions, limit);
 
+    /// <summary>Decodes a sequence of reference-type values and rejects null elements.</summary>
+    /// <exception cref="RlpException">An element is null.</exception>
     public T[] DecodeNonNullArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, RlpLimit? limit = null)
         where T : class
     {
@@ -985,7 +987,7 @@ public ref struct RlpReader
         where T : class
         => DecodeNullableArrayCore(decoder, checkPositions, defaultElement, limit);
 
-    private T[] DecodeNullableArrayCore<T>(IRlpDecoder<T>? decoder, bool checkPositions, T? defaultElement, RlpLimit? limit)
+    private T?[] DecodeNullableArrayCore<T>(IRlpDecoder<T>? decoder, bool checkPositions, T? defaultElement, RlpLimit? limit)
         where T : class
     {
         decoder ??= Rlp.GetDecoder<T>()
@@ -996,17 +998,17 @@ public ref struct RlpReader
             checkPositions ? positionCheck : null,
             (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
-        T[] result = new T[count];
+        T?[] result = new T?[count];
         for (int i = 0; i < result.Length; i++)
         {
             if (PeekByte() == Rlp.OfEmptyList[0])
             {
-                result[i] = defaultElement!;
+                result[i] = defaultElement;
                 Position++;
             }
             else
             {
-                result[i] = decoder.Decode(ref this)!;
+                result[i] = decoder.Decode(ref this);
             }
         }
 
@@ -1018,7 +1020,36 @@ public ref struct RlpReader
         return result;
     }
 
-    public T[] DecodeArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
+    public T?[] DecodeArray<T>(DecodeRlpValue<T?> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
+    {
+        int positionCheck = ReadSequenceLength() + Position;
+        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
+        GuardLimit(count, limit);
+        T?[] result = new T?[count];
+        for (int i = 0; i < result.Length; i++)
+        {
+            if (PeekByte() == Rlp.OfEmptyList[0])
+            {
+                result[i] = defaultElement;
+                Position++;
+            }
+            else
+            {
+                result[i] = decodeItem(ref this);
+            }
+        }
+
+        if (checkPositions)
+        {
+            Check(positionCheck);
+        }
+
+        return result;
+    }
+
+    /// <summary>Decodes a sequence with the supplied decoder and rejects null elements.</summary>
+    /// <exception cref="RlpException">An element is null and no reference-type default element was supplied.</exception>
+    public T[] DecodeNonNullArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
     {
         int positionCheck = ReadSequenceLength() + Position;
         int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
@@ -1087,7 +1118,54 @@ public ref struct RlpReader
         return result;
     }
 
-    public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
+    /// <summary>Decodes a pooled sequence while preserving null elements for compatibility.</summary>
+    /// <returns>A pooled list owned by the caller and requiring disposal.</returns>
+    public ArrayPoolList<T?> DecodeArrayPoolList<T>(DecodeRlpValue<T?> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
+    {
+        int positionCheck = ReadSequenceLength() + Position;
+        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
+        GuardLimit(count, limit);
+        ArrayPoolList<T?> result = new(count, count);
+        int i = 0;
+        try
+        {
+            for (; i < result.Count; i++)
+            {
+                if (PeekByte() == Rlp.OfEmptyList[0])
+                {
+                    result[i] = defaultElement;
+                    Position++;
+                }
+                else
+                {
+                    result[i] = decodeItem(ref this);
+                }
+            }
+
+            if (checkPositions)
+            {
+                Check(positionCheck);
+            }
+
+            return result;
+        }
+        catch (RlpException)
+        {
+            Rlp.DisposeDecodedItemsAndList(result, i);
+            throw;
+        }
+        catch (Exception e)
+        {
+            Rlp.DisposeDecodedItemsAndList(result, i);
+            throw new RlpException($"Error decoding array of {typeof(T).Name}.", e);
+        }
+    }
+
+    /// <summary>Decodes a pooled sequence and rejects null elements.</summary>
+    /// <param name="decodeEmptyList">When true, passes an RLP empty list to <paramref name="decodeItem"/> instead of treating it as a null element.</param>
+    /// <returns>A pooled list owned by the caller and requiring disposal.</returns>
+    /// <exception cref="RlpException">An element is null and no reference-type default element was supplied.</exception>
+    public ArrayPoolList<T> DecodeNonNullArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null, bool decodeEmptyList = false)
     {
         int positionCheck = ReadSequenceLength() + Position;
         int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
@@ -1099,7 +1177,7 @@ public ref struct RlpReader
         {
             for (; i < result.Count; i++)
             {
-                if (PeekByte() == Rlp.OfEmptyList[0])
+                if (!decodeEmptyList && PeekByte() == Rlp.OfEmptyList[0])
                 {
                     if (!hasDefaultElement)
                     {

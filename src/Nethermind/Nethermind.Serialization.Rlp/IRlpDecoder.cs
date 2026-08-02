@@ -11,7 +11,7 @@ public interface IRlpDecoder;
 
 public interface IRlpDecoder<T> : IRlpDecoder
 {
-    int GetLength(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     int GetLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
 
@@ -41,7 +41,24 @@ public interface IRlpDecoder<T> : IRlpDecoder
     [return: MaybeNull]
     T Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    T[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null);
+    /// <summary>Decodes an RLP sequence while preserving null elements for compatibility.</summary>
+    T?[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null);
+
+    /// <summary>Decodes an RLP sequence and rejects any element decoded as null.</summary>
+    /// <exception cref="RlpException">An element is null.</exception>
+    T[] DecodeNonNullArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+    {
+        T?[] values = DecodeArray(ref decoderContext, rlpBehaviors, limit);
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (values[i] is null)
+            {
+                RlpHelpers.ThrowNullArrayElement(i);
+            }
+        }
+
+        return values!;
+    }
 
     [return: MaybeNull]
     T Decode(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

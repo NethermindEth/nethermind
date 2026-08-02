@@ -73,6 +73,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         }
 
         [Test]
+        public void Roundtrip_EmptyAccountSlots()
+        {
+            using StorageRangeMessage msg = new()
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+                {
+                    ArrayPoolList<PathWithStorageSlot>.Empty()
+                },
+                Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
+            };
+
+            StorageRangesMessageSerializer serializer = new();
+
+            SerializerTester.TestZero(serializer, msg);
+        }
+
+        [Test]
         public void Roundtrip_Many()
         {
             using StorageRangeMessage msg = new()

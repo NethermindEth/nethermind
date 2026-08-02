@@ -179,14 +179,21 @@ namespace Nethermind.Init.Steps.Migrations
                     }
 
                     _progressLogger.Update(Interlocked.Increment(ref synced));
-                    MigrateBlock(block!);
+                    bool migrationCompleted = MigrateBlock(block!);
 
                     if (usingEmptyBlock)
                     {
                         ReturnMissingBlock(block!);
                     }
 
-                    pointerTracker?.ReportCompleted(blockNum);
+                    if (migrationCompleted)
+                    {
+                        pointerTracker?.ReportCompleted(blockNum);
+                    }
+                    else
+                    {
+                        pointerTracker?.ReportIncomplete(blockNum);
+                    }
                 });
 
                 if (!token.IsCancellationRequested)
@@ -276,19 +283,26 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private void MigrateBlock(Block block)
+        private bool MigrateBlock(Block block)
         {
             Hash256 blockHash = block.Hash
                 ?? throw new InvalidDataException($"Cannot migrate receipts for block {block.Number} without a block hash.");
             TxReceipt?[] receipts = _migrationStore.GetForMigration(block.Number, blockHash);
+            if (block.Transactions.Length > 0 && receipts.Length != block.Transactions.Length)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} has {receipts.Length} receipts for {block.Transactions.Length} transactions; leaving its legacy receipt data unchanged.");
+                return false;
+            }
+
             if (!TryGetCompleteReceipts(receipts, out TxReceipt[]? completeReceipts, out int missingCount))
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {missingCount} of {receipts.Length} receipts; leaving its legacy receipt data unchanged.");
-                return;
+                return false;
             }
 
-            if (completeReceipts.Length == 0) return;
+            if (completeReceipts.Length == 0) return true;
 
             _recovery.TryRecover(block, completeReceipts, forceRecoverSender: false);
             Hash256[] transactionHashes = new Hash256[completeReceipts.Length];
@@ -327,6 +341,7 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
 
+            return true;
         }
 
         private static bool TryGetCompleteReceipts(
@@ -414,11 +429,31 @@ namespace Nethermind.Init.Steps.Migrations
             private readonly Lock _lock = new();
             private readonly HashSet<ulong> _completedAwaitingContiguity = new(expectedBacklog);
             private ulong _nextToConfirm = to;
+            private ulong? _highestIncomplete;
+
+            public void ReportIncomplete(ulong blockNumber)
+            {
+                lock (_lock)
+                {
+                    if (_highestIncomplete is null || blockNumber > _highestIncomplete)
+                    {
+                        _highestIncomplete = blockNumber;
+                    }
+
+                    ulong highestIncomplete = _highestIncomplete.Value;
+                    _completedAwaitingContiguity.RemoveWhere(number => number <= highestIncomplete);
+                }
+            }
 
             public void ReportCompleted(ulong blockNumber)
             {
                 lock (_lock)
                 {
+                    if (_highestIncomplete is ulong highestIncomplete && blockNumber <= highestIncomplete)
+                    {
+                        return;
+                    }
+
                     _completedAwaitingContiguity.Add(blockNumber);
 
                     bool advanced = false;

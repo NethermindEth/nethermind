@@ -53,7 +53,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             lastSlot = slot;
         }
 
-        UInt256[] storageReads = UInt256Decoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _storageLimit);
+        UInt256[] storageReads = UInt256Decoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, _storageLimit);
         UInt256? lastRead = null;
         foreach (UInt256 storageRead in storageReads)
         {
@@ -70,13 +70,13 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             lastRead = storageRead;
         }
 
-        BalanceChange[] balanceChanges = BalanceChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
+        BalanceChange[] balanceChanges = BalanceChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, _txLimit);
         ValidateSortedByIndex(balanceChanges, "Balance");
 
-        NonceChange[] nonceChanges = NonceChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
+        NonceChange[] nonceChanges = NonceChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, _txLimit);
         ValidateSortedByIndex(nonceChanges, "Nonce");
 
-        CodeChange[] codeChanges = CodeChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
+        CodeChange[] codeChanges = CodeChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, _txLimit);
         ValidateSortedByIndex(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)

@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Rlp;
 
 public abstract class RlpDecoder<T> : IRlpDecoder<T>
 {
-    public abstract int GetLength(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public abstract void Encode<TWriter>(ref TWriter stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
@@ -71,7 +71,26 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
 
-    public virtual T[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+    public virtual T?[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+    {
+        int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
+        decoderContext.GuardLimit(length, limit);
+        T?[] result = new T?[length];
+        for (int i = 0; i < result.Length; i++)
+        {
+            result[i] = Decode(ref decoderContext, rlpBehaviors);
+        }
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            decoderContext.Check(checkPosition);
+        }
+
+        return result;
+    }
+
+    public virtual T[] DecodeNonNullArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
     {
         int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
         int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);

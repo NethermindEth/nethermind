@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         [TestCase(true)]
         [TestCase(false)]
-        public void Deserialize_throws_on_null_required_hash(bool nullBestHash)
+        public void Serialize_throws_on_null_required_hash(bool nullBestHash)
         {
             using StatusMessage statusMessage = new()
             {
@@ -37,9 +37,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 GenesisHash = nullBestHash ? Keccak.Zero : null
             };
             StatusMessageSerializer serializer = new();
-            byte[] payload = serializer.Serialize(statusMessage);
+            Assert.Throws<RlpException>(() => serializer.Serialize(statusMessage));
+        }
 
-            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Deserialize_throws_on_null_required_hash(bool nullBestHash)
+        {
+            Rlp bestHash = nullBestHash ? Rlp.OfEmptyByteArray : Rlp.Encode(Keccak.Zero);
+            Rlp genesisHash = nullBestHash ? Rlp.Encode(Keccak.Zero) : Rlp.OfEmptyByteArray;
+            Rlp payload = Rlp.Encode(
+                Rlp.OfEmptyByteArray,
+                Rlp.OfEmptyByteArray,
+                Rlp.OfEmptyByteArray,
+                bestHash,
+                genesisHash);
+            StatusMessageSerializer serializer = new();
+
+            Assert.Throws<RlpException>(() => serializer.Deserialize(payload.Bytes));
         }
 
         [Test]
@@ -79,7 +94,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             next ??= BinaryPrimitives.ReadUInt32BigEndian(Bytes.FromHexString("baddcafe"));
             StatusMessageSerializer serializer = new();
-            using StatusMessage message = new();
+            using StatusMessage message = new() { BestHash = Keccak.Zero, GenesisHash = Keccak.Zero };
             message.ForkId = new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(forkHash)), next.Value);
             Assert.That(serializer.Serialize(message).ToHexString(), Does.EndWith(expected));
         }

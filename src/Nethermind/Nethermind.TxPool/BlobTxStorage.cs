@@ -128,7 +128,7 @@ public class BlobTxStorage : IBlobTxStorage
         if (bytes is not null)
         {
             RlpReader ctx = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
+            blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm);
             return true;
         }
 

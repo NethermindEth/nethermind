@@ -8,7 +8,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public interface IReceiptMigrationStore : IReceiptStorage
     {
-        TxReceipt?[] GetForMigration(ulong blockNumber, Hash256 blockHash);
+        TxReceipt?[] GetForMigration(ulong blockNumber, Hash256 blockHash) => Get(blockHash, recover: false);
         void InsertForMigration(Block block, TxReceipt[] receipts);
     }
 }
