@@ -81,7 +81,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     protected TxReceipt BuildFailedReceipt(Address recipient, in GasConsumed gasSpent, string error, Hash256? stateRoot)
     {
-        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, [], stateRoot);
+        // EIP-7906: a failed assertion discards the body but keeps the validation prefix, whose logs
+        // stay in the surviving frame receipts and so in the transaction's log set and bloom.
+        LogEntry[] logs = _frameTxReceipts is { } frameReceipts ? TxFrameReceipt.ConcatLogs(frameReceipts) : [];
+        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, logs, stateRoot);
         receipt.Error = error;
         return receipt;
     }
