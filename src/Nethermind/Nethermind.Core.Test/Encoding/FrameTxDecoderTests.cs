@@ -32,6 +32,7 @@ public class FrameTxDecoderTests
         Assert.That(decoded.ChainId, Is.EqualTo(tx.ChainId));
         Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
         AssertReferencesEqual(decoded.RecentRootReferences, tx.RecentRootReferences);
+        Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
         // The sender is explicit in the payload — no envelope signature, no ECDSA recovery.
         Assert.That(decoded.SenderAddress, Is.EqualTo(tx.SenderAddress));
         Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
@@ -197,6 +198,24 @@ public class FrameTxDecoderTests
         }
     }
 
+    // Selecting different keys — or none at all, which is a different envelope rather than the key 0 —
+    // must not reuse another transaction's signing hash.
+    [Test]
+    public void ComputeSigHash_NonceKeysChange_HashChanges()
+    {
+        Transaction legacy = CreateFrameTx();
+        Transaction legacyKey = CreateFrameTx();
+        legacyKey.NonceKeys = [UInt256.Zero];
+        Transaction otherKey = CreateFrameTx();
+        otherKey.NonceKeys = [1];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxSigHash.ComputeValue(legacyKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacy)));
+            Assert.That(FrameTxSigHash.ComputeValue(otherKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacyKey)));
+        }
+    }
+
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateFrameTx()).SetName("Roundtrip_MinimalSingleFrame");
@@ -225,10 +244,43 @@ public class FrameTxDecoderTests
         referencing.RecentRootReferences = [Reference(slot: 0), Reference(slot: ulong.MaxValue)];
         yield return new TestCaseData(referencing).SetName("Roundtrip_RecentRootReferences");
 
+        Transaction keyed = CreateFrameTx();
+        keyed.NonceKeys = [UInt256.Zero];
+        yield return new TestCaseData(keyed).SetName("Roundtrip_KeyedNonceEnvelope_LegacyKeyOnly");
+
+        Transaction multiKeyed = CreateFrameTx();
+        multiKeyed.NonceKeys = [1, UInt256.MaxValue];
+        yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
+
         Transaction blobCarrying = CreateFrameTx();
         blobCarrying.MaxFeePerBlobGas = 7;
         blobCarrying.BlobVersionedHashes = [FilledBytes(32, 0x01), FilledBytes(32, 0x02)];
         yield return new TestCaseData(blobCarrying).SetName("Roundtrip_WithBlobFields");
+    }
+
+    // Decoding `c1 c0` as the set [0] would move the sequence into the sender's account nonce.
+    [Test]
+    public void Decode_NonceKeyEncodedAsAnEmptyList_Throws()
+    {
+        Transaction keyed = CreateFrameTx();
+        keyed.NonceKeys = [1];
+        byte[] bytes = new byte[_txDecoder.GetLength(keyed, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, keyed);
+        // The one-byte key `01` and the empty list `c0` occupy the same slot, so no length changes.
+        int keyIndex = Array.IndexOf(bytes, (byte)0xc1) + 1;
+        bytes[keyIndex] = 0xc0;
+
+        Assert.That(() => { RlpReader reader = new(bytes); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Decode_MoreNonceKeysThanTheCap_Throws()
+    {
+        Transaction keyed = CreateFrameTx();
+        keyed.NonceKeys = [.. Enumerable.Range(1, Eip8250Constants.MaxNonceKeys + 1).Select(static i => (UInt256)i)];
+
+        Assert.That(() => EncodeDecode(keyed), Throws.InstanceOf<RlpException>());
     }
 
     private static Transaction EncodeDecode(Transaction tx)
