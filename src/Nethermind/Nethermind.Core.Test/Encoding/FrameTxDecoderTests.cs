@@ -186,6 +186,13 @@ public class FrameTxDecoderTests
             .SetName("Decode_ReferenceMissingRoot_Throws");
         yield return new TestCaseData(Rlp.Encode(Enumerable.Repeat(wellFormed, Eip8272Constants.MaxRecentRootReferences + 1).ToArray()))
             .SetName("Decode_MoreReferencesThanTheCap_Throws");
+        yield return new TestCaseData(Rlp.Encode(new[] { Rlp.OfEmptyList }))
+            .SetName("Decode_EmptyListAsAReference_Throws");
+        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(new[]
+        {
+            Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L),
+            Rlp.Encode(TestItem.KeccakB.BytesToArray()), Rlp.Encode(0L)
+        }))).SetName("Decode_ReferenceWithAFourthElement_Throws");
     }
 
     private static Rlp EncodeReference(byte[] sourceId, ulong slot, byte[] root) =>
