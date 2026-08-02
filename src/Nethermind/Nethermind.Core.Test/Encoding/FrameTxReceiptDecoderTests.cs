@@ -13,8 +13,8 @@ namespace Nethermind.Core.Test.Encoding;
 /// <summary>
 /// Round-trips of the EIP-8141 receipt payload <c>[cumulative_gas_used, payer,
 /// [[status, gas_used, logs], ...]]</c>. The wire form is spec-literal: no top-level status and no
-/// bloom. EIP8141-GAP: internally the decoder sets StatusCode to success and unions frame logs into
-/// Logs so bloom calculation and log indexing keep working — asserted here as the pinned behavior.
+/// bloom. EIP8141-GAP: internally the decoder derives StatusCode from the frame statuses and unions
+/// frame logs into Logs so bloom calculation and log indexing keep working.
 /// </summary>
 [TestFixture]
 public class FrameTxReceiptDecoderTests
@@ -31,9 +31,31 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
         Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
         AssertFrameReceiptsEqual(decoded.FrameReceipts!, receipt.FrameReceipts!);
-        Assert.That(decoded.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+        // The wire form carries no top-level status, so a synced node must reach the same verdict
+        // the executing node reported rather than assuming success.
+        Assert.That(decoded.StatusCode, Is.EqualTo(
+            TxFrameReceipt.AllSucceeded(receipt.FrameReceipts) ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure));
         // Decoded Logs must be the in-order union of frame logs.
         AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
+    }
+
+    // Literal expectations rather than the production helper: a node that received the receipt from a
+    // peer must report the same status as the node that executed the transaction, and only the frame
+    // statuses on the wire can tell it apart.
+    [TestCase(TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TestName = "Decode_AllFramesSucceeded_StatusIsSuccess")]
+    [TestCase(TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusFailure, TestName = "Decode_AFrameFailed_StatusIsFailure")]
+    [TestCase(TxFrameReceipt.StatusSkipped, TxFrameReceipt.StatusFailure, TestName = "Decode_AFrameWasSkipped_StatusIsFailure")]
+    public void Decode_FrameTxReceipt_DerivesTheTransactionStatus(byte lastFrameStatus, byte expectedStatus)
+    {
+        ReceiptMessageDecoder decoder = new();
+        TxReceipt receipt = CreateReceipt(
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, []),
+            new TxFrameReceipt(lastFrameStatus, 30_000, []));
+
+        byte[] encoded = decoder.EncodeNew(receipt, RlpBehaviors.None);
+        RlpReader reader = new(encoded);
+
+        Assert.That(decoder.Decode(ref reader)!.StatusCode, Is.EqualTo(expectedStatus));
     }
 
     // Storage persists the union Logs and the per-frame logs as independent fields (unlike the wire

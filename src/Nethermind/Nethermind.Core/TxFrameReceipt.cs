@@ -19,6 +19,21 @@ public class TxFrameReceipt(byte status, ulong gasUsed, LogEntry[] logs)
     public ulong GasUsed { get; } = gasUsed;
     public LogEntry[] Logs { get; } = logs;
 
+    /// <summary>The transaction's single status, which the consensus receipt does not carry.</summary>
+    /// <remarks>
+    /// The EIP-8141 receipt holds only per-frame statuses, so a node that received the receipt from a
+    /// peer must derive the same value the executing node reported instead of assuming success.
+    /// </remarks>
+    public static bool AllSucceeded(TxFrameReceipt[]? frameReceipts)
+    {
+        foreach (TxFrameReceipt frameReceipt in frameReceipts ?? [])
+        {
+            if (frameReceipt.Status != StatusSuccess) return false;
+        }
+
+        return true;
+    }
+
     /// <summary>The transaction's log set: the frame logs in frame order.</summary>
     /// <remarks>
     /// Derived rather than accumulated in parallel, so a frame whose logs are dropped — an unrolled

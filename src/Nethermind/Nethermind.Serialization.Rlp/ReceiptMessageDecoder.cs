@@ -133,7 +133,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.FrameReceipts = frameReceipts;
-            txReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
+            txReceipt.StatusCode = TxFrameReceipt.AllSucceeded(frameReceipts) ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure;
 
             LogEntry[] allLogs = new LogEntry[totalLogs];
             int offset = 0;
