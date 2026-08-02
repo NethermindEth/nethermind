@@ -33,4 +33,19 @@ public class BootnodeOptionValidationTests
         Assert.That(
             () => BootnodeOptionValidation.ValidateNonNegative("--active-discovery-jobs", -1),
             Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [TestCase("Trace")]
+    [TestCase("Debug")]
+    [TestCase("Info")]
+    [TestCase("Warn")]
+    [TestCase("Error")]
+    public void Log_level_accepts_supported_nlog_levels(string logLevel) =>
+        Assert.DoesNotThrow(() => BootnodeOptionValidation.ValidateLogLevel("--log-level", logLevel));
+
+    [TestCase("")]
+    [TestCase("Verbose")]
+    public void Log_level_rejects_invalid_values(string logLevel) =>
+        Assert.That(
+            () => BootnodeOptionValidation.ValidateLogLevel("--log-level", logLevel),
+            Throws.TypeOf<ArgumentException>());
 }

@@ -27,12 +27,13 @@ namespace Nethermind.Bootnode;
 
 internal static class DiscoveryContainer
 {
-    public static IContainer Build(
+    public static async Task<IContainer> BuildAsync(
         BootnodeOptions options,
         ILogManager logManager,
         IProtectedPrivateKey nodeKey,
         IProcessExitSource processExitSource,
-        BootnodeKademliaBucketRegistry bucketRegistry)
+        BootnodeKademliaBucketRegistry bucketRegistry,
+        CancellationToken cancellationToken)
     {
         NetworkConfig networkConfig = new()
         {
@@ -54,6 +55,9 @@ internal static class DiscoveryContainer
             UseDefaultDiscv5Bootnodes = options.UseDefaultDiscv5Bootnodes
         };
 
+        IPResolver ipResolver = new(networkConfig, logManager);
+        IIPResolver.NethermindIp resolvedIp = await ipResolver.Resolve(cancellationToken);
+
         ContainerBuilder builder = new();
         builder.RegisterInstance(logManager).As<ILogManager>().SingleInstance();
         builder.RegisterInstance(networkConfig).As<INetworkConfig>().SingleInstance();
@@ -70,7 +74,6 @@ internal static class DiscoveryContainer
             .Bind<IEcdsa, IEthereumEcdsa>()
             .AddKeyedSingleton<IPrivateKeyGenerator>(IProtectedPrivateKey.NodeKey, context =>
                 new SameKeyGenerator(context.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey).Unprotect()))
-            .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<INodeIdResolver, NodeIdResolver>()
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
             .AddSingleton<INodeStatsManager>(context => new NodeStatsManager(
@@ -78,15 +81,17 @@ internal static class DiscoveryContainer
                 context.Resolve<ILogManager>(),
                 context.Resolve<INetworkConfig>().MaxCandidatePeerCount))
             .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
-            .AddMessageSerializer<PingMsg, BootnodePingMsgSerializer>()
+            .AddMessageSerializer<PingMsg, PingMsgSerializer>()
             .AddMessageSerializer<PongMsg, PongMsgSerializer>()
             .AddMessageSerializer<FindNodeMsg, FindNodeMsgSerializer>()
-            .AddMessageSerializer<NeighborsMsg, BootnodeNeighborsMsgSerializer>()
+            .AddMessageSerializer<NeighborsMsg, NeighborsMsgSerializer>()
             .AddMessageSerializer<EnrRequestMsg, EnrRequestMsgSerializer>()
             .AddMessageSerializer<EnrResponseMsg, EnrResponseMsgSerializer>();
 
+        builder.RegisterInstance(ipResolver).As<IIPResolver>().SingleInstance();
+
         builder.Register(context =>
-            CreateEnode(context.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey), networkConfig, context.Resolve<IIPResolver>()))
+            CreateEnode(context.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey), networkConfig, resolvedIp))
             .As<IEnode>()
             .SingleInstance();
 
@@ -118,7 +123,7 @@ internal static class DiscoveryContainer
                 })))
             .SingleInstance()
             .ExternallyOwned();
-        builder.RegisterType<BootnodeDiscoveryApp>()
+        builder.RegisterType<DiscoveryApp>()
             .As<DiscoveryApp>()
             .WithParameter(new TypedParameter(
                 typeof(Action<ContainerBuilder>),
@@ -141,11 +146,8 @@ internal static class DiscoveryContainer
             registry.Register(scope.Resolve<IBootnodeKademliaBucketSource>()));
     }
 
-    private static IEnode CreateEnode(IProtectedPrivateKey nodeKey, INetworkConfig networkConfig, IIPResolver ipResolver)
-    {
-        IIPResolver.NethermindIp resolvedIp = ipResolver.Resolve().GetAwaiter().GetResult();
-        return new Enode(nodeKey.PublicKey, resolvedIp.ExternalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
-    }
+    private static IEnode CreateEnode(IProtectedPrivateKey nodeKey, INetworkConfig networkConfig, IIPResolver.NethermindIp resolvedIp) =>
+        new Enode(nodeKey.PublicKey, resolvedIp.ExternalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
 
     private sealed class BootnodeForkInfo : IForkInfo
     {

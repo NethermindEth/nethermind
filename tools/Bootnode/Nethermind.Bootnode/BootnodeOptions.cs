@@ -9,7 +9,9 @@ internal sealed class BootnodeOptions
 {
     public required string DataDir { get; init; }
     public required int DiscoveryPort { get; init; }
+    public required string HttpHost { get; init; }
     public required int HttpPort { get; init; }
+    public required string MetricsHost { get; init; }
     public required int MetricsPort { get; init; }
     public required DiscoveryVersion DiscoveryVersion { get; init; }
     public required bool ActiveDiscovery { get; init; }

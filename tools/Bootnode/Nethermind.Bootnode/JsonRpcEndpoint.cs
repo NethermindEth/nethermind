@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Bootnode;
 
@@ -65,7 +66,11 @@ internal static class JsonRpcEndpoint
     }
 }
 
-internal sealed record JsonRpcResponse(string Jsonrpc, object? Id, object? Result, JsonRpcError? Error)
+internal sealed record JsonRpcResponse(
+    string Jsonrpc,
+    object? Id,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? Result,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] JsonRpcError? Error)
 {
     public static JsonRpcResponse Success(object? id, object result) => new("2.0", id, result, null);
 

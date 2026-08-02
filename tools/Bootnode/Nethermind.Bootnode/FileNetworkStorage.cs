@@ -22,7 +22,17 @@ internal sealed class FileNetworkStorage(string path, ILogManager logManager) : 
     private Dictionary<string, PersistedNetworkNode>? _nodes;
     private Dictionary<string, PersistedNetworkNode>? _batch;
 
-    public int PersistedNodesCount => GetPersistedNodes().Length;
+    public int PersistedNodesCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                EnsureLoaded();
+                return _nodes!.Count;
+            }
+        }
+    }
 
     public NetworkNode[] GetPersistedNodes()
     {
@@ -93,7 +103,7 @@ internal sealed class FileNetworkStorage(string path, ILogManager logManager) : 
         lock (_lock)
         {
             EnsureLoaded();
-            _batch = new Dictionary<string, PersistedNetworkNode>(_nodes!);
+            _batch = [];
         }
     }
 
