@@ -26,6 +26,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -2295,6 +2296,57 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
                 Assert.That(legacyResult, Is.EqualTo(AcceptTxResult.SenderIsContract));
             }
+        }
+
+        // A protocol-validated signature is invalid for every future chain state, so pooling one and
+        // gossiping it costs peers work they must repeat and can only end in a peer-side rejection.
+        [TestCase(FrameSignatureDefect.None, true)]
+        [TestCase(FrameSignatureDefect.HighS, false)]
+        [TestCase(FrameSignatureDefect.LegacyRecoveryId, false)]
+        [TestCase(FrameSignatureDefect.ForeignSigner, false)]
+        public void Frame_transaction_signatures_are_verified_at_ingress(FrameSignatureDefect defect, bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            frameTx.FrameSignatures = [FrameSignature(frameTx, defect)];
+            frameTx.Hash = frameTx.CalculateHash();
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+        }
+
+        public enum FrameSignatureDefect { None, HighS, LegacyRecoveryId, ForeignSigner }
+
+        private static TxFrameSignature FrameSignature(Transaction tx, FrameSignatureDefect defect)
+        {
+            PrivateKey key = defect == FrameSignatureDefect.ForeignSigner ? TestItem.PrivateKeyB : TestItem.PrivateKeyA;
+            Address signer = TestItem.PrivateKeyA.Address;
+            // compute_sig_hash covers the entry's scheme/signer/msg and elides only the raw bytes, so
+            // the hash is taken with the entry already installed.
+            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
+            Signature signature = new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx));
+
+            byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            bytes[0] = signature.RecoveryId;
+            signature.Bytes.CopyTo(bytes.AsSpan(1));
+
+            switch (defect)
+            {
+                case FrameSignatureDefect.HighS:
+                    bytes[0] ^= 1;
+                    UInt256 s = new(bytes.AsSpan(33, 32), isBigEndian: true);
+                    (SecP256k1Curve.N - s).ToBigEndian(bytes.AsSpan(33, 32));
+                    break;
+                case FrameSignatureDefect.LegacyRecoveryId:
+                    bytes[0] += 27;
+                    break;
+            }
+
+            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, bytes);
         }
 
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 100_000)
