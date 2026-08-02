@@ -815,6 +815,26 @@ public class FrameTxProcessorTests
             "key 1 is at sequence 1 while key 7 is still at 0, so no sequence satisfies the set");
     }
 
+    // Key 0 is the account nonce itself, so the singleton set must advance that nonce and owe no
+    // first-use surcharge — the property that makes the EIP-8250 envelope a superset of EIP-8141's.
+    [Test]
+    public void Execute_KeyedNonce_LegacyKeyBehavesAsTheAccountNonce()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction keyed = FrameTx(nonce: 0, SelfVerifyFrame());
+        keyed.NonceKeys = [UInt256.Zero];
+
+        CallOutputTracer keyedTracer = new();
+        Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+
+        CallOutputTracer plainTracer = new();
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer).TransactionExecuted, Is.True);
+        Assert.That(keyedTracer.GasSpent - plainTracer.GasSpent,
+            Is.LessThan((long)Eip8250Constants.KeyedNonceFirstUseGas),
+            "the legacy key owes no first-use surcharge");
+    }
+
     private static UInt256 AddressAsWord(Address address) => new(address.Bytes, isBigEndian: true);
 
     private static byte[] ApproveCode(byte scope) =>
