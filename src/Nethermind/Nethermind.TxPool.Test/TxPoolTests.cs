@@ -2219,8 +2219,9 @@ namespace Nethermind.TxPool.Test
             Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: verifyGasLimit);
             if (withP256Signature)
             {
-                // 6 700 gas, so it decides the outcome on its own at a 93 300-gas prefix.
-                frameTx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, new byte[TxFrameSignature.P256SignatureLength])];
+                // 6 700 gas, so it decides the outcome on its own at a 93 300-gas prefix. It must be a
+                // real signature: an unverifiable one is refused on its own merits before the bound applies.
+                frameTx.FrameSignatures = [P256Signature(frameTx)];
                 frameTx.Hash = frameTx.CalculateHash();
             }
 
@@ -2311,7 +2312,9 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
-            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            // MAX_VERIFY_GAS counts the signature, so leave room for it: this case is about the
+            // signature's validity, not about the prefix bound.
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 90_000);
             frameTx.FrameSignatures = [FrameSignature(frameTx, defect)];
             frameTx.Hash = frameTx.CalculateHash();
 
@@ -2332,7 +2335,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(null, new TestSpecProvider(spec));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
-            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 90_000);
             frameTx.FrameSignatures = [P256Signature(frameTx)];
             frameTx.Hash = frameTx.CalculateHash();
 
