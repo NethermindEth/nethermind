@@ -25,7 +25,7 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
     {
         if (tx.SupportsFrames && _maxVerifyGas != 0)
         {
-            ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx);
+            ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx, state.SenderAccount.HasCode);
             if (verifyGas > _maxVerifyGas)
             {
                 Metrics.PendingTransactionsFrameTxVerifyGasTooHigh++;
