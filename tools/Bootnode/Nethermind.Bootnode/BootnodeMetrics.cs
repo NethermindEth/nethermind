@@ -26,7 +26,7 @@ internal sealed class BootnodeMetrics
 
     private static readonly Gauge AllNodes = PrometheusMetrics.CreateGauge(
         "nethermind_bootnode_all_nodes",
-        "Number of all discovery nodes ever tracked by the bootnode process.",
+        "Number of discovery nodes retained by the bootnode process.",
         new GaugeConfiguration { LabelNames = ["protocol"] });
 
     private static readonly Counter DiscoveredNodes = PrometheusMetrics.CreateCounter(
@@ -84,11 +84,8 @@ internal sealed class BootnodeMetrics
         }
     }
 
-    public void UpdateDiscoveryMessageCounters()
-    {
-        UpdateDiscoveryMessageCounters("discv4", NetworkMetrics.DiscoveryMessagesSent);
+    public void UpdateDiscoveryMessageCounters() =>
         UpdateDiscoveryMessageCounters(NetworkMetrics.DiscoveryMessagesSentByProtocol);
-    }
 
     internal long UpdateDiscoveryMessageCounters(string protocol, IEnumerable<KeyValuePair<MsgType, long>> messagesSent)
     {

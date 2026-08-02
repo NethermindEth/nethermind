@@ -29,7 +29,9 @@ public class BootnodeDiscv4SerializersTests
             expirationTime: 60,
             source: new IPEndPoint(IPAddress.Loopback, 30303),
             destination: new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304),
-            new byte[Hash256.Size])
+            new byte[Hash256.Size],
+            sourceTcpPort: 0,
+            destinationTcpPort: 0)
         {
             FarAddress = new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)
         };
@@ -70,17 +72,17 @@ public class BootnodeDiscv4SerializersTests
     }
 
     [Test]
-    public void Neighbors_advertises_zero_tcp_for_discovery_nodes()
+    public void Neighbors_advertises_tcp_and_discovery_udp_separately()
     {
         using PrivateKey privateKey = CreatePrivateKey();
         IMessageSerializationService serializationService = CreateSerializationService(privateKey);
-        Node localNode = new(privateKey.PublicKey, IPAddress.Loopback.ToString(), 30303);
+        Node tcpAndDiscoveryNode = new(privateKey.PublicKey, IPAddress.Loopback.ToString(), port: 30305, discoveryPort: 30303);
         using PrivateKey remoteKey = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
-        Node remoteNode = new(remoteKey.PublicKey, "192.0.2.10", 30304);
+        Node discoveryOnlyNode = Node.FromDiscoveryEndpoint(remoteKey.PublicKey, new IPEndPoint(IPAddress.Parse("192.0.2.10"), 30304));
         NeighborsMsg message = new(
             privateKey.PublicKey,
             expirationTime: 60,
-            new[] { localNode, remoteNode })
+            new[] { tcpAndDiscoveryNode, discoveryOnlyNode })
         {
             FarAddress = new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)
         };
@@ -108,9 +110,84 @@ public class BootnodeDiscv4SerializersTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(localUdpPort, Is.EqualTo(30303));
-            Assert.That(localTcpPort, Is.Zero);
+            Assert.That(localTcpPort, Is.EqualTo(30305));
             Assert.That(remoteUdpPort, Is.EqualTo(30304));
             Assert.That(remoteTcpPort, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Ping_deserialize_preserves_decoded_tcp_ports()
+    {
+        using PrivateKey privateKey = CreatePrivateKey();
+        IMessageSerializationService serializationService = CreateSerializationService(privateKey);
+        PingMsg message = new(
+            privateKey.PublicKey,
+            expirationTime: 60,
+            source: new IPEndPoint(IPAddress.Loopback, 30303),
+            destination: new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304),
+            new byte[Hash256.Size],
+            sourceTcpPort: 30305,
+            destinationTcpPort: 30306)
+        {
+            FarAddress = new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)
+        };
+
+        IByteBuffer buffer = serializationService.ZeroSerialize(message);
+        PingMsg deserialized;
+        try
+        {
+            deserialized = serializationService.Deserialize<PingMsg>(buffer);
+        }
+        finally
+        {
+            buffer.Release();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.SourceAddress.Port, Is.EqualTo(30303));
+            Assert.That(deserialized.SourceTcpPort, Is.EqualTo(30305));
+            Assert.That(deserialized.DestinationAddress.Port, Is.EqualTo(30304));
+            Assert.That(deserialized.DestinationTcpPort, Is.EqualTo(30306));
+        }
+    }
+
+    [Test]
+    public void Neighbors_deserialize_preserves_distinct_tcp_and_udp_ports()
+    {
+        using PrivateKey privateKey = CreatePrivateKey();
+        IMessageSerializationService serializationService = CreateSerializationService(privateKey);
+        Node tcpAndDiscoveryNode = new(privateKey.PublicKey, IPAddress.Loopback.ToString(), port: 30305, discoveryPort: 30303);
+        using PrivateKey remoteKey = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
+        Node discoveryOnlyNode = Node.FromDiscoveryEndpoint(remoteKey.PublicKey, new IPEndPoint(IPAddress.Parse("192.0.2.10"), 30304));
+        NeighborsMsg message = new(
+            privateKey.PublicKey,
+            expirationTime: 60,
+            new[] { tcpAndDiscoveryNode, discoveryOnlyNode })
+        {
+            FarAddress = new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)
+        };
+
+        IByteBuffer buffer = serializationService.ZeroSerialize(message);
+        NeighborsMsg deserialized;
+        try
+        {
+            deserialized = serializationService.Deserialize<NeighborsMsg>(buffer);
+        }
+        finally
+        {
+            buffer.Release();
+        }
+
+        Node deserializedTcpAndDiscoveryNode = deserialized.Nodes[0];
+        Node deserializedDiscoveryOnlyNode = deserialized.Nodes[1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserializedTcpAndDiscoveryNode.DiscoveryPort, Is.EqualTo(30303));
+            Assert.That(deserializedTcpAndDiscoveryNode.Port, Is.EqualTo(30305));
+            Assert.That(deserializedDiscoveryOnlyNode.DiscoveryPort, Is.EqualTo(30304));
+            Assert.That(deserializedDiscoveryOnlyNode.Port, Is.Zero);
         }
     }
 
@@ -123,10 +200,10 @@ public class BootnodeDiscv4SerializersTests
         NodeIdResolver nodeIdResolver = new(ecdsa);
 
         return new MessageSerializationService(
-            SerializerInfo.Create(new BootnodePingMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)),
+            SerializerInfo.Create(new PingMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)),
             SerializerInfo.Create(new PongMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)),
             SerializerInfo.Create(new FindNodeMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)),
-            SerializerInfo.Create(new BootnodeNeighborsMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)),
+            SerializerInfo.Create(new NeighborsMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)),
             SerializerInfo.Create(new EnrRequestMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)),
             SerializerInfo.Create(new EnrResponseMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)));
     }

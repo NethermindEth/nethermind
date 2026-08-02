@@ -40,10 +40,22 @@ Option<int> httpPortOption = new("--http-port")
     DefaultValueFactory = _ => 8546
 };
 
+Option<string> httpHostOption = new("--http-host")
+{
+    Description = "HTTP REST/JSON-RPC listen host.",
+    DefaultValueFactory = _ => "127.0.0.1"
+};
+
 Option<int> metricsPortOption = new("--metrics-port")
 {
     Description = "Prometheus metrics port.",
     DefaultValueFactory = _ => 6060
+};
+
+Option<string> metricsHostOption = new("--metrics-host")
+{
+    Description = "Prometheus metrics listen host.",
+    DefaultValueFactory = _ => "127.0.0.1"
 };
 
 Option<string> protocolsOption = new("--protocols")
@@ -143,7 +155,9 @@ RootCommand rootCommand = new("Nethermind standalone discovery bootnode")
     dataDirOption,
     discoveryPortOption,
     addrOption,
+    httpHostOption,
     httpPortOption,
+    metricsHostOption,
     metricsPortOption,
     protocolsOption,
     activeDiscoveryOption,
@@ -186,22 +200,27 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     LoggingConfigurator.Configure(options.LogLevel, options.LogFile);
     using NLogManager logManager = new();
     NethermindLogger logger = logManager.GetClassLogger<Program>();
+    ConsoleCancelEventHandler? cancelHandler = null;
 
     try
     {
         using CancellationTokenSource shutdownSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Console.CancelKeyPress += (_, eventArgs) =>
+        cancelHandler = (_, eventArgs) =>
         {
             eventArgs.Cancel = true;
-            shutdownSource.Cancel();
+            if (!shutdownSource.IsCancellationRequested)
+            {
+                shutdownSource.Cancel();
+            }
         };
+        Console.CancelKeyPress += cancelHandler;
 
         using PrivateKey privateKey = LoadOrCreatePrivateKey(options, logger);
         IProtectedPrivateKey nodeKey = new ProtectedPrivateKey(privateKey, options.DataDir);
         ProcessExitSource processExitSource = new(shutdownSource.Token);
 
         BootnodeKademliaBucketRegistry bucketRegistry = new();
-        await using IContainer container = DiscoveryContainer.Build(options, logManager, nodeKey, processExitSource, bucketRegistry);
+        await using IContainer container = await DiscoveryContainer.BuildAsync(options, logManager, nodeKey, processExitSource, bucketRegistry, shutdownSource.Token);
         IDiscoveryApp discoveryApp = container.Resolve<IDiscoveryApp>();
         INodeRecordProvider nodeRecordProvider = container.Resolve<INodeRecordProvider>();
         INetworkConfig networkConfig = container.Resolve<INetworkConfig>();
@@ -224,13 +243,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         await using BootnodeRuntime runtime = new(discoveryApp, nodeStore, metrics, bucketRegistry, processExitSource, logManager);
         await runtime.StartAsync(shutdownSource.Token);
 
-        await using WebApplication httpApp = BuildHttpApp(options.HttpPort, nodeStore, status);
-        await using WebApplication metricsApp = BuildMetricsApp(options.MetricsPort);
+        await using WebApplication httpApp = BuildHttpApp(options.HttpHost, options.HttpPort, nodeStore, status);
+        await using WebApplication metricsApp = BuildMetricsApp(options.MetricsHost, options.MetricsPort);
 
         await httpApp.StartAsync(shutdownSource.Token);
         await metricsApp.StartAsync(shutdownSource.Token);
-        logger.Info($"Bootnode HTTP API listening on http://127.0.0.1:{options.HttpPort}");
-        logger.Info($"Bootnode metrics listening on http://127.0.0.1:{options.MetricsPort}/metrics");
+        logger.Info($"Bootnode HTTP API listening on http://{options.HttpHost}:{options.HttpPort}");
+        logger.Info($"Bootnode metrics listening on http://{options.MetricsHost}:{options.MetricsPort}/metrics");
 
         try
         {
@@ -251,6 +270,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     }
     finally
     {
+        if (cancelHandler is not null)
+        {
+            Console.CancelKeyPress -= cancelHandler;
+        }
+
         LogManager.Shutdown();
     }
 });
@@ -269,6 +293,7 @@ BootnodeOptions CreateOptions(ParseResult parseResult)
     BootnodeOptionValidation.ValidatePort("--discovery-port", discoveryPort);
     BootnodeOptionValidation.ValidatePort("--http-port", httpPort);
     BootnodeOptionValidation.ValidatePort("--metrics-port", metricsPort);
+    BootnodeOptionValidation.ValidateLogLevel("--log-level", parseResult.GetRequiredValue(logLevelOption));
     if (httpPort == metricsPort)
     {
         throw new ArgumentException("--http-port and --metrics-port must be different.");
@@ -293,7 +318,9 @@ BootnodeOptions CreateOptions(ParseResult parseResult)
     {
         DataDir = dataDir,
         DiscoveryPort = discoveryPort,
+        HttpHost = parseResult.GetRequiredValue(httpHostOption),
         HttpPort = httpPort,
+        MetricsHost = parseResult.GetRequiredValue(metricsHostOption),
         MetricsPort = metricsPort,
         DiscoveryVersion = ParseDiscoveryVersion(parseResult.GetRequiredValue(protocolsOption)),
         ActiveDiscovery = parseResult.GetRequiredValue(activeDiscoveryOption),
@@ -483,10 +510,10 @@ static BootnodeStatus CreateStatus(BootnodeOptions options, BootnodeIdentity ide
     return new BootnodeStatus(identity, [.. protocols], options.ActiveDiscovery, options.DiscoveryPort, options.HttpPort, options.MetricsPort);
 }
 
-static WebApplication BuildHttpApp(int httpPort, DiscoveredNodeStore nodeStore, BootnodeStatus status)
+static WebApplication BuildHttpApp(string httpHost, int httpPort, DiscoveredNodeStore nodeStore, BootnodeStatus status)
 {
     WebApplicationBuilder builder = WebApplication.CreateBuilder();
-    builder.WebHost.UseUrls($"http://127.0.0.1:{httpPort}");
+    builder.WebHost.UseUrls($"http://{httpHost}:{httpPort}");
     builder.Logging.ClearProviders();
     builder.Services.AddRouting();
 
@@ -504,10 +531,10 @@ static WebApplication BuildHttpApp(int httpPort, DiscoveredNodeStore nodeStore, 
     return app;
 }
 
-static WebApplication BuildMetricsApp(int metricsPort)
+static WebApplication BuildMetricsApp(string metricsHost, int metricsPort)
 {
     WebApplicationBuilder builder = WebApplication.CreateBuilder();
-    builder.WebHost.UseUrls($"http://127.0.0.1:{metricsPort}");
+    builder.WebHost.UseUrls($"http://{metricsHost}:{metricsPort}");
     builder.Logging.ClearProviders();
     builder.Services.AddRouting();
 

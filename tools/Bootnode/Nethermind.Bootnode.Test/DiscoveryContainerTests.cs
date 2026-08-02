@@ -28,7 +28,9 @@ public class DiscoveryContainerTests
         {
             DataDir = dataDir,
             DiscoveryPort = 30303,
+            HttpHost = "127.0.0.1",
             HttpPort = 8546,
+            MetricsHost = "127.0.0.1",
             MetricsPort = 6060,
             DiscoveryVersion = DiscoveryVersion.All,
             ActiveDiscovery = false,
@@ -48,12 +50,13 @@ public class DiscoveryContainerTests
             WriteAddress = false
         };
 
-        await using IContainer container = DiscoveryContainer.Build(
+        await using IContainer container = await DiscoveryContainer.BuildAsync(
             options,
             LimboLogs.Instance,
             protectedPrivateKey,
             new ProcessExitSource(CancellationToken.None),
-            bucketRegistry);
+            bucketRegistry,
+            CancellationToken.None);
 
         _ = container.Resolve<IDiscoveryApp>();
         BootnodeKademliaBucketSnapshot[] snapshot = bucketRegistry.CreateSnapshot();

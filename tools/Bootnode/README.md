@@ -51,4 +51,6 @@ $env:GRAFANA_ADMIN_PASSWORD = "choose-a-local-password"
 docker compose -f tools/Bootnode/observability/docker-compose.yml up -d
 ```
 
+When using the Docker Compose observability stack on Linux, start the bootnode with `--metrics-host 0.0.0.0` so Prometheus can reach the host metrics endpoint through `host.docker.internal`.
+
 Grafana listens on `http://localhost:3000` and Prometheus listens on `http://localhost:9090`; both are bound to loopback. Prometheus scrapes `http://host.docker.internal:6060/metrics`.
