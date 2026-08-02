@@ -1044,6 +1044,28 @@ public class FrameTxProcessorTests
             "the legacy key owes no first-use surcharge");
     }
 
+    // An unchecked increment wraps the account nonce to zero, making every prior transaction from
+    // that sender replayable. The EIP-8250 envelope is already refused a sequence at the ceiling
+    // during stateful validity, so only the pre-8250 envelope reaches payment approval here.
+    [Test]
+    public void Execute_PaymentApprovalAtTheNonceCeiling_PerformsNoApprovalEffects()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        _stateProvider.SetNonce(Sender, Eip8250Constants.MaxNonceSeq);
+        _stateProvider.Commit(Spec);
+        UInt256 balanceBefore = _stateProvider.GetBalance(Sender);
+
+        Transaction tx = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, SelfVerifyFrame());
+
+        Assert.That(Process(tx).TransactionExecuted, Is.False, "no payer approved");
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(Eip8250Constants.MaxNonceSeq));
+        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(balanceBefore), "max cost was not collected");
+
+        Transaction keyed = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, SelfVerifyFrame());
+        keyed.NonceKeys = [UInt256.Zero];
+        Assert.That(Process(keyed).Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+    }
+
     private static UInt256 AddressAsWord(Address address) => new(address.Bytes, isBigEndian: true);
 
     private static byte[] ApproveCode(byte scope) =>
