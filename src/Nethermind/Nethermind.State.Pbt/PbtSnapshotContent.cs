@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -29,6 +30,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
     private readonly Partition[] _partitions = [new(), new(), new()];
 
+    internal readonly ConcurrentDictionary<PbtFullKey, ValueHash256?> FullLeaves = new();
+
     /// <summary>The tree writes of one independently folded partition.</summary>
     internal Partition this[PbtPartition partition] => _partitions[(int)partition];
 
@@ -40,6 +43,14 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         internal readonly ConcurrentDictionary<Stem, RefCountingMemory?> LeafBlobs = new();
         internal readonly ConcurrentDictionary<TrieNodeKey, RefCountingMemory?> TrieNodes = new();
     }
+
+    internal void SetFullLeaf(PbtFullKey key, ValueHash256? value)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        FullLeaves[key] = value;
+    }
+
+    internal bool TryGetFullLeaf(PbtFullKey key, out ValueHash256? value) => FullLeaves.TryGetValue(key, out value);
 
     /// <summary>Stores a transferred lease on a complete stem blob; null marks the stem deleted.</summary>
     public void SetLeafBlob(in Stem stem, RefCountingMemory? blob) =>
@@ -132,6 +143,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// </remarks>
     public void Reset()
     {
+        FullLeaves.NoLockClear();
         foreach (Partition partition in _partitions)
         {
             foreach ((_, RefCountingMemory? blob) in partition.LeafBlobs) Release(blob);

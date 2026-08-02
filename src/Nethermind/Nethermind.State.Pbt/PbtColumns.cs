@@ -7,6 +7,15 @@ public enum PbtColumns
 {
     Metadata,
 
+    /// <summary>Current EIP-8297 complete keys mapped directly to 32-byte values.</summary>
+    FullLeaves,
+
+    /// <summary>Canonical compressed nodes keyed by node locator.</summary>
+    CompressedNodes,
+
+    /// <summary>Content-addressed overflow-code reference records.</summary>
+    CodeReferences,
+
     /// <summary>Stem leaf blobs of the account header zone (0x0), keyed by stem.</summary>
     AccountLeaves,
 

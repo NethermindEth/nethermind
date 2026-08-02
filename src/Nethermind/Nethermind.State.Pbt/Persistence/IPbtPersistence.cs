@@ -32,6 +32,9 @@ public interface IPbtPersistence
 
         RefCountingMemory? GetLeafBlob(in Stem stem);
         RefCountingMemory? GetTrieNode(in TrieNodeKey key);
+
+        ValueHash256? GetFullLeaf(PbtFullKey key);
+        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix);
     }
 
     public interface IWriteBatch : IDisposable
@@ -41,5 +44,7 @@ public interface IPbtPersistence
 
         /// <summary>An empty value deletes the node.</summary>
         void SetTrieNode(in TrieNodeKey key, scoped ReadOnlySpan<byte> node);
+
+        void SetFullLeaf(PbtFullKey key, ValueHash256? value);
     }
 }
