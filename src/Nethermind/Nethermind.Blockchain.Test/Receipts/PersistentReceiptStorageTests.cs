@@ -79,7 +79,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Returns_null_for_missing_tx()
     {
-        Hash256 blockHash = _storage.FindBlockHash(Keccak.Zero);
+        Hash256? blockHash = _storage.FindBlockHash(Keccak.Zero);
         Assert.That(blockHash, Is.Null);
     }
 
@@ -101,6 +101,35 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Get_returns_empty_on_empty_span() =>
         Assert.That(_storage.Get(Keccak.Zero), Is.EqualTo(Array.Empty<TxReceipt>()));
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Migration_read_preserves_legacy_missing_receipts()
+    {
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        TxReceipt[] legacyReceipts = [receipts[0], null!];
+        using ArrayPoolSpan<byte> encoded = _decoder.EncodeToArrayPoolSpan(legacyReceipts, RlpBehaviors.Storage);
+        Hash256 blockHash = block.Hash ?? throw new AssertionException("Test block hash is missing.");
+        byte[] encodedBytes = ((ReadOnlySpan<byte>)encoded).ToArray();
+        Span<byte> encodedSpan = encodedBytes;
+        Assert.That(_decoder.DecodeAllowingMissing(in encodedSpan), Has.Length.EqualTo(2));
+
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockHash.Bytes] = encodedBytes;
+        _storage.ClearCache();
+        if (useCompactReceipts)
+        {
+            Assert.That(_storage.Get(blockHash), Has.Length.EqualTo(1));
+        }
+
+        TxReceipt?[] migrationReceipts = ((IReceiptMigrationStore)_storage)
+            .GetForMigration(block.Number, blockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(migrationReceipts, Has.Length.EqualTo(2));
+            Assert.That(migrationReceipts[0], Is.Not.Null);
+            Assert.That(migrationReceipts[1], Is.Null);
+        }
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block()
@@ -285,7 +314,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
         _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
-        Hash256 findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
+        Hash256? findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
         if (ensureCanonical)
         {
             Assert.That(findBlockHash, Is.EqualTo(anotherBlock.Hash!));

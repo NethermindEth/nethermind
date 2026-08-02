@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
 
 namespace Nethermind.Serialization.Rlp;
@@ -20,7 +21,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
     void Encode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-    Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     /// <summary>
     /// Encodes <paramref name="item"/> into a freshly allocated <see cref="byte"/> array,
@@ -28,7 +29,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// </summary>
     byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    Rlp Encode(T[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null);
 
@@ -37,22 +38,43 @@ public interface IRlpDecoder<T> : IRlpDecoder
 
 
 
+    [return: MaybeNull]
     T Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    T[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null);
+    /// <summary>Decodes an RLP sequence while preserving null elements for compatibility.</summary>
+    T?[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null);
 
+    /// <summary>Decodes an RLP sequence and rejects any element decoded as null.</summary>
+    /// <exception cref="RlpException">An element is null.</exception>
+    T[] DecodeNonNullArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+    {
+        T?[] values = DecodeArray(ref decoderContext, rlpBehaviors, limit);
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (values[i] is null)
+            {
+                RlpHelpers.ThrowNullArrayElement(i);
+            }
+        }
+
+        return values!;
+    }
+
+    [return: MaybeNull]
     T Decode(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     /// <summary>
     /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
     /// and verifies that the end of the stream has been reached.
     /// </summary>
+    [return: MaybeNull]
     T DecodeComplete(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     /// <summary>
     /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>
     /// and verifies that the end of the stream has been reached.
     /// </summary>
+    [return: MaybeNull]
     T DecodeComplete(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

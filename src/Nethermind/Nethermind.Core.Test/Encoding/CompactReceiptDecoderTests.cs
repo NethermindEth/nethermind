@@ -80,7 +80,7 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
             RlpReader reader = new(rlp.Bytes);
-            TxReceipt deserialized = decoder.Decode(ref reader, RlpBehaviors.Storage);
+            TxReceipt deserialized = decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpected());
         }
@@ -211,6 +211,19 @@ namespace Nethermind.Core.Test.Encoding
             using ArrayPoolSpan<byte> arrayPoolSpan = decoder.EncodeToArrayPoolSpan(receipts);
             byte[] encodedBytes = ((ReadOnlySpan<byte>)arrayPoolSpan).ToArray();
             Assert.That(encodedBytes, Is.EqualTo(rlp.Bytes));
+        }
+
+        [Test]
+        public void Compact_receipt_storage_encoding_rejects_null_logs()
+        {
+            TxReceipt receipt = Build.A.Receipt.TestObject;
+            receipt.Logs = null;
+
+            CompactReceiptStorageDecoder decoder = new();
+
+            Assert.That(
+                () => decoder.Encode(receipt),
+                Throws.TypeOf<RlpException>());
         }
 
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()

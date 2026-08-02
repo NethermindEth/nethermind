@@ -63,7 +63,7 @@ public class RlpDecoderTests
         byte[] bytes = Bytes.FromHexString(hexBytes);
         RlpReader context = new(bytes);
 
-        Transaction transaction = _decoder.Decode(ref context);
+        Transaction transaction = _decoder.Decode(ref context)!;
 
         Assert.That(transaction, Is.Not.Null);
     }

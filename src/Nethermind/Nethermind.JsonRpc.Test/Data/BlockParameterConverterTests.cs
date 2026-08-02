@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Data
                 EthereumJsonSerializer.StrictHexFormat = true;
                 IJsonSerializer serializer = new EthereumJsonSerializer();
 
-                Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
+                Func<BlockParameter?> action = () => serializer.Deserialize<BlockParameter>(input);
 
                 if (throws)
                     Assert.That(action, Throws.InstanceOf<FormatException>());

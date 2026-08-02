@@ -31,7 +31,8 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
     {
         try
         {
-            ChainSpecJson chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData);
+            ChainSpecJson? chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData);
+            ArgumentNullException.ThrowIfNull(chainSpecJson);
             return InitChainSpecFrom(chainSpecJson);
         }
         catch (Exception e)
@@ -42,6 +43,9 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private ChainSpec InitChainSpecFrom(ChainSpecJson chainSpecJson)
     {
+        ArgumentNullException.ThrowIfNull(chainSpecJson.Params);
+        ArgumentNullException.ThrowIfNull(chainSpecJson.Engine);
+
         ulong networkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
         ChainSpec chainSpec = new()
         {
@@ -66,10 +70,18 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
     {
         ulong? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
-            AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
+            AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v =>
+                v.BuiltIn is { Name: { } name } && name.Equals(builtInName, StringComparison.OrdinalIgnoreCase));
             if (allocation is null) return null;
-            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn?.Pricing.Where(o => predicate(o)).ToArray();
-            if (pricing?.Length > 0)
+            BuiltInJson? builtIn = allocation.BuiltIn;
+            if (builtIn is null)
+            {
+                return null;
+            }
+
+            ArgumentNullException.ThrowIfNull(builtIn.Pricing);
+            KeyValuePair<string, JsonElement>[] pricing = builtIn.Pricing.Where(o => predicate(o)).ToArray();
+            if (pricing.Length > 0)
             {
                 string key = pricing[0].Key;
                 return ulong.TryParse(key, out ulong transition) ? transition : Convert.ToUInt64(key, 16);
@@ -317,16 +329,19 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             engine => engine.Value.TryGetProperty("params", out JsonElement value) ? value : engine.Value);
 
         chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters, serializer);
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        if (IsUnspecifiedSealEngine(chainSpec.SealEngineType))
         {
             chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
         }
 
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        if (IsUnspecifiedSealEngine(chainSpec.SealEngineType))
         {
             throw new NotSupportedException("unknown seal engine in chainspec");
         }
     }
+
+    private static bool IsUnspecifiedSealEngine(string sealEngineType) =>
+        string.IsNullOrEmpty(sealEngineType) || sealEngineType == Nethermind.Core.SealEngineType.None;
 
     private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
@@ -436,6 +451,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
+        chainSpec.Allocations = [];
         if (chainSpecJson.Accounts is null)
         {
             return;
@@ -450,7 +466,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             chainSpecJson.CodeHashes[Hash256.Zero.ToString()] = [];
         }
 
-        chainSpec.Allocations = [];
         foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
         {
             if (account.Value.BuiltIn is not null && account.Value.Balance is null)
@@ -468,7 +483,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             if (account.Value.CodeHash is not null)
             {
                 string codeHashString = account.Value.CodeHash.ToString();
-                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[] codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
+                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[]? codeHash) || codeHash is null) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,

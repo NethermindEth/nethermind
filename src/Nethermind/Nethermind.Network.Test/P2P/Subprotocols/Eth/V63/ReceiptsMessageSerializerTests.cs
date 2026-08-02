@@ -123,14 +123,11 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void Deserialize_Throws_On_Null_Receipt()
     {
-        TxReceipt[][] data = [new[] { null, Build.A.Receipt.WithAllFieldsFilled.TestObject }];
-        using ReceiptsMessage message = new(data.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-
-        byte[] serialized = serializer.Serialize(message);
+        byte[] serialized = Bytes.FromHexString("c2c1c0");
 
         RlpException? exception = Assert.Throws<RlpException>(() => serializer.Deserialize(serialized));
-        Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
+        Assert.That(exception?.Message, Is.EqualTo("Unexpected null array element at index 0"));
     }
 
     [Test]
@@ -185,7 +182,8 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void Deserialize_Throws_On_TooMany_Receipts_In_A_Block()
     {
-        TxReceipt[][] txReceipts = [new TxReceipt[NethermindSyncLimits.MaxHashesFetch + 1]];
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        TxReceipt[][] txReceipts = [Enumerable.Repeat(receipt, NethermindSyncLimits.MaxHashesFetch + 1).ToArray()];
         using ReceiptsMessage message = new(txReceipts.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 

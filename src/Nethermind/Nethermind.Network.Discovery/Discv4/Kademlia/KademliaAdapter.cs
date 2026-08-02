@@ -447,6 +447,12 @@ public class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
+            if (msg.FarPublicKey is null || msg.FarAddress is null)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Discovery message without a valid remote endpoint or signature, message: {msg}");
+                return;
+            }
+
             Node node = CreateNode(msg);
 
             if (IsResponse(msgType))
@@ -501,9 +507,16 @@ public class KademliaAdapter(
     private static bool IsResponse(MsgType msgType) => msgType is MsgType.Neighbors or MsgType.Pong or MsgType.EnrResponse;
 
     private static Node CreateNode(DiscoveryMsg msg)
-        => msg is PingMsg { SourceTcpPort: > 0 } ping
-            ? new Node(ping.FarPublicKey!, new IPEndPoint(ping.FarAddress!.Address, ping.SourceTcpPort), ping.FarAddress.Port)
-            : Node.FromDiscoveryEndpoint(msg.FarPublicKey, msg.FarAddress);
+    {
+        PublicKey farPublicKey = msg.FarPublicKey
+            ?? throw new ArgumentException("Discovery message is missing a remote public key.", nameof(msg));
+        IPEndPoint farAddress = msg.FarAddress
+            ?? throw new ArgumentException("Discovery message is missing a remote endpoint.", nameof(msg));
+
+        return msg is PingMsg { SourceTcpPort: > 0 } ping
+            ? new Node(farPublicKey, new IPEndPoint(farAddress.Address, ping.SourceTcpPort), farAddress.Port)
+            : Node.FromDiscoveryEndpoint(farPublicKey, farAddress);
+    }
 
     private bool ValidatePingAddress(PingMsg msg)
     {

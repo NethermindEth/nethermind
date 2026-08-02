@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
@@ -57,6 +58,23 @@ public class NewPooledTransactionHashesMessageSerializerTests
         Hash256[] hashes = { TestItem.KeccakA };
         Test(types, sizes, hashes,
             "e5" + "01" + "c102" + "e1a0" + TestItem.KeccakA.ToString(false));
+    }
+
+    [Test]
+    public void Deserialize_throws_on_null_hash()
+    {
+        TxType[] types = { TxType.EIP1559 };
+        int[] sizes = { 10 };
+        Hash256[] hashes = { null! };
+        using NewPooledTransactionHashesMessage68 message = new(
+            types.Select(static t => (byte)t).ToPooledList(types.Length),
+            sizes.ToPooledList(),
+            hashes.ToPooledList());
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+
+        byte[] bytes = serializer.Serialize(message);
+
+        Assert.That(() => serializer.Deserialize(bytes), Throws.TypeOf<RlpException>());
     }
 
 }

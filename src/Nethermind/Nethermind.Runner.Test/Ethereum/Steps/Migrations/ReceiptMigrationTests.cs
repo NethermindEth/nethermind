@@ -27,6 +27,86 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
     public class ReceiptMigrationTests
     {
+        [TestCase(0)]
+        [TestCase(1)]
+        public async Task Truncated_legacy_receipts_leave_migration_pointer_gap(int receiptCount)
+        {
+            InMemoryReceiptStorage source = new();
+            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree()
+                .WithTransactions(source)
+                .OfChainLength(2);
+            IBlockTree blockTree = blockTreeBuilder.TestObject;
+            Block block = blockTree.FindBlock(1);
+            TxReceipt[] receipts = source.Get(block)[..receiptCount];
+            source.Insert(block, receipts, ensureCanonical: false);
+
+            InMemoryReceiptStorage destination = new() { MigratedBlockNumber = ulong.MaxValue };
+            TestReceiptStorage receiptStorage = new(source, destination);
+            TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+
+            ReceiptMigration migration = new(
+                receiptStorage,
+                blockTree,
+                syncModeSelector,
+                blockTreeBuilder.ChainLevelInfoRepository,
+                new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
+                receiptColumnDb,
+                Substitute.For<IReceiptsRecovery>(),
+                LimboLogs.Instance);
+
+            await migration.Run(CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(destination.Count, Is.Zero);
+                Assert.That(destination.MigratedBlockNumber, Is.EqualTo(ulong.MaxValue));
+                Assert.That(source.Get(block), Has.Length.EqualTo(receiptCount));
+            }
+        }
+
+        [Test]
+        public async Task Incomplete_legacy_receipts_leave_migration_pointer_gap()
+        {
+            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(3);
+            IBlockTree blockTree = blockTreeBuilder.TestObject;
+            Block incompleteBlock = blockTree.FindBlock(1);
+            Block completeBlock = blockTree.FindBlock(2);
+
+            InMemoryReceiptStorage source = new();
+            TxReceipt receipt = Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.KeccakA).TestObject;
+            source.Insert(incompleteBlock, new TxReceipt[] { receipt, null }, ensureCanonical: false);
+            source.Insert(completeBlock,
+                [Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.KeccakB).TestObject],
+                ensureCanonical: false);
+
+            InMemoryReceiptStorage destination = new() { MigratedBlockNumber = ulong.MaxValue };
+            TestReceiptStorage receiptStorage = new(source, destination);
+            TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+
+            ReceiptMigration migration = new(
+                receiptStorage,
+                blockTree,
+                syncModeSelector,
+                blockTreeBuilder.ChainLevelInfoRepository,
+                new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
+                receiptColumnDb,
+                Substitute.For<IReceiptsRecovery>(),
+                LimboLogs.Instance);
+
+            await migration.Run(CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(destination.Count, Is.EqualTo(1));
+                Assert.That(destination.MigratedBlockNumber, Is.EqualTo(2));
+                Assert.That(source.Get(incompleteBlock)[1], Is.Null);
+            }
+        }
+
         [TestCase(null, 0UL, false, false, false, false)] // No change to migrate
         [TestCase(5UL, 5UL, false, false, false, true)] // Explicit command and partially migrated
         [TestCase(null, 5UL, true, false, false, true)] // Partially migrated
@@ -143,11 +223,54 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 .SetName("UnfinishedHighestBlockHoldsPointerUntilItCompletes");
         }
 
+        [TestCaseSource(nameof(IncompletePointerTrackerScenarios))]
+        public void MigrationPointerTracker_does_not_advance_across_incomplete_blocks(
+            ulong to, MigrationReport[] reports, ulong expectedPointer)
+        {
+            InMemoryReceiptStorage receiptStorage = new() { MigratedBlockNumber = to + 1 };
+            ReceiptMigration.MigrationPointerTracker tracker = new(receiptStorage, to);
+
+            foreach (MigrationReport report in reports)
+            {
+                if (report.IsComplete)
+                {
+                    tracker.ReportCompleted(report.BlockNumber);
+                }
+                else
+                {
+                    tracker.ReportIncomplete(report.BlockNumber);
+                }
+            }
+
+            Assert.That(receiptStorage.MigratedBlockNumber, Is.EqualTo(expectedPointer));
+        }
+
+        private static IEnumerable<TestCaseData> IncompletePointerTrackerScenarios()
+        {
+            yield return new TestCaseData(5UL,
+                new[] { Complete(4), Complete(3), Incomplete(5), Complete(2) },
+                6UL).SetName("HigherIncompleteDiscardsEarlierLowerCompletions");
+            yield return new TestCaseData(5UL,
+                new[] { Complete(5), Incomplete(4), Complete(3), Complete(2) },
+                5UL).SetName("LowerCompletionsAfterIncompleteDoNotAdvancePointer");
+            yield return new TestCaseData(5UL,
+                new[] { Complete(5), Complete(4), Incomplete(2), Incomplete(3), Complete(1), Complete(0) },
+                4UL).SetName("HighestOfMultipleIncompleteBlocksHoldsPointer");
+        }
+
+        private static MigrationReport Complete(ulong blockNumber) => new(blockNumber, true);
+
+        private static MigrationReport Incomplete(ulong blockNumber) => new(blockNumber, false);
+
+        public readonly record struct MigrationReport(ulong BlockNumber, bool IsComplete);
+
         private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptMigrationStore
         {
             public Hash256 FindBlockHash(Hash256 txHash) => inStorage.FindBlockHash(txHash);
 
             public void InsertForMigration(Block block, TxReceipt[] receipts) => outStorage.Insert(block, receipts);
+
+            public TxReceipt[] GetForMigration(ulong blockNumber, Hash256 blockHash) => inStorage.Get(blockHash, recover: false);
 
             public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inStorage.Get(block, recover, recoverSender);
 

@@ -56,6 +56,14 @@ public class GetBlockBodiesMessageSerializerTests
     }
 
     [Test]
+    public void Deserialize_throws_on_null_hash()
+    {
+        GetBlockBodiesMessageSerializer serializer = new();
+
+        Assert.That(() => serializer.Deserialize([0xc1, 0x80]), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
     public void To_string()
     {
         using GetBlockBodiesMessage newBlockMessage = new();

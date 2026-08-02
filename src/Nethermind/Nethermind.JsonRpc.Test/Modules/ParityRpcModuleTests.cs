@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.OutSession.RemoteNodeId.Returns(TestItem.PublicKeyA);
 
             IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler, ISyncPeer>();
-            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = protocolHandler;
                 return true;
@@ -209,7 +209,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
-            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = p2PProtocolHandler;
                 return true;
@@ -242,7 +242,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
-            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = p2PProtocolHandler;
                 return true;
@@ -387,7 +387,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 """;
 
             EthereumJsonSerializer serializer = new();
-            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json);
+            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json)!;
 
             Assert.That(tx.PublicKey, Is.Not.Null);
             Assert.That(tx.PublicKey.Bytes.Length, Is.EqualTo(64));

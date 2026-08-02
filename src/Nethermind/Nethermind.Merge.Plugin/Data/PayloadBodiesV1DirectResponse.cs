@@ -261,7 +261,7 @@ internal static class PayloadBodiesDirectResponseWriter
         ctx.SkipItem(); // header
         byte[][] transactions = GetTransactionsFromBlockRlp(ref ctx);
         ctx.SkipItem(); // uncles
-        Withdrawal[]? withdrawals = ctx.Position != blockEnd ? WithdrawalDecoder.DecodeArray(ref ctx) : null;
+        Withdrawal[]? withdrawals = ctx.Position != blockEnd ? WithdrawalDecoder.DecodeNonNullArray(ref ctx) : null;
         return (transactions, withdrawals);
     }
 

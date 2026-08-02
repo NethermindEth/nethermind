@@ -19,13 +19,13 @@ namespace Nethermind.Stats.Model
     /// </summary>
     public sealed class Node : IFormattable, IEquatable<Node>
     {
-        private string _clientId;
-        private string _paddedHost;
-        private string _paddedPort;
+        private string? _clientId;
+        private string? _paddedHost;
+        private string? _paddedPort;
         private ulong _requestingEnrSequence;
-        private NodeRecord _enr;
+        private NodeRecord? _enr;
         private int? _discoveryPort;
-        private IPEndPoint _discoveryAddress;
+        private IPEndPoint? _discoveryAddress;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -40,8 +40,8 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host => _host ??= FormatHost(Address?.Address);
-        private string _host;
+        public string Host => _host ??= FormatHost(Address.Address);
+        private string? _host;
 
         /// <summary>
         /// TCP port part of the network node.
@@ -96,7 +96,7 @@ namespace Nethermind.Stats.Model
         public bool IsTrusted { get; set; }
 
 
-        public string ClientId
+        public string? ClientId
         {
             get => _clientId;
             set
@@ -111,9 +111,9 @@ namespace Nethermind.Stats.Model
 
         public NodeClientType ClientType { get; private set; } = NodeClientType.Unknown;
 
-        public string EthDetails { get; set; }
+        public string? EthDetails { get; set; }
         public long CurrentReputation { get; set; }
-        public NodeRecord Enr
+        public NodeRecord? Enr
         {
             get => _enr;
             set
@@ -186,7 +186,7 @@ namespace Nethermind.Stats.Model
             if (networkNode.IsEnr)
             {
                 Enr = networkNode.Enr;
-                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
+                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) &&
                     discoveryEndpoint.Address.Equals(Address.Address))
                 {
                     DiscoveryPort = discoveryEndpoint.Port;
@@ -208,11 +208,11 @@ namespace Nethermind.Stats.Model
         /// <param name="enr">The Ethereum Node Record to read.</param>
         /// <param name="node">The node created from the record when the record contains a usable TCP endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
-        public static bool TryFromEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        public static bool TryFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
         {
             node = null;
-            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-            if (key is null || !enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
+            PublicKey? key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            if (key is null || !enr.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint))
             {
                 return false;
             }
@@ -232,16 +232,16 @@ namespace Nethermind.Stats.Model
         /// <param name="enr">The Ethereum Node Record to read.</param>
         /// <param name="node">The node created from the record when the record contains a usable UDP discovery endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
-        public static bool TryFromDiscoveryEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        public static bool TryFromDiscoveryEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
         {
             node = null;
-            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-            if (key is null || !enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+            PublicKey? key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            if (key is null || !enr.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint))
             {
                 return false;
             }
 
-            IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(out IPEndPoint foundTcpEndpoint) &&
+            IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(out IPEndPoint? foundTcpEndpoint) &&
                 foundTcpEndpoint.Address.Equals(discoveryEndpoint.Address)
                 ? foundTcpEndpoint
                 : new IPEndPoint(discoveryEndpoint.Address, 0);
@@ -292,6 +292,7 @@ namespace Nethermind.Stats.Model
             return ports;
         }
 
+        [MemberNotNull(nameof(Address))]
         private void SetIPEndPoint(IPEndPoint address)
         {
             Address = address;
@@ -322,12 +323,12 @@ namespace Nethermind.Stats.Model
                 return GetIPEndPoint(networkNode.Host, networkNode.Port);
             }
 
-            if (networkNode.Enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
+            if (networkNode.Enr.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint))
             {
                 return tcpEndpoint;
             }
 
-            if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+            if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint))
             {
                 return new IPEndPoint(discoveryEndpoint.Address, 0);
             }
@@ -337,7 +338,7 @@ namespace Nethermind.Stats.Model
 
         private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr)
         {
-            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
+            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) &&
                 discoveryEndpoint.Address.Equals(node.Address.Address))
             {
                 node.DiscoveryPort = discoveryEndpoint.Port;
@@ -366,7 +367,7 @@ namespace Nethermind.Stats.Model
 
         private static IPEndPoint GetIPEndPoint(string host, int port) => new(IPAddress.Parse(host), port);
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(this, obj))
             {
@@ -385,9 +386,9 @@ namespace Nethermind.Stats.Model
 
         public override string ToString() => ToString(Format.WithPublicKey);
 
-        public string ToString(string format) => ToString(format, null);
+        public string ToString(string? format) => ToString(format, null);
 
-        public string ToString(string format, IFormatProvider formatProvider) => format switch
+        public string ToString(string? format, IFormatProvider? formatProvider) => format switch
         {
             Format.Short => $"{Host}:{Port}",
             Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
@@ -398,7 +399,7 @@ namespace Nethermind.Stats.Model
             _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
         };
 
-        public bool Equals(Node other)
+        public bool Equals(Node? other)
         {
             if (ReferenceEquals(this, other)) return true;
             if (other is null) return false;
@@ -406,7 +407,7 @@ namespace Nethermind.Stats.Model
             return Id.Equals(other.Id);
         }
 
-        public static bool operator ==(Node a, Node b)
+        public static bool operator ==(Node? a, Node? b)
         {
             if (ReferenceEquals(a, b)) return true;
 
@@ -418,7 +419,7 @@ namespace Nethermind.Stats.Model
             return a.Id.Equals(b.Id);
         }
 
-        public static bool operator !=(Node a, Node b) => !(a == b);
+        public static bool operator !=(Node? a, Node? b) => !(a == b);
 
         // Dynamically generates regex pattern from NodeClientType enum values (excluding Unknown).
         // Pattern structure: (ClientName|OtherClient|...)
@@ -459,7 +460,7 @@ namespace Nethermind.Stats.Model
                         .OrderByDescending(name => name.Length))),
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        public static NodeClientType RecognizeClientType(string clientId)
+        public static NodeClientType RecognizeClientType(string? clientId)
         {
             if (clientId is null)
             {

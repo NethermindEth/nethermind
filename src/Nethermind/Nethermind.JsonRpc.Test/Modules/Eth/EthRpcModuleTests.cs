@@ -174,11 +174,14 @@ public partial class EthRpcModuleTests
         ctx.Test.TxPool.SubmitTx(sent, TxHandlingOptions.None);
 
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", sent.Hash);
-        byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized).Result;
-
-        Assert.That(txBytes, Is.Not.Null);
+        JsonRpcResponse<byte[]> response = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC response.");
+        byte[] txBytes = response.Result
+            ?? throw new InvalidOperationException("Expected raw transaction bytes.");
         RlpReader context = new(txBytes);
-        Transaction tx = TxDecoder.Instance.Decode(ref context, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        Transaction tx = TxDecoder.Instance.DecodeGuardNotNull(
+            ref context,
+            RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         Assert.That(tx.IsInMempoolForm(), Is.True);
     }
 
@@ -2018,7 +2021,8 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
-        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
+        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction))
+            ?? throw new InvalidOperationException("Expected a decoded transaction.");
         await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"transaction invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
     }
@@ -2177,7 +2181,8 @@ public partial class EthRpcModuleTests
 
         (byte[] code, AccessListForRpc _) = GetTestAccessList(loads);
 
-        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}")
+            ?? throw new InvalidOperationException("Expected an access-list transaction.");
 
         if (accessListProvided != AccessListProvided.None)
         {
@@ -2197,7 +2202,8 @@ public partial class EthRpcModuleTests
 
         // Contract creation with infinite loop; gas 200K should be capped to 60K
         TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}")
+            ?? throw new InvalidOperationException("Expected a transaction.");
 
         string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
 
@@ -2448,8 +2454,11 @@ public partial class EthRpcModuleTests
 
         string result = await Test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(testTx).Bytes));
 
-        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
-        Assert.That(actual.Error!.Message, Does.Contain(AcceptTxResult.SenderIsContract.ToString()));
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error response.");
+        Error error = actual.Error
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error.");
+        Assert.That(error.Message, Does.Contain(AcceptTxResult.SenderIsContract.ToString()));
     }
 
 
@@ -2486,7 +2495,8 @@ public partial class EthRpcModuleTests
 
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(normalTx).Bytes));
 
-        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result);
+        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC success response.");
         Assert.That(actual.Result, Is.Not.Null);
     }
 
@@ -2509,8 +2519,11 @@ public partial class EthRpcModuleTests
 
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(invalidSetCodeTx).Bytes));
 
-        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
-        Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error response.");
+        Error error = actual.Error
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error.");
+        Assert.That(error.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
     }
 
     [Test]
@@ -2539,7 +2552,10 @@ public partial class EthRpcModuleTests
 
         string jsonFromRpc = await test.TestEthRpc("eth_getTransactionByHash", setCodeTx!.CalculateHash());
 
-        SetCodeTransactionForRpc actual = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc).Result;
+        JsonRpcResponse<SetCodeTransactionForRpc> response = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC response.");
+        SetCodeTransactionForRpc actual = response.Result
+            ?? throw new InvalidOperationException("Expected a set-code transaction.");
 
         AuthorizationListForRpc.RpcAuthTuple result = actual.AuthorizationList!.First();
 

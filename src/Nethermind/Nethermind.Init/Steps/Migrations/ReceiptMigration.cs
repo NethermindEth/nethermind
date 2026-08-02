@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -178,14 +179,21 @@ namespace Nethermind.Init.Steps.Migrations
                     }
 
                     _progressLogger.Update(Interlocked.Increment(ref synced));
-                    MigrateBlock(block!);
+                    bool migrationCompleted = MigrateBlock(block!);
 
                     if (usingEmptyBlock)
                     {
                         ReturnMissingBlock(block!);
                     }
 
-                    pointerTracker?.ReportCompleted(blockNum);
+                    if (migrationCompleted)
+                    {
+                        pointerTracker?.ReportCompleted(blockNum);
+                    }
+                    else
+                    {
+                        pointerTracker?.ReportIncomplete(blockNum);
+                    }
                 });
 
                 if (!token.IsCancellationRequested)
@@ -275,26 +283,47 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private void MigrateBlock(Block block)
+        private bool MigrateBlock(Block block)
         {
-            TxReceipt?[] receipts = _migrationStore.Get(block);
-            TxReceipt[] notNullReceipts = FilterNotNullReceipts(receipts, out int missingCount);
+            Hash256 blockHash = block.Hash
+                ?? throw new InvalidDataException($"Cannot migrate receipts for block {block.Number} without a block hash.");
+            TxReceipt?[] receipts = _migrationStore.GetForMigration(block.Number, blockHash);
+            if (block.Transactions.Length > 0 && receipts.Length != block.Transactions.Length)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} has {receipts.Length} receipts for {block.Transactions.Length} transactions; leaving its legacy receipt data unchanged.");
+                return false;
+            }
 
-            if (notNullReceipts.Length == 0) return;
+            if (!TryGetCompleteReceipts(receipts, out TxReceipt[]? completeReceipts, out int missingCount))
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {missingCount} of {receipts.Length} receipts; leaving its legacy receipt data unchanged.");
+                return false;
+            }
 
-            _migrationStore.InsertForMigration(block, notNullReceipts);
+            if (completeReceipts.Length == 0) return true;
+
+            _recovery.TryRecover(block, completeReceipts, forceRecoverSender: false);
+            Hash256[] transactionHashes = new Hash256[completeReceipts.Length];
+            for (int i = 0; i < completeReceipts.Length; i++)
+            {
+                transactionHashes[i] = GetRequiredTransactionHash(completeReceipts[i], block);
+            }
+
+            _migrationStore.InsertForMigration(block, completeReceipts);
 
             // It used to be that the tx index is stored in the default column so we are moving it into transactions column
             {
                 using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Default);
-                for (int i = 0; i < notNullReceipts.Length; i++)
+                for (int i = 0; i < transactionHashes.Length; i++)
                 {
-                    writeBatch[notNullReceipts[i].TxHash!.Bytes] = null;
+                    writeBatch[transactionHashes[i].Bytes] = null;
                 }
             }
 
             // Receipts are now prefixed with block number.
-            _receiptsBlockDb.Delete(block.Hash!);
+            _receiptsBlockDb.Delete(blockHash);
 
             // Guarded: block.Number can transiently exceed head during reorgs.
             ulong? headNumber = _blockTree.Head?.Number;
@@ -306,37 +335,42 @@ namespace Nethermind.Init.Steps.Migrations
             if (neverIndexTx || txIndexExpired)
             {
                 using IWriteBatch writeBatch = _txIndexDb.StartWriteBatch();
-                foreach (TxReceipt? receipt in notNullReceipts)
+                foreach (Hash256 txHash in transactionHashes)
                 {
-                    writeBatch[receipt.TxHash!.Bytes] = null;
+                    writeBatch[txHash.Bytes] = null;
                 }
             }
 
-            if (missingCount == 0) return;
-            if (_logger.IsWarn)
-                _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {missingCount} of {receipts.Length} receipts!");
+            return true;
         }
 
-        private static TxReceipt[] FilterNotNullReceipts(TxReceipt?[] receipts, out int missingCount)
+        private static bool TryGetCompleteReceipts(
+            TxReceipt?[] receipts,
+            [NotNullWhen(true)] out TxReceipt[]? completeReceipts,
+            out int missingCount)
         {
             missingCount = 0;
-            foreach (TxReceipt? t in receipts)
+            TxReceipt[] candidates = new TxReceipt[receipts.Length];
+            for (int i = 0; i < receipts.Length; i++)
             {
-                if (t is null) missingCount++;
+                TxReceipt? receipt = receipts[i];
+                if (receipt is null)
+                {
+                    missingCount++;
+                }
+                else
+                {
+                    candidates[i] = receipt;
+                }
             }
 
-            if (missingCount == 0) return receipts!;
-            if (missingCount == receipts.Length) return [];
-
-            TxReceipt[] notNullReceipts = new TxReceipt[receipts.Length - missingCount];
-            int next = 0;
-            foreach (TxReceipt? receipt in receipts)
-            {
-                if (receipt is not null) notNullReceipts[next++] = receipt;
-            }
-
-            return notNullReceipts;
+            completeReceipts = missingCount == 0 ? candidates : null;
+            return completeReceipts is not null;
         }
+
+        private static Hash256 GetRequiredTransactionHash(TxReceipt receipt, Block block) =>
+            receipt.TxHash ?? throw new InvalidDataException(
+                $"Receipt for block {block.ToString(Block.Format.FullHashAndNumber)} has no transaction hash after recovery.");
 
         private void ResetMigrationIndexIfNeeded()
         {
@@ -354,10 +388,11 @@ namespace Nethermind.Init.Steps.Migrations
                 BlockInfo? firstBlockInfo = level?.BlockInfos.FirstOrDefault();
                 if (firstBlockInfo is not null)
                 {
-                    TxReceipt[] receipts = _migrationStore.Get(firstBlockInfo.BlockHash);
+                    TxReceipt?[] receipts = _migrationStore.GetForMigration(blockNumber, firstBlockInfo.BlockHash);
                     if (receipts.Length > 0)
                     {
-                        if (IsMigrationNeeded(blockNumber, firstBlockInfo.BlockHash, receipts))
+                        if (!TryGetCompleteReceipts(receipts, out TxReceipt[]? completeReceipts, out _) ||
+                            IsMigrationNeeded(blockNumber, firstBlockInfo.BlockHash, completeReceipts))
                         {
                             _migrationStore.MigratedBlockNumber = ulong.MaxValue;
                         }
@@ -394,11 +429,31 @@ namespace Nethermind.Init.Steps.Migrations
             private readonly Lock _lock = new();
             private readonly HashSet<ulong> _completedAwaitingContiguity = new(expectedBacklog);
             private ulong _nextToConfirm = to;
+            private ulong? _highestIncomplete;
+
+            public void ReportIncomplete(ulong blockNumber)
+            {
+                lock (_lock)
+                {
+                    if (_highestIncomplete is null || blockNumber > _highestIncomplete)
+                    {
+                        _highestIncomplete = blockNumber;
+                    }
+
+                    ulong highestIncomplete = _highestIncomplete.Value;
+                    _completedAwaitingContiguity.RemoveWhere(number => number <= highestIncomplete);
+                }
+            }
 
             public void ReportCompleted(ulong blockNumber)
             {
                 lock (_lock)
                 {
+                    if (_highestIncomplete is ulong highestIncomplete && blockNumber <= highestIncomplete)
+                    {
+                        return;
+                    }
+
                     _completedAwaitingContiguity.Add(blockNumber);
 
                     bool advanced = false;

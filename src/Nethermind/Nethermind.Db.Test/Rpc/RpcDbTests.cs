@@ -12,7 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Rpc
 {
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.Self)]
     public class RpcDbTests
     {
         private IJsonSerializer _jsonSerializer;
@@ -45,6 +45,17 @@ namespace Nethermind.Db.Test.Rpc
             _ = _rpcDb[key];
             _jsonRpcClient.Received().Post("debug_getFromDb", "Name", key.ToHexString());
             Assert.That(_recordDb[key], Is.EqualTo(Bytes.FromHexString(result)));
+        }
+
+        [Test]
+        public void returns_null_when_rpc_has_no_value()
+        {
+            _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(Arg.Any<string>())
+                .Returns(new JsonRpcSuccessResponse { Result = null });
+
+            byte[]? value = _rpcDb[new byte[1]];
+
+            Assert.That(value, Is.Null);
         }
     }
 }

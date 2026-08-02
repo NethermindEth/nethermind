@@ -15,7 +15,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 /// </summary>
 public class GethGenesisJson
 {
-    public GethGenesisConfigJson Config { get; set; }
+    public GethGenesisConfigJson Config { get; set; } = null!;
 
     public Dictionary<Address, GethGenesisAllocJson>? Alloc { get; set; }
 

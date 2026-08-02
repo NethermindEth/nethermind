@@ -24,4 +24,23 @@ public class SnapshotDecoderTests
     [Test, TestCaseSource(nameof(Snapshots))]
     public void RoundTrip(Snapshot original) =>
         Assert.That(Decoder.Decode(Decoder.Encode(original).Bytes), Is.EqualTo(original).UsingXdcComparer());
+
+    [Test]
+    public void Decode_throws_on_null_hash()
+    {
+        Snapshot snapshot = new(1, Keccak.EmptyTreeHash, []);
+        snapshot.HeaderHash = null!;
+        Rlp rlp = Decoder.Encode(snapshot);
+
+        Assert.That(() => Decoder.Decode(rlp.Bytes), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decode_throws_on_null_candidate()
+    {
+        Snapshot snapshot = new(1, Keccak.EmptyTreeHash, [null!]);
+        Rlp rlp = Decoder.Encode(snapshot);
+
+        Assert.That(() => Decoder.Decode(rlp.Bytes), Throws.TypeOf<RlpException>());
+    }
 }

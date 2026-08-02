@@ -170,24 +170,26 @@ public class GethGenesisLoaderTests
         ChainSpec chainSpec = LoadStandardGethGenesis(
             chainId: 12345,
             allocJson: """{ "0x0000000000000000000000000000000000000001": { "balance": "0x1" } }""");
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
+        Dictionary<Address, ChainSpecAllocation> allocations = chainSpec.Allocations ?? throw new AssertionException("Allocations were not loaded.");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
             Assert.That(chainSpec.NetworkId, Is.EqualTo(12345));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash));
-            Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x8000000));
-            Assert.That(chainSpec.Genesis.Header.Difficulty, Is.EqualTo(UInt256.One));
-            Assert.That(chainSpec.Allocations.Count, Is.EqualTo(1));
-            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
+            Assert.That(genesis.Header.GasLimit, Is.EqualTo(0x8000000));
+            Assert.That(genesis.Header.Difficulty, Is.EqualTo(UInt256.One));
+            Assert.That(allocations.Count, Is.EqualTo(1));
+            Assert.That(allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
         }
 
         EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
         Assert.That(ethashParameters, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ethashParameters!.DifficultyBoundDivisor, Is.EqualTo(0x800));
-            Assert.That(ethashParameters!.BlockReward!.ContainsKey(0), Is.True);
+            Assert.That(ethashParameters.DifficultyBoundDivisor, Is.EqualTo(0x800));
+            Assert.That(ethashParameters.BlockReward!.ContainsKey(0), Is.True);
         }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -243,11 +245,12 @@ public class GethGenesisLoaderTests
         // When genesis timestamp matches amsterdamTime, genesis header fields are set
         ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15", timestamp: 15);
         ChainSpecBasedSpecProvider genesisProvider = new(genesisAtAmsterdam);
+        Block amsterdamGenesis = genesisAtAmsterdam.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(genesisAtAmsterdam.Genesis.BlockAccessListHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
-            Assert.That(genesisAtAmsterdam.Genesis.SlotNumber, Is.EqualTo(0));
+            Assert.That(amsterdamGenesis.BlockAccessListHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+            Assert.That(amsterdamGenesis.SlotNumber, Is.EqualTo(0));
         }
         AssertAmsterdamEipsEnabled(genesisProvider.GenesisSpec, true);
         Assert.That(genesisProvider.GenesisSpec.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
@@ -336,9 +339,10 @@ public class GethGenesisLoaderTests
             """);
 
         Address address = new("0x0000000000000000000000000000000000000100");
-        Assert.That(chainSpec.Allocations.ContainsKey(address), Is.True);
+        Dictionary<Address, ChainSpecAllocation> allocations = chainSpec.Allocations ?? throw new AssertionException("Allocations were not loaded.");
+        Assert.That(allocations.ContainsKey(address), Is.True);
 
-        ChainSpecAllocation allocation = chainSpec.Allocations[address];
+        ChainSpecAllocation allocation = allocations[address];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(allocation.Balance, Is.EqualTo(UInt256.Parse("1000000000000000000"))); // 1 ETH in wei
@@ -357,12 +361,13 @@ public class GethGenesisLoaderTests
                 "0x0000000000000000000000000000000000000002": { "balance": "0x2" }
             }
             """);
+        Dictionary<Address, ChainSpecAllocation> allocations = chainSpec.Allocations ?? throw new AssertionException("Allocations were not loaded.");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Allocations.Count, Is.EqualTo(2));
-            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
-            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000002")].Balance, Is.EqualTo((UInt256)2));
+            Assert.That(allocations.Count, Is.EqualTo(2));
+            Assert.That(allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
+            Assert.That(allocations[new Address("0x0000000000000000000000000000000000000002")].Balance, Is.EqualTo((UInt256)2));
         }
     }
 

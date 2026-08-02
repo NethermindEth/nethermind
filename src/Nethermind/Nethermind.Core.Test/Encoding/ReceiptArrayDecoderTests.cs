@@ -13,6 +13,45 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class ReceiptArrayDecoderTests
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Legacy_missing_receipt_is_preserved_for_migration(bool compactEncoding)
+        {
+            byte[] encoded = compactEncoding
+                ? [ReceiptArrayStorageDecoder.CompactEncoding, Rlp.EmptyListByte, Rlp.EmptyListByte]
+                : [0xc1, Rlp.EmptyListByte];
+            ReceiptArrayStorageDecoder decoder = new(compactEncoding);
+            Span<byte> encodedSpan = encoded;
+            TxReceipt?[] receipts = decoder.DecodeAllowingMissing(in encodedSpan);
+
+            Assert.That(receipts, Is.EqualTo(new TxReceipt?[] { null }));
+        }
+
+        [Test]
+        public void Legacy_missing_receipt_is_rejected_by_normal_decoder()
+        {
+            byte[] encoded = [0xc1, Rlp.EmptyListByte];
+            ReceiptArrayStorageDecoder decoder = new(compactEncoding: false);
+
+            Assert.That(() => Decode(decoder, encoded), Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
+        public void Legacy_trailing_missing_receipt_is_omitted_by_normal_compact_decoder()
+        {
+            byte[] encoded = [ReceiptArrayStorageDecoder.CompactEncoding, Rlp.EmptyListByte, Rlp.EmptyListByte];
+            ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
+            Span<byte> encodedSpan = encoded;
+
+            Assert.That(decoder.Decode(in encodedSpan), Is.Empty);
+        }
+
+        private static void Decode(ReceiptArrayStorageDecoder decoder, byte[] encoded)
+        {
+            Span<byte> encodedSpan = encoded;
+            _ = decoder.Decode(in encodedSpan);
+        }
+
         [Test]
         public void Can_do_roundtrip_storage(
             [Values(RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, RlpBehaviors.Storage)] RlpBehaviors encodeBehaviors,
@@ -76,7 +115,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptArrayStorageDecoder decoder = new();
             RlpReader ctx = new((ReadOnlySpan<byte>)rlp);
-            TxReceipt[] deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
+            TxReceipt[] deserialized = decoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpectedArray());
         }

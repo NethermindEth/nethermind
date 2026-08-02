@@ -188,7 +188,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                storageRoot = reader.DecodeKeccak();
+                storageRoot = reader.DecodeKeccakNonNull();
             }
 
             return storageRoot;
@@ -204,7 +204,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                codeHash = reader.DecodeKeccak();
+                codeHash = reader.DecodeKeccakNonNull();
             }
 
             return codeHash;
@@ -220,7 +220,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                storageRoot = reader.DecodeValueKeccak()!.Value;
+                storageRoot = reader.DecodeValueKeccakNonNull();
             }
 
             return storageRoot;
@@ -236,7 +236,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                codeHash = reader.DecodeValueKeccak()!.Value;
+                codeHash = reader.DecodeValueKeccakNonNull();
             }
 
             return codeHash;

@@ -439,7 +439,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 jsonRpcResult.TryDequeue(out JsonRpcResult result);
 
-                Assert.That(((JsonRpcSubscriptionResponse<BlockForRpc>)result.Response!).Params.Result.Difficulty, Is.EqualTo((UInt256)i));
+                Assert.That(((JsonRpcSubscriptionResponse<BlockForRpc>)result.Response!).Params!.Result.Difficulty, Is.EqualTo((UInt256)i));
             }
         }
 

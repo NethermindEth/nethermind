@@ -307,12 +307,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Assert.That(result, Is.True);
             Node peerNode = await ReadPeerCandidate(token);
+            NodeRecord peerEnr = peerNode.Enr
+                ?? throw new InvalidOperationException("Verified peer candidate is missing its ENR.");
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerNode.Id, Is.EqualTo(_receiver.Id));
                 Assert.That(peerNode.Port, Is.EqualTo(30304));
                 Assert.That(peerNode.DiscoveryPort, Is.EqualTo(30303));
-                Assert.That(peerNode.Enr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
+                Assert.That(peerEnr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
                 Assert.That(peerNode, Is.Not.SameAs(_receiver));
             }
         }
@@ -355,11 +357,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Assert.That(result, Is.True);
             Node peerNode = await ReadPeerCandidate(token);
+            NodeRecord peerEnr = peerNode.Enr
+                ?? throw new InvalidOperationException("Verified peer candidate is missing its refreshed ENR.");
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerNode.Port, Is.EqualTo(30304));
-                Assert.That(peerNode.Enr.EnrSequence, Is.EqualTo(2));
-                Assert.That(peerNode.Enr.GetHex(), Is.EqualTo(refreshedRecord.GetHex()));
+                Assert.That(peerEnr.EnrSequence, Is.EqualTo(2));
+                Assert.That(peerEnr.GetHex(), Is.EqualTo(refreshedRecord.GetHex()));
             }
 
             await AssertNoPeerCandidate(token);

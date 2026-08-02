@@ -83,7 +83,7 @@ public class BlobTxStorage : IBlobTxStorage
         {
             if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
             {
-                yield return transaction!;
+                yield return transaction;
             }
         }
     }
@@ -121,14 +121,14 @@ public class BlobTxStorage : IBlobTxStorage
         EncodeAndSaveTxs(blockBlobTransactions, _processedBlobTxsDb, blockNumber);
     }
 
-    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
     {
         byte[]? bytes = _processedBlobTxsDb.Get(blockNumber);
 
         if (bytes is not null)
         {
             RlpReader ctx = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
+            blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm);
             return true;
         }
 
@@ -139,11 +139,16 @@ public class BlobTxStorage : IBlobTxStorage
     public void DeleteBlobTransactionsFromBlock(ulong blockNumber)
         => _processedBlobTxsDb.Delete(blockNumber);
 
-    private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, out Transaction? transaction)
+    private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, [NotNullWhen(true)] out Transaction? transaction)
     {
         if (txBytes is not null)
         {
             transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm);
+            if (transaction is null)
+            {
+                return false;
+            }
+
             transaction.SenderAddress = sender;
             return true;
         }
@@ -152,7 +157,7 @@ public class BlobTxStorage : IBlobTxStorage
         return false;
     }
 
-    private static bool TryDecodeLightTx(byte[]? txBytes, out LightTransaction? lightTx)
+    private static bool TryDecodeLightTx(byte[]? txBytes, [NotNullWhen(true)] out LightTransaction? lightTx)
     {
         if (txBytes is not null)
         {

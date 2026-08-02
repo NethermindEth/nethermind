@@ -83,7 +83,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = checked(chain.Bridge.HeadBlock.Number + 10),
+                            Number = checked(chain.Bridge.HeadBlock!.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -128,7 +128,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = checked(chain.Bridge.HeadBlock.Number + 10),
+                            Number = checked(chain.Bridge.HeadBlock!.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -389,7 +389,7 @@ public class EthSimulateTestsBlocksAndTransactions
                         ]
                        }
                        """;
-        return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+        return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input)!;
     }
 
     [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
@@ -519,7 +519,7 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task eth_simulateV1_MovePrecompileToAddress_invalid_override_returns_error(string payloadJson, int expectedErrorCode, string expectedMessage)
     {
         EthereumJsonSerializer serializer = new();
-        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson);
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson)!;
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =

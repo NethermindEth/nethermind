@@ -8,6 +8,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
@@ -170,6 +171,37 @@ public class EncryptionHandshakeServiceTests
 
         Assert.That(recipientIngress, Is.EqualTo(initiatorEgress), "Egress");
         Assert.That(recipientEgress, Is.EqualTo(initiatorIngress), "Ingress");
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Rejects_failed_eip8_decryption(bool authMessage)
+    {
+        IEciesCipher cipher = Substitute.For<IEciesCipher>();
+        cipher.Decrypt(Arg.Any<PrivateKey>(), Arg.Any<byte[]>(), Arg.Any<byte[]?>())
+            .Returns((Success: false, PlainText: (byte[]?)null));
+        HandshakeService service = new(
+            _messageSerializationService,
+            cipher,
+            _testRandom,
+            _ecdsa,
+            NetTestVectors.StaticKeyB,
+            LimboLogs.Instance);
+        Packet malformedPacket = new(new byte[2]);
+
+        void Act()
+        {
+            if (authMessage)
+            {
+                service.Ack(new EncryptionHandshake(), malformedPacket);
+            }
+            else
+            {
+                service.Agree(new EncryptionHandshake(), malformedPacket);
+            }
+        }
+
+        Assert.Throws<NetworkingException>(Act);
     }
 
     [TestCase(true)]

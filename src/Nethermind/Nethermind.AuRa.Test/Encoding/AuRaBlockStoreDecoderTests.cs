@@ -35,7 +35,7 @@ public class AuRaBlockStoreDecoderTests
     }
 
     [Test]
-    public void Base_header_decoder_misreads_aura_signature_as_nonce()
+    public void Base_header_decoder_rejects_aura_header()
     {
         Block block = AuRaGenesisShapedBlock();
 
@@ -46,7 +46,7 @@ public class AuRaBlockStoreDecoderTests
         // The pre-fix wiring left BlockStore without a decoder, so it fell back to the base HeaderDecoder.
         BlockStore baseStore = new(db);
 
-        Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpLimitException>());
+        Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpException>());
     }
 
     [Test]

@@ -53,7 +53,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -79,7 +79,7 @@ public partial class EngineModuleTests
         object?[] parameters = [chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)];
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", parameters!);
-        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -138,7 +138,7 @@ public partial class EngineModuleTests
         GetPayloadV6Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV6", payloadId);
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -153,7 +153,7 @@ public partial class EngineModuleTests
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -179,7 +179,7 @@ public partial class EngineModuleTests
         parameters = [chain.JsonSerializer.Serialize(fcuState), null];
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", parameters!);
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -340,7 +340,7 @@ public partial class EngineModuleTests
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
-        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -446,7 +446,7 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
         GetPayloadV6Result res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
-        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList))!;
 
         BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -574,7 +574,7 @@ public partial class EngineModuleTests
             SlotNumber = chain.BlockTree.Head!.SlotNumber + 1,
             TargetGasLimit = chain.BlockTree.Head!.GasLimit
         };
-        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash!;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
 
         Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash);
@@ -591,9 +591,9 @@ public partial class EngineModuleTests
         }
 
         GetPayloadV6Result payload = payloadResult.Data;
-        await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.Blobs, static h => (Hash256?)new Hash256(h)), TestItem.KeccakE, []);
+        await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.Blobs, static h => new Hash256(h)), TestItem.KeccakE, []);
 
-        ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
+        ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash!, payload.ExecutionPayload.BlockHash!, payload.ExecutionPayload.BlockHash!);
         await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
 
         return payload.ExecutionPayload;
@@ -662,7 +662,7 @@ public partial class EngineModuleTests
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
-        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
 
         if (expectedError is null)
         {
@@ -786,7 +786,7 @@ public partial class EngineModuleTests
             {
                 string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",
                     chain.JsonSerializer.Serialize(payload), "[]", Keccak.Zero.ToString(true), "[]");
-                JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+                JsonRpcSuccessResponse successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response)!;
                 Assert.That(successResponse, Is.Not.Null);
 
                 if (expectedError is null)
@@ -904,7 +904,7 @@ public partial class EngineModuleTests
         chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None);
         chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None);
 
-        Hash256 parentHash = chain.BlockTree.HeadHash;
+        Hash256 parentHash = chain.BlockTree.HeadHash!;
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = timestamp,

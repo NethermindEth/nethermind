@@ -110,7 +110,7 @@ public class BlockDecoderTests
     {
         BlockDecoder decoder = new();
         Rlp result = decoder.Encode((Block?)null);
-        Block decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
+        Block? decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
         Assert.That(decoded, Is.Null);
     }
 

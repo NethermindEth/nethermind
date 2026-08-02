@@ -3,8 +3,10 @@
 
 using DotNetty.Buffers;
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -69,7 +71,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 {
                     int length = ctx.ReadSequenceLength();
                     int checkPosition = ctx.Position + length;
-                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                    ValueHash256 path = ctx.DecodeValueKeccakNonNull();
+                    Account account = _decoder.Decode(ref ctx)
+                        ?? throw new RlpException("Unexpected RLP null while decoding account range entry.");
+                    pathsWithAccounts.Add(new PathWithAccount(path, account));
                     ctx.Check(checkPosition);
                 }
 

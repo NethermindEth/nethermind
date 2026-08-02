@@ -73,7 +73,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
         _mainDb.ThrowIfDisposing();
         return _mainDb.GetAllCore(ordered, _columnFamily);

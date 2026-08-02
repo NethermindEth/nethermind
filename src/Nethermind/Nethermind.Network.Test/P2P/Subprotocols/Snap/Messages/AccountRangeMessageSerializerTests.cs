@@ -140,5 +140,70 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, msg);
         }
+
+        [Test]
+        public void Deserialize_throws_on_null_account_path()
+        {
+            byte[] serialized = EncodeMessageWithNullAccountPath();
+            AccountRangeMessageSerializer serializer = new();
+
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
+        public void Deserialize_throws_on_null_account()
+        {
+            byte[] serialized = EncodeMessageWithNullAccount();
+            AccountRangeMessageSerializer serializer = new();
+
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+        }
+
+        private static byte[] EncodeMessageWithNullAccountPath()
+        {
+            Account account = Build.An.Account
+                .WithBalance(1)
+                .WithStorageRoot(TestItem.KeccakA)
+                .TestObject;
+            AccountDecoder accountDecoder = new(true);
+
+            int accountContentLength = accountDecoder.GetContentLength(account);
+            int pathWithAccountContentLength = Rlp.LengthOf((Hash256?)null) + Rlp.LengthOfSequence(accountContentLength);
+            int pathsWithAccountsContentLength = Rlp.LengthOfSequence(pathWithAccountContentLength);
+            int contentLength = Rlp.LengthOf(1L)
+                + Rlp.LengthOfSequence(pathsWithAccountsContentLength)
+                + Rlp.LengthOfSequence(0);
+
+            byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = new(bytes);
+            writer.StartSequence(contentLength);
+            writer.Encode(1L);
+            writer.StartSequence(pathsWithAccountsContentLength);
+            writer.StartSequence(pathWithAccountContentLength);
+            writer.Encode((Hash256?)null);
+            accountDecoder.Encode(account, ref writer, accountContentLength);
+            writer.StartSequence(0);
+            return bytes;
+        }
+
+        private static byte[] EncodeMessageWithNullAccount()
+        {
+            int pathWithAccountContentLength = Rlp.LengthOf(TestItem.KeccakA) + Rlp.LengthOfSequence(0);
+            int pathsWithAccountsContentLength = Rlp.LengthOfSequence(pathWithAccountContentLength);
+            int contentLength = Rlp.LengthOf(1L)
+                + Rlp.LengthOfSequence(pathsWithAccountsContentLength)
+                + Rlp.LengthOfSequence(0);
+
+            byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = new(bytes);
+            writer.StartSequence(contentLength);
+            writer.Encode(1L);
+            writer.StartSequence(pathsWithAccountsContentLength);
+            writer.StartSequence(pathWithAccountContentLength);
+            writer.Encode(TestItem.KeccakA);
+            writer.StartSequence(0);
+            writer.StartSequence(0);
+            return bytes;
+        }
     }
 }

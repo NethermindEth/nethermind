@@ -104,6 +104,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         }
 
         [Test]
+        public void Deserialize_throws_on_null_root_hash()
+        {
+            using GetTrieNodesMessage msg = new()
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                RootHash = null!,
+                Paths = PathGroup.EncodeToRlpPathGroupList([]),
+                Bytes = 10
+            };
+            GetTrieNodesMessageSerializer serializer = new();
+            using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024).AsDisposable();
+            serializer.Serialize(buffer, msg);
+
+            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
         public void Deserialize_Throws_On_TooMany_Path_Groups()
         {
             PathGroup[] groups = Enumerable.Range(0, SnapMessageLimits.MaxRequestPathGroups + 1).Select(static _ => new PathGroup { Group = [TestItem.RandomDataA] }).ToArray();
