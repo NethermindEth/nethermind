@@ -49,7 +49,7 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Network address of the node.
         /// </summary>
-        public IPEndPoint Address { get; private set; } = null!;
+        public IPEndPoint Address { get; private set; }
 
         /// <summary>
         /// We use bootnodes to bootstrap the discovery process.
@@ -218,6 +218,7 @@ namespace Nethermind.Stats.Model
             return ports;
         }
 
+        [MemberNotNull(nameof(Address))]
         private void SetIPEndPoint(IPEndPoint address)
         {
             Port = address.Port;

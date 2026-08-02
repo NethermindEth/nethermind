@@ -43,6 +43,9 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private ChainSpec InitChainSpecFrom(ChainSpecJson chainSpecJson)
     {
+        ArgumentNullException.ThrowIfNull(chainSpecJson.Params);
+        ArgumentNullException.ThrowIfNull(chainSpecJson.Engine);
+
         ulong networkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
         ChainSpec chainSpec = new()
         {
@@ -67,10 +70,18 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
     {
         ulong? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
-            AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
+            AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v =>
+                v.BuiltIn is { Name: { } name } && name.Equals(builtInName, StringComparison.OrdinalIgnoreCase));
             if (allocation is null) return null;
-            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn!.Pricing.Where(o => predicate(o)).ToArray();
-            if (pricing?.Length > 0)
+            BuiltInJson? builtIn = allocation.BuiltIn;
+            if (builtIn is null)
+            {
+                return null;
+            }
+
+            ArgumentNullException.ThrowIfNull(builtIn.Pricing);
+            KeyValuePair<string, JsonElement>[] pricing = builtIn.Pricing.Where(o => predicate(o)).ToArray();
+            if (pricing.Length > 0)
             {
                 string key = pricing[0].Key;
                 return ulong.TryParse(key, out ulong transition) ? transition : Convert.ToUInt64(key, 16);

@@ -20,7 +20,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 
     public virtual Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        byte[] bytes = new byte[GetNullableLength(item, rlpBehaviors)];
         RlpWriter writer = new(bytes);
         if (item is null)
         {

@@ -98,6 +98,16 @@ public class RlpDecoderTests
     }
 
     [Test]
+    public void Single_item_encoding_uses_empty_list_for_null_without_calling_item_length()
+    {
+        NonNullableItemDecoder decoder = new();
+
+        Rlp rlp = decoder.Encode((NonNullableItem?)null);
+
+        Assert.That(rlp.Bytes, Is.EqualTo(Rlp.OfEmptyList.Bytes));
+    }
+
+    [Test]
     public void Decode_delegate_array_rejects_empty_list_for_value_type_element()
     {
         static void Decode()

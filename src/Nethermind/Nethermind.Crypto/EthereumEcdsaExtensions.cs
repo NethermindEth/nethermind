@@ -91,7 +91,8 @@ public static class EthereumEcdsaExtensions
                            || signature.V == CalculateV(ecdsa.ChainId, true);
         ulong chainId = tx.Type switch
         {
-            TxType.Legacy when useSignatureChainId => signature.ChainId.GetValueOrDefault(),
+            TxType.Legacy when useSignatureChainId => signature.ChainId
+                ?? throw new InvalidDataException("Cannot recover signature hash from a legacy EIP-155 signature without a chain id."),
             TxType.Legacy => ecdsa.ChainId,
             _ => tx.ChainId
                 ?? throw new InvalidDataException("Cannot recover signature hash from a typed transaction without a chain id."),

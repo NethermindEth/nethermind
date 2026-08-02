@@ -186,7 +186,8 @@ namespace Nethermind.Hive
         {
             RlpReader reader = new(chainFileContent) { Position = position };
             reader.PeekNextItem();
-            Block block = Rlp.Decode<Block>(ref reader, RlpBehaviors.AllowExtraBytes);
+            Block block = Rlp.Decode<Block>(ref reader, RlpBehaviors.AllowExtraBytes)
+                ?? throw new RlpException("Block decoding returned null.");
             nextPosition = reader.Position;
             return block;
         }

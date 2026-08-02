@@ -120,11 +120,13 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = header.AuRaSignature is not null;
-                if (isAuRa)
+                byte[]? auRaSignature = header.AuRaSignature;
+                if (auRaSignature is not null)
                 {
-                    writer.Encode(header.AuRaStep!.Value);
-                    writer.Encode(header.AuRaSignature!);
+                    ulong auRaStep = header.AuRaStep
+                        ?? throw new RlpException("AuRa header step is null.");
+                    writer.Encode(auRaStep);
+                    writer.Encode(auRaSignature);
                 }
                 else
                 {
@@ -197,11 +199,13 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = item.AuRaSignature is not null;
-                if (isAuRa)
+                byte[]? auRaSignature = item.AuRaSignature;
+                if (auRaSignature is not null)
                 {
-                    contentLength += Rlp.LengthOf(item.AuRaStep!.Value);
-                    contentLength += Rlp.LengthOf(item.AuRaSignature);
+                    ulong auRaStep = item.AuRaStep
+                        ?? throw new RlpException("AuRa header step is null.");
+                    contentLength += Rlp.LengthOf(auRaStep);
+                    contentLength += Rlp.LengthOf(auRaSignature);
                 }
                 else
                 {

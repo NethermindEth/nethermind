@@ -194,6 +194,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        [return: MaybeNull]
         public static T Decode<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             IRlpDecoder<T> rlpDecoder = GetDecoder<T>() ??
@@ -220,7 +221,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Error decoding {typeof(T).Name}.", e);
             }
 
-            return result!;
+            return result;
         }
 
         public static Rlp Encode<T>(T? item, RlpBehaviors behaviors = RlpBehaviors.None)

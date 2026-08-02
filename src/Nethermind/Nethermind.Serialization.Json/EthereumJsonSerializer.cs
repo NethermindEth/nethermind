@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Text.Encodings.Web;
@@ -54,8 +55,8 @@ namespace Nethermind.Serialization.Json
         private readonly JsonConverter[] _instanceConverters;
         private readonly object _instanceOptionsLock = new();
 
-        private JsonSerializerOptions _jsonOptions = null!;
-        private JsonSerializerOptions _jsonOptionsIndented = null!;
+        private JsonSerializerOptions _jsonOptions;
+        private JsonSerializerOptions _jsonOptionsIndented;
         private int _instanceOptionsVersion;
 
         public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int maxDepth = DefaultMaxDepth)
@@ -290,6 +291,7 @@ namespace Nethermind.Serialization.Json
             }
         }
 
+        [MemberNotNull(nameof(_jsonOptions), nameof(_jsonOptionsIndented))]
         private void RefreshInstanceOptions()
         {
             _jsonOptions = CreateOptions(indented: false, instanceConverters: _instanceConverters, maxDepth: _maxDepth);
