@@ -86,12 +86,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64 like every other
         // Nethermind transaction type (codebase-wide ChainId width).
         transaction.ChainId = decoderContext.DecodeULong();
-        // EIP-8250 replaces `nonce` with `nonce_keys, nonce_seq`. The two shapes are self-describing —
-        // `nonce` is an integer and `nonce_keys` a list — so the payload is read without fork context and
-        // the fork that admits each shape is enforced where the spec is available, in validation.
-        transaction.NonceKeys = decoderContext.IsSequenceNext()
-            ? decoderContext.DecodeArray(static (ref RlpReader ctx) => ctx.DecodeUInt256(), limit: NonceKeysCountLimit)
-            : null;
+        // The two shapes are self-describing — `nonce` is an integer and `nonce_keys` a list — so the
+        // fork that admits each is enforced in validation, where the spec is available.
+        transaction.NonceKeys = decoderContext.IsSequenceNext() ? DecodeNonceKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
         transaction.Frames = decoderContext.DecodeArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
@@ -189,6 +186,30 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrailingSignature() => throw new RlpException("frame transaction must not carry a trailing signature");
+
+    /// <summary>Reads <c>nonce_keys</c> as a list of integers.</summary>
+    /// <remarks>
+    /// Not <c>DecodeArray</c>: it substitutes the default for an empty-list element, turning the wire
+    /// bytes <c>c1 c0</c> into the key set <c>[0]</c> instead of rejecting them.
+    /// </remarks>
+    private static UInt256[] DecodeNonceKeys(ref RlpReader decoderContext)
+    {
+        int contentLength = decoderContext.ReadSequenceLength();
+        int end = decoderContext.Position + contentLength;
+        Span<UInt256> buffer = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
+        int count = 0;
+        while (decoderContext.Position < end)
+        {
+            if (count == buffer.Length)
+            {
+                throw new RlpLimitException($"Exceeded {NonceKeysCountLimit.CollectionExpression}");
+            }
+
+            buffer[count++] = decoderContext.DecodeUInt256();
+        }
+
+        return buffer[..count].ToArray();
+    }
 
     private static int NonceKeysContentLength(UInt256[] nonceKeys)
     {
