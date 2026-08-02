@@ -17,7 +17,6 @@ public static class FrameTxValidation
     public const string MissingSender = "frame transaction sender must be set";
     public const string InvalidMode = "frame mode must be DEFAULT, VERIFY, SENDER, or POST_TX";
     public const string PostTxNotTrailing = "POST_TX frames must form a trailing suffix of the frame list";
-    public const string PostTxApproves = "a POST_TX frame must not be allowed to approve";
     public const string InvalidFlags = "frame flags must not use reserved bits";
     public const string ValueOutsideSenderMode = "frame value is only allowed in SENDER mode";
     public const string ExecutionApprovalWrongTarget = "frames allowed to approve execution must target the sender";
@@ -69,12 +68,6 @@ public static class FrameTxValidation
                 if (i + 1 < frames.Length && frames[i + 1].Mode != TxFrame.ModePostTx)
                 {
                     error = PostTxNotTrailing;
-                    return false;
-                }
-
-                if (frame.AllowedApproveScope != TxFrame.ApproveScopeNone)
-                {
-                    error = PostTxApproves;
                     return false;
                 }
 

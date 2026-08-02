@@ -809,6 +809,47 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, UInt256.Zero, "the halted assertion unwound the body");
     }
 
+    // EIP-7906 forbids the APPROVE call, not the permission bits: a POST_TX frame carrying a scope it
+    // never exercises is a valid envelope, so rejecting it before execution would fork off a client
+    // that admits it.
+    [Test]
+    public void Execute_PostTxCarriesAnUnusedApprovalScope_Succeeds()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModePostTx, TxFrame.ApprovePayment, target: Recipient));
+
+        CallOutputTracer tracer = new();
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // Asserted through gas rather than status: every rejection of an APPROVE inside a POST_TX frame
+    // fails the assertion, but only an exceptional halt burns the frame's whole gas limit, and the
+    // difference is consensus-visible in the frame receipt.
+    [Test]
+    public void Execute_PostTxCallsApprove_HaltsExceptionally()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, ApproveCode(TxFrame.ApprovePayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        CallOutputTracer approving = new();
+        Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, TxFrame.ApprovePayment, target: Recipient)),
+            tracer: approving);
+
+        CallOutputTracer reverting = new();
+        Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Observer)),
+            tracer: reverting);
+
+        Assert.That(approving.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(approving.GasSpent - reverting.GasSpent, Is.GreaterThan(100_000L),
+            "an exceptional halt consumes the assertion frame's whole gas limit");
+    }
+
     // The unwind stops at the validation prefix: that state is what the transaction is charged for.
     [Test]
     public void Execute_PostTxReverts_KeepsTheValidationPrefix()
