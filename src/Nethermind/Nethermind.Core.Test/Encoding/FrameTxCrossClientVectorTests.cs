@@ -15,7 +15,9 @@ namespace Nethermind.Core.Test.Encoding;
 /// </summary>
 /// <remarks>
 /// A round-trip test only proves this decoder agrees with this encoder. The vector below was produced
-/// by the ethrex tooling, so it also pins the field order and the signature-hash preimage against a
+/// by ethrex's own encoder (`crates/common/types/transaction.rs`, branch `hegota-devnet`) rather than
+/// by this one — regenerating it with our encoder would silently reduce this file to a round-trip
+/// test. It pins the field order and the signature-hash preimage against a
 /// second implementation: a transaction the two clients decode differently is a consensus split, and
 /// a signature hash they compute differently makes every cross-client transaction unspendable.
 /// </remarks>
@@ -51,7 +53,13 @@ public class FrameTxCrossClientVectorTests
             Assert.That(tx.GasPrice, Is.EqualTo(UInt256.One));
             Assert.That(tx.DecodedMaxFeePerGas, Is.EqualTo((UInt256)8));
             Assert.That(tx.RecentRootReferences!.Length, Is.EqualTo(1));
+            // The two 32-byte members are deliberately distinguishable: asserting only the slot
+            // between them leaves a swapped source_id/root decoding round-tripping identically.
+            Assert.That(tx.RecentRootReferences[0].SourceId,
+                Is.EqualTo(new ValueHash256("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")));
             Assert.That(tx.RecentRootReferences[0].Slot, Is.EqualTo(9007UL));
+            Assert.That(tx.RecentRootReferences[0].Root,
+                Is.EqualTo(new ValueHash256("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")));
             Assert.That(FrameTxSigHash.ComputeValue(tx), Is.EqualTo(new ValueHash256(ExpectedSigHash)));
         }
     }
