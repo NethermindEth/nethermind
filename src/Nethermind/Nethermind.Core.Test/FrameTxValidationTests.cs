@@ -97,6 +97,9 @@ public class FrameTxValidationTests
         yield return Case("AtomicBatchFlagOnVerifyFrame_AtomicBatchOnVerifyFrame",
             static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
             FrameTxValidation.AtomicBatchOnVerifyFrame);
+        yield return Case("AtomicBatchFlagOnPostTxFrame_AtomicBatchOnPostTxFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx, flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModePostTx)],
+            FrameTxValidation.AtomicBatchOnPostTxFrame);
         yield return Case("AtomicBatchFollowedByVerifyFrame_AtomicBatchFollowedByVerifyFrame",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModeVerify)],
             FrameTxValidation.AtomicBatchFollowedByVerifyFrame);

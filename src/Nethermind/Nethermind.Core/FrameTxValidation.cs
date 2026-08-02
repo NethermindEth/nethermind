@@ -23,6 +23,7 @@ public static class FrameTxValidation
     public const string ExecutionApprovalWrongTarget = "frames allowed to approve execution must target the sender";
     public const string AtomicBatchOnLastFrame = "the last frame must not have the atomic batch flag set";
     public const string AtomicBatchOnVerifyFrame = "the atomic batch flag must not be set on a VERIFY frame";
+    public const string AtomicBatchOnPostTxFrame = "the atomic batch flag must not be set on a POST_TX frame";
     public const string AtomicBatchFollowedByVerifyFrame = "an atomic batch frame must not be followed by a VERIFY frame";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
@@ -74,6 +75,14 @@ public static class FrameTxValidation
                 if (frame.AllowedApproveScope != TxFrame.ApproveScopeNone)
                 {
                     error = PostTxApproves;
+                    return false;
+                }
+
+                // A batch opened by a POST_TX frame can never unroll — the assertion path exits the
+                // frame loop first — so the flag would be inert here and clients could diverge on it.
+                if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0)
+                {
+                    error = AtomicBatchOnPostTxFrame;
                     return false;
                 }
             }
