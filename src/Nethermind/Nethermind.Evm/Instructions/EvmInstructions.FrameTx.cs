@@ -32,6 +32,11 @@ public static unsafe partial class EvmInstructions
             return EvmExceptionType.StackUnderflow;
 
         TxFrame frame = ctx.CurrentFrame;
+
+        // EIP-7906 forbids the call, not the permission bits: a POST_TX frame may carry an approval
+        // scope it never exercises, so the ban belongs here rather than in envelope validation.
+        if (frame.Mode == TxFrame.ModePostTx) return EvmExceptionType.BadInstruction;
+
         Address resolvedTarget = ctx.ResolvedTarget(ctx.CurrentFrameIndex);
 
         // Only the resolved target (or a DELEGATECALL from it, which preserves ADDRESS) may approve.

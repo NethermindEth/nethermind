@@ -52,15 +52,16 @@ public class FrameTxValidationTests
         yield return Case("FrameModeFour_InvalidMode",
             static tx => tx.Frames = [Frame(mode: 4)], FrameTxValidation.InvalidMode);
 
-        // POST_TX frames form a trailing suffix and never approve
+        // POST_TX frames form a trailing suffix; the approval scope they may carry is enforced at the
+        // opcode, so an unexercised permission bit is not an envelope defect.
         yield return Case("PostTxSuffix_Valid",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx), Frame(mode: TxFrame.ModePostTx)], null);
         yield return Case("PostTxFollowedByDefault_PostTxNotTrailing",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx), DefaultModeFrame()],
             FrameTxValidation.PostTxNotTrailing);
-        yield return Case("PostTxAllowedToApprove_PostTxApproves",
+        yield return Case("PostTxAllowedToApprove_Valid",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx, flags: TxFrame.ApprovePayment)],
-            FrameTxValidation.PostTxApproves);
+            null);
 
         // assert frame.flags < 8
         yield return Case("FrameFlagsEight_InvalidFlags",
