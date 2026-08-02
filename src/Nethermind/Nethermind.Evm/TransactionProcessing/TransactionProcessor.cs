@@ -277,6 +277,10 @@ namespace Nethermind.Evm.TransactionProcessing
             preloadedDelegationAddress = null;
             if (!IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return false;
 
+            // EIP-8272's RECENT_ROOT_ADDRESS is codeless, but a call into it performs the native
+            // recent-root write, so it must not be mistaken for a transfer to an ordinary account.
+            if (spec.IsEip8272Enabled && Eip8272Constants.RecentRootAddress.Equals(tx.To)) return false;
+
             preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(tx.To!, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
             return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
         }

@@ -629,6 +629,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     {
         gasUsed = 0;
 
+        if (spec.IsEip8272Enabled && Eip8272Constants.RecentRootAddress.Equals(resolvedTarget))
+        {
+            return ExecuteRecentRootFrame(frame, caller, isStatic, spec, tracer, out gasUsed);
+        }
+
         // Keyed on VERIFY rather than on staticness: EIP-7906 POST_TX frames are static too, but the
         // spec routes them through the SENDER / DEFAULT branch below.
         if (frame.Mode == TxFrame.ModeVerify)
@@ -683,6 +688,34 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        return DefaultCodeSuccess();
+    }
+
+    /// <remarks>
+    /// The predeploy carries no code, so a frame targeting it lands in the default-code path and must
+    /// perform the native write there rather than succeed as an empty-code call.
+    /// </remarks>
+    private TransactionSubstate ExecuteRecentRootFrame(TxFrame frame, Address caller, bool isStatic, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    {
+        gasUsed = 0;
+        ReadOnlySpan<byte> data = frame.Data.Span;
+        ulong? slotNumber = VirtualMachine.BlockExecutionContext.Header.SlotNumber;
+        if (isStatic
+            || data.Length != Eip8272Constants.RecentRootWriteCalldataLength
+            || !frame.Value.IsZero
+            || slotNumber is null)
+        {
+            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+        }
+
+        if (frame.GasLimit < Eip8272Constants.RecentRootWriteGas)
+        {
+            gasUsed = frame.GasLimit;
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+        }
+
+        gasUsed = Eip8272Constants.RecentRootWriteGas;
+        RecentRootStore.Write(WorldState, caller, new ValueHash256(data[..32]), new ValueHash256(data[32..]), slotNumber.Value, spec);
         return DefaultCodeSuccess();
     }
 

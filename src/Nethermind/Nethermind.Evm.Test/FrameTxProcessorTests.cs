@@ -1184,6 +1184,37 @@ public class FrameTxProcessorTests
         Assert.That(IsCommitted(ReferencedSlot, Sender), Is.False);
     }
 
+    // The predeploy is codeless, so both the plain-transfer fast path and the frame default-code path
+    // would otherwise treat a call into it as a transfer to an ordinary account and write nothing.
+    [Test]
+    public void Execute_RecentRootWriteFromATopLevelTransaction_CommitsTheEntry()
+    {
+        _stateProvider.CreateAccount(Observer, 1.Ether);
+        _stateProvider.Commit(Spec);
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithTo(Eip8272Constants.RecentRootAddress)
+            .WithData([.. TestItem.KeccakA.Bytes, .. TestItem.KeccakB.Bytes])
+            .WithGasLimit(100_000)
+            .WithValue(0)
+            .WithSenderAddress(Observer)
+            .TestObject;
+
+        Assert.That(Process(tx, slotNumber: ReferencedSlot).TransactionExecuted, Is.True);
+        Assert.That(IsCommitted(ReferencedSlot), Is.True);
+    }
+
+    [Test]
+    public void Execute_RecentRootWriteFromASenderFrame_CommitsTheEntry()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        byte[] callData = [.. TestItem.KeccakA.Bytes, .. TestItem.KeccakB.Bytes];
+        TxFrame write = new(TxFrame.ModeSender, 0, Eip8272Constants.RecentRootAddress, gasLimit: 100_000, UInt256.Zero, callData);
+
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(), write), slotNumber: ReferencedSlot).TransactionExecuted, Is.True);
+        Assert.That(IsCommitted(ReferencedSlot, Sender), Is.True);
+    }
+
     private bool IsCommitted(ulong slot, Address? source = null) =>
         RecentRootStore.IsReferenceValid(
             _stateProvider,
