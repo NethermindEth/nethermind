@@ -10,12 +10,7 @@ namespace Nethermind.Stateless.Execution.IO;
 [SszContainer]
 public partial struct ForkConfig
 {
-    public ulong Fork { get; set; }
-
     public SszForkActivation Activation { get; set; }
-
-    [SszList(1)]
-    public BlobSchedule[] BlobSchedule { get; set; }
 
     public static ForkConfig From(BlockHeader header, ISpecProvider specProvider)
     {
@@ -32,21 +27,9 @@ public partial struct ForkConfig
             }
         }
 
-        IReleaseSpec spec = specProvider.GetSpec(forkActivation);
-
         return new()
         {
-            Fork = ForkIndexHelper.GetForkIndexByName(spec.Name),
-            Activation = SszForkActivation.From(forkActivation),
-            BlobSchedule =
-            [
-                new()
-                {
-                    Target = spec.TargetBlobCount,
-                    Max = spec.MaxBlobCount,
-                    BaseFeeUpdateFraction = (ulong)spec.BlobBaseFeeUpdateFraction
-                }
-            ]
+            Activation = SszForkActivation.From(forkActivation)
         };
     }
 }

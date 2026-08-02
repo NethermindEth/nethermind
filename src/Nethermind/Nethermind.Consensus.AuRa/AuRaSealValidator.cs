@@ -43,95 +43,99 @@ namespace Nethermind.Consensus.AuRa
         {
             const long rejectedStepDrift = 4;
 
-            if (header.AuRaSignature is null)
+            if (header is not AuRaBlockHeader auraHeader)
+            {
+                if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is not an AuRa header.");
+                return false;
+            }
+
+            if (parent is not AuRaBlockHeader auraParent)
+            {
+                if (_logger.IsError) _logger.Error($"Parent block {parent.Number}, hash {parent.Hash} of {header.Number} is not an AuRa header.");
+                return false;
+            }
+
+            if (auraHeader.AuRaSignature is null)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing signature.");
                 return false;
             }
 
             // Ensure header is from the step after parent.
-            if (header.AuRaStep is null)
+            ulong step = auraHeader.AuRaStep;
+
+            if (step == auraParent.AuRaStep)
             {
-                if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing step value.");
+                if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                 return false;
             }
-            else
+            else if (step < auraParent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
             {
-                ulong step = header.AuRaStep.Value;
-
-                if (step == parent.AuRaStep)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
-                    return false;
-                }
-                else if (step < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
-                {
-                    if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {parent.AuRaStep}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
-                    return false;
-                }
-
-                // we can only validate if its correct proposer for step if parent was already processed as it can change validators
-                // no worries we do this validation later before processing the block
-                if (parent.Hash == _blockTree.Head?.Hash)
-                {
-                    if (!_validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), header.Beneficiary, step, out Address expectedAddress))
-                    {
-                        if (_logger.IsError) _logger.Error($"Proposed block is not valid {header.ToString(BlockHeader.Format.FullHashAndNumber)}. Incorrect proposer at step {step}, expected {expectedAddress}, but found {header.Beneficiary}.");
-                        return false;
-                    }
-                }
-
-                ulong currentStep = _stepCalculator.CurrentStep;
-
-                if (step > currentStep + rejectedStepDrift)
-                {
-                    if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is from the future. Current step is {currentStep}.");
-                    ReportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.FutureBlock);
-                    return false;
-                }
-
-                if (step > currentStep)
-                {
-                    const int blockTooEarlyWarningMillisecondThreshold = 1000;
-
-                    TimeSpan timeToStep = _stepCalculator.TimeToStep(step);
-                    if (timeToStep.TotalMilliseconds > blockTooEarlyWarningMillisecondThreshold)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Block {header.Number}, hash {header.Hash} step {step} is {timeToStep:g} too early. Current step is {currentStep}.");
-                    }
-                }
-
-                // if (!ValidateEmptySteps())
-                // ReportBenign
-                ReportingValidator.TryReportSkipped(header, parent);
-
-                // Report malice if the validator produced other sibling blocks in the same step.
-                if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
-                    ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
-                }
-
-                if (header.Number >= _parameters.ValidateScoreTransition)
-                {
-                    if (header.Difficulty >= AuraDifficultyCalculator.MaxDifficulty)
-                    {
-                        if (_logger.IsError) _logger.Error($"Difficulty out of bounds for block {header.Number}, hash {header.Hash}, Max value {AuraDifficultyCalculator.MaxDifficulty}, but found {header.Difficulty}.");
-                        return false;
-                    }
-
-                    UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, step, 0);
-                    if (header.Difficulty != expectedDifficulty)
-                    {
-                        if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
-                        return false;
-                    }
-                }
-
-                return true;
+                if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {auraParent.AuRaStep}.");
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
+                return false;
             }
+
+            // we can only validate if its correct proposer for step if parent was already processed as it can change validators
+            // no worries we do this validation later before processing the block
+            if (parent.Hash == _blockTree.Head?.Hash)
+            {
+                if (!_validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), header.Beneficiary, step, out Address expectedAddress))
+                {
+                    if (_logger.IsError) _logger.Error($"Proposed block is not valid {header.ToString(BlockHeader.Format.FullHashAndNumber)}. Incorrect proposer at step {step}, expected {expectedAddress}, but found {header.Beneficiary}.");
+                    return false;
+                }
+            }
+
+            ulong currentStep = _stepCalculator.CurrentStep;
+
+            if (step > currentStep + rejectedStepDrift)
+            {
+                if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is from the future. Current step is {currentStep}.");
+                ReportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.FutureBlock);
+                return false;
+            }
+
+            if (step > currentStep)
+            {
+                const int blockTooEarlyWarningMillisecondThreshold = 1000;
+
+                TimeSpan timeToStep = _stepCalculator.TimeToStep(step);
+                if (timeToStep.TotalMilliseconds > blockTooEarlyWarningMillisecondThreshold)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Block {header.Number}, hash {header.Hash} step {step} is {timeToStep:g} too early. Current step is {currentStep}.");
+                }
+            }
+
+            // if (!ValidateEmptySteps())
+            // ReportBenign
+            ReportingValidator.TryReportSkipped(header, parent);
+
+            // Report malice if the validator produced other sibling blocks in the same step.
+            if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {step} in block {header.Number}.");
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
+            }
+
+            if (header.Number >= _parameters.ValidateScoreTransition)
+            {
+                if (header.Difficulty >= AuraDifficultyCalculator.MaxDifficulty)
+                {
+                    if (_logger.IsError) _logger.Error($"Difficulty out of bounds for block {header.Number}, hash {header.Hash}, Max value {AuraDifficultyCalculator.MaxDifficulty}, but found {header.Difficulty}.");
+                    return false;
+                }
+
+                UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(auraParent.AuRaStep, step, 0);
+                if (header.Difficulty != expectedDifficulty)
+                {
+                    if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         public bool ValidateSeal(BlockHeader header, bool force)
@@ -153,7 +157,8 @@ namespace Nethermind.Consensus.AuRa
 
         private Address GetSealer(BlockHeader header)
         {
-            Signature signature = new(header.AuRaSignature);
+            AuRaBlockHeader auraHeader = header.RequireAuRa();
+            Signature signature = new(auraHeader.AuRaSignature);
             signature.V += Signature.VOffset;
             ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);
             return _ecdsa.RecoverAddress(signature, in message);
@@ -198,7 +203,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 using McsLock.Disposable _ = _lock.Acquire();
 
-                ulong step = header.AuRaStep.Value;
+                ulong step = header.GetAuRaStepOrZero();
                 Address author = header.Beneficiary;
                 Hash256 hash = header.Hash;
                 int index = BinarySearch(step);

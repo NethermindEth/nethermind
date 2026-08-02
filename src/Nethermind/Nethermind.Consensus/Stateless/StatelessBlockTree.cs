@@ -70,12 +70,6 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     }
     public Block? Head => throw new NotSupportedException();
 
-    public ulong? BestPersistedState
-    {
-        get => throw new NotSupportedException();
-        set => throw new NotSupportedException();
-    }
-
     public ulong NetworkId => throw new NotSupportedException();
     public ulong ChainId => throw new NotSupportedException();
     public BlockHeader? Genesis => throw new NotSupportedException();
@@ -147,7 +141,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public ChainLevelInfo? FindLevel(ulong number)
         => throw new NotSupportedException();
 
-    public BlockInfo FindCanonicalBlockInfo(ulong blockNumber)
+    public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber)
         => throw new NotSupportedException();
 
     public Hash256? FindHash(ulong blockNumber)

@@ -32,6 +32,29 @@ public class GetBlockBodiesMessageSerializerTests
         SerializerTester.TestZero(serializer, message);
     }
 
+    [TestCase(500)]
+    [TestCase(1024)]
+    public void Can_deserialize_body_request_up_to_message_limit(int hashCount)
+    {
+        GetBlockBodiesMessageSerializer serializer = new();
+        using GetBlockBodiesMessage message = new(CreateHashes(hashCount));
+        byte[] bytes = serializer.Serialize(message);
+
+        using GetBlockBodiesMessage deserialized = serializer.Deserialize(bytes);
+
+        Assert.That(deserialized.BlockHashes, Has.Count.EqualTo(hashCount));
+    }
+
+    [Test]
+    public void Rejects_body_request_above_message_limit()
+    {
+        GetBlockBodiesMessageSerializer serializer = new();
+        using GetBlockBodiesMessage message = new(CreateHashes(1025));
+        byte[] bytes = serializer.Serialize(message);
+
+        Assert.Throws<RlpLimitException>(() => serializer.Deserialize(bytes));
+    }
+
     [Test]
     public void Deserialize_throws_on_null_hash()
     {
@@ -45,5 +68,16 @@ public class GetBlockBodiesMessageSerializerTests
     {
         using GetBlockBodiesMessage newBlockMessage = new();
         _ = newBlockMessage.ToString();
+    }
+
+    private static Hash256[] CreateHashes(int count)
+    {
+        Hash256[] hashes = new Hash256[count];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = Keccak.Zero;
+        }
+
+        return hashes;
     }
 }

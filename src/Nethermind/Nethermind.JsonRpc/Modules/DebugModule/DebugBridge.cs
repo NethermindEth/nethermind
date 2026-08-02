@@ -24,6 +24,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -33,6 +34,7 @@ public class DebugBridge : IDebugBridge
     private readonly IGethStyleTracer _tracer;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
+    private readonly IReceiptFinder _receiptFinder;
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
@@ -46,22 +48,27 @@ public class DebugBridge : IDebugBridge
         IGethStyleTracer tracer,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore)
+        IBadBlockStore badBlockStore,
+        IBlockStore blockStore)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
+        // Use the shared singleton store, not a private one over the raw DB, so debug reads observe the
+        // deferred-body overlay (a private store would miss a block whose body write is still queued).
+        _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
-        IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
         IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
         IDb metadataDb = dbProvider.MetadataDb ?? throw new ArgumentNullException(nameof(dbProvider.MetadataDb));
@@ -75,8 +82,6 @@ public class DebugBridge : IDebugBridge
             {DbNames.Metadata, metadataDb},
             {DbNames.Code, codeDb},
         };
-
-        _blockStore = new BlockStore(blocksDb);
 
         IColumnsDb<ReceiptsColumns> receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
         foreach (ReceiptsColumns receiptsDbColumnKey in receiptsDb.ColumnKeys)
@@ -126,7 +131,7 @@ public class DebugBridge : IDebugBridge
         }
 
         Block block = searchResult.Object;
-        return _receiptStorage.Get(block);
+        return _receiptFinder.Get(block);
     }
 
     public Transaction? GetTransactionFromHash(Hash256 txHash)
@@ -140,7 +145,7 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
         Block block = searchResult.Object;
-        TxReceipt txReceipt = _receiptStorage.Get(block).ForTransaction(txHash);
+        TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
         return block?.Transactions[txReceipt.Index];
     }
 

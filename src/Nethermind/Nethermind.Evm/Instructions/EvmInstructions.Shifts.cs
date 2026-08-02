@@ -17,12 +17,12 @@ public static partial class EvmInstructions
     /// Implementers define a shift operation that uses a shift amount (provided as a UInt256)
     /// to shift a second UInt256 value, returning the shifted result.
     /// </summary>
-    public interface IOpShift
+    public interface IOpShift : IGasCost
     {
         /// <summary>
         /// The gas cost for executing a shift operation.
         /// </summary>
-        virtual static ulong GasCost => GasCostOf.VeryLow;
+        static ulong IGasCost.GasCost => GasCostOf.VeryLow;
 
         /// <summary>
         /// Performs the shift operation.
@@ -56,7 +56,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct gas cost specific to the shift operation.
-        TGasPolicy.Consume(ref gas, TOpShift.GasCost);
+        TGasPolicy.Consume<TOpShift>(ref gas);
 
         return ShiftCore<TOpShift, TTracingInst>(ref stack);
     }
@@ -104,7 +104,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 

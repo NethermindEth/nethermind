@@ -31,13 +31,6 @@ namespace Nethermind.Blockchain
             set { }
         }
 
-        public ulong? BestPersistedState
-        {
-            get => _wrapped.BestPersistedState;
-            set => _wrapped.BestPersistedState = value;
-        }
-
-
         public BlockHeader? LowestInsertedBeaconHeader
         {
             get => _wrapped.LowestInsertedBeaconHeader;
@@ -56,7 +49,7 @@ namespace Nethermind.Blockchain
             => _wrapped.Accept(blockTreeVisitor, cancellationToken);
 
         public ChainLevelInfo FindLevel(ulong number) => _wrapped.FindLevel(number);
-        public BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
+        public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
 
         public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers,
             BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>

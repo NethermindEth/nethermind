@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
@@ -78,7 +79,7 @@ public class GasEstimator(
         if (CheckFunds(tx, spec, gasTracer, senderBalance, out UInt256 available) is { } fundsResult)
             return fundsResult;
 
-        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit).MinimalGas;
+        ulong intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, header.GasLimit).MinRequiredGasLimit;
         ulong leftBound = Math.Max(gasTracer.GasSpent.SaturatingSub(1), intrinsicGas.SaturatingSub(1));
         ulong rightBound = Math.Min(
             tx.GasLimit != 0 && tx.GasLimit >= intrinsicGas ? tx.GasLimit : header.GasLimit,
@@ -127,9 +128,17 @@ public class GasEstimator(
         if (feeCap == UInt256.Zero)
             return bounds;
 
-        ulong allowance = (ulong)UInt256.Min(available / feeCap, (UInt256)ulong.MaxValue);
+        ulong allowance = AllowanceFromFunds(in available, in feeCap);
         return bounds with { RightBound = Math.Min(bounds.RightBound, allowance) };
     }
+
+    /// <summary>
+    /// Gas units the sender can afford from <paramref name="available"/> funds at <paramref name="feeCap"/>
+    /// per gas (Geth's allowance cap), saturated to <see cref="ulong.MaxValue"/>. Returns
+    /// <see cref="ulong.MaxValue"/> when <paramref name="feeCap"/> is zero (no per-gas cost).
+    /// </summary>
+    public static ulong AllowanceFromFunds(in UInt256 available, in UInt256 feeCap) =>
+        feeCap.IsZero ? ulong.MaxValue : (ulong)UInt256.Min(available / feeCap, (UInt256)ulong.MaxValue);
 
     private EstimationResult BinarySearchEstimate(
         Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer,

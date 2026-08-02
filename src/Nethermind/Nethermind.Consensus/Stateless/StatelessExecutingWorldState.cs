@@ -8,11 +8,13 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 
+/// <summary>
+/// Stateless world state used inside the zkVM guest.
+/// </summary>
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)
 {
     /// <remarks>
-    /// Resolving the code forces a lookup against the witness-backed code database,
-    /// which fails if the bytecode was not included in the witness.
+    /// Forces a witness-backed code lookup that throws when the bytecode is absent from the witness.
     /// </remarks>
     public override void RecordBytecodeAccess(Address address)
     {

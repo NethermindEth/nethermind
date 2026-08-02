@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,6 +17,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -36,12 +38,13 @@ public class FlatWorldStateScopeProviderTests
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
+        public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
         public SnapshotPooledList ReadOnlySnapshots = new(0);
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
 
-        public TestContext(FlatDbConfig? config = null)
+        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
             config ??= new FlatDbConfig();
 
@@ -78,12 +81,19 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<ILogManager>(LimboLogs.Instance)
                     .AddSingleton<IFlatDbConfig>(config)
                     .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
+                    .AddSingleton<IInitConfig>(_ => Substitute.For<IInitConfig>())
                 ;
+
+            if (trieWarmer is not null)
+            {
+                _containerBuilder.AddSingleton(trieWarmer);
+            }
 
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
+                .WithParameter(TypedParameter.From(PersistedSnapshotStack.Empty()))
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();
@@ -238,6 +248,79 @@ public class FlatWorldStateScopeProviderTests
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
         Assert.That(storageTree.Get(slotIndex), Is.EqualTo(writtenSlotValue));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void GetAccount_ReportsWhetherAccountIsInCurrentSnapshot(bool isNull)
+    {
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account? account = isNull ? null : TestItem.GenerateRandomAccount();
+
+        ctx.SnapshotBundle.SetAccount(address, account);
+
+        Account? result = ctx.SnapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(account));
+            Assert.That(isInCurrentSnapshot, Is.True);
+        }
+    }
+
+    [Test]
+    public void GetAccount_ReportsAccountFromPersistenceIsNotInCurrentSnapshot()
+    {
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+
+        Account? result = ctx.SnapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(account));
+            Assert.That(isInCurrentSnapshot, Is.False);
+        }
+    }
+
+    [Test]
+    public void Get_PromotesAccountFromPersistenceIntoCurrentSnapshot()
+    {
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+
+        Assert.That(ctx.Scope.Get(address), Is.EqualTo(account));
+
+        Account? promoted = ctx.SnapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(promoted, Is.EqualTo(account));
+            Assert.That(isInCurrentSnapshot, Is.True);
+        }
+    }
+
+    [Test]
+    public void HintGet_DoesNotOverwriteDirtyAccount()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        Account dirtyAccount = TestItem.GenerateIndexedAccount(1);
+        Account staleAccount = TestItem.GenerateIndexedAccount(0);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address, dirtyAccount);
+        }
+
+        scope.HintGet(address, staleAccount);
+
+        Assert.That(scope.Get(address), Is.EqualTo(dirtyAccount));
     }
 
     [Test]
@@ -421,6 +504,41 @@ public class FlatWorldStateScopeProviderTests
         // Verify
         Account? resultAccount = scope.Get(testAddress);
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void StorageRootAfterParallelCommitMatchesRawTrie()
+    {
+        const int slotsPerCommit = 1024;
+        const int commitCount = 2;
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        for (int commit = 0; commit < commitCount; commit++)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(commit + 1))
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotsPerCommit);
+                int firstSlot = commit * slotsPerCommit + 1;
+                int lastSlot = firstSlot + slotsPerCommit;
+                for (int i = firstSlot; i < lastSlot; i++) storageBatch.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+            }
+
+            scope.Commit((ulong)(commit + 1));
+        }
+
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
+        for (int i = 1; i <= slotsPerCommit * commitCount; i++) expectedTree.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+        expectedTree.UpdateRootHash();
+
+        Account? account = scope.Get(address);
+        Assert.That(account, Is.Not.Null);
+        Assert.That(account!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
     }
 
     [Test]
@@ -854,4 +972,136 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(disposeTask.IsCompletedSuccessfully, Is.True);
     }
 
+    [Test]
+    public async Task Dispose_GivesUpWaiting_ReaderOutlivesInFlightWarmup()
+    {
+        BlockingPersistenceReader reader = new();
+        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+        FlatDbConfig config = new();
+        ResourcePool resourcePool = new(config);
+        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        await using TrieWarmer warmer = new(LimboLogs.Instance, config);
+
+        FlatWorldStateScope scope = new(
+            new StateId(0, TestItem.KeccakA),
+            bundle,
+            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
+            Substitute.For<IFlatCommitTarget>(),
+            config,
+            warmer,
+            LimboLogs.Instance);
+
+        // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
+        // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
+        scope.HintGet(TestItem.AddressA, null);
+        Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
+
+        Task disposeTask = Task.Run(() => scope.Dispose());
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
+        Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+
+        reader.ResumeReads.Set();
+
+        Assert.That(() => reader.IsDisposed, Is.True.After(5000, 50), "Reader should be disposed once the warmup job completes");
+    }
+
+    [TestCase(true, false, TestName = "StorageHintSet_SlotRingAccepts_DoesNotFallBack")]
+    [TestCase(false, true, TestName = "StorageHintSet_SlotRingFull_FallsBackToMpmcBuffer")]
+    [TestCase(false, false, TestName = "StorageHintSet_BothBuffersFull_DropsHint")]
+    public void StorageHintSet_FallsBackToMpmcBufferWhenSlotRingIsFull(bool slotRingAccepts, bool mpmcAccepts)
+    {
+        RecordingTrieWarmer warmer = new(slotRingAccepts, mpmcAccepts);
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+
+        storageTree.HintSet((UInt256)1, [1]);
+
+        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+
+        // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
+        storageTree.HintSet((UInt256)1, [1]);
+        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+
+        // An accepted push must have incremented the outstanding-warmup counter (and a dropped one must not):
+        // after balancing accepted pushes, Dispose should not enter the wait loop.
+        bool enteredWaitLoop = false;
+        scope.OnWaitingForWarmups = () => enteredWaitLoop = true;
+        if (slotRingAccepts || mpmcAccepts) scope.DecrementOutstandingWarmups();
+        scope.Dispose();
+        Assert.That(enteredWaitLoop, Is.False);
+    }
+
+    private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
+    {
+        public int SlotJobPushes { get; private set; }
+        public int MpmcSlotJobPushes { get; private set; }
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            SlotJobPushes++;
+            return acceptSlotJob;
+        }
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            MpmcSlotJobPushes++;
+            return acceptMpmcSlotJob;
+        }
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+    }
+
+    private sealed class BlockingPersistenceReader : IPersistence.IPersistenceReader
+    {
+        private int _activeReads;
+        private volatile bool _isDisposed;
+        private volatile bool _disposedDuringActiveRead;
+
+        public ManualResetEventSlim ReadEntered { get; } = new(false);
+        public ManualResetEventSlim ResumeReads { get; } = new(false);
+        public bool IsDisposed => _isDisposed;
+        public bool DisposedDuringActiveRead => _disposedDuringActiveRead;
+
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
+        {
+            Interlocked.Increment(ref _activeReads);
+            try
+            {
+                ReadEntered.Set();
+                ResumeReads.Wait(TimeSpan.FromSeconds(60));
+                return null;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _activeReads);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Volatile.Read(ref _activeReads) != 0) _disposedDuringActiveRead = true;
+            _isDisposed = true;
+            ReadEntered.Dispose();
+            ResumeReads.Dispose();
+        }
+
+        public Account? GetAccount(Address address) => null;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+    }
 }

@@ -22,8 +22,8 @@ namespace Nethermind.Era1;
 public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly IRlpDecoder<BlockBody> _blockBodyDecoder = Rlp.GetDecoderOrThrow<BlockBody>();
+    private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
     private readonly E2StoreReader _fileReader = e2;
 
     public ulong FirstBlock => _fileReader.First;

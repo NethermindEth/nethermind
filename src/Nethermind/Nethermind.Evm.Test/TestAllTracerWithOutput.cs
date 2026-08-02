@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
 {
@@ -40,6 +42,10 @@ namespace Nethermind.Evm.Test
 
         public long Refund { get; private set; }
 
+        public readonly record struct ActionTrace(ulong Gas, UInt256 Value, Address From, Address To, ExecutionType CallType, bool IsPrecompileCall);
+
+        public List<ActionTrace> Actions { get; } = [];
+
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = [];
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -65,5 +71,7 @@ namespace Nethermind.Evm.Test
 
         public override void ReportRefund(long refund) => Refund += refund;
 
+        public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+            => Actions.Add(new ActionTrace(gas, value, from, to, callType, isPrecompileCall));
     }
 }

@@ -25,6 +25,9 @@ internal static class StreamInterpreter
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
 
+    // Larger streams fall back to the metered loop; 512 KiB fits an EIP-170-sized contract of typical (~15-16x) output.
+    public const int MaxStreamRetainedBytes = 512 * 1024;
+
     // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
     // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and
     // no cross-core cache-line bouncing on the hot RunStream entry. Tests run single-threaded, so they

@@ -17,7 +17,7 @@ public static class Int64Extensions
         // Min 7 bytes as we still want a byte if the value is 0.
         int start = Math.Min(BitOperations.LeadingZeroCount((ulong)value) / sizeof(long), sizeof(long) - 1);
         // We create the span over the out value to ensure the span stack space remains valid.
-        buffer = BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
+        buffer = BinaryPrimitives.ReverseEndianness(value);
         ReadOnlySpan<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref buffer, 1));
         return span[start..];
     }
@@ -28,11 +28,7 @@ public static class Int64Extensions
     public static byte[] ToBigEndianByteArray(this ulong value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(bytes);
-        }
-
+        Array.Reverse(bytes);
         return bytes;
     }
 

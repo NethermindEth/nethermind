@@ -139,7 +139,8 @@ public partial class TransactionProcessorTests
 
         (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(specProvider);
 
-        Transaction tx = BuildSimpleTransfer(recipient, (UInt256)value, withAuthorizationList: false);
+        // The gas limit must also cover the NEW_ACCOUNT state gas for the new recipient.
+        Transaction tx = BuildSimpleTransfer(recipient, (UInt256)value, withAuthorizationList: false, gasLimit: 300_000);
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(1_000_000).TestObject;
         SimpleTransferLogTracer tracer = new(isTracingLogs);
 
@@ -161,6 +162,90 @@ public partial class TransactionProcessorTests
             }
         }
     }
+
+    // The EVM path must charge NEW_ACCOUNT exactly once, mirroring ExecuteSimpleTransfer.
+    [Test]
+    public void Eip8037_evm_path_value_transfer_to_dead_recipient_charges_new_account_state_gas()
+    {
+        Address liveRecipient = Address.FromNumber((UInt256)2100);
+        _stateProvider.CreateAccount(liveRecipient, 1); // exists -> not dead -> no NEW_ACCOUNT charge
+        _stateProvider.Commit(Amsterdam.Instance);
+        _stateProvider.CommitTree(0);
+
+        (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(_specProvider);
+
+        Address deadRecipient = Address.FromNumber((UInt256)2101);
+        Transaction liveTx = BuildSetCodeTransfer(liveRecipient, 1.Wei, TestItem.PrivateKeyA, TestItem.PrivateKeyB, 0);
+        Transaction deadTx = BuildSetCodeTransfer(deadRecipient, 1.Wei, TestItem.PrivateKeyA, TestItem.PrivateKeyD, 1);
+
+        Block block = BuildAmsterdamBlock(liveTx, deadTx);
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        TransactionResult liveResult = transactionProcessor.Execute(liveTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+        TransactionResult deadResult = transactionProcessor.Execute(deadTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+            Assert.That(liveResult.TransactionExecuted, Is.True);
+            Assert.That(deadResult.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(2)); // both took the EVM path
+            Assert.That(_stateProvider.GetBalance(deadRecipient), Is.EqualTo((UInt256)1));
+            Assert.That(deadTx.SpentGas - liveTx.SpentGas, Is.EqualTo(GasCostOf.NewAccountState));
+        }
+    }
+
+    // Regression: an empty precompile pays NEW_ACCOUNT like any other dead recipient.
+    [Test]
+    public void Eip8037_value_transfer_to_dead_precompile_charges_new_account_state_gas()
+    {
+        Address precompile = Sha256Precompile.Address; // no stored account -> dead until funded
+
+        (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(_specProvider);
+
+        // First transfer materialises the (dead) precompile account; the second finds it already funded.
+        Transaction deadTx = Build.A.Transaction
+            .WithTo(precompile).WithValue(1.Wei).WithGasPrice(1).WithGasLimit(1_000_000).WithNonce(0)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
+        Transaction liveTx = Build.A.Transaction
+            .WithTo(precompile).WithValue(1.Wei).WithGasPrice(1).WithGasLimit(1_000_000).WithNonce(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
+
+        Block block = BuildAmsterdamBlock(deadTx, liveTx);
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        TransactionResult deadResult = transactionProcessor.Execute(deadTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+        TransactionResult liveResult = transactionProcessor.Execute(liveTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+            Assert.That(deadResult.TransactionExecuted, Is.True);
+            Assert.That(liveResult.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(2)); // precompile recipient enters the VM
+            Assert.That(deadTx.SpentGas - liveTx.SpentGas, Is.EqualTo(GasCostOf.NewAccountState));
+        }
+    }
+
+    private static Block BuildAmsterdamBlock(params Transaction[] txs) =>
+        Build.A.Block
+            .WithNumber(MainnetSpecProvider.ParisBlockNumber)
+            .WithTimestamp(MainnetSpecProvider.AmsterdamBlockTimestamp)
+            .WithTransactions(txs)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+    private Transaction BuildSetCodeTransfer(Address recipient, UInt256 value, PrivateKey sender, PrivateKey authority, ulong nonce) =>
+        Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(recipient)
+            .WithValue(value)
+            .WithGasPrice(1)
+            .WithGasLimit(1_000_000)
+            .WithNonce(nonce)
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(authority, _specProvider.ChainId, Address.Zero, 0))
+            .SignedAndResolved(_ethereumEcdsa, sender, eip155Enabled)
+            .TestObject;
 
     private (CountingVirtualMachine Vm, EthereumTransactionProcessor Processor) CreateProcessor(ISpecProvider specProvider)
     {
@@ -202,13 +287,13 @@ public partial class TransactionProcessorTests
             .SetName("Delegated recipient with executable target enters VM");
     }
 
-    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList)
+    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList, ulong gasLimit = 100_000)
     {
         TransactionBuilder<Transaction> builder = Build.A.Transaction
             .WithTo(recipient)
             .WithValue(value)
             .WithGasPrice(1)
-            .WithGasLimit(100_000);
+            .WithGasLimit(gasLimit);
 
         if (withAuthorizationList)
         {

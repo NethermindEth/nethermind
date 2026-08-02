@@ -23,16 +23,16 @@ namespace Nethermind.EthStats.Test;
 
 public class EthStatsIntegrationTests
 {
-    [TestCase(3UL, 1UL, 1UL, 3UL, TestName = "TryNormalizeHistoryRange_swaps_min_and_max")]
-    [TestCase(0UL, 100UL, 37UL, 100UL, TestName = "TryNormalizeHistoryRange_limits_oversized_range")]
-    [TestCase(ulong.MaxValue - 63, ulong.MaxValue, ulong.MaxValue - 63, ulong.MaxValue, TestName = "TryNormalizeHistoryRange_handles_max_ulong_without_overflow")]
-    public void TryNormalizeHistoryRange_handles_edges(
+    [TestCase(3UL, 1UL, 1UL, 3UL, TestName = "NormalizeHistoryRange_swaps_min_and_max")]
+    [TestCase(0UL, 100UL, 37UL, 100UL, TestName = "NormalizeHistoryRange_limits_oversized_range")]
+    [TestCase(ulong.MaxValue - 63, ulong.MaxValue, ulong.MaxValue - 63, ulong.MaxValue, TestName = "NormalizeHistoryRange_handles_max_ulong_without_overflow")]
+    public void NormalizeHistoryRange_handles_edges(
         ulong requestMin,
         ulong requestMax,
         ulong expectedMin,
         ulong expectedMax)
     {
-        EthStatsIntegration.TryNormalizeHistoryRange(
+        EthStatsIntegration.NormalizeHistoryRange(
             new EthStatsHistoryRequest(requestMin, requestMax),
             out ulong min,
             out ulong max);

@@ -27,37 +27,62 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
-internal class VotesManager(
-    IXdcConsensusContext context,
-    ISyncPeerPool syncPeerPool,
-    IBlockTree tree,
-    IEpochSwitchManager epochSwitchManager,
-    ISnapshotManager snapshotManager,
-    IQuorumCertificateManager quorumCertificateManager,
-    ISpecProvider specProvider,
-    ISigner signer,
-    IForensicsProcessor forensicsProcessor,
-    ILogManager logManager) : IVotesManager
+internal class VotesManager : IVotesManager, IDisposable
 {
-    private readonly IBlockTree _blockTree = tree;
-    private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
-    private readonly ISnapshotManager _snapshotManager = snapshotManager;
-    private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager;
-    private readonly IXdcConsensusContext _ctx = context;
-    private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
-    private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
-    private readonly ISpecProvider _specProvider = specProvider;
-    private readonly ISigner _signer = signer;
-    private readonly ILogger _logger = logManager.GetClassLogger<VotesManager>();
+    private readonly IBlockTree _blockTree;
+    private readonly IEpochSwitchManager _epochSwitchManager;
+    private readonly ISnapshotManager _snapshotManager;
+    private readonly IQuorumCertificateManager _quorumCertificateManager;
+    private readonly IXdcConsensusContext _ctx;
+    private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IForensicsProcessor _forensicsProcessor;
+    private readonly ISpecProvider _specProvider;
+    private readonly ISigner _signer;
+    private readonly ILogger _logger;
 
     private readonly XdcPool<Vote> _votePool = new();
     private static readonly VoteDecoder _voteDecoder = new();
     private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
-    private const int _maxBlockDistance = 7; // Maximum allowed backward distance from the chain head
+    private const int _maxBlockDistance = 7; // Maximum allowed distance from the chain head
+    private const int _maxRoundDistance = 7; // Maximum allowed distance from the current round
 
     // null means "never voted"; ulong.MaxValue is a valid round so null is the correct sentinel.
     private ulong? _highestVotedRound = null;
+
+    public VotesManager(
+        IXdcConsensusContext context,
+        ISyncPeerPool syncPeerPool,
+        IBlockTree tree,
+        IEpochSwitchManager epochSwitchManager,
+        ISnapshotManager snapshotManager,
+        IQuorumCertificateManager quorumCertificateManager,
+        ISpecProvider specProvider,
+        ISigner signer,
+        IForensicsProcessor forensicsProcessor,
+        ILogManager logManager)
+    {
+        _blockTree = tree;
+        _epochSwitchManager = epochSwitchManager;
+        _snapshotManager = snapshotManager;
+        _quorumCertificateManager = quorumCertificateManager;
+        _ctx = context;
+        _syncPeerPool = syncPeerPool;
+        _forensicsProcessor = forensicsProcessor;
+        _specProvider = specProvider;
+        _signer = signer;
+        _logger = logManager.GetClassLogger<VotesManager>();
+        _blockTree.NewSuggestedBlock += OnNewBlock;
+    }
+
+    private void OnNewBlock(object? sender, BlockEventArgs e)
+    {
+        // BlockTree can raise this with null block from BlockTree.SuggestHeader.
+        if (e.Block is null)
+            return;
+
+        _ = OnNewBlock((XdcBlockHeader)e.Block.Header);
+    }
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
@@ -91,15 +116,14 @@ internal class VotesManager(
 
         _highestVotedRound = blockInfo.Round;
 
-        HandleVote(vote);
-        return Task.CompletedTask;
+        return OnReceiveVote(vote);
     }
 
     public Task HandleVote(Vote vote)
     {
-        if ((vote.ProposedBlockInfo.Round != _ctx.CurrentRound) && (vote.ProposedBlockInfo.Round != _ctx.CurrentRound + 1))
+        if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound)
         {
-            //We only care about votes for the current round or the next round
+            if (_logger.IsDebug) _logger.Debug($"Discarded stale vote for round {vote.ProposedBlockInfo.Round}, current round is {_ctx.CurrentRound}.");
             return Task.CompletedTask;
         }
 
@@ -116,51 +140,85 @@ internal class VotesManager(
         if (_blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) is not XdcBlockHeader proposedHeader)
         {
             //This is a vote for a block we have not seen yet, just return for now
+            if (_logger.IsDebug) _logger.Debug($"Buffered vote for round {vote.ProposedBlockInfo.Round}, block {vote.ProposedBlockInfo.Hash} (#{vote.ProposedBlockInfo.BlockNumber}) — block not yet known locally. Pool size={roundVotes.Count}.");
             return Task.CompletedTask;
         }
 
+        return TryBuildQc(proposedHeader, roundVotes);
+    }
+
+    /// <remarks>
+    /// Catch-up path for votes that may arrive before their block. <see cref="HandleVote"/>
+    /// buffers them but cannot build a QC without the header; this drains them on block arrival.
+    /// </remarks>
+    private async Task OnNewBlock(XdcBlockHeader header)
+    {
+        try
+        {
+            ulong round = header.ExtraConsensusData?.BlockRound ?? 0;
+            if (round < _ctx.CurrentRound)
+                return;
+            foreach (IReadOnlyCollection<Vote> group in _votePool.GetGroupsByRound(round))
+            {
+                if (group.First().ProposedBlockInfo.Hash == header.Hash)
+                {
+                    await TryBuildQc(header, group);
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error("XDC: failed to process votes for new head block", ex);
+        }
+    }
+
+    private Task TryBuildQc(XdcBlockHeader proposedHeader, IReadOnlyCollection<Vote> roundVotes)
+    {
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetEpochSwitchInfo(proposedHeader);
         if (epochInfo is null)
-        {
-            //Unknown epoch switch info, cannot process vote
             return Task.CompletedTask;
-        }
+
         int masternodeCount = epochInfo.Masternodes.Length;
         if (masternodeCount == 0)
-        {
-            throw new InvalidOperationException($"Epoch has empty master node list for {vote.ProposedBlockInfo.Hash}");
-        }
+            throw new InvalidOperationException($"Epoch has empty master node list for {proposedHeader.Hash}");
 
-        BroadcastVote(vote);
-
-        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, vote.ProposedBlockInfo.Round).CertificateThreshold;
+        double certThreshold = _specProvider.GetXdcSpec(proposedHeader, proposedHeader.ExtraConsensusData!.BlockRound).CertificateThreshold;
         double requiredVotes = masternodeCount * certThreshold;
-        bool thresholdReached = roundVotes.Count >= requiredVotes;
-        if (thresholdReached)
+        if (roundVotes.Count < requiredVotes)
         {
-            if (!vote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
-                return Task.CompletedTask;
-
-            Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
-            if (validSignatures.Length < requiredVotes)
-                return Task.CompletedTask;
-
-            // At this point, the QC should be processed for this *round*.
-            // Ensure this runs only once per round:
-            ulong round = vote.ProposedBlockInfo.Round;
-            if (!_qcBuildStartedByRound.TryAdd(round, 0))
-                return Task.CompletedTask;
-            OnVotePoolThresholdReached(validSignatures, vote);
+            if (_logger.IsDebug) _logger.Debug($"Round {proposedHeader.ExtraConsensusData.BlockRound}: {roundVotes.Count}/{requiredVotes} votes collected for block #{proposedHeader.ToString(BlockHeader.Format.Short)}.");
+            return Task.CompletedTask;
         }
+
+        Vote sampleVote = roundVotes.First();
+        if (!sampleVote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
+            return Task.CompletedTask;
+
+        Signature[] validSignatures = GetValidSignatures(roundVotes, epochInfo.Masternodes);
+        if (validSignatures.Length < requiredVotes)
+            return Task.CompletedTask;
+
+        // Ensure QC is built only once per round:
+        ulong round = proposedHeader.ExtraConsensusData!.BlockRound;
+        if (!_qcBuildStartedByRound.TryAdd(round, 0))
+            return Task.CompletedTask;
+
+        OnVotePoolThresholdReached(validSignatures, sampleVote);
         return Task.CompletedTask;
     }
 
     private void CleanupVotes(ulong round)
     {
-        _votePool.EndRound(round);
+        const ulong retainedRoundCount = XdcConstants.PoolHygieneRound;
+        _votePool.RemoveRoundsOutsideRetention(round, retainedRoundCount);
 
+        if (round < retainedRoundCount)
+            return;
+
+        ulong lastRoundToRemove = round - retainedRoundCount;
         foreach (KeyValuePair<ulong, byte> kvp in _qcBuildStartedByRound)
-            if (kvp.Key <= round) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
+            if (kvp.Key <= lastRoundToRemove) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>
@@ -218,28 +276,39 @@ internal class VotesManager(
             ? voteBlockNumber - currentBlockNumber
             : currentBlockNumber - voteBlockNumber;
 
-        if (blockDiff > _maxBlockDistance)
+        if (blockDiff > _maxBlockDistance ||
+            Math.Abs((long)vote.ProposedBlockInfo.Round - (long)_ctx.CurrentRound) > _maxRoundDistance)
         {
             // Discarded propagated vote, too far away
+            if (_logger.IsDebug) _logger.Debug($"Discarded vote for round {vote.ProposedBlockInfo.Round} (current={_ctx.CurrentRound}), block #{voteBlockNumber} (head=#{currentBlockNumber}) — too far away.");
             return Task.CompletedTask;
         }
 
-        if (FilterVote(vote))
-        {
-            return HandleVote(vote);
-        }
-        return Task.CompletedTask;
+        if (!VerifyVote(vote))
+            return Task.CompletedTask;
+
+        BroadcastVote(vote);
+        return HandleVote(vote);
     }
 
-    internal bool FilterVote(Vote vote)
+    private bool VerifyVote(Vote vote)
     {
-        if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound) return false;
-
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
-        if (snapshot is null) return false;
-        // Verify message signature
+        if (snapshot is null)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected vote for round {vote.ProposedBlockInfo.Round}: no snapshot for gap {vote.GapNumber}.");
+            return false;
+        }
+        if (vote.Signature is null || !vote.Signature.HasLowS())
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected vote for round {vote.ProposedBlockInfo.Round}: missing or malleable signature.");
+            return false;
+        }
+
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
-        return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
+        bool isKnownSigner = snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
+        if (!isKnownSigner && _logger.IsDebug) _logger.Debug($"Rejected vote for round {vote.ProposedBlockInfo.Round}: signer {vote.Signer} not in candidate set.");
+        return isKnownSigner;
     }
 
     private void BroadcastVote(Vote vote)
@@ -283,6 +352,9 @@ internal class VotesManager(
         List<Signature> signatures = [];
         foreach (Vote vote in votes)
         {
+            if (vote.Signature is null || !vote.Signature.HasLowS())
+                continue;
+
             vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
 
             if (masternodeSet.Contains(vote.Signer))
@@ -316,6 +388,13 @@ internal class VotesManager(
         string? localError = null; // concurrent "overwrite" is ok, no need to synchronize
         Parallel.ForEach(signatures, (s, state) =>
         {
+            if (!s.HasLowS())
+            {
+                localError = "Certificate contains a malleable signature";
+                state.Stop();
+                return;
+            }
+
             Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
             ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
@@ -353,6 +432,8 @@ internal class VotesManager(
     }
 
     public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
+
+    public void Dispose() => _blockTree.NewSuggestedBlock -= OnNewBlock;
 
     public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> GetReceivedVotes() => _votePool.GetItems();
 }

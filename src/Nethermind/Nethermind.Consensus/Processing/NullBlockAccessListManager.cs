@@ -40,5 +40,4 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }
     public void ProcessWithdrawals(Block block, IReleaseSpec spec) { }
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec) { }
-    public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress) { }
 }

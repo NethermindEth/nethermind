@@ -37,7 +37,7 @@ public static class TransactionBuilderXdcExtensions
 
         // 4..35: uint256 blockNumber (big-endian, right-aligned in 32 bytes)
         byte[] be = BitConverter.GetBytes(blockNumber);
-        if (BitConverter.IsLittleEndian) Array.Reverse(be);
+        Array.Reverse(be);
         // last 8 bytes of that 32 are the ulong
         for (int i = 0; i < 8; i++) data[4 + 24 + i] = be[i];
 

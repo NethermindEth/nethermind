@@ -108,6 +108,30 @@ public class NodeRecordProviderTests
         Assert.That(currentRecord.EnrSequence, Is.EqualTo(initialRecord.EnrSequence));
     }
 
+    [TestCase("192.0.2.1", "192.0.2.1", null)]
+    [TestCase("::ffff:192.0.2.1", "192.0.2.1", null)]
+    [TestCase("2001:db8::1", null, "2001:db8::1")]
+    [TestCase("255.255.255.255", null, null)] // IPAddress.None: unresolved external IP
+    public async Task GetCurrentAsync_PublishesEndpointEntriesMatchingExternalIpFamily(
+        string externalIp, string? expectedIp, string? expectedIp6)
+    {
+        Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        NodeRecordProvider provider = CreateProvider(head, new NetworkForkId(0x01020304, 20), IPAddress.Parse(externalIp));
+
+        NodeRecord record = await provider.GetCurrentAsync();
+        NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip), Is.EqualTo(expectedIp is null ? null : IPAddress.Parse(expectedIp)));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp), Is.EqualTo(expectedIp is null ? null : (int?)30303));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(expectedIp is null ? null : (int?)30303));
+            Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip6), Is.EqualTo(expectedIp6 is null ? null : IPAddress.Parse(expectedIp6)));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp6), Is.EqualTo(expectedIp6 is null ? null : (int?)30303));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Udp6), Is.EqualTo(expectedIp6 is null ? null : (int?)30303));
+        }
+    }
+
     private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IPAddress externalIp)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();

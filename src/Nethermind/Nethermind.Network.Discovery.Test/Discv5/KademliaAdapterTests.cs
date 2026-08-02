@@ -127,6 +127,24 @@ public class KademliaAdapterTests
         _kademlia.DidNotReceive().IterateNodes();
     }
 
+    [Test]
+    public void HasDiscoveryEndpoint_ShouldRequireExactEndpoint()
+    {
+        IPEndPoint endpoint = IPEndPoint.Parse("172.19.0.2:30304");
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            endpoint.Address,
+            tcpPort: null,
+            udpPort: endpoint.Port);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, endpoint), Is.True);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("172.17.0.1:30304")), Is.False);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("172.19.0.2:30305")), Is.False);
+        }
+    }
+
     [TestCaseSource(nameof(AcceptableNodeRecordCases))]
     public void IsAcceptableNodeRecord_ShouldValidateRecord(AcceptableNodeRecordCase testCase)
     {

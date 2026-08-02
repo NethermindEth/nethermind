@@ -211,6 +211,31 @@ public class SyncPeerPoolTests
         Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
     }
 
+    // Neither static nor trusted peers are dropped by worst-peer eviction; only plain peers are.
+    [TestCase((byte)0)]
+    [TestCase((byte)24)]
+    public async Task Will_not_disconnect_static_or_trusted_peer(byte number)
+    {
+        const int peersMaxCount = 25;
+        await using Context ctx = new();
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, 0, 50);
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, peersMaxCount);
+
+        // Every peer is static or trusted except peers[number], the only droppable (plain) one.
+        for (int i = 0; i < peersMaxCount; i++)
+        {
+            if (i == number) continue;
+            if (i % 2 == 0) peers[i].Node.IsStatic = true;
+            else peers[i].Node.IsTrusted = true;
+        }
+
+        await WaitForPeersInitialization(ctx);
+        ctx.Pool.DropUselessPeers(true);
+
+        Assert.That(peers[number].DisconnectRequested, Is.True, "the only plain peer is droppable");
+        Assert.That(peers.Where((p, i) => i != number).Any(static p => p.DisconnectRequested), Is.False, "static and trusted peers are never dropped");
+    }
+
     [Test]
     public async Task Should_increment_PriorityPeerCount_when_added_priority_peer_and_decrement_after_removal()
     {

@@ -43,9 +43,10 @@ public class NodeRecordTests
         Assert.Throws<Exception>(() => _ = nodeRecord.ToString());
     }
 
-    [TestCase("192.0.2.1", "", -1, 30304, "", -1)]
+    [TestCase("192.0.2.1", "", -1, 30304, "192.0.2.1", -1)]
+    [TestCase("192.0.2.1", "2001:db8::1", -1, 30304, "2001:db8::1", 30304)]
     [TestCase("", "2001:db8::1", 30303, -1, "2001:db8::1", 30303)]
-    public void Discovery_endpoint_uses_expected_ip_udp_fallback(string ip, string ip6, int udp, int udp6, string expectedIp, int expectedPort)
+    public void Ip_is_common_and_discovery_port_uses_matching_family(string ip, string ip6, int udp, int udp6, string expectedIp, int expectedPort)
     {
         NodeRecord nodeRecord = new();
 
@@ -71,13 +72,19 @@ public class NodeRecordTests
 
         if (expectedPort < 0)
         {
-            Assert.That(nodeRecord.DiscoveryIp, Is.Null);
-            Assert.That(nodeRecord.DiscoveryPort, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nodeRecord.Ip, Is.EqualTo(IPAddress.Parse(expectedIp)));
+                Assert.That(nodeRecord.DiscoveryPort, Is.Null);
+            }
         }
         else
         {
-            Assert.That(nodeRecord.DiscoveryIp, Is.EqualTo(IPAddress.Parse(expectedIp)));
-            Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(expectedPort));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nodeRecord.Ip, Is.EqualTo(IPAddress.Parse(expectedIp)));
+                Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(expectedPort));
+            }
         }
     }
 

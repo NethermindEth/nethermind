@@ -9,6 +9,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using System.Net;
+using System.Net.Sockets;
 using NetworkForkId = Nethermind.Network.ForkId;
 
 namespace Nethermind.Network.Discovery;
@@ -112,9 +113,18 @@ public sealed class NodeRecordProvider(
     {
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(new EthEntry(state.ForkId.HashBytes, state.ForkId.Next));
-        selfNodeRecord.SetEntry(new IpEntry(state.ExternalIp));
-        selfNodeRecord.SetEntry(new TcpEntry(state.TcpPort));
-        selfNodeRecord.SetEntry(new UdpEntry(state.UdpPort));
+        if (state.ExternalIp.AddressFamily == AddressFamily.InterNetworkV6 && !state.ExternalIp.IsIPv4MappedToIPv6)
+        {
+            selfNodeRecord.SetEntry(new Ip6Entry(state.ExternalIp));
+            selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
+            selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
+        }
+        else if (!Equals(state.ExternalIp, IPAddress.None))
+        {
+            selfNodeRecord.SetEntry(new IpEntry(state.ExternalIp));
+            selfNodeRecord.SetEntry(new TcpEntry(state.TcpPort));
+            selfNodeRecord.SetEntry(new UdpEntry(state.UdpPort));
+        }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = sequence;
         _enrSigner.Sign(selfNodeRecord);

@@ -579,6 +579,7 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip7825Constants.DefaultTxGasLimitCap)));
+            Assert.That(result.IsIntrinsicGasError, Is.False);
         }
     }
 
@@ -600,6 +601,7 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+            Assert.That(result.IsIntrinsicGasError, Is.True);
         }
     }
 

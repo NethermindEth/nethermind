@@ -25,6 +25,9 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     private const int InputLength = 128;
 
+    [ThreadStatic] private static byte[]? cachedInput;
+    [ThreadStatic] private static Result<byte[]> cachedResult;
+
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 3000UL;
@@ -45,7 +48,20 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 #if !ZK_EVM
         Metrics.ECRecoverPrecompile++;
 #endif
-        return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
+        if (inputData.Length < InputLength)
+            return RunInternal(inputData);
+
+        ReadOnlySpan<byte> effectiveInput = inputData.Span[..InputLength];
+        byte[]? lastInput = cachedInput;
+        if (lastInput is not null && effectiveInput.SequenceEqual(lastInput))
+            return cachedResult;
+
+        Result<byte[]> result = RunInternal(effectiveInput);
+
+        lastInput ??= cachedInput = new byte[InputLength];
+        effectiveInput.CopyTo(lastInput);
+        cachedResult = result;
+        return result;
     }
 
     private Result<byte[]> RunInternal(ReadOnlyMemory<byte> inputData)

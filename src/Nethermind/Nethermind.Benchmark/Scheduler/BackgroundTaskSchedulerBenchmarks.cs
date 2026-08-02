@@ -91,7 +91,7 @@ public class BackgroundTaskSchedulerBenchmarks
             await Task.Delay(BlockProcessingDurationMs);
 
             // Block done — resume normal task execution
-            _branchProcessor.RaiseBlockProcessed();
+            _branchProcessor.RaiseBranchProcessingCompleted();
 
             // Wait for all scheduled tasks to drain before next cycle
             SpinWait spin = default;
@@ -143,11 +143,10 @@ public class BackgroundTaskSchedulerBenchmarks
     /// </summary>
     private sealed class StubBranchProcessor : IBranchProcessor
     {
-        public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
-#pragma warning disable CS0067 // Event is never used
-        public event EventHandler<BlockEventArgs>? BlockProcessing;
-#pragma warning restore CS0067
+        public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
+        public event EventHandler<BlockProcessedEventArgs>? BlockProcessed { add { } remove { } }
+        public event EventHandler<BlockEventArgs>? BlockProcessing { add { } remove { } }
 
         public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks,
             ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
@@ -156,8 +155,8 @@ public class BackgroundTaskSchedulerBenchmarks
         public void RaiseBlocksProcessing() =>
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs([]));
 
-        public void RaiseBlockProcessed() =>
-            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(null!, null!));
+        public void RaiseBranchProcessingCompleted() =>
+            BranchProcessingCompleted?.Invoke(this, new BranchProcessingCompletedEventArgs([], 0));
     }
 
     /// <summary>
@@ -174,8 +173,6 @@ public class BackgroundTaskSchedulerBenchmarks
         public ProofVersion CurrentProofVersion => ProofVersion.V0;
         public bool IsSyncing => false;
         public bool IsProcessingBlock => false;
-#pragma warning disable CS0067 // Event is never used
-        public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
-#pragma warning restore CS0067
+        public event EventHandler<BlockReplacementEventArgs>? HeadChanged { add { } remove { } }
     }
 }

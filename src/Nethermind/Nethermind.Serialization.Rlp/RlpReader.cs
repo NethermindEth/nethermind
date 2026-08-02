@@ -934,7 +934,7 @@ public ref struct RlpReader
             ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
 
         int positionCheck = ReadSequenceLength() + Position;
-        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
         T[] result = new T[count];
         for (int i = 0; i < result.Length; i++)
@@ -984,7 +984,7 @@ public ref struct RlpReader
     public T[] DecodeArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
     {
         int positionCheck = ReadSequenceLength() + Position;
-        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
         T[] result = new T[count];
         bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
@@ -1051,7 +1051,7 @@ public ref struct RlpReader
     public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
     {
         int positionCheck = ReadSequenceLength() + Position;
-        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
         ArrayPoolList<T> result = new(count, count);
         int i = 0;

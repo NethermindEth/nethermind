@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -19,13 +20,16 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     private ulong _lastFinalizedBlock = 0;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
-    public ProcessedTransactionsDbCleaner(IBlockTree blockTree, IDb processedTxsDb, ILogManager logManager)
+    public ProcessedTransactionsDbCleaner(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager, ITxPoolConfig txPoolConfig)
     {
+        ArgumentNullException.ThrowIfNull(dbProvider);
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
+        _processedTxsDb = dbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs);
         _logger = logManager?.GetClassLogger<ProcessedTransactionsDbCleaner>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _blockTree.BlocksFinalized += OnBlocksFinalized;
+        // Only blob-tx reorg support persists processed txs, so there is nothing to clean otherwise.
+        if (txPoolConfig.BlobsSupport.SupportsReorgs())
+            _blockTree.BlocksFinalized += OnBlocksFinalized;
     }
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)

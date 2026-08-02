@@ -72,7 +72,7 @@ namespace Nethermind.AuRa.Test
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
 
             EthereumEcdsa ecdsa = new(BlockchainIds.Morden);
-            Signature signature = new(block.Header.AuRaSignature);
+            Signature signature = new(block.Header.RequireAuRa().AuRaSignature);
             signature.V += Signature.VOffset;
             Address? recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));
 

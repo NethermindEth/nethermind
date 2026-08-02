@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Ssz;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
 using Spectre.Console;
@@ -21,7 +22,7 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
-    internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk)
+    internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
@@ -29,61 +30,66 @@ internal static class InputGenerator
         byte[] data;
         Witness? witness;
 
-        (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host);
+        (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host, cancellationToken);
         if (block is null || witness is null || chainId is null)
             return 1;
 
-        Block fetchedBlock = block;
-        Witness fetchedWitness = witness;
-        ulong fetchedChainId = chainId.Value;
-
-        using (fetchedWitness)
+        using (witness)
         {
-            StatelessInput<SszExecutionPayloadV3> input = new()
-            {
-                NewPayloadRequest = NewPayloadRequest<SszExecutionPayloadV3>.From(fetchedBlock),
-                Witness = ExecutionWitness.From(fetchedWitness),
-                ChainConfig = new()
-                {
-                    ChainId = fetchedChainId,
-                    ActiveFork = ForkConfig.From(fetchedBlock.Header, GetSpecProvider(fetchedChainId))
-                },
-                PublicKeys = RecoverPublicKeys(fetchedBlock.Transactions, fetchedChainId)
-            };
+            ISpecProvider specProvider = GetSpecProvider(chainId.Value);
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-            byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
+            if (!ProtocolForkExtensions.TryGetByName(spec.Name, out ProtocolFork fork))
+            {
+                AnsiConsole.MarkupLine($"[red]Unsupported fork {spec.Name}: the stateless input schema requires a Cancun or later block[/]");
+                return 1;
+            }
+
+            byte[] encoded = fork == ProtocolFork.Amsterdam
+                ? EncodeInput<SszExecutionPayloadV4>(block, witness, chainId.Value, specProvider)
+                : EncodeInput<SszExecutionPayloadV3>(block, witness, chainId.Value, specProvider);
+
             data = new byte[encoded.Length + sizeof(ushort)];
 
-            BinaryPrimitives.WriteUInt16BigEndian(data, 0);
+            BinaryPrimitives.WriteUInt16BigEndian(data, fork.ToRevision1SchemaId());
 
             Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
         }
 
         if (forZisk)
-        {
-            int rem = data.Length % sizeof(ulong);
-            int len = sizeof(ulong) + data.Length + (rem == 0 ? 0 : (sizeof(ulong) - rem));
-            byte[] framedData = new byte[len];
-
-            BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)data.Length);
-            Buffer.BlockCopy(data, 0, framedData, sizeof(ulong), data.Length);
-
-            data = framedData;
-        }
+            data = ZiskFrame.Wrap(data);
 
         Directory.CreateDirectory(output);
 
-        string fileName = $"{EnsureBlockParamIsNumber(blockParam, fetchedBlock)}.ssz";
+        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.ssz";
         string path = Path.Join(output, fileName);
 
-        File.WriteAllBytes(path, data);
+        await File.WriteAllBytesAsync(path, data, cancellationToken);
 
         AnsiConsole.MarkupLine($"[green]✓[/] Saved to [dim]{Path.GetDirectoryName(path)}{Path.DirectorySeparatorChar}[/]{fileName}");
 
         return 0;
     }
 
-    private static async Task<(Block?, Witness?, ulong? chainId)> FetchData(string blockParam, Uri host)
+    private static byte[] EncodeInput<TExecutionPayload>(Block block, Witness witness, ulong chainId, ISpecProvider specProvider)
+        where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
+    {
+        StatelessInput<TExecutionPayload> input = new()
+        {
+            NewPayloadRequest = NewPayloadRequest<TExecutionPayload>.From(block),
+            Witness = ExecutionWitness.From(witness),
+            ChainConfig = new()
+            {
+                ChainId = chainId,
+                ActiveFork = ForkConfig.From(block.Header, specProvider)
+            },
+            PublicKeys = RecoverPublicKeys(block.Transactions, chainId)
+        };
+
+        return StatelessInput<TExecutionPayload>.Encode(input);
+    }
+
+    private static async Task<(Block?, Witness?, ulong? chainId)> FetchData(string blockParam, Uri host, CancellationToken cancellationToken)
     {
         EthereumJsonSerializer serializer = new([new OwnedReadOnlyListConverter()]);
         using BasicJsonRpcClient client = new(host, serializer, NullLogManager.Instance);
@@ -97,6 +103,8 @@ internal static class InputGenerator
             .SpinnerStyle(Style.Parse("blue"))
             .StartAsync($"[orange1]Fetching block `{blockParam}`[/]", async ctx =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 string? rlpHex = await client.Post<string>("debug_getRawBlock", EnsureIsHexIfNumber(blockParam));
 
                 if (string.IsNullOrEmpty(rlpHex))
@@ -104,6 +112,8 @@ internal static class InputGenerator
                     AnsiConsole.MarkupLine($"[red]Block not found[/]");
                     return;
                 }
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
@@ -114,7 +124,7 @@ internal static class InputGenerator
 
                 if (decodedBlock is null)
                 {
-                    AnsiConsole.MarkupLine($"[red]Block decoded as null[/]");
+                    AnsiConsole.MarkupLine("[red]Block decoded as null[/]");
                     return;
                 }
 
@@ -125,6 +135,8 @@ internal static class InputGenerator
                 AnsiConsole.MarkupLine($"[green]✓[/] Fetched block {blockNumber}: {rlp.Length:N0} bytes");
 
                 ctx.Status = $"[orange1]Fetching witness for block {blockNumber}[/]";
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 witness = await client.Post<Witness>("debug_executionWitness", $"0x{decodedBlock.Number:x}");
 
@@ -138,6 +150,8 @@ internal static class InputGenerator
                     $"[green]✓[/] Fetched witness for block {blockNumber}: {GetWitnessSize(witness):N0} bytes");
 
                 ctx.Status = $"[orange1]Fetching chainId id[/]";
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 chainId = await client.Post<ulong?>("eth_chainId");
 

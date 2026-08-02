@@ -19,6 +19,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
@@ -118,6 +119,15 @@ public class EthereumRunnerTests
             result.Add(("flashbots", configProvider));
         }
 
+        {
+            // Censorship detector
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            configProvider.GetConfig<ICensorshipDetectorConfig>().Enabled = true;
+            result.Add(("censorship-detector", configProvider));
+        }
+
         return result;
     }
 
@@ -207,7 +217,6 @@ public class EthereumRunnerTests
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
         _ = api.Config<IHealthChecksConfig>(); // Randomly fail type discovery if not resolved early.
 
-        api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
 
         try
@@ -452,6 +461,8 @@ public class EthereumRunnerTests
                     // pass in runner test.
                     builder
                         .AddSingleton(Substitute.For<IReportingValidator>())
+                        // Pin a deterministic node key so resolving components does not load/generate a real key file.
+                        .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new InsecureProtectedPrivateKey(TestItem.PrivateKeyA))
                         ;
                 }
 

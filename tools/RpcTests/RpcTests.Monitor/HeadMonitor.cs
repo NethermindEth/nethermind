@@ -6,16 +6,16 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
+internal class HeadMonitor(Uri nodeUrl, INotifier notifier, ErrorReporter errorReporter)
 {
-    private const string SubscribeRequest =
-        """{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}""";
+    private const string SubscribeRequest = """{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}""";
+    private static readonly TimeSpan CleanReconnectDelay = TimeSpan.FromSeconds(1);
 
-    public static Uri DeriveWsUrl(Uri httpUrl) =>
-        new UriBuilder(httpUrl) { Scheme = httpUrl.Scheme == "https" ? "wss" : "ws" }.Uri;
+    private readonly OutageReporter _outage = new(errorReporter, notifier);
 
     public async IAsyncEnumerable<BlockInfo> SubscribeAsync([EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -26,9 +26,17 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
             yield return head;
     }
 
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromMinutes(1),
+        TimeSpan.FromMinutes(2),
+        TimeSpan.FromMinutes(5)
+    ];
+
     private async Task ProduceWithRetryAsync(ChannelWriter<BlockInfo> writer, CancellationToken ct)
     {
-        int retryDelaySec = 1;
+        int failureCount = 0;
         try
         {
             while (!ct.IsCancellationRequested)
@@ -36,10 +44,14 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
                 try
                 {
                     await ConnectAndProduceAsync(writer, ct);
-                    retryDelaySec = 1;
+                    failureCount = 0;
 
                     if (!ct.IsCancellationRequested)
                         Console.Error.WriteLine("WebSocket disconnected, reconnecting...");
+
+                    // reached in case of a clean disconnect
+                    await Task.Delay(CleanReconnectDelay, ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                    continue;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -47,13 +59,13 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
                 }
                 catch (Exception ex)
                 {
-                    errorReporter.Report("WebSocket connection error", ex);
+                    _outage.OnError("WebSocket connection error", ex);
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(retryDelaySec), ct)
-                    .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                TimeSpan delay = RetryDelays[Math.Min(failureCount, RetryDelays.Length - 1)];
+                failureCount++;
 
-                retryDelaySec = Math.Min(retryDelaySec * 2, 60);
+                await Task.Delay(delay, ct).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
         }
         finally
@@ -67,6 +79,8 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
         using ClientWebSocket ws = new();
         await ws.ConnectAsync(DeriveWsUrl(nodeUrl), ct);
         await ws.SendAsync(Encoding.UTF8.GetBytes(SubscribeRequest), WebSocketMessageType.Text, true, ct);
+
+        _outage.OnRecovered();
 
         using MemoryStream ms = new();
         byte[] buffer = new byte[64 * 1024];
@@ -110,4 +124,6 @@ internal class HeadMonitor(Uri nodeUrl, ErrorReporter errorReporter)
         ms.Position = 0;
         return await JsonNode.ParseAsync(ms, cancellationToken: ct);
     }
+
+    private static Uri DeriveWsUrl(Uri httpUrl) => new UriBuilder(httpUrl) { Scheme = httpUrl.Scheme == "https" ? "wss" : "ws" }.Uri;
 }

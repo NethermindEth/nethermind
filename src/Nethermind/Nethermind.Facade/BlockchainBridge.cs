@@ -39,6 +39,7 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Stateless;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade
 {
@@ -46,12 +47,12 @@ namespace Nethermind.Facade
     public class BlockchainBridge(
         IShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> processingEnv,
         IShareableTxProcessorSource shareableTxProcessorSource,
-        Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
+        SimulateReadOnlyBlocksProcessingEnvPool simulateEnvPool,
         Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
         IStateReader stateReader,
         ITxPool txPool,
-        IReceiptFinder receiptStorage,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptStorage,
         FilterStore filterStore,
         FilterManager filterManager,
         IEthereumEcdsa ecdsa,
@@ -195,7 +196,8 @@ namespace Nethermind.Facade
 
         public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken)
         {
-            using SimulateReadOnlyBlocksProcessingScope env = lazySimulateProcessingEnv.Value.Begin(header);
+            using SimulateReadOnlyBlocksProcessingEnvPool.PooledScope pooled = simulateEnvPool.Begin(header);
+            SimulateReadOnlyBlocksProcessingScope env = pooled.Scope;
             env.SimulateRequestState.Validate = payload.Validation;
             IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header);
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
@@ -233,7 +235,7 @@ namespace Nethermind.Facade
                 if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref availableForGas))
                     availableForGas = UInt256.Zero;
 
-                ulong allowance = UInt256.Min(availableForGas / feeCap, ulong.MaxValue).u0;
+                ulong allowance = GasEstimator.AllowanceFromFunds(in availableForGas, in feeCap);
                 if (tx.GasLimit > allowance)
                     tx.GasLimit = allowance;
             }
@@ -620,12 +622,15 @@ namespace Nethermind.Facade
             ShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = new(
                 BuildSingleEnv, overridableEnvPoolSize);
 
+            SimulateReadOnlyBlocksProcessingEnvPool simulateEnvPool = new(simulateEnvFactory.Create, overridableEnvPoolSize);
+
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()
-                .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
+                .AddScoped<SimulateReadOnlyBlocksProcessingEnvPool>(simulateEnvPool)
                 .AddScoped<IShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents>>(blockProcessingEnv));
 
             blockchainBridgeLifetime.Disposer.AddInstanceForDisposal(blockProcessingEnv);
+            blockchainBridgeLifetime.Disposer.AddInstanceForDisposal(simulateEnvPool);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);
 
             return blockchainBridgeLifetime.Resolve<BlockchainBridge>();

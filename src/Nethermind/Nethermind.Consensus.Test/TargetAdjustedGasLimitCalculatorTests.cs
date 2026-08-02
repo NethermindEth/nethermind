@@ -15,48 +15,63 @@ namespace Nethermind.Consensus.Test
 {
     public class TargetAdjustedGasLimitCalculatorTests
     {
+        private const long DefaultBlockNumber = 20_000_000;
+
+        private static long Calc(
+            IReleaseSpec spec,
+            long parentGasLimit,
+            long? configTarget = null,
+            long? overrideTarget = null,
+            long blockNumber = DefaultBlockNumber)
+        {
+            TestSpecProvider specProvider = new(spec);
+            TargetAdjustedGasLimitCalculator calculator = new(
+                specProvider,
+                new BlocksConfig { TargetBlockGasLimit = (ulong?)configTarget });
+            BlockHeader header = Build.A.BlockHeader.WithNumber((ulong)(blockNumber - 1)).WithGasLimit((ulong)parentGasLimit).TestObject;
+            return (long)calculator.GetGasLimit(header, (ulong?)overrideTarget);
+        }
+
         [Test]
         public void Is_bump_on_1559_eip_block()
         {
-            ulong londonBlock = 5;
-            ulong gasLimit = 1000000000000000000;
-            OverridableReleaseSpec spec = new(London.Instance)
-            {
-                Eip1559TransitionBlock = londonBlock
-            };
-            TestSpecProvider specProvider = new(spec);
-            TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig());
-            BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
-            ulong actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
-            Assert.That(actualValue, Is.EqualTo(gasLimit * Eip1559Constants.DefaultElasticityMultiplier));
+            const int londonBlock = 5;
+            const long parentGasLimit = 1000000000000000000;
+            OverridableReleaseSpec spec = new(London.Instance) { Eip1559TransitionBlock = londonBlock };
+
+            Assert.That(
+                Calc(spec, parentGasLimit, blockNumber: londonBlock),
+                Is.EqualTo(parentGasLimit * Eip1559Constants.DefaultElasticityMultiplier));
         }
 
-        [TestCase(30_000_000ul, 100_000_000UL, 30029295UL)]
-        public void Is_calculating_correct_gasLimit(ulong currentGasLimit, ulong targetGasLimit, ulong expectedGasLimit)
+        [TestCase(30_000_000, 100_000_000, 30029295)]
+        public void Is_calculating_correct_gasLimit(long parentGasLimit, long configTarget, long expected)
+            => Assert.That(Calc(Prague.Instance, parentGasLimit, configTarget: configTarget), Is.EqualTo(expected));
+
+        [TestCase(30_000_000, 20_000_000, 50_000_000, 30029295)]
+        [TestCase(30_000_000, 100_000_000, 20_000_000, 29970705)]
+        public void Override_takes_precedence_over_config_target(long parentGasLimit, long configTarget, long overrideTarget, long expected)
+            => Assert.That(Calc(Prague.Instance, parentGasLimit, configTarget, overrideTarget), Is.EqualTo(expected));
+
+        [Test]
+        public void Null_override_falls_back_to_config_target()
         {
-            ulong blockNumber = 20_000_000;
-            ulong gasLimit = currentGasLimit;
-            TestSpecProvider specProvider = new(Prague.Instance);
-            TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider,
-                new BlocksConfig()
-                {
-                    TargetBlockGasLimit = targetGasLimit
-                });
-            BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber - 1UL).WithGasLimit(gasLimit).TestObject;
-            ulong actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
-            Assert.That(actualValue, Is.EqualTo(expectedGasLimit));
+            const long parentGasLimit = 30_000_000;
+            const long configTarget = 100_000_000;
+
+            Assert.That(
+                Calc(Prague.Instance, parentGasLimit, configTarget, overrideTarget: null),
+                Is.EqualTo(Calc(Prague.Instance, parentGasLimit, configTarget)));
         }
 
         [Test]
         public void DoesNot_go_below_minimum()
         {
-            ulong londonBlock = 5;
-            ulong gasLimit = 5000;
-            TestSpecProvider specProvider = new(London.Instance);
-            TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig() { TargetBlockGasLimit = 1 });
-            BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1UL).WithGasLimit(gasLimit).TestObject;
-            ulong actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
-            Assert.That(actualValue, Is.EqualTo(specProvider.GetSpec(new ForkActivation(5)).MinGasLimit));
+            const int londonBlock = 5;
+
+            Assert.That(
+                Calc(London.Instance, parentGasLimit: 5000, configTarget: 1, blockNumber: londonBlock),
+                Is.EqualTo(London.Instance.MinGasLimit));
         }
     }
 }

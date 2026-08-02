@@ -81,7 +81,7 @@ internal class TrieStoreDirtyNodesCache
         NodeRecord nodeRecord = GetOrAdd(in key, this);
         if (nodeRecord.Node.NodeType != NodeType.Unknown)
         {
-            Metrics.LoadedFromCacheNodesCount++;
+            Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else
         {
@@ -101,7 +101,7 @@ internal class TrieStoreDirtyNodesCache
         {
             trieNode = _trieStore.CloneForReadOnly(key, trieNode);
 
-            Metrics.LoadedFromCacheNodesCount++;
+            Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else
         {

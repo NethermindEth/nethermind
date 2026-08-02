@@ -24,6 +24,7 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -54,12 +55,13 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
     private readonly HeadBlockSignal _headBlockSignal;
+    private readonly IBlockForRpcFactory _blockForRpcFactory;
 
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
         IBlockFinder blockFinder,
         IBlockTree blockTree,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IEthCapabilitiesProvider capabilitiesProvider,
         IStateReader stateReader,
         ITxPool txPool,
@@ -79,9 +81,11 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IJsonSerializer jsonSerializer,
         ITimestamper timestamper,
         ILogIndexConfig logIndexConfig,
-        IReceiptConfig receiptConfig
+        IReceiptConfig receiptConfig,
+        IBlockForRpcFactory blockForRpcFactory
     )
     {
+        _blockForRpcFactory = blockForRpcFactory;
         _secondsPerSlot = blocksConfig.SecondsPerSlot;
         _logManager = logManager;
         _stateReader = stateReader;
@@ -146,6 +150,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _receiptConfig,
             _opSpecHelper,
             _headBlockSignal,
-            _capabilitiesProvider
+            _capabilitiesProvider,
+            _blockForRpcFactory
         );
 }

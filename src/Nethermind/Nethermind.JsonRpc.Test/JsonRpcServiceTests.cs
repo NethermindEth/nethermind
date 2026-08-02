@@ -235,7 +235,7 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         HexBytes expected = ToHexBytes("0x01");
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
         HexBytes result = RpcTest.AssertSuccess<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
         Assert.That(result, Is.EqualTo(expected));
     }
@@ -244,7 +244,7 @@ public class JsonRpcServiceTests
     public void Value_type_result_failure_without_error_data_does_not_emit_default_data()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Fail("out of gas", ErrorCodes.ExecutionError));
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Fail("out of gas", ErrorCodes.ExecutionError));
 
         ResultWrapper<HexBytes> response = AssertWrapperResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
 
@@ -344,6 +344,22 @@ public class JsonRpcServiceTests
         adminRpcModule.Received(1).admin_peers(false);
     }
 
+    // Receipt RPCs surface "neither stored nor reproducible" as ResourceNotFoundException; only eth_getLogs has a
+    // module-level catch, so every other receipt method depends on this central mapping. Without it the exception
+    // would hit the ArgumentException arm (it derives from it) and answer "invalid params".
+    [Test]
+    public void Resource_not_found_maps_to_pruned_history_unavailable()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getBlockReceipts(Arg.Any<BlockParameter>())
+            .ThrowsForAnyArgs(new ResourceNotFoundException("receipts are neither stored nor reproducible"));
+
+        JsonRpcResponse response = TestRequest(ethRpcModule, "eth_getBlockReceipts", "0x1b4");
+
+        Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
+        Assert.That(((JsonRpcErrorResponse)response).Error?.Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+    }
+
     [Test]
     public void Case_sensitivity_test()
     {
@@ -433,7 +449,7 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         HexBytes expected = ToHexBytes("0x");
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
 
         HexBytes result = RpcTest.AssertSuccess<HexBytes>(TestRequest(ethRpcModule, "eth_call", parameters));
         Assert.That(result, Is.EqualTo(expected));
@@ -445,7 +461,7 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule
             .eth_call(
-                Arg.Any<TransactionForRpc>(),
+                Arg.Any<SignableTransactionForRpc>(),
                 Arg.Any<BlockParameter?>(),
                 Arg.Any<Dictionary<Address, AccountOverride>?>(),
                 Arg.Any<BlockOverride?>())

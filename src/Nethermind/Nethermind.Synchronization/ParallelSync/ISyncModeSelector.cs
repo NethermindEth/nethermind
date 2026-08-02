@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Events;
 using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Synchronization.ParallelSync
@@ -25,13 +24,25 @@ namespace Nethermind.Synchronization.ParallelSync
 
         async Task WaitUntilMode(Func<SyncMode, bool> predicate, CancellationToken cancellationToken)
         {
-            if (predicate(Current)) return;
+            TaskCompletionSource completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnChanged(object? _, SyncModeChangedEventArgs args)
+            {
+                if (predicate(args.Current))
+                {
+                    completionSource.TrySetResult();
+                }
+            }
 
-            await Wait.ForEventCondition<SyncModeChangedEventArgs>(
-                cancellationToken,
-                (e) => Changed += e,
-                (e) => Changed -= e,
-                (arg) => predicate(arg.Current));
+            Changed += OnChanged;
+            try
+            {
+                if (predicate(Current)) return;
+                await completionSource.Task.WaitAsync(cancellationToken);
+            }
+            finally
+            {
+                Changed -= OnChanged;
+            }
         }
     }
 }

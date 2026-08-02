@@ -15,6 +15,7 @@ using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -28,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IStateReader stateReader,
         IBlockchainBridgeFactory blockchainBridgeFactory,
         ISpecProvider specProvider,
-        IReceiptStorage receiptStorage,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
@@ -37,7 +38,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IForkInfo forkInfo,
         ILogIndexConfig logIndexConfig,
         IReceiptConfig receiptConfig,
-        IEthCapabilitiesProvider capabilitiesProvider)
+        IEthCapabilitiesProvider capabilitiesProvider,
+        IBlockForRpcFactory blockForRpcFactory)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -49,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
                 blockTree,
-                receiptStorage,
+                receiptFinder,
                 stateReader,
                 txPool,
                 txSender,
@@ -65,6 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 receiptConfig,
                 _secondsPerSlot,
                 _headBlockSignal,
-                capabilitiesProvider);
+                capabilitiesProvider,
+                blockForRpcFactory);
     }
 }

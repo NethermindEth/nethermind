@@ -104,6 +104,37 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(result.TransactionExecuted, Is.False);
     }
 
+    [TestCase(ulong.MaxValue - 1, true)]
+    [TestCase(ulong.MaxValue, false)]
+    public void Can_process_contract_creation_at_nonce_overflow_boundary(ulong nonce, bool executed)
+    {
+        // EIP-2681 rejects only a transaction nonce of 2^64-1, so 2^64-2 remains usable for contract creation.
+        _stateProvider.SetNonce(TestItem.AddressA, nonce);
+
+        ulong gasLimit = 100000ul;
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .WithCode(Prepare.EvmCode.Op(Instruction.STOP).Done)
+            .WithNonce(nonce)
+            .WithGasLimit(gasLimit)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(10 * gasLimit).TestObject;
+
+        TransactionResult result = Execute(tx, block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(executed));
+            if (executed)
+            {
+                Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(ulong.MaxValue));
+            }
+            else
+            {
+                Assert.That(result, Is.EqualTo(TransactionResult.NonceOverflow));
+            }
+        }
+    }
+
     [Test]
     public void Can_handle_quick_fail_on_missing_sender()
     {
@@ -712,8 +743,11 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(tx.SpentGas, Is.EqualTo(sentinel), "Warmup must not modify tx.SpentGas");
     }
 
+    // Warmup runs in a throwaway scope with real fee and nonce semantics: a same-sender
+    // successor must see the bumped nonce and debited balance or it warms the wrong state
+    // (a deploy chain would compute wrong CREATE addresses).
     [Test]
-    public void Warmup_does_not_modify_sender_nonce()
+    public void Warmup_increments_sender_nonce_in_the_warm_scope()
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .WithGasLimit(100000).TestObject;
@@ -723,11 +757,11 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(nonceBefore), "Warmup must not increment sender nonce");
+        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(nonceBefore + 1), "Warmup must bump the nonce so same-sender successors warm the right state");
     }
 
     [Test]
-    public void Warmup_does_not_deduct_sender_balance()
+    public void Warmup_deducts_sender_balance_in_the_warm_scope()
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .WithGasLimit(100000).TestObject;
@@ -737,7 +771,7 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(balanceBefore), "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
+        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.LessThan(balanceBefore), "Warmup must debit gas so same-sender successors warm the right state");
     }
 
 }

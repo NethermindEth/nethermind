@@ -28,7 +28,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState
+    public sealed class WorldState : IWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -39,6 +39,7 @@ namespace Nethermind.State
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope;
         private readonly ILogger _logger;
+        private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
 
         public Hash256 StateRoot
         {
@@ -58,6 +59,7 @@ namespace Nethermind.State
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
+            _onAccountUpdated = (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -132,15 +134,20 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
-        public void WarmUp(AccessList? accessList)
+        public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         {
             if (accessList?.IsEmpty == false)
             {
+                // Bail once cancelled (block done) so an over-declared list can't stall the end-of-block join.
+                const int cancellationCheckMask = 0x3F; // check the token once per 64 warmed entries
+                int warmed = 0;
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
+                    if ((++warmed & cancellationCheckMask) == 0 && cancellationToken.IsCancellationRequested) return;
                     bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
+                        if ((++warmed & cancellationCheckMask) == 0 && cancellationToken.IsCancellationRequested) return;
                         _persistentStorageProvider.WarmUp(new StorageCell(address, in storage), isEmpty: !exists);
                     }
                 }
@@ -152,6 +159,12 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _persistentStorageProvider.ClearStorage(address);
+            _transientStorageProvider.ClearStorage(address);
+        }
+        public void MarkStorageDestroyed(Address address)
+        {
+            DebugGuardInScope();
+            _persistentStorageProvider.MarkStorageDestroyed(address);
             _transientStorageProvider.ClearStorage(address);
         }
         public void RecalculateStateRoot()
@@ -177,6 +190,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
+
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
@@ -343,7 +357,7 @@ namespace Nethermind.State
             if (commitRoots)
             {
                 using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
-                writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                writeBatch.OnAccountUpdated += _onAccountUpdated;
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
             }

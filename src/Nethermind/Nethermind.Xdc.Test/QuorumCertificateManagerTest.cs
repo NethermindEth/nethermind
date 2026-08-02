@@ -94,6 +94,12 @@ public class QuorumCertificateManagerTest
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
         yield return new TestCaseData(new QuorumCertificate(roundInfo, [.. sigs, malleable], 0), headerBuilder, masterNodes, false)
             .SetName("MalleableDuplicateSigner");
+
+        Signature[] highOnlySigs = XdcTestHelper.CreateVoteSignatures(roundInfo, 0, [.. keys.Take(quorumCount)])
+            .Select(XdcTestHelper.CreateMalleableSignature)
+            .ToArray();
+        yield return new TestCaseData(new QuorumCertificate(roundInfo, highOnlySigs, 0), headerBuilder, masterNodes, false)
+            .SetName("MalleableHighSOnly");
     }
 
     [TestCaseSource(nameof(QcCases))]

@@ -120,6 +120,13 @@ public abstract class TransactionForRpc
         };
     }
 
+    /// <summary>
+    /// Fills the type-specific fields the caller left unset from node-computed defaults: each
+    /// transaction type populates the fee model it uses, and blob transactions additionally derive
+    /// the KZG sidecar from the supplied blobs.
+    /// </summary>
+    public virtual Result FillDefaults(in TxFillContext context) => Result.Success;
+
     public abstract bool ShouldSetBaseFee();
 
     internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>

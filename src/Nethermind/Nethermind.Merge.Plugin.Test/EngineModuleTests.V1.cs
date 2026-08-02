@@ -739,14 +739,21 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_to_unknown_block_fails()
+    public async Task forkChoiceUpdatedV1_to_unknown_block_is_syncing_and_records_forkchoice()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatus.Syncing).ToUpper())); // ToDo wait for final PostMerge sync
-        AssertExecutionStatusNotChanged(chain.BlockFinder, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+        Assert.Multiple(() =>
+        {
+            // The head must not move for an unresolvable forkchoice state, but the finalized/safe hashes
+            // are recorded so a node restarted before its first pivot update can recover without a new FCU.
+            Assert.That(chain.BlockFinder.HeadHash, Is.Not.EqualTo(TestItem.KeccakF));
+            Assert.That(chain.BlockFinder.FinalizedHash, Is.EqualTo(TestItem.KeccakF));
+            Assert.That(chain.BlockFinder.SafeHash, Is.EqualTo(TestItem.KeccakF));
+        });
     }
 
     [Test]
@@ -2117,6 +2124,7 @@ public partial class EngineModuleTests
 
             nameof(IEngineRpcModule.engine_getPayloadV4),
             nameof(IEngineRpcModule.engine_newPayloadV4),
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
 
             nameof(IEngineRpcModule.engine_getPayloadV5),
             nameof(IEngineRpcModule.engine_getBlobsV2),
@@ -2124,6 +2132,54 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getBlobsV4)
         ];
         Assert.That(result, Is.EquivalentTo(expectedMethods));
+    }
+
+    public static IEnumerable<TestCaseData> WitnessJsonRpcCapabilitiesCases()
+    {
+        yield return new TestCaseData(Cancun.Instance, Array.Empty<string>())
+            .SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Cancun");
+        yield return new TestCaseData(Prague.Instance, (string[])
+        [
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4)
+        ]).SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Prague");
+        yield return new TestCaseData(Amsterdam.Instance, (string[])
+        [
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5)
+        ]).SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Amsterdam");
+    }
+
+    [TestCaseSource(nameof(WitnessJsonRpcCapabilitiesCases))]
+    public void WitnessJsonRpcCapabilitiesAreForkGated(IReleaseSpec releaseSpec, string[] expectedMethods)
+    {
+        EngineRpcCapabilitiesProvider provider = new(new TestSingleReleaseSpecProvider(releaseSpec));
+        string[] methods = [.. provider.GetJsonRpcCapabilities()
+            .Where(static capability => capability.Value.IsEnabled()
+                && capability.Key.StartsWith("engine_newPayloadWithWitness", StringComparison.Ordinal))
+            .Select(static capability => capability.Key)];
+
+        Assert.That(methods, Is.EquivalentTo(expectedMethods));
+    }
+
+    public static IEnumerable<TestCaseData> WitnessJsonRpcCapabilitiesWithoutWarningsCases()
+    {
+        yield return new TestCaseData(Prague.Instance, nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4))
+            .SetName(nameof(WitnessJsonRpcCapabilityDoesNotWarnWhenMissing) + "_for_V4");
+        yield return new TestCaseData(Amsterdam.Instance, nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5))
+            .SetName(nameof(WitnessJsonRpcCapabilityDoesNotWarnWhenMissing) + "_for_V5");
+    }
+
+    [TestCaseSource(nameof(WitnessJsonRpcCapabilitiesWithoutWarningsCases))]
+    public void WitnessJsonRpcCapabilityDoesNotWarnWhenMissing(IReleaseSpec releaseSpec, string method)
+    {
+        EngineRpcCapabilitiesProvider provider = new(new TestSingleReleaseSpecProvider(releaseSpec));
+        RpcCapabilityOptions capability = provider.GetEngineCapabilities()[method];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capability.IsEnabled(), Is.True);
+            Assert.That(capability.ShouldWarnIfMissing(), Is.False);
+        }
     }
 
     [Test]
@@ -2181,51 +2237,39 @@ public partial class EngineModuleTests
 
     private static readonly string[] SszRestPathsParis =
     [
-        SszRestPaths.PostV1Payloads,
-        SszRestPaths.GetV1Payloads,
-        SszRestPaths.PostV1Forkchoice,
-        SszRestPaths.PostV1Capabilities,
-        SszRestPaths.PostV1ClientVersion,
+        SszRestPaths.PostPayloads,
+        SszRestPaths.GetPayloads,
+        SszRestPaths.PostForkchoice,
+        SszRestPaths.GetCapabilities,
+        SszRestPaths.GetIdentity,
     ];
 
     private static readonly string[] SszRestPathsShanghai =
     [
-        SszRestPaths.PostV2Payloads,
-        SszRestPaths.GetV2Payloads,
-        SszRestPaths.PostV2Forkchoice,
-        SszRestPaths.PostV1PayloadBodiesByHash,
-        SszRestPaths.GetV1PayloadBodiesByRange,
+        SszRestPaths.PostBodiesByHash,
+        SszRestPaths.GetBodiesByRange,
     ];
 
     private static readonly string[] SszRestPathsCancun =
     [
-        SszRestPaths.PostV3Payloads,
-        SszRestPaths.GetV3Payloads,
-        SszRestPaths.PostV3Forkchoice,
-        SszRestPaths.PostV1Blobs,
+        SszRestPaths.PostBlobsV1,
     ];
 
-    private static readonly string[] SszRestPathsPrague =
-    [
-        SszRestPaths.PostV4Payloads,
-        SszRestPaths.GetV4Payloads,
-    ];
+    // Prague adds new method versions (newPayloadV4/getPayloadV4) but no new REST path.
+    private static readonly string[] SszRestPathsPrague = [];
 
     private static readonly string[] SszRestPathsOsaka =
     [
-        SszRestPaths.GetV5Payloads,
-        SszRestPaths.PostV2Blobs,
-        SszRestPaths.PostV3Blobs,
-        SszRestPaths.PostV4Blobs,
+        SszRestPaths.PostBlobsV2,
+        SszRestPaths.PostBlobsV3,
+        SszRestPaths.PostBlobsV4,
     ];
 
+    // Amsterdam adds new method versions (newPayloadV5/getPayloadV6/fcuV4/bodies V2) at existing paths;
+    // the only genuinely new path is the witness endpoint.
     private static readonly string[] SszRestPathsAmsterdam =
     [
-        SszRestPaths.PostV5Payloads,
-        SszRestPaths.GetV6Payloads,
-        SszRestPaths.PostV4Forkchoice,
-        SszRestPaths.PostV2PayloadBodiesByHash,
-        SszRestPaths.GetV2PayloadBodiesByRange,
+        SszRestPaths.PostPayloadsWitness,
     ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()
@@ -2305,6 +2349,7 @@ public partial class EngineModuleTests
                 Withdrawal[]? withdrawals = null,
                 Hash256? parentBeaconBlockRoot = null,
                 ulong? slotNumber = null,
+                ulong? targetGasLimit = null,
                 Action<PayloadAttributes>? mutate = null)
             {
                 PayloadAttributes attrs = new()
@@ -2315,6 +2360,7 @@ public partial class EngineModuleTests
                     Withdrawals = withdrawals,
                     ParentBeaconBlockRoot = parentBeaconBlockRoot,
                     SlotNumber = slotNumber,
+                    TargetGasLimit = targetGasLimit,
                 };
                 mutate?.Invoke(attrs);
                 return attrs;
@@ -2332,8 +2378,10 @@ public partial class EngineModuleTests
             yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.SuggestedFeeRecipient = null), "FCUv1 SuggestedFeeRecipient null");
 
             yield return InvalidFieldCase(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), Attrs(parentBeaconBlockRoot: Keccak.Zero), "FCUv3 Withdrawals null");
-            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(parentBeaconBlockRoot: Keccak.Zero, slotNumber: 1), "FCUv4 Withdrawals null");
-            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], slotNumber: 1), "FCUv4 ParentBeaconBlockRoot null");
+            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(parentBeaconBlockRoot: Keccak.Zero, slotNumber: 1, targetGasLimit: 30_000_000), "FCUv4 Withdrawals null");
+            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], slotNumber: 1, targetGasLimit: 30_000_000), "FCUv4 ParentBeaconBlockRoot null");
+            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], parentBeaconBlockRoot: Keccak.Zero, targetGasLimit: 30_000_000), "FCUv4 SlotNumber null");
+            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], parentBeaconBlockRoot: Keccak.Zero, slotNumber: 1), "FCUv4 TargetGasLimit null");
         }
     }
 

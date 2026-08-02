@@ -92,8 +92,6 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
         if (committed)
         {
-            _logger.Info($"Committed new block {grandParent!.ToString(BlockHeader.Format.Short)} round={grandParent.ExtraConsensusData!.BlockRound}");
-
             XdcBlockHeader parent = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash!)!;
             _ = _forensicsProcessor.ForensicsMonitoring([parent, proposedBlockHeader], qc);
 

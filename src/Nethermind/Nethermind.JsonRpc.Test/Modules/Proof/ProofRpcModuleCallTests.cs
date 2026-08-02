@@ -159,9 +159,6 @@ public class ProofRpcModuleCallTests
             new BlockParameter(blockNumber));
         CallResultWithProof result = wrapper.Data!;
 
-        // The collector walks back from the executed block to the lowest BLOCKHASH-touched block, so
-        // the header set covers the path [BLOCKHASH-touched .. executed]. With BLOCKHASH(1), the path
-        // includes the executed-against header plus at least block 1's header.
         Assert.That(result.Witness.Headers.Count, Is.GreaterThanOrEqualTo(2),
             "BLOCKHASH(1) must add at least one ancestor header beyond the executed-against header");
 
@@ -212,24 +209,17 @@ public class ProofRpcModuleCallTests
         Assert.That(result.Witness.Codes, Is.Not.Empty);
     }
 
-    // OOG must still return a witness — the deliberate divergence from eth_call, which would fail the RPC.
     /// <summary>
-    /// Regression guard for the deleted <c>Debug_witness_includes_trie_nodes_for_storage_set_without_prior_read_then_reverted</c>:
-    /// when a slot is written (via SSTORE → WorldState.Set) and then reverted (via REVERT → WorldState.Restore),
-    /// the cached write is discarded and the trie is never traversed during the call. The witness must
-    /// still include the storage trie nodes for the slot — <see cref="WitnessGeneratingWorldState.GetWitness"/>
-    /// re-walks touched keys via <c>MultiAccountProofCollector</c> + per-account <c>AccountProofCollector</c> to
-    /// capture them. A cross-client (geth) verifier cannot reconstruct the slot without these nodes.
+    /// A slot written then reverted in the same call never traverses the trie, yet the witness must still
+    /// carry its storage nodes — <see cref="WitnessGeneratingWorldState.GetWitness"/> re-walks the touched
+    /// keys over the pre-state trie to capture them.
     /// </summary>
     [Test]
     public async Task Proof_call_includes_trie_nodes_for_storage_sstore_then_reverted()
     {
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
 
-        // Runtime: SSTORE(0, 0xEE) then REVERT with empty data. The slot is written then reverted
-        // in the same call — the trie is never traversed during the call. The only way the witness
-        // covers slot 0's storage trie is via the post-execution re-walk of touched keys in
-        // WitnessGeneratingWorldState.GetWitness.
+        // Runtime: SSTORE(0, 0xEE) then REVERT — slot written then reverted, so the trie isn't traversed in-call.
         byte[] runtimeCode = Prepare.EvmCode
             .PushData(0xEE)
             .PushData(0)
@@ -238,10 +228,7 @@ public class ProofRpcModuleCallTests
             .PushData(0)
             .Op(Instruction.REVERT)
             .Done;
-        // Init: SSTORE(0, 0xEE) so slot 0 is committed to the trie at deploy time. This gives the
-        // parent state a real storage trie node for slot 0 that the post-execution re-walk must
-        // find and re-capture; without it, the parent state has no slot 0 storage node and the
-        // "expected storage proof" baseline would be empty.
+        // Init: SSTORE(0, 0xEE) commits slot 0 to the parent trie, giving a real pre-state node to re-capture.
         byte[] initCode = Prepare.EvmCode
             .PushData(0xEE)
             .PushData(0)
@@ -288,10 +275,9 @@ public class ProofRpcModuleCallTests
         Assert.That(expectedStorageProofNodes, Is.Not.Empty,
             "the contract should have a non-empty storage proof for slot 0 in the parent state");
 
-        // The witness must contain every expected storage trie node by hash. If the
-        // MultiAccountProofCollector / per-account AccountProofCollector re-walk were dropped, this
-        // would fail because the SSTORE was reverted (the trie was never traversed during the call)
-        // and only the re-walk could have captured these nodes.
+        // The witness must contain every expected storage trie node by hash. If the post-execution
+        // generator walk were dropped, this would fail because the SSTORE was reverted (the trie was
+        // never traversed during the call) and only walking the touched keys could capture these nodes.
         HashSet<Hash256> witnessNodeHashes = result.Witness.State
             .Select(Keccak.Compute)
             .ToHashSet();
@@ -303,11 +289,8 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression guard for the deleted <c>Debug_executionWitnessCall_without_gas_field_still_records_full_witness</c>:
-    /// the <c>gas</c> field is documented as optional in the call request, and callers reasonably assume
-    /// the witness is recorded the same whether or not they pass gas explicitly. If that symmetry breaks
-    /// again, a caller who omits gas gets a near-empty witness that silently succeeds but fails
-    /// stateless re-execution downstream. Seen in the wild with surge-raiko's L1STATICCALL preflight.
+    /// The <c>gas</c> field is optional; omitting it must record the same witness as passing it. A
+    /// regression here gives a caller who omits gas a near-empty witness that fails stateless re-execution.
     /// </summary>
     [Test]
     public async Task Proof_call_with_and_without_gas_field_produces_same_witness_shape()
@@ -318,7 +301,6 @@ public class ProofRpcModuleCallTests
 
         ulong blockNumber = blockchain.BlockTree.Head!.Number;
 
-        // With gas explicitly passed — the control case.
         using ResultWrapper<CallResultWithProof> withGas = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {
@@ -327,8 +309,6 @@ public class ProofRpcModuleCallTests
             },
             new BlockParameter(blockNumber));
 
-        // Without gas — what most call sites end up sending. `{to}` is the natural shape for a view
-        // call, and callers don't want to have to know the block's gas limit.
         using ResultWrapper<CallResultWithProof> withoutGas = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {
@@ -343,7 +323,6 @@ public class ProofRpcModuleCallTests
         Assert.That(withoutGas.Data.Result, Is.Not.Null.And.Not.Empty,
             "omitting gas must still execute the call to completion");
 
-        // The two paths must produce witnesses of the same shape.
         Assert.That(withoutGas.Data.Witness.State, Is.Not.Empty,
             "omitting gas must not empty the state node set");
         Assert.That(withoutGas.Data.Witness.Codes, Is.Not.Empty,
@@ -466,8 +445,8 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression guard: a single-slot call must still capture the state-root node (via the
-    /// <c>MultiAccountProofCollector</c> walk); without it, tiny-call witnesses fail stateless re-execution.
+    /// Regression guard: a single-slot call must still capture the state-root node (via the generator
+    /// walk over the touched keys); without it, tiny-call witnesses fail stateless re-execution.
     /// </summary>
     [Test]
     public async Task Proof_call_single_slot_includes_state_root_in_witness()
@@ -529,9 +508,8 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression: a call touching two accounts must capture the storage trie for both. The pre-fix
-    /// <c>MultiAccountProofCollector</c> keyed its storage-walk discriminator by an address hash
-    /// the visitor never provided, so the second account's storage was silently dropped.
+    /// Regression: a call touching two accounts must capture the storage trie for both — the witness
+    /// walk runs per touched account, so neither account's storage is dropped.
     /// </summary>
     [Test]
     public async Task Proof_call_with_two_accounts_captures_storage_trie_for_each()
@@ -613,7 +591,6 @@ public class ProofRpcModuleCallTests
         ulong laterBlock = blockchain.BlockTree.Head!.Number;
         Assert.That(laterBlock, Is.GreaterThan(deployBlock));
 
-        // Interleave calls between the two block heights several times.
         for (int round = 0; round < 8; round++)
         {
             using ResultWrapper<CallResultWithProof> atDeploy = blockchain.ProofRpcModule.proof_call(

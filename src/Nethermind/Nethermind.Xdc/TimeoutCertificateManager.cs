@@ -86,8 +86,12 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         BroadcastTimeout(timeout);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        if (collectedTimeouts.Count < epochSwitchInfo.Masternodes.Length * spec.CertificateThreshold)
+        double requiredTimeouts = epochSwitchInfo.Masternodes.Length * spec.CertificateThreshold;
+        if (collectedTimeouts.Count < requiredTimeouts)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Round {timeout.Round}: {collectedTimeouts.Count}/{requiredTimeouts} timeout votes collected.");
             return Task.CompletedTask;
+        }
 
         if (!_tcBuildStartedByRound.TryAdd(timeout.Round, 0))
             return Task.CompletedTask;
@@ -123,6 +127,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         if (timeoutCertificate.Round >= _consensusContext.CurrentRound)
         {
+            _logger.Info($"Timeout certificate for round {timeoutCertificate.Round} received. Advancing round to {timeoutCertificate.Round + 1}.");
             _consensusContext.SetNewRound(timeoutCertificate.Round + 1);
         }
 
@@ -131,10 +136,15 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     private void CleanupTimeouts(ulong round)
     {
-        _timeouts.EndRound(round);
+        const ulong retainedRoundCount = XdcConstants.PoolHygieneRound;
+        _timeouts.RemoveRoundsOutsideRetention(round, retainedRoundCount);
 
+        if (round < retainedRoundCount)
+            return;
+
+        ulong lastRoundToRemove = round - retainedRoundCount;
         foreach (KeyValuePair<ulong, byte> kvp in _tcBuildStartedByRound)
-            if (kvp.Key <= round) _tcBuildStartedByRound.TryRemove(kvp.Key, out _);
+            if (kvp.Key <= lastRoundToRemove) _tcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string? errorMessage)
@@ -194,11 +204,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             if (!AllowedToSend())
                 return;
 
-            SendTimeout();
+            ulong currentRound = _consensusContext.CurrentRound;
+            if (_logger.IsDebug) _logger.Debug($"Internal timeout for round {currentRound}.");
+
+            SendTimeout(currentRound);
             _consensusContext.TimeoutCounter++;
 
             XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _consensusContext.CurrentRound);
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, currentRound);
 
             if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
             {
@@ -249,25 +262,39 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     internal bool FilterTimeout(Timeout timeout)
     {
-        if (timeout.Round < _consensusContext.CurrentRound) return false;
+        if (timeout.Round < _consensusContext.CurrentRound)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Discarded stale timeout for round {timeout.Round}, current round is {_consensusContext.CurrentRound}.");
+            return false;
+        }
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
-        if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
+        if (snapshot is null || snapshot.NextEpochCandidates.Length == 0)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected timeout for round {timeout.Round}: no snapshot/candidates for gap {timeout.GapNumber}.");
+            return false;
+        }
 
-        // Verify msg signature
+        if (timeout.Signature is null || !timeout.Signature.HasLowS())
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected timeout for round {timeout.Round}: missing or malleable signature.");
+            return false;
+        }
+
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
         Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
         timeout.Signer = signer;
 
-        return snapshot.NextEpochCandidates.Contains(signer);
+        bool isKnownSigner = snapshot.NextEpochCandidates.Contains(signer);
+        if (!isKnownSigner && _logger.IsDebug) _logger.Debug($"Rejected timeout for round {timeout.Round}: signer {signer} not in candidate set.");
+        return isKnownSigner;
     }
 
     internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC);
 
-    private void SendTimeout()
+    private void SendTimeout(ulong currentRound)
     {
         XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header
             ?? throw new InvalidOperationException("Failed to retrieve current header");
-        ulong currentRound = _consensusContext.CurrentRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, currentRound);
 
         ulong gapNumber;
@@ -294,6 +321,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
         Timeout timeoutMsg = new(currentRound, signedHash, gapNumber, isMyVote: true);
         timeoutMsg.Signer = _signer.Address;
+        if (_logger.IsDebug) _logger.Debug($"Sending my timeout vote round={timeoutMsg.Round} gap={timeoutMsg.GapNumber}.");
 
         HandleTimeoutVote(timeoutMsg);
     }

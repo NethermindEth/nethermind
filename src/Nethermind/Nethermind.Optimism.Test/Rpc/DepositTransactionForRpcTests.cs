@@ -104,6 +104,16 @@ public class DepositTransactionForRpcTests
         Assert.That(toTransaction, Throws.Nothing);
     }
 
+    [Test]
+    public void Rejects_deserialization_when_declared_as_user_input_transaction()
+    {
+        const string json = """{"type":"0x7e","gas":"0x1234","value":"0x1","input":"0x616263646566","to":null,"sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","from":"0x0000000000000000000000000000000000000001","isSystemTx":false}""";
+
+        Assert.That(() => _serializer.Deserialize<SignableTransactionForRpc>(json),
+            Throws.InstanceOf<JsonException>(),
+            "deposit transactions are output-only and must be rejected as input where the declared type is SignableTransactionForRpc");
+    }
+
     private static DepositTransactionForRpc DepositTxWithGas(ulong? gas) => new()
     {
         SourceHash = Hash256.Zero,

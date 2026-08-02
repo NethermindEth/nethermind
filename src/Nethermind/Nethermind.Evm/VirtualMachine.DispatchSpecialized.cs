@@ -73,13 +73,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // Stack temp by ref keeps programCounter register-resident; passing ref programCounter to the
                 // handlers (incl. the calli) address-takes it, forcing a frame reload every opcode.
                 int pc = programCounter;
+                bool directDispatch =
+#if ZK_EVM
+                // The guest has no I-cache and counts executed instructions, so inlining the hot handlers
+                // is a win on every path; it always direct-dispatches, regardless of cancelability.
+                true;
+#else
                 // The direct-dispatch switch inlines the hot handlers and pays off only for the cancelable
                 // (eth_call/simulation) path, where a few hot contracts run repeatedly and stay in I-cache.
                 // Block processing runs a diverse opcode mix across many contracts, where the switch's
-                // jump-table indirection and code-size pressure regress throughput ~8% versus the plain
-                // function-pointer table; that path takes the table below. TCancelable is a compile-time
-                // flag, so this folds into two specialized loop bodies with no runtime branch.
-                if (TCancelable.IsActive)
+                // jump-table indirection and code-size pressure measurably regress throughput versus the
+                // plain function-pointer table; that path takes the table below.
+                TCancelable.IsActive;
+#endif
+                // directDispatch folds at compile time, so this specializes into two loop bodies with no runtime branch.
+                if (directDispatch)
                 {
                     // Direct dispatch for the measured-hot opcodes; the rest take the table. MUST stay inline:
                     // extracted, the JIT stops inlining the handlers and direct dispatch loses to the table's calli.
@@ -136,10 +144,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.JUMP:
-                            exceptionType = EvmInstructions.InstructionJump(this, ref stack, ref gas, ref pc);
+                            exceptionType = TTracingInst.IsActive
+                                ? EvmInstructions.InstructionJump(this, ref stack, ref gas, ref pc)
+                                : EvmInstructions.InstructionJumpAndSkipJumpDest(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.JUMPI:
-                            exceptionType = EvmInstructions.InstructionJumpIf(this, ref stack, ref gas, ref pc);
+                            exceptionType = TTracingInst.IsActive
+                                ? EvmInstructions.InstructionJumpIf(this, ref stack, ref gas, ref pc)
+                                : EvmInstructions.InstructionJumpIfAndSkipJumpDest(this, ref stack, ref gas, ref pc);
                             break;
                         case Instruction.JUMPDEST:
                             exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref pc);
@@ -147,6 +159,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.POP:
                             exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref pc);
                             break;
+#if ZK_EVM
+                        // GAS is hot on the guest but absent from mainline's curated eth_call set.
+                        case Instruction.GAS:
+                            exceptionType = EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+#endif
                         case Instruction.PUSH0:
                             if (!TPush0.IsActive) goto default;
                             exceptionType = EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);

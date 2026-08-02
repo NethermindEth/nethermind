@@ -23,12 +23,8 @@ namespace Nethermind.State;
 /// <c>_generatingBlockAccessList</c> without a null-check, so a missed setup fails fast with
 /// <see cref="NullReferenceException"/> at the first write rather than silently corrupting BAL output.
 /// </remarks>
-public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IPreBlockCaches, IBlockAccessListSource
+public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
-    public PreBlockCaches Caches => (ScopeProvider as IPreBlockCaches)?.Caches
-        ?? throw new InvalidOperationException($"{nameof(IPreBlockCaches)} is unavailable from the wrapped world state's scope provider.");
-    public bool IsWarmWorldState => (ScopeProvider as IPreBlockCaches)?.IsWarmWorldState ?? false;
-
     // Set by SetGeneratingBlockAccessList; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
@@ -52,7 +48,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance + balanceChange;
-        _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
+        {
+            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
     }
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
@@ -64,7 +63,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         res = currentlyExists ?? res;
 
         UInt256 newBalance = oldBalance + balanceChange;
-        _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
+        {
+            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
 
         return res;
     }
@@ -155,6 +157,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         oldBalance = 0;
 
+        // Intentionally not gated on read suppression: system transactions debit Address.SystemUser
+        // as their sender, and that zero touch must stay out of BALs.
         if (address == Address.SystemUser && balanceChange.IsZero)
         {
             return;
@@ -204,6 +208,9 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             _generatingBlockAccessList.AddAccountRead(address);
         }
     }
+
+    private bool ShouldSuppressSystemUserZeroBalanceChange(Address address, in UInt256 balanceChange)
+        => _systemAccountReadSuppressionDepth != 0 && address == Address.SystemUser && balanceChange.IsZero;
 
     /// <summary>Records the account read (honoring SystemUser suppression) and returns its change entry in one probe.</summary>
     private AccountChangesAtIndex? RecordReadAndGetChanges(Address address)

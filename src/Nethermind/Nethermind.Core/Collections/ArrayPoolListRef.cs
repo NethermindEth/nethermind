@@ -53,6 +53,9 @@ public ref struct ArrayPoolListRef<T>
             case List<T> listItems:
                 AddRange(CollectionsMarshal.AsSpan(listItems));
                 break;
+            case ICollection<T> collection:
+                ArrayPoolListCore<T>.AddRange(SafeArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, collection);
+                break;
             default:
                 {
                     foreach (T item in items)

@@ -84,6 +84,40 @@ public class XdcSpecProviderTests
     }
 
     [Test]
+    public void ApplyV2Config_AppliesNodeCaps()
+    {
+        XdcReleaseSpec spec = new()
+        {
+            V2Configs =
+            [
+                new()
+                {
+                    SwitchRound = 0,
+                    MaxMasternodes = 10,
+                    MaxProtectorNodes = 2,
+                    MaxObserverNodes = 3,
+                },
+                new()
+                {
+                    SwitchRound = 10,
+                    MaxMasternodes = 20,
+                    MaxProtectorNodes = 4,
+                    MaxObserverNodes = 5,
+                },
+            ],
+        };
+
+        spec.ApplyV2Config(10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.MaxMasternodes, Is.EqualTo(20));
+            Assert.That(spec.MaxProtectorNodes, Is.EqualTo(4));
+            Assert.That(spec.MaxObserverNodes, Is.EqualTo(5));
+        }
+    }
+
+    [Test]
     public void GetXdcSpec_ReturnsDifferentSpecInstances()
     {
         ChainSpec chainSpec = new()

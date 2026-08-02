@@ -65,7 +65,6 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         }
     }
     public Block? Head => _overlayTree.Head ?? _baseTree.Head;
-    public ulong? BestPersistedState { get => _overlayTree.BestPersistedState; set => _overlayTree.BestPersistedState = value; }
 
     public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
         _overlayTree.Insert(header, headerOptions);
@@ -116,7 +115,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public ChainLevelInfo? FindLevel(ulong number) => _overlayTree.FindLevel(number) ?? _baseTree.FindLevel(number);
 
-    public BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => _overlayTree.FindCanonicalBlockInfo(blockNumber) ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
+    public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber) => _overlayTree.FindCanonicalBlockInfo(blockNumber) ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
 
     public Hash256 FindHash(ulong blockNumber) => _overlayTree.FindHash(blockNumber) ?? _baseTree.FindHash(blockNumber);
 

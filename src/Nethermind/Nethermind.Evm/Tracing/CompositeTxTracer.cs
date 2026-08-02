@@ -24,6 +24,7 @@ public class CompositeTxTracer : ITxTracer
         for (int index = 0; index < txTracers.Count; index++)
         {
             ITxTracer t = txTracers[index];
+            IsCancelable |= t.IsCancelable;
             IsTracingState |= t.IsTracingState;
             IsTracingReceipt |= t.IsTracingReceipt;
             IsTracingActions |= t.IsTracingActions;
@@ -39,6 +40,21 @@ public class CompositeTxTracer : ITxTracer
             IsTracingAccess |= t.IsTracingAccess;
             IsTracingFees |= t.IsTracingFees;
             IsTracingLogs |= t.IsTracingLogs;
+        }
+    }
+
+    public bool IsCancelable { get; }
+
+    public bool IsCancelled
+    {
+        get
+        {
+            for (int index = 0; index < _txTracers.Count; index++)
+            {
+                if (_txTracers[index].IsCancelled) return true;
+            }
+
+            return false;
         }
     }
 
@@ -226,18 +242,6 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportStackPush(in ZeroPaddedSpan stackItem)
-    {
-        for (int index = 0; index < _txTracers.Count; index++)
-        {
-            ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions)
-            {
-                innerTracer.ReportStackPush(stackItem);
-            }
-        }
-    }
-
     public void ReportStackPush(byte stackItem)
     {
         for (int index = 0; index < _txTracers.Count; index++)
@@ -287,18 +291,6 @@ public class CompositeTxTracer : ITxTracer
     }
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-    {
-        for (int index = 0; index < _txTracers.Count; index++)
-        {
-            ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions)
-            {
-                innerTracer.ReportMemoryChange(offset, data);
-            }
-        }
-    }
-
-    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

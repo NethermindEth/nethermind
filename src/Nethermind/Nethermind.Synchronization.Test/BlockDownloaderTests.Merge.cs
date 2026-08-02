@@ -332,7 +332,7 @@ public partial class BlockDownloaderTests
         return CreateNode((builder) =>
         {
             builder
-                .AddModule(new TestMergeModule(configProvider))
+                .AddModule(new TestMergeModule())
                 .AddSingleton<PostMergeContext>();
             configurer?.Invoke(builder);
         }, configProvider);

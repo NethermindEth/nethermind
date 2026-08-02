@@ -768,7 +768,7 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = enableEip1559;
             spec.IsTipTrc21FeeEnabled = false;
 
-            spec.IsTIPXDCXMiner = true;
+            spec.IsTIPXDCXReceiver = true;
 
             spec.TradingStateAddressBinary = new Address("0x00000000000000000000000000000000b000091");
             spec.XDCXAddressBinary = new Address("0x00000000000000000000000000000000b000092");

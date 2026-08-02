@@ -13,7 +13,7 @@ internal sealed class SelfRecordResponseHandler(Node receiver, ulong minimumSequ
     private const int MaxNodesResponseMessages = 16;
 
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly bool _allowNonRoutableRelays = receiver.Address.Address.IsLoopbackOrPrivateOrLinkLocal;
+    private readonly bool _allowNonRoutableRelays = receiver.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal;
     private readonly Lock _lock = new();
     private bool _done;
     private int _totalMessages;

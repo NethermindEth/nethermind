@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -89,6 +90,13 @@ internal class XdcSealValidatorTests
         byte[] keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
         yield return new TestCaseData(header, keyBSig)
             .SetName("WrongSignerSignature");
+
+        header = Build.A.XdcBlockHeader().TestObject;
+        header.Beneficiary = TestItem.AddressA;
+        Signature canonicalSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header);
+        byte[] malleableSig = XdcTestHelper.CreateMalleableSignature(canonicalSig).BytesWithRecovery;
+        yield return new TestCaseData(header, malleableSig)
+            .SetName("MalleableHighS");
     }
 
     [TestCaseSource(nameof(InvalidSignatureCases))]

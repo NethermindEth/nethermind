@@ -10,6 +10,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -228,8 +229,11 @@ public class HeaderValidatorTests
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_long_max_value()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0x7FFFFFFFFFFFFFFFUL, true, TestName = "When_gas_limit_at_protocol_cap")]
+    [TestCase(0x8000000000000000UL, false, TestName = "When_gas_limit_just_above_protocol_cap")]
+    [TestCase(ulong.MaxValue, false, TestName = "When_gas_limit_is_ulong_max")]
+    public void When_gas_limit_around_protocol_cap(ulong gasLimit, bool expectedResult)
     {
         _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _parentBlock = Build.A.Block.WithDifficulty(1)
@@ -239,14 +243,18 @@ public class HeaderValidatorTests
         _block = Build.A.Block.WithParent(_parentBlock)
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
-            .WithGasLimit(long.MaxValue)
+            .WithGasLimit(gasLimit)
             .WithNumber(_parentBlock.Number + 1)
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header, false, out string? error);
 
-        Assert.That(result, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, expectedResult ? Is.Null : Is.EqualTo(BlockErrorMessages.InvalidGasLimit));
+        }
     }
 
 

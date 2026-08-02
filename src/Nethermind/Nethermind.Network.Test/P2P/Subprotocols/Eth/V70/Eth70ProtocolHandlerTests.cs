@@ -243,9 +243,9 @@ public class Eth70ProtocolHandlerTests
 
         TxReceipt[] receipts =
         [
+            new() { GasUsedTotal = GasCostOf.Transaction / 2, Logs = [] },
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
+            new() { GasUsedTotal = GasCostOf.Transaction * 3 / 2, Logs = [] }
         ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
@@ -481,25 +481,25 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_reject_when_intrinsic_exceeds_block_gas()
+    public void Should_reject_when_receipt_gas_is_below_minimum_supported_transaction_gas()
     {
         TxReceipt[] receipts =
         [
-            new() { GasUsedTotal = GasCostOf.Transaction / 2, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+            new() { GasUsedTotal = GasCostOf.Transaction / 2 - 1, Logs = [] }
         ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), true);
+            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Intrinsic gas lower bound exceeds block gas used"));
     }
 
     [Test]

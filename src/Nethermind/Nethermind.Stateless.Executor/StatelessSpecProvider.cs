@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
@@ -49,24 +52,29 @@ internal sealed class StatelessSpecProvider(
     public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null) =>
         baseProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
-    public static StatelessSpecProvider Create(IForkAwareSpecProvider baseProvider, ulong chainId, ForkConfig forkConfig)
+    public static StatelessSpecProvider Create(
+        IForkAwareSpecProvider baseProvider,
+        ulong chainId,
+        ForkConfig forkConfig,
+        ProtocolFork protocolFork)
     {
-        string? forkName = ForkIndexHelper.GetForkNameByIndex(forkConfig.Fork);
+        string forkName = protocolFork.GetName();
 
-        if (forkName is null || !baseProvider.TryGetForkSpec(forkName, out IReleaseSpec? spec))
-            throw new ArgumentException($"Unknown fork: {forkConfig.Fork}", nameof(forkConfig));
+        IReleaseSpec spec;
+        if (!baseProvider.TryGetForkSpec(forkName, out IReleaseSpec? configuredSpec) || configuredSpec is null)
+        {
+            spec = (chainId, protocolFork) switch
+            {
+                (BlockchainIds.Gnosis or BlockchainIds.Chiado, ProtocolFork.Amsterdam) => AmsterdamGnosis.Instance,
+                (_, ProtocolFork.Amsterdam) => Amsterdam.Instance,
+                _ => throw new ArgumentException($"Unknown fork: {protocolFork}", nameof(protocolFork))
+            };
+        }
+        else
+        {
+            spec = configuredSpec;
+        }
 
-        spec = forkConfig.BlobSchedule is [{ } blobSchedule]
-           ? new StatelessReleaseSpec(spec!, blobSchedule)
-           : spec;
-
-        return new(baseProvider, chainId, forkConfig.Activation.ToForkActivation(), spec!);
-    }
-
-    private sealed class StatelessReleaseSpec(IReleaseSpec spec, BlobSchedule blobSchedule) : ReleaseSpecDecorator(spec)
-    {
-        public override ulong TargetBlobCount => blobSchedule.Target;
-        public override ulong MaxBlobCount => blobSchedule.Max;
-        public override ulong BlobBaseFeeUpdateFraction => blobSchedule.BaseFeeUpdateFraction;
+        return new(baseProvider, chainId, forkConfig.Activation.ToForkActivation(), spec);
     }
 }

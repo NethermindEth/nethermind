@@ -110,6 +110,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IMetricsConfig, string>(configWildcard, static c => c.NodeName.ToUpperInvariant(), static (cf, p) => cf.Replace("_", " ").Replace(".json", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
         Test<IMetricsConfig, int>(configWildcard, static c => c.IntervalSeconds, 5);
         Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayUrl, (string)null);
+        Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayUsername, (string)null);
+        Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayPassword, (string)null);
     }
 
     [TestCase("^spaceneth ^volta", 50)]
@@ -151,6 +153,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IJsonRpcConfig, int>(configWildcard, static c => c.Port, 8545);
         Test<IJsonRpcConfig, string>(configWildcard, static c => c.Host, "127.0.0.1");
     }
+
+    [TestCase("taiko-alethia.json", false)]
+    [TestCase("taiko-hoodi.json", false)]
+    [TestCase("surge-hoodi.json", false)]
+    [TestCase("*", true)]
+    public void StrictHexFormat_is_lenient_only_for_taiko_and_surge(string configWildcard, bool strict) =>
+        Test<IJsonRpcConfig, bool>(configWildcard, static c => c.StrictHexFormat, strict);
 
     [TestCase("sepolia", DiscoveryVersion.V5)]
     [TestCase("hoodi", DiscoveryVersion.V5)]

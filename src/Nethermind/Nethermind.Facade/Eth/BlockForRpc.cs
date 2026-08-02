@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
+using System.Collections.Frozen;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -12,20 +13,37 @@ using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Facade.Eth;
 
 public class BlockForRpc
 {
-    private static readonly BlockDecoder _blockDecoder = new();
+    private static IRlpDecoder<Block> _blockDecoder = new BlockDecoder();
+    private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decodersSnapshot;
+
+    /// <summary>Cached against the registry snapshot so plugin decoder replacements are picked up.</summary>
+    private static IRlpDecoder<Block> BlockDecoder
+    {
+        get
+        {
+            FrozenDictionary<RlpDecoderKey, IRlpDecoder> snapshot = Rlp.Decoders;
+            if (ReferenceEquals(Volatile.Read(ref _decodersSnapshot), snapshot))
+            {
+                return _blockDecoder;
+            }
+
+            IRlpDecoder<Block> decoder = Rlp.GetDecoder<Block>() ?? new BlockDecoder();
+            _blockDecoder = decoder;
+            Volatile.Write(ref _decodersSnapshot, snapshot);
+            return decoder;
+        }
+    }
 
     public BlockForRpc() { }
 
     [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
     {
-        bool isAuRaBlock = block.Header.AuRaSignature is not null;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;
@@ -33,18 +51,8 @@ public class BlockForRpc
         Hash = block.Hash;
         LogsBloom = block.Bloom;
         Miner = block.Beneficiary;
-        if (!isAuRaBlock)
-        {
-            MixHash = block.MixHash;
-            Nonce = new byte[8];
-            BinaryPrimitives.WriteUInt64BigEndian(Nonce, block.Nonce);
-        }
-        else
-        {
-            Author = block.Author;
-            Step = block.Header.AuRaStep;
-            Signature = block.Header.AuRaSignature;
-        }
+        MixHash = block.MixHash;
+        Nonce = block.Nonce;
 
         if (specProvider is not null)
         {
@@ -81,7 +89,7 @@ public class BlockForRpc
         ParentHash = block.ParentHash;
         ReceiptsRoot = block.ReceiptsRoot;
         Sha3Uncles = block.UnclesHash;
-        Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
+        Size = BlockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
 
@@ -97,7 +105,6 @@ public class BlockForRpc
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
         RequestsHash = block.Header.RequestsHash;
         BlockAccessListHash = block.Header.BlockAccessListHash;
-        BlockAccessList = block.BlockAccessList;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -118,7 +125,8 @@ public class BlockForRpc
     public Hash256? MixHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public byte[]? Nonce { get; set; }
+    [JsonConverter(typeof(BlockNonceConverter))]
+    public ulong? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ulong? Number { get; set; }
@@ -159,9 +167,6 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? BlockAccessListHash { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public ReadOnlyBlockAccessList? BlockAccessList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? SlotNumber { get; set; }

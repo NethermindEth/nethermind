@@ -306,11 +306,7 @@ namespace Nethermind.JsonRpc.Data
             Span<byte> output = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref value, 1));
             Bytes.FromUtf8HexString(span, output[(sizeof(ulong) - length)..]);
 
-            return BitConverter.IsLittleEndian switch
-            {
-                true => BinaryPrimitives.ReverseEndianness(value),
-                _ => value
-            };
+            return BinaryPrimitives.ReverseEndianness(value);
         }
 
         [DoesNotReturn, StackTraceHidden]

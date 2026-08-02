@@ -77,7 +77,6 @@ public class CliqueBlockProducerTests
 
                 .AddModule(new TestNethermindModule())
                 .AddModule(new CliqueModule())
-                .AddSingleton<IBlockPreprocessorStep, AuthorRecoveryStep>()
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
                 .AddSingleton<CliqueChainSpecEngineParameters>(new CliqueChainSpecEngineParameters()

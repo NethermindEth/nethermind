@@ -30,7 +30,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     private static readonly TimeSpan PeerDiscoveryTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan PeerDiscoveryPollInterval = TimeSpan.FromMilliseconds(100);
 
-    private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
+    private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null, bool bootnodeTcpPortZero = false)
     {
         ConfigProvider configProvider = new();
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -39,12 +39,14 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         if (bootEnode is not null)
         {
-            spec.Bootnodes = [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
+            spec.Bootnodes = bootnodeTcpPortZero
+                ? [new(new Enode(bootEnode.PublicKey, bootEnode.HostIp, port: 0, discoveryPort: bootEnode.Port))]
+                : [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
         }
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
         int port = AssignDiscoveryPort();
-        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
+        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
@@ -53,6 +55,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         IForkInfo forkInfo = Substitute.For<IForkInfo>();
         forkInfo.GetForkId(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(new ForkId(0, 0));
+        forkInfo.IsForkIdCompatible(new ForkId(0, 0)).Returns(true);
 
         ContainerBuilder builder = new();
         builder
@@ -64,22 +67,23 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
     int _discoveryPort = 0;
     private int AssignDiscoveryPort() => Interlocked.Increment(ref _discoveryPort);
-    int _discoveryIp = 1;
-    private int AssignDiscoveryIp() => Interlocked.Increment(ref _discoveryIp);
+    int _ip = 1;
+    private int AssignIp() => Interlocked.Increment(ref _ip);
 
-    [Test]
+    [TestCase(false)]
+    [TestCase(true)]
     [Category("Flaky"), Retry(3)]
     [Parallelizable(ParallelScope.None)]
-    public async Task TestDiscovery()
+    public async Task TestDiscovery(bool bootnodeTcpPortZero)
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         await using IContainer boot = CreateNode(TestItem.PrivateKeys[0]);
         IEnode bootEnode = boot.Resolve<IEnode>();
-        await using IContainer node1 = CreateNode(TestItem.PrivateKeys[1], bootEnode);
-        await using IContainer node2 = CreateNode(TestItem.PrivateKeys[2], bootEnode);
-        await using IContainer node3 = CreateNode(TestItem.PrivateKeys[3], bootEnode);
-        await using IContainer node4 = CreateNode(TestItem.PrivateKeys[4], bootEnode);
+        await using IContainer node1 = CreateNode(TestItem.PrivateKeys[1], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node2 = CreateNode(TestItem.PrivateKeys[2], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node3 = CreateNode(TestItem.PrivateKeys[3], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node4 = CreateNode(TestItem.PrivateKeys[4], bootEnode, bootnodeTcpPortZero);
 
         IContainer[] nodes = [boot, node1, node2, node3, node4];
 

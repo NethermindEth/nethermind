@@ -30,6 +30,7 @@
   },
   "JsonRpc": {
     "Enabled": true,
-    "EnginePort": 8551
+    "EnginePort": 8551,
+    "StrictHexFormat": false
   }
 }
