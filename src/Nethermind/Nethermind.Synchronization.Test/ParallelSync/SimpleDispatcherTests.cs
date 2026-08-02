@@ -88,21 +88,23 @@ public class SimpleDispatcherTests
     }
 
     private const int MaxThreads = 2;
+    // Mirrors SimpleDispatcher<T>.InFlightRequestsPerProcessingThread × MaxThreads.
+    private const int InFlightCap = 2 * MaxThreads;
     private const int PeerCount = 8;
 
     private static SimpleDispatcher<TestBatch> CreateDispatcher(
-        TestFeed feed, ISyncDownloader<TestBatch> downloader, TestSyncPeerPool peerPool) =>
+        TestFeed feed, ISyncDownloader<TestBatch> downloader, TestSyncPeerPool peerPool, int allocateTimeoutMs = 1) =>
         new(
             feed,
             downloader,
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             AllocationContexts.Snap,
             peerPool,
-            new TestSyncConfig { MaxProcessingThreads = MaxThreads },
+            new TestSyncConfig { MaxProcessingThreads = MaxThreads, SyncDispatcherAllocateTimeoutMs = allocateTimeoutMs },
             LimboLogs.Instance);
 
     [Test, CancelAfter(30_000)]
-    public async Task In_flight_dispatches_can_exceed_processing_threads_and_run_drains_them_all(CancellationToken cancellationToken)
+    public async Task In_flight_dispatches_exceed_processing_threads_up_to_the_cap_and_run_drains_them_all(CancellationToken cancellationToken)
     {
         TestFeed feed = new(totalRequests: PeerCount);
         BlockingDownloader downloader = new();
@@ -110,12 +112,15 @@ public class SimpleDispatcherTests
 
         Task runTask = CreateDispatcher(feed, downloader, peerPool).Run(cancellationToken);
 
-        // With the network wait not holding a processing slot, all peers get a request in flight.
-        await downloader.WaitForStarted(PeerCount, cancellationToken);
+        // With the network wait not holding a processing slot, dispatches overlap beyond
+        // MaxProcessingThreads up to the in-flight cap.
+        await downloader.WaitForStarted(InFlightCap, cancellationToken);
         Assert.That(downloader.Started, Is.GreaterThan(MaxThreads));
 
-        // The feed has returned null (loop exited), yet Run must not return while dispatches are in flight.
+        // Run must not return while dispatches are in flight, and despite free peers no dispatch
+        // beyond the cap may start.
         Assert.That(async () => await runTask.WaitAsync(TimeSpan.FromMilliseconds(200)), Throws.TypeOf<TimeoutException>());
+        Assert.That(downloader.Started, Is.EqualTo(InFlightCap));
 
         downloader.ReleaseAll();
         await runTask.WaitAsync(cancellationToken);
@@ -134,10 +139,10 @@ public class SimpleDispatcherTests
 
         Task runTask = CreateDispatcher(feed, downloader, peerPool).Run(cancellationToken);
 
-        await downloader.WaitForStarted(PeerCount, cancellationToken);
+        await downloader.WaitForStarted(InFlightCap, cancellationToken);
         downloader.ReleaseAll();
 
-        // All responses arrived at once; only MaxThreads of them may enter HandleResponse.
+        // A full cap's worth of responses arrived at once; only MaxThreads may enter HandleResponse.
         while (feed.CurrentlyHandling < MaxThreads)
         {
             await Task.Delay(10, cancellationToken);
@@ -150,21 +155,24 @@ public class SimpleDispatcherTests
         Assert.That(feed.MaxConcurrentHandling, Is.EqualTo(MaxThreads));
     }
 
-    [Test, CancelAfter(30_000)]
-    public async Task Cancellation_mid_dispatch_frees_allocations_and_drains(CancellationToken cancellationToken)
+    // With more peers than the cap the loop parks in the in-flight cap wait; with fewer it parks
+    // in peerPool.Allocate. Cancellation must drain cleanly from either park point.
+    [TestCase(PeerCount)]
+    [TestCase(MaxThreads)]
+    [CancelAfter(30_000)]
+    public async Task Cancellation_mid_dispatch_frees_allocations_and_drains(int poolPeerCount, CancellationToken cancellationToken)
     {
         TestFeed feed = new(totalRequests: int.MaxValue);
         BlockingDownloader downloader = new();
-        await using TestSyncPeerPool peerPool = new(PeerCount);
+        await using TestSyncPeerPool peerPool = new(poolPeerCount);
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         Task runTask = CreateDispatcher(feed, downloader, peerPool).Run(cts.Token);
 
-        // All peers busy: the Run loop is now parked in peerPool.Allocate.
-        await downloader.WaitForStarted(PeerCount, cancellationToken);
+        await downloader.WaitForStarted(Math.Min(poolPeerCount, InFlightCap), cancellationToken);
 
-        // Allocate mirrors SyncPeerPool and reports cancellation as a failed allocation rather
-        // than throwing, so Run drains and returns normally.
+        // Both park points report cancellation as a failed allocation rather than throwing,
+        // so Run drains and returns normally.
         cts.Cancel();
         await runTask.WaitAsync(cancellationToken);
 
@@ -173,27 +181,31 @@ public class SimpleDispatcherTests
     }
 
     [Test, CancelAfter(30_000)]
-    public async Task Failed_allocation_is_handled_with_null_peer_and_not_freed(CancellationToken cancellationToken)
+    public async Task Failed_allocation_is_handled_with_null_peer_without_a_processing_slot_and_not_freed(CancellationToken cancellationToken)
     {
-        TestFeed feed = new(totalRequests: 2);
+        TestFeed feed = new(totalRequests: 4);
+        feed.LockHandleResponse();
         BlockingDownloader downloader = new();
+        downloader.ReleaseAll(); // The network returns instantly; this test stalls the processing side.
         await using TestSyncPeerPool peerPool = new(peerCount: 1) { HonorAllocationTimeout = true };
 
-        Task runTask = CreateDispatcher(feed, downloader, peerPool).Run(cancellationToken);
+        // A generous allocate timeout so only the deliberately starved allocation below times out.
+        Task runTask = CreateDispatcher(feed, downloader, peerPool, allocateTimeoutMs: 1000).Run(cancellationToken);
 
-        // The first request holds the only peer in a long network wait, so the second request's
-        // allocation times out and must be handed to the feed as a null-peer response.
-        await downloader.WaitForStarted(1, cancellationToken);
+        // Requests 1-2 fill both processing slots and block in HandleResponse; request 3 then
+        // holds the only peer while waiting for a slot, so request 4's allocation times out. Its
+        // null-peer response must reach the feed even though every processing slot is taken.
         while (feed.FailedAllocationCount == 0)
         {
             await Task.Delay(10, cancellationToken);
         }
+        Assert.That(feed.CurrentlyHandling, Is.EqualTo(MaxThreads), "the null-peer response must not wait for a processing slot");
 
-        downloader.ReleaseAll();
+        feed.UnlockHandleResponse();
         await runTask.WaitAsync(cancellationToken);
 
         Assert.That(feed.FailedAllocationCount, Is.EqualTo(1));
-        Assert.That(feed.HandledCount, Is.EqualTo(1));
+        Assert.That(feed.HandledCount, Is.EqualTo(3));
         Assert.That(peerPool.FreedCount, Is.EqualTo(peerPool.AllocatedCount), "a failed allocation must not be freed");
     }
 }

@@ -24,13 +24,15 @@ namespace Nethermind.Synchronization.ParallelSync;
 /// <remarks>
 /// Concurrency model: <see cref="ISimpleSyncFeed{T}.PrepareRequest"/> is called only from the
 /// single <see cref="Run"/> loop and is never concurrent with itself. The number of in-flight
-/// network requests is bounded by peer availability (<see cref="ISyncPeerPool.Allocate"/>),
-/// not by CPU count; response processing (<see cref="ISimpleSyncFeed{T}.HandleResponse"/>) is
-/// bounded by <see cref="ISyncConfig.MaxProcessingThreads"/> plus one — a failed allocation is
-/// handled on the loop thread without taking a slot. A downloaded response holds its peer
-/// allocation until a processing slot is acquired, so transient response memory is capped at
-/// roughly peer count (<c>Network.MaxActivePeers</c>) × max response size — not by
-/// <see cref="ISyncConfig.MaxProcessingThreads"/>. <see cref="Run"/> returns only after every
+/// dispatches is bounded by <see cref="InFlightRequestsPerProcessingThread"/> ×
+/// <see cref="ISyncConfig.MaxProcessingThreads"/> and by peer availability
+/// (<see cref="ISyncPeerPool.Allocate"/>); response processing
+/// (<see cref="ISimpleSyncFeed{T}.HandleResponse"/>) is bounded by
+/// <see cref="ISyncConfig.MaxProcessingThreads"/> plus one — a failed allocation is handled on
+/// the loop thread without taking a slot. A dispatch holds its in-flight slot until its
+/// response is handled and its peer allocation until a processing slot is acquired, so
+/// transient response memory is capped at roughly the in-flight bound × max response size.
+/// <see cref="Run"/> returns only after every
 /// in-flight dispatch has completed — including when cancelled — because callers treat that
 /// return as the sole barrier before resetting or finalizing feed state.
 /// </remarks>
@@ -43,6 +45,15 @@ public class SimpleDispatcher<T>(
     ISyncConfig syncConfig,
     ILogManager logManager) where T : class
 {
+    /// <summary>Bound on concurrent in-flight dispatches, as a multiple of <see cref="ISyncConfig.MaxProcessingThreads"/>.</summary>
+    /// <remarks>
+    /// The latency-targeting request sizer aims for seconds-long round trips, so saturating every
+    /// available peer inflates observed latency and shrinks ranges, raising per-byte overhead. A
+    /// small multiple of processing capacity keeps ranges large while still overlapping network
+    /// waits with response processing.
+    /// </remarks>
+    private const int InFlightRequestsPerProcessingThread = 2;
+
     private readonly ILogger _logger = logManager.GetClassLogger<SimpleDispatcher<T>>();
     private readonly int _allocateTimeoutMs = syncConfig.SyncDispatcherAllocateTimeoutMs;
     private readonly string _feedName = feed.GetType().Name;
@@ -52,7 +63,9 @@ public class SimpleDispatcher<T>(
         int maxThreads = syncConfig.MaxProcessingThreads == 0
             ? Environment.ProcessorCount
             : syncConfig.MaxProcessingThreads;
+        int maxInFlight = InFlightRequestsPerProcessingThread * maxThreads;
         using SemaphoreSlim processingSemaphore = new(maxThreads, maxThreads);
+        using SemaphoreSlim inFlightSemaphore = new(maxInFlight, maxInFlight);
 
         // Counts the Run loop itself plus every in-flight DoDispatch; the loop releases its
         // slot once it stops producing so the drain cannot complete while dispatches remain.
@@ -76,38 +89,62 @@ public class SimpleDispatcher<T>(
                 if (request is null)
                     break;
 
-                SyncPeerAllocation allocation = await peerPool.Allocate(
-                    strategyFactory.Create(request), contexts, _allocateTimeoutMs, token);
-                PeerInfo? peer = allocation.Current;
-
-                if (peer is null)
+                try
                 {
+                    await inFlightSemaphore.WaitAsync(token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Mirror a cancelled Allocate: hand the request back to the feed as a
+                    // null-peer response instead of dropping it.
                     HandleResponse(request, null);
                     continue;
                 }
 
-                Interlocked.Increment(ref inFlight);
+                bool inFlightSlotTransferred = false;
                 try
                 {
-                    _ = Task.Run(async () =>
+                    SyncPeerAllocation allocation = await peerPool.Allocate(
+                        strategyFactory.Create(request), contexts, _allocateTimeoutMs, token);
+                    PeerInfo? peer = allocation.Current;
+
+                    if (peer is null)
                     {
-                        try
+                        HandleResponse(request, null);
+                        continue;
+                    }
+
+                    Interlocked.Increment(ref inFlight);
+                    try
+                    {
+                        _ = Task.Run(async () =>
                         {
-                            await DoDispatch(request, peer, allocation, processingSemaphore, token);
-                        }
-                        finally
-                        {
-                            SignalDispatchCompleted();
-                        }
-                    });
+                            try
+                            {
+                                await DoDispatch(request, peer, allocation, processingSemaphore, token);
+                            }
+                            finally
+                            {
+                                inFlightSemaphore.Release();
+                                SignalDispatchCompleted();
+                            }
+                        });
+                        inFlightSlotTransferred = true;
+                    }
+                    catch
+                    {
+                        // If Task.Run itself fails the dispatch never runs: undo its in-flight count
+                        // (or the drain below wedges forever) and free the peer it would have freed.
+                        SignalDispatchCompleted();
+                        peerPool.Free(allocation);
+                        throw;
+                    }
                 }
-                catch
+                finally
                 {
-                    // If Task.Run itself fails the dispatch never runs: undo its in-flight count
-                    // (or the drain below wedges forever) and free the peer it would have freed.
-                    SignalDispatchCompleted();
-                    peerPool.Free(allocation);
-                    throw;
+                    // The in-flight slot follows the in-flight counter: a started dispatch returns
+                    // it in its own finally; every path that never starts one returns it here.
+                    if (!inFlightSlotTransferred) inFlightSemaphore.Release();
                 }
             }
         }
