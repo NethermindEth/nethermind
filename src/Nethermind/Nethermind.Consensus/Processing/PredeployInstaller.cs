@@ -30,6 +30,7 @@ public static class PredeployInstaller
     [
         new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 1, static spec => spec.IsEip8141Enabled),
         new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
+        new(Eip8272Constants.RecentRootAddress, default, 1, static spec => spec.IsEip8272Enabled),
     ];
 
     /// <summary>
@@ -71,7 +72,10 @@ public static class PredeployInstaller
             }
 
             ReadOnlyMemory<byte> code = predeploy.Code;
-            if (readState.GetCode(predeploy.Address).AsSpan().SequenceEqual(code.Span))
+            // A predeploy that is a storage namespace only carries no code, so code equality alone
+            // would never install its nonce and the account would stay absent from the state trie.
+            if (readState.GetCode(predeploy.Address).AsSpan().SequenceEqual(code.Span)
+                && readState.GetNonce(predeploy.Address) >= predeploy.Nonce)
             {
                 continue;
             }
