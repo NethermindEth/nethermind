@@ -83,7 +83,7 @@ public class BlobTxStorage : IBlobTxStorage
         {
             if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
             {
-                yield return transaction!;
+                yield return transaction;
             }
         }
     }
@@ -139,7 +139,7 @@ public class BlobTxStorage : IBlobTxStorage
     public void DeleteBlobTransactionsFromBlock(ulong blockNumber)
         => _processedBlobTxsDb.Delete(blockNumber);
 
-    private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, out Transaction? transaction)
+    private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, [NotNullWhen(true)] out Transaction? transaction)
     {
         if (txBytes is not null)
         {
@@ -157,7 +157,7 @@ public class BlobTxStorage : IBlobTxStorage
         return false;
     }
 
-    private static bool TryDecodeLightTx(byte[]? txBytes, out LightTransaction? lightTx)
+    private static bool TryDecodeLightTx(byte[]? txBytes, [NotNullWhen(true)] out LightTransaction? lightTx)
     {
         if (txBytes is not null)
         {

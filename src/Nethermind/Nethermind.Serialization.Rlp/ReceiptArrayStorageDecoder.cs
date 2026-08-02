@@ -65,7 +65,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (decoderContext.PeekByte() == CompactEncoding)
         {
             decoderContext.ReadByte();
-            return CompactDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
+            return DecodeCompactArray(ref decoderContext);
         }
         else
         {
@@ -123,7 +123,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
             RlpReader decoderContext = new(receiptsData[1..]);
-            return CompactDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
+            return DecodeCompactArray(ref decoderContext);
         }
         else
         {
@@ -138,6 +138,81 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
                 return Decoder.DecodeArray(ref decoderContext);
             }
         }
+    }
+
+    public TxReceipt?[] DecodeAllowingMissing(in Span<byte> receiptsData)
+    {
+        if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
+        {
+            return [];
+        }
+
+        if (receiptsData[0] == CompactEncoding)
+        {
+            RlpReader decoderContext = new(receiptsData[1..]);
+            return DecodeArrayAllowingMissingReceipts(
+                ref decoderContext,
+                CompactDecoder,
+                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes,
+                includeTrailingItems: true);
+        }
+
+        RlpReader reader = new(receiptsData);
+        try
+        {
+            return DecodeArrayAllowingMissingReceipts(ref reader, Decoder, RlpBehaviors.Storage);
+        }
+        catch (RlpException)
+        {
+            reader.Position = 0;
+            return DecodeArrayAllowingMissingReceipts(ref reader, Decoder, RlpBehaviors.None);
+        }
+    }
+
+    private static TxReceipt[] DecodeCompactArray(ref RlpReader decoderContext)
+    {
+        // The persisted compact format excludes its final byte from the outer sequence length.
+        // DecodeAllowingMissing scans the full span when migrations need that trailing item.
+        int declaredEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        int length = decoderContext.PeekNumberOfItemsRemaining(
+            declaredEnd,
+            RlpLimit.DefaultLimit.Limit + 1);
+        decoderContext.GuardLimit(length);
+        TxReceipt[] result = new TxReceipt[length];
+        for (int i = 0; i < result.Length; i++)
+        {
+            result[i] = CompactDecoder.DecodeGuardNotNull(
+                ref decoderContext,
+                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
+        }
+
+        return result;
+    }
+
+    private static TxReceipt?[] DecodeArrayAllowingMissingReceipts(
+        ref RlpReader decoderContext,
+        RlpDecoder<TxReceipt> decoder,
+        RlpBehaviors rlpBehaviors,
+        bool includeTrailingItems = false)
+    {
+        int declaredEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        int itemsEnd = includeTrailingItems ? decoderContext.Length : declaredEnd;
+        int length = decoderContext.PeekNumberOfItemsRemaining(
+            itemsEnd,
+            RlpLimit.DefaultLimit.Limit + 1);
+        decoderContext.GuardLimit(length);
+        TxReceipt?[] result = new TxReceipt?[length];
+        for (int i = 0; i < result.Length; i++)
+        {
+            result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
+        }
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            decoderContext.Check(declaredEnd);
+        }
+
+        return result;
     }
 
     public TxReceipt DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)

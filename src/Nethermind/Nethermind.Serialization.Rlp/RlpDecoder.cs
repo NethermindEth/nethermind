@@ -117,7 +117,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     public virtual T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T? value = Decode(ref context, rlpBehaviors);
-        if (!typeof(T).IsValueType && value is null)
+        if (value is null)
         {
             ThrowNullDecodedValue();
         }

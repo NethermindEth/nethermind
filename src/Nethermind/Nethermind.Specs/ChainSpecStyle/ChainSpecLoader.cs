@@ -329,16 +329,19 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             engine => engine.Value.TryGetProperty("params", out JsonElement value) ? value : engine.Value);
 
         chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters, serializer);
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        if (IsUnspecifiedSealEngine(chainSpec.SealEngineType))
         {
             chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
         }
 
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        if (IsUnspecifiedSealEngine(chainSpec.SealEngineType))
         {
             throw new NotSupportedException("unknown seal engine in chainspec");
         }
     }
+
+    private static bool IsUnspecifiedSealEngine(string sealEngineType) =>
+        string.IsNullOrEmpty(sealEngineType) || sealEngineType == Nethermind.Core.SealEngineType.None;
 
     private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
@@ -448,6 +451,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
+        chainSpec.Allocations = [];
         if (chainSpecJson.Accounts is null)
         {
             return;
@@ -462,7 +466,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             chainSpecJson.CodeHashes[Hash256.Zero.ToString()] = [];
         }
 
-        chainSpec.Allocations = [];
         foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
         {
             if (account.Value.BuiltIn is not null && account.Value.Balance is null)

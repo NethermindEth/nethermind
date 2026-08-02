@@ -119,7 +119,7 @@ namespace Nethermind.Serialization.Rlp
 
             int logEntryLength = decoderContext.ReadSequenceLength();
             int logEntryCheck = decoderContext.Position + logEntryLength;
-            decoderContext.DecodeAddressStructRef(out AddressStructRef address);
+            decoderContext.DecodeAddressStructRefNonNull(out AddressStructRef address);
             (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
             int sequenceLength = prefixLength + contentLength;
             ReadOnlySpan<byte> topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);

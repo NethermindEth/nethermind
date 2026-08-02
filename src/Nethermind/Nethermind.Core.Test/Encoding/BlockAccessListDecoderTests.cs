@@ -246,8 +246,13 @@ public class BlockAccessListDecoderTests
 
         GenericParameterAttributes constraints = decodeArray.GetGenericArguments()[0].GenericParameterAttributes;
 
-        Assert.That(constraints.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint), Is.True,
-            "DecodeArray(IRlpDecoder<T>, ...) must stay constrained to reference types: a value-type T would otherwise silently substitute default(T) for an empty-list (0xc0) element instead of throwing.");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(constraints.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint), Is.True,
+                "DecodeArray(IRlpDecoder<T>, ...) must stay constrained to reference types: a value-type T would otherwise silently substitute default(T) for an empty-list (0xc0) element instead of throwing.");
+            Assert.That(decodeArray.GetParameters(), Has.Length.EqualTo(5),
+                "The five-parameter overload is part of the public binary API.");
+        }
     }
 
     [Test]

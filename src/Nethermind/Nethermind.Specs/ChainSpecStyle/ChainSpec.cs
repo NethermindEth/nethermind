@@ -4,6 +4,7 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
@@ -33,11 +34,11 @@ namespace Nethermind.Specs.ChainSpecStyle
         public bool GenesisStateUnavailable { get; set; }
         public Block? Genesis { get; set; }
 
-        public string SealEngineType { get; set; } = null!;
+        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
 
-        public ChainParameters Parameters { get; set; } = null!;
+        public ChainParameters Parameters { get; set; } = new();
 
-        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; } = null!;
+        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; } = UninitializedChainSpecParametersProvider.Instance;
 
         public Dictionary<Address, ChainSpecAllocation>? Allocations { get; set; }
 
@@ -90,5 +91,17 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// consensus plugin — core doesn't act on it.
         /// </summary>
         public Dictionary<string, JsonElement>? CustomSeal { get; set; }
+
+        private sealed class UninitializedChainSpecParametersProvider : IChainSpecParametersProvider
+        {
+            public static UninitializedChainSpecParametersProvider Instance { get; } = new();
+
+            public string SealEngineType => Nethermind.Core.SealEngineType.None;
+
+            public IEnumerable<IChainSpecEngineParameters> AllChainSpecParameters => [];
+
+            public T GetChainSpecParameters<T>() where T : IChainSpecEngineParameters =>
+                throw new InvalidOperationException("Engine chain-spec parameters have not been loaded.");
+        }
     }
 }

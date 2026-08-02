@@ -332,8 +332,8 @@ namespace Nethermind.Db.LogIndex
             {
                 if (algoBytes.IsEmpty) // DB is empty
                 {
-                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
-                        ? KeyValuePair.Create(configAlgoName!, configAlgo)
+                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgoName is not null && configAlgo is not null
+                        ? KeyValuePair.Create(configAlgoName, configAlgo)
                         : CompressionAlgorithm.Best;
 
                     _metaDb.Set(SpecialKey.CompressionAlgo, Encoding.ASCII.GetBytes(selected.Key));

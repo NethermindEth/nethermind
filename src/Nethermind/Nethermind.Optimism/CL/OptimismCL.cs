@@ -55,7 +55,8 @@ public sealed class OptimismCL : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
-        ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
+        ulong l2BlockTime = engineParameters.L2BlockTime
+            ?? throw new ArgumentException("L2 block time is missing.", nameof(engineParameters));
 
         ulong chainId = specProvider.ChainId;
         ulong l2GenesisTimestamp = (chainSpec.Genesis
@@ -63,7 +64,7 @@ public sealed class OptimismCL : IDisposable
 
         _logger = logManager.GetClassLogger<OptimismCL>();
         _engineParameters = engineParameters;
-        _l2BlockTime = engineParameters.L2BlockTime.Value;
+        _l2BlockTime = l2BlockTime;
         _l2GenesisTimestamp = l2GenesisTimestamp;
         _timestamper = timestamper;
 

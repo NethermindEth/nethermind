@@ -407,6 +407,21 @@ public ref struct RlpReader
         address = new AddressStructRef(Read(20));
     }
 
+    public void DecodeAddressStructRefNonNull(out AddressStructRef address)
+    {
+        int prefix = ReadByte();
+        if (prefix == Rlp.EmptyByteArrayByte)
+        {
+            ThrowNullDecodedValue<Address>();
+        }
+        else if (prefix != Rlp.EmptyByteArrayByte + Address.Size)
+        {
+            RlpHelpers.ThrowUnexpectedPrefix(prefix);
+        }
+
+        address = new AddressStructRef(Read(Address.Size));
+    }
+
     public UInt256 DecodeUInt256(int length = -1)
     {
         int position = Position;
@@ -929,6 +944,10 @@ public ref struct RlpReader
 
     public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, RlpLimit? limit = null)
         where T : class
+        => DecodeNonNullArray(decoder, checkPositions, limit);
+
+    public T[] DecodeNonNullArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, RlpLimit? limit = null)
+        where T : class
     {
         decoder ??= Rlp.GetDecoder<T>()
             ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
@@ -957,14 +976,16 @@ public ref struct RlpReader
             ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
 
         int positionCheck = ReadSequenceLength() + Position;
-        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+        int count = PeekNumberOfItemsRemaining(
+            checkPositions ? positionCheck : null,
+            (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
         T?[] result = new T?[count];
         for (int i = 0; i < result.Length; i++)
         {
             if (PeekByte() == Rlp.OfEmptyList[0])
             {
-                result[i] = defaultElement!;
+                result[i] = defaultElement;
                 Position++;
             }
             else
@@ -1024,7 +1045,9 @@ public ref struct RlpReader
         where T : class
     {
         int positionCheck = ReadSequenceLength() + Position;
-        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+        int count = PeekNumberOfItemsRemaining(
+            checkPositions ? positionCheck : null,
+            (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
         T?[] result = new T?[count];
         for (int i = 0; i < result.Length; i++)
@@ -1105,7 +1128,9 @@ public ref struct RlpReader
         where T : class
     {
         int positionCheck = ReadSequenceLength() + Position;
-        int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
+        int count = PeekNumberOfItemsRemaining(
+            checkPositions ? positionCheck : null,
+            (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
         ArrayPoolList<T?> result = new(count, count);
         int i = 0;

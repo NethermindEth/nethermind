@@ -41,11 +41,11 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
 
         Address address = ctx.DecodeAddressNonNull();
 
-        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
+        ReadOnlySlotChanges[] slotChanges = ctx.DecodeNonNullArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
         UInt256? lastSlot = null;
-        foreach (ReadOnlySlotChanges? slotChange in slotChanges)
+        foreach (ReadOnlySlotChanges slotChange in slotChanges)
         {
-            UInt256 slot = slotChange!.Key;
+            UInt256 slot = slotChange.Key;
             if (lastSlot is not null && slot <= lastSlot)
             {
                 ThrowStorageChangesOutOfOrder();
@@ -84,7 +84,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             ctx.Check(check);
         }
 
-        return new ReadOnlyAccountChanges(address, slotChanges!, storageReads, balanceChanges, nonceChanges, codeChanges);
+        return new ReadOnlyAccountChanges(address, slotChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }
 
     public override int GetLength(ReadOnlyAccountChanges? item, RlpBehaviors rlpBehaviors)
@@ -298,7 +298,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         while (low <= high)
         {
             int mid = low + ((high - low) >> 1);
-            int compare = sortedSlotChanges[mid]!.Key.CompareTo(key);
+            int compare = sortedSlotChanges[mid].Key.CompareTo(key);
             if (compare == 0)
             {
                 return true;

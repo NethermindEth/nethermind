@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using CryptSharp.Utility;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -85,7 +86,7 @@ namespace Nethermind.KeyStore
         {
             try
             {
-                KeyStoreItem keyData = _jsonSerializer.Deserialize<KeyStoreItem>(keyJson);
+                KeyStoreItem keyData = DeserializeKeyStoreItem(keyJson);
                 return (keyData, Result.Success);
             }
             catch (Exception)
@@ -193,8 +194,12 @@ namespace Nethermind.KeyStore
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
         {
             string keyDataJson = ReadKey(address);
-            return (_jsonSerializer.Deserialize<KeyStoreItem>(keyDataJson), Result.Success);
+            return (DeserializeKeyStoreItem(keyDataJson), Result.Success);
         }
+
+        private KeyStoreItem DeserializeKeyStoreItem(string json) =>
+            _jsonSerializer.Deserialize<KeyStoreItem>(json)
+            ?? throw new JsonException("Key data decoded as null.");
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
         {

@@ -143,6 +143,18 @@ public class RlpDecoderTests
     }
 
     [Test]
+    public void Decode_non_null_array_rejects_empty_list_element()
+    {
+        static void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+            context.DecodeNonNullArray(KeccakDecoder.Instance);
+        }
+
+        Assert.That(Decode, Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
     public void Decode_nullable_delegate_array_uses_default_for_empty_list_element()
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });

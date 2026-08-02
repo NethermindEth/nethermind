@@ -98,13 +98,13 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
 
     public BlockBody? DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
     {
-        Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
+        Transaction[] transactions = ctx.DecodeNonNullArray(_txDecoder, limit: TransactionsCountLimit);
+        BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
+            withdrawals = ctx.DecodeNonNullArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
         }
 
         ctx.Check(lastPosition);

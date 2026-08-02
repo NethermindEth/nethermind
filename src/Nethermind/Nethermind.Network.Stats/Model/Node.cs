@@ -208,7 +208,7 @@ namespace Nethermind.Stats.Model
         /// <param name="enr">The Ethereum Node Record to read.</param>
         /// <param name="node">The node created from the record when the record contains a usable TCP endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
-        public static bool TryFromEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        public static bool TryFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
         {
             node = null;
             PublicKey? key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
@@ -232,7 +232,7 @@ namespace Nethermind.Stats.Model
         /// <param name="enr">The Ethereum Node Record to read.</param>
         /// <param name="node">The node created from the record when the record contains a usable UDP discovery endpoint.</param>
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
-        public static bool TryFromDiscoveryEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        public static bool TryFromDiscoveryEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
         {
             node = null;
             PublicKey? key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();

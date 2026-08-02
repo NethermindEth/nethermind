@@ -29,25 +29,25 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         // BlockValidator would otherwise recompute the same keccak per block.
         int startPosition = ctx.Position;
 
-        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
+        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeNonNullArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
         ReadOnlySpan<byte> wireRlp = ctx.Data[startPosition..ctx.Position];
 
         Address? lastAddress = null;
         int itemCount = 0;
-        foreach (ReadOnlyAccountChanges? a in accountChanges)
+        foreach (ReadOnlyAccountChanges accountChange in accountChanges)
         {
-            Address address = a!.Address;
+            Address address = accountChange.Address;
             if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
             {
                 ThrowAccountChangesOutOfOrder();
             }
             lastAddress = address;
 
-            itemCount += 1 + a.StorageChanges.Length + a.StorageReads.Length;
+            itemCount += 1 + accountChange.StorageChanges.Length + accountChange.StorageReads.Length;
         }
 
         Hash256 wireHash = new(ValueKeccak.Compute(wireRlp));
-        return new ReadOnlyBlockAccessList(accountChanges!, itemCount, wireHash);
+        return new ReadOnlyBlockAccessList(accountChanges, itemCount, wireHash);
     }
 
     /// <summary>

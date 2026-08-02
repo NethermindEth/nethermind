@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -18,8 +19,9 @@ public class AuRaHeaderDecoderTests
 
     private static byte[] DeterministicSignature(int seed)
     {
-        byte[] signature = new byte[64];
+        byte[] signature = new byte[Signature.Size];
         new Random(seed).NextBytes(signature);
+        signature[^1] = Signature.VOffset;
         return signature;
     }
 

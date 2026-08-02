@@ -13,8 +13,14 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
     const int BuildPayloadArgsIdLength = 8;
     internal const int SignatureLength = 65;
 
-    protected override L1Origin DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override L1Origin? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
+            return null;
+        }
+
         (int _, int contentLength) = decoderContext.ReadPrefixAndContentLength();
         int itemsCount = decoderContext.PeekNumberOfItemsRemaining(maxSearch: contentLength);
 

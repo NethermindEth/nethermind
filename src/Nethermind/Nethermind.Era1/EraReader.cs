@@ -193,7 +193,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     {
         RlpReader ctx = new(buffer.Span);
         // Era1 receipts are part of the block root commitment; reject empty-list placeholders.
-        return ctx.DecodeArray<TxReceipt>(_receiptDecoder);
+        return ctx.DecodeNonNullArray<TxReceipt>(_receiptDecoder);
     }
 
     public ValueHash256 CalculateChecksum() => _fileReader.CalculateChecksum();

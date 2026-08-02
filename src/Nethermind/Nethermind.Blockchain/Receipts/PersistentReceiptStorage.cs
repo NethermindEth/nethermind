@@ -439,6 +439,21 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        TxReceipt?[] IReceiptMigrationStore.GetForMigration(ulong blockNumber, Hash256 blockHash)
+        {
+            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            try
+            {
+                return receiptsData.IsNullOrEmpty()
+                    ? []
+                    : _storageDecoder.DecodeAllowingMissing(in receiptsData);
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
         [SkipLocalsInit]
         private unsafe Span<byte> GetReceiptData(ulong blockNumber, Hash256 blockHash)
         {

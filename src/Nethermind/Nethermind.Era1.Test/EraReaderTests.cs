@@ -137,7 +137,7 @@ internal class EraReaderTests
     private static TxReceipt[] DecodeReceipts(byte[] bytes)
     {
         RlpReader ctx = new(bytes);
-        return ctx.DecodeArray<TxReceipt>(new ReceiptMessageDecoder());
+        return ctx.DecodeNonNullArray<TxReceipt>(new ReceiptMessageDecoder());
     }
 
     private static void AssertBlockEquivalent(Block actual, Block expected) =>

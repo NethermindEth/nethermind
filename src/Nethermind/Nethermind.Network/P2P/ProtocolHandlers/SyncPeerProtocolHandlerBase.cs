@@ -32,11 +32,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
-        public Node Node => Session?.Node;
-        public string ClientId => Node?.ClientId;
+        public Node Node => Session.Node;
+        public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
         public PublicKey Id => Node.Id;
-        string ITxPoolPeer.Enode => Node?.ToString();
+        string ITxPoolPeer.Enode => Node.ToString();
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }

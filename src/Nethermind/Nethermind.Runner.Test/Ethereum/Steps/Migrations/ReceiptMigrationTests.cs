@@ -27,6 +27,40 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
     public class ReceiptMigrationTests
     {
+        [Test]
+        public async Task Incomplete_legacy_receipts_are_not_migrated()
+        {
+            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(2);
+            IBlockTree blockTree = blockTreeBuilder.TestObject;
+            Block block = blockTree.FindBlock(1);
+
+            InMemoryReceiptStorage source = new();
+            TxReceipt receipt = Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.KeccakA).TestObject;
+            source.Insert(block, new TxReceipt[] { receipt, null }, ensureCanonical: false);
+
+            InMemoryReceiptStorage destination = new();
+            TestReceiptStorage receiptStorage = new(source, destination);
+            TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+
+            ReceiptMigration migration = new(
+                receiptStorage,
+                blockTree,
+                syncModeSelector,
+                blockTreeBuilder.ChainLevelInfoRepository,
+                new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
+                receiptColumnDb,
+                Substitute.For<IReceiptsRecovery>(),
+                LimboLogs.Instance);
+
+            _ = migration.Run(0, 1);
+            await migration._migrationTask!;
+
+            Assert.That(destination.Count, Is.Zero);
+            Assert.That(source.Get(block)[1], Is.Null);
+        }
+
         [TestCase(null, 0UL, false, false, false, false)] // No change to migrate
         [TestCase(5UL, 5UL, false, false, false, true)] // Explicit command and partially migrated
         [TestCase(null, 5UL, true, false, false, true)] // Partially migrated
@@ -148,6 +182,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             public Hash256 FindBlockHash(Hash256 txHash) => inStorage.FindBlockHash(txHash);
 
             public void InsertForMigration(Block block, TxReceipt[] receipts) => outStorage.Insert(block, receipts);
+
+            public TxReceipt[] GetForMigration(ulong blockNumber, Hash256 blockHash) => inStorage.Get(blockHash, recover: false);
 
             public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inStorage.Get(block, recover, recoverSender);
 

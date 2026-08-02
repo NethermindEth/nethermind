@@ -57,9 +57,9 @@ namespace Nethermind.Serialization.Rlp
             if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccakNonNull();
             if (decoderContext.Position != headerCheck) blockHeader.BlobGasUsed = decoderContext.DecodeULong();
             if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
-            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccakNonNull();
-            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccakNonNull();
-            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccakNonNull();
+            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccak();
             if (decoderContext.Position != headerCheck) blockHeader.SlotNumber = decoderContext.DecodeULong();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -142,28 +142,16 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
-            requiredItems[0] = !header.BaseFeePerGas.IsZero;
-            requiredItems[1] = header.WithdrawalsRoot is not null;
-            requiredItems[2] = header.BlobGasUsed is not null;
-            requiredItems[3] = header.BlobGasUsed is not null || header.ExcessBlobGas is not null; // EIP-4844: BlobGasUsed, ExcessBlobGas always encoded as a pair
-            requiredItems[4] = header.ParentBeaconBlockRoot is not null;
-            requiredItems[5] = header.RequestsHash is not null;
-            requiredItems[6] = header.BlockAccessListHash is not null;
-            requiredItems[7] = header.SlotNumber is not null;
-
-            for (int i = 6; i >= 0; i--)
-            {
-                requiredItems[i] |= requiredItems[i + 1];
-            }
+            SetRequiredItems(header, requiredItems);
 
             if (requiredItems[0]) writer.Encode(header.BaseFeePerGas);
-            if (requiredItems[1]) writer.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
-            if (requiredItems[2]) writer.Encode(header.BlobGasUsed.GetValueOrDefault());
-            if (requiredItems[3]) writer.Encode(header.ExcessBlobGas.GetValueOrDefault());
-            if (requiredItems[4]) writer.Encode(header.ParentBeaconBlockRoot ?? Keccak.Zero);
-            if (requiredItems[5]) writer.Encode(header.RequestsHash ?? Keccak.Zero);
-            if (requiredItems[6]) writer.Encode(header.BlockAccessListHash ?? Keccak.Zero);
-            if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
+            if (requiredItems[1]) writer.Encode(GetRequiredField(header.WithdrawalsRoot, nameof(header.WithdrawalsRoot)));
+            if (requiredItems[2]) writer.Encode(GetRequiredField(header.BlobGasUsed, nameof(header.BlobGasUsed)));
+            if (requiredItems[3]) writer.Encode(GetRequiredField(header.ExcessBlobGas, nameof(header.ExcessBlobGas)));
+            if (requiredItems[4]) writer.Encode(header.ParentBeaconBlockRoot);
+            if (requiredItems[5]) writer.Encode(header.RequestsHash);
+            if (requiredItems[6]) writer.Encode(header.BlockAccessListHash);
+            if (requiredItems[7]) writer.Encode(GetRequiredField(header.SlotNumber, nameof(header.SlotNumber)));
         }
 
         public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -209,31 +197,42 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
-            requiredItems[0] = !item.BaseFeePerGas.IsZero;
-            requiredItems[1] = item.WithdrawalsRoot is not null;
-            requiredItems[2] = item.BlobGasUsed is not null;
-            requiredItems[3] = item.BlobGasUsed is not null || item.ExcessBlobGas is not null; // EIP-4844: BlobGasUsed, ExcessBlobGas always encoded as a pair
-            requiredItems[4] = item.ParentBeaconBlockRoot is not null;
-            requiredItems[5] = item.RequestsHash is not null;
-            requiredItems[6] = item.BlockAccessListHash is not null;
-            requiredItems[7] = item.SlotNumber is not null;
-
-            for (int i = 6; i >= 0; i--)
-            {
-                requiredItems[i] |= requiredItems[i + 1];
-            }
+            SetRequiredItems(item, requiredItems);
 
             if (requiredItems[0]) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
-            if (requiredItems[1]) contentLength += Rlp.LengthOf(item.WithdrawalsRoot ?? Keccak.Zero);
-            if (requiredItems[2]) contentLength += Rlp.LengthOf(item.BlobGasUsed.GetValueOrDefault());
-            if (requiredItems[3]) contentLength += Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault());
-            if (requiredItems[4]) contentLength += Rlp.LengthOf(item.ParentBeaconBlockRoot ?? Keccak.Zero);
-            if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash ?? Keccak.Zero);
-            if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash ?? Keccak.Zero);
-            if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
+            if (requiredItems[1]) contentLength += Rlp.LengthOf(GetRequiredField(item.WithdrawalsRoot, nameof(item.WithdrawalsRoot)));
+            if (requiredItems[2]) contentLength += Rlp.LengthOf(GetRequiredField(item.BlobGasUsed, nameof(item.BlobGasUsed)));
+            if (requiredItems[3]) contentLength += Rlp.LengthOf(GetRequiredField(item.ExcessBlobGas, nameof(item.ExcessBlobGas)));
+            if (requiredItems[4]) contentLength += Rlp.LengthOf(item.ParentBeaconBlockRoot);
+            if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash);
+            if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
+            if (requiredItems[7]) contentLength += Rlp.LengthOf(GetRequiredField(item.SlotNumber, nameof(item.SlotNumber)));
 
             return contentLength;
         }
+
+        private static void SetRequiredItems(BlockHeader header, Span<bool> requiredItems)
+        {
+            requiredItems[0] = !header.BaseFeePerGas.IsZero;
+            requiredItems[1] = header.WithdrawalsRoot is not null;
+            requiredItems[2] = header.BlobGasUsed is not null;
+            requiredItems[3] = header.BlobGasUsed is not null || header.ExcessBlobGas is not null;
+            requiredItems[4] = header.ParentBeaconBlockRoot is not null;
+            requiredItems[5] = header.RequestsHash is not null;
+            requiredItems[6] = header.BlockAccessListHash is not null;
+            requiredItems[7] = header.SlotNumber is not null;
+
+            for (int i = requiredItems.Length - 2; i >= 0; i--)
+            {
+                requiredItems[i] |= requiredItems[i + 1];
+            }
+        }
+
+        private static Hash256 GetRequiredField(Hash256? value, string fieldName) =>
+            value ?? throw new RlpException($"Cannot encode {nameof(BlockHeader)} without required {fieldName}.");
+
+        private static ulong GetRequiredField(ulong? value, string fieldName) =>
+            value ?? throw new RlpException($"Cannot encode {nameof(BlockHeader)} without required {fieldName}.");
 
         public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
             => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

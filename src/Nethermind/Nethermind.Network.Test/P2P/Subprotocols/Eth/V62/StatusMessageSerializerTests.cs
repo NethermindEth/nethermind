@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
@@ -26,12 +27,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             SerializerTester.TestZero(serializer, statusMessage, "f8483f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d");
         }
 
-        [Test]
-        public void Roundtrip_empty_status()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Deserialize_throws_on_null_required_hash(bool nullBestHash)
         {
-            using StatusMessage statusMessage = new();
+            using StatusMessage statusMessage = new()
+            {
+                BestHash = nullBestHash ? null : Keccak.Zero,
+                GenesisHash = nullBestHash ? Keccak.Zero : null
+            };
             StatusMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, statusMessage);
+            byte[] payload = serializer.Serialize(statusMessage);
+
+            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
         }
 
         [Test]

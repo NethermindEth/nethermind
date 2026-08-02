@@ -364,7 +364,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         private static readonly UInt256 TwoEth = new(2_000_000_000_000_000_000ul);
 
         public string EngineName => Core.SealEngineType.Ethash;
-        public string? SealEngineType => Core.SealEngineType.Ethash;
+        public string SealEngineType => Core.SealEngineType.Ethash;
 
         public ulong HomesteadTransition { get; } = config.HomesteadBlock ?? 0;
         public ulong? DaoHardforkTransition { get; } = config.DaoForkSupport == false ? null : config.DaoForkBlock;

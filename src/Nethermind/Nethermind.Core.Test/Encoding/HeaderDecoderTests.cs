@@ -98,9 +98,6 @@ public class HeaderDecoderTests
     }
 
     [TestCase(nameof(BlockHeader.WithdrawalsRoot))]
-    [TestCase(nameof(BlockHeader.ParentBeaconBlockRoot))]
-    [TestCase(nameof(BlockHeader.RequestsHash))]
-    [TestCase(nameof(BlockHeader.BlockAccessListHash))]
     public void Decode_throws_on_null_present_fork_hash_field(string fieldName)
     {
         byte[] bytes = EncodeHeaderWithNullPresentForkHashField(fieldName);
@@ -113,6 +110,27 @@ public class HeaderDecoderTests
             RlpReader reader = new(bytes);
             decoder.Decode(ref reader);
         }
+    }
+
+    [TestCase(nameof(BlockHeader.ParentBeaconBlockRoot))]
+    [TestCase(nameof(BlockHeader.RequestsHash))]
+    [TestCase(nameof(BlockHeader.BlockAccessListHash))]
+    public void Decode_preserves_null_optional_fork_hash_field(string fieldName)
+    {
+        byte[] bytes = EncodeHeaderWithNullPresentForkHashField(fieldName);
+        HeaderDecoder decoder = new();
+        RlpReader reader = new(bytes);
+
+        BlockHeader header = decoder.DecodeGuardNotNull(ref reader);
+        Hash256? value = fieldName switch
+        {
+            nameof(BlockHeader.ParentBeaconBlockRoot) => header.ParentBeaconBlockRoot,
+            nameof(BlockHeader.RequestsHash) => header.RequestsHash,
+            nameof(BlockHeader.BlockAccessListHash) => header.BlockAccessListHash,
+            _ => throw new AssertionException($"Unsupported header field {fieldName}.")
+        };
+
+        Assert.That(value, Is.Null);
     }
 
     [Test]
@@ -265,7 +283,7 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Can_encode_decode_with_missing_excess_blob_gas()
+    public void Encode_rejects_missing_excess_blob_gas()
     {
         BlockHeader header = Build.A.BlockHeader
                 .WithHash(new Hash256("0x3d8b9cc98eee58243461bd5a83663384b50293cd1e459a6841cb005296305590"))
@@ -289,8 +307,7 @@ public class HeaderDecoderTests
                 .TestObject;
         ;
 
-        Rlp rlp = Rlp.Encode(header);
-        _ = DecodeHeader(rlp);
+        Assert.That(() => Rlp.Encode(header), Throws.TypeOf<RlpException>());
     }
 
     [Test]
@@ -321,40 +338,44 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Can_encode_decode_with_requests_hash_and_missing_parent_beacon_root()
+    public void Can_encode_decode_requests_hash_without_parent_beacon_root()
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
             .WithBaseFee(1)
             .WithWithdrawalsRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithRequestsHash(TestItem.KeccakA).TestObject;
+            .WithExcessBlobGas(0).TestObject;
+        header.RequestsHash = TestItem.KeccakA;
 
-        BlockHeader blockHeader = DecodeHeader(Rlp.Encode(header));
+        BlockHeader decoded = DecodeHeader(Rlp.Encode(header));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
-            Assert.That(blockHeader.RequestsHash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(decoded.ParentBeaconBlockRoot, Is.Null);
+            Assert.That(decoded.RequestsHash, Is.EqualTo(TestItem.KeccakA));
         }
     }
 
     [Test]
-    public void Can_encode_decode_with_slot_number_and_missing_intermediate_hashes()
+    public void Can_encode_decode_slot_number_without_optional_intermediate_hashes()
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
-            .WithSlotNumber(1).TestObject;
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0).TestObject;
+        header.SlotNumber = 1;
 
-        BlockHeader blockHeader = DecodeHeader(Rlp.Encode(header));
+        BlockHeader decoded = DecodeHeader(Rlp.Encode(header));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
-            Assert.That(blockHeader.RequestsHash, Is.EqualTo(Keccak.Zero));
-            Assert.That(blockHeader.BlockAccessListHash, Is.EqualTo(Keccak.Zero));
-            Assert.That(blockHeader.SlotNumber, Is.EqualTo(1));
+            Assert.That(decoded.ParentBeaconBlockRoot, Is.Null);
+            Assert.That(decoded.RequestsHash, Is.Null);
+            Assert.That(decoded.BlockAccessListHash, Is.Null);
+            Assert.That(decoded.SlotNumber, Is.EqualTo(1));
         }
     }
 

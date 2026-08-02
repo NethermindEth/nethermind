@@ -12,6 +12,16 @@ namespace Nethermind.Optimism.Test;
 public class ReceiptDecoderTests
 {
     [Test]
+    public void Null_receipt_roundtrips()
+    {
+        OptimismReceiptMessageDecoder decoder = new();
+        Rlp encoded = decoder.Encode((TxReceipt?)null);
+        RlpReader reader = new(encoded.Bytes);
+
+        Assert.That(decoder.Decode(ref reader), Is.Null);
+    }
+
+    [Test]
     public void Optimism_receipt_message_encoding_rejects_null_logs()
     {
         OptimismTxReceipt receipt = new()

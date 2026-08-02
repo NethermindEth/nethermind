@@ -128,11 +128,11 @@ namespace Nethermind.Serialization.Rlp
                 _headerDecoder.Encode(ref writer, item.Uncles[i]);
             }
 
-            if (withdrawalsLength.HasValue)
+            if (item.Withdrawals is { } withdrawals)
             {
-                writer.StartSequence(withdrawalsLength.Value);
+                writer.StartSequence(withdrawalsLength
+                    ?? throw new RlpException("Withdrawal payload length is missing."));
 
-                Withdrawal[] withdrawals = item.Withdrawals!;
                 for (int i = 0; i < withdrawals.Length; i++)
                 {
                     _withdrawalDecoder.Encode(ref writer, withdrawals[i]);

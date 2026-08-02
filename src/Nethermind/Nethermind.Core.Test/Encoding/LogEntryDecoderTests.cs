@@ -106,6 +106,30 @@ public class LogEntryDecoderTests
         }
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Struct_ref_decoders_reject_null_address(bool compact)
+    {
+        Rlp malformed = compact
+            ? Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.Encode(0), Rlp.OfEmptyByteArray)
+            : Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.OfEmptyByteArray);
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(malformed.Bytes);
+            if (compact)
+            {
+                CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out _);
+            }
+            else
+            {
+                LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out _);
+            }
+        }
+    }
+
     [Test]
     public void Rejects_extra_topic_items_inside_topics_sequence()
     {

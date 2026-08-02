@@ -103,7 +103,7 @@ namespace Nethermind.Db
             _cache.Clear();
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache.Select(static kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, kvp.Value));
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
 
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Select(static kvp => kvp.Key);
 

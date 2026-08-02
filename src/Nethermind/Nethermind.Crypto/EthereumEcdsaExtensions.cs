@@ -77,8 +77,9 @@ public static class EthereumEcdsaExtensions
         Signature signature = tx.Signature
             ?? throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
 
-        bool cacheable = tx.Type != TxType.Legacy && tx.Hash is not null;
-        if (cacheable && _senderCache.TryGet(tx.Hash!.ValueHash256, out Address? cached))
+        Hash256? txHash = tx.Hash;
+        if (tx.Type != TxType.Legacy && txHash is not null &&
+            _senderCache.TryGet(txHash.ValueHash256, out Address? cached))
         {
             return cached;
         }
@@ -86,9 +87,9 @@ public static class EthereumEcdsaExtensions
         ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
         Address? recovered = ecdsa.RecoverAddress(signature, in hash);
 
-        if (cacheable && recovered is not null)
+        if (tx.Type != TxType.Legacy && txHash is not null && recovered is not null)
         {
-            _senderCache.Set(tx.Hash!.ValueHash256, recovered);
+            _senderCache.Set(txHash.ValueHash256, recovered);
         }
 
         return recovered;
