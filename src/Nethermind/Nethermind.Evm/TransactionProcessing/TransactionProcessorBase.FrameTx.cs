@@ -481,7 +481,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             env,
             in frameTracker,
             in snapshot,
-            isStatic);
+            isStatic: isStatic);
 
         TransactionSubstate substate = VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
