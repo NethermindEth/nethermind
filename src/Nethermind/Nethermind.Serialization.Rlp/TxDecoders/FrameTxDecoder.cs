@@ -43,10 +43,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A frame transaction carries no envelope signature — the sender is explicit — so what follows the
-    /// EIP-8141 fields is the optional EIP-8272 reference list rather than a trailing <c>[v, r, s]</c>.
-    /// A non-list element there is padding and is rejected: accepting it would decode a spurious
-    /// signature that strict clients drop, diverging on the transaction hash.
+    /// A frame transaction carries no envelope signature, so what follows the EIP-8141 fields is the
+    /// optional EIP-8272 reference list. A non-list element there is padding: accepting it would decode
+    /// a spurious signature that strict clients drop, diverging on the transaction hash.
     /// </remarks>
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
