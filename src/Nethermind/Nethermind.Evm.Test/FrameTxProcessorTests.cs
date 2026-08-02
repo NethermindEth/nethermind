@@ -768,10 +768,11 @@ public class FrameTxProcessorTests
     // for that slot, so an uncommitted or out-of-window reference invalidates the transaction. The
     // committed case also proves the reference's intrinsic gas is charged, since the transaction pays
     // more than the same transaction declaring nothing.
-    [TestCase(1_000UL, true, TestName = "a committed reference inside the window executes")]
-    [TestCase(1_001UL, false, TestName = "a reference to the current slot is not yet referenceable")]
-    [TestCase(9_193UL, false, TestName = "a reference older than the usable window has been overwritten")]
-    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool expectedExecuted)
+    [TestCase(1_000UL, false, true, TestName = "a committed reference inside the window executes")]
+    [TestCase(1_001UL, false, false, TestName = "a reference to the current slot is not yet referenceable")]
+    [TestCase(9_193UL, false, false, TestName = "a reference older than the usable window has been overwritten")]
+    [TestCase(1_000UL, true, false, TestName = "a reference to a different root at a committed slot fails")]
+    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, bool expectedExecuted)
     {
         const ulong HeadSlot = 1_001;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -782,7 +783,8 @@ public class FrameTxProcessorTests
         _stateProvider.Commit(Spec);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
+        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot,
+            declareOtherRoot ? TestItem.KeccakC.ValueHash256 : root)];
 
         CallOutputTracer referencingTracer = new();
         TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: HeadSlot);
