@@ -691,6 +691,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // frame approves payment.
             if (WorldState.GetBalance(resolvedTarget) < frameContext.MaxCost) return;
 
+            // EIP-8250: the account nonce cannot advance past MAX_NONCE_SEQ, and an approval that
+            // cannot consume its nonce performs no approval effects at all.
+            UInt256[]? keys = frameContext.NonceKeys;
+            if ((keys is null || (keys.Length == 1 && keys[0].IsZero))
+                && WorldState.GetNonce(frameContext.Sender) >= Eip8250Constants.MaxNonceSeq)
+            {
+                return;
+            }
+
             // Charge the max cost up front from the payer and consume the sender nonce; unused
             // gas is refunded to the payer at the end of the transaction.
             WorldState.SubtractFromBalance(resolvedTarget, frameContext.MaxCost, spec);
